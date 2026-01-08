@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook 接收监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header .stats {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .stat-item .label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .stat-item .value {
+            color: #667eea;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .webhooks-container {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .webhook-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            animation: slideIn 0.5s ease-out;
+            position: relative;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .webhook-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .webhook-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .webhook-source {
+            display: inline-block;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .webhook-time {
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .webhook-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-value {
+            color: #333;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .webhook-data {
+            margin-top: 15px;
+        }
+        
+        .section-title {
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.6;
+            border-left: 3px solid #667eea;
+        }
+        
+        .empty-state {
+            background: white;
+            padding: 60px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .empty-state svg {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .empty-state h2 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            color: #999;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .ai-analysis {
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .ai-analysis h3 {
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .ai-analysis-item {
+            margin-bottom: 12px;
+        }
+        
+        .ai-analysis-label {
+            font-weight: 600;
+            color: #555;
+            margin-right: 8px;
+        }
+        
+        .ai-analysis-value {
+            color: #333;
+        }
+        
+        .ai-list {
+            list-style: none;
+            padding-left: 0;
+            margin: 8px 0;
+        }
+        
+        .ai-list li {
+            padding: 6px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .ai-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .btn-reanalyze {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            margin-right: 8px;
+        }
+        
+        .btn-reanalyze:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+        
+        .btn-reanalyze:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-forward {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .btn-forward:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+        
+        .btn-forward:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideDown {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .modal h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .modal label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+        
+        .modal input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-cancel:hover {
+            background: #5a6268;
+        }
+        
+        .btn-confirm {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-confirm:hover {
+            background: #5568d3;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .pagination button {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .pagination .page-info {
+            color: #666;
+            font-size: 14px;
+            padding: 0 15px;
+        }
+        
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        
+        .page-size-selector label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .page-size-selector select {
+            padding: 6px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        .page-size-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Webhook 接收监控</h1>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="label">总接收数</span>
+                    <span class="value" id="totalCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">服务状态</span>
+                    <span class="value" id="serviceStatus">
+                        <span class="badge badge-success">运行中</span>
+                    </span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">最后更新</span>
+                    <span class="value" style="font-size: 16px; color: #999;" id="lastUpdate">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="loadWebhooks()">🔄 刷新数据</button>
+            <button class="btn btn-secondary" onclick="toggleAutoRefresh()">⏱️ <span id="autoRefreshText">开启自动刷新</span></button>
+            <button class="btn btn-secondary" onclick="openConfigModal()">⚙️ 系统配置</button>
+        </div>
+        
+        <div id="webhooksContainer" class="webhooks-container">
+            <div class="loading">⏳ 加载中...</div>
+        </div>
+        
+        <div class="pagination" id="pagination" style="display: none;">
+            <button id="firstPage" onclick="goToPage(1)">首页</button>
+            <button id="prevPage" onclick="goToPage(currentPage - 1)">上一页</button>
+            <span class="page-info">
+                第 <span id="currentPageNum">1</span> 页 / 共 <span id="totalPages">1</span> 页
+            </span>
+            <button id="nextPage" onclick="goToPage(currentPage + 1)">下一页</button>
+            <button id="lastPage" onclick="goToPage(totalPages)">末页</button>
+            
+            <div class="page-size-selector">
+                <label for="pageSize">每页显示：</label>
+                <select id="pageSize" onchange="changePageSize()">
+                    <option value="10">10 条</option>
+                    <option value="20" selected>20 条</option>
+                    <option value="30">30 条</option>
+                    <option value="50">50 条</option>
+                    <option value="100">100 条</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- 转发地址编辑模态框 -->
+    <div id="forwardModal" class="modal">
+        <div class="modal-content">
+            <h2>🚀 转发 Webhook</h2>
+            <label for="forwardUrl">转发地址：</label>
+            <input type="text" id="forwardUrl" placeholder="输入转发地址" />
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeForwardModal()">取消</button>
+                <button class="btn-confirm" onclick="confirmForward()">确认转发</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统配置模态框 -->
+    <div id="configModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2>⚙️ 系统配置</h2>
+            
+            <label for="configForwardUrl">默认转发地址：</label>
+            <input type="text" id="configForwardUrl" placeholder="输入默认转发地址" />
+            
+            <label for="configOpenaiApiKey">OpenAI API Key：</label>
+            <input type="password" id="configOpenaiApiKey" placeholder="输入 OpenAI API Key" />
+            
+            <label for="configOpenaiApiUrl">OpenAI API URL：</label>
+            <input type="text" id="configOpenaiApiUrl" placeholder="例: https://openrouter.ai/api/v1" />
+            
+            <label for="configOpenaiModel">OpenAI 模型：</label>
+            <input type="text" id="configOpenaiModel" placeholder="例: anthropic/claude-sonnet-4" />
+            
+            <label for="configAiPrompt">AI 提示词：</label>
+            <textarea id="configAiPrompt" rows="6" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 20px; font-family: inherit;" placeholder="输入 AI 系统提示词"></textarea>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="configEnableForward" style="width: auto; margin-right: 8px;" />
+                    启用自动转发
+                </label>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="configEnableAi" style="width: auto; margin-right: 8px;" />
+                    启用 AI 分析
+                </label>
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeConfigModal()">取消</button>
+                <button class="btn-confirm" onclick="saveConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+        let currentPage = 1;
+        let pageSize = 20;
+        let totalPages = 1;
+        let totalCount = 0;
+        
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+        
+        function timeAgo(timestamp) {
+            const now = new Date();
+            const past = new Date(timestamp);
+            const seconds = Math.floor((now - past) / 1000);
+            
+            if (seconds < 60) return `${seconds}秒前`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;
+            return `${Math.floor(seconds / 86400)}天前`;
+        }
+        
+        async function loadWebhooks() {
+            try {
+                const response = await fetch(`/api/webhooks?page=${currentPage}&page_size=${pageSize}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayWebhooks(result.data);
+                    
+                    // 更新分页信息
+                    if (result.pagination) {
+                        totalPages = result.pagination.total_pages;
+                        totalCount = result.pagination.total;
+                        updatePagination();
+                    }
+                    
+                    document.getElementById('totalCount').textContent = totalCount;
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+                }
+            } catch (error) {
+                console.error('加载失败:', error);
+                document.getElementById('webhooksContainer').innerHTML = `
+                    <div class="empty-state">
+                        <h2>❌ 加载失败</h2>
+                        <p>无法连接到服务器，请检查服务是否正常运行</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function displayWebhooks(webhooks) {
+            const container = document.getElementById('webhooksContainer');
+            
+            if (webhooks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                        </svg>
+                        <h2>暂无数据</h2>
+                        <p>还没有接收到任何 webhook 请求</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = webhooks.map(webhook => `
+                <div class="webhook-card">
+                    <div class="webhook-header">
+                        <span class="webhook-source">${webhook.source || 'unknown'}</span>
+                        <span class="webhook-time">${formatTime(webhook.timestamp)} (${timeAgo(webhook.timestamp)})</span>
+                    </div>
+                    
+                    <div class="webhook-info">
+                        <div class="info-item">
+                            <span class="info-label">客户端 IP</span>
+                            <span class="info-value">${webhook.client_ip || '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">文件名</span>
+                            <span class="info-value">${webhook.filename || '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">User-Agent</span>
+                            <span class="info-value">${webhook.headers?.['User-Agent'] || '-'}</span>
+                        </div>
+                    </div>
+                    
+                    ${renderAIAnalysis(webhook)}
+                    
+                    ${webhook.raw_payload ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📄 原始请求体</div>
+                        <pre>${escapeHtml(webhook.raw_payload)}</pre>
+                    </div>
+                    ` : ''}
+                    
+                    ${webhook.parsed_data ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📦 解析后数据</div>
+                        <pre>${JSON.stringify(webhook.parsed_data, null, 2)}</pre>
+                    </div>
+                    ` : ''}
+                    
+                    ${webhook.headers && Object.keys(webhook.headers).length > 0 ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📋 请求头</div>
+                        <pre>${JSON.stringify(webhook.headers, null, 2)}</pre>
+                    </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function renderAIAnalysis(webhook) {
+            // 检查是否有 AI 分析结果（新数据格式或旧数据格式）
+            const analysis = webhook.ai_analysis || (webhook.data && webhook.data.ai_analysis);
+            
+            if (!analysis) {
+                return '';
+            }
+            
+            const importanceBadge = {
+                'high': '<span class="badge badge-danger">高</span>',
+                'medium': '<span class="badge badge-warning">中</span>',
+                'low': '<span class="badge badge-success">低</span>'
+            }[analysis.importance] || '<span class="badge">未知</span>';
+            
+            return `
+                <div class="ai-analysis" id="analysis-${webhook.id}">
+                    <h3>
+                        <span>🤖 AI 分析结果</span>
+                        <div>
+                            <button class="btn-reanalyze" onclick="reanalyzeWebhook(${webhook.id})">
+                                🔄 重新分析
+                            </button>
+                            <button class="btn-forward" onclick="openForwardModal(${webhook.id})">
+                                🚀 手动转发
+                            </button>
+                        </div>
+                    </h3>
+                    
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">重要性：</span>
+                        ${importanceBadge}
+                    </div>
+                    
+                    ${analysis.summary ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">摘要：</span>
+                        <span class="ai-analysis-value">${analysis.summary}</span>
+                    </div>
+                    ` : ''}
+                    
+                    ${analysis.event_type ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">事件类型：</span>
+                        <span class="ai-analysis-value">${analysis.event_type}</span>
+                    </div>
+                    ` : ''}
+                    
+                    ${analysis.impact_scope ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">影响范围：</span>
+                        <span class="ai-analysis-value">${analysis.impact_scope}</span>
+                    </div>
+                    ` : ''}
+                    
+                    ${analysis.actions && analysis.actions.length > 0 ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">建议操作：</span>
+                        <ul class="ai-list">
+                            ${analysis.actions.map(action => `<li>${action}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    ${analysis.risks && analysis.risks.length > 0 ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">潜在风险：</span>
+                        <ul class="ai-list">
+                            ${analysis.risks.map(risk => `<li>${risk}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    ${analysis.monitoring_suggestions && analysis.monitoring_suggestions.length > 0 ? `
+                    <div class="ai-analysis-item">
+                        <span class="ai-analysis-label">监控建议：</span>
+                        <ul class="ai-list">
+                            ${analysis.monitoring_suggestions.map(suggestion => `<li>${suggestion}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        async function reanalyzeWebhook(webhookId) {
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            
+            try {
+                // 禁用按钮并显示加载状态
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading-spinner"></span> 分析中...';
+                
+                const response = await fetch(`/api/reanalyze/${webhookId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 显示成功提示
+                    btn.innerHTML = '✔️ 分析完成';
+                    
+                    // 重新加载数据
+                    setTimeout(() => {
+                        loadWebhooks();
+                    }, 1000);
+                } else {
+                    btn.innerHTML = '❌ 分析失败';
+                    console.error('重新分析失败:', result.error);
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }, 2000);
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                btn.innerHTML = '❌ 请求失败';
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+        
+        let currentForwardId = null;
+        
+        function openForwardModal(webhookId) {
+            currentForwardId = webhookId;
+            const modal = document.getElementById('forwardModal');
+            const input = document.getElementById('forwardUrl');
+            input.value = 'https://open.feishu.cn/open-apis/bot/v2/hook/ec9090ad-22f6-458c-98e8-183ff61248ec'; // 默认飞书地址
+            modal.style.display = 'block';
+        }
+        
+        function closeForwardModal() {
+            const modal = document.getElementById('forwardModal');
+            modal.style.display = 'none';
+            currentForwardId = null;
+        }
+        
+        async function confirmForward() {
+            if (!currentForwardId) return;
+            
+            const forwardUrl = document.getElementById('forwardUrl').value;
+            if (!forwardUrl) {
+                alert('请输入转发地址');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/forward/${currentForwardId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        forward_url: forwardUrl
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✔️ 转发成功！');
+                    closeForwardModal();
+                } else {
+                    alert('❌ 转发失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('转发请求失败:', error);
+                alert('❌ 请求失败：' + error.message);
+            }
+        }
+        
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const forwardModal = document.getElementById('forwardModal');
+            const configModal = document.getElementById('configModal');
+            if (event.target === forwardModal) {
+                closeForwardModal();
+            }
+            if (event.target === configModal) {
+                closeConfigModal();
+            }
+        }
+        
+        // 配置管理功能
+        async function openConfigModal() {
+            try {
+                // 获取当前配置
+                const response = await fetch('/api/config');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const config = result.data;
+                    document.getElementById('configForwardUrl').value = config.forward_url || '';
+                    document.getElementById('configOpenaiApiKey').value = config.openai_api_key || '';
+                    document.getElementById('configOpenaiApiUrl').value = config.openai_api_url || '';
+                    document.getElementById('configOpenaiModel').value = config.openai_model || '';
+                    document.getElementById('configAiPrompt').value = config.ai_system_prompt || '';
+                    document.getElementById('configEnableForward').checked = config.enable_forward;
+                    document.getElementById('configEnableAi').checked = config.enable_ai_analysis;
+                    
+                    document.getElementById('configModal').style.display = 'block';
+                } else {
+                    alert('获取配置失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('获取配置失败:', error);
+                alert('获取配置失败：' + error.message);
+            }
+        }
+        
+        function closeConfigModal() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+        
+        async function saveConfig() {
+            try {
+                const configData = {
+                    forward_url: document.getElementById('configForwardUrl').value,
+                    openai_api_key: document.getElementById('configOpenaiApiKey').value,
+                    openai_api_url: document.getElementById('configOpenaiApiUrl').value,
+                    openai_model: document.getElementById('configOpenaiModel').value,
+                    ai_system_prompt: document.getElementById('configAiPrompt').value,
+                    enable_forward: document.getElementById('configEnableForward').checked,
+                    enable_ai_analysis: document.getElementById('configEnableAi').checked
+                };
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(configData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✔️ 配置保存成功！');
+                    closeConfigModal();
+                } else {
+                    alert('❌ 保存失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('保存配置失败:', error);
+                alert('❌ 保存失败：' + error.message);
+            }
+        }
+        
+        function toggleAutoRefresh() {
+            const btn = document.getElementById('autoRefreshText');
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                btn.textContent = '开启自动刷新';
+            } else {
+                autoRefreshInterval = setInterval(loadWebhooks, 5000);
+                btn.textContent = '关闭自动刷新';
+                loadWebhooks();
+            }
+        }
+        
+        function updatePagination() {
+            const pagination = document.getElementById('pagination');
+            const firstBtn = document.getElementById('firstPage');
+            const prevBtn = document.getElementById('prevPage');
+            const nextBtn = document.getElementById('nextPage');
+            const lastBtn = document.getElementById('lastPage');
+            const currentPageNum = document.getElementById('currentPageNum');
+            const totalPagesSpan = document.getElementById('totalPages');
+            
+            // 显示分页栏
+            if (totalPages > 0) {
+                pagination.style.display = 'flex';
+            }
+            
+            // 更新页码显示
+            currentPageNum.textContent = currentPage;
+            totalPagesSpan.textContent = totalPages;
+            
+            // 更新按钮状态
+            firstBtn.disabled = currentPage === 1;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage >= totalPages;
+            lastBtn.disabled = currentPage >= totalPages;
+        }
+        
+        function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            loadWebhooks();
+        }
+        
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSize').value);
+            currentPage = 1; // 重置到第一页
+            loadWebhooks();
+        }
+        
+        // 初始加载
+        loadWebhooks();
+    </script>
+</body>
+</html>
