@@ -1,0 +1,71 @@
+networks:
+  webhook_net:
+
+services:
+  webhook-service:
+    build: .
+    container_name: webhook-receiver
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"   # 只暴露业务服务
+
+    environment:
+      PORT: 8000
+      FLASK_ENV: production
+      LOG_LEVEL: INFO
+
+      # Webhook 校验密钥（已更换为强随机）
+      WEBHOOK_SECRET: "whk_9F3sLxE2pQ7MZrK8YdA"
+
+      # 数据库连接
+      DATABASE_URL: "postgresql://<REDACTED_DB_CREDENTIALS>@postgres:5432/webhooks"
+
+    volumes:
+      - ./logs:/app/logs
+      - ./webhooks_data:/app/webhooks_data
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    networks:
+      - webhook_net
+
+  postgres:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:15-alpine
+    container_name: webhook-postgres
+    restart: unless-stopped
+
+    # ⚠️ 不暴露 ports，宿主机无法访问
+    # ports: []
+
+    environment:
+      POSTGRES_DB: webhooks
+      POSTGRES_USER: webhook_user
+      POSTGRES_PASSWORD: "WbP9mA7X2rLQ4E"
+
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook_user -d webhooks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - webhook_net
