@@ -66,8 +66,8 @@ def generate_alert_hash(data, source):
                 labels = first_alert['labels']
                 if 'alertname' in labels:
                     key_fields['alertname'] = labels['alertname']
-                if 'internal_label_alert_id' in labels:
-                    key_fields['alert_id'] = labels['internal_label_alert_id']
+                # 注意：不包含 internal_label_alert_id，因为它每次触发都会变化
+                # 这样同一规则在同一资源上的持续触发才能被识别为重复告警
                 if 'internal_label_alert_level' in labels:
                     key_fields['alert_level'] = labels['internal_label_alert_level']
                 
