@@ -3,6 +3,161 @@ import json
 from logger import logger
 from config import Config
 from openai import OpenAI
+import re
+
+
+def fix_json_format(json_str):
+    """
+    修复常见的 JSON 格式错误
+    
+    Args:
+        json_str: 可能有格式错误的 JSON 字符串
+    
+    Returns:
+        str: 修复后的 JSON 字符串
+    """
+    try:
+        original_str = json_str
+        
+        # 1. 移除 BOM 和特殊字符
+        json_str = json_str.replace('\ufeff', '')
+        
+        # 2. 移除注释（// 和 /* */ 风格）
+        json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
+        json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
+        
+        # 3. 修复尾随逗号问题（数组和对象中最后一项后的逗号）
+        # 这是最常见的问题
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+        
+        # 4. 修复缺少逗号的问题（两个字符串或数字之间）
+        # 例如："value1" "value2" -> "value1", "value2"
+        json_str = re.sub(r'"\s+"', '", "', json_str)
+        json_str = re.sub(r'(\d)\s+"', r'\1, "', json_str)
+        json_str = re.sub(r'"\s+(\d)', r'", \1', json_str)
+        
+        # 5. 修复单引号为双引号
+        # 只在不是字符串内容的情况下替换
+        in_double_quote = False
+        escaped = False
+        result = []
+        
+        for i, char in enumerate(json_str):
+            if escaped:
+                result.append(char)
+                escaped = False
+                continue
+            
+            if char == '\\':
+                escaped = True
+                result.append(char)
+                continue
+            
+            if char == '"':
+                in_double_quote = not in_double_quote
+                result.append(char)
+            elif char == "'" and not in_double_quote:
+                # 将单引号替换为双引号
+                result.append('"')
+            else:
+                result.append(char)
+        
+        json_str = ''.join(result)
+        
+        # 6. 确保键名有引号
+        json_str = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
+        
+        # 7. 修复多余的逗号（连续逗号）
+        json_str = re.sub(r',\s*,', ',', json_str)
+        
+        # 8. 修复对象或数组开始/结束位置的逗号
+        json_str = re.sub(r'([{\[])\s*,', r'\1', json_str)
+        
+        # 9. 移除多余的空白字符
+        json_str = json_str.strip()
+        
+        # 10. 尝试验证修复后的 JSON
+        try:
+            json.loads(json_str)
+            logger.debug(f"JSON 格式修复成功")
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON 格式修复后仍然无效: {str(e)}")
+        
+        return json_str
+    except Exception as e:
+        logger.warning(f"JSON 格式修复过程出错: {str(e)}")
+        return json_str
+
+
+def extract_from_text(text, source):
+    """
+    从 AI 响应文本中提取关键信息（兜底策略）
+    
+    Args:
+        text: AI 响应文本
+        source: 数据来源
+    
+    Returns:
+        dict: 提取的分析结果
+    """
+    logger.info("使用文本提取策略解析 AI 响应")
+    
+    result = {
+        'source': source,
+        'event_type': 'unknown',
+        'importance': 'medium',
+        'summary': '',
+        'actions': [],
+        'risks': []
+    }
+    
+    try:
+        # 提取重要性
+        if re.search(r'importance["\s:]+high', text, re.IGNORECASE):
+            result['importance'] = 'high'
+        elif re.search(r'importance["\s:]+low', text, re.IGNORECASE):
+            result['importance'] = 'low'
+        elif re.search(r'(高|critical|严重)', text):
+            result['importance'] = 'high'
+        elif re.search(r'(低|info|正常)', text):
+            result['importance'] = 'low'
+        
+        # 提取摘要
+        summary_match = re.search(r'summary["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
+        if summary_match:
+            result['summary'] = summary_match.group(1)
+        elif re.search(r'(告警|错误|异常|故障)', text):
+            result['summary'] = '检测到系统告警或异常，需要关注'
+        else:
+            result['summary'] = 'Webhook 事件已接收，AI 分析结果解析不完整'
+        
+        # 提取事件类型
+        event_match = re.search(r'event_type["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
+        if event_match:
+            result['event_type'] = event_match.group(1)
+        
+        # 提取建议操作
+        actions_match = re.findall(r'(?:操作|action)[^:]*[:：]\s*["\']?([^"\'}\],]+)', text, re.IGNORECASE)
+        if actions_match:
+            result['actions'] = [a.strip() for a in actions_match if a.strip()]
+        
+        # 提取风险
+        risks_match = re.findall(r'(?:风险|risk)[^:]*[:：]\s*["\']?([^"\'}\],]+)', text, re.IGNORECASE)
+        if risks_match:
+            result['risks'] = [r.strip() for r in risks_match if r.strip()]
+        
+        # 提取影响范围
+        impact_match = re.search(r'impact_scope["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
+        if impact_match:
+            result['impact_scope'] = impact_match.group(1)
+        
+        logger.info(f"文本提取完成: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"文本提取失败: {str(e)}")
+        result['summary'] = 'AI 分析响应格式错误，已降级处理'
+        return result
 
 
 def analyze_webhook_with_ai(webhook_data):
@@ -118,7 +273,12 @@ def analyze_with_openai(data, source):
   * CurrentValue 与 Threshold 的对比
   * Resources 中受影响的资源信息
 
-请直接返回 JSON，不要包含其他文本。"""
+**重要提示**:
+1. 必须返回严格的 JSON 格式
+2. 不要在 JSON 中使用注释
+3. 数组中最后一个元素后不要有逗号
+4. 所有字符串必须用双引号
+5. 直接返回 JSON，不要包含其他文本和解释"""
         
         # 调用 OpenAI API
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
@@ -137,7 +297,7 @@ def analyze_with_openai(data, source):
         if ai_response is None:
             raise ValueError("AI 返回空响应")
         ai_response = ai_response.strip()
-        logger.debug(f"AI 响应: {ai_response}")
+        logger.debug(f"AI 原始响应: {ai_response}")
         
         # 提取 JSON
         if '```json' in ai_response:
@@ -149,7 +309,45 @@ def analyze_with_openai(data, source):
             json_end = ai_response.find('```', json_start)
             ai_response = ai_response[json_start:json_end].strip()
         
-        analysis_result = json.loads(ai_response)
+        logger.debug(f"提取的 JSON: {ai_response}")
+        
+        # 尝试修复常见的 JSON 格式错误
+        ai_response = fix_json_format(ai_response)
+        
+        try:
+            analysis_result = json.loads(ai_response)
+        except json.JSONDecodeError as e:
+            # 记录详细的错误信息
+            logger.error(f"JSON 解析失败: {str(e)}")
+            logger.error(f"问题位置: 第 {e.lineno} 行, 第 {e.colno} 列")
+            logger.error(f"错误内容: {ai_response}")
+            
+            # 尝试提取部分有效的 JSON
+            # 找到第一个完整的对象
+            brace_count = 0
+            valid_end = -1
+            for i, char in enumerate(ai_response):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        valid_end = i + 1
+                        break
+            
+            if valid_end > 0:
+                logger.info(f"尝试提取前 {valid_end} 个字符作为有效 JSON")
+                try:
+                    analysis_result = json.loads(ai_response[:valid_end])
+                    logger.info("成功提取部分 JSON")
+                except:
+                    # 如果仍然失败，尝试从文本中提取关键信息
+                    logger.warning("JSON 提取失败，尝试从文本中解析关键信息")
+                    analysis_result = extract_from_text(ai_response, source)
+            else:
+                # 如果找不到完整对象，尝试从文本中提取关键信息
+                logger.warning("未找到完整的 JSON 对象，尝试从文本中解析关键信息")
+                analysis_result = extract_from_text(ai_response, source)
         
         # 确保必需字段存在
         if 'source' not in analysis_result:
