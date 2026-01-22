@@ -95,7 +95,7 @@ docker compose up -d --build --force-recreate
 
 
 ## 配置说明
-docker-compose.yml 里的变量 >  .env 文件
+环境变量 （docker-compose.yml里的值） >  .env 文件
 ### 环境变量
 
 在 `.env` 文件中配置以下参数：
