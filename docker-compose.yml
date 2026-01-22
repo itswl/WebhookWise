@@ -22,6 +22,7 @@ services:
       DATABASE_URL: "postgresql://<REDACTED_DB_CREDENTIALS>@postgres:5432/webhooks"
 
     volumes:
+      # - ./.env:/app/.env # 挂载 .env 文件 
       - ./logs:/app/logs
       - ./webhooks_data:/app/webhooks_data
 
