@@ -72,8 +72,30 @@ python app.py
 
 服务将在 `http://localhost:8000` 启动
 
-## 配置说明
 
+### docker 启动
+使用 docker-compose
+
+1. **克隆项目**
+```bash
+git clone <repository-url>
+cd webhooks
+```
+
+2. **配置环境变量**
+```bash
+cp .env.example .env
+# 编辑 .env 文件，配置数据库和 API 密钥
+```
+
+3. **docker compose 启动** 
+```
+docker compose up -d --build --force-recreate
+```
+
+
+## 配置说明
+docker-compose.yml 里的变量 >  .env 文件
 ### 环境变量
 
 在 `.env` 文件中配置以下参数：
