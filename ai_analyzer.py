@@ -632,24 +632,6 @@ def build_feishu_message(webhook_data, analysis_result):
             }
         })
     
-    # 添加分割线
-    card_content['elements'].append({
-        "tag": "hr"
-    })
-    
-    # 添加原始数据（折叠显示）
-    parsed_data = webhook_data.get('parsed_data', {})
-    if parsed_data:
-        import json
-        data_preview = json.dumps(parsed_data, ensure_ascii=False, indent=2)[:500]
-        card_content['elements'].append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": f"**📦 原始数据**\n```json\n{data_preview}\n```"
-            }
-        })
-    
     return {
         "msg_type": "interactive",
         "card": card_content
