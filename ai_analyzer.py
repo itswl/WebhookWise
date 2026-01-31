@@ -621,17 +621,6 @@ def build_feishu_message(webhook_data, analysis_result):
             }
         })
     
-    # 添加潜在风险
-    if analysis_result.get('risks'):
-        risks_text = '\n'.join([f"⚠️ {risk}" for risk in analysis_result.get('risks', [])])
-        card_content['elements'].append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": f"**⚠️ 潜在风险**\n{risks_text}"
-            }
-        })
-    
     return {
         "msg_type": "interactive",
         "card": card_content
