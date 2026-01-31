@@ -26,7 +26,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 复制项目文件
-COPY .env .env
+COPY .env.example .env
 COPY ai_analyzer.py .
 COPY app.py .
 COPY config.py .
