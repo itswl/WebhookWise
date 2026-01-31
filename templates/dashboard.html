@@ -191,6 +191,35 @@
             font-size: 16px;
             font-weight: 600;
             margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        summary.section-title {
+            cursor: pointer;
+            user-select: none;
+            padding: 5px 0;
+            transition: color 0.3s;
+        }
+        
+        summary.section-title:hover {
+            color: #667eea;
+        }
+        
+        summary.section-title::-webkit-details-marker {
+            display: none;
+        }
+        
+        summary.section-title:before {
+            content: '▶';
+            font-size: 12px;
+            margin-right: 8px;
+            transition: transform 0.3s;
+            color: #667eea;
+        }
+        
+        details[open] summary.section-title:before {
+            transform: rotate(90deg);
         }
         
         pre {
@@ -741,22 +770,28 @@
                     
                     ${webhook.raw_payload ? `
                     <div class="webhook-data">
-                        <div class="section-title">📄 原始请求体</div>
-                        <pre>${escapeHtml(webhook.raw_payload)}</pre>
+                        <details>
+                            <summary class="section-title">📄 原始请求体</summary>
+                            <pre>${escapeHtml(webhook.raw_payload)}</pre>
+                        </details>
                     </div>
                     ` : ''}
                     
                     ${webhook.parsed_data ? `
                     <div class="webhook-data">
-                        <div class="section-title">📦 解析后数据</div>
-                        <pre>${JSON.stringify(webhook.parsed_data, null, 2)}</pre>
+                        <details>
+                            <summary class="section-title">📦 解析后数据</summary>
+                            <pre>${JSON.stringify(webhook.parsed_data, null, 2)}</pre>
+                        </details>
                     </div>
                     ` : ''}
                     
                     ${webhook.headers && Object.keys(webhook.headers).length > 0 ? `
                     <div class="webhook-data">
-                        <div class="section-title">📋 请求头</div>
-                        <pre>${JSON.stringify(webhook.headers, null, 2)}</pre>
+                        <details>
+                            <summary class="section-title">📋 请求头</summary>
+                            <pre>${JSON.stringify(webhook.headers, null, 2)}</pre>
+                        </details>
                     </div>
                     ` : ''}
                 </div>
