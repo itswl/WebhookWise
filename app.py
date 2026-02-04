@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask, request, jsonify, render_template, Response
 from datetime import datetime
 from dotenv import set_key
@@ -15,6 +16,29 @@ from models import WebhookEvent, session_scope
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# 内存缓存：防止并发请求重复处理（TTL 60秒）
+_processing_alerts: dict[str, float] = {}  # {alert_hash: timestamp}
+_PROCESSING_TTL = 60  # 缓存过期时间(秒)
+
+
+def _is_processing(alert_hash: str) -> bool:
+    """检查告警是否正在处理中（防止并发竞态）"""
+    now = datetime.now().timestamp()
+    # 清理过期缓存
+    expired = [k for k, v in _processing_alerts.items() if now - v > _PROCESSING_TTL]
+    for k in expired:
+        _processing_alerts.pop(k, None)
+    
+    if alert_hash in _processing_alerts:
+        return True
+    _processing_alerts[alert_hash] = now
+    return False
+
+
+def _finish_processing(alert_hash: str) -> None:
+    """标记告警处理完成"""
+    _processing_alerts.pop(alert_hash, None)
 
 
 def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]:
@@ -58,7 +82,17 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         
         # 去重检测
         alert_hash = generate_alert_hash(data, source)
-        is_duplicate, original_event = check_duplicate_alert(alert_hash)
+        
+        # 检查是否有相同告警正在处理中（防止并发竞态）
+        if _is_processing(alert_hash):
+            logger.info(f"告警正在处理中，等待重试: hash={alert_hash}")
+            # 等待一小段时间后重新检测
+            time.sleep(2)
+            is_duplicate, original_event = check_duplicate_alert(alert_hash)
+            if is_duplicate:
+                _finish_processing(alert_hash)
+        else:
+            is_duplicate, original_event = check_duplicate_alert(alert_hash)
         
         if is_duplicate and original_event:
             logger.info(f"检测到重复告警(hash={alert_hash})，复用 ID={original_event.id} 的分析结果")
@@ -80,6 +114,9 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             is_duplicate=is_duplicate,
             original_event=original_event
         )
+        
+        # 数据已保存，清理处理标记
+        _finish_processing(alert_hash)
         
         # 转发逻辑判断
         importance = analysis_result.get('importance', '').lower()
