@@ -3,12 +3,16 @@
 """
 from datetime import datetime
 from contextlib import contextmanager
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import Config
+import logging
 
 Base = declarative_base()
+
+# 模块 logger
+_logger = logging.getLogger(__name__)
 
 # 全局数据库引擎（单例）
 _engine = None
@@ -76,6 +80,20 @@ class WebhookEvent(Base):
         }
 
 
+class ProcessingLock(Base):
+    """
+    告警处理锁（分布式锁，用于多 worker 环境）
+    
+    在开始处理告警前插入记录，处理完成后删除。
+    利用数据库主键约束防止并发处理同一告警。
+    """
+    __tablename__ = 'processing_locks'
+    
+    alert_hash = Column(String(64), primary_key=True)  # 告警哈希作为主键
+    created_at = Column(DateTime, default=datetime.now)
+    worker_id = Column(String(100))  # 可选：记录哪个 worker 正在处理
+
+
 # 数据库连接（单例模式）
 def get_engine():
     """获取数据库引擎（单例）"""
@@ -120,6 +138,23 @@ def init_db():
     engine = get_engine()
     Base.metadata.create_all(engine)
     print("数据库表初始化完成")
+
+
+def test_db_connection() -> bool:
+    """
+    测试数据库连接
+    
+    Returns:
+        bool: 连接成功返回 True，失败返回 False
+    """
+    try:
+        with get_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
+        _logger.info("数据库连接测试成功")
+        return True
+    except Exception as e:
+        _logger.error(f"数据库连接失败: {e}")
+        return False
 
 
 if __name__ == '__main__':

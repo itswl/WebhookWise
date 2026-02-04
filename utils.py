@@ -202,20 +202,18 @@ def save_webhook_data(
     if is_duplicate is None:
         is_duplicate, original_event = check_duplicate_alert(alert_hash)
     
-    original_event_id = original_event.id if original_event else None
-    
     try:
         with session_scope() as session:
-            if is_duplicate and original_event_id:
-                # 重复告警：重新加载原始告警并更新重复计数
-                orig = session.query(WebhookEvent).filter_by(id=original_event_id).first()
+            if is_duplicate and original_event:
+                # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
+                orig = session.get(WebhookEvent, original_event.id)
                 if orig:
                     orig.duplicate_count = (orig.duplicate_count or 1) + 1
                     orig.updated_at = datetime.now()
                     
                     logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
                     
-                    # 创建重复告警记录（复用原始AI分析结果）
+                    # 创建重复告警记录（复用传入的 original_event 数据，避免重复读取）
                     webhook_event = WebhookEvent(
                         source=source,
                         client_ip=client_ip,
@@ -224,11 +222,11 @@ def save_webhook_data(
                         headers=dict(headers) if headers else {},
                         parsed_data=data,
                         alert_hash=alert_hash,
-                        ai_analysis=orig.ai_analysis,
-                        importance=orig.importance,
+                        ai_analysis=original_event.ai_analysis,  # 使用传入的数据
+                        importance=original_event.importance,    # 使用传入的数据
                         forward_status=forward_status,
                         is_duplicate=1,
-                        duplicate_of=orig.id,
+                        duplicate_of=original_event.id,
                         duplicate_count=1
                     )
                     

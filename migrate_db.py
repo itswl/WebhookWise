@@ -66,6 +66,21 @@ def migrate_database():
             logger.info("索引创建完成")
         except Exception as e:
             logger.warning(f"创建索引失败: {str(e)}")
+        
+        # 创建分布式锁表（用于多 worker 并发控制）
+        try:
+            logger.info("创建 processing_locks 表")
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS processing_locks (
+                    alert_hash VARCHAR(64) PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    worker_id VARCHAR(100)
+                )
+            """))
+            conn.commit()
+            logger.info("processing_locks 表创建完成")
+        except Exception as e:
+            logger.warning(f"创建 processing_locks 表失败: {str(e)}")
     
     logger.info("数据库迁移全部完成！")
 

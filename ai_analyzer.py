@@ -411,8 +411,8 @@ def forward_to_remote(
             timeout=10
         )
         
-        if response.status_code == 200:
-            logger.info(f"成功转发到远程服务器: {target_url}")
+        if 200 <= response.status_code < 300:
+            logger.info(f"成功转发到远程服务器: {target_url} (状态码: {response.status_code})")
             return {
                 'status': 'success',
                 'response': response.json() if response.content else {},
