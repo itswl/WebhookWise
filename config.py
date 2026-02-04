@@ -29,6 +29,12 @@ class Config:
         'postgresql://postgres:postgres@localhost:5432/webhooks'
     )
     
+    # 数据库连接池配置
+    DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))  # 连接池大小
+    DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))  # 最大溢出连接数
+    DB_POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))  # 连接回收时间(秒)
+    DB_POOL_TIMEOUT = int(os.getenv('DB_POOL_TIMEOUT', '30'))  # 连接超时(秒)
+    
     # AI 分析和转发配置
     ENABLE_AI_ANALYSIS = os.getenv('ENABLE_AI_ANALYSIS', 'true').lower() == 'true'
     FORWARD_URL = os.getenv('FORWARD_URL', 'http://92.38.131.57:8000/webhook')

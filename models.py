@@ -77,10 +77,11 @@ def get_engine():
         _engine = create_engine(
             Config.DATABASE_URL, 
             echo=False, 
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
-            pool_recycle=3600
+            pool_pre_ping=True,  # 连接前检查有效性
+            pool_size=Config.DB_POOL_SIZE,  # 连接池大小
+            max_overflow=Config.DB_MAX_OVERFLOW,  # 最大溢出连接
+            pool_recycle=Config.DB_POOL_RECYCLE,  # 连接回收时间
+            pool_timeout=Config.DB_POOL_TIMEOUT  # 连接超时
         )
     return _engine
 

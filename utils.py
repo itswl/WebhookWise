@@ -3,34 +3,29 @@ import hashlib
 import json
 import os
 from datetime import datetime, timedelta
+from typing import Any, Optional, Union
+
 from config import Config
 from logger import logger
 from models import WebhookEvent, get_session, session_scope
 
+# 类型别名
+WebhookData = dict[str, Any]
+HeadersDict = dict[str, str]
+AnalysisResult = dict[str, Any]
 
-def verify_signature(payload, signature, secret=None):
-    """
-    验证 webhook 签名
-    
-    Args:
-        payload: 请求体数据
-        signature: 请求头中的签名
-        secret: 密钥(可选,默认使用配置中的密钥)
-    
-    Returns:
-        bool: 签名是否有效
-    """
+
+def verify_signature(payload: bytes, signature: str, secret: Optional[str] = None) -> bool:
+    """验证 webhook 签名"""
     if secret is None:
         secret = Config.WEBHOOK_SECRET
     
-    # 计算期望的签名
     expected_signature = hmac.new(
         secret.encode('utf-8'),
         payload,
         hashlib.sha256
     ).hexdigest()
     
-    # 比较签名(防止时序攻击)
     return hmac.compare_digest(expected_signature, signature)
 
 
@@ -146,20 +141,11 @@ def generate_alert_hash(data: dict, source: str) -> str:
     return hash_value
 
 
-def check_duplicate_alert(alert_hash, time_window_hours=None):
-    """
-    检查是否存在重复告警
-    
-    Args:
-        alert_hash: 告警哈希值
-        time_window_hours: 时间窗口（小时），在此时间内的相同告警视为重复
-                          如果为None，使用配置文件中的值
-    
-    Returns:
-        tuple: (is_duplicate, original_event)
-            is_duplicate: 是否为重复告警
-            original_event: 如果是重复告警，返回原始告警事件对象；否则返回None
-    """
+def check_duplicate_alert(
+    alert_hash: str, 
+    time_window_hours: Optional[int] = None
+) -> tuple[bool, Optional[WebhookEvent]]:
+    """检查是否存在重复告警"""
     if not alert_hash:
         return False, None
     
@@ -195,30 +181,19 @@ def check_duplicate_alert(alert_hash, time_window_hours=None):
         session.close()
 
 
-def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, 
-                      ai_analysis=None, forward_status='pending',
-                      alert_hash=None, is_duplicate=None, original_event=None):
-    """
-    保存 webhook 数据到数据库
-    
-    Args:
-        data: webhook 数据(解析后的)
-        source: 数据来源
-        raw_payload: 原始请求体(bytes)
-        headers: 请求头字典
-        client_ip: 客户端IP地址
-        ai_analysis: AI分析结果
-        forward_status: 转发状态
-        alert_hash: 预先计算的告警哈希值（可选，避免重复计算）
-        is_duplicate: 预先检测的重复状态（可选，避免重复查询）
-        original_event: 预先获取的原始告警事件（可选）
-    
-    Returns:
-        tuple: (webhook_id, is_duplicate, original_event_id)
-            webhook_id: 保存的记录 ID
-            is_duplicate: 是否为重复告警
-            original_event_id: 如果是重复告警，返回原始告警ID
-    """
+def save_webhook_data(
+    data: WebhookData,
+    source: str = 'unknown',
+    raw_payload: Optional[bytes] = None,
+    headers: Optional[HeadersDict] = None,
+    client_ip: Optional[str] = None,
+    ai_analysis: Optional[AnalysisResult] = None,
+    forward_status: str = 'pending',
+    alert_hash: Optional[str] = None,
+    is_duplicate: Optional[bool] = None,
+    original_event: Optional[WebhookEvent] = None
+) -> tuple[Union[int, str], bool, Optional[int]]:
+    """保存 webhook 数据到数据库"""
     # 如果未提供预计算的哈希值，则重新计算
     if alert_hash is None:
         alert_hash = generate_alert_hash(data, source)
@@ -305,21 +280,15 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
         return file_id, False, None
 
 
-def save_webhook_to_file(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None):
-    """
-    保存 webhook 数据到文件(备份方式)
-    
-    Args:
-        data: webhook 数据(解析后的)
-        source: 数据来源
-        raw_payload: 原始请求体(bytes)
-        headers: 请求头字典
-        client_ip: 客户端IP地址
-        ai_analysis: AI分析结果
-    
-    Returns:
-        str: 保存的文件路径
-    """
+def save_webhook_to_file(
+    data: WebhookData,
+    source: str = 'unknown',
+    raw_payload: Optional[bytes] = None,
+    headers: Optional[HeadersDict] = None,
+    client_ip: Optional[str] = None,
+    ai_analysis: Optional[AnalysisResult] = None
+) -> str:
+    """保存 webhook 数据到文件(备份方式)"""
     # 创建数据目录
     if not os.path.exists(Config.DATA_DIR):
         os.makedirs(Config.DATA_DIR)
@@ -350,16 +319,8 @@ def save_webhook_to_file(data, source='unknown', raw_payload=None, headers=None,
     return filepath
 
 
-def get_client_ip(request):
-    """
-    获取客户端 IP 地址
-    
-    Args:
-        request: Flask request 对象
-    
-    Returns:
-        str: 客户端 IP 地址
-    """
+def get_client_ip(request) -> str:
+    """获取客户端 IP 地址"""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     elif request.headers.get('X-Real-IP'):
@@ -368,53 +329,58 @@ def get_client_ip(request):
         return request.remote_addr
 
 
-def get_all_webhooks(page=1, page_size=20):
+def get_all_webhooks(
+    page: int = 1, 
+    page_size: int = 20,
+    cursor_id: Optional[int] = None
+) -> tuple[list[dict], int, Optional[int]]:
     """
-    从数据库获取所有保存的 webhook 数据（支持分页）
+    从数据库获取 webhook 数据（支持游标分页）
     
     Args:
-        page: 页码（从1开始）
+        page: 页码（仅用于首次加载或无游标时）
         page_size: 每页数量
+        cursor_id: 游标 ID，获取此 ID 之后的数据（更高效）
     
     Returns:
-        tuple: (webhook数据列表, 总数量)
+        tuple: (webhook数据列表, 总数量, 下一页游标ID)
     """
     try:
         with session_scope() as session:
             # 查询总数
             total = session.query(WebhookEvent).count()
             
-            # 计算偏移量
-            offset = (page - 1) * page_size
+            # 构建查询
+            query = session.query(WebhookEvent)
             
-            # 从数据库查询
-            events = session.query(WebhookEvent)\
-                .order_by(WebhookEvent.timestamp.desc())\
-                .limit(page_size)\
-                .offset(offset)\
-                .all()
+            if cursor_id is not None:
+                # 游标分页：获取 ID 小于 cursor_id 的记录（因为按 ID 降序）
+                query = query.filter(WebhookEvent.id < cursor_id)
+            else:
+                # 无游标时使用 offset（仅首次加载）
+                offset = (page - 1) * page_size
+                if offset > 0:
+                    query = query.offset(offset)
+            
+            # 按 ID 降序排列并限制数量
+            events = query.order_by(WebhookEvent.id.desc()).limit(page_size).all()
             
             # 转换为字典列表
             webhooks = [event.to_dict() for event in events]
-            return webhooks, total
+            
+            # 计算下一页游标
+            next_cursor = events[-1].id if events else None
+            
+            return webhooks, total, next_cursor
         
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
-        # 失败时降级为文件查询
         webhooks = get_webhooks_from_files(limit=page_size)
-        return webhooks, len(webhooks)
+        return webhooks, len(webhooks), None
 
 
-def get_webhooks_from_files(limit=50):
-    """
-    从文件获取 webhook 数据(备份方式)
-    
-    Args:
-        limit: 返回的最大数量
-    
-    Returns:
-        list: webhook 数据列表（按时间倒序）
-    """
+def get_webhooks_from_files(limit: int = 50) -> list[dict]:  
+    """从文件获取 webhook 数据(备份方式)"""
     if not os.path.exists(Config.DATA_DIR):
         return []
     

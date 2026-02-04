@@ -1,7 +1,8 @@
 import os
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response
 from datetime import datetime
 from dotenv import set_key
+from typing import Optional
 
 from config import Config
 from logger import logger
@@ -10,13 +11,13 @@ from utils import (
     get_all_webhooks, generate_alert_hash, check_duplicate_alert
 )
 from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
-from models import WebhookEvent, get_session, session_scope
+from models import WebhookEvent, session_scope
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
 
-def handle_webhook_process(source=None):
+def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]:
     """通用 Webhook 处理逻辑"""
     try:
         # 获取请求信息
@@ -133,15 +134,18 @@ def dashboard():
 
 
 @app.route('/api/webhooks', methods=['GET'])
-def list_webhooks():
-    """获取 webhook 列表 API（支持分页）"""
+def list_webhooks() -> tuple[Response, int]:
+    """获取 webhook 列表 API（支持游标分页）"""
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 20, type=int)
+    cursor_id = request.args.get('cursor', None, type=int)  # 游标分页
     
     # 限制每页最大数量
     page_size = min(page_size, 100)
     
-    webhooks, total = get_all_webhooks(page=page, page_size=page_size)
+    webhooks, total, next_cursor = get_all_webhooks(
+        page=page, page_size=page_size, cursor_id=cursor_id
+    )
     
     return jsonify({
         'success': True,
@@ -150,7 +154,8 @@ def list_webhooks():
             'page': page,
             'page_size': page_size,
             'total': total,
-            'total_pages': (total + page_size - 1) // page_size if total > 0 else 0
+            'total_pages': (total + page_size - 1) // page_size if total > 0 else 0,
+            'next_cursor': next_cursor  # 游标分页支持
         }
     }), 200
 
@@ -256,7 +261,7 @@ def update_config():
 
 
 @app.route('/api/reanalyze/<int:webhook_id>', methods=['POST'])
-def reanalyze_webhook(webhook_id):
+def reanalyze_webhook(webhook_id: int) -> tuple[Response, int]:
     """重新分析指定的 webhook"""
     try:
         with session_scope() as session:
@@ -296,7 +301,7 @@ def reanalyze_webhook(webhook_id):
 
 
 @app.route('/api/forward/<int:webhook_id>', methods=['POST'])
-def manual_forward_webhook(webhook_id):
+def manual_forward_webhook(webhook_id: int) -> tuple[Response, int]:
     """手动转发指定的 webhook"""
     try:
         with session_scope() as session:
