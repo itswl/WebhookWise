@@ -12,8 +12,8 @@ class Config:
     HOST = os.getenv('HOST', '0.0.0.0')
     DEBUG = os.getenv('FLASK_ENV', 'development') == 'development'
     
-    # 安全配置
-    WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'default-secret-key')
+    # 安全配置（必须通过环境变量配置）
+    WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '')
     
     # 日志配置
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
