@@ -1,5 +1,5 @@
 # ====== 构建阶段 ======
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim AS builder
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt -i https://pypi.tuna.t
 
 
 # ====== 运行阶段 ======
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
@@ -20,6 +20,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# 创建非 root 用户
+RUN useradd -m -u 1000 appuser
+
 # 设置工作目录
 WORKDIR /app
 
@@ -27,10 +30,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    PATH=/root/.local/bin:$PATH
+    PATH=/home/appuser/.local/bin:$PATH
 
 # 从构建阶段复制已安装的依赖
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.local /home/appuser/.local
 
 # 复制项目文件
 COPY .env.example .env
@@ -46,8 +49,12 @@ COPY templates/ ./templates/
 # 注意: 不复制 .env 文件以避免敏感信息打包进镜像
 # 部署时通过挂载卷或环境变量方式注入配置
 
-# 创建必要的目录
-RUN mkdir -p logs webhooks_data
+# 创建必要的目录并设置权限
+RUN mkdir -p logs webhooks_data && \
+    chown -R appuser:appuser /app
+
+# 切换到非 root 用户
+USER appuser
 
 # 暴露端口
 EXPOSE 8000

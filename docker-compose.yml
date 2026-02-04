@@ -6,6 +6,16 @@ services:
     build: .
     container_name: webhook-receiver
     restart: unless-stopped
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
     ports:
       - "8000:8000"   # 只暴露业务服务
@@ -50,6 +60,16 @@ services:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:15-alpine
     container_name: webhook-postgres
     restart: unless-stopped
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
     # ⚠️ 不暴露 ports，宿主机无法访问
     # ports: []
