@@ -13,12 +13,8 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends tzdata curl && \
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo $TZ > /etc/timezone && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone 
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 appuser
@@ -59,9 +55,9 @@ USER appuser
 # 暴露端口
 EXPOSE 8000
 
-# 健康检查
+# 健康检查（使用 Python 原生方式，无需 curl）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 # 使用 gunicorn 运行应用(生产环境)
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "app:app"]

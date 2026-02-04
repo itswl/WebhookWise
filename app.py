@@ -1,9 +1,12 @@
 import os
 import time
+import socket
+from contextlib import contextmanager
 from flask import Flask, request, jsonify, render_template, Response
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import set_key
-from typing import Optional
+from typing import Optional, Generator
+from sqlalchemy.exc import IntegrityError
 
 from config import Config
 from logger import logger
@@ -12,33 +15,98 @@ from utils import (
     get_all_webhooks, generate_alert_hash, check_duplicate_alert
 )
 from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
-from models import WebhookEvent, session_scope
+from models import WebhookEvent, ProcessingLock, session_scope, get_session, test_db_connection
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# 内存缓存：防止并发请求重复处理（TTL 60秒）
-_processing_alerts: dict[str, float] = {}  # {alert_hash: timestamp}
-_PROCESSING_TTL = 60  # 缓存过期时间(秒)
+# Worker 标识（用于调试）
+_WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
+
+# 分布式锁配置
+_LOCK_TTL_SECONDS = 120  # 锁过期时间（秒），防止崩溃后死锁
+_LOCK_WAIT_SECONDS = 3   # 等待锁的时间（秒）
+_LOCK_RETRY_TIMES = 2    # 重试次数
 
 
-def _is_processing(alert_hash: str) -> bool:
-    """检查告警是否正在处理中（防止并发竞态）"""
-    now = datetime.now().timestamp()
-    # 清理过期缓存
-    expired = [k for k, v in _processing_alerts.items() if now - v > _PROCESSING_TTL]
-    for k in expired:
-        _processing_alerts.pop(k, None)
+def _cleanup_expired_locks() -> int:
+    """
+    清理过期的处理锁（防止死锁）
     
-    if alert_hash in _processing_alerts:
-        return True
-    _processing_alerts[alert_hash] = now
-    return False
+    Returns:
+        int: 清理的锁数量
+    """
+    try:
+        session = get_session()
+        try:
+            threshold = datetime.now() - timedelta(seconds=_LOCK_TTL_SECONDS)
+            deleted = session.query(ProcessingLock).filter(
+                ProcessingLock.created_at < threshold
+            ).delete()
+            session.commit()
+            if deleted > 0:
+                logger.warning(f"清理了 {deleted} 个过期的处理锁")
+            return deleted
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"清理过期锁失败: {e}")
+        return 0
 
 
-def _finish_processing(alert_hash: str) -> None:
-    """标记告警处理完成"""
-    _processing_alerts.pop(alert_hash, None)
+@contextmanager
+def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
+    """
+    告警处理锁上下文管理器（数据库级别分布式锁）
+    
+    利用数据库主键约束防止多 worker 并发处理同一告警。
+    
+    Yields:
+        bool: True 表示成功获取锁，False 表示已有其他 worker 在处理
+    """
+    # 先清理过期锁
+    _cleanup_expired_locks()
+    
+    session = get_session()
+    lock_acquired = False
+    
+    try:
+        # 尝试插入锁记录
+        lock = ProcessingLock(
+            alert_hash=alert_hash,
+            created_at=datetime.now(),
+            worker_id=_WORKER_ID
+        )
+        session.add(lock)
+        session.commit()
+        lock_acquired = True
+        logger.debug(f"获取处理锁成功: hash={alert_hash[:16]}..., worker={_WORKER_ID}")
+        yield True
+        
+    except IntegrityError:
+        # 主键冲突，说明已有其他 worker 在处理
+        session.rollback()
+        logger.info(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
+        yield False
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"获取处理锁失败: {e}")
+        yield False
+        
+    finally:
+        # 无论成功与否，都尝试释放锁
+        if lock_acquired:
+            try:
+                session.query(ProcessingLock).filter(
+                    ProcessingLock.alert_hash == alert_hash
+                ).delete()
+                session.commit()
+                logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
+            except Exception as e:
+                logger.error(f"释放锁失败: {e}")
+                session.rollback()
+        session.close()
 
 
 def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]:
@@ -83,40 +151,46 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         # 去重检测
         alert_hash = generate_alert_hash(data, source)
         
-        # 检查是否有相同告警正在处理中（防止并发竞态）
-        if _is_processing(alert_hash):
-            logger.info(f"告警正在处理中，等待重试: hash={alert_hash}")
-            # 等待一小段时间后重新检测
-            time.sleep(2)
-            is_duplicate, original_event = check_duplicate_alert(alert_hash)
-            if is_duplicate:
-                _finish_processing(alert_hash)
-        else:
-            is_duplicate, original_event = check_duplicate_alert(alert_hash)
-        
-        if is_duplicate and original_event:
-            logger.info(f"检测到重复告警(hash={alert_hash})，复用 ID={original_event.id} 的分析结果")
-            analysis_result = original_event.ai_analysis or {}
-        else:
-            logger.info("新告警，开始 AI 分析...")
-            analysis_result = analyze_webhook_with_ai(webhook_full_data)
-        
-        # 保存数据（传递预先计算的哈希和检测结果，避免重复查询）
-        webhook_id, is_dup, original_id = save_webhook_data(
-            data=data, 
-            source=source,
-            raw_payload=payload,
-            headers=request.headers,
-            client_ip=client_ip,
-            ai_analysis=analysis_result,
-            forward_status='pending',
-            alert_hash=alert_hash,
-            is_duplicate=is_duplicate,
-            original_event=original_event
-        )
-        
-        # 数据已保存，清理处理标记
-        _finish_processing(alert_hash)
+        # 使用数据库分布式锁防止多 worker 并发处理
+        with processing_lock(alert_hash) as got_lock:
+            if not got_lock:
+                # 已有其他 worker 在处理，等待后重新检测
+                logger.info(f"等待其他 worker 处理完成: hash={alert_hash[:16]}...")
+                time.sleep(_LOCK_WAIT_SECONDS)
+                is_duplicate, original_event = check_duplicate_alert(alert_hash)
+                
+                if is_duplicate and original_event:
+                    # 其他 worker 已处理完，复用结果
+                    logger.info(f"复用其他 worker 的分析结果: 原始 ID={original_event.id}")
+                    analysis_result = original_event.ai_analysis or {}
+                else:
+                    # 其他 worker 可能失败了，我们继续处理
+                    logger.info("未找到已处理结果，重新处理...")
+                    analysis_result = analyze_webhook_with_ai(webhook_full_data)
+            else:
+                # 成功获取锁，正常处理
+                is_duplicate, original_event = check_duplicate_alert(alert_hash)
+                
+                if is_duplicate and original_event:
+                    logger.info(f"检测到重复告警(hash={alert_hash[:16]}...)，复用 ID={original_event.id} 的分析结果")
+                    analysis_result = original_event.ai_analysis or {}
+                else:
+                    logger.info("新告警，开始 AI 分析...")
+                    analysis_result = analyze_webhook_with_ai(webhook_full_data)
+            
+            # 保存数据（传递预先计算的哈希和检测结果，避免重复查询）
+            webhook_id, is_dup, original_id = save_webhook_data(
+                data=data, 
+                source=source,
+                raw_payload=payload,
+                headers=request.headers,
+                client_ip=client_ip,
+                ai_analysis=analysis_result,
+                forward_status='pending',
+                alert_hash=alert_hash,
+                is_duplicate=is_duplicate,
+                original_event=original_event
+            )
         
         # 转发逻辑判断
         importance = analysis_result.get('importance', '').lower()
@@ -410,6 +484,11 @@ def method_not_allowed(error):
 
 
 if __name__ == '__main__':
+    # 启动前验证
+    Config.validate()
+    if not test_db_connection():
+        logger.error("数据库连接失败，请检查配置")
+    
     logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
     app.run(
         host=Config.HOST,
