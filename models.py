@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from contextlib import contextmanager
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import Config
@@ -46,6 +46,13 @@ class WebhookEvent(Base):
     
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # 复合索引：优化去重查询性能
+    __table_args__ = (
+        Index('idx_hash_timestamp', 'alert_hash', 'timestamp'),
+        Index('idx_importance_timestamp', 'importance', 'timestamp'),
+        Index('idx_duplicate_lookup', 'alert_hash', 'is_duplicate', 'timestamp'),
+    )
     
     def to_dict(self):
         """转换为字典"""
