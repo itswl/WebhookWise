@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 from config import Config
 from logger import logger
-from models import WebhookEvent, get_session
+from models import WebhookEvent, get_session, session_scope
 
 
 def verify_signature(payload, signature, secret=None):
@@ -219,52 +219,56 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
             is_duplicate: 是否为重复告警
             original_event_id: 如果是重复告警，返回原始告警ID
     """
-    session = get_session()
+    # 如果未提供预计算的哈希值，则重新计算
+    if alert_hash is None:
+        alert_hash = generate_alert_hash(data, source)
+    
+    # 如果未提供预检测的重复状态，则重新检查
+    if is_duplicate is None:
+        is_duplicate, original_event = check_duplicate_alert(alert_hash)
+    
+    original_event_id = original_event.id if original_event else None
+    
     try:
-        # 如果未提供预计算的哈希值，则重新计算
-        if alert_hash is None:
-            alert_hash = generate_alert_hash(data, source)
-        
-        # 如果未提供预检测的重复状态，则重新检查
-        if is_duplicate is None:
-            is_duplicate, original_event = check_duplicate_alert(alert_hash)
-        
-        if is_duplicate and original_event:
-            # 重复告警：更新原始告警的重复计数，并创建新记录标记为重复
-            original_event.duplicate_count = (original_event.duplicate_count or 1) + 1
-            original_event.updated_at = datetime.now()
+        with session_scope() as session:
+            if is_duplicate and original_event_id:
+                # 重复告警：重新加载原始告警并更新重复计数
+                orig = session.query(WebhookEvent).filter_by(id=original_event_id).first()
+                if orig:
+                    orig.duplicate_count = (orig.duplicate_count or 1) + 1
+                    orig.updated_at = datetime.now()
+                    
+                    logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
+                    
+                    # 创建重复告警记录（复用原始AI分析结果）
+                    webhook_event = WebhookEvent(
+                        source=source,
+                        client_ip=client_ip,
+                        timestamp=datetime.now(),
+                        raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                        headers=dict(headers) if headers else {},
+                        parsed_data=data,
+                        alert_hash=alert_hash,
+                        ai_analysis=orig.ai_analysis,
+                        importance=orig.importance,
+                        forward_status=forward_status,
+                        is_duplicate=1,
+                        duplicate_of=orig.id,
+                        duplicate_count=1
+                    )
+                    
+                    session.add(webhook_event)
+                    session.flush()  # 获取 ID
+                    
+                    webhook_id = webhook_event.id
+                    logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
+                    
+                    # 可选: 同时保存到文件
+                    if Config.ENABLE_FILE_BACKUP:
+                        save_webhook_to_file(data, source, raw_payload, headers, client_ip, orig.ai_analysis)
+                    
+                    return webhook_id, True, orig.id
             
-            logger.info(f"发现重复告警，原始告警ID={original_event.id}, 已重复{original_event.duplicate_count}次")
-            
-            # 创建重复告警记录（复用原始AI分析结果）
-            webhook_event = WebhookEvent(
-                source=source,
-                client_ip=client_ip,
-                timestamp=datetime.now(),
-                raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                headers=dict(headers) if headers else {},
-                parsed_data=data,
-                alert_hash=alert_hash,
-                ai_analysis=original_event.ai_analysis,  # 复用原始AI分析结果
-                importance=original_event.importance,
-                forward_status=forward_status,
-                is_duplicate=1,
-                duplicate_of=original_event.id,
-                duplicate_count=1
-            )
-            
-            session.add(webhook_event)
-            session.commit()
-            
-            webhook_id = webhook_event.id
-            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{original_event.id}的AI分析结果")
-            
-            # 可选: 同时保存到文件
-            if Config.ENABLE_FILE_BACKUP:
-                save_webhook_to_file(data, source, raw_payload, headers, client_ip, original_event.ai_analysis)
-            
-            return webhook_id, True, original_event.id
-        else:
             # 新告警：正常保存
             webhook_event = WebhookEvent(
                 source=source,
@@ -283,7 +287,7 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
             )
             
             session.add(webhook_event)
-            session.commit()
+            session.flush()  # 获取 ID
             
             webhook_id = webhook_event.id
             logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
@@ -295,13 +299,10 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
             return webhook_id, False, None
         
     except Exception as e:
-        session.rollback()
         logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
         # 失败时至少保存到文件
         file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
         return file_id, False, None
-    finally:
-        session.close()
 
 
 def save_webhook_to_file(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None):
@@ -378,32 +379,30 @@ def get_all_webhooks(page=1, page_size=20):
     Returns:
         tuple: (webhook数据列表, 总数量)
     """
-    session = get_session()
     try:
-        # 查询总数
-        total = session.query(WebhookEvent).count()
-        
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 从数据库查询
-        events = session.query(WebhookEvent)\
-            .order_by(WebhookEvent.timestamp.desc())\
-            .limit(page_size)\
-            .offset(offset)\
-            .all()
-        
-        # 转换为字典列表
-        webhooks = [event.to_dict() for event in events]
-        return webhooks, total
+        with session_scope() as session:
+            # 查询总数
+            total = session.query(WebhookEvent).count()
+            
+            # 计算偏移量
+            offset = (page - 1) * page_size
+            
+            # 从数据库查询
+            events = session.query(WebhookEvent)\
+                .order_by(WebhookEvent.timestamp.desc())\
+                .limit(page_size)\
+                .offset(offset)\
+                .all()
+            
+            # 转换为字典列表
+            webhooks = [event.to_dict() for event in events]
+            return webhooks, total
         
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
         # 失败时降级为文件查询
         webhooks = get_webhooks_from_files(limit=page_size)
         return webhooks, len(webhooks)
-    finally:
-        session.close()
 
 
 def get_webhooks_from_files(limit=50):
