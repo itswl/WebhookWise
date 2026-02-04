@@ -2,12 +2,17 @@
 数据库模型定义
 """
 from datetime import datetime
+from contextlib import contextmanager
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import Config
 
 Base = declarative_base()
+
+# 全局数据库引擎（单例）
+_engine = None
+_session_factory = None
 
 
 class WebhookEvent(Base):
@@ -64,18 +69,42 @@ class WebhookEvent(Base):
         }
 
 
-# 数据库连接
+# 数据库连接（单例模式）
 def get_engine():
-    """获取数据库引擎"""
-    database_url = Config.DATABASE_URL
-    return create_engine(database_url, echo=False, pool_pre_ping=True)
+    """获取数据库引擎（单例）"""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            Config.DATABASE_URL, 
+            echo=False, 
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=3600
+        )
+    return _engine
 
 
 def get_session():
     """获取数据库会话"""
-    engine = get_engine()
-    Session = sessionmaker(bind=engine)
-    return Session()
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = sessionmaker(bind=get_engine())
+    return _session_factory()
+
+
+@contextmanager
+def session_scope():
+    """数据库会话上下文管理器，自动处理提交和回滚"""
+    session = get_session()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def init_db():

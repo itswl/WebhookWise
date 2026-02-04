@@ -1,11 +1,20 @@
-# 使用官方 Python 运行时作为基础镜像
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim
+# ====== 构建阶段 ======
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim AS builder
 
+WORKDIR /app
+
+# 复制并安装依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+# ====== 运行阶段 ======
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
 RUN apt-get update && \
-    apt-get install -y tzdata && \
+    apt-get install -y --no-install-recommends tzdata curl && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     apt-get clean && \
@@ -17,13 +26,11 @@ WORKDIR /app
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=8000 \
+    PATH=/root/.local/bin:$PATH
 
-# 复制依赖文件
-COPY requirements.txt .
-
-# 安装依赖
-RUN pip install --no-cache-dir -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 从构建阶段复制已安装的依赖
+COPY --from=builder /root/.local /root/.local
 
 # 复制项目文件
 COPY .env.example .env
@@ -44,6 +51,10 @@ RUN mkdir -p logs webhooks_data
 
 # 暴露端口
 EXPOSE 8000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # 使用 gunicorn 运行应用(生产环境)
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "app:app"]
