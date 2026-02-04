@@ -1,7 +1,11 @@
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# 配置模块的 logger（避免循环导入）
+_config_logger = logging.getLogger('config')
 
 
 class Config:
@@ -72,3 +76,31 @@ class Config:
         'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
         'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
     }
+    
+    @classmethod
+    def validate(cls) -> list[str]:
+        """
+        验证必需配置，返回警告信息列表
+        
+        Returns:
+            list[str]: 警告信息列表
+        """
+        warnings = []
+        
+        # 检查安全配置
+        if not cls.WEBHOOK_SECRET:
+            warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
+        
+        # 检查 AI 分析配置
+        if cls.ENABLE_AI_ANALYSIS and not cls.OPENAI_API_KEY:
+            warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
+        
+        # 检查转发配置
+        if cls.ENABLE_FORWARD and not cls.FORWARD_URL:
+            warnings.append("ENABLE_FORWARD=True 但 FORWARD_URL 未配置")
+        
+        # 输出警告日志
+        for warning in warnings:
+            _config_logger.warning(warning)
+        
+        return warnings
