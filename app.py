@@ -161,7 +161,7 @@ def get_config():
     try:
         # 不返回完整的敏感信息，只返回是否已配置
         api_key = Config.OPENAI_API_KEY
-        masked_key = f"{api_key[:8]}...{api_key[-4:]}" if api_key and len(api_key) > 12 else ('已配置' if api_key else '未配置')
+        masked_key = '已配置' if api_key else '未配置'
         
         config_data = {
             'forward_url': Config.FORWARD_URL,

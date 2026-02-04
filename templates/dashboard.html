@@ -937,7 +937,9 @@
             currentForwardId = webhookId;
             const modal = document.getElementById('forwardModal');
             const input = document.getElementById('forwardUrl');
-            input.value = 'https://open.feishu.cn/open-apis/bot/v2/hook/ec9090ad-22f6-458c-98e8-183ff61248ec'; // 默认飞书地址
+            // 使用配置中的转发地址作为默认值
+            const configUrl = document.getElementById('configForwardUrl');
+            input.value = configUrl ? configUrl.value : '';
             modal.style.display = 'block';
         }
         
