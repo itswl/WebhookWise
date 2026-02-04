@@ -2,9 +2,9 @@ Flask==3.0.0
 python-dotenv==1.0.0
 requests==2.31.0
 gunicorn==21.2.0
-openai==1.12.0
-psycopg2-binary==2.9.9
-SQLAlchemy==2.0.23
-httpx==0.24.1
+openai==1.59.0
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36
+httpx==0.28.0
 json5==0.9.14
 python-json-logger==2.0.7

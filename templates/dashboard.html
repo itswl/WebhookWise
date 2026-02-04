@@ -702,6 +702,12 @@
         async function loadWebhooks() {
             try {
                 const response = await fetch(`/api/webhooks?page=${currentPage}&page_size=${pageSize}`);
+                
+                // HTTP 状态码检查
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
@@ -716,13 +722,16 @@
                     
                     document.getElementById('totalCount').textContent = totalCount;
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+                } else {
+                    throw new Error(result.error || '服务器返回错误');
                 }
             } catch (error) {
                 console.error('加载失败:', error);
                 document.getElementById('webhooksContainer').innerHTML = `
                     <div class="empty-state">
                         <h2>❌ 加载失败</h2>
-                        <p>无法连接到服务器，请检查服务是否正常运行</p>
+                        <p>${escapeHtml(error.message)}</p>
+                        <button onclick="loadWebhooks()" style="margin-top: 1rem; padding: 0.5rem 1rem; cursor: pointer;">重试</button>
                     </div>
                 `;
             }
