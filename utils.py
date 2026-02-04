@@ -34,7 +34,83 @@ def verify_signature(payload, signature, secret=None):
     return hmac.compare_digest(expected_signature, signature)
 
 
-def generate_alert_hash(data, source):
+# ====== 告警哈希字段配置 ======
+# Prometheus Alertmanager 格式的字段提取配置
+PROMETHEUS_ROOT_FIELDS = ['alertingRuleName']
+PROMETHEUS_LABEL_FIELDS = [
+    'alertname', 'internal_label_alert_level',
+    'host', 'instance', 'pod', 'namespace', 'service', 'path', 'method'
+]
+PROMETHEUS_ALERT_FIELDS = ['fingerprint']
+
+# 华为云/通用告警格式的字段提取配置
+GENERIC_FIELDS = [
+    'Type', 'RuleName', 'event', 'event_type',
+    'MetricName', 'Level', 'alert_id', 'alert_name', 'resource_id', 'service'
+]
+
+
+def _extract_fields(data: dict, fields: list, prefix: str = '') -> dict:
+    """从数据中提取指定字段"""
+    result = {}
+    for field in fields:
+        if field in data:
+            key = f"{prefix}{field}" if prefix else field.lower().replace('_', '')
+            result[key] = data[field]
+    return result
+
+
+def _extract_prometheus_fields(data: dict) -> dict:
+    """提取 Prometheus Alertmanager 格式的关键字段"""
+    key_fields = {}
+    
+    # 提取根级字段
+    for field in PROMETHEUS_ROOT_FIELDS:
+        if field in data:
+            key_fields[field.lower()] = data[field]
+    
+    # 提取第一个告警的字段
+    alerts = data.get('alerts', [])
+    if alerts and isinstance(alerts[0], dict):
+        first_alert = alerts[0]
+        
+        # 提取标签字段
+        labels = first_alert.get('labels', {})
+        if isinstance(labels, dict):
+            for field in PROMETHEUS_LABEL_FIELDS:
+                if field in labels:
+                    key_fields[field] = labels[field]
+        
+        # 提取告警级别字段
+        for field in PROMETHEUS_ALERT_FIELDS:
+            if field in first_alert:
+                key_fields[field] = first_alert[field]
+    
+    return key_fields
+
+
+def _extract_generic_fields(data: dict) -> dict:
+    """提取华为云/通用告警格式的关键字段"""
+    key_fields = {}
+    
+    # 提取通用字段
+    for field in GENERIC_FIELDS:
+        if field in data:
+            key_fields[field.lower()] = data[field]
+    
+    # 特殊处理: Resources 字段
+    resources = data.get('Resources', [])
+    if isinstance(resources, list) and resources:
+        first_resource = resources[0]
+        if isinstance(first_resource, dict):
+            resource_id = first_resource.get('InstanceId') or first_resource.get('id')
+            if resource_id:
+                key_fields['resource_id'] = resource_id
+    
+    return key_fields
+
+
+def generate_alert_hash(data: dict, source: str) -> str:
     """
     生成告警的唯一哈希值，用于识别重复告警
     
@@ -45,95 +121,25 @@ def generate_alert_hash(data, source):
     Returns:
         str: SHA256 哈希值
     """
-    # 提取关键字段用于生成唯一标识
-    # 根据不同的告警来源，提取不同的关键字段
-    key_fields = {
-        'source': source,
-    }
+    key_fields = {'source': source}
     
     if isinstance(data, dict):
-        # ====== Prometheus Alertmanager 格式 ======
-        # 检测是否为 Prometheus Alertmanager 格式（包含 alerts 数组和 alertingRuleName）
-        if 'alerts' in data and isinstance(data.get('alerts'), list) and len(data['alerts']) > 0:
-            first_alert = data['alerts'][0]
-            
-            # 告警规则名称（最重要的标识）
-            if 'alertingRuleName' in data:
-                key_fields['alerting_rule_name'] = data.get('alertingRuleName')
-            
-            # 告警标签（alertname 是规则ID）
-            if isinstance(first_alert.get('labels'), dict):
-                labels = first_alert['labels']
-                if 'alertname' in labels:
-                    key_fields['alertname'] = labels['alertname']
-                # 注意：不包含 internal_label_alert_id，因为它每次触发都会变化
-                # 这样同一规则在同一资源上的持续触发才能被识别为重复告警
-                if 'internal_label_alert_level' in labels:
-                    key_fields['alert_level'] = labels['internal_label_alert_level']
-                
-                # 提取资源相关标签（用于区分同一规则的不同资源）
-                if 'host' in labels:
-                    key_fields['host'] = labels['host']
-                if 'instance' in labels:
-                    key_fields['instance'] = labels['instance']
-                if 'pod' in labels:
-                    key_fields['pod'] = labels['pod']
-                if 'namespace' in labels:
-                    key_fields['namespace'] = labels['namespace']
-                if 'service' in labels:
-                    key_fields['service'] = labels['service']
-                if 'path' in labels:
-                    key_fields['path'] = labels['path']
-                if 'method' in labels:
-                    key_fields['method'] = labels['method']
-            
-            # 指纹（Prometheus 生成的唯一标识）
-            if 'fingerprint' in first_alert:
-                key_fields['fingerprint'] = first_alert['fingerprint']
+        # 检测告警格式并提取字段
+        is_prometheus = (
+            'alerts' in data and 
+            isinstance(data.get('alerts'), list) and 
+            len(data['alerts']) > 0
+        )
         
-        # ====== 华为云监控告警格式 ======
+        if is_prometheus:
+            key_fields.update(_extract_prometheus_fields(data))
         else:
-            # 告警类型和规则名称
-            if 'Type' in data:
-                key_fields['type'] = data.get('Type')
-            if 'RuleName' in data:
-                key_fields['rule_name'] = data.get('RuleName')
-            if 'event' in data:
-                key_fields['event'] = data.get('event')
-            if 'event_type' in data:
-                key_fields['event_type'] = data.get('event_type')
-            
-            # 资源标识
-            if 'Resources' in data:
-                resources = data.get('Resources', [])
-                if isinstance(resources, list) and len(resources) > 0:
-                    # 提取第一个资源的标识
-                    first_resource = resources[0]
-                    if isinstance(first_resource, dict):
-                        key_fields['resource_id'] = first_resource.get('InstanceId') or first_resource.get('id')
-            
-            # 指标名称
-            if 'MetricName' in data:
-                key_fields['metric_name'] = data.get('MetricName')
-            
-            # 告警级别
-            if 'Level' in data:
-                key_fields['level'] = data.get('Level')
-            
-            # 通用字段
-            if 'alert_id' in data:
-                key_fields['alert_id'] = data.get('alert_id')
-            if 'alert_name' in data:
-                key_fields['alert_name'] = data.get('alert_name')
-            if 'resource_id' in data:
-                key_fields['resource_id'] = data.get('resource_id')
-            if 'service' in data:
-                key_fields['service'] = data.get('service')
+            key_fields.update(_extract_generic_fields(data))
     
-    # 生成稳定的JSON字符串（排序键确保一致性）
+    # 生成稳定的 JSON 字符串（排序键确保一致性）
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
     
-    # 计算SHA256哈希
+    # 计算 SHA256 哈希
     hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
     
     logger.debug(f"生成告警哈希: {hash_value}, 关键字段: {key_fields}")
@@ -189,7 +195,9 @@ def check_duplicate_alert(alert_hash, time_window_hours=None):
         session.close()
 
 
-def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None, forward_status='pending'):
+def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, 
+                      ai_analysis=None, forward_status='pending',
+                      alert_hash=None, is_duplicate=None, original_event=None):
     """
     保存 webhook 数据到数据库
     
@@ -201,6 +209,9 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
         client_ip: 客户端IP地址
         ai_analysis: AI分析结果
         forward_status: 转发状态
+        alert_hash: 预先计算的告警哈希值（可选，避免重复计算）
+        is_duplicate: 预先检测的重复状态（可选，避免重复查询）
+        original_event: 预先获取的原始告警事件（可选）
     
     Returns:
         tuple: (webhook_id, is_duplicate, original_event_id)
@@ -210,11 +221,13 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
     """
     session = get_session()
     try:
-        # 生成告警哈希值
-        alert_hash = generate_alert_hash(data, source)
+        # 如果未提供预计算的哈希值，则重新计算
+        if alert_hash is None:
+            alert_hash = generate_alert_hash(data, source)
         
-        # 检查是否存在重复告警
-        is_duplicate, original_event = check_duplicate_alert(alert_hash)
+        # 如果未提供预检测的重复状态，则重新检查
+        if is_duplicate is None:
+            is_duplicate, original_event = check_duplicate_alert(alert_hash)
         
         if is_duplicate and original_event:
             # 重复告警：更新原始告警的重复计数，并创建新记录标记为重复
@@ -246,8 +259,9 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
             webhook_id = webhook_event.id
             logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{original_event.id}的AI分析结果")
             
-            # 同时保存到文件(保留兼容性)
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, original_event.ai_analysis)
+            # 可选: 同时保存到文件
+            if Config.ENABLE_FILE_BACKUP:
+                save_webhook_to_file(data, source, raw_payload, headers, client_ip, original_event.ai_analysis)
             
             return webhook_id, True, original_event.id
         else:
@@ -274,8 +288,9 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
             webhook_id = webhook_event.id
             logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
             
-            # 同时保存到文件(保留兼容性)
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+            # 可选: 同时保存到文件
+            if Config.ENABLE_FILE_BACKUP:
+                save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
             
             return webhook_id, False, None
         
