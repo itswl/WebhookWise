@@ -1,105 +1,65 @@
 import requests
 import json
+import re
+from typing import Any, Optional
+
+try:
+    import json5
+    HAS_JSON5 = True
+except ImportError:
+    HAS_JSON5 = False
+
 from logger import logger
 from config import Config
 from openai import OpenAI
-import re
+
+# 类型别名
+WebhookData = dict[str, Any]
+AnalysisResult = dict[str, Any]
+ForwardResult = dict[str, Any]
 
 
-def fix_json_format(json_str):
-    """
-    修复常见的 JSON 格式错误
+def fix_json_format(json_str: str) -> str:
+    """修复常见的 JSON 格式错误"""
+    # 移除 BOM 和特殊字符
+    json_str = json_str.replace('\ufeff', '').strip()
     
-    Args:
-        json_str: 可能有格式错误的 JSON 字符串
-    
-    Returns:
-        str: 修复后的 JSON 字符串
-    """
+    # 先尝试直接解析
     try:
-        original_str = json_str
-        
-        # 1. 移除 BOM 和特殊字符
-        json_str = json_str.replace('\ufeff', '')
-        
-        # 2. 移除注释（// 和 /* */ 风格）
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError:
+        pass
+    
+    # 如果有 json5 库，使用它来解析（支持尾随逗号、单引号、注释等）
+    if HAS_JSON5:
+        try:
+            parsed = json5.loads(json_str)
+            # 转换回标准 JSON
+            return json.dumps(parsed, ensure_ascii=False)
+        except Exception as e:
+            logger.debug(f"json5 解析失败: {e}")
+    
+    # 兖底: 简单的正则修复
+    try:
+        # 移除注释
         json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
         json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
-        
-        # 3. 修复尾随逗号问题（数组和对象中最后一项后的逗号）
-        # 这是最常见的问题
+        # 修复尾随逗号
         json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
-        
-        # 4. 修复缺少逗号的问题（两个字符串或数字之间）
-        # 例如："value1" "value2" -> "value1", "value2"
-        json_str = re.sub(r'"\s+"', '", "', json_str)
-        json_str = re.sub(r'(\d)\s+"', r'\1, "', json_str)
-        json_str = re.sub(r'"\s+(\d)', r'", \1', json_str)
-        
-        # 5. 修复单引号为双引号
-        # 只在不是字符串内容的情况下替换
-        in_double_quote = False
-        escaped = False
-        result = []
-        
-        for i, char in enumerate(json_str):
-            if escaped:
-                result.append(char)
-                escaped = False
-                continue
-            
-            if char == '\\':
-                escaped = True
-                result.append(char)
-                continue
-            
-            if char == '"':
-                in_double_quote = not in_double_quote
-                result.append(char)
-            elif char == "'" and not in_double_quote:
-                # 将单引号替换为双引号
-                result.append('"')
-            else:
-                result.append(char)
-        
-        json_str = ''.join(result)
-        
-        # 6. 确保键名有引号
-        json_str = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
-        
-        # 7. 修复多余的逗号（连续逗号）
-        json_str = re.sub(r',\s*,', ',', json_str)
-        
-        # 8. 修复对象或数组开始/结束位置的逗号
+        # 修复起始逗号
         json_str = re.sub(r'([{\[])\s*,', r'\1', json_str)
         
-        # 9. 移除多余的空白字符
-        json_str = json_str.strip()
-        
-        # 10. 尝试验证修复后的 JSON
-        try:
-            json.loads(json_str)
-            logger.debug(f"JSON 格式修复成功")
-        except json.JSONDecodeError as e:
-            logger.warning(f"JSON 格式修复后仍然无效: {str(e)}")
-        
-        return json_str
-    except Exception as e:
-        logger.warning(f"JSON 格式修复过程出错: {str(e)}")
-        return json_str
+        json.loads(json_str)
+        logger.debug("JSON 格式修复成功")
+    except json.JSONDecodeError as e:
+        logger.warning(f"JSON 格式修复后仍然无效: {e}")
+    
+    return json_str.strip()
 
 
-def extract_from_text(text, source):
-    """
-    从 AI 响应文本中提取关键信息（兜底策略）
-    
-    Args:
-        text: AI 响应文本
-        source: 数据来源
-    
-    Returns:
-        dict: 提取的分析结果
-    """
+def extract_from_text(text: str, source: str) -> AnalysisResult:
+    """从 AI 响应文本中提取关键信息（兖底策略）"""
     logger.info("使用文本提取策略解析 AI 响应")
     
     result = {
@@ -160,16 +120,8 @@ def extract_from_text(text, source):
         return result
 
 
-def analyze_webhook_with_ai(webhook_data):
-    """
-    使用 AI 分析 webhook 数据
-    
-    Args:
-        webhook_data: webhook 数据字典
-    
-    Returns:
-        dict: AI 分析结果
-    """
+def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
+    """使用 AI 分析 webhook 数据"""
     # 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
@@ -203,17 +155,8 @@ def analyze_webhook_with_ai(webhook_data):
         return analyze_with_rules(parsed_data, source)
 
 
-def analyze_with_openai(data, source):
-    """
-    使用 OpenAI API 分析 webhook 数据
-    
-    Args:
-        data: 要分析的数据
-        source: 数据来源
-    
-    Returns:
-        dict: AI 分析结果
-    """
+def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
+    """使用 OpenAI API 分析 webhook 数据"""
     try:
         # 初始化 OpenAI 客户端
         client = OpenAI(
@@ -365,17 +308,8 @@ def analyze_with_openai(data, source):
         raise
 
 
-def analyze_with_rules(data, source):
-    """
-    基于规则的简单分析(可替换为真实 AI)
-    
-    Args:
-        data: 要分析的数据
-        source: 数据来源
-    
-    Returns:
-        dict: 分析结果
-    """
+def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
+    """基于规则的简单分析（AI 降级方案）"""
     # 基础分析结果
     analysis = {
         'source': source,
@@ -425,18 +359,12 @@ def analyze_with_rules(data, source):
     return analysis
 
 
-def forward_to_remote(webhook_data, analysis_result, target_url=None):
-    """
-    将分析后的数据转发到远程服务器
-    
-    Args:
-        webhook_data: 原始 webhook 数据
-        analysis_result: AI 分析结果
-        target_url: 目标服务器地址
-    
-    Returns:
-        dict: 转发结果
-    """
+def forward_to_remote(
+    webhook_data: WebhookData, 
+    analysis_result: AnalysisResult, 
+    target_url: Optional[str] = None
+) -> ForwardResult:
+    """将分析后的数据转发到远程服务器"""
     # 检查是否启用转发
     if not Config.ENABLE_FORWARD:
         logger.info("转发功能已禁用")
@@ -518,17 +446,8 @@ def forward_to_remote(webhook_data, analysis_result, target_url=None):
         }
 
 
-def build_feishu_message(webhook_data, analysis_result):
-    """
-    构建飞书机器人消息格式
-    
-    Args:
-        webhook_data: 原始 webhook 数据
-        analysis_result: AI 分析结果
-    
-    Returns:
-        dict: 飞书消息格式
-    """
+def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisResult) -> dict:
+    """构建飞书机器人消息格式"""
     # 获取基本信息
     source = webhook_data.get('source', 'unknown')
     timestamp = webhook_data.get('timestamp', '')
@@ -536,13 +455,8 @@ def build_feishu_message(webhook_data, analysis_result):
     summary = analysis_result.get('summary', '无摘要')
     event_type = analysis_result.get('event_type', '未知事件')
     
-    # 重要性颜色和 emoji
-    importance_map = {
-        'high': {'color': 'red', 'emoji': '🔴', 'text': '高'},
-        'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
-        'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
-    }
-    imp_info = importance_map.get(importance, importance_map['medium'])
+    # 使用配置中的重要性配置
+    imp_info = Config.IMPORTANCE_CONFIG.get(importance, Config.IMPORTANCE_CONFIG['medium'])
     
     # 构建卡片消息
     card_content = {

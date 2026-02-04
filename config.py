@@ -21,6 +21,7 @@ class Config:
     
     # 数据存储配置
     DATA_DIR = 'webhooks_data'
+    ENABLE_FILE_BACKUP = os.getenv('ENABLE_FILE_BACKUP', 'false').lower() == 'true'  # 是否启用文件备份
     
     # 数据库配置
     DATABASE_URL = os.getenv(
@@ -58,3 +59,10 @@ class Config:
     # JSON 配置
     JSON_SORT_KEYS = False
     JSONIFY_PRETTYPRINT_REGULAR = True
+    
+    # 飞书通知重要性配置
+    IMPORTANCE_CONFIG = {
+        'high': {'color': 'red', 'emoji': '🔴', 'text': '高'},
+        'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
+        'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
+    }
