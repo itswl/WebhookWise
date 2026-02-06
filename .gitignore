@@ -15,3 +15,4 @@ logs/
 *.sqlite
 *.db
 webhooks_data/
+postgres_data/
