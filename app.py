@@ -404,14 +404,12 @@ def update_config():
                 if var_name not in updated_vars:
                     new_lines.append(f'{var_name}={str_val}\n')
 
-            # 写入文件（先写入临时文件，再重命名）
-            temp_file = env_path.with_suffix('.env.tmp')
+            # Docker 挂载文件无法使用 rename/replace，直接覆盖写入
             try:
-                with open(temp_file, 'w', encoding='utf-8') as f:
+                # 直接覆盖写入原文件
+                with open(env_path, 'w', encoding='utf-8') as f:
                     f.writelines(new_lines)
-
-                # 原子性替换
-                temp_file.replace(env_path)
+                    f.flush()  # 确保写入磁盘
 
                 # 更新运行时配置
                 for var_name, (_, typed_val) in updates.items():
@@ -422,9 +420,7 @@ def update_config():
                 return jsonify({'success': True, 'message': '配置更新成功'}), 200
 
             except Exception as e:
-                # 清理临时文件
-                if temp_file.exists():
-                    temp_file.unlink()
+                logger.error(f"写入配置文件失败: {str(e)}", exc_info=True)
                 raise
 
         except PermissionError as e:
