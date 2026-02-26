@@ -118,6 +118,11 @@ OPENAI_API_KEY=your-openai-api-key
 OPENAI_API_URL=https://openrouter.ai/api/v1
 OPENAI_MODEL=anthropic/claude-sonnet-4
 
+# AI Prompt 配置（支持动态加载）
+AI_SYSTEM_PROMPT=你是一个专业的 DevOps 和系统运维专家...
+AI_USER_PROMPT_FILE=prompts/webhook_analysis.txt  # 推荐：从文件加载
+# AI_USER_PROMPT=你的自定义 prompt...  # 或直接设置内容
+
 # 转发配置
 ENABLE_FORWARD=true
 FORWARD_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_WEBHOOK_KEY
@@ -126,6 +131,47 @@ FORWARD_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_WEBHOOK_KEY
 DUPLICATE_ALERT_TIME_WINDOW=24  # 时间窗口（小时）
 FORWARD_DUPLICATE_ALERTS=false  # 是否转发重复告警
 ```
+
+### AI Prompt 动态配置 🆕
+
+系统支持动态加载和修改 AI 分析的 Prompt 模板，无需修改代码。
+
+#### 配置方式
+
+**方式 1: 从文件加载（推荐）**
+```bash
+AI_USER_PROMPT_FILE=prompts/webhook_analysis.txt
+```
+
+**方式 2: 直接设置内容**
+```bash
+AI_USER_PROMPT='你的自定义 prompt，支持 {source} 和 {data_json} 变量'
+```
+
+#### 快速使用
+
+```bash
+# 1. 编辑 prompt 模板
+vim prompts/webhook_analysis.txt
+
+# 2. 热重载（无需重启）
+curl -X POST http://localhost:5000/api/prompt/reload
+
+# 3. 查看当前 prompt
+curl http://localhost:5000/api/prompt
+```
+
+#### 预置模板
+
+- `prompts/webhook_analysis.txt` - 默认通用模板
+- `prompts/webhook_analysis_simple.txt` - 简化版模板
+- `prompts/webhook_analysis_detailed.txt` - 详细版模板
+
+#### 更多信息
+
+- 📖 [Prompt 配置详细文档](PROMPT_CONFIG.md)
+- 📖 [Prompt 使用指南](AI_PROMPT_USAGE.md)
+- 📝 [更新日志](CHANGELOG_PROMPT.md)
 
 ### 重复告警去重配置详解
 

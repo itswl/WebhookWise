@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>筛选分页测试</title>
+    <style>
+        body {
+            font-family: system-ui;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .result {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border-left: 4px solid #0366d6;
+            font-family: monospace;
+        }
+        .success { border-left-color: #28a745; }
+        .error { border-left-color: #dc3545; }
+        button {
+            padding: 0.5rem 1rem;
+            margin: 0.5rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>前端分页测试</h1>
+
+    <div class="test-section">
+        <h2>模拟数据</h2>
+        <p>创建100条测试数据，其中20条高优先级、30条中优先级、50条低优先级</p>
+        <button onclick="createTestData()">生成测试数据</button>
+        <div id="dataInfo" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>筛选测试</h2>
+        <select id="filterSelect">
+            <option value="">全部</option>
+            <option value="high">高优先级</option>
+            <option value="medium">中优先级</option>
+            <option value="low">低优先级</option>
+        </select>
+        <button onclick="testFilter()">执行筛选</button>
+        <div id="filterResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>分页测试</h2>
+        <p>每页显示：
+            <select id="pageSizeSelect">
+                <option value="5">5条</option>
+                <option value="10" selected>10条</option>
+                <option value="20">20条</option>
+            </select>
+        </p>
+        <button onclick="goToPage(1)">第1页</button>
+        <button onclick="goToPage(2)">第2页</button>
+        <button onclick="goToPage(3)">第3页</button>
+        <button onclick="goToPage(4)">第4页</button>
+        <div id="pageResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>验证</h2>
+        <button onclick="runFullTest()">运行完整测试</button>
+        <div id="testResults"></div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        let pageSize = 10;
+
+        // 生成测试数据
+        function createTestData() {
+            allData = [];
+
+            // 生成20条高优先级
+            for (let i = 1; i <= 20; i++) {
+                allData.push({ id: i, importance: 'high', name: '高优先级告警 ' + i });
+            }
+
+            // 生成30条中优先级
+            for (let i = 21; i <= 50; i++) {
+                allData.push({ id: i, importance: 'medium', name: '中优先级告警 ' + i });
+            }
+
+            // 生成50条低优先级
+            for (let i = 51; i <= 100; i++) {
+                allData.push({ id: i, importance: 'low', name: '低优先级告警 ' + i });
+            }
+
+            document.getElementById('dataInfo').innerHTML =
+                '✅ 已生成 ' + allData.length + ' 条数据<br>' +
+                '高优先级: 20 条<br>' +
+                '中优先级: 30 条<br>' +
+                '低优先级: 50 条';
+        }
+
+        // 筛选
+        function testFilter() {
+            const filter = document.getElementById('filterSelect').value;
+
+            if (!filter) {
+                filteredData = allData;
+            } else {
+                filteredData = allData.filter(item => item.importance === filter);
+            }
+
+            currentPage = 1; // 重置到第一页
+
+            document.getElementById('filterResult').innerHTML =
+                '筛选条件: ' + (filter || '全部') + '<br>' +
+                '筛选结果: ' + filteredData.length + ' 条<br>' +
+                '总页数: ' + Math.ceil(filteredData.length / pageSize) + ' 页';
+
+            // 自动显示第一页
+            goToPage(1);
+        }
+
+        // 分页
+        function goToPage(page) {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+
+            if (page < 1 || page > totalPages) {
+                document.getElementById('pageResult').innerHTML =
+                    '<span style="color: red;">❌ 页码超出范围！</span>';
+                return;
+            }
+
+            currentPage = page;
+
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, filteredData.length);
+            const pageData = filteredData.slice(startIndex, endIndex);
+
+            let html = '第 ' + page + ' 页 / 共 ' + totalPages + ' 页<br>';
+            html += '显示: ' + startIndex + ' - ' + endIndex + '（共 ' + pageData.length + ' 条）<br><br>';
+            html += '<strong>数据:</strong><br>';
+
+            pageData.forEach(item => {
+                html += '- [' + item.importance + '] ' + item.name + '<br>';
+            });
+
+            document.getElementById('pageResult').innerHTML = html;
+        }
+
+        // 完整测试
+        function runFullTest() {
+            const results = [];
+
+            // 测试1: 数据生成
+            createTestData();
+            if (allData.length === 100) {
+                results.push('✅ 测试1: 数据生成成功 (100条)');
+            } else {
+                results.push('❌ 测试1: 数据生成失败');
+            }
+
+            // 测试2: 筛选高优先级
+            document.getElementById('filterSelect').value = 'high';
+            testFilter();
+            if (filteredData.length === 20) {
+                results.push('✅ 测试2: 高优先级筛选成功 (20条)');
+            } else {
+                results.push('❌ 测试2: 高优先级筛选失败 (' + filteredData.length + '条)');
+            }
+
+            // 测试3: 第1页应该有10条
+            goToPage(1);
+            const page1Data = filteredData.slice(0, 10);
+            if (page1Data.length === 10) {
+                results.push('✅ 测试3: 第1页显示正确 (10条)');
+            } else {
+                results.push('❌ 测试3: 第1页显示错误 (' + page1Data.length + '条)');
+            }
+
+            // 测试4: 第2页应该有10条
+            goToPage(2);
+            const page2Data = filteredData.slice(10, 20);
+            if (page2Data.length === 10) {
+                results.push('✅ 测试4: 第2页显示正确 (10条)');
+            } else {
+                results.push('❌ 测试4: 第2页显示错误 (' + page2Data.length + '条)');
+            }
+
+            // 测试5: 第3页应该没有数据
+            const page3Data = filteredData.slice(20, 30);
+            if (page3Data.length === 0) {
+                results.push('✅ 测试5: 第3页为空（正确）');
+            } else {
+                results.push('❌ 测试5: 第3页有数据（错误）');
+            }
+
+            // 显示结果
+            let html = '<h3>测试结果</h3>';
+            results.forEach(result => {
+                const className = result.includes('✅') ? 'success' : 'error';
+                html += '<div class="result ' + className + '">' + result + '</div>';
+            });
+
+            document.getElementById('testResults').innerHTML = html;
+        }
+
+        // 初始化
+        createTestData();
+    </script>
+</body>
+</html>

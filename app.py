@@ -453,6 +453,48 @@ def manual_forward_webhook(webhook_id: int) -> tuple[Response, int]:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/prompt/reload', methods=['POST'])
+def reload_prompt() -> tuple[Response, int]:
+    """重新加载 AI Prompt 模板"""
+    try:
+        from ai_analyzer import reload_user_prompt_template
+
+        # 重新加载模板
+        new_template = reload_user_prompt_template()
+
+        logger.info("AI Prompt 模板已重新加载")
+
+        return jsonify({
+            'success': True,
+            'message': 'Prompt 模板已重新加载',
+            'template_length': len(new_template),
+            'preview': new_template[:200] + '...' if len(new_template) > 200 else new_template
+        }), 200
+
+    except Exception as e:
+        logger.error(f"重新加载 prompt 模板失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/prompt', methods=['GET'])
+def get_prompt() -> tuple[Response, int]:
+    """获取当前 AI Prompt 模板"""
+    try:
+        from ai_analyzer import load_user_prompt_template
+
+        template = load_user_prompt_template()
+
+        return jsonify({
+            'success': True,
+            'template': template,
+            'source': 'environment' if Config.AI_USER_PROMPT else ('file' if Config.AI_USER_PROMPT_FILE else 'default')
+        }), 200
+
+    except Exception as e:
+        logger.error(f"获取 prompt 模板失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/webhook', methods=['POST'])
 def receive_webhook():
     """接收通用 Webhook 接口"""
