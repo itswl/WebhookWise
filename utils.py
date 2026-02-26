@@ -87,21 +87,37 @@ def _extract_prometheus_fields(data: dict) -> dict:
 def _extract_generic_fields(data: dict) -> dict:
     """提取华为云/通用告警格式的关键字段"""
     key_fields = {}
-    
+
     # 提取通用字段
     for field in GENERIC_FIELDS:
         if field in data:
             key_fields[field.lower()] = data[field]
-    
+
     # 特殊处理: Resources 字段
     resources = data.get('Resources', [])
     if isinstance(resources, list) and resources:
         first_resource = resources[0]
         if isinstance(first_resource, dict):
-            resource_id = first_resource.get('InstanceId') or first_resource.get('id')
+            # 提取资源 ID (优先级: InstanceId > Id > id)
+            resource_id = first_resource.get('InstanceId') or first_resource.get('Id') or first_resource.get('id')
             if resource_id:
                 key_fields['resource_id'] = resource_id
-    
+
+            # 提取 Dimensions 中的关键字段（如 Node、ResourceID 等）
+            dimensions = first_resource.get('Dimensions', [])
+            if isinstance(dimensions, list):
+                for dim in dimensions:
+                    if isinstance(dim, dict):
+                        dim_name = dim.get('Name', '')
+                        dim_value = dim.get('Value')
+
+                        # 提取重要的维度信息
+                        if dim_name and dim_value:
+                            # 将维度名称标准化为小写，添加到关键字段
+                            # 特别关注: Node (节点)、ResourceID (资源ID)、Instance (实例) 等
+                            if dim_name in ['Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container']:
+                                key_fields[f'dim_{dim_name.lower()}'] = dim_value
+
     return key_fields
 
 
@@ -350,18 +366,24 @@ def get_all_webhooks(
             
             # 构建查询
             query = session.query(WebhookEvent)
-            
+
+            # 筛选条件
             if cursor_id is not None:
                 # 游标分页：获取 ID 小于 cursor_id 的记录（因为按 ID 降序）
                 query = query.filter(WebhookEvent.id < cursor_id)
-            else:
+
+            # 先排序（必须在 offset 和 limit 之前）
+            query = query.order_by(WebhookEvent.id.desc())
+
+            # 再分页
+            if cursor_id is None:
                 # 无游标时使用 offset（仅首次加载）
                 offset = (page - 1) * page_size
                 if offset > 0:
                     query = query.offset(offset)
-            
-            # 按 ID 降序排列并限制数量
-            events = query.order_by(WebhookEvent.id.desc()).limit(page_size).all()
+
+            # 最后限制数量
+            events = query.limit(page_size).all()
             
             # 转换为字典列表
             webhooks = [event.to_dict() for event in events]

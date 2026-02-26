@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>测试筛选逻辑</title>
+    <style>
+        body { font-family: monospace; padding: 2rem; background: #1e293b; color: #f1f5f9; }
+        .test-case { margin: 1rem 0; padding: 1rem; background: #334155; border-radius: 0.5rem; }
+        .pass { color: #10b981; }
+        .fail { color: #ef4444; }
+        select { padding: 0.5rem; margin: 1rem 0; font-size: 1rem; }
+        button { padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; }
+        pre { background: #0f172a; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>优先级筛选测试</h1>
+
+    <div class="test-case">
+        <h3>测试数据</h3>
+        <pre id="testData"></pre>
+    </div>
+
+    <div class="test-case">
+        <h3>筛选测试</h3>
+        <label>选择优先级：</label>
+        <select id="importanceFilter" onchange="runFilter()">
+            <option value="">所有优先级</option>
+            <option value="high">高优先级</option>
+            <option value="medium">中优先级</option>
+            <option value="low">低优先级</option>
+        </select>
+        <button onclick="runFilter()">筛选</button>
+    </div>
+
+    <div class="test-case">
+        <h3>筛选结果</h3>
+        <p>筛选前数量: <span id="beforeCount">0</span></p>
+        <p>筛选后数量: <span id="afterCount">0</span></p>
+        <pre id="filterResult"></pre>
+    </div>
+
+    <script>
+        // 模拟不同情况的测试数据
+        const testWebhooks = [
+            { id: 1, importance: 'high', source: 'volcengine', is_duplicate: 0 },
+            { id: 2, importance: 'medium', source: 'aliyun', is_duplicate: 0 },
+            { id: 3, importance: 'low', source: 'prometheus', is_duplicate: 0 },
+            { id: 4, importance: null, source: 'volcengine', is_duplicate: 1 },
+            { id: 5, importance: undefined, source: 'aliyun', is_duplicate: 0 },
+            { id: 6, importance: 'high', source: 'volcengine', is_duplicate: 1 },
+            { id: 7, importance: '', source: 'prometheus', is_duplicate: 0 },
+        ];
+
+        // 显示测试数据
+        document.getElementById('testData').textContent = JSON.stringify(testWebhooks, null, 2);
+        document.getElementById('beforeCount').textContent = testWebhooks.length;
+
+        function runFilter() {
+            const importanceFilter = document.getElementById('importanceFilter').value;
+
+            console.log('======= 开始筛选 =======');
+            console.log('筛选条件:', importanceFilter || '无');
+
+            const filtered = testWebhooks.filter(function(webhook) {
+                console.log('检查 webhook', webhook.id, '原始 importance:', webhook.importance);
+
+                // 原始逻辑（有问题的）
+                // const match = !importanceFilter || webhook.importance === importanceFilter;
+
+                // 修复后的逻辑
+                let matchImportance = true;
+                if (importanceFilter) {
+                    const webhookImportance = webhook.importance || 'low'; // 默认为 low
+                    matchImportance = webhookImportance === importanceFilter;
+                    console.log('  → 处理后:', webhookImportance, '匹配:', matchImportance);
+                } else {
+                    console.log('  → 无筛选条件，显示全部');
+                }
+
+                return matchImportance;
+            });
+
+            console.log('筛选结果数量:', filtered.length);
+            console.log('======= 筛选结束 =======');
+
+            document.getElementById('afterCount').textContent = filtered.length;
+            document.getElementById('filterResult').textContent = JSON.stringify(filtered, null, 2);
+        }
+
+        // 自动运行一次
+        runFilter();
+    </script>
+</body>
+</html>

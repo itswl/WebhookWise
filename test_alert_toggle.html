@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>测试告警展开功能</title>
+    <style>
+        .alert-item {
+            border: 1px solid #ccc;
+            padding: 1rem;
+            margin: 1rem;
+            cursor: pointer;
+            background: #f5f5f5;
+        }
+
+        .alert-details {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #fff;
+            border: 1px solid #ddd;
+        }
+
+        .alert-item.expanded .alert-details {
+            display: block;
+        }
+
+        .alert-item.expanded {
+            background: #e0e0e0;
+        }
+
+        button {
+            margin: 0.5rem;
+            padding: 0.5rem 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>测试告警展开功能</h1>
+
+    <div class="alert-item" data-alert-id="1" onclick="toggleAlertDetails(1, event)">
+        <div class="alert-header">
+            <h3>告警 #1</h3>
+            <button onclick="event.stopPropagation(); alert('点击了按钮1')">按钮1</button>
+            <button onclick="event.stopPropagation(); alert('点击了按钮2')">按钮2</button>
+        </div>
+
+        <div class="alert-details" id="details-1">
+            <p>这是告警 #1 的详细信息</p>
+            <p>点击卡片可以展开/收起这部分内容</p>
+        </div>
+    </div>
+
+    <div class="alert-item" data-alert-id="2" onclick="toggleAlertDetails(2, event)">
+        <div class="alert-header">
+            <h3>告警 #2</h3>
+            <button onclick="event.stopPropagation(); alert('点击了按钮A')">按钮A</button>
+            <button onclick="event.stopPropagation(); alert('点击了按钮B')">按钮B</button>
+        </div>
+
+        <div class="alert-details" id="details-2">
+            <p>这是告警 #2 的详细信息</p>
+            <p>点击卡片可以展开/收起这部分内容</p>
+        </div>
+    </div>
+
+    <script>
+        function toggleAlertDetails(id, evt) {
+            console.log('toggleAlertDetails 被调用:', id, evt);
+
+            // 如果点击的是按钮，不展开
+            if (evt && (evt.target.tagName === 'BUTTON' || evt.target.closest('button'))) {
+                console.log('点击的是按钮，不展开');
+                return;
+            }
+
+            const item = document.querySelector(`[data-alert-id="${id}"]`);
+            console.log('找到的元素:', item);
+
+            if (item) {
+                const isExpanded = item.classList.contains('expanded');
+                item.classList.toggle('expanded');
+                console.log('告警详情已', isExpanded ? '收起' : '展开');
+            } else {
+                console.error('找不到告警元素:', id);
+            }
+        }
+
+        console.log('页面加载完成，功能就绪');
+    </script>
+</body>
+</html>
