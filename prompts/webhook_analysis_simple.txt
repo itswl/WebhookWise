@@ -1,0 +1,25 @@
+分析以下告警事件：
+
+来源：{source}
+
+数据：
+{data_json}
+
+请返回 JSON 格式结果，包含：
+- importance: high/medium/low（严重/警告/正常）
+- summary: 简短描述（50字内）
+- actions: 处理建议数组
+
+判断标准：
+- high: 严重错误、服务故障、安全问题
+- medium: 警告、性能下降
+- low: 正常信息、成功事件
+
+返回格式示例：
+{{
+  "importance": "high",
+  "summary": "Redis CPU使用率超过90%",
+  "actions": ["扩容Redis节点", "检查慢查询"]
+}}
+
+要求：严格 JSON 格式，不要注释和多余文本。

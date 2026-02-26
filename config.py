@@ -61,6 +61,10 @@ class Config:
         '5. 建议监控和预防措施 '
         '重要：你必须始终返回严格符合 JSON 标准的格式，不要使用注释、尾随逗号或单引号。'
     )
+
+    # AI User Prompt 配置（支持文件路径或直接内容）
+    AI_USER_PROMPT_FILE = os.getenv('AI_USER_PROMPT_FILE', 'prompts/webhook_analysis_detailed.txt')
+    AI_USER_PROMPT = os.getenv('AI_USER_PROMPT', '')  # 如果设置了此环境变量，优先使用，不读取文件
     
     # 重复告警去重配置
     DUPLICATE_ALERT_TIME_WINDOW = int(os.getenv('DUPLICATE_ALERT_TIME_WINDOW', '24'))  # 小时
