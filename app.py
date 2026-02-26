@@ -310,9 +310,9 @@ def update_config():
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': '请求体为空'}), 400
-        
+
         env_file = '.env'
-        
+
         # 配置项定义：(env_var, type, validator)
         config_schema = {
             'forward_url': ('FORWARD_URL', 'str', lambda x: x.startswith('http')),
@@ -326,14 +326,17 @@ def update_config():
             'duplicate_alert_time_window': ('DUPLICATE_ALERT_TIME_WINDOW', 'int', lambda x: 1 <= x <= 168),
             'forward_duplicate_alerts': ('FORWARD_DUPLICATE_ALERTS', 'bool', None)
         }
-        
+
+        # 收集要更新的配置
+        updates = {}
         errors = []
+
         for key, val in data.items():
             if key not in config_schema:
                 continue
-                
+
             env_var, val_type, validator = config_schema[key]
-            
+
             # 类型验证和转换
             try:
                 if val_type == 'bool':
@@ -343,29 +346,97 @@ def update_config():
                         typed_val = val.lower() == 'true'
                     else:
                         raise ValueError(f"{key} 应为布尔类型")
-                    set_key(env_file, env_var, str(typed_val).lower())
-                    setattr(Config, env_var, typed_val)
+                    updates[env_var] = (str(typed_val).lower(), typed_val)
                 elif val_type == 'int':
                     typed_val = int(val)
                     if validator and not validator(typed_val):
                         raise ValueError(f"{key} 值超出有效范围")
-                    set_key(env_file, env_var, str(typed_val))
-                    setattr(Config, env_var, typed_val)
+                    updates[env_var] = (str(typed_val), typed_val)
                 else:  # str
                     typed_val = str(val)
                     if validator and not validator(typed_val):
                         raise ValueError(f"{key} 格式无效")
-                    set_key(env_file, env_var, typed_val)
-                    setattr(Config, env_var, typed_val)
+                    updates[env_var] = (typed_val, typed_val)
             except ValueError as e:
                 errors.append(str(e))
-        
+
         if errors:
             return jsonify({'success': False, 'error': '; '.join(errors)}), 400
-        
-        logger.info("配置已更新")
-        return jsonify({'success': True, 'message': '配置更新成功'}), 200
-        
+
+        # 批量更新 .env 文件
+        try:
+            import os
+            from pathlib import Path
+
+            env_path = Path(env_file)
+
+            # 读取现有内容
+            if env_path.exists():
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+            else:
+                lines = []
+
+            # 更新或添加配置
+            updated_vars = set()
+            new_lines = []
+
+            for line in lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    new_lines.append(line)
+                    continue
+
+                # 解析配置行
+                if '=' in stripped:
+                    var_name = stripped.split('=', 1)[0].strip()
+                    if var_name in updates:
+                        new_value, _ = updates[var_name]
+                        new_lines.append(f'{var_name}={new_value}\n')
+                        updated_vars.add(var_name)
+                    else:
+                        new_lines.append(line)
+                else:
+                    new_lines.append(line)
+
+            # 添加新配置
+            for var_name, (str_val, _) in updates.items():
+                if var_name not in updated_vars:
+                    new_lines.append(f'{var_name}={str_val}\n')
+
+            # 写入文件（先写入临时文件，再重命名）
+            temp_file = env_path.with_suffix('.env.tmp')
+            try:
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+
+                # 原子性替换
+                temp_file.replace(env_path)
+
+                # 更新运行时配置
+                for var_name, (_, typed_val) in updates.items():
+                    setattr(Config, var_name, typed_val)
+                    os.environ[var_name] = str(typed_val) if not isinstance(typed_val, bool) else str(typed_val).lower()
+
+                logger.info(f"配置已更新: {list(updates.keys())}")
+                return jsonify({'success': True, 'message': '配置更新成功'}), 200
+
+            except Exception as e:
+                # 清理临时文件
+                if temp_file.exists():
+                    temp_file.unlink()
+                raise
+
+        except PermissionError as e:
+            logger.error(f"权限错误，无法写入 .env 文件: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f'权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。'
+            }), 500
+        except Exception as e:
+            logger.error(f"更新 .env 文件失败: {str(e)}", exc_info=True)
+            raise
+
     except Exception as e:
         logger.error(f"更新配置失败: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
