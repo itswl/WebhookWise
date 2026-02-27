@@ -473,15 +473,15 @@ def update_config():
 
 @app.route('/api/reanalyze/<int:webhook_id>', methods=['POST'])
 def reanalyze_webhook(webhook_id: int) -> tuple[Response, int]:
-    """重新分析指定的 webhook"""
+    """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:
         with session_scope() as session:
             # 从数据库获取 webhook
             webhook_event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
-            
+
             if not webhook_event:
                 return jsonify({'success': False, 'error': 'Webhook not found'}), 404
-            
+
             # 准备分析数据
             webhook_data = {
                 'source': webhook_event.source,
@@ -489,23 +489,45 @@ def reanalyze_webhook(webhook_id: int) -> tuple[Response, int]:
                 'timestamp': webhook_event.timestamp.isoformat() if webhook_event.timestamp else None,
                 'client_ip': webhook_event.client_ip
             }
-            
+
             # 重新进行 AI 分析
             logger.info(f"重新分析 webhook ID: {webhook_id}")
             analysis_result = analyze_webhook_with_ai(webhook_data)
-            
-            # 更新数据库
+
+            # 更新原始告警
+            old_importance = webhook_event.importance
             webhook_event.ai_analysis = analysis_result
             webhook_event.importance = analysis_result.get('importance')
-            
-            logger.info(f"重新分析完成: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
-            
+
+            new_importance = analysis_result.get('importance')
+            logger.info(f"重新分析完成: {old_importance} → {new_importance} - {analysis_result.get('summary', '')}")
+
+            # 如果这是原始告警（is_duplicate=0），更新所有引用它的重复告警
+            updated_duplicates = 0
+            if webhook_event.is_duplicate == 0:
+                # 查找所有引用此告警的重复记录
+                duplicate_events = session.query(WebhookEvent)\
+                    .filter(WebhookEvent.duplicate_of == webhook_id)\
+                    .all()
+
+                if duplicate_events:
+                    for dup in duplicate_events:
+                        dup.ai_analysis = analysis_result
+                        dup.importance = new_importance
+                        updated_duplicates += 1
+
+                    logger.info(f"同时更新了 {updated_duplicates} 条重复告警的分析结果")
+
             return jsonify({
                 'success': True,
                 'analysis': analysis_result,
-                'message': 'Reanalysis completed successfully'
+                'original_importance': old_importance,
+                'new_importance': new_importance,
+                'updated_duplicates': updated_duplicates,
+                'message': f'重新分析完成，importance: {old_importance} → {new_importance}' +
+                          (f'，同时更新了 {updated_duplicates} 条重复告警' if updated_duplicates > 0 else '')
             }), 200
-        
+
     except Exception as e:
         logger.error(f"重新分析失败: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
