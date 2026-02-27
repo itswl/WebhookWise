@@ -1105,7 +1105,11 @@
                 html += '<div class="details-tabs">';
                 html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">概览</div>';
                 html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">原始数据</div>';
+                // AI 分析标签页：摘要模式下也显示，但内容会在展开时加载
                 if (analysis && Object.keys(analysis).length > 0) {
+                    html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
+                } else if (summary || webhook.importance) {
+                    // 摘要模式下，如果有 summary 或 importance，说明有 AI 分析
                     html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
                 }
                 html += '</div>';
@@ -1127,16 +1131,34 @@
                     });
                     html += '</div>';
                     html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                    html += '<p style="margin: 0; color: #0369a1;">💡 完整数据需要点击"查看详情"按钮加载</p>';
+                    html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整原始数据</p>';
                     html += '</div>';
                 } else {
                     html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
                 }
                 html += '</div>';
 
+                // AI 分析内容：完整模式直接显示，摘要模式显示提示
                 if (analysis && Object.keys(analysis).length > 0) {
                     html += '<div class="tab-content" data-tab-content="ai">';
                     html += renderAIAnalysis(analysis);
+                    html += '</div>';
+                } else if (summary || webhook.importance) {
+                    // 摘要模式：显示简要信息和加载提示
+                    html += '<div class="tab-content" data-tab-content="ai">';
+                    html += '<div class="ai-section">';
+                    html += '<div class="ai-header">🤖 智能分析结果</div>';
+                    html += '<div class="ai-content">';
+                    if (summary) {
+                        html += '<div class="ai-item"><div class="ai-label">摘要</div><div class="ai-value">' + summary + '</div></div>';
+                    }
+                    if (webhook.importance) {
+                        html += '<div class="ai-item"><div class="ai-label">重要性</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
+                    }
+                    html += '</div></div>';
+                    html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
+                    html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整 AI 分析结果</p>';
+                    html += '</div>';
                     html += '</div>';
                 }
 
@@ -1443,6 +1465,57 @@
             displayCurrentPage();
         }
 
+        // 加载单条 webhook 的完整数据
+        async function loadFullWebhookData(webhookId, alertItem) {
+            console.log('🔄 加载完整数据:', webhookId);
+
+            // 显示加载状态
+            const dataTab = alertItem.querySelector('[data-tab-content="data"]');
+            const aiTab = alertItem.querySelector('[data-tab-content="ai"]');
+
+            if (dataTab) {
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>正在加载完整数据...</p></div>';
+            }
+
+            try {
+                const response = await fetch('/api/webhooks/' + webhookId);
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const fullData = result.data;
+
+                    // 更新 allWebhooks 中的数据（合并）
+                    const index = allWebhooks.findIndex(w => w.id == webhookId);
+                    if (index !== -1) {
+                        allWebhooks[index] = { ...allWebhooks[index], ...fullData };
+                    }
+
+                    // 更新原始数据标签页
+                    if (dataTab && fullData.parsed_data) {
+                        dataTab.innerHTML = '<div class="code-block">' + JSON.stringify(fullData.parsed_data, null, 2) + '</div>';
+                    }
+
+                    // 更新 AI 分析标签页
+                    if (aiTab && fullData.ai_analysis) {
+                        aiTab.innerHTML = renderAIAnalysis(fullData.ai_analysis);
+                    } else if (aiTab) {
+                        aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无 AI 分析数据</div>';
+                    }
+
+                    console.log('✅ 完整数据加载成功');
+                } else {
+                    throw new Error(result.error || '加载失败');
+                }
+            } catch (error) {
+                console.error('❌ 加载完整数据失败:', error);
+                if (dataTab) {
+                    dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ 加载失败: ' + error.message + '</div>';
+                }
+            }
+        }
+
         // 事件委托
         document.addEventListener('click', function(e) {
             // 优先处理按钮操作（必须在最前面）
@@ -1493,7 +1566,19 @@
                 if (e.target.closest('button')) return;
 
                 const alertItem = header.closest('.alert-item');
+                const isExpanding = !alertItem.classList.contains('expanded');
                 alertItem.classList.toggle('expanded');
+
+                // 如果是展开操作，且数据是摘要模式，加载完整数据
+                if (isExpanding) {
+                    const webhookId = alertItem.getAttribute('data-id');
+                    const webhook = allWebhooks.find(w => w.id == webhookId);
+
+                    // 检查是否需要加载完整数据（摘要模式没有 parsed_data 和完整 ai_analysis）
+                    if (webhook && !webhook.parsed_data && !webhook.ai_analysis) {
+                        loadFullWebhookData(webhookId, alertItem);
+                    }
+                }
                 return;
             }
 
