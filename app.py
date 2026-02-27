@@ -353,7 +353,11 @@ def update_config():
                         raise ValueError(f"{key} 值超出有效范围")
                     updates[env_var] = (str(typed_val), typed_val)
                 else:  # str
-                    typed_val = str(val)
+                    typed_val = str(val).strip()
+                    # 跳过空字符串（避免覆盖已有配置）
+                    if not typed_val:
+                        logger.debug(f"跳过空值配置: {key}")
+                        continue
                     if validator and not validator(typed_val):
                         raise ValueError(f"{key} 格式无效")
                     updates[env_var] = (typed_val, typed_val)
