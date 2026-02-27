@@ -413,15 +413,85 @@
         }
 
         .code-block {
-            background: #f6f8fa;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 1rem;
+            background: #1e1e1e;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            padding: 1.25rem;
             overflow-x: auto;
             font-size: 0.875rem;
-            font-family: 'SF Mono', Monaco, monospace;
-            color: #24292e;
-            line-height: 1.5;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .code-block pre {
+            margin: 0;
+            color: #d4d4d4;
+        }
+
+        /* JSON 语法高亮 */
+        .json-key {
+            color: #9cdcfe;
+        }
+
+        .json-string {
+            color: #ce9178;
+        }
+
+        .json-number {
+            color: #b5cea8;
+        }
+
+        .json-boolean {
+            color: #569cd6;
+        }
+
+        .json-null {
+            color: #569cd6;
+        }
+
+        .json-punctuation {
+            color: #d4d4d4;
+        }
+
+        /* 代码块头部（可选，用于添加复制按钮等） */
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: #2d2d2d;
+            border-bottom: 1px solid #3d3d3d;
+            border-radius: 8px 8px 0 0;
+            margin-bottom: -1px;
+        }
+
+        .code-lang {
+            color: #858585;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .code-copy-btn {
+            padding: 0.25rem 0.75rem;
+            background: #3d3d3d;
+            border: 1px solid #4d4d4d;
+            border-radius: 4px;
+            color: #d4d4d4;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .code-copy-btn:hover {
+            background: #4d4d4d;
+            border-color: #5d5d5d;
+        }
+
+        .code-wrapper {
+            margin: 1rem 0;
         }
 
         .ai-section {
@@ -1121,7 +1191,7 @@
                 html += '<div class="tab-content" data-tab-content="data">';
                 // 摘要模式下显示关键信息，完整模式下显示全部数据
                 if (webhook.parsed_data) {
-                    html += '<div class="code-block">' + JSON.stringify(webhook.parsed_data, null, 2) + '</div>';
+                    html += renderJSONBlock(webhook.parsed_data, '原始数据');
                 } else if (webhook.alert_info && Object.keys(webhook.alert_info).length > 0) {
                     html += '<div class="info-grid">';
                     Object.entries(webhook.alert_info).forEach(([key, value]) => {
@@ -1181,6 +1251,71 @@
             }
             html += '</div>';
             return html;
+        }
+
+        // JSON 语法高亮
+        function syntaxHighlightJSON(json) {
+            if (typeof json !== 'string') {
+                json = JSON.stringify(json, null, 2);
+            }
+
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        // 渲染格式化的 JSON 代码块
+        function renderJSONBlock(data, title = 'JSON') {
+            const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            const highlighted = syntaxHighlightJSON(jsonString);
+
+            let html = '<div class="code-wrapper">';
+            html += '<div class="code-header">';
+            html += '<span class="code-lang">' + title + '</span>';
+            html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 复制</button>';
+            html += '</div>';
+            html += '<div class="code-block">';
+            html += '<pre>' + highlighted + '</pre>';
+            html += '</div>';
+            html += '</div>';
+
+            return html;
+        }
+
+        // 复制到剪贴板
+        function copyToClipboard(btn) {
+            const codeBlock = btn.closest('.code-wrapper').querySelector('pre');
+            const text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btn.textContent;
+                btn.textContent = '✅ 已复制';
+                btn.style.background = '#28a745';
+                btn.style.borderColor = '#28a745';
+
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败');
+            });
         }
 
         // 渲染 AI 分析
@@ -1494,7 +1629,7 @@
 
                     // 更新原始数据标签页
                     if (dataTab && fullData.parsed_data) {
-                        dataTab.innerHTML = '<div class="code-block">' + JSON.stringify(fullData.parsed_data, null, 2) + '</div>';
+                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
                     }
 
                     // 更新 AI 分析标签页
