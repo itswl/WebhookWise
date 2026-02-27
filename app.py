@@ -3,6 +3,7 @@ import time
 import socket
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, render_template, Response
+from flask_compress import Compress
 from datetime import datetime, timedelta
 from dotenv import set_key
 from typing import Optional, Generator
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from config import Config
 from logger import logger
 from utils import (
-    verify_signature, save_webhook_data, get_client_ip, 
+    verify_signature, save_webhook_data, get_client_ip,
     get_all_webhooks, generate_alert_hash, check_duplicate_alert
 )
 from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
@@ -19,6 +20,17 @@ from models import WebhookEvent, ProcessingLock, session_scope, get_session, tes
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# 启用 gzip 压缩（减少响应体积，加快传输）
+Compress(app)
+app.config['COMPRESS_MIMETYPES'] = [
+    'application/json',
+    'text/html',
+    'text/css',
+    'application/javascript'
+]
+app.config['COMPRESS_LEVEL'] = 6  # 压缩级别 1-9（6是平衡值）
+app.config['COMPRESS_MIN_SIZE'] = 500  # 超过500字节才压缩
 
 # Worker 标识（用于调试）
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
@@ -246,18 +258,22 @@ def dashboard():
 
 @app.route('/api/webhooks', methods=['GET'])
 def list_webhooks() -> tuple[Response, int]:
-    """获取 webhook 列表 API（支持游标分页）"""
+    """获取 webhook 列表 API（支持游标分页和字段选择）"""
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 20, type=int)
     cursor_id = request.args.get('cursor', None, type=int)  # 游标分页
-    
-    # 限制每页最大数量
-    page_size = min(page_size, 100)
-    
+    fields = request.args.get('fields', 'summary')  # 字段选择：summary | full
+
+    # 限制每页最大数量（根据数据量调整）
+    if fields == 'full':
+        page_size = min(page_size, 50)  # 完整数据限制更严格
+    else:
+        page_size = min(page_size, 200)  # 摘要数据可以返回更多
+
     webhooks, total, next_cursor = get_all_webhooks(
-        page=page, page_size=page_size, cursor_id=cursor_id
+        page=page, page_size=page_size, cursor_id=cursor_id, fields=fields
     )
-    
+
     return jsonify({
         'success': True,
         'data': webhooks,
@@ -269,6 +285,24 @@ def list_webhooks() -> tuple[Response, int]:
             'next_cursor': next_cursor  # 游标分页支持
         }
     }), 200
+
+
+@app.route('/api/webhooks/<int:webhook_id>', methods=['GET'])
+def get_webhook_detail(webhook_id: int) -> tuple[Response, int]:
+    """获取单条 webhook 详细信息（完整数据）"""
+    try:
+        with session_scope() as session:
+            event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
+            if not event:
+                return jsonify({'success': False, 'error': 'Webhook not found'}), 404
+
+            return jsonify({
+                'success': True,
+                'data': event.to_dict()  # 返回完整数据
+            }), 200
+    except Exception as e:
+        logger.error(f"查询 webhook 详情失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/config', methods=['GET'])

@@ -912,8 +912,8 @@
                 const alertList = document.getElementById('alertList');
                 alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
 
-                // 第一步：先获取总数
-                const checkResponse = await fetch('/api/webhooks?page=1&page_size=1');
+                // 第一步：先获取总数（使用摘要模式）
+                const checkResponse = await fetch('/api/webhooks?page=1&page_size=1&fields=summary');
                 const checkResult = await checkResponse.json();
                 const totalRecords = checkResult.pagination ? checkResult.pagination.total : 0;
 
@@ -932,8 +932,8 @@
                     console.log('策略: 加载前 5000 条');
                 }
 
-                // 第三步：加载数据
-                const response = await fetch('/api/webhooks?page=1&page_size=' + loadSize);
+                // 第三步：加载数据（使用摘要模式，大幅减少数据传输量）
+                const response = await fetch('/api/webhooks?page=1&page_size=' + loadSize + '&fields=summary');
                 if (!response.ok) throw new Error('HTTP ' + response.status);
 
                 const result = await response.json();
@@ -1068,18 +1068,25 @@
             webhooks.forEach(function(webhook) {
                 const importance = webhook.importance || 'low';
                 const isDuplicate = webhook.is_duplicate === 1;
+                // 兼容两种数据格式：完整模式(ai_analysis)和摘要模式(summary)
                 const analysis = webhook.ai_analysis || {};
+                const summary = webhook.summary || analysis.summary || '';
 
                 html += '<div class="alert-item" data-id="' + webhook.id + '">';
                 html += '<div class="alert-header">';
                 html += '<div class="alert-left">';
                 html += '<div class="alert-title-row">';
                 html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-                html += '<span class="alert-title">' + (analysis.summary || webhook.source || '告警 #' + webhook.id) + '</span>';
+                html += '<span class="alert-title">' + (summary || webhook.source || '告警 #' + webhook.id) + '</span>';
                 html += '</div>';
                 html += '<div class="alert-meta">';
                 html += '<span class="alert-meta-item">📍 ' + (webhook.source || 'unknown') + '</span>';
-                html += '<span class="alert-meta-item">🌐 ' + (webhook.client_ip || '-') + '</span>';
+                // 摘要模式下没有 client_ip，显示告警信息
+                if (webhook.alert_info && webhook.alert_info.host) {
+                    html += '<span class="alert-meta-item">🖥️ ' + webhook.alert_info.host + '</span>';
+                } else if (webhook.client_ip) {
+                    html += '<span class="alert-meta-item">🌐 ' + webhook.client_ip + '</span>';
+                }
                 html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
                 if (isDuplicate) {
                     html += '<span class="alert-meta-item">🔗 重复于 #' + webhook.duplicate_of + '</span>';
@@ -1108,8 +1115,22 @@
                 html += '</div>';
 
                 html += '<div class="tab-content" data-tab-content="data">';
+                // 摘要模式下显示关键信息，完整模式下显示全部数据
                 if (webhook.parsed_data) {
                     html += '<div class="code-block">' + JSON.stringify(webhook.parsed_data, null, 2) + '</div>';
+                } else if (webhook.alert_info && Object.keys(webhook.alert_info).length > 0) {
+                    html += '<div class="info-grid">';
+                    Object.entries(webhook.alert_info).forEach(([key, value]) => {
+                        if (value) {
+                            html += '<div class="info-item"><div class="info-label">' + key + '</div><div class="info-value">' + value + '</div></div>';
+                        }
+                    });
+                    html += '</div>';
+                    html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
+                    html += '<p style="margin: 0; color: #0369a1;">💡 完整数据需要点击"查看详情"按钮加载</p>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
                 }
                 html += '</div>';
 
