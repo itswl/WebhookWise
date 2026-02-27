@@ -273,24 +273,53 @@ def list_webhooks() -> tuple[Response, int]:
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
-    """获取当前配置"""
+    """获取当前配置（从 .env 文件实时读取）"""
     try:
+        import os
+        from pathlib import Path
+        from dotenv import dotenv_values
+
+        # 读取 .env 文件获取最新配置
+        env_path = Path('.env')
+        env_values = {}
+
+        if env_path.exists():
+            env_values = dotenv_values(env_path)
+
+        # 优先使用 .env 文件的值，如果没有则使用 Config 类的值（环境变量或默认值）
+        def get_value(key, default=None, value_type='str'):
+            # 先从 .env 文件读取
+            val = env_values.get(key)
+            # 如果 .env 没有，从 Config 类读取
+            if val is None:
+                val = getattr(Config, key, default)
+
+            # 类型转换
+            if value_type == 'bool':
+                if isinstance(val, str):
+                    return val.lower() == 'true'
+                return bool(val)
+            elif value_type == 'int':
+                return int(val) if val else default
+            return val
+
         # 不返回完整的敏感信息，只返回是否已配置
-        api_key = Config.OPENAI_API_KEY
+        api_key = get_value('OPENAI_API_KEY', '')
         masked_key = '已配置' if api_key else '未配置'
-        
+
         config_data = {
-            'forward_url': Config.FORWARD_URL,
-            'enable_forward': Config.ENABLE_FORWARD,
-            'enable_ai_analysis': Config.ENABLE_AI_ANALYSIS,
+            'forward_url': get_value('FORWARD_URL', ''),
+            'enable_forward': get_value('ENABLE_FORWARD', False, 'bool'),
+            'enable_ai_analysis': get_value('ENABLE_AI_ANALYSIS', True, 'bool'),
             'openai_api_key': masked_key,  # 脱敏处理
-            'openai_api_url': Config.OPENAI_API_URL,
-            'openai_model': Config.OPENAI_MODEL,
-            'ai_system_prompt': Config.AI_SYSTEM_PROMPT,
-            'log_level': Config.LOG_LEVEL,
-            'duplicate_alert_time_window': Config.DUPLICATE_ALERT_TIME_WINDOW,
-            'forward_duplicate_alerts': Config.FORWARD_DUPLICATE_ALERTS
+            'openai_api_url': get_value('OPENAI_API_URL', 'https://openrouter.ai/api/v1'),
+            'openai_model': get_value('OPENAI_MODEL', 'anthropic/claude-sonnet-4'),
+            'ai_system_prompt': get_value('AI_SYSTEM_PROMPT', Config.AI_SYSTEM_PROMPT),
+            'log_level': get_value('LOG_LEVEL', 'INFO'),
+            'duplicate_alert_time_window': get_value('DUPLICATE_ALERT_TIME_WINDOW', 24, 'int'),
+            'forward_duplicate_alerts': get_value('FORWARD_DUPLICATE_ALERTS', False, 'bool')
         }
+
         return jsonify({
             'success': True,
             'data': config_data
