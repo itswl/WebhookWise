@@ -362,18 +362,20 @@ def get_client_ip(request) -> str:
 
 
 def get_all_webhooks(
-    page: int = 1, 
+    page: int = 1,
     page_size: int = 20,
-    cursor_id: Optional[int] = None
+    cursor_id: Optional[int] = None,
+    fields: str = 'summary'
 ) -> tuple[list[dict], int, Optional[int]]:
     """
-    从数据库获取 webhook 数据（支持游标分页）
-    
+    从数据库获取 webhook 数据（支持游标分页和字段选择）
+
     Args:
         page: 页码（仅用于首次加载或无游标时）
         page_size: 每页数量
         cursor_id: 游标 ID，获取此 ID 之后的数据（更高效）
-    
+        fields: 字段选择 - 'summary'(摘要), 'full'(完整)
+
     Returns:
         tuple: (webhook数据列表, 总数量, 下一页游标ID)
     """
@@ -381,7 +383,7 @@ def get_all_webhooks(
         with session_scope() as session:
             # 查询总数
             total = session.query(WebhookEvent).count()
-            
+
             # 构建查询
             query = session.query(WebhookEvent)
 
@@ -402,15 +404,20 @@ def get_all_webhooks(
 
             # 最后限制数量
             events = query.limit(page_size).all()
-            
-            # 转换为字典列表
-            webhooks = [event.to_dict() for event in events]
-            
+
+            # 根据 fields 参数决定返回哪些字段
+            if fields == 'summary':
+                # 摘要模式：只返回列表必需的字段，减少数据传输量
+                webhooks = [event.to_summary_dict() for event in events]
+            else:
+                # 完整模式：返回所有字段
+                webhooks = [event.to_dict() for event in events]
+
             # 计算下一页游标
             next_cursor = events[-1].id if events else None
-            
+
             return webhooks, total, next_cursor
-        
+
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
         webhooks = get_webhooks_from_files(limit=page_size)

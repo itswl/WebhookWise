@@ -58,8 +58,41 @@ class WebhookEvent(Base):
         Index('idx_duplicate_lookup', 'alert_hash', 'is_duplicate', 'timestamp'),
     )
     
+    def to_summary_dict(self):
+        """返回摘要信息（用于列表显示，减少数据传输量）"""
+        # 提取 AI 分析摘要
+        summary = None
+        if self.ai_analysis:
+            summary = self.ai_analysis.get('summary', '')
+
+        # 提取关键告警信息
+        alert_info = {}
+        if self.parsed_data:
+            # 根据不同来源提取关键字段
+            if self.source == 'mongodb':
+                alert_info = {
+                    'host': self.parsed_data.get('监控项', {}).get('主机', '') if isinstance(self.parsed_data.get('监控项'), dict) else '',
+                    'metric': self.parsed_data.get('监控项', {}).get('监控项', '') if isinstance(self.parsed_data.get('监控项'), dict) else '',
+                    'value': self.parsed_data.get('当前值', '')
+                }
+            # 可以添加其他来源的提取逻辑
+
+        return {
+            'id': self.id,
+            'source': self.source,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'importance': self.importance,
+            'is_duplicate': self.is_duplicate,
+            'duplicate_of': self.duplicate_of,
+            'duplicate_count': self.duplicate_count,
+            'forward_status': self.forward_status,
+            'summary': summary,  # AI 摘要（而非完整分析）
+            'alert_info': alert_info,  # 告警关键信息（而非完整 parsed_data）
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典（完整数据，用于详情查看）"""
         return {
             'id': self.id,
             'source': self.source,
