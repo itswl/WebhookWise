@@ -1,5 +1,5 @@
 # ====== 构建阶段 ======
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt -i https://pypi.tuna.t
 
 
 # ====== 运行阶段 ======
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim
+FROM python:3.12-slim
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
