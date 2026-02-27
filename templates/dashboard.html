@@ -1289,16 +1289,33 @@
 
         async function saveConfig() {
             try {
+                // 获取表单值
+                const forwardUrl = document.getElementById('configForwardUrl').value;
+                const apiKey = document.getElementById('configOpenaiApiKey').value;
+                const apiUrl = document.getElementById('configOpenaiApiUrl').value;
+                const model = document.getElementById('configOpenaiModel').value;
+
+                // 构建数据对象（只包含非空值）
                 const data = {
-                    forward_url: document.getElementById('configForwardUrl').value,
-                    openai_api_key: document.getElementById('configOpenaiApiKey').value,
-                    openai_api_url: document.getElementById('configOpenaiApiUrl').value,
-                    openai_model: document.getElementById('configOpenaiModel').value,
                     duplicate_alert_time_window: parseInt(document.getElementById('configDuplicateWindow').value) || 24,
                     enable_forward: document.getElementById('configEnableForward').checked,
                     enable_ai_analysis: document.getElementById('configEnableAi').checked,
                     forward_duplicate_alerts: document.getElementById('configForwardDuplicate').checked
                 };
+
+                // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
+                if (forwardUrl && forwardUrl.trim()) {
+                    data.forward_url = forwardUrl.trim();
+                }
+                if (apiKey && apiKey.trim()) {
+                    data.openai_api_key = apiKey.trim();
+                }
+                if (apiUrl && apiUrl.trim()) {
+                    data.openai_api_url = apiUrl.trim();
+                }
+                if (model && model.trim()) {
+                    data.openai_model = model.trim();
+                }
 
                 console.log('📤 保存配置:', data);
 
@@ -1314,8 +1331,6 @@
                 if (result.success) {
                     alert('✅ 配置保存成功！');
                     closeConfigModal();
-                    // 刷新页面配置
-                    loadConfig();
                 } else {
                     const errorMsg = result.error || '未知错误';
                     console.error('❌ 保存失败:', errorMsg);
