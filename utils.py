@@ -266,16 +266,46 @@ def save_webhook_data(
                 # 在事务内检查重复（如果未预检测）
                 if is_duplicate is None:
                     is_duplicate, original_event, _ = check_duplicate_alert(alert_hash, session=session)
-            if is_duplicate and original_event:
-                # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
-                orig = session.get(WebhookEvent, original_event.id)
-                if orig:
-                    orig.duplicate_count = (orig.duplicate_count or 1) + 1
-                    orig.updated_at = datetime.now()
-                    
-                    logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
-                    
-                    # 创建重复告警记录（复用传入的 original_event 数据，避免重复读取）
+
+                if is_duplicate and original_event:
+                    # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
+                    orig = session.get(WebhookEvent, original_event.id)
+                    if orig:
+                        orig.duplicate_count = (orig.duplicate_count or 1) + 1
+                        orig.updated_at = datetime.now()
+
+                        logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
+
+                        # 创建重复告警记录（复用传入的 original_event 数据，避免重复读取）
+                        webhook_event = WebhookEvent(
+                            source=source,
+                            client_ip=client_ip,
+                            timestamp=datetime.now(),
+                            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                            headers=dict(headers) if headers else {},
+                            parsed_data=data,
+                            alert_hash=alert_hash,
+                            ai_analysis=original_event.ai_analysis,  # 使用传入的数据
+                            importance=original_event.importance,    # 使用传入的数据
+                            forward_status=forward_status,
+                            is_duplicate=1,
+                            duplicate_of=original_event.id,
+                            duplicate_count=1
+                        )
+
+                        session.add(webhook_event)
+                        session.flush()  # 获取 ID
+
+                        webhook_id = webhook_event.id
+                        logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
+
+                        # 可选: 同时保存到文件
+                        if Config.ENABLE_FILE_BACKUP:
+                            save_webhook_to_file(data, source, raw_payload, headers, client_ip, orig.ai_analysis)
+
+                        return webhook_id, True, orig.id
+                else:
+                    # 新告警：正常保存
                     webhook_event = WebhookEvent(
                         source=source,
                         client_ip=client_ip,
@@ -284,54 +314,25 @@ def save_webhook_data(
                         headers=dict(headers) if headers else {},
                         parsed_data=data,
                         alert_hash=alert_hash,
-                        ai_analysis=original_event.ai_analysis,  # 使用传入的数据
-                        importance=original_event.importance,    # 使用传入的数据
+                        ai_analysis=ai_analysis,
+                        importance=ai_analysis.get('importance') if ai_analysis else None,
                         forward_status=forward_status,
-                        is_duplicate=1,
-                        duplicate_of=original_event.id,
+                        is_duplicate=0,
+                        duplicate_of=None,
                         duplicate_count=1
                     )
-                    
+
                     session.add(webhook_event)
                     session.flush()  # 获取 ID
-                    
+
                     webhook_id = webhook_event.id
-                    logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
-                    
+                    logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
+
                     # 可选: 同时保存到文件
                     if Config.ENABLE_FILE_BACKUP:
-                        save_webhook_to_file(data, source, raw_payload, headers, client_ip, orig.ai_analysis)
-                    
-                    return webhook_id, True, orig.id
-            
-                # 新告警：正常保存
-                webhook_event = WebhookEvent(
-                    source=source,
-                    client_ip=client_ip,
-                    timestamp=datetime.now(),
-                    raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                    headers=dict(headers) if headers else {},
-                    parsed_data=data,
-                    alert_hash=alert_hash,
-                    ai_analysis=ai_analysis,
-                    importance=ai_analysis.get('importance') if ai_analysis else None,
-                    forward_status=forward_status,
-                    is_duplicate=0,
-                    duplicate_of=None,
-                    duplicate_count=1
-                )
+                        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
 
-                session.add(webhook_event)
-                session.flush()  # 获取 ID
-
-                webhook_id = webhook_event.id
-                logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
-
-                # 可选: 同时保存到文件
-                if Config.ENABLE_FILE_BACKUP:
-                    save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-
-                return webhook_id, False, None
+                    return webhook_id, False, None
 
         except IntegrityError as e:
             # 唯一约束冲突：说明另一个 worker 已经插入了相同的原始告警
