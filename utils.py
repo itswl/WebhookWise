@@ -299,6 +299,7 @@ def save_webhook_data(
                         final_importance = ai_analysis.get('importance') if ai_analysis else original_event.importance
 
                         # 创建重复告警记录
+                        # duplicate_count 继承自原始告警的累计重复次数
                         webhook_event = WebhookEvent(
                             source=source,
                             client_ip=client_ip,
@@ -312,7 +313,7 @@ def save_webhook_data(
                             forward_status=forward_status,
                             is_duplicate=1,
                             duplicate_of=original_event.id,
-                            duplicate_count=1
+                            duplicate_count=orig.duplicate_count  # 继承原始告警的累计次数
                         )
 
                         session.add(webhook_event)
