@@ -230,12 +230,14 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         skip_reason = None
 
         if importance == 'high':
-            if is_duplicate and not Config.FORWARD_DUPLICATE_ALERTS:
-                # 窗口内的重复告警（24小时内）
-                skip_reason = f'重复告警（原始 ID={original_id}），配置跳过转发'
-            elif beyond_window and not Config.FORWARD_AFTER_TIME_WINDOW:
+            # 注意：先判断窗口外，因为窗口外告警也有 is_duplicate=True
+            if beyond_window and not Config.FORWARD_AFTER_TIME_WINDOW:
                 # 窗口外的历史重复告警（超过24小时）
                 skip_reason = f'窗口外重复告警（原始 ID={original_id}），配置跳过转发'
+            elif is_duplicate and not beyond_window and not Config.FORWARD_DUPLICATE_ALERTS:
+                # 窗口内的重复告警（24小时内）
+                # 条件：is_duplicate=True 且 beyond_window=False
+                skip_reason = f'窗口内重复告警（原始 ID={original_id}），配置跳过转发'
             else:
                 should_forward = True
         else:
