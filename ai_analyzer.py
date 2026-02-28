@@ -625,11 +625,19 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 
 
 def forward_to_remote(
-    webhook_data: WebhookData, 
-    analysis_result: AnalysisResult, 
-    target_url: Optional[str] = None
+    webhook_data: WebhookData,
+    analysis_result: AnalysisResult,
+    target_url: Optional[str] = None,
+    is_periodic_reminder: bool = False
 ) -> ForwardResult:
-    """将分析后的数据转发到远程服务器"""
+    """将分析后的数据转发到远程服务器
+
+    Args:
+        webhook_data: Webhook 数据
+        analysis_result: AI 分析结果
+        target_url: 目标 URL
+        is_periodic_reminder: 是否为周期性提醒
+    """
     # 检查是否启用转发
     if not Config.ENABLE_FORWARD:
         logger.info("转发功能已禁用")
@@ -637,17 +645,17 @@ def forward_to_remote(
             'status': 'disabled',
             'message': '转发功能已禁用'
         }
-    
+
     if target_url is None:
         target_url = Config.FORWARD_URL
-    
+
     try:
         # 检查是否是飞书 webhook
         is_feishu = 'feishu.cn' in target_url or 'lark' in target_url
-        
+
         if is_feishu:
             # 构建飞书消息格式
-            forward_data = build_feishu_message(webhook_data, analysis_result)
+            forward_data = build_feishu_message(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
         else:
             # 构建普通转发数据
             forward_data = {
@@ -711,18 +719,31 @@ def forward_to_remote(
         }
 
 
-def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisResult) -> dict:
-    """构建飞书机器人消息格式"""
+def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisResult, is_periodic_reminder: bool = False) -> dict:
+    """构建飞书机器人消息格式
+
+    Args:
+        webhook_data: Webhook 数据
+        analysis_result: AI 分析结果
+        is_periodic_reminder: 是否为周期性提醒
+    """
     # 获取基本信息
     source = webhook_data.get('source', 'unknown')
     timestamp = webhook_data.get('timestamp', '')
     importance = analysis_result.get('importance', 'medium')
     summary = analysis_result.get('summary', '无摘要')
     event_type = analysis_result.get('event_type', '未知事件')
-    
+    duplicate_count = webhook_data.get('duplicate_count', 1)
+
     # 使用配置中的重要性配置
     imp_info = Config.IMPORTANCE_CONFIG.get(importance, Config.IMPORTANCE_CONFIG['medium'])
-    
+
+    # 标题：如果是周期性提醒，添加特殊标识
+    if is_periodic_reminder:
+        title = f"🔔 周期性提醒：告警持续中（已重复 {duplicate_count} 次）"
+    else:
+        title = "📡 Webhook 事件通知"
+
     # 构建卡片消息
     card_content = {
         "config": {
@@ -731,7 +752,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
         "header": {
             "title": {
                 "tag": "plain_text",
-                "content": f"📡 Webhook 事件通知"
+                "content": title
             },
             "template": imp_info['color']
         },
