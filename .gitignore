@@ -7,6 +7,9 @@ venv/
 env/
 ENV/
 .env
+.env.migration
+.env.local
+.env.production
 *.log
 logs/
 .DS_Store
