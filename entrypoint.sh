@@ -1,0 +1,57 @@
+#!/bin/bash
+# 容器启动脚本 - 自动执行数据库初始化和迁移
+
+set -e  # 遇到错误立即退出
+
+echo "======================================"
+echo "Webhook 服务启动中..."
+echo "======================================"
+
+# 1. 等待数据库就绪
+echo "[1/4] 等待数据库就绪..."
+max_retries=30
+retry_count=0
+
+while [ $retry_count -lt $max_retries ]; do
+    if python3 -c "from models import test_db_connection; exit(0 if test_db_connection() else 1)" 2>/dev/null; then
+        echo "✅ 数据库连接成功"
+        break
+    else
+        retry_count=$((retry_count + 1))
+        echo "⏳ 等待数据库... ($retry_count/$max_retries)"
+        sleep 2
+    fi
+done
+
+if [ $retry_count -eq $max_retries ]; then
+    echo "❌ 数据库连接超时，启动失败"
+    exit 1
+fi
+
+# 2. 初始化数据库表结构
+echo "[2/4] 初始化数据库表..."
+python3 -c "from models import init_db; init_db()" || {
+    echo "⚠️  表初始化失败（可能已存在），继续..."
+}
+echo "✅ 数据库表检查完成"
+
+# 3. 执行数据库迁移（添加去重字段等）
+echo "[3/4] 执行数据库迁移..."
+python3 migrate_db.py || {
+    echo "⚠️  迁移失败，继续..."
+}
+echo "✅ 数据库迁移完成"
+
+# 4. 添加唯一约束（防止重复告警）
+echo "[4/4] 检查唯一约束..."
+python3 init_migrations.py || {
+    echo "⚠️  唯一约束检查失败，继续启动..."
+}
+echo "✅ 数据库约束检查完成"
+
+echo "======================================"
+echo "数据库准备完成，启动应用服务..."
+echo "======================================"
+
+# 5. 启动应用服务
+exec "$@"

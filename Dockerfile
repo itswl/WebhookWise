@@ -38,16 +38,21 @@ COPY app.py .
 COPY config.py .
 COPY logger.py .
 COPY migrate_db.py .
+COPY migrations_tool.py .
+COPY init_migrations.py .
 COPY models.py .
 COPY utils.py .
+COPY entrypoint.sh .
 COPY templates/ ./templates/
 COPY prompts/ ./prompts/
+COPY migrations/ ./migrations/
 
 # 注意: 不复制 .env 文件以避免敏感信息打包进镜像
 # 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录并设置权限
 RUN mkdir -p logs webhooks_data && \
+    chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
 # 切换到非 root 用户
@@ -59,6 +64,9 @@ EXPOSE 8000
 # 健康检查（使用 Python 原生方式，无需 curl）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# 设置启动入口点（自动执行数据库初始化和迁移）
+ENTRYPOINT ["./entrypoint.sh"]
 
 # 使用 gunicorn 运行应用(生产环境)
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "app:app"]

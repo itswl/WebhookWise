@@ -10,9 +10,10 @@ import sys
 from models import get_engine, session_scope, WebhookEvent
 from sqlalchemy import text
 from logger import logger
+import logging
 
 
-def add_unique_constraint():
+def add_unique_constraint(verbose=True):
     """
     添加唯一约束防止重复告警
 
@@ -20,15 +21,23 @@ def add_unique_constraint():
     1. 修复空的 alert_hash
     2. 处理已存在的重复数据
     3. 创建唯一索引
+
+    Args:
+        verbose: 是否输出详细日志（默认True，启动脚本可设为False）
     """
     engine = get_engine()
 
+    def log(msg, level='info'):
+        """根据verbose参数决定是否输出日志"""
+        if verbose:
+            getattr(logger, level)(msg)
+
     try:
         with session_scope() as session:
-            logger.info("🔧 开始数据库迁移：添加唯一约束...")
+            log("🔧 开始数据库迁移：添加唯一约束...")
 
             # 步骤 1: 检查并修复空的 alert_hash
-            logger.info("📋 步骤 1: 检查空的 alert_hash...")
+            log("📋 步骤 1: 检查空的 alert_hash...")
             result = session.execute(text("""
                 SELECT COUNT(*) FROM webhook_events
                 WHERE alert_hash IS NULL AND is_duplicate = 0
@@ -36,18 +45,18 @@ def add_unique_constraint():
             null_count = result.scalar()
 
             if null_count > 0:
-                logger.warning(f"发现 {null_count} 条 alert_hash 为空的原始告警，正在修复...")
+                log(f"发现 {null_count} 条 alert_hash 为空的原始告警，正在修复...", 'warning')
                 session.execute(text("""
                     UPDATE webhook_events
                     SET alert_hash = md5(id::text || timestamp::text)
                     WHERE alert_hash IS NULL AND is_duplicate = 0
                 """))
-                logger.info(f"✅ 已修复 {null_count} 条记录")
+                log(f"✅ 已修复 {null_count} 条记录")
             else:
-                logger.info("✅ 无需修复，所有原始告警都有 alert_hash")
+                log("✅ 无需修复，所有原始告警都有 alert_hash")
 
             # 步骤 2: 检查并处理重复的原始告警
-            logger.info("📋 步骤 2: 检查重复的原始告警...")
+            log("📋 步骤 2: 检查重复的原始告警...")
             result = session.execute(text("""
                 SELECT alert_hash, COUNT(*) as cnt, array_agg(id ORDER BY timestamp) as ids
                 FROM webhook_events
