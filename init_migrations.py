@@ -257,8 +257,68 @@ def add_beyond_window_field():
         return False
 
 
+def add_last_notified_at_field():
+    """
+    添加 last_notified_at 字段（静默模式）
+
+    Returns:
+        bool: 成功返回True，失败返回False
+    """
+    engine = get_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查字段是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'webhook_events' AND column_name = 'last_notified_at'
+                )
+            """))
+            field_exists = result.scalar()
+
+            if field_exists:
+                # 字段已存在，无需操作
+                return True
+
+            # 字段不存在，需要添加
+            print("⚙️  首次启动：正在添加 last_notified_at 字段...")
+
+            # 添加字段
+            conn.execute(text("""
+                ALTER TABLE webhook_events
+                ADD COLUMN last_notified_at TIMESTAMP
+            """))
+            conn.commit()
+            print("   ✅ last_notified_at 字段添加成功")
+
+            # 初始化历史数据：新告警的 last_notified_at 设置为创建时间
+            print("   🔄 正在初始化历史数据的 last_notified_at 值...")
+            conn.execute(text("""
+                UPDATE webhook_events
+                SET last_notified_at = created_at
+                WHERE is_duplicate = 0 AND last_notified_at IS NULL
+            """))
+            conn.commit()
+
+            updated_count = conn.execute(text("""
+                SELECT COUNT(*) FROM webhook_events WHERE last_notified_at IS NOT NULL
+            """)).scalar()
+
+            print(f"   ✅ 已初始化 {updated_count} 条记录的 last_notified_at 值")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        import traceback
+        traceback.print_exc()
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
     success3 = add_beyond_window_field()
-    sys.exit(0 if (success1 and success2 and success3) else 1)
+    success4 = add_last_notified_at_field()
+    sys.exit(0 if (success1 and success2 and success3 and success4) else 1)

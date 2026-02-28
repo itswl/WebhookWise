@@ -229,16 +229,44 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         importance = analysis_result.get('importance', '').lower()
         should_forward = False
         skip_reason = None
+        is_periodic_reminder = False  # 是否为周期性提醒
 
         if importance == 'high':
             # 注意：先判断窗口外，因为窗口外告警也有 is_duplicate=True
             if beyond_window and not Config.FORWARD_AFTER_TIME_WINDOW:
                 # 窗口外的历史重复告警（超过24小时）
                 skip_reason = f'窗口外重复告警（原始 ID={original_id}），配置跳过转发'
-            elif is_duplicate and not beyond_window and not Config.FORWARD_DUPLICATE_ALERTS:
-                # 窗口内的重复告警（24小时内）
-                # 条件：is_duplicate=True 且 beyond_window=False
-                skip_reason = f'窗口内重复告警（原始 ID={original_id}），配置跳过转发'
+            elif is_duplicate and not beyond_window:
+                # 窗口内的重复告警
+                # 检查是否需要周期性提醒
+                if Config.ENABLE_PERIODIC_REMINDER and original_event:
+                    from datetime import timedelta
+
+                    # 计算距离上次通知的时间
+                    last_notified = original_event.last_notified_at
+                    if last_notified:
+                        time_since_notification = (datetime.now() - last_notified).total_seconds() / 3600
+                        if time_since_notification >= Config.REMINDER_INTERVAL_HOURS:
+                            # 需要周期性提醒
+                            should_forward = True
+                            is_periodic_reminder = True
+                            logger.info(f"触发周期性提醒: 原始ID={original_id}, 距上次通知{time_since_notification:.1f}小时, 已重复{original_event.duplicate_count}次")
+                        else:
+                            # 尚未到提醒时间
+                            skip_reason = f'窗口内重复告警（原始 ID={original_id}），距上次通知仅{time_since_notification:.1f}小时'
+                    else:
+                        # 首次通知后的重复（原始告警有 last_notified_at，但可能为 None）
+                        # 理论上新告警创建时会设置，这里做个保护
+                        if not Config.FORWARD_DUPLICATE_ALERTS:
+                            skip_reason = f'窗口内重复告警（原始 ID={original_id}），配置跳过转发'
+                        else:
+                            should_forward = True
+                else:
+                    # 未启用周期性提醒，按原逻辑
+                    if not Config.FORWARD_DUPLICATE_ALERTS:
+                        skip_reason = f'窗口内重复告警（原始 ID={original_id}），配置跳过转发'
+                    else:
+                        should_forward = True
             else:
                 should_forward = True
         else:
@@ -246,9 +274,25 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
 
         forward_result = {'status': 'skipped', 'reason': skip_reason}
         if should_forward:
-            alert_type = '窗口内重复' if is_duplicate else ('窗口外重复' if beyond_window else '新')
+            alert_type = '周期性提醒' if is_periodic_reminder else ('窗口内重复' if is_duplicate else ('窗口外重复' if beyond_window else '新'))
             logger.info(f"开始自动转发高风险{alert_type}告警...")
-            forward_result = forward_to_remote(webhook_full_data, analysis_result)
+            forward_result = forward_to_remote(webhook_full_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
+
+            # 更新原始告警的 last_notified_at（如果成功转发）
+            if forward_result.get('status') == 'success' and original_event:
+                try:
+                    from models import get_session
+                    from sqlalchemy import update
+                    with get_session() as session:
+                        session.execute(
+                            update(WebhookEvent)
+                            .where(WebhookEvent.id == original_event.id)
+                            .values(last_notified_at=datetime.now())
+                        )
+                        session.commit()
+                        logger.info(f"已更新原始告警 {original_event.id} 的 last_notified_at")
+                except Exception as e:
+                    logger.warning(f"更新 last_notified_at 失败: {e}")
         else:
             logger.info(f"跳过自动转发: {skip_reason}")
             
