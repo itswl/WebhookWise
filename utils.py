@@ -543,20 +543,35 @@ def get_all_webhooks(
             time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
             for webhook in webhooks:
                 if webhook.get('is_duplicate') and webhook.get('duplicate_of'):
-                    # 查询原始告警的时间
+                    # 链式判断：查找当前记录的前一个重复告警（最近的）
                     try:
-                        original_event = session.get(WebhookEvent, webhook['duplicate_of'])
-                        if original_event:
-                            # 计算时间差
-                            event_time = datetime.fromisoformat(webhook['timestamp'])
-                            time_diff = (event_time - original_event.timestamp).total_seconds() / 3600
+                        event_time = datetime.fromisoformat(webhook['timestamp'])
+                        current_alert_hash = webhook.get('alert_hash')
 
-                            # 判断是否在窗口内
-                            is_within_window = time_diff <= time_window_hours
-                            webhook['is_within_window'] = is_within_window
-                            webhook['beyond_time_window'] = not is_within_window
+                        if current_alert_hash:
+                            # 查找同一 hash 的上一条记录（时间上比当前记录早的最近一条）
+                            prev_event = session.query(WebhookEvent)\
+                                .filter(
+                                    WebhookEvent.alert_hash == current_alert_hash,
+                                    WebhookEvent.timestamp < event_time
+                                )\
+                                .order_by(WebhookEvent.timestamp.desc())\
+                                .first()
+
+                            if prev_event:
+                                # 计算与前一条记录的时间差（链式）
+                                time_diff = (event_time - prev_event.timestamp).total_seconds() / 3600
+
+                                # 判断是否在窗口内
+                                is_within_window = time_diff <= time_window_hours
+                                webhook['is_within_window'] = is_within_window
+                                webhook['beyond_time_window'] = not is_within_window
+                            else:
+                                # 找不到前一条记录
+                                webhook['is_within_window'] = False
+                                webhook['beyond_time_window'] = False
                         else:
-                            # 找不到原始告警，标记为未知
+                            # 没有 alert_hash
                             webhook['is_within_window'] = False
                             webhook['beyond_time_window'] = False
                     except Exception as e:
