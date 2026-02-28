@@ -70,9 +70,18 @@ def add_unique_constraint(verbose=True):
             if duplicates:
                 logger.warning(f"发现 {len(duplicates)} 组重复的原始告警")
                 for row in duplicates:
-                    alert_hash, count, ids_str = row
-                    # 解析 PostgreSQL 数组格式 "{1,2,3}"
-                    ids = [int(x) for x in ids_str.strip('{}').split(',')]
+                    alert_hash, count, ids_data = row
+
+                    # 处理不同格式的数组返回值
+                    if isinstance(ids_data, list):
+                        # SQLAlchemy 直接返回 Python 列表
+                        ids = ids_data
+                    elif isinstance(ids_data, str):
+                        # 字符串格式 "{1,2,3}"
+                        ids = [int(x) for x in ids_data.strip('{}').split(',')]
+                    else:
+                        logger.warning(f"  未知的数组格式: {type(ids_data)}, 跳过")
+                        continue
 
                     logger.info(f"  alert_hash={alert_hash[:16]}..., count={count}, ids={ids}")
 

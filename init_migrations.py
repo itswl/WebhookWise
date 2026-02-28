@@ -62,8 +62,18 @@ def check_and_add_unique_constraint():
 
                 duplicates = result.fetchall()
                 for row in duplicates:
-                    alert_hash, ids_str = row
-                    ids = [int(x) for x in ids_str.strip('{}').split(',')]
+                    alert_hash, ids_data = row
+
+                    # 处理不同格式的数组返回值
+                    if isinstance(ids_data, list):
+                        # SQLAlchemy 直接返回 Python 列表
+                        ids = ids_data
+                    elif isinstance(ids_data, str):
+                        # 字符串格式 "{1,2,3}"
+                        ids = [int(x) for x in ids_data.strip('{}').split(',')]
+                    else:
+                        print(f"   ⚠️  未知的数组格式: {type(ids_data)}")
+                        continue
 
                     # 保留第一个，其他标记为重复
                     original_id = ids[0]
