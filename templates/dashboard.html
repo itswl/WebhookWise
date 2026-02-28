@@ -975,7 +975,7 @@
             return Math.floor(seconds / 86400) + '天前';
         }
 
-        // 加载数据 - 根据实际数据量智能加载
+        // 加载数据 - 根据实际数据量智能加载（支持游标分页）
         async function loadWebhooks() {
             try {
                 // 显示加载提示
@@ -991,6 +991,8 @@
 
                 // 第二步：根据总数决定加载策略
                 let loadSize;
+                const MAX_PAGE_SIZE = 200; // API限制的最大page_size
+
                 if (totalRecords <= 1000) {
                     loadSize = totalRecords; // 全部加载
                     console.log('策略: 全部加载');
@@ -1002,39 +1004,62 @@
                     console.log('策略: 加载前 5000 条');
                 }
 
-                // 第三步：加载数据（使用摘要模式，大幅减少数据传输量）
-                const response = await fetch('/api/webhooks?page=1&page_size=' + loadSize + '&fields=summary');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
+                // 第三步：分批加载数据（使用游标分页）
+                allWebhooks = [];
+                let nextCursor = null;
+                let loadedCount = 0;
 
-                const result = await response.json();
+                while (loadedCount < loadSize) {
+                    const batchSize = Math.min(MAX_PAGE_SIZE, loadSize - loadedCount);
+                    const url = nextCursor
+                        ? '/api/webhooks?page_size=' + batchSize + '&cursor=' + nextCursor + '&fields=summary'
+                        : '/api/webhooks?page=1&page_size=' + batchSize + '&fields=summary';
 
-                if (result.success) {
-                    allWebhooks = result.data || [];
-                    totalCount = totalRecords;
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
 
-                    console.log('✅ 已加载数据:', allWebhooks.length, '条（总共', totalCount, '条）');
+                    const result = await response.json();
 
-                    // 如果实际数据量超过加载量，提示用户
-                    if (totalCount > allWebhooks.length) {
-                        const percent = Math.round(allWebhooks.length / totalCount * 100);
-                        console.warn('⚠️  数据量较大，已加载 ' + percent + '%（' + allWebhooks.length + '/' + totalCount + '条）');
-
-                        // 在页面上显示提示
-                        const hint = document.createElement('div');
-                        hint.style.cssText = 'position: fixed; top: 70px; right: 20px; background: #fff3cd; border: 1px solid #ffc107; padding: 1rem; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 999; max-width: 300px;';
-                        hint.innerHTML = '<strong>📊 数据提示</strong><br>总共有 ' + totalCount + ' 条数据，已加载前 ' + allWebhooks.length + ' 条用于筛选。';
-                        document.body.appendChild(hint);
-
-                        // 5秒后自动隐藏
-                        setTimeout(() => hint.remove(), 5000);
+                    if (!result.success || !result.data) {
+                        throw new Error('数据格式错误');
                     }
 
-                    updateStats();
-                    frontendCurrentPage = 1; // 重置到第一页
-                    filterAlerts();
+                    // 累加数据
+                    allWebhooks = allWebhooks.concat(result.data);
+                    loadedCount += result.data.length;
+                    nextCursor = result.pagination && result.pagination.next_cursor;
 
-                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+                    console.log('🔄 已加载:', loadedCount, '/', loadSize, '条');
+
+                    // 如果没有更多数据或已达到目标数量，停止
+                    if (!nextCursor || result.data.length === 0) {
+                        break;
+                    }
                 }
+
+                totalCount = totalRecords;
+                console.log('✅ 数据加载完成:', allWebhooks.length, '条（总共', totalCount, '条）');
+
+                // 如果实际数据量超过加载量，提示用户
+                if (totalCount > allWebhooks.length) {
+                    const percent = Math.round(allWebhooks.length / totalCount * 100);
+                    console.warn('⚠️  数据量较大，已加载 ' + percent + '%（' + allWebhooks.length + '/' + totalCount + '条）');
+
+                    // 在页面上显示提示
+                    const hint = document.createElement('div');
+                    hint.style.cssText = 'position: fixed; top: 70px; right: 20px; background: #fff3cd; border: 1px solid #ffc107; padding: 1rem; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 999; max-width: 300px;';
+                    hint.innerHTML = '<strong>📊 数据提示</strong><br>总共有 ' + totalCount + ' 条数据，已加载前 ' + allWebhooks.length + ' 条用于筛选。';
+                    document.body.appendChild(hint);
+
+                    // 5秒后自动隐藏
+                    setTimeout(() => hint.remove(), 5000);
+                }
+
+                updateStats();
+                frontendCurrentPage = 1; // 重置到第一页
+                filterAlerts();
+
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
             } catch (error) {
                 console.error('加载失败:', error);
                 showError('加载失败: ' + error.message);
