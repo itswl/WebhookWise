@@ -128,8 +128,12 @@ ENABLE_FORWARD=true
 FORWARD_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_WEBHOOK_KEY
 
 # 重复告警去重配置
-DUPLICATE_ALERT_TIME_WINDOW=24  # 时间窗口（小时）
-FORWARD_DUPLICATE_ALERTS=false  # 是否转发重复告警
+DUPLICATE_ALERT_TIME_WINDOW=24         # 时间窗口（小时）
+FORWARD_DUPLICATE_ALERTS=false         # 窗口内重复告警是否转发
+
+# 超时间窗口后的行为配置（新增）
+REANALYZE_AFTER_TIME_WINDOW=true      # 超时间窗口后是否重新分析
+FORWARD_AFTER_TIME_WINDOW=true        # 超时间窗口后是否推送转发
 ```
 
 ### AI Prompt 动态配置 🆕
@@ -180,14 +184,45 @@ curl http://localhost:5000/api/prompt
 - **默认值**: 24（小时）
 - **说明**: 在此时间窗口内，相同的告警会被识别为重复
 - **示例**: 设置为 1 表示 1 小时内的重复告警会被去重
+- **取值范围**: 1-168（7天）
 
-#### 转发策略配置
+#### 窗口内转发策略
 - **参数**: `FORWARD_DUPLICATE_ALERTS`
 - **默认值**: false
 - **选项**:
-  - `false`: 重复告警不自动转发（推荐，减少噪音）
-  - `true`: 重复告警的高风险事件仍然转发
-- **说明**: 无论如何设置，重复告警都会跳过 AI 分析，复用原始分析结果
+  - `false`: 窗口内重复告警不自动转发（推荐，减少噪音）
+  - `true`: 窗口内重复告警的高风险事件仍然转发
+- **说明**: 窗口内重复告警都会跳过 AI 分析，复用原始分析结果
+
+#### 超时间窗口后的行为配置 🆕
+
+**1. 重新分析配置**
+- **参数**: `REANALYZE_AFTER_TIME_WINDOW`
+- **默认值**: true
+- **选项**:
+  - `true`: 超过时间窗口后重新调用 AI 分析（产生费用，但保证结果最新）
+  - `false`: 复用历史分析结果（节省 AI API 费用）
+- **适用场景**:
+  - 告警内容可能变化 → 设置 `true`
+  - 告警内容固定 → 设置 `false` 节省费用
+
+**2. 转发配置**
+- **参数**: `FORWARD_AFTER_TIME_WINDOW`
+- **默认值**: true
+- **选项**:
+  - `true`: 超过时间窗口后仍推送高风险告警（定期提醒）
+  - `false`: 不推送，避免重复通知
+- **适用场景**:
+  - 需要定期关注持续问题 → 设置 `true`
+  - 避免通知疲劳 → 设置 `false`
+
+**配置组合建议**:
+- **成本敏感**（推荐）: `REANALYZE=false, FORWARD=true` - 节省费用但仍提醒
+- **准确性优先**: `REANALYZE=true, FORWARD=true` - 最新分析+定期提醒
+- **静默模式**: `REANALYZE=false, FORWARD=false` - 仅记录不通知
+- **仅记录**: `REANALYZE=true, FORWARD=false` - 更新分析但不推送
+
+详细说明请参考: [TIME_WINDOW_BEHAVIOR_CONFIG.md](TIME_WINDOW_BEHAVIOR_CONFIG.md)
 
 ## API 接口
 
@@ -274,7 +309,9 @@ Content-Type: application/json
 
 {
   "duplicate_alert_time_window": 12,
-  "forward_duplicate_alerts": true
+  "forward_duplicate_alerts": true,
+  "reanalyze_after_time_window": false,
+  "forward_after_time_window": true
 }
 ```
 
@@ -304,21 +341,34 @@ Content-Type: application/json
 
 ### 示例场景
 
-**场景 1: 关闭重复告警转发（推荐）**
+**场景 1: 窗口内不转发，窗口外复用分析但推送（推荐）**
 ```bash
-FORWARD_DUPLICATE_ALERTS=false
+DUPLICATE_ALERT_TIME_WINDOW=24
+FORWARD_DUPLICATE_ALERTS=false         # 窗口内不转发
+REANALYZE_AFTER_TIME_WINDOW=false     # 窗口外不重新分析（节省费用）
+FORWARD_AFTER_TIME_WINDOW=true        # 窗口外仍推送（定期提醒）
 ```
-- 第 1 次告警：AI 分析 + 转发（如果是高风险）
-- 第 2 次告警：复用分析 + 不转发
-- 第 3 次告警：复用分析 + 不转发
+- 第 1 次告警（10:00）：✅ AI 分析 + 转发（高风险）
+- 第 2 次告警（11:00，1h后）：✅ 复用分析 + ❌ 不转发（窗口内）
+- 第 3 次告警（第2天 11:00，25h后）：✅ 复用分析 + ✅ 转发（窗口外）
 
-**场景 2: 开启重复告警转发**
+**场景 2: 完全重新处理（准确性优先）**
 ```bash
-FORWARD_DUPLICATE_ALERTS=true
+REANALYZE_AFTER_TIME_WINDOW=true      # 窗口外重新分析
+FORWARD_AFTER_TIME_WINDOW=true        # 窗口外推送
 ```
-- 第 1 次告警：AI 分析 + 转发（如果是高风险）
-- 第 2 次告警：复用分析 + 转发（如果是高风险）
-- 第 3 次告警：复用分析 + 转发（如果是高风险）
+- 第 1 次告警：✅ AI 分析 + 转发
+- 窗口内重复：✅ 复用分析 + ❌ 不转发
+- 窗口外重复：✅ **重新分析** + ✅ 转发
+
+**场景 3: 静默模式（避免重复通知）**
+```bash
+REANALYZE_AFTER_TIME_WINDOW=false     # 窗口外不重新分析
+FORWARD_AFTER_TIME_WINDOW=false       # 窗口外不推送
+```
+- 第 1 次告警：✅ AI 分析 + 转发
+- 窗口内重复：✅ 复用分析 + ❌ 不转发
+- 窗口外重复：✅ 复用分析 + ❌ 不转发（仅记录）
 
 ## 数据库结构
 
@@ -460,6 +510,14 @@ webhooks/
 ```
 
 ## 更新日志
+
+### v2.1.0 (2026-02-28)
+- ✨ 新增：超时间窗口后行为独立配置
+  - `REANALYZE_AFTER_TIME_WINDOW` - 控制是否重新调用 AI 分析
+  - `FORWARD_AFTER_TIME_WINDOW` - 控制是否推送转发
+- 🔧 优化：去重检测逻辑支持窗口外历史告警识别
+- 📝 文档：新增 [TIME_WINDOW_BEHAVIOR_CONFIG.md](TIME_WINDOW_BEHAVIOR_CONFIG.md) 详细说明
+- 💡 场景：支持"节省费用但仍提醒"等灵活配置组合
 
 ### v2.0.0 (2025-11-07)
 - ✨ 新增：可配置的重复告警去重功能
