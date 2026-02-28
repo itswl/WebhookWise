@@ -47,7 +47,8 @@ class WebhookEvent(Base):
     is_duplicate = Column(Integer, default=0)  # 0: 新告警, 1: 重复告警
     duplicate_of = Column(Integer)  # 如果是重复告警，指向原始告警的ID
     duplicate_count = Column(Integer, default=1)  # 重复次数
-    
+    beyond_window = Column(Integer, default=0)  # 0: 窗口内, 1: 窗口外
+
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -85,6 +86,7 @@ class WebhookEvent(Base):
             'is_duplicate': self.is_duplicate,
             'duplicate_of': self.duplicate_of,
             'duplicate_count': self.duplicate_count,
+            'beyond_window': self.beyond_window,
             'forward_status': self.forward_status,
             'summary': summary,  # AI 摘要（而非完整分析）
             'alert_info': alert_info,  # 告警关键信息（而非完整 parsed_data）
@@ -108,6 +110,7 @@ class WebhookEvent(Base):
             'is_duplicate': self.is_duplicate,
             'duplicate_of': self.duplicate_of,
             'duplicate_count': self.duplicate_count,
+            'beyond_window': self.beyond_window,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
