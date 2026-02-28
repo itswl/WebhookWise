@@ -191,7 +191,7 @@ def check_duplicate_alert(
         # 计算时间窗口的起始时间
         time_threshold = datetime.now() - timedelta(hours=time_window_hours)
 
-        # 查询相同哈希值的告警（时间窗口内，且不是重复告警）
+        # 步骤1：查询窗口内的原始告警（is_duplicate=0）
         # 使用 with_for_update() 添加行锁，防止并发竞态
         # 注意：等待锁释放（nowait=False），而不是跳过，确保读取到最新数据
         original_event = session.query(WebhookEvent)\
@@ -208,9 +208,27 @@ def check_duplicate_alert(
             logger.info(f"检测到重复告警: hash={alert_hash}, 原始告警ID={original_event.id}, 时间窗口={time_window_hours}小时")
             return True, original_event, False
 
-        # 如果窗口内没有，检查窗口外是否有历史告警
-        has_history = False
-        history_event = None
+        # 步骤2：窗口内没有原始告警，检查是否有任何记录（包括重复记录）
+        # 这是为了防止窗口外告警短时间内重复触发（如51秒内两次）
+        any_event = session.query(WebhookEvent)\
+            .filter(
+                WebhookEvent.alert_hash == alert_hash,
+                WebhookEvent.timestamp >= time_threshold
+                # 不限制 is_duplicate，查询所有记录
+            )\
+            .order_by(WebhookEvent.timestamp.desc())\
+            .first()
+
+        if any_event:
+            # 窗口内有记录（虽然是重复记录），说明最近已经处理过了
+            # 找到这条记录对应的原始告警
+            original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
+            original_ref = session.get(WebhookEvent, original_id) if original_id else any_event
+
+            logger.info(f"检测到窗口内已处理的重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 时间窗口={time_window_hours}小时")
+            return True, original_ref, False
+
+        # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
         if check_beyond_window:
             history_event = session.query(WebhookEvent)\
                 .filter(
@@ -221,7 +239,6 @@ def check_duplicate_alert(
                 .first()
 
             if history_event:
-                has_history = True
                 time_diff = (datetime.now() - history_event.timestamp).total_seconds() / 3600
                 logger.info(f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时")
                 # 返回历史事件，用于可能的分析结果复用
