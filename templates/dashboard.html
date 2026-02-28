@@ -813,7 +813,7 @@
             <div class="filter-grid">
                 <div class="filter-item">
                     <label class="filter-label">搜索</label>
-                    <input type="text" class="filter-input" id="searchInput" placeholder="搜索告警内容、来源..." onkeyup="filterAlerts()" autocomplete="off">
+                    <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="搜索告警内容、来源..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
                 </div>
                 <div class="filter-item">
                     <label class="filter-label">优先级</label>
@@ -1715,6 +1715,17 @@
         });
 
         // 初始化
+        // 强制清空搜索框（防止浏览器自动填充）
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                // 延迟再清一次，确保浏览器自动填充后也能清空
+                setTimeout(function() {
+                    searchInput.value = '';
+                }, 100);
+            }
+        });
         loadWebhooks();
     </script>
 </body>
