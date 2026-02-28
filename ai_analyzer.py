@@ -393,11 +393,57 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
         raise
 
 
-def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
-    """发送 AI 降级通知"""
+def _should_send_degradation_alert() -> bool:
+    """
+    检查是否应该发送降级通知（24小时限流）
+
+    使用文件记录上次通知时间，避免频繁通知
+
+    Returns:
+        bool: True - 应该发送，False - 跳过（24小时内已通知过）
+    """
+    from datetime import datetime, timedelta
+    import os
+    from pathlib import Path
+
+    # 使用临时文件记录上次通知时间
+    marker_file = Path('/tmp/.ai_degradation_last_alert')
+
     try:
+        # 读取上次通知时间
+        if marker_file.exists():
+            with open(marker_file, 'r') as f:
+                last_alert_time_str = f.read().strip()
+                last_alert_time = datetime.fromisoformat(last_alert_time_str)
+
+            # 检查是否在24小时内
+            time_since_last = datetime.now() - last_alert_time
+            if time_since_last < timedelta(hours=24):
+                hours_remaining = 24 - (time_since_last.total_seconds() / 3600)
+                logger.info(f"跳过降级通知：距离上次通知仅 {time_since_last.total_seconds() / 3600:.1f} 小时，还需等待 {hours_remaining:.1f} 小时")
+                return False
+
+        # 记录本次通知时间
+        with open(marker_file, 'w') as f:
+            f.write(datetime.now().isoformat())
+
+        return True
+
+    except Exception as e:
+        logger.error(f"检查降级通知限流失败: {e}，默认允许发送")
+        return True
+
+
+def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
+    """发送 AI 降级通知（带24小时限流）"""
+    try:
+        # 检查是否在限流期内
+        if not _should_send_degradation_alert():
+            return
+
         # 只有启用转发且配置了转发地址才发送
         if not Config.ENABLE_FORWARD or not Config.FORWARD_URL:
+            logger.info("转发未启用，跳过降级通知")
             return
 
         # 检查是否是飞书 webhook
@@ -444,7 +490,7 @@ def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> Non
                         "elements": [
                             {
                                 "tag": "plain_text",
-                                "content": "提示：请尽快修复 AI 服务，以恢复智能分析功能"
+                                "content": "💡 此通知24小时内仅发送一次，避免频繁打扰。请尽快修复 AI 服务以恢复智能分析功能。"
                             }
                         ]
                     }
