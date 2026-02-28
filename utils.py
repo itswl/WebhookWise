@@ -193,7 +193,7 @@ def check_duplicate_alert(
 
         # 查询相同哈希值的告警（时间窗口内，且不是重复告警）
         # 使用 with_for_update() 添加行锁，防止并发竞态
-        # 注意：不使用 skip_locked，而是等待锁释放，确保读取到最新数据
+        # 注意：等待锁释放（nowait=False），而不是跳过，确保读取到最新数据
         original_event = session.query(WebhookEvent)\
             .filter(
                 WebhookEvent.alert_hash == alert_hash,
@@ -201,7 +201,7 @@ def check_duplicate_alert(
                 WebhookEvent.is_duplicate == 0  # 只查找原始告警
             )\
             .order_by(WebhookEvent.timestamp.desc())\
-            .with_for_update(nowait=False)\ # 等待锁释放，而不是跳过
+            .with_for_update(nowait=False)\
             .first()
 
         if original_event:
