@@ -191,6 +191,7 @@ def check_duplicate_alert(
 
         # 查询相同哈希值的告警（时间窗口内，且不是重复告警）
         # 使用 with_for_update() 添加行锁，防止并发竞态
+        # 注意：不使用 skip_locked，而是等待锁释放，确保读取到最新数据
         original_event = session.query(WebhookEvent)\
             .filter(
                 WebhookEvent.alert_hash == alert_hash,
@@ -198,7 +199,7 @@ def check_duplicate_alert(
                 WebhookEvent.is_duplicate == 0  # 只查找原始告警
             )\
             .order_by(WebhookEvent.timestamp.desc())\
-            .with_for_update(skip_locked=True)\
+            .with_for_update(nowait=False)\ # 等待锁释放，而不是跳过
             .first()
 
         if original_event:
@@ -227,17 +228,23 @@ def save_webhook_data(
     is_duplicate: Optional[bool] = None,
     original_event: Optional[WebhookEvent] = None
 ) -> tuple[Union[int, str], bool, Optional[int]]:
-    """保存 webhook 数据到数据库"""
+    """保存 webhook 数据到数据库（带重试机制防止并发竞态）"""
+    from sqlalchemy.exc import IntegrityError
+
     # 如果未提供预计算的哈希值，则重新计算
     if alert_hash is None:
         alert_hash = generate_alert_hash(data, source)
-    
-    # 使用事务保证重复检测和写入的原子性
-    try:
-        with session_scope() as session:
-            # 在事务内检查重复（如果未预检测）
-            if is_duplicate is None:
-                is_duplicate, original_event = check_duplicate_alert(alert_hash, session=session)
+
+    # 重试次数（用于处理并发竞态）
+    max_retries = 3
+    retry_delay = 0.1  # 100ms
+
+    for attempt in range(max_retries):
+        try:
+            with session_scope() as session:
+                # 在事务内检查重复（如果未预检测）
+                if is_duplicate is None:
+                    is_duplicate, original_event = check_duplicate_alert(alert_hash, session=session)
             if is_duplicate and original_event:
                 # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
                 orig = session.get(WebhookEvent, original_event.id)
@@ -276,40 +283,97 @@ def save_webhook_data(
                     
                     return webhook_id, True, orig.id
             
-            # 新告警：正常保存
-            webhook_event = WebhookEvent(
-                source=source,
-                client_ip=client_ip,
-                timestamp=datetime.now(),
-                raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                headers=dict(headers) if headers else {},
-                parsed_data=data,
-                alert_hash=alert_hash,
-                ai_analysis=ai_analysis,
-                importance=ai_analysis.get('importance') if ai_analysis else None,
-                forward_status=forward_status,
-                is_duplicate=0,
-                duplicate_of=None,
-                duplicate_count=1
-            )
-            
-            session.add(webhook_event)
-            session.flush()  # 获取 ID
-            
-            webhook_id = webhook_event.id
-            logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
-            
-            # 可选: 同时保存到文件
-            if Config.ENABLE_FILE_BACKUP:
-                save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-            
-            return webhook_id, False, None
-        
-    except Exception as e:
-        logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
-        # 失败时至少保存到文件
-        file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        return file_id, False, None
+                # 新告警：正常保存
+                webhook_event = WebhookEvent(
+                    source=source,
+                    client_ip=client_ip,
+                    timestamp=datetime.now(),
+                    raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                    headers=dict(headers) if headers else {},
+                    parsed_data=data,
+                    alert_hash=alert_hash,
+                    ai_analysis=ai_analysis,
+                    importance=ai_analysis.get('importance') if ai_analysis else None,
+                    forward_status=forward_status,
+                    is_duplicate=0,
+                    duplicate_of=None,
+                    duplicate_count=1
+                )
+
+                session.add(webhook_event)
+                session.flush()  # 获取 ID
+
+                webhook_id = webhook_event.id
+                logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
+
+                # 可选: 同时保存到文件
+                if Config.ENABLE_FILE_BACKUP:
+                    save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+
+                return webhook_id, False, None
+
+        except IntegrityError as e:
+            # 唯一约束冲突：说明另一个 worker 已经插入了相同的原始告警
+            logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{max_retries}): {str(e)}")
+
+            if attempt < max_retries - 1:
+                # 重试：等待一小段时间后重新检查
+                import time
+                time.sleep(retry_delay * (attempt + 1))  # 指数退避
+                is_duplicate = None  # 重置状态，强制重新检查
+                original_event = None
+                logger.info(f"正在重试... (attempt {attempt + 2}/{max_retries})")
+                continue
+            else:
+                # 最后一次重试失败，尝试最后一次查找
+                logger.error(f"重试 {max_retries} 次后仍然失败，尝试最后查找")
+                from sqlalchemy import text
+                with session_scope() as fallback_session:
+                    # 直接查询（不加锁）
+                    existing = fallback_session.query(WebhookEvent)\
+                        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0)\
+                        .order_by(WebhookEvent.timestamp.desc())\
+                        .first()
+
+                    if existing:
+                        # 找到了，标记为重复
+                        logger.info(f"最终找到原始告警 ID={existing.id}，标记为重复")
+                        existing.duplicate_count += 1
+
+                        dup_event = WebhookEvent(
+                            source=source,
+                            client_ip=client_ip,
+                            timestamp=datetime.now(),
+                            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                            headers=dict(headers) if headers else {},
+                            parsed_data=data,
+                            alert_hash=alert_hash,
+                            ai_analysis=existing.ai_analysis,
+                            importance=existing.importance,
+                            forward_status=forward_status,
+                            is_duplicate=1,
+                            duplicate_of=existing.id,
+                            duplicate_count=1
+                        )
+                        fallback_session.add(dup_event)
+                        fallback_session.flush()
+
+                        return dup_event.id, True, existing.id
+                    else:
+                        # 真的没找到，记录错误
+                        logger.error(f"并发冲突但无法找到原始告警: hash={alert_hash}")
+                        raise
+
+        except Exception as e:
+            logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
+            # 失败时至少保存到文件
+            file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+            return file_id, False, None
+
+    # 不应该执行到这里
+    logger.error("保存数据异常：退出重试循环但未返回结果")
+    file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+    return file_id, False, None
 
 
 def save_webhook_to_file(

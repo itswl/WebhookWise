@@ -681,6 +681,36 @@ def method_not_allowed(error):
     }), 405
 
 
+@app.route('/api/migrations/add_unique_constraint', methods=['POST'])
+def migration_add_unique_constraint() -> tuple[Response, int]:
+    """执行数据库迁移：添加唯一约束"""
+    try:
+        # 导入迁移工具
+        from migrations_tool import add_unique_constraint
+
+        logger.info("开始执行数据库迁移：添加唯一约束")
+
+        success = add_unique_constraint()
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '数据库迁移成功：唯一约束已添加'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': '数据库迁移失败，请查看日志'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"执行迁移失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     # 启动前验证
     Config.validate()
