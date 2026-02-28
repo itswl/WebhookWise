@@ -526,6 +526,35 @@ def get_all_webhooks(
                 # 完整模式：返回所有字段
                 webhooks = [event.to_dict() for event in events]
 
+            # 为重复告警添加窗口信息（动态计算）
+            time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
+            for webhook in webhooks:
+                if webhook.get('is_duplicate') and webhook.get('duplicate_of'):
+                    # 查询原始告警的时间
+                    try:
+                        original_event = session.get(WebhookEvent, webhook['duplicate_of'])
+                        if original_event:
+                            # 计算时间差
+                            event_time = datetime.fromisoformat(webhook['timestamp'])
+                            time_diff = (event_time - original_event.timestamp).total_seconds() / 3600
+
+                            # 判断是否在窗口内
+                            is_within_window = time_diff <= time_window_hours
+                            webhook['is_within_window'] = is_within_window
+                            webhook['beyond_time_window'] = not is_within_window
+                        else:
+                            # 找不到原始告警，标记为未知
+                            webhook['is_within_window'] = False
+                            webhook['beyond_time_window'] = False
+                    except Exception as e:
+                        logger.warning(f"计算窗口状态失败 (webhook={webhook.get('id')}): {e}")
+                        webhook['is_within_window'] = False
+                        webhook['beyond_time_window'] = False
+                else:
+                    # 非重复告警
+                    webhook['is_within_window'] = False
+                    webhook['beyond_time_window'] = False
+
             # 计算下一页游标
             next_cursor = events[-1].id if events else None
 

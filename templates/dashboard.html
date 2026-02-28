@@ -1131,7 +1131,20 @@
                 html += '</div></div>';
                 html += '<div class="alert-right">';
                 html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
-                if (isDuplicate) html += '<span class="badge badge-duplicate">重复</span>';
+                // 显示重复类型：窗口内 or 窗口外
+                if (isDuplicate) {
+                    const isWithinWindow = webhook.is_within_window || false;
+                    const isBeyondWindow = webhook.beyond_time_window || false;
+
+                    if (isBeyondWindow) {
+                        html += '<span class="badge badge-duplicate" title="超过24小时窗口的重复告警">窗口外重复</span>';
+                    } else if (isWithinWindow) {
+                        html += '<span class="badge badge-duplicate" title="24小时窗口内的重复告警">窗口内重复</span>';
+                    } else {
+                        // 兜底：没有明确标记的情况
+                        html += '<span class="badge badge-duplicate">重复</span>';
+                    }
+                }
                 html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
                 html += '<div class="alert-actions">';
                 html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + webhook.id + '">🔄 重新分析</button>';
@@ -1215,6 +1228,17 @@
             if (webhook.is_duplicate) {
                 html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
                 html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
+
+                // 显示重复类型
+                const isWithinWindow = webhook.is_within_window || false;
+                const isBeyondWindow = webhook.beyond_time_window || false;
+                let duplicateType = '未知';
+                if (isBeyondWindow) {
+                    duplicateType = '窗口外重复（超过24小时）';
+                } else if (isWithinWindow) {
+                    duplicateType = '窗口内重复（24小时内）';
+                }
+                html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + duplicateType + '</div></div>';
             }
             html += '</div>';
             return html;
