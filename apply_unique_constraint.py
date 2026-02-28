@@ -3,21 +3,43 @@
 添加唯一约束防止重复告警
 
 使用方法:
+    # 从环境变量读取数据库连接信息
+    export DATABASE_URL="postgresql://user:pass@host:port/dbname"
     python apply_unique_constraint.py
+
+    # 或直接指定
+    DATABASE_URL="postgresql://user:pass@host:port/dbname" python apply_unique_constraint.py
 """
 
 import sys
+import os
 import psycopg2
 from psycopg2 import sql
+from urllib.parse import urlparse
 
-# 数据库连接信息（从环境变量或配置读取）
-DB_CONFIG = {
-    'host': '<REDACTED_DB_HOST>',
-    'port': 5432,
-    'user': 'postgres',
-    'password': 'uW1mAvvzOWQf7gG5',
-    'database': 'webhook_db'
-}
+# 从环境变量读取数据库连接 URL
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if not DATABASE_URL:
+    print("❌ 错误：未设置 DATABASE_URL 环境变量")
+    print("使用方法：")
+    print('  export DATABASE_URL="postgresql://user:pass@host:port/dbname"')
+    print('  python apply_unique_constraint.py')
+    sys.exit(1)
+
+# 解析数据库 URL
+try:
+    parsed = urlparse(DATABASE_URL)
+    DB_CONFIG = {
+        'host': parsed.hostname,
+        'port': parsed.port or 5432,
+        'user': parsed.username,
+        'password': parsed.password,
+        'database': parsed.path.lstrip('/')
+    }
+except Exception as e:
+    print(f"❌ 错误：无法解析 DATABASE_URL: {e}")
+    sys.exit(1)
 
 
 def apply_migration():
