@@ -48,6 +48,7 @@ class WebhookEvent(Base):
     duplicate_of = Column(Integer)  # 如果是重复告警，指向原始告警的ID
     duplicate_count = Column(Integer, default=1)  # 重复次数
     beyond_window = Column(Integer, default=0)  # 0: 窗口内, 1: 窗口外
+    last_notified_at = Column(DateTime)  # 上次通知时间（用于周期性提醒）
 
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

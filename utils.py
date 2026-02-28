@@ -220,24 +220,45 @@ def check_duplicate_alert(
             .first()
 
         if any_event:
-            # 窗口内有记录（可能是重复记录），找到对应的原始告警
+            # 窗口内有记录，找到对应的原始告警
             original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
             original_ref = session.get(WebhookEvent, original_id) if original_id else any_event
 
-            # 链式判断：基于最近的告警时间，而非原始告警
-            # 场景：原始告警51天前 → 8983(窗口外) → 8984(窗口内) → 8985(窗口内)
-            # 8984/8985 应该算窗口内，因为最近的告警在窗口内
-            time_diff_hours = (datetime.now() - any_event.timestamp).total_seconds() / 3600
+            # 混合逻辑：查找最近的"窗口外告警"或"原始告警"作为窗口起点
+            # 目的：防止持续告警一直在窗口内，超过24小时后应该重新通知
+
+            # 查找同一 hash 的最近一条 beyond_window=1 的记录
+            last_beyond_window = session.query(WebhookEvent)\
+                .filter(
+                    WebhookEvent.alert_hash == alert_hash,
+                    WebhookEvent.beyond_window == 1
+                )\
+                .order_by(WebhookEvent.timestamp.desc())\
+                .first()
+
+            # 确定窗口起点
+            if last_beyond_window:
+                # 有窗口外记录，以它为起点
+                window_start = last_beyond_window.timestamp
+                window_start_id = last_beyond_window.id
+                logger.debug(f"找到窗口外记录作为起点: ID={window_start_id}, 时间={window_start}")
+            else:
+                # 没有窗口外记录，以原始告警为起点
+                window_start = original_ref.timestamp
+                window_start_id = original_ref.id
+                logger.debug(f"使用原始告警作为起点: ID={window_start_id}, 时间={window_start}")
+
+            # 计算距离窗口起点的时间差
+            time_diff_hours = (datetime.now() - window_start).total_seconds() / 3600
             is_within_window = time_diff_hours <= time_window_hours
 
             if is_within_window:
-                # 最近的告警在窗口内（链式重复）
-                logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 最近告警时间差={time_diff_hours:.1f}小时")
+                # 在窗口内
+                logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
                 return True, original_ref, False
             else:
-                # 最近的告警也不在窗口内（应该很少发生，因为查询就限制了 >= time_threshold）
-                # 这种情况理论上不会发生，因为 any_event 是从窗口内查出来的
-                logger.warning(f"异常：窗口内查询到窗口外记录: hash={alert_hash}, 最近记录ID={any_event.id}, 时间差={time_diff_hours:.1f}小时")
+                # 超过窗口（窗口外重复）
+                logger.info(f"检测到窗口外重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
                 return True, original_ref, True
 
         # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
@@ -362,7 +383,8 @@ def save_webhook_data(
                         is_duplicate=0,
                         duplicate_of=None,
                         duplicate_count=1,
-                        beyond_window=0  # 新告警不是窗口外重复
+                        beyond_window=0,  # 新告警不是窗口外重复
+                        last_notified_at=datetime.now()  # 新告警的通知时间
                     )
 
                     session.add(webhook_event)

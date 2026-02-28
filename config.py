@@ -73,6 +73,10 @@ class Config:
     # 超过时间窗口后的行为配置
     REANALYZE_AFTER_TIME_WINDOW = os.getenv('REANALYZE_AFTER_TIME_WINDOW', 'true').lower() == 'true'  # 超过时间窗口后是否重新分析
     FORWARD_AFTER_TIME_WINDOW = os.getenv('FORWARD_AFTER_TIME_WINDOW', 'true').lower() == 'true'  # 超过时间窗口后是否推送（高风险告警）
+
+    # 周期性提醒配置
+    ENABLE_PERIODIC_REMINDER = os.getenv('ENABLE_PERIODIC_REMINDER', 'true').lower() == 'true'  # 是否启用周期性提醒
+    REMINDER_INTERVAL_HOURS = int(os.getenv('REMINDER_INTERVAL_HOURS', '6'))  # 提醒间隔（小时），默认6小时
     
     # JSON 配置
     JSON_SORT_KEYS = False
