@@ -113,6 +113,56 @@ def check_and_add_unique_constraint():
         return False
 
 
+def fix_duplicate_count():
+    """
+    修复重复告警的 duplicate_count 字段（静默模式）
+
+    Returns:
+        bool: 成功返回True，失败返回False
+    """
+    engine = get_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查是否有需要修复的记录
+            result = conn.execute(text("""
+                SELECT COUNT(*)
+                FROM webhook_events AS duplicate_events
+                JOIN webhook_events AS original_events
+                    ON duplicate_events.duplicate_of = original_events.id
+                WHERE duplicate_events.is_duplicate = 1
+                  AND duplicate_events.duplicate_count != original_events.duplicate_count
+            """))
+            need_fix_count = result.scalar()
+
+            if need_fix_count == 0:
+                # 所有记录都正确，无需修复
+                return True
+
+            # 需要修复
+            print(f"⚙️  检测到 {need_fix_count} 条重复告警的 duplicate_count 需要修复...")
+
+            # 执行批量更新
+            conn.execute(text("""
+                UPDATE webhook_events AS duplicate_events
+                SET duplicate_count = original_events.duplicate_count
+                FROM webhook_events AS original_events
+                WHERE duplicate_events.is_duplicate = 1
+                  AND duplicate_events.duplicate_of = original_events.id
+                  AND duplicate_events.duplicate_count != original_events.duplicate_count
+            """))
+            conn.commit()
+
+            print(f"   ✅ 成功修复 {need_fix_count} 条记录")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  修复警告: {e}")
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == '__main__':
-    success = check_and_add_unique_constraint()
-    sys.exit(0 if success else 1)
+    success1 = check_and_add_unique_constraint()
+    success2 = fix_duplicate_count()
+    sys.exit(0 if (success1 and success2) else 1)
