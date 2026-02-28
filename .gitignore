@@ -19,3 +19,9 @@ logs/
 *.db
 webhooks_data/
 postgres_data/
+
+# Temporary and backup files
+*.sh~
+*.bak
+*.tmp
+.DS_Store
