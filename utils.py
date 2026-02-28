@@ -276,7 +276,12 @@ def save_webhook_data(
 
                         logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
 
-                        # 创建重复告警记录（复用传入的 original_event 数据，避免重复读取）
+                        # 决定使用哪个AI分析结果
+                        # 如果传入了新的分析结果（窗口外重新分析的场景），使用新的；否则使用原始的
+                        final_ai_analysis = ai_analysis if ai_analysis else original_event.ai_analysis
+                        final_importance = ai_analysis.get('importance') if ai_analysis else original_event.importance
+
+                        # 创建重复告警记录
                         webhook_event = WebhookEvent(
                             source=source,
                             client_ip=client_ip,
@@ -285,8 +290,8 @@ def save_webhook_data(
                             headers=dict(headers) if headers else {},
                             parsed_data=data,
                             alert_hash=alert_hash,
-                            ai_analysis=original_event.ai_analysis,  # 使用传入的数据
-                            importance=original_event.importance,    # 使用传入的数据
+                            ai_analysis=final_ai_analysis,
+                            importance=final_importance,
                             forward_status=forward_status,
                             is_duplicate=1,
                             duplicate_of=original_event.id,
@@ -297,11 +302,16 @@ def save_webhook_data(
                         session.flush()  # 获取 ID
 
                         webhook_id = webhook_event.id
-                        logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
+
+                        # 准确的日志信息
+                        if ai_analysis:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（重新分析）")
+                        else:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
 
                         # 可选: 同时保存到文件
                         if Config.ENABLE_FILE_BACKUP:
-                            save_webhook_to_file(data, source, raw_payload, headers, client_ip, orig.ai_analysis)
+                            save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
 
                         return webhook_id, True, orig.id
                 else:
