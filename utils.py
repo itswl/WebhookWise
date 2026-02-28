@@ -276,7 +276,8 @@ def save_webhook_data(
     forward_status: str = 'pending',
     alert_hash: Optional[str] = None,
     is_duplicate: Optional[bool] = None,
-    original_event: Optional[WebhookEvent] = None
+    original_event: Optional[WebhookEvent] = None,
+    beyond_window: bool = False
 ) -> tuple[Union[int, str], bool, Optional[int]]:
     """保存 webhook 数据到数据库（带重试机制防止并发竞态）"""
     from sqlalchemy.exc import IntegrityError
@@ -325,7 +326,8 @@ def save_webhook_data(
                             forward_status=forward_status,
                             is_duplicate=1,
                             duplicate_of=original_event.id,
-                            duplicate_count=orig.duplicate_count  # 继承原始告警的累计次数
+                            duplicate_count=orig.duplicate_count,  # 继承原始告警的累计次数
+                            beyond_window=1 if beyond_window else 0  # 窗口外重复标记
                         )
 
                         session.add(webhook_event)
@@ -359,7 +361,8 @@ def save_webhook_data(
                         forward_status=forward_status,
                         is_duplicate=0,
                         duplicate_of=None,
-                        duplicate_count=1
+                        duplicate_count=1,
+                        beyond_window=0  # 新告警不是窗口外重复
                     )
 
                     session.add(webhook_event)
@@ -540,48 +543,12 @@ def get_all_webhooks(
                 webhooks = [event.to_dict() for event in events]
 
             # 为重复告警添加窗口信息（动态计算）
-            time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
+            # 直接从数据库字段读取，无需动态计算
             for webhook in webhooks:
-                if webhook.get('is_duplicate') and webhook.get('duplicate_of'):
-                    # 链式判断：查找当前记录的前一个重复告警（最近的）
-                    try:
-                        event_time = datetime.fromisoformat(webhook['timestamp'])
-                        current_alert_hash = webhook.get('alert_hash')
-
-                        if current_alert_hash:
-                            # 查找同一 hash 的上一条记录（时间上比当前记录早的最近一条）
-                            prev_event = session.query(WebhookEvent)\
-                                .filter(
-                                    WebhookEvent.alert_hash == current_alert_hash,
-                                    WebhookEvent.timestamp < event_time
-                                )\
-                                .order_by(WebhookEvent.timestamp.desc())\
-                                .first()
-
-                            if prev_event:
-                                # 计算与前一条记录的时间差（链式）
-                                time_diff = (event_time - prev_event.timestamp).total_seconds() / 3600
-
-                                # 判断是否在窗口内
-                                is_within_window = time_diff <= time_window_hours
-                                webhook['is_within_window'] = is_within_window
-                                webhook['beyond_time_window'] = not is_within_window
-                            else:
-                                # 找不到前一条记录
-                                webhook['is_within_window'] = False
-                                webhook['beyond_time_window'] = False
-                        else:
-                            # 没有 alert_hash
-                            webhook['is_within_window'] = False
-                            webhook['beyond_time_window'] = False
-                    except Exception as e:
-                        logger.warning(f"计算窗口状态失败 (webhook={webhook.get('id')}): {e}")
-                        webhook['is_within_window'] = False
-                        webhook['beyond_time_window'] = False
-                else:
-                    # 非重复告警
-                    webhook['is_within_window'] = False
-                    webhook['beyond_time_window'] = False
+                # beyond_window 已经在数据库中固化，直接使用
+                beyond_window = bool(webhook.get('beyond_window', 0))
+                webhook['beyond_time_window'] = beyond_window
+                webhook['is_within_window'] = not beyond_window if webhook.get('is_duplicate') else False
 
             # 计算下一页游标
             next_cursor = events[-1].id if events else None

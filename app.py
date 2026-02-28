@@ -219,7 +219,8 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 forward_status='pending',
                 alert_hash=alert_hash,
                 is_duplicate=actual_is_duplicate,
-                original_event=original_event
+                original_event=original_event,
+                beyond_window=beyond_window  # 传递窗口外标记
             )
         
         # 转发逻辑判断

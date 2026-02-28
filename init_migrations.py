@@ -162,7 +162,103 @@ def fix_duplicate_count():
         return False
 
 
+def add_beyond_window_field():
+    """
+    添加 beyond_window 字段并使用链式逻辑初始化（静默模式）
+
+    Returns:
+        bool: 成功返回True，失败返回False
+    """
+    engine = get_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查字段是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'webhook_events' AND column_name = 'beyond_window'
+                )
+            """))
+            field_exists = result.scalar()
+
+            if field_exists:
+                # 字段已存在，无需操作
+                return True
+
+            # 字段不存在，需要添加
+            print("⚙️  首次启动：正在添加 beyond_window 字段...")
+
+            # 1. 添加字段
+            conn.execute(text("""
+                ALTER TABLE webhook_events
+                ADD COLUMN beyond_window INTEGER DEFAULT 0
+            """))
+            conn.commit()
+            print("   ✅ beyond_window 字段添加成功")
+
+            # 2. 使用链式逻辑初始化历史数据
+            print("   🔄 正在初始化历史数据的 beyond_window 值...")
+
+            # 查询所有告警并按 hash 分组
+            result = conn.execute(text("""
+                SELECT id, alert_hash, timestamp, is_duplicate
+                FROM webhook_events
+                WHERE alert_hash IS NOT NULL
+                ORDER BY alert_hash, timestamp ASC
+            """))
+
+            all_events = result.fetchall()
+
+            # 按 alert_hash 分组
+            from collections import defaultdict
+            from datetime import timedelta
+
+            hash_groups = defaultdict(list)
+            for event_id, alert_hash, ts, is_dup in all_events:
+                hash_groups[alert_hash].append({
+                    'id': event_id,
+                    'timestamp': ts,
+                    'is_duplicate': is_dup
+                })
+
+            # 链式判断：基于前一条记录的时间
+            time_window = timedelta(hours=24)
+            update_count = 0
+
+            for alert_hash, events in hash_groups.items():
+                for i, event in enumerate(events):
+                    if i == 0:
+                        # 第一条记录：beyond_window = 0（原始告警）
+                        beyond_value = 0
+                    else:
+                        # 后续记录：对比前一条的时间差
+                        prev_event = events[i - 1]
+                        time_diff = event['timestamp'] - prev_event['timestamp']
+                        beyond_value = 1 if time_diff > time_window else 0
+
+                    # 更新数据库
+                    conn.execute(text("""
+                        UPDATE webhook_events
+                        SET beyond_window = :beyond_value
+                        WHERE id = :event_id
+                    """), {'beyond_value': beyond_value, 'event_id': event['id']})
+                    update_count += 1
+
+            conn.commit()
+            print(f"   ✅ 已初始化 {update_count} 条记录的 beyond_window 值")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        import traceback
+        traceback.print_exc()
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
-    sys.exit(0 if (success1 and success2) else 1)
+    success3 = add_beyond_window_field()
+    sys.exit(0 if (success1 and success2 and success3) else 1)
