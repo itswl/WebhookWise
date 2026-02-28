@@ -982,78 +982,20 @@
                 const alertList = document.getElementById('alertList');
                 alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
 
-                // 第一步：先获取总数（使用摘要模式）
-                const checkResponse = await fetch('/api/webhooks?page=1&page_size=1&fields=summary');
-                const checkResult = await checkResponse.json();
-                const totalRecords = checkResult.pagination ? checkResult.pagination.total : 0;
+                // 只加载最新的200条数据（使用摘要模式）
+                const response = await fetch('/api/webhooks?page=1&page_size=200&fields=summary');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
 
-                console.log('📊 数据库总记录数:', totalRecords);
+                const result = await response.json();
 
-                // 第二步：根据总数决定加载策略
-                let loadSize;
-                const MAX_PAGE_SIZE = 200; // API限制的最大page_size
-
-                if (totalRecords <= 1000) {
-                    loadSize = totalRecords; // 全部加载
-                    console.log('策略: 全部加载');
-                } else if (totalRecords <= 5000) {
-                    loadSize = Math.min(totalRecords, 3000); // 加载3000条
-                    console.log('策略: 加载前 3000 条');
-                } else {
-                    loadSize = 5000; // 最多5000条
-                    console.log('策略: 加载前 5000 条');
+                if (!result.success || !result.data) {
+                    throw new Error('数据格式错误');
                 }
 
-                // 第三步：分批加载数据（使用游标分页）
-                allWebhooks = [];
-                let nextCursor = null;
-                let loadedCount = 0;
+                allWebhooks = result.data;
+                totalCount = result.pagination ? result.pagination.total : 0;
 
-                while (loadedCount < loadSize) {
-                    const batchSize = Math.min(MAX_PAGE_SIZE, loadSize - loadedCount);
-                    const url = nextCursor
-                        ? '/api/webhooks?page_size=' + batchSize + '&cursor=' + nextCursor + '&fields=summary'
-                        : '/api/webhooks?page=1&page_size=' + batchSize + '&fields=summary';
-
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                    const result = await response.json();
-
-                    if (!result.success || !result.data) {
-                        throw new Error('数据格式错误');
-                    }
-
-                    // 累加数据
-                    allWebhooks = allWebhooks.concat(result.data);
-                    loadedCount += result.data.length;
-                    nextCursor = result.pagination && result.pagination.next_cursor;
-
-                    console.log('🔄 已加载:', loadedCount, '/', loadSize, '条');
-
-                    // 如果没有更多数据或已达到目标数量，停止
-                    if (!nextCursor || result.data.length === 0) {
-                        break;
-                    }
-                }
-
-                totalCount = totalRecords;
                 console.log('✅ 数据加载完成:', allWebhooks.length, '条（总共', totalCount, '条）');
-
-                // 如果实际数据量超过加载量，提示用户
-                if (totalCount > allWebhooks.length) {
-                    const percent = Math.round(allWebhooks.length / totalCount * 100);
-                    console.warn('⚠️  数据量较大，已加载 ' + percent + '%（' + allWebhooks.length + '/' + totalCount + '条）');
-
-                    // 在页面上显示提示
-                    const hint = document.createElement('div');
-                    hint.style.cssText = 'position: fixed; top: 70px; right: 20px; background: #fff3cd; border: 1px solid #ffc107; padding: 1rem; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 999; max-width: 300px;';
-                    hint.innerHTML = '<strong>📊 数据提示</strong><br>总共有 ' + totalCount + ' 条数据，已加载前 ' + allWebhooks.length + ' 条用于筛选。';
-                    document.body.appendChild(hint);
-
-                    // 5秒后自动隐藏
-                    setTimeout(() => hint.remove(), 5000);
-                }
 
                 updateStats();
                 frontendCurrentPage = 1; // 重置到第一页
