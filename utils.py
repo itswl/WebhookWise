@@ -160,8 +160,9 @@ def generate_alert_hash(data: dict, source: str) -> str:
 def check_duplicate_alert(
     alert_hash: str,
     time_window_hours: Optional[int] = None,
-    session = None
-) -> tuple[bool, Optional[WebhookEvent]]:
+    session = None,
+    check_beyond_window: bool = False
+) -> tuple[bool, Optional[WebhookEvent], bool]:
     """
     检查是否存在重复告警
 
@@ -169,12 +170,13 @@ def check_duplicate_alert(
         alert_hash: 告警哈希值
         time_window_hours: 时间窗口（小时）
         session: 数据库会话（如果提供，使用现有事务；否则创建新会话）
+        check_beyond_window: 是否检查时间窗口外的历史告警
 
     Returns:
-        (is_duplicate, original_event)
+        (窗口内是否重复, 原始告警事件, 窗口外是否有历史告警)
     """
     if not alert_hash:
-        return False, None
+        return False, None, False
 
     # 使用配置文件中的时间窗口设置
     if time_window_hours is None:
@@ -204,13 +206,32 @@ def check_duplicate_alert(
 
         if original_event:
             logger.info(f"检测到重复告警: hash={alert_hash}, 原始告警ID={original_event.id}, 时间窗口={time_window_hours}小时")
-            return True, original_event
-        else:
-            return False, None
+            return True, original_event, False
+
+        # 如果窗口内没有，检查窗口外是否有历史告警
+        has_history = False
+        history_event = None
+        if check_beyond_window:
+            history_event = session.query(WebhookEvent)\
+                .filter(
+                    WebhookEvent.alert_hash == alert_hash,
+                    WebhookEvent.is_duplicate == 0  # 只查找原始告警
+                )\
+                .order_by(WebhookEvent.timestamp.desc())\
+                .first()
+
+            if history_event:
+                has_history = True
+                time_diff = (datetime.now() - history_event.timestamp).total_seconds() / 3600
+                logger.info(f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时")
+                # 返回历史事件，用于可能的分析结果复用
+                return False, history_event, True
+
+        return False, None, False
 
     except Exception as e:
         logger.error(f"检查重复告警失败: {str(e)}")
-        return False, None
+        return False, None, False
     finally:
         if should_close:
             session.close()
@@ -244,7 +265,7 @@ def save_webhook_data(
             with session_scope() as session:
                 # 在事务内检查重复（如果未预检测）
                 if is_duplicate is None:
-                    is_duplicate, original_event = check_duplicate_alert(alert_hash, session=session)
+                    is_duplicate, original_event, _ = check_duplicate_alert(alert_hash, session=session)
             if is_duplicate and original_event:
                 # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
                 orig = session.get(WebhookEvent, original_event.id)

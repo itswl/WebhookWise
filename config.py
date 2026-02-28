@@ -68,7 +68,11 @@ class Config:
     
     # 重复告警去重配置
     DUPLICATE_ALERT_TIME_WINDOW = int(os.getenv('DUPLICATE_ALERT_TIME_WINDOW', '24'))  # 小时
-    FORWARD_DUPLICATE_ALERTS = os.getenv('FORWARD_DUPLICATE_ALERTS', 'false').lower() == 'true'  # 是否转发重复告警
+    FORWARD_DUPLICATE_ALERTS = os.getenv('FORWARD_DUPLICATE_ALERTS', 'false').lower() == 'true'  # 是否转发重复告警（窗口内）
+
+    # 超过时间窗口后的行为配置
+    REANALYZE_AFTER_TIME_WINDOW = os.getenv('REANALYZE_AFTER_TIME_WINDOW', 'true').lower() == 'true'  # 超过时间窗口后是否重新分析
+    FORWARD_AFTER_TIME_WINDOW = os.getenv('FORWARD_AFTER_TIME_WINDOW', 'true').lower() == 'true'  # 超过时间窗口后是否推送（高风险告警）
     
     # JSON 配置
     JSON_SORT_KEYS = False
