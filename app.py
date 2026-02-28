@@ -223,20 +223,19 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             )
         
         # 转发逻辑判断
+        # 注意：使用原始的 is_duplicate（窗口内重复）和 beyond_window（窗口外重复）
+        # 而不是 is_dup（保存后的重复标记，窗口内外都是 True）
         importance = analysis_result.get('importance', '').lower()
         should_forward = False
         skip_reason = None
 
-        # 判断是否为窗口外的重复告警（超过时间窗口但有历史记录）
-        is_beyond_window_duplicate = not is_dup and beyond_window
-
         if importance == 'high':
-            if is_dup and not Config.FORWARD_DUPLICATE_ALERTS:
-                # 窗口内的重复告警
+            if is_duplicate and not Config.FORWARD_DUPLICATE_ALERTS:
+                # 窗口内的重复告警（24小时内）
                 skip_reason = f'重复告警（原始 ID={original_id}），配置跳过转发'
-            elif is_beyond_window_duplicate and not Config.FORWARD_AFTER_TIME_WINDOW:
-                # 窗口外的历史重复告警
-                skip_reason = f'窗口外重复告警，配置跳过转发'
+            elif beyond_window and not Config.FORWARD_AFTER_TIME_WINDOW:
+                # 窗口外的历史重复告警（超过24小时）
+                skip_reason = f'窗口外重复告警（原始 ID={original_id}），配置跳过转发'
             else:
                 should_forward = True
         else:
@@ -244,7 +243,7 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
 
         forward_result = {'status': 'skipped', 'reason': skip_reason}
         if should_forward:
-            alert_type = '重复' if is_dup else ('窗口外重复' if is_beyond_window_duplicate else '新')
+            alert_type = '窗口内重复' if is_duplicate else ('窗口外重复' if beyond_window else '新')
             logger.info(f"开始自动转发高风险{alert_type}告警...")
             forward_result = forward_to_remote(webhook_full_data, analysis_result)
         else:
@@ -259,7 +258,8 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             'forward_status': forward_result.get('status', 'unknown'),
             'is_duplicate': is_dup,
             'duplicate_of': original_id if is_dup else None,
-            'beyond_time_window': beyond_window if not is_dup else False
+            'beyond_time_window': beyond_window,  # 直接返回窗口外标记
+            'is_within_window': is_duplicate  # 新增：窗口内重复标记，便于前端区分
         }), 200
 
     except Exception as e:
