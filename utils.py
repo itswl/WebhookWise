@@ -220,13 +220,25 @@ def check_duplicate_alert(
             .first()
 
         if any_event:
-            # 窗口内有记录（虽然是重复记录），说明最近已经处理过了
-            # 找到这条记录对应的原始告警
+            # 窗口内有记录（可能是重复记录），找到对应的原始告警
             original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
             original_ref = session.get(WebhookEvent, original_id) if original_id else any_event
 
-            logger.info(f"检测到窗口内已处理的重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 时间窗口={time_window_hours}小时")
-            return True, original_ref, False
+            # 关键修复：需要判断当前时间与原始告警的时间差
+            # 不能只看窗口内有没有记录，要看原始告警是否在窗口内
+            if original_ref:
+                time_diff_hours = (datetime.now() - original_ref.timestamp).total_seconds() / 3600
+                is_within_window = time_diff_hours <= time_window_hours
+
+                if is_within_window:
+                    # 原始告警在窗口内
+                    logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 时间差={time_diff_hours:.1f}小时")
+                    return True, original_ref, False
+                else:
+                    # 原始告警在窗口外，但窗口内有其他重复记录
+                    # 这种情况应该判断为：窗口内有处理过（不重新分析），但仍是窗口外告警
+                    logger.info(f"检测到窗口外告警的窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 原始告警时间差={time_diff_hours:.1f}小时")
+                    return True, original_ref, True  # is_duplicate=True, beyond_window=True
 
         # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
         if check_beyond_window:
