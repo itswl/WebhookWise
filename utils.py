@@ -224,21 +224,21 @@ def check_duplicate_alert(
             original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
             original_ref = session.get(WebhookEvent, original_id) if original_id else any_event
 
-            # 关键修复：需要判断当前时间与原始告警的时间差
-            # 不能只看窗口内有没有记录，要看原始告警是否在窗口内
-            if original_ref:
-                time_diff_hours = (datetime.now() - original_ref.timestamp).total_seconds() / 3600
-                is_within_window = time_diff_hours <= time_window_hours
+            # 链式判断：基于最近的告警时间，而非原始告警
+            # 场景：原始告警51天前 → 8983(窗口外) → 8984(窗口内) → 8985(窗口内)
+            # 8984/8985 应该算窗口内，因为最近的告警在窗口内
+            time_diff_hours = (datetime.now() - any_event.timestamp).total_seconds() / 3600
+            is_within_window = time_diff_hours <= time_window_hours
 
-                if is_within_window:
-                    # 原始告警在窗口内
-                    logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 时间差={time_diff_hours:.1f}小时")
-                    return True, original_ref, False
-                else:
-                    # 原始告警在窗口外，但窗口内有其他重复记录
-                    # 这种情况应该判断为：窗口内有处理过（不重新分析），但仍是窗口外告警
-                    logger.info(f"检测到窗口外告警的窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 原始告警时间差={time_diff_hours:.1f}小时")
-                    return True, original_ref, True  # is_duplicate=True, beyond_window=True
+            if is_within_window:
+                # 最近的告警在窗口内（链式重复）
+                logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 最近告警时间差={time_diff_hours:.1f}小时")
+                return True, original_ref, False
+            else:
+                # 最近的告警也不在窗口内（应该很少发生，因为查询就限制了 >= time_threshold）
+                # 这种情况理论上不会发生，因为 any_event 是从窗口内查出来的
+                logger.warning(f"异常：窗口内查询到窗口外记录: hash={alert_hash}, 最近记录ID={any_event.id}, 时间差={time_diff_hours:.1f}小时")
+                return True, original_ref, True
 
         # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
         if check_beyond_window:
