@@ -497,17 +497,58 @@ webhooks/
 ├── ai_analyzer.py              # AI 分析模块
 ├── logger.py                   # 日志配置
 ├── migrate_db.py               # 数据库迁移脚本
-├── test_webhook.py             # 基础测试
-├── test_duplicate_alert.py     # 去重功能测试
-├── test_configurable_dedup.py  # 可配置功能测试
-├── templates/
+├── migrations_tool.py          # 迁移工具
+├── init_migrations.py          # 自动迁移脚本
+├── entrypoint.sh               # 容器启动脚本
+│
+├── templates/                  # HTML 模板
 │   └── dashboard.html          # Web 管理界面
+│
+├── prompts/                    # AI 提示词模板
+│   ├── webhook_analysis.txt
+│   ├── webhook_analysis_simple.txt
+│   └── webhook_analysis_detailed.txt
+│
+├── migrations/                 # 数据库迁移 SQL
+│   └── sql/
+│       └── add_unique_constraint.sql
+│
+├── tests/                      # 测试文件
+│   ├── test_webhook.py
+│   ├── test_duplicate_alert.py
+│   ├── test_*.py
+│   └── html/                   # 测试用 HTML
+│       └── test_*.html
+│
+├── scripts/                    # 工具脚本
+│   ├── check_importance.py
+│   ├── debug_hash.py
+│   └── apply_unique_constraint.py
+│
+├── docs/                       # 📚 文档目录
+│   ├── README.md               # 文档索引
+│   ├── setup/                  # 部署设置
+│   │   └── AUTO_MIGRATION.md
+│   ├── features/               # 功能说明
+│   │   ├── DEDUPLICATION_FIX.md
+│   │   ├── DUPLICATE_TIME_WINDOW.md
+│   │   ├── TIME_WINDOW_BEHAVIOR_CONFIG.md
+│   │   └── PROMPT_CONFIG.md
+│   ├── troubleshooting/        # 故障排查
+│   │   └── TROUBLESHOOTING.md
+│   ├── performance/            # 性能优化
+│   │   └── PERFORMANCE_OPTIMIZATION.md
+│   └── changelogs/             # 变更日志
+│       └── history/            # 历史记录
+│
 ├── requirements.txt            # Python 依赖
 ├── Dockerfile                  # Docker 构建文件
 ├── docker-compose.yml          # Docker Compose 配置
 ├── .env.example                # 环境变量示例
-└── README.md                   # 项目文档
+└── README.md                   # 项目文档（本文件）
 ```
+
+> 📖 **查看详细文档**: [docs/README.md](docs/README.md) - 包含所有功能和配置的详细说明
 
 ## 更新日志
 
