@@ -169,23 +169,39 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 # 已有其他 worker 在处理，等待后重新检测
                 logger.info(f"等待其他 worker 处理完成: hash={alert_hash[:16]}...")
                 time.sleep(_LOCK_WAIT_SECONDS)
-                is_duplicate, original_event = check_duplicate_alert(alert_hash)
-                
+                is_duplicate, original_event, beyond_window = check_duplicate_alert(alert_hash, check_beyond_window=True)
+
                 if is_duplicate and original_event:
                     # 其他 worker 已处理完，复用结果
                     logger.info(f"复用其他 worker 的分析结果: 原始 ID={original_event.id}")
                     analysis_result = original_event.ai_analysis or {}
+                elif beyond_window and original_event:
+                    # 窗口外的历史告警
+                    if Config.REANALYZE_AFTER_TIME_WINDOW:
+                        logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
+                        analysis_result = analyze_webhook_with_ai(webhook_full_data)
+                    else:
+                        logger.info(f"窗口外历史告警，复用分析: 历史 ID={original_event.id}")
+                        analysis_result = original_event.ai_analysis or {}
                 else:
                     # 其他 worker 可能失败了，我们继续处理
                     logger.info("未找到已处理结果，重新处理...")
                     analysis_result = analyze_webhook_with_ai(webhook_full_data)
             else:
                 # 成功获取锁，正常处理
-                is_duplicate, original_event = check_duplicate_alert(alert_hash)
-                
+                is_duplicate, original_event, beyond_window = check_duplicate_alert(alert_hash, check_beyond_window=True)
+
                 if is_duplicate and original_event:
                     logger.info(f"检测到重复告警(hash={alert_hash[:16]}...)，复用 ID={original_event.id} 的分析结果")
                     analysis_result = original_event.ai_analysis or {}
+                elif beyond_window and original_event:
+                    # 窗口外的历史告警
+                    if Config.REANALYZE_AFTER_TIME_WINDOW:
+                        logger.info(f"窗口外历史告警(ID={original_event.id})，重新分析")
+                        analysis_result = analyze_webhook_with_ai(webhook_full_data)
+                    else:
+                        logger.info(f"窗口外历史告警(ID={original_event.id})，复用历史分析结果")
+                        analysis_result = original_event.ai_analysis or {}
                 else:
                     logger.info("新告警，开始 AI 分析...")
                     analysis_result = analyze_webhook_with_ai(webhook_full_data)
@@ -208,18 +224,26 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         importance = analysis_result.get('importance', '').lower()
         should_forward = False
         skip_reason = None
-        
+
+        # 判断是否为窗口外的重复告警（超过时间窗口但有历史记录）
+        is_beyond_window_duplicate = not is_dup and beyond_window
+
         if importance == 'high':
             if is_dup and not Config.FORWARD_DUPLICATE_ALERTS:
+                # 窗口内的重复告警
                 skip_reason = f'重复告警（原始 ID={original_id}），配置跳过转发'
+            elif is_beyond_window_duplicate and not Config.FORWARD_AFTER_TIME_WINDOW:
+                # 窗口外的历史重复告警
+                skip_reason = f'窗口外重复告警，配置跳过转发'
             else:
                 should_forward = True
         else:
             skip_reason = f'重要性为 {importance}，非高风险事件不自动转发'
-        
+
         forward_result = {'status': 'skipped', 'reason': skip_reason}
         if should_forward:
-            logger.info(f"开始自动转发高风险{'重复' if is_dup else ''}告警...")
+            alert_type = '重复' if is_dup else ('窗口外重复' if is_beyond_window_duplicate else '新')
+            logger.info(f"开始自动转发高风险{alert_type}告警...")
             forward_result = forward_to_remote(webhook_full_data, analysis_result)
         else:
             logger.info(f"跳过自动转发: {skip_reason}")
@@ -232,7 +256,8 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             'ai_analysis': analysis_result,
             'forward_status': forward_result.get('status', 'unknown'),
             'is_duplicate': is_dup,
-            'duplicate_of': original_id if is_dup else None
+            'duplicate_of': original_id if is_dup else None,
+            'beyond_time_window': beyond_window if not is_dup else False
         }), 200
 
     except Exception as e:
@@ -351,7 +376,9 @@ def get_config():
             'ai_system_prompt': get_value('AI_SYSTEM_PROMPT', Config.AI_SYSTEM_PROMPT),
             'log_level': get_value('LOG_LEVEL', 'INFO'),
             'duplicate_alert_time_window': get_value('DUPLICATE_ALERT_TIME_WINDOW', 24, 'int'),
-            'forward_duplicate_alerts': get_value('FORWARD_DUPLICATE_ALERTS', False, 'bool')
+            'forward_duplicate_alerts': get_value('FORWARD_DUPLICATE_ALERTS', False, 'bool'),
+            'reanalyze_after_time_window': get_value('REANALYZE_AFTER_TIME_WINDOW', True, 'bool'),
+            'forward_after_time_window': get_value('FORWARD_AFTER_TIME_WINDOW', True, 'bool')
         }
 
         return jsonify({
@@ -387,7 +414,9 @@ def update_config():
             'ai_system_prompt': ('AI_SYSTEM_PROMPT', 'str', None),
             'log_level': ('LOG_LEVEL', 'str', lambda x: x.upper() in ['DEBUG', 'INFO', 'WARNING', 'ERROR']),
             'duplicate_alert_time_window': ('DUPLICATE_ALERT_TIME_WINDOW', 'int', lambda x: 1 <= x <= 168),
-            'forward_duplicate_alerts': ('FORWARD_DUPLICATE_ALERTS', 'bool', None)
+            'forward_duplicate_alerts': ('FORWARD_DUPLICATE_ALERTS', 'bool', None),
+            'reanalyze_after_time_window': ('REANALYZE_AFTER_TIME_WINDOW', 'bool', None),
+            'forward_after_time_window': ('FORWARD_AFTER_TIME_WINDOW', 'bool', None)
         }
 
         # 收集要更新的配置
