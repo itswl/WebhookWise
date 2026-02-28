@@ -207,8 +207,10 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                     analysis_result = analyze_webhook_with_ai(webhook_full_data)
             
             # 保存数据（传递预先计算的哈希和检测结果，避免重复查询）
+            # 注意：窗口外的历史告警也应该标记为重复，只是AI分析可能是新的
+            actual_is_duplicate = is_duplicate or beyond_window
             webhook_id, is_dup, original_id = save_webhook_data(
-                data=data, 
+                data=data,
                 source=source,
                 raw_payload=payload,
                 headers=request.headers,
@@ -216,7 +218,7 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 ai_analysis=analysis_result,
                 forward_status='pending',
                 alert_hash=alert_hash,
-                is_duplicate=is_duplicate,
+                is_duplicate=actual_is_duplicate,
                 original_event=original_event
             )
         
