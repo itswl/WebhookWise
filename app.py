@@ -249,12 +249,21 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         else:
             logger.info(f"跳过自动转发: {skip_reason}")
             
+        # 检查是否发生了 AI 降级
+        is_degraded = analysis_result.get('_degraded', False)
+        degraded_reason = analysis_result.get('_degraded_reason')
+
+        # 移除内部标记字段（不返回给客户端）
+        clean_analysis = {k: v for k, v in analysis_result.items() if not k.startswith('_')}
+
         return jsonify({
             'success': True,
             'message': 'Webhook processed successfully',
             'timestamp': datetime.now().isoformat(),
             'webhook_id': webhook_id,
-            'ai_analysis': analysis_result,
+            'ai_analysis': clean_analysis,
+            'ai_degraded': is_degraded,  # 是否发生降级
+            'ai_degraded_reason': degraded_reason if is_degraded else None,  # 降级原因
             'forward_status': forward_result.get('status', 'unknown'),
             'is_duplicate': is_dup,
             'duplicate_of': original_id if is_dup else None,

@@ -249,37 +249,44 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
 
 def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
     """使用 AI 分析 webhook 数据"""
+    source = webhook_data.get('source', 'unknown')
+    parsed_data = webhook_data.get('parsed_data', {})
+
     # 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
-        source = webhook_data.get('source', 'unknown')
-        parsed_data = webhook_data.get('parsed_data', {})
-        return analyze_with_rules(parsed_data, source)
-    
+        result = analyze_with_rules(parsed_data, source)
+        result['_degraded'] = True
+        result['_degraded_reason'] = 'AI 分析功能已禁用'
+        return result
+
     # 检查 API Key
     if not Config.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
-        source = webhook_data.get('source', 'unknown')
-        parsed_data = webhook_data.get('parsed_data', {})
-        return analyze_with_rules(parsed_data, source)
-    
+        result = analyze_with_rules(parsed_data, source)
+        result['_degraded'] = True
+        result['_degraded_reason'] = 'OpenAI API Key 未配置'
+        # 发送降级通知
+        _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
+        return result
+
     try:
-        # 提取关键信息
-        source = webhook_data.get('source', 'unknown')
-        parsed_data = webhook_data.get('parsed_data', {})
-        
         # 使用真实的 OpenAI API 分析
         analysis = analyze_with_openai(parsed_data, source)
-        
+
         logger.info(f"AI 分析完成: {source}")
+        analysis['_degraded'] = False
         return analysis
-        
+
     except Exception as e:
         logger.error(f"AI 分析失败: {str(e)}，降级为规则分析", exc_info=True)
         # 如果 AI 分析失败，降级为规则分析
-        source = webhook_data.get('source', 'unknown')
-        parsed_data = webhook_data.get('parsed_data', {})
-        return analyze_with_rules(parsed_data, source)
+        result = analyze_with_rules(parsed_data, source)
+        result['_degraded'] = True
+        result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
+        # 发送降级通知
+        _send_degradation_alert(webhook_data, str(e))
+        return result
 
 
 def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
@@ -386,54 +393,188 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
         raise
 
 
+def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
+    """发送 AI 降级通知"""
+    try:
+        # 只有启用转发且配置了转发地址才发送
+        if not Config.ENABLE_FORWARD or not Config.FORWARD_URL:
+            return
+
+        # 检查是否是飞书 webhook
+        is_feishu = 'feishu.cn' in Config.FORWARD_URL or 'lark' in Config.FORWARD_URL
+
+        if is_feishu:
+            # 构建飞书告警消息
+            timestamp = webhook_data.get('timestamp', '')
+            source = webhook_data.get('source', 'unknown')
+
+            card_content = {
+                "config": {"wide_screen_mode": True},
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": "⚠️ AI 分析降级通知"
+                    },
+                    "template": "orange"  # 橙色警告
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**告警来源**: {source}\n**时间**: {timestamp[:19] if timestamp else '-'}"
+                        }
+                    },
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**⚠️ 降级原因**\n{error_reason}"
+                        }
+                    },
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": "**处理方式**\n已自动降级为基于规则的分析，告警仍会正常处理，但分析结果可能不够准确。请检查 AI 服务配置。"
+                        }
+                    },
+                    {
+                        "tag": "note",
+                        "elements": [
+                            {
+                                "tag": "plain_text",
+                                "content": "提示：请尽快修复 AI 服务，以恢复智能分析功能"
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            forward_data = {
+                "msg_type": "interactive",
+                "card": card_content
+            }
+
+            # 发送通知
+            response = requests.post(
+                Config.FORWARD_URL,
+                json=forward_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+
+            if 200 <= response.status_code < 300:
+                logger.info(f"AI 降级通知已发送到飞书")
+            else:
+                logger.warning(f"AI 降级通知发送失败，状态码: {response.status_code}")
+
+    except Exception as e:
+        # 降级通知失败不应影响主流程
+        logger.error(f"发送 AI 降级通知失败: {str(e)}")
+
+
 def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     """基于规则的简单分析（AI 降级方案）"""
     # 基础分析结果
     analysis = {
         'source': source,
-        'event_type': data.get('event', 'unknown'),
+        'event_type': 'unknown',
         'importance': 'medium',
-        'summary': '',
-        'actions': [],
-        'risks': []
+        'summary': '规则分析（AI 降级）',
+        'actions': ['查看告警详情', '检查 AI 服务状态'],
+        'risks': ['使用规则分析，可能不够准确']
     }
-    
-    # 根据事件类型判断重要性
-    event = str(data.get('event', '')).lower()
-    
-    if any(keyword in event for keyword in ['error', 'failure', 'critical', 'alert']):
-        analysis['importance'] = 'high'
-        analysis['summary'] = f'检测到严重事件: {event}'
-        analysis['actions'].append('立即查看详细日志')
-        analysis['actions'].append('通知相关负责人')
-        analysis['risks'].append('可能影响服务稳定性')
-        
-    elif any(keyword in event for keyword in ['success', 'completed', 'finished']):
-        analysis['importance'] = 'low'
-        analysis['summary'] = f'正常完成事件: {event}'
-        analysis['actions'].append('记录到日志')
-        
-    elif any(keyword in event for keyword in ['user', 'order', 'payment']):
-        analysis['importance'] = 'high'
-        analysis['summary'] = f'业务关键事件: {event}'
-        analysis['actions'].append('验证数据完整性')
-        analysis['actions'].append('更新业务状态')
-        
+
+    # 检测告警格式
+    is_prometheus = 'alerts' in data and isinstance(data.get('alerts'), list) and len(data.get('alerts', [])) > 0
+
+    if is_prometheus:
+        # Prometheus Alertmanager 格式
+        first_alert = data['alerts'][0]
+        labels = first_alert.get('labels', {})
+
+        # 获取告警名称
+        alert_name = labels.get('alertname', labels.get('alertingRuleName', 'unknown'))
+        analysis['event_type'] = alert_name
+
+        # 获取告警级别
+        alert_level = labels.get('internal_label_alert_level', labels.get('severity', '')).lower()
+
+        # 判断重要性
+        if alert_level in ['critical', 'p0', '严重', 'error']:
+            analysis['importance'] = 'high'
+            analysis['summary'] = f'🔴 严重告警: {alert_name}'
+            analysis['actions'] = ['立即处理', '检查服务状态', '查看日志']
+        elif alert_level in ['warning', 'warn', 'p1']:
+            analysis['importance'] = 'medium'
+            analysis['summary'] = f'🟡 警告告警: {alert_name}'
+            analysis['actions'] = ['关注趋势', '准备应对措施']
+        else:
+            analysis['summary'] = f'📊 告警: {alert_name}'
+
     else:
-        analysis['summary'] = f'一般事件: {event}'
-        analysis['actions'].append('常规处理')
-    
-    # 检查数据字段
-    if 'user_id' in data or 'email' in data:
-        analysis['data_type'] = 'user_related'
-    if 'amount' in data or 'price' in data:
-        analysis['data_type'] = 'financial'
-        analysis['risks'].append('涉及财务数据,需要额外验证')
-    
-    # 生成摘要
-    if not analysis['summary']:
-        analysis['summary'] = f'收到来自 {source} 的 webhook 事件'
-    
+        # 华为云/通用格式
+        # 获取告警名称
+        rule_name = data.get('RuleName') or data.get('alert_name') or data.get('MetricName', 'unknown')
+        analysis['event_type'] = rule_name
+
+        # 获取告警级别
+        level = str(data.get('Level', '')).lower()
+
+        # 判断重要性
+        if level in ['critical', 'error', '严重', 'p0']:
+            analysis['importance'] = 'high'
+            analysis['summary'] = f'🔴 严重告警: {rule_name}'
+            analysis['actions'] = ['立即处理', '检查资源状态', '查看监控指标']
+        elif level in ['warn', 'warning', 'p1']:
+            analysis['importance'] = 'medium'
+            analysis['summary'] = f'🟡 警告告警: {rule_name}'
+            analysis['actions'] = ['关注趋势', '评估影响范围']
+        else:
+            # 检查指标名称中的关键词
+            metric_name = str(data.get('MetricName', '')).lower()
+            if any(keyword in metric_name for keyword in ['4xxqps', '5xxqps', 'error', 'cpu', 'memory', 'disk']):
+                analysis['importance'] = 'medium'
+                analysis['summary'] = f'📊 监控告警: {rule_name}'
+            else:
+                analysis['summary'] = f'ℹ️ 通知: {rule_name}'
+
+        # 检查阈值超标情况
+        current_value = data.get('CurrentValue')
+        threshold = data.get('Threshold')
+        if current_value is not None and threshold is not None:
+            try:
+                current_num = float(current_value)
+                threshold_num = float(threshold)
+                if current_num > threshold_num * 4:
+                    # 超过4倍阈值，提升重要性
+                    analysis['importance'] = 'high'
+                    analysis['summary'] = f'🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})'
+            except (ValueError, TypeError):
+                pass
+
+        # 检查资源信息
+        resources = data.get('Resources', [])
+        if resources and isinstance(resources, list):
+            resource_count = len(resources)
+            if resource_count > 1:
+                analysis['impact_scope'] = f'影响 {resource_count} 个资源'
+
+    # 通用事件类型检查（兜底）
+    if analysis['event_type'] == 'unknown':
+        event = str(data.get('event', data.get('event_type', ''))).lower()
+        if event:
+            analysis['event_type'] = event
+
+            # 基于关键词判断
+            if any(keyword in event for keyword in ['error', 'failure', 'critical', 'alert', '错误', '失败', '故障']):
+                analysis['importance'] = 'high'
+                analysis['summary'] = f'🔴 严重事件: {event}'
+            elif any(keyword in event for keyword in ['warning', 'warn', '警告']):
+                analysis['importance'] = 'medium'
+                analysis['summary'] = f'🟡 警告事件: {event}'
+
     return analysis
 
 
