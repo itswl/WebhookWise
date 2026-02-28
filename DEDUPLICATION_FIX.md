@@ -98,7 +98,7 @@ python migrations_tool.py add_unique_constraint
 
 **方式 3：手动 SQL**
 ```bash
-psql -h <REDACTED_DB_HOST> -U postgres -d webhook_db < migrations/add_unique_constraint.sql
+psql -h <host> -U <user> -d <database> < migrations/add_unique_constraint.sql
 ```
 
 ---
