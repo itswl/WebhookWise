@@ -393,9 +393,30 @@ def get_webhook_detail(webhook_id: int) -> tuple[Response, int]:
             if not event:
                 return jsonify({'success': False, 'error': 'Webhook not found'}), 404
 
+            # 转换为字典
+            data = event.to_dict()
+
+            # 添加上次告警 ID（同一 hash 的上一条记录）
+            if event.alert_hash:
+                try:
+                    prev_alert = session.query(WebhookEvent)\
+                        .filter(
+                            WebhookEvent.alert_hash == event.alert_hash,
+                            WebhookEvent.timestamp < event.timestamp
+                        )\
+                        .order_by(WebhookEvent.timestamp.desc())\
+                        .first()
+
+                    data['prev_alert_id'] = prev_alert.id if prev_alert else None
+                except Exception as e:
+                    logger.warning(f"计算 prev_alert_id 失败 (webhook={event.id}): {e}")
+                    data['prev_alert_id'] = None
+            else:
+                data['prev_alert_id'] = None
+
             return jsonify({
                 'success': True,
-                'data': event.to_dict()  # 返回完整数据
+                'data': data
             }), 200
     except Exception as e:
         logger.error(f"查询 webhook 详情失败: {str(e)}")
