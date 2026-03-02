@@ -568,13 +568,36 @@ def get_all_webhooks(
                 # 完整模式：返回所有字段
                 webhooks = [event.to_dict() for event in events]
 
-            # 为重复告警添加窗口信息（动态计算）
+            # 为重复告警添加窗口信息和上次告警 ID（动态计算）
             # 直接从数据库字段读取，无需动态计算
             for webhook in webhooks:
                 # beyond_window 已经在数据库中固化，直接使用
                 beyond_window = bool(webhook.get('beyond_window', 0))
                 webhook['beyond_time_window'] = beyond_window
                 webhook['is_within_window'] = not beyond_window if webhook.get('is_duplicate') else False
+
+                # 添加上次告警 ID（同一 hash 的上一条记录）
+                if webhook.get('alert_hash'):
+                    try:
+                        # 查找同一 hash 的上一条记录（时间上比当前早）
+                        current_timestamp = datetime.fromisoformat(webhook['timestamp'])
+                        prev_alert = session.query(WebhookEvent)\
+                            .filter(
+                                WebhookEvent.alert_hash == webhook['alert_hash'],
+                                WebhookEvent.timestamp < current_timestamp
+                            )\
+                            .order_by(WebhookEvent.timestamp.desc())\
+                            .first()
+
+                        if prev_alert:
+                            webhook['prev_alert_id'] = prev_alert.id
+                        else:
+                            webhook['prev_alert_id'] = None
+                    except Exception as e:
+                        logger.warning(f"计算 prev_alert_id 失败 (webhook={webhook.get('id')}): {e}")
+                        webhook['prev_alert_id'] = None
+                else:
+                    webhook['prev_alert_id'] = None
 
             # 计算下一页游标
             next_cursor = events[-1].id if events else None

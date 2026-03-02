@@ -1118,15 +1118,26 @@
                 html += '</div>';
                 html += '<div class="alert-meta">';
                 html += '<span class="alert-meta-item">📍 ' + (webhook.source || 'unknown') + '</span>';
-                // 摘要模式下没有 client_ip，显示告警信息
+
+                // 显示主机信息（如果有）
                 if (webhook.alert_info && webhook.alert_info.host) {
                     html += '<span class="alert-meta-item">🖥️ ' + webhook.alert_info.host + '</span>';
-                } else if (webhook.client_ip) {
+                }
+
+                // 始终显示客户端 IP
+                if (webhook.client_ip) {
                     html += '<span class="alert-meta-item">🌐 ' + webhook.client_ip + '</span>';
                 }
+
                 html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
+
+                // 显示重复信息
                 if (isDuplicate) {
-                    html += '<span class="alert-meta-item">🔗 重复于 #' + webhook.duplicate_of + '</span>';
+                    html += '<span class="alert-meta-item">🔗 原始 #' + webhook.duplicate_of + '</span>';
+                    // 显示上次告警 ID
+                    if (webhook.prev_alert_id) {
+                        html += '<span class="alert-meta-item">⏮️ 上次 #' + webhook.prev_alert_id + '</span>';
+                    }
                 }
                 html += '</div></div>';
                 html += '<div class="alert-right">';
@@ -1227,6 +1238,9 @@
             html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
             if (webhook.is_duplicate) {
                 html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
+                if (webhook.prev_alert_id) {
+                    html += '<div class="info-item"><div class="info-label">上次告警</div><div class="info-value">#' + webhook.prev_alert_id + '</div></div>';
+                }
                 html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
 
                 // 显示重复类型
