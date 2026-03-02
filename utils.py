@@ -443,7 +443,7 @@ def save_webhook_data(
                             forward_status=forward_status,
                             is_duplicate=1,
                             duplicate_of=existing.id,
-                            duplicate_count=1
+                            duplicate_count=existing.duplicate_count  # 继承原始告警的累计次数
                         )
                         fallback_session.add(dup_event)
                         fallback_session.flush()
