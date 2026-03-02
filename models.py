@@ -82,6 +82,7 @@ class WebhookEvent(Base):
         return {
             'id': self.id,
             'source': self.source,
+            'client_ip': self.client_ip,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'importance': self.importance,
             'is_duplicate': self.is_duplicate,
