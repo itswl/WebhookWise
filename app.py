@@ -408,12 +408,15 @@ def get_webhook_detail(webhook_id: int) -> tuple[Response, int]:
                         .first()
 
                     data['prev_alert_id'] = prev_alert.id if prev_alert else None
+                    data['prev_alert_timestamp'] = prev_alert.timestamp.isoformat() if prev_alert else None
                     logger.info(f"计算 prev_alert_id: webhook={event.id}, prev_alert_id={data['prev_alert_id']}, hash={event.alert_hash[:16]}...")
                 except Exception as e:
                     logger.warning(f"计算 prev_alert_id 失败 (webhook={event.id}): {e}")
                     data['prev_alert_id'] = None
+                    data['prev_alert_timestamp'] = None
             else:
                 data['prev_alert_id'] = None
+                data['prev_alert_timestamp'] = None
                 logger.warning(f"webhook {event.id} 没有 alert_hash，无法计算 prev_alert_id")
 
             return jsonify({
