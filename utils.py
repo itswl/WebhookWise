@@ -298,7 +298,8 @@ def save_webhook_data(
     alert_hash: Optional[str] = None,
     is_duplicate: Optional[bool] = None,
     original_event: Optional[WebhookEvent] = None,
-    beyond_window: bool = False
+    beyond_window: bool = False,
+    reanalyzed: bool = False
 ) -> tuple[Union[int, str], bool, Optional[int], bool]:
     """保存 webhook 数据到数据库（带重试机制防止并发竞态）"""
     from sqlalchemy.exc import IntegrityError
@@ -359,7 +360,7 @@ def save_webhook_data(
                         webhook_id = webhook_event.id
 
                         # 准确的日志信息
-                        if ai_analysis:
+                        if reanalyzed:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（重新分析）")
                         else:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
