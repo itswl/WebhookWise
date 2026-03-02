@@ -172,12 +172,8 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 is_duplicate, original_event, beyond_window = check_duplicate_alert(alert_hash, check_beyond_window=True)
                 reanalyzed = False  # 标记是否重新分析
 
-                if is_duplicate and original_event:
-                    # 其他 worker 已处理完，复用结果
-                    logger.info(f"复用其他 worker 的分析结果: 原始 ID={original_event.id}")
-                    analysis_result = original_event.ai_analysis or {}
-                    reanalyzed = False
-                elif beyond_window and original_event:
+                # 优先判断窗口外，因为窗口外也属于重复告警，但需要不同的处理逻辑
+                if beyond_window and original_event:
                     # 窗口外的历史告警
                     if Config.REANALYZE_AFTER_TIME_WINDOW:
                         logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
@@ -187,6 +183,11 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                         logger.info(f"窗口外历史告警，复用分析: 历史 ID={original_event.id}")
                         analysis_result = original_event.ai_analysis or {}
                         reanalyzed = False
+                elif is_duplicate and original_event:
+                    # 其他 worker 已处理完，复用结果
+                    logger.info(f"复用其他 worker 的分析结果: 原始 ID={original_event.id}")
+                    analysis_result = original_event.ai_analysis or {}
+                    reanalyzed = False
                 else:
                     # 其他 worker 可能失败了，我们继续处理
                     logger.info("未找到已处理结果，重新处理...")
@@ -197,11 +198,8 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 is_duplicate, original_event, beyond_window = check_duplicate_alert(alert_hash, check_beyond_window=True)
                 reanalyzed = False  # 标记是否重新分析
 
-                if is_duplicate and original_event:
-                    logger.info(f"检测到重复告警(hash={alert_hash[:16]}...)，复用 ID={original_event.id} 的分析结果")
-                    analysis_result = original_event.ai_analysis or {}
-                    reanalyzed = False
-                elif beyond_window and original_event:
+                # 优先判断窗口外，因为窗口外也属于重复告警，但需要不同的处理逻辑
+                if beyond_window and original_event:
                     # 窗口外的历史告警
                     if Config.REANALYZE_AFTER_TIME_WINDOW:
                         logger.info(f"窗口外历史告警(ID={original_event.id})，重新分析")
@@ -211,6 +209,10 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                         logger.info(f"窗口外历史告警(ID={original_event.id})，复用历史分析结果")
                         analysis_result = original_event.ai_analysis or {}
                         reanalyzed = False
+                elif is_duplicate and original_event:
+                    logger.info(f"检测到窗口内重复告警(hash={alert_hash[:16]}...)，复用 ID={original_event.id} 的分析结果")
+                    analysis_result = original_event.ai_analysis or {}
+                    reanalyzed = False
                 else:
                     logger.info("新告警，开始 AI 分析...")
                     analysis_result = analyze_webhook_with_ai(webhook_full_data)
