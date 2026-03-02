@@ -568,7 +568,7 @@ def get_all_webhooks(
                 # 完整模式：返回所有字段
                 webhooks = [event.to_dict() for event in events]
 
-            # 为重复告警添加窗口信息和上次告警 ID（动态计算）
+            # 为重复告警添加窗口信息和上次告警 ID（批量计算优化）
             # 直接从数据库字段读取，无需动态计算
             for webhook in webhooks:
                 # beyond_window 已经在数据库中固化，直接使用
@@ -576,27 +576,58 @@ def get_all_webhooks(
                 webhook['beyond_time_window'] = beyond_window
                 webhook['is_within_window'] = not beyond_window if webhook.get('is_duplicate') else False
 
-                # 添加上次告警 ID（同一 hash 的上一条记录）
+            # 批量计算上次告警 ID（优化性能）
+            # 收集所有需要查询的 (hash, timestamp)
+            lookup_map = {}
+            for webhook in webhooks:
                 if webhook.get('alert_hash'):
                     try:
-                        # 查找同一 hash 的上一条记录（时间上比当前早）
                         current_timestamp = datetime.fromisoformat(webhook['timestamp'])
-                        prev_alert = session.query(WebhookEvent)\
-                            .filter(
-                                WebhookEvent.alert_hash == webhook['alert_hash'],
-                                WebhookEvent.timestamp < current_timestamp
-                            )\
-                            .order_by(WebhookEvent.timestamp.desc())\
-                            .first()
-
-                        if prev_alert:
-                            webhook['prev_alert_id'] = prev_alert.id
-                        else:
-                            webhook['prev_alert_id'] = None
+                        key = (webhook['alert_hash'], current_timestamp)
+                        lookup_map[key] = webhook
                     except Exception as e:
-                        logger.warning(f"计算 prev_alert_id 失败 (webhook={webhook.get('id')}): {e}")
+                        logger.warning(f"解析时间戳失败 (webhook={webhook.get('id')}): {e}")
                         webhook['prev_alert_id'] = None
-                else:
+
+            # 批量查询所有的上一条记录（一次查询）
+            if lookup_map:
+                try:
+                    # 获取所有涉及的 alert_hash
+                    all_hashes = list(set(k[0] for k in lookup_map.keys()))
+
+                    # 查询这些 hash 的所有记录（去重需要）
+                    from sqlalchemy import or_
+                    all_alerts = session.query(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
+                        .filter(WebhookEvent.alert_hash.in_(all_hashes))\
+                        .order_by(WebhookEvent.alert_hash, WebhookEvent.timestamp.desc())\
+                        .all()
+
+                    # 构建 hash -> 按时间排序的记录列表
+                    hash_to_alerts = {}
+                    for alert_id, alert_hash, alert_timestamp in all_alerts:
+                        if alert_hash not in hash_to_alerts:
+                            hash_to_alerts[alert_hash] = []
+                        hash_to_alerts[alert_hash].append((alert_id, alert_timestamp))
+
+                    # 为每个 webhook 找到上一条记录
+                    for (alert_hash, current_timestamp), webhook in lookup_map.items():
+                        alerts_list = hash_to_alerts.get(alert_hash, [])
+                        # 找到时间早于当前的第一条
+                        prev_id = None
+                        for aid, ats in alerts_list:
+                            if ats < current_timestamp:
+                                prev_id = aid
+                                break
+                        webhook['prev_alert_id'] = prev_id
+                except Exception as e:
+                    logger.warning(f"批量计算 prev_alert_id 失败: {e}")
+                    # 失败时设置为 None
+                    for webhook in lookup_map.values():
+                        webhook['prev_alert_id'] = None
+
+            # 没有 alert_hash 的设为 None
+            for webhook in webhooks:
+                if not webhook.get('alert_hash'):
                     webhook['prev_alert_id'] = None
 
             # 计算下一页游标
