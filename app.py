@@ -209,7 +209,7 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             # 保存数据（传递预先计算的哈希和检测结果，避免重复查询）
             # 注意：窗口外的历史告警也应该标记为重复，只是AI分析可能是新的
             actual_is_duplicate = is_duplicate or beyond_window
-            webhook_id, is_dup, original_id = save_webhook_data(
+            webhook_id, is_dup, original_id, final_beyond_window = save_webhook_data(
                 data=data,
                 source=source,
                 raw_payload=payload,
@@ -222,10 +222,13 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 original_event=original_event,
                 beyond_window=beyond_window  # 传递窗口外标记
             )
-        
+
         # 转发逻辑判断
-        # 注意：使用原始的 is_duplicate（窗口内重复）和 beyond_window（窗口外重复）
-        # 而不是 is_dup（保存后的重复标记，窗口内外都是 True）
+        # 注意：使用保存后返回的最终状态（可能在重试过程中被重新检测）
+        # final_beyond_window 是最终确定的窗口状态
+        # is_dup 表示是否为重复告警（窗口内外都是 True）
+        beyond_window = final_beyond_window  # 更新为最终状态
+        is_duplicate = is_dup and not beyond_window  # 窗口内重复
         importance = analysis_result.get('importance', '').lower()
         should_forward = False
         skip_reason = None

@@ -299,7 +299,7 @@ def save_webhook_data(
     is_duplicate: Optional[bool] = None,
     original_event: Optional[WebhookEvent] = None,
     beyond_window: bool = False
-) -> tuple[Union[int, str], bool, Optional[int]]:
+) -> tuple[Union[int, str], bool, Optional[int], bool]:
     """保存 webhook 数据到数据库（带重试机制防止并发竞态）"""
     from sqlalchemy.exc import IntegrityError
 
@@ -316,7 +316,9 @@ def save_webhook_data(
             with session_scope() as session:
                 # 在事务内检查重复（如果未预检测）
                 if is_duplicate is None:
-                    is_duplicate, original_event, _ = check_duplicate_alert(alert_hash, session=session)
+                    is_duplicate, original_event, beyond_window_detected = check_duplicate_alert(alert_hash, session=session)
+                    # 使用重新检测的结果
+                    beyond_window = beyond_window_detected
 
                 if is_duplicate and original_event:
                     # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
@@ -366,7 +368,7 @@ def save_webhook_data(
                         if Config.ENABLE_FILE_BACKUP:
                             save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
 
-                        return webhook_id, True, orig.id
+                        return webhook_id, True, orig.id, beyond_window
                 else:
                     # 新告警：正常保存
                     webhook_event = WebhookEvent(
@@ -397,7 +399,7 @@ def save_webhook_data(
                     if Config.ENABLE_FILE_BACKUP:
                         save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
 
-                    return webhook_id, False, None
+                    return webhook_id, False, None, False  # 新告警，beyond_window=False
 
         except IntegrityError as e:
             # 唯一约束冲突：说明另一个 worker 已经插入了相同的原始告警
@@ -445,7 +447,8 @@ def save_webhook_data(
                         fallback_session.add(dup_event)
                         fallback_session.flush()
 
-                        return dup_event.id, True, existing.id
+                        # TODO: 这里应该计算 beyond_window，暂时设为 False
+                        return dup_event.id, True, existing.id, False
                     else:
                         # 真的没找到，记录错误
                         logger.error(f"并发冲突但无法找到原始告警: hash={alert_hash}")
@@ -455,7 +458,7 @@ def save_webhook_data(
             logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
             # 失败时至少保存到文件
             file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-            return file_id, False, None
+            return file_id, False, None, False
 
     # 不应该执行到这里
     logger.error("保存数据异常：退出重试循环但未返回结果")
