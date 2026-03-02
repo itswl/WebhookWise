@@ -614,21 +614,26 @@ def get_all_webhooks(
                         alerts_list = hash_to_alerts.get(alert_hash, [])
                         # 找到时间早于当前的第一条
                         prev_id = None
+                        prev_timestamp = None
                         for aid, ats in alerts_list:
                             if ats < current_timestamp:
                                 prev_id = aid
+                                prev_timestamp = ats
                                 break
                         webhook['prev_alert_id'] = prev_id
+                        webhook['prev_alert_timestamp'] = prev_timestamp.isoformat() if prev_timestamp else None
                 except Exception as e:
                     logger.warning(f"批量计算 prev_alert_id 失败: {e}")
                     # 失败时设置为 None
                     for webhook in lookup_map.values():
                         webhook['prev_alert_id'] = None
+                        webhook['prev_alert_timestamp'] = None
 
             # 没有 alert_hash 的设为 None
             for webhook in webhooks:
                 if not webhook.get('alert_hash'):
                     webhook['prev_alert_id'] = None
+                    webhook['prev_alert_timestamp'] = None
 
             # 计算下一页游标
             next_cursor = events[-1].id if events else None
