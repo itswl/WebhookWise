@@ -320,6 +320,12 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
             max_tokens=1000
         )
         
+        # 增加对响应类型的检查，防止API返回非JSON错误
+        if not hasattr(response, 'choices') or not response.choices:
+            error_message = f"OpenAI API 返回无效响应: {response}"
+            logger.error(error_message)
+            raise TypeError(error_message)
+
         # 解析响应
         ai_response = response.choices[0].message.content
         if ai_response is None:
@@ -403,7 +409,6 @@ def _should_send_degradation_alert() -> bool:
         bool: True - 应该发送，False - 跳过（24小时内已通知过）
     """
     from datetime import datetime, timedelta
-    import os
     from pathlib import Path
 
     # 使用临时文件记录上次通知时间
