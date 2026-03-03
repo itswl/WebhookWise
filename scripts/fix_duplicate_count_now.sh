@@ -4,8 +4,12 @@
 
 echo "开始修复 duplicate_count..."
 
-# 使用环境变量中的数据库配置，或使用默认值
-DB_URL="${DATABASE_URL:-postgresql://<REDACTED_DB_CREDENTIALS>@<REDACTED_DB_HOST>/webhooks}"
+# 必须使用环境变量中的数据库配置
+if [ -z "$DATABASE_URL" ]; then
+    echo "错误：未设置 DATABASE_URL 环境变量"
+    exit 1
+fi
+DB_URL="$DATABASE_URL"
 
 # 执行 SQL 修复
 psql "$DB_URL" <<'EOF'
