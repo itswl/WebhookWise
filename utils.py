@@ -206,7 +206,8 @@ def check_duplicate_alert(
 
         if original_event:
             logger.info(f"检测到重复告警: hash={alert_hash}, 原始告警ID={original_event.id}, 时间窗口={time_window_hours}小时")
-            return True, original_event, False
+            # 这是窗口内的原始告警，beyond_window=False，没有 last_beyond_window（因为是最近的）
+            return True, original_event, False, None
 
         # 步骤2：窗口内没有原始告警，检查是否有任何记录（包括重复记录）
         # 这是为了防止窗口外告警短时间内重复触发（如51秒内两次）
