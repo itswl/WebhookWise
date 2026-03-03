@@ -255,11 +255,11 @@ def check_duplicate_alert(
             if is_within_window:
                 # 在窗口内
                 logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
-                return True, original_ref, False
+                return True, original_ref, False, last_beyond_window
             else:
                 # 超过窗口（窗口外重复）
                 logger.info(f"检测到窗口外重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
-                return True, original_ref, True
+                return True, original_ref, True, last_beyond_window
 
         # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
         if check_beyond_window:
@@ -275,13 +275,13 @@ def check_duplicate_alert(
                 time_diff = (datetime.now() - history_event.timestamp).total_seconds() / 3600
                 logger.info(f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时")
                 # 返回历史事件，用于可能的分析结果复用
-                return False, history_event, True
+                return False, history_event, True, None
 
-        return False, None, False
+        return False, None, False, None
 
     except Exception as e:
         logger.error(f"检查重复告警失败: {str(e)}")
-        return False, None, False
+        return False, None, False, None
     finally:
         if should_close:
             session.close()
@@ -317,7 +317,7 @@ def save_webhook_data(
             with session_scope() as session:
                 # 在事务内检查重复（如果未预检测）
                 if is_duplicate is None:
-                    is_duplicate, original_event, beyond_window_detected = check_duplicate_alert(alert_hash, session=session)
+                    is_duplicate, original_event, beyond_window_detected, _ = check_duplicate_alert(alert_hash, session=session)
                     # 使用重新检测的结果
                     beyond_window = beyond_window_detected
 
