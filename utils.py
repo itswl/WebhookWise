@@ -335,6 +335,13 @@ def save_webhook_data(
                         final_ai_analysis = ai_analysis if ai_analysis else original_event.ai_analysis
                         final_importance = ai_analysis.get('importance') if ai_analysis else original_event.importance
 
+                        # 如果原始告警没有有效的AI分析，但这次重新分析成功了，更新原始告警
+                        if ai_analysis and reanalyzed:
+                            if not orig.ai_analysis or not orig.ai_analysis.get('summary'):
+                                logger.info(f"更新原始告警 ID={orig.id} 的AI分析结果（之前缺失）")
+                                orig.ai_analysis = ai_analysis
+                                orig.importance = ai_analysis.get('importance')
+
                         # 创建重复告警记录
                         # duplicate_count 继承自原始告警的累计重复次数
                         webhook_event = WebhookEvent(
