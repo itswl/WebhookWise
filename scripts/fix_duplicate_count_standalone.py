@@ -8,11 +8,10 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# 从环境变量获取数据库连接，或使用默认值
-DATABASE_URL = os.getenv(
-    'DATABASE_URL',
-    'postgresql://<REDACTED_DB_CREDENTIALS>@<REDACTED_DB_HOST>/webhooks'
-)
+# 必须从环境变量获取数据库连接
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required")
 
 def fix_duplicate_count():
     """修复所有重复告警的 duplicate_count"""

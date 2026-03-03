@@ -20,8 +20,10 @@ import sys
 
 def get_engine():
     """获取数据库引擎"""
-    # 优先使用环境变量，否则使用默认配置
-    db_url = os.getenv('DATABASE_URL', 'postgresql://<REDACTED_DB_CREDENTIALS>@<REDACTED_DB_HOST>/webhooks')
+    # 必须使用环境变量 DATABASE_URL
+    db_url = os.getenv('DATABASE_URL')
+    if not db_url:
+        raise ValueError("DATABASE_URL environment variable is required")
     return create_engine(db_url)
 
 
