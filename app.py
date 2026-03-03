@@ -172,8 +172,18 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 is_duplicate, original_event, beyond_window, last_beyond_window_event = check_duplicate_alert(alert_hash, check_beyond_window=True)
                 reanalyzed = False  # 标记是否重新分析
 
+                # 检查是否有其他 worker 刚处理完窗口外重复（避免并发重复分析）
+                if last_beyond_window_event and last_beyond_window_event.created_at:
+                    seconds_since_created = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
+                    if seconds_since_created < 30:  # 30秒内刚创建的记录
+                        logger.info(f"检测到其他 worker 刚处理完窗口外重复(ID={last_beyond_window_event.id}, {seconds_since_created:.1f}秒前)，复用结果")
+                        analysis_result = last_beyond_window_event.ai_analysis or {}
+                        reanalyzed = False
+                        # 强制判定为窗口内重复，避免重复转发
+                        beyond_window = False
+                        is_duplicate = True
                 # 优先判断窗口外，因为窗口外也属于重复告警，但需要不同的处理逻辑
-                if beyond_window and original_event:
+                elif beyond_window and original_event:
                     # 窗口外的历史告警
                     if Config.REANALYZE_AFTER_TIME_WINDOW:
                         logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
