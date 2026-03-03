@@ -92,7 +92,9 @@ class WebhookEvent(Base):
             'forward_status': self.forward_status,
             'summary': summary,  # AI 摘要（而非完整分析）
             'alert_info': alert_info,  # 告警关键信息（而非完整 parsed_data）
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'prev_alert_id': None,  # 占位符，由 get_all_webhooks 填充
+            'prev_alert_timestamp': None  # 占位符，由 get_all_webhooks 填充
         }
 
     def to_dict(self):
