@@ -472,7 +472,7 @@ def save_webhook_data(
     # 不应该执行到这里
     logger.error("保存数据异常：退出重试循环但未返回结果")
     file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-    return file_id, False, None
+    return file_id, False, None, False
 
 
 def save_webhook_to_file(
