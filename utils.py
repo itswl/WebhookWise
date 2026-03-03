@@ -191,31 +191,11 @@ def check_duplicate_alert(
         # 计算时间窗口的起始时间
         time_threshold = datetime.now() - timedelta(hours=time_window_hours)
 
-        # 步骤1：查询窗口内的原始告警（is_duplicate=0）
-        # 使用 with_for_update() 添加行锁，防止并发竞态
-        # 注意：等待锁释放（nowait=False），而不是跳过，确保读取到最新数据
-        original_event = session.query(WebhookEvent)\
-            .filter(
-                WebhookEvent.alert_hash == alert_hash,
-                WebhookEvent.timestamp >= time_threshold,
-                WebhookEvent.is_duplicate == 0  # 只查找原始告警
-            )\
-            .order_by(WebhookEvent.timestamp.desc())\
-            .with_for_update(nowait=False)\
-            .first()
-
-        if original_event:
-            logger.info(f"检测到重复告警: hash={alert_hash}, 原始告警ID={original_event.id}, 时间窗口={time_window_hours}小时")
-            # 这是窗口内的原始告警，beyond_window=False，没有 last_beyond_window（因为是最近的）
-            return True, original_event, False, None
-
-        # 步骤2：窗口内没有原始告警，检查是否有任何记录（包括重复记录）
-        # 这是为了防止窗口外告警短时间内重复触发（如51秒内两次）
+        # 统一逻辑：总是先查找窗口内最新的任何记录
         any_event = session.query(WebhookEvent)\
             .filter(
                 WebhookEvent.alert_hash == alert_hash,
                 WebhookEvent.timestamp >= time_threshold
-                # 不限制 is_duplicate，查询所有记录
             )\
             .order_by(WebhookEvent.timestamp.desc())\
             .first()
