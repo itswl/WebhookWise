@@ -350,8 +350,11 @@ def save_webhook_data(
                         # 准确的日志信息
                         if reanalyzed:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（重新分析）")
+                        elif ai_analysis is not None:
+                            # 如果传入了 ai_analysis，说明是复用了非原始告警的分析结果（通常是最近窗口外）
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用最近的AI分析结果")
                         else:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{orig.id}的AI分析结果")
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警 {orig.id} 的AI分析结果")
 
                         # 可选: 同时保存到文件
                         if Config.ENABLE_FILE_BACKUP:
