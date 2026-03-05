@@ -312,9 +312,24 @@ def save_webhook_data(
                         logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
 
                         # 决定使用哪个AI分析结果
-                        # 如果传入了新的分析结果（窗口外重新分析的场景），使用新的；否则使用原始的
-                        final_ai_analysis = ai_analysis if ai_analysis else original_event.ai_analysis
-                        final_importance = ai_analysis.get('importance') if ai_analysis else original_event.importance
+                        # 窗口内重复：始终复用原始告警的分析结果（避免重复分析导致结果不一致）
+                        # 窗口外重复：如果配置允许重新分析且传入了新的结果，使用新的
+                        if beyond_window and reanalyzed and ai_analysis:
+                            # 窗口外重复，使用重新分析的结果
+                            final_ai_analysis = ai_analysis
+                            final_importance = ai_analysis.get('importance')
+                        elif orig.ai_analysis:
+                            # 优先使用原始告警的AI分析结果
+                            final_ai_analysis = orig.ai_analysis
+                            final_importance = orig.importance
+                        elif ai_analysis:
+                            # 原始告警没有AI分析，使用传入的（降级情况）
+                            final_ai_analysis = ai_analysis
+                            final_importance = ai_analysis.get('importance')
+                        else:
+                            # 都没有，使用空字典
+                            final_ai_analysis = {}
+                            final_importance = None
 
                         # 如果原始告警没有有效的AI分析，但这次重新分析成功了，更新原始告警
                         if ai_analysis and reanalyzed:
@@ -348,13 +363,14 @@ def save_webhook_data(
                         webhook_id = webhook_event.id
 
                         # 准确的日志信息
-                        if reanalyzed:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（重新分析）")
-                        elif ai_analysis is not None:
-                            # 如果传入了 ai_analysis，说明是复用了非原始告警的分析结果（通常是最近窗口外）
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用最近的AI分析结果")
-                        else:
+                        if beyond_window and reanalyzed:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（窗口外重新分析）")
+                        elif orig.ai_analysis:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警 {orig.id} 的AI分析结果")
+                        elif ai_analysis:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果")
+                        else:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 无AI分析结果")
 
                         # 可选: 同时保存到文件
                         if Config.ENABLE_FILE_BACKUP:

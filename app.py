@@ -103,7 +103,7 @@ def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
         
     except Exception as e:
         session.rollback()
-        logger.error(f"获取处理锁失败: {e}")
+        logger.error(f"获取处理锁失败: {e}", exc_info=True)
         yield False
         
     finally:
@@ -123,6 +123,10 @@ def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
 
 def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]:
     """通用 Webhook 处理逻辑"""
+    # 初始化变量，避免 UnboundLocalError
+    analysis_result = {}
+    original_event = None
+    
     try:
         # 获取请求信息
         client_ip = get_client_ip(request)
@@ -199,13 +203,13 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                         logger.info(f"复用其他 worker 的分析结果: 最近窗口外记录 ID={last_beyond_window_event.id}")
                         analysis_result = last_beyond_window_event.ai_analysis
                         reanalyzed = False
-                    elif original_event.ai_analysis and original_event.ai_analysis.get('summary'):
-                        # 原始告警有有效的AI分析
+                    elif original_event.ai_analysis:
+                        # 原始告警有AI分析结果（即使没有summary也复用，避免重复分析）
                         logger.info(f"复用其他 worker 的分析结果: 原始 ID={original_event.id}")
                         analysis_result = original_event.ai_analysis
                         reanalyzed = False
                     else:
-                        # 原始告警没有有效的AI分析，重新尝试
+                        # 原始告警没有AI分析结果，重新尝试
                         logger.info(f"原始告警 ID={original_event.id} 缺少AI分析，重新分析")
                         analysis_result = analyze_webhook_with_ai(webhook_full_data)
                         reanalyzed = True
@@ -236,13 +240,13 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                         logger.info(f"检测到窗口内重复告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
                         analysis_result = last_beyond_window_event.ai_analysis
                         reanalyzed = False
-                    elif original_event.ai_analysis and original_event.ai_analysis.get('summary'):
-                        # 原始告警有有效的AI分析结果（至少有summary字段）
+                    elif original_event.ai_analysis:
+                        # 原始告警有AI分析结果（即使没有summary也复用，避免重复分析）
                         logger.info(f"检测到窗口内重复告警，复用原始告警 ID={original_event.id} 的分析结果")
                         analysis_result = original_event.ai_analysis
                         reanalyzed = False
                     else:
-                        # 原始告警没有有效的AI分析（可能之前失败了），重新尝试
+                        # 原始告警没有AI分析结果，重新尝试
                         logger.info(f"检测到窗口内重复告警，但原始告警 ID={original_event.id} 缺少AI分析，重新分析")
                         analysis_result = analyze_webhook_with_ai(webhook_full_data)
                         reanalyzed = True
