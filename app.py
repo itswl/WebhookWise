@@ -189,14 +189,20 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                 # 优先判断窗口外，因为窗口外也属于重复告警，但需要不同的处理逻辑
                 elif beyond_window and original_event:
                     # 窗口外的历史告警
-                    if Config.REANALYZE_AFTER_TIME_WINDOW:
+                    # 注意：由于是获取锁失败进入此分支，说明可能有其他worker正在处理
+                    # 优先检查是否有最近的窗口外记录可以复用，避免重复分析和转发
+                    if last_beyond_window_event and last_beyond_window_event.ai_analysis:
+                        logger.info(f"窗口外历史告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
+                        analysis_result = last_beyond_window_event.ai_analysis
+                        reanalyzed = False
+                    elif not Config.REANALYZE_AFTER_TIME_WINDOW:
+                        logger.info(f"窗口外历史告警，复用历史分析: 历史 ID={original_event.id}")
+                        analysis_result = original_event.ai_analysis or {}
+                        reanalyzed = False
+                    else:
                         logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
                         analysis_result = analyze_webhook_with_ai(webhook_full_data)
                         reanalyzed = True
-                    else:
-                        logger.info(f"窗口外历史告警，复用分析: 历史 ID={original_event.id}")
-                        analysis_result = original_event.ai_analysis or {}
-                        reanalyzed = False
                 elif is_duplicate and original_event:
                     # 其他 worker 已处理完，复用结果（优先复用最近的窗口外记录）
                     if last_beyond_window_event and last_beyond_window_event.ai_analysis:

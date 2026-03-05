@@ -313,13 +313,10 @@ def save_webhook_data(
 
                         # 决定使用哪个AI分析结果
                         # 窗口内重复：始终复用原始告警的分析结果（避免重复分析导致结果不一致）
-                        # 窗口外重复：如果配置允许重新分析且传入了新的结果，使用新的
-                        if beyond_window and reanalyzed and ai_analysis:
-                            # 窗口外重复，使用重新分析的结果
-                            final_ai_analysis = ai_analysis
-                            final_importance = ai_analysis.get('importance')
-                        elif orig.ai_analysis:
-                            # 优先使用原始告警的AI分析结果
+                        # 窗口外重复：优先复用原始告警的结果，避免并发场景下重复转发
+                        # 注意：即使 reanalyzed=True，如果是重复告警也应该复用原始结果
+                        if orig.ai_analysis:
+                            # 优先使用原始告警的AI分析结果（确保所有重复告警显示一致）
                             final_ai_analysis = orig.ai_analysis
                             final_importance = orig.importance
                         elif ai_analysis:
@@ -363,12 +360,10 @@ def save_webhook_data(
                         webhook_id = webhook_event.id
 
                         # 准确的日志信息
-                        if beyond_window and reanalyzed:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用新的AI分析结果（窗口外重新分析）")
-                        elif orig.ai_analysis:
+                        if orig.ai_analysis:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警 {orig.id} 的AI分析结果")
                         elif ai_analysis:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果")
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果（原始告警无分析结果）")
                         else:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 无AI分析结果")
 
