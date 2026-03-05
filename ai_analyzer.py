@@ -388,6 +388,8 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
             analysis_result['source'] = source
         if 'importance' not in analysis_result:
             analysis_result['importance'] = 'medium'
+        if 'summary' not in analysis_result or not analysis_result['summary']:
+            analysis_result['summary'] = 'AI分析未生成摘要'
         
         return analysis_result
         
