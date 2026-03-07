@@ -48,6 +48,9 @@ class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     OPENAI_API_URL = os.getenv('OPENAI_API_URL', 'https://openrouter.ai/api/v1')
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'anthropic/claude-sonnet-4')
+    OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.2'))
+    OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '1800'))
+    OPENAI_TRUNCATION_RETRY_MAX_TOKENS = int(os.getenv('OPENAI_TRUNCATION_RETRY_MAX_TOKENS', '2600'))
     
     # AI 提示词配置
     AI_SYSTEM_PROMPT = os.getenv(
