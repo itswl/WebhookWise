@@ -77,6 +77,16 @@ class Config:
     # 周期性提醒配置
     ENABLE_PERIODIC_REMINDER = os.getenv('ENABLE_PERIODIC_REMINDER', 'true').lower() == 'true'  # 是否启用周期性提醒
     REMINDER_INTERVAL_HOURS = int(os.getenv('REMINDER_INTERVAL_HOURS', '6'))  # 提醒间隔（小时），默认6小时
+
+    # 并发与通知窗口配置（秒）
+    PROCESSING_LOCK_TTL_SECONDS = int(os.getenv('PROCESSING_LOCK_TTL_SECONDS', '120'))
+    PROCESSING_LOCK_WAIT_SECONDS = int(os.getenv('PROCESSING_LOCK_WAIT_SECONDS', '3'))
+    RECENT_BEYOND_WINDOW_REUSE_SECONDS = int(os.getenv('RECENT_BEYOND_WINDOW_REUSE_SECONDS', '30'))
+    NOTIFICATION_COOLDOWN_SECONDS = int(os.getenv('NOTIFICATION_COOLDOWN_SECONDS', '60'))
+
+    # 保存重试配置
+    SAVE_MAX_RETRIES = int(os.getenv('SAVE_MAX_RETRIES', '3'))
+    SAVE_RETRY_DELAY_SECONDS = float(os.getenv('SAVE_RETRY_DELAY_SECONDS', '0.1'))
     
     # JSON 配置
     JSON_SORT_KEYS = False

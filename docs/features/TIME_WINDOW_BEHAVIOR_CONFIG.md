@@ -230,6 +230,21 @@ DUPLICATE_ALERT_TIME_WINDOW=24  # 去重时间窗口（小时）
 - 在此窗口内（例如 24 小时）的重复告警 → 不重新分析，不推送
 - **超过**此窗口的重复告警 → 根据新配置项决定行为
 
+### 并发与通知冷却配置（新增）
+
+```bash
+PROCESSING_LOCK_TTL_SECONDS=120
+PROCESSING_LOCK_WAIT_SECONDS=3
+RECENT_BEYOND_WINDOW_REUSE_SECONDS=30
+NOTIFICATION_COOLDOWN_SECONDS=60
+SAVE_MAX_RETRIES=3
+SAVE_RETRY_DELAY_SECONDS=0.1
+```
+
+**作用**：
+- 并发 worker 之间的等待、复用窗口、重试退避可配置
+- 通知冷却时间（默认 60 秒）可配置，避免短时间内重复推送
+
 ### 窗口内重复告警配置
 
 ```bash
@@ -289,6 +304,39 @@ FORWARD_AFTER_TIME_WINDOW=true     # 但仍然推送（定期提醒）
                       │  ├─ Yes → ✅ 如果 importance=high 则推送
                       │  └─ No  → ❌ 不推送
 ```
+
+---
+
+## 当前实现细节（与代码一致）
+
+> 以下行为以 `app.py` 与 `utils.py` 当前实现为准。
+
+### 1. 窗口起点策略（防止持续告警永远停留在窗口内）
+
+系统判断是否“窗口内/窗口外”时，不是只看最早原始告警时间，而是按以下优先级取窗口起点：
+
+1. 最近一条 `beyond_window=1` 的记录（如果存在）
+2. 否则退回到原始告警时间
+
+这意味着持续性告警会以最近一次“窗口外事件”重新起算，避免长期告警一直被判定为窗口内重复。
+
+### 2. 窗口外记录的落库形式
+
+当前实现中，窗口外事件会作为“重复告警记录”落库：
+
+- `is_duplicate=1`
+- `duplicate_of=<原始告警ID>`
+- `beyond_window=1`
+
+不是创建全新的原始告警链路。
+
+### 3. 并发一致性与重试兜底
+
+为了避免多 worker 并发写入造成重复原始记录，保存阶段采用三层保护：
+
+1. **同事务内重新判重**：写入前在事务内再次调用判重逻辑，避免外层状态过期。
+2. **冲突重试**：遇到 `IntegrityError` 时最多重试 3 次，并做小步退避。
+3. **最终兜底**：重试仍失败时，读取最新原始告警并降级写入重复记录，避免请求直接失败。
 
 ---
 
@@ -436,16 +484,12 @@ ORDER BY timestamp DESC;
 
 ### Q4: 如果 REANALYZE=false 但历史分析为空怎么办？
 
-**A**: 系统会检测到并调用 AI 分析（兜底逻辑）：
+**A**: 当前实现会优先复用历史分析（`original_event.ai_analysis or {}`）。
+如果历史分析确实为空，结果可能仍为空，不会在该分支强制触发 AI。
 
-```python
-if not Config.REANALYZE_AFTER_TIME_WINDOW:
-    analysis_result = original_event.ai_analysis or {}
-    if not analysis_result:
-        # 兜底：如果历史分析为空，仍然调用 AI
-        logger.warning("历史分析为空，强制调用 AI")
-        analysis_result = analyze_webhook_with_ai(webhook_full_data)
-```
+建议：
+- 需要保证每次窗口外都有新分析结果时，设置 `REANALYZE_AFTER_TIME_WINDOW=true`
+- 成本优先且可接受偶发空分析时，保持 `false`
 
 ### Q5: 能否针对不同告警类型设置不同配置？
 
