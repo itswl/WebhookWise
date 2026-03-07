@@ -244,6 +244,15 @@ def check_duplicate_alert(
 
         # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
         if check_beyond_window:
+            # 查找同一 hash 的最近一条 beyond_window=1 的记录（用于并发场景检测）
+            last_beyond_window = session.query(WebhookEvent)\
+                .filter(
+                    WebhookEvent.alert_hash == alert_hash,
+                    WebhookEvent.beyond_window == 1
+                )\
+                .order_by(WebhookEvent.timestamp.desc())\
+                .first()
+
             history_event = session.query(WebhookEvent)\
                 .filter(
                     WebhookEvent.alert_hash == alert_hash,
@@ -256,7 +265,8 @@ def check_duplicate_alert(
                 time_diff = (datetime.now() - history_event.timestamp).total_seconds() / 3600
                 logger.info(f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时")
                 # 返回历史事件，用于可能的分析结果复用
-                return False, history_event, True, None
+                # 同时返回 last_beyond_window（可能为None，如果有则用于并发检测）
+                return False, history_event, True, last_beyond_window
 
         return False, None, False, None
 
