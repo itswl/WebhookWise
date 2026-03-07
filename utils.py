@@ -322,17 +322,16 @@ def save_webhook_data(
                         logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
 
                         # 决定使用哪个AI分析结果
-                        # 窗口内重复：始终复用原始告警的分析结果（避免重复分析导致结果不一致）
-                        # 窗口外重复：优先复用原始告警的结果，避免并发场景下重复转发
-                        # 注意：即使 reanalyzed=True，如果是重复告警也应该复用原始结果
-                        if orig.ai_analysis:
-                            # 优先使用原始告警的AI分析结果（确保所有重复告警显示一致）
-                            final_ai_analysis = orig.ai_analysis
-                            final_importance = orig.importance
-                        elif ai_analysis:
-                            # 原始告警没有AI分析，使用传入的（降级情况）
+                        # 优先使用传入的ai_analysis（因为app.py已经做了智能选择）
+                        # 如果传入的为空，则使用原始告警的分析结果
+                        if ai_analysis:
+                            # 使用传入的分析结果（app.py已经选择了最优的：窗口外记录 > 原始告警）
                             final_ai_analysis = ai_analysis
                             final_importance = ai_analysis.get('importance')
+                        elif orig.ai_analysis:
+                            # 传入的为空，使用原始告警的分析结果
+                            final_ai_analysis = orig.ai_analysis
+                            final_importance = orig.importance
                         else:
                             # 都没有，使用空字典
                             final_ai_analysis = {}
@@ -370,10 +369,10 @@ def save_webhook_data(
                         webhook_id = webhook_event.id
 
                         # 准确的日志信息
-                        if orig.ai_analysis:
+                        if ai_analysis:
+                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果")
+                        elif orig.ai_analysis:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警 {orig.id} 的AI分析结果")
-                        elif ai_analysis:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果（原始告警无分析结果）")
                         else:
                             logger.info(f"重复告警已保存: ID={webhook_id}, 无AI分析结果")
 
@@ -442,6 +441,10 @@ def save_webhook_data(
                         logger.info(f"最终找到原始告警 ID={existing.id}，标记为重复")
                         existing.duplicate_count += 1
 
+                        # 优先使用传入的ai_analysis，如果没有则使用原始告警的
+                        final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
+                        final_importance = ai_analysis.get('importance') if ai_analysis else existing.importance
+
                         dup_event = WebhookEvent(
                             source=source,
                             client_ip=client_ip,
@@ -450,8 +453,8 @@ def save_webhook_data(
                             headers=dict(headers) if headers else {},
                             parsed_data=data,
                             alert_hash=alert_hash,
-                            ai_analysis=existing.ai_analysis,
-                            importance=existing.importance,
+                            ai_analysis=final_ai_analysis,
+                            importance=final_importance,
                             forward_status=forward_status,
                             is_duplicate=1,
                             duplicate_of=existing.id,
