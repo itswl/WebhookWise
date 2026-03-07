@@ -146,50 +146,261 @@ def reload_user_prompt_template() -> str:
     return load_user_prompt_template()
 
 
+
 def fix_json_format(json_str: str) -> str:
     """修复常见的 JSON 格式错误"""
-    # 移除 BOM 和特殊字符
     json_str = json_str.replace('\ufeff', '').strip()
-    
-    # 先尝试直接解析
+    if not json_str:
+        return json_str
+
     try:
         json.loads(json_str)
         return json_str
     except json.JSONDecodeError:
         pass
-    
-    # 如果有 json5 库，使用它来解析（支持尾随逗号、单引号、注释等）
+
     if HAS_JSON5:
         try:
             parsed = json5.loads(json_str)
-            # 转换回标准 JSON
             return json.dumps(parsed, ensure_ascii=False)
         except Exception as e:
             logger.debug(f"json5 解析失败: {e}")
-    
-    # 兖底: 简单的正则修复
+
+    fixed = json_str
+    fixed = re.sub(r'//.*?$', '', fixed, flags=re.MULTILINE)
+    fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
+    fixed = re.sub(r',\s*([}\]])', r'\1', fixed)
+    fixed = re.sub(r'([\[{])\s*,', r'\1', fixed)
+    return fixed.strip()
+
+
+def _extract_json_payload(text: str) -> str:
+    """从响应文本中提取 JSON 片段。"""
+    text = text.strip()
+    fenced = re.search(r'```(?:json)?\s*([\s\S]*?)```', text, re.IGNORECASE)
+    if fenced:
+        return fenced.group(1).strip()
+    return text
+
+
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """提取第一个 JSON 对象（允许末尾不完整）。"""
+    start = text.find('{')
+    if start < 0:
+        return None
+
+    stack: list[str] = ['}']
+    in_string = False
+    escape = False
+
+    for i in range(start + 1, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            stack.append('}')
+        elif ch == '[':
+            stack.append(']')
+        elif ch in '}]':
+            if not stack or ch != stack[-1]:
+                return text[start:i + 1].strip()
+            stack.pop()
+            if not stack:
+                return text[start:i + 1].strip()
+
+    return text[start:].strip()
+
+
+def _close_truncated_json(candidate: str) -> str:
+    """尝试补全被截断的 JSON。"""
+    text = candidate.strip()
+    if not text:
+        return text
+
+    start = text.find('{')
+    if start > 0:
+        text = text[start:]
+
+    stack: list[str] = []
+    in_string = False
+    escape = False
+
+    for ch in text:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            stack.append('}')
+        elif ch == '[':
+            stack.append(']')
+        elif ch in '}]' and stack and ch == stack[-1]:
+            stack.pop()
+
+    text = re.sub(r',\s*$', '', text)
+    if in_string:
+        text += '"'
+
+    while stack:
+        text = re.sub(r',\s*$', '', text)
+        text += stack.pop()
+
+    return text
+
+
+def _safe_json_string(raw: str) -> str:
     try:
-        # 移除注释
-        json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
-        json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
-        # 修复尾随逗号
-        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
-        # 修复起始逗号
-        json_str = re.sub(r'([{\[])\s*,', r'\1', json_str)
-        
-        json.loads(json_str)
-        logger.debug("JSON 格式修复成功")
-    except json.JSONDecodeError as e:
-        logger.warning(f"JSON 格式修复后仍然无效: {e}")
-    
-    return json_str.strip()
+        return json.loads(f'"{raw}"')
+    except Exception:
+        return raw.replace('\\n', ' ').replace('\\"', '"').strip()
+
+
+def _extract_json_string_field(text: str, key: str) -> Optional[str]:
+    strict = re.search(rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', text, re.DOTALL)
+    if strict:
+        return _safe_json_string(strict.group(1)).strip()
+
+    truncated = re.search(rf'"{re.escape(key)}"\s*:\s*"([^\n]*)', text)
+    if truncated:
+        return truncated.group(1).strip().strip(',').strip()
+
+    return None
+
+
+def _extract_json_array_field(text: str, key: str) -> list[str]:
+    key_match = re.search(rf'"{re.escape(key)}"\s*:\s*\[', text)
+    if not key_match:
+        return []
+
+    start = key_match.end() - 1
+    arr_part = text[start:]
+    depth = 0
+    in_string = False
+    escape = False
+    end = len(arr_part)
+
+    for i, ch in enumerate(arr_part):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == '[':
+            depth += 1
+        elif ch == ']':
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+
+    block = arr_part[:end]
+    items: list[str] = []
+    for raw in re.findall(r'"((?:\\.|[^"\\])*)"', block, re.DOTALL):
+        value = _safe_json_string(raw).strip()
+        if value:
+            items.append(value)
+
+    return items
+
+
+def _clean_string_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+
+    cleaned: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip().strip('"\'`').strip().strip(',').strip()
+        item = item.strip('[]{}').strip()
+        if not item:
+            continue
+        if item in {'[', ']', '{', '}'}:
+            continue
+        cleaned.append(item)
+
+    return cleaned
+
+
+def _normalize_analysis_result(result: AnalysisResult, source: str) -> AnalysisResult:
+    if not isinstance(result, dict):
+        result = {}
+
+    normalized: AnalysisResult = dict(result)
+    normalized['source'] = str(normalized.get('source') or source)
+
+    event_type = str(normalized.get('event_type') or 'unknown').strip()
+    normalized['event_type'] = event_type or 'unknown'
+
+    importance = str(normalized.get('importance') or 'medium').lower().strip()
+    if importance not in {'high', 'medium', 'low'}:
+        importance = 'medium'
+    normalized['importance'] = importance
+
+    summary = str(normalized.get('summary') or '').strip()
+    normalized['summary'] = summary or 'AI分析未生成摘要'
+
+    if 'impact_scope' in normalized and normalized['impact_scope'] is not None:
+        normalized['impact_scope'] = str(normalized['impact_scope']).strip()
+        if not normalized['impact_scope']:
+            normalized.pop('impact_scope', None)
+
+    normalized['actions'] = _clean_string_list(normalized.get('actions', []))
+    normalized['risks'] = _clean_string_list(normalized.get('risks', []))
+
+    if 'monitoring_suggestions' in normalized:
+        normalized['monitoring_suggestions'] = _clean_string_list(normalized.get('monitoring_suggestions', []))
+
+    return normalized
+
+
+def _try_parse_json_analysis(candidate: str) -> Optional[AnalysisResult]:
+    attempts = [
+        candidate,
+        fix_json_format(candidate),
+    ]
+    closed = _close_truncated_json(candidate)
+    attempts.extend([closed, fix_json_format(closed)])
+
+    for text in attempts:
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+
+        if isinstance(parsed, dict):
+            return parsed
+
+    return None
 
 
 def extract_from_text(text: str, source: str) -> AnalysisResult:
-    """从 AI 响应文本中提取关键信息（兖底策略）"""
+    """从 AI 响应文本中提取关键信息（兜底策略）。"""
     logger.info("使用文本提取策略解析 AI 响应")
-    
-    result = {
+
+    result: AnalysisResult = {
         'source': source,
         'event_type': 'unknown',
         'importance': 'medium',
@@ -197,54 +408,73 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
         'actions': [],
         'risks': []
     }
-    
+
     try:
-        # 提取重要性
-        if re.search(r'importance["\s:]+high', text, re.IGNORECASE):
-            result['importance'] = 'high'
-        elif re.search(r'importance["\s:]+low', text, re.IGNORECASE):
-            result['importance'] = 'low'
-        elif re.search(r'(高|critical|严重)', text):
-            result['importance'] = 'high'
-        elif re.search(r'(低|info|正常)', text):
-            result['importance'] = 'low'
-        
-        # 提取摘要
-        summary_match = re.search(r'summary["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
-        if summary_match:
-            result['summary'] = summary_match.group(1)
+        importance = _extract_json_string_field(text, 'importance')
+        if importance:
+            importance = importance.lower()
+            if importance in {'high', 'medium', 'low'}:
+                result['importance'] = importance
+
+        summary = _extract_json_string_field(text, 'summary')
+        if summary:
+            result['summary'] = summary
         elif re.search(r'(告警|错误|异常|故障)', text):
             result['summary'] = '检测到系统告警或异常，需要关注'
         else:
             result['summary'] = 'Webhook 事件已接收，AI 分析结果解析不完整'
-        
-        # 提取事件类型
-        event_match = re.search(r'event_type["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
-        if event_match:
-            result['event_type'] = event_match.group(1)
-        
-        # 提取建议操作
-        actions_match = re.findall(r'(?:操作|action)[^:]*[:：]\s*["\']?([^"\'}\],]+)', text, re.IGNORECASE)
-        if actions_match:
-            result['actions'] = [a.strip() for a in actions_match if a.strip()]
-        
-        # 提取风险
-        risks_match = re.findall(r'(?:风险|risk)[^:]*[:：]\s*["\']?([^"\'}\],]+)', text, re.IGNORECASE)
-        if risks_match:
-            result['risks'] = [r.strip() for r in risks_match if r.strip()]
-        
-        # 提取影响范围
-        impact_match = re.search(r'impact_scope["\s:]+["\']([^"\']+)["\']', text, re.IGNORECASE)
-        if impact_match:
-            result['impact_scope'] = impact_match.group(1)
-        
-        logger.info(f"文本提取完成: {result}")
-        return result
-        
+
+        event_type = _extract_json_string_field(text, 'event_type')
+        if event_type:
+            result['event_type'] = event_type
+
+        impact_scope = _extract_json_string_field(text, 'impact_scope')
+        if impact_scope:
+            result['impact_scope'] = impact_scope
+
+        actions = _extract_json_array_field(text, 'actions')
+        risks = _extract_json_array_field(text, 'risks')
+        monitoring = _extract_json_array_field(text, 'monitoring_suggestions')
+
+        if actions:
+            result['actions'] = actions
+        if risks:
+            result['risks'] = risks
+        if monitoring:
+            result['monitoring_suggestions'] = monitoring
+
+        normalized = _normalize_analysis_result(result, source)
+        logger.info(f"文本提取完成: {normalized}")
+        return normalized
+
     except Exception as e:
         logger.error(f"文本提取失败: {str(e)}")
         result['summary'] = 'AI 分析响应格式错误，已降级处理'
-        return result
+        return _normalize_analysis_result(result, source)
+
+
+def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult:
+    payload = _extract_json_payload(ai_response)
+
+    candidates: list[str] = []
+    if payload:
+        candidates.append(payload)
+
+    payload_obj = _extract_first_json_object(payload)
+    if payload_obj:
+        candidates.append(payload_obj)
+
+    raw_obj = _extract_first_json_object(ai_response)
+    if raw_obj:
+        candidates.append(raw_obj)
+
+    for candidate in candidates:
+        parsed = _try_parse_json_analysis(candidate)
+        if parsed is not None:
+            return _normalize_analysis_result(parsed, source)
+
+    logger.warning("JSON 解析失败，回退到文本提取策略")
+    return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
 
 
 def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
@@ -289,113 +519,69 @@ def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
         return result
 
 
+def _request_openai_completion(client: OpenAI, messages: list[dict[str, str]], max_tokens: int):
+    return client.chat.completions.create(
+        model=Config.OPENAI_MODEL,
+        messages=messages,
+        temperature=Config.OPENAI_TEMPERATURE,
+        max_tokens=max_tokens
+    )
+
+
 def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
     """使用 OpenAI API 分析 webhook 数据"""
     try:
-        # 初始化 OpenAI 客户端
         client = OpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL
         )
 
-        # 加载 prompt 模板并格式化
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
+        user_prompt = prompt_template.format(source=source, data_json=data_json)
+        messages = [
+            {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
+        ]
 
-        # 使用模板格式化用户输入
-        user_prompt = prompt_template.format(
-            source=source,
-            data_json=data_json
-        )
-
-        # 调用 OpenAI API
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        response = client.chat.completions.create(
-            model=Config.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.3,
-            max_tokens=1000
-        )
-        
-        # 增加对响应类型的检查，防止API返回非JSON错误
+        response = _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+
         if not hasattr(response, 'choices') or not response.choices:
             error_message = f"OpenAI API 返回无效响应: {response}"
             logger.error(error_message)
             raise TypeError(error_message)
 
-        # 解析响应
-        ai_response = response.choices[0].message.content
-        if ai_response is None:
+        choice = response.choices[0]
+        finish_reason = getattr(choice, 'finish_reason', None)
+        ai_response = (choice.message.content or '').strip()
+        if not ai_response:
             raise ValueError("AI 返回空响应")
-        ai_response = ai_response.strip()
+
+        if finish_reason == 'length':
+            retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
+            if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
+                logger.warning(
+                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
+                    retry_max_tokens
+                )
+                retry_response = _request_openai_completion(client, messages, retry_max_tokens)
+                if hasattr(retry_response, 'choices') and retry_response.choices:
+                    retry_choice = retry_response.choices[0]
+                    retry_text = (retry_choice.message.content or '').strip()
+                    if retry_text:
+                        ai_response = retry_text
+                        finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
+
         logger.debug(f"AI 原始响应: {ai_response}")
-        
-        # 提取 JSON
-        if '```json' in ai_response:
-            json_start = ai_response.find('```json') + 7
-            json_end = ai_response.find('```', json_start)
-            ai_response = ai_response[json_start:json_end].strip()
-        elif '```' in ai_response:
-            json_start = ai_response.find('```') + 3
-            json_end = ai_response.find('```', json_start)
-            ai_response = ai_response[json_start:json_end].strip()
-        
-        logger.debug(f"提取的 JSON: {ai_response}")
-        
-        # 尝试修复常见的 JSON 格式错误
-        ai_response = fix_json_format(ai_response)
-        
-        try:
-            analysis_result = json.loads(ai_response)
-        except json.JSONDecodeError as e:
-            # 记录详细的错误信息
-            logger.error(f"JSON 解析失败: {str(e)}")
-            logger.error(f"问题位置: 第 {e.lineno} 行, 第 {e.colno} 列")
-            logger.error(f"错误内容: {ai_response}")
-            
-            # 尝试提取部分有效的 JSON
-            # 找到第一个完整的对象
-            brace_count = 0
-            valid_end = -1
-            for i, char in enumerate(ai_response):
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        valid_end = i + 1
-                        break
-            
-            if valid_end > 0:
-                logger.info(f"尝试提取前 {valid_end} 个字符作为有效 JSON")
-                try:
-                    analysis_result = json.loads(ai_response[:valid_end])
-                    logger.info("成功提取部分 JSON")
-                except:
-                    # 如果仍然失败，尝试从文本中提取关键信息
-                    logger.warning("JSON 提取失败，尝试从文本中解析关键信息")
-                    analysis_result = extract_from_text(ai_response, source)
-            else:
-                # 如果找不到完整对象，尝试从文本中提取关键信息
-                logger.warning("未找到完整的 JSON 对象，尝试从文本中解析关键信息")
-                analysis_result = extract_from_text(ai_response, source)
-        
-        # 确保必需字段存在
-        if 'source' not in analysis_result:
-            analysis_result['source'] = source
-        if 'importance' not in analysis_result:
-            analysis_result['importance'] = 'medium'
-        if 'summary' not in analysis_result or not analysis_result['summary']:
-            analysis_result['summary'] = 'AI分析未生成摘要'
-        
+        analysis_result = _parse_ai_analysis_response(ai_response, source)
+
+        if finish_reason == 'length':
+            analysis_result['_truncated'] = True
+            logger.warning("AI 最终响应仍为截断状态，已使用容错解析")
+
         return analysis_result
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"AI 响应 JSON 解析失败: {str(e)}")
-        raise
+
     except Exception as e:
         logger.error(f"OpenAI API 调用失败: {str(e)}")
         raise
