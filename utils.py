@@ -2,17 +2,44 @@ import hmac
 import hashlib
 import json
 import os
+import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional, Union
+
+from flask import Request
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from config import Config
 from logger import logger
 from models import WebhookEvent, get_session, session_scope
 
 # 类型别名
+# helper groups: hash extraction / dedup detection / persistence / query fallback
 WebhookData = dict[str, Any]
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
+
+
+@dataclass(frozen=True)
+class DuplicateCheckResult:
+    is_duplicate: bool
+    original_event: Optional[WebhookEvent]
+    beyond_window: bool
+    last_beyond_window_event: Optional[WebhookEvent]
+
+
+@dataclass(frozen=True)
+class SaveWebhookResult:
+    webhook_id: Union[int, str]
+    is_duplicate: bool
+    original_id: Optional[int]
+    beyond_window: bool
+
+
+MAX_SAVE_RETRIES = Config.SAVE_MAX_RETRIES
+RETRY_DELAY_SECONDS = Config.SAVE_RETRY_DELAY_SECONDS
 
 
 def verify_signature(payload: bytes, signature: str, secret: Optional[str] = None) -> bool:
@@ -45,124 +72,164 @@ GENERIC_FIELDS = [
 ]
 
 
-def _extract_fields(data: dict, fields: list, prefix: str = '') -> dict:
-    """从数据中提取指定字段"""
-    result = {}
+
+def _extract_fields(data: dict[str, Any], fields: list[str], lower_keys: bool = True) -> dict[str, Any]:
+    """从字典中提取指定字段。"""
+    extracted = {}
     for field in fields:
         if field in data:
-            key = f"{prefix}{field}" if prefix else field.lower().replace('_', '')
-            result[key] = data[field]
-    return result
+            key = field.lower() if lower_keys else field
+            extracted[key] = data[field]
+    return extracted
 
 
-def _extract_prometheus_fields(data: dict) -> dict:
-    """提取 Prometheus Alertmanager 格式的关键字段"""
-    key_fields = {}
-    
-    # 提取根级字段
-    for field in PROMETHEUS_ROOT_FIELDS:
-        if field in data:
-            key_fields[field.lower()] = data[field]
-    
-    # 提取第一个告警的字段
+def _extract_prometheus_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """提取 Prometheus Alertmanager 格式的关键字段。"""
+    key_fields = _extract_fields(data, PROMETHEUS_ROOT_FIELDS)
+
     alerts = data.get('alerts', [])
-    if alerts and isinstance(alerts[0], dict):
-        first_alert = alerts[0]
-        
-        # 提取标签字段
-        labels = first_alert.get('labels', {})
-        if isinstance(labels, dict):
-            for field in PROMETHEUS_LABEL_FIELDS:
-                if field in labels:
-                    key_fields[field] = labels[field]
-        
-        # 提取告警级别字段
-        for field in PROMETHEUS_ALERT_FIELDS:
-            if field in first_alert:
-                key_fields[field] = first_alert[field]
-    
+    first_alert = alerts[0] if alerts and isinstance(alerts[0], dict) else None
+    if not first_alert:
+        return key_fields
+
+    labels = first_alert.get('labels', {})
+    if isinstance(labels, dict):
+        key_fields.update(_extract_fields(labels, PROMETHEUS_LABEL_FIELDS, lower_keys=False))
+
+    key_fields.update(_extract_fields(first_alert, PROMETHEUS_ALERT_FIELDS, lower_keys=False))
     return key_fields
 
 
-def _extract_generic_fields(data: dict) -> dict:
-    """提取华为云/通用告警格式的关键字段"""
-    key_fields = {}
+def _extract_generic_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """提取华为云/通用告警格式的关键字段。"""
+    key_fields = _extract_fields(data, GENERIC_FIELDS)
 
-    # 提取通用字段
-    for field in GENERIC_FIELDS:
-        if field in data:
-            key_fields[field.lower()] = data[field]
-
-    # 特殊处理: Resources 字段
     resources = data.get('Resources', [])
-    if isinstance(resources, list) and resources:
-        first_resource = resources[0]
-        if isinstance(first_resource, dict):
-            # 提取资源 ID (优先级: InstanceId > Id > id)
-            resource_id = first_resource.get('InstanceId') or first_resource.get('Id') or first_resource.get('id')
-            if resource_id:
-                key_fields['resource_id'] = resource_id
+    first_resource = (
+        resources[0]
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict)
+        else None
+    )
+    if not first_resource:
+        return key_fields
 
-            # 提取 Dimensions 中的关键字段（如 Node、ResourceID 等）
-            dimensions = first_resource.get('Dimensions', [])
-            if isinstance(dimensions, list):
-                for dim in dimensions:
-                    if isinstance(dim, dict):
-                        dim_name = dim.get('Name', '')
-                        dim_value = dim.get('Value')
+    resource_id = first_resource.get('InstanceId') or first_resource.get('Id') or first_resource.get('id')
+    if resource_id:
+        key_fields['resource_id'] = resource_id
 
-                        # 提取重要的维度信息
-                        if dim_name and dim_value:
-                            # 将维度名称标准化为小写，添加到关键字段
-                            # 特别关注: Node (节点)、ResourceID (资源ID)、Instance (实例) 等
-                            if dim_name in ['Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container']:
-                                key_fields[f'dim_{dim_name.lower()}'] = dim_value
+    dimensions = first_resource.get('Dimensions', [])
+    if not isinstance(dimensions, list):
+        return key_fields
+
+    important_dims = {'Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container'}
+    for dim in dimensions:
+        if not isinstance(dim, dict):
+            continue
+        dim_name = dim.get('Name', '')
+        dim_value = dim.get('Value')
+        if dim_name in important_dims and dim_value:
+            key_fields[f'dim_{dim_name.lower()}'] = dim_value
 
     return key_fields
 
 
-def generate_alert_hash(data: dict, source: str) -> str:
+def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     """
     生成告警的唯一哈希值，用于识别重复告警
-    
+
     Args:
         data: webhook 数据
         source: 数据来源
-    
+
     Returns:
         str: SHA256 哈希值
     """
     key_fields = {'source': source}
-    
+
     if isinstance(data, dict):
-        # 检测告警格式并提取字段
         is_prometheus = (
-            'alerts' in data and 
-            isinstance(data.get('alerts'), list) and 
+            'alerts' in data and
+            isinstance(data.get('alerts'), list) and
             len(data['alerts']) > 0
         )
-        
+
         if is_prometheus:
             key_fields.update(_extract_prometheus_fields(data))
         else:
             key_fields.update(_extract_generic_fields(data))
-    
-    # 生成稳定的 JSON 字符串（排序键确保一致性）
+
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
-    
-    # 计算 SHA256 哈希
     hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
-    
+
     logger.debug(f"生成告警哈希: {hash_value}, 关键字段: {key_fields}")
     return hash_value
+
+
+def _query_last_beyond_window_event(session: Session, alert_hash: str) -> Optional[WebhookEvent]:
+    return (
+        session.query(WebhookEvent)
+        .filter(
+            WebhookEvent.alert_hash == alert_hash,
+            WebhookEvent.beyond_window == 1
+        )
+        .order_by(WebhookEvent.timestamp.desc())
+        .first()
+    )
+
+
+def _query_latest_original_event(session: Session, alert_hash: str) -> Optional[WebhookEvent]:
+    return (
+        session.query(WebhookEvent)
+        .filter(
+            WebhookEvent.alert_hash == alert_hash,
+            WebhookEvent.is_duplicate == 0
+        )
+        .order_by(WebhookEvent.timestamp.desc())
+        .first()
+    )
+
+
+def _find_recent_window_event(
+    session: Session,
+    alert_hash: str,
+    time_threshold: datetime
+) -> Optional[WebhookEvent]:
+    return (
+        session.query(WebhookEvent)
+        .filter(
+            WebhookEvent.alert_hash == alert_hash,
+            WebhookEvent.timestamp >= time_threshold
+        )
+        .order_by(WebhookEvent.timestamp.desc())
+        .first()
+    )
+
+
+def _resolve_window_start(
+    original_ref: WebhookEvent,
+    last_beyond_window: Optional[WebhookEvent]
+) -> tuple[datetime, int]:
+    if last_beyond_window:
+        logger.debug(f"找到窗口外记录作为起点: ID={last_beyond_window.id}, 时间={last_beyond_window.timestamp}")
+        return last_beyond_window.timestamp, last_beyond_window.id
+
+    logger.debug(f"使用原始告警作为起点: ID={original_ref.id}, 时间={original_ref.timestamp}")
+    return original_ref.timestamp, original_ref.id
+
+
+def _resolve_original_reference(session: Session, any_event: WebhookEvent) -> WebhookEvent:
+    original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
+    if not original_id:
+        return any_event
+    return session.get(WebhookEvent, original_id) or any_event
 
 
 def check_duplicate_alert(
     alert_hash: str,
     time_window_hours: Optional[int] = None,
-    session = None,
+    session: Optional[Session] = None,
     check_beyond_window: bool = False
-) -> tuple[bool, Optional[WebhookEvent], bool]:
+) -> DuplicateCheckResult:
     """
     检查是否存在重复告警
 
@@ -173,109 +240,254 @@ def check_duplicate_alert(
         check_beyond_window: 是否检查时间窗口外的历史告警
 
     Returns:
-        (窗口内是否重复, 原始告警事件, 窗口外是否有历史告警)
+        DuplicateCheckResult
     """
     if not alert_hash:
-        return False, None, False
+        return DuplicateCheckResult(False, None, False, None)
 
-    # 使用配置文件中的时间窗口设置
     if time_window_hours is None:
         time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
 
-    # 如果没有提供session，创建新的
     should_close = session is None
     if should_close:
         session = get_session()
 
-    try:
-        # 计算时间窗口的起始时间
-        time_threshold = datetime.now() - timedelta(hours=time_window_hours)
+    now = datetime.now()
 
-        # 统一逻辑：总是先查找窗口内最新的任何记录
-        any_event = session.query(WebhookEvent)\
-            .filter(
-                WebhookEvent.alert_hash == alert_hash,
-                WebhookEvent.timestamp >= time_threshold
-            )\
-            .order_by(WebhookEvent.timestamp.desc())\
-            .first()
+    try:
+        time_threshold = now - timedelta(hours=time_window_hours)
+
+        # 先查窗口内最新记录，保证同一时间窗口内只产生一条“原始上下文”。
+        # 这样在并发写入时，后续请求可以稳定复用同一条分析结果。
+        any_event = _find_recent_window_event(session, alert_hash, time_threshold)
 
         if any_event:
-            # 窗口内有记录，找到对应的原始告警
-            original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
-            original_ref = session.get(WebhookEvent, original_id) if original_id else any_event
+            original_ref = _resolve_original_reference(session, any_event)
+            original_id = original_ref.id
+            last_beyond_window = _query_last_beyond_window_event(session, alert_hash)
 
-            # 混合逻辑：查找最近的"窗口外告警"或"原始告警"作为窗口起点
-            # 目的：防止持续告警一直在窗口内，超过24小时后应该重新通知
+            # 窗口起点策略：优先 recent beyond_window，其次原始告警。
+            window_start, window_start_id = _resolve_window_start(original_ref, last_beyond_window)
 
-            # 查找同一 hash 的最近一条 beyond_window=1 的记录
-            last_beyond_window = session.query(WebhookEvent)\
-                .filter(
-                    WebhookEvent.alert_hash == alert_hash,
-                    WebhookEvent.beyond_window == 1
-                )\
-                .order_by(WebhookEvent.timestamp.desc())\
-                .first()
-
-            # 确定窗口起点
-            if last_beyond_window:
-                # 有窗口外记录，以它为起点
-                window_start = last_beyond_window.timestamp
-                window_start_id = last_beyond_window.id
-                logger.debug(f"找到窗口外记录作为起点: ID={window_start_id}, 时间={window_start}")
-            else:
-                # 没有窗口外记录，以原始告警为起点
-                window_start = original_ref.timestamp
-                window_start_id = original_ref.id
-                logger.debug(f"使用原始告警作为起点: ID={window_start_id}, 时间={window_start}")
-
-            # 计算距离窗口起点的时间差
-            time_diff_hours = (datetime.now() - window_start).total_seconds() / 3600
+            time_diff_hours = (now - window_start).total_seconds() / 3600
             is_within_window = time_diff_hours <= time_window_hours
 
             if is_within_window:
-                # 在窗口内
-                logger.info(f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
-                return True, original_ref, False, last_beyond_window
-            else:
-                # 超过窗口（窗口外重复）
-                logger.info(f"检测到窗口外重复: hash={alert_hash}, 最近记录ID={any_event.id}, 原始告警ID={original_id}, 窗口起点ID={window_start_id}, 距窗口起点={time_diff_hours:.1f}小时")
-                return True, original_ref, True, last_beyond_window
+                logger.info(
+                    f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, "
+                    f"原始告警ID={original_id}, 窗口起点ID={window_start_id}, "
+                    f"距窗口起点={time_diff_hours:.1f}小时"
+                )
+                return DuplicateCheckResult(True, original_ref, False, last_beyond_window)
 
-        # 步骤3：窗口内完全没有记录，检查窗口外是否有历史告警
+            logger.info(
+                f"检测到窗口外重复: hash={alert_hash}, 最近记录ID={any_event.id}, "
+                f"原始告警ID={original_id}, 窗口起点ID={window_start_id}, "
+                f"距窗口起点={time_diff_hours:.1f}小时"
+            )
+            return DuplicateCheckResult(True, original_ref, True, last_beyond_window)
+
         if check_beyond_window:
-            # 查找同一 hash 的最近一条 beyond_window=1 的记录（用于并发场景检测）
-            last_beyond_window = session.query(WebhookEvent)\
-                .filter(
-                    WebhookEvent.alert_hash == alert_hash,
-                    WebhookEvent.beyond_window == 1
-                )\
-                .order_by(WebhookEvent.timestamp.desc())\
-                .first()
-
-            history_event = session.query(WebhookEvent)\
-                .filter(
-                    WebhookEvent.alert_hash == alert_hash,
-                    WebhookEvent.is_duplicate == 0  # 只查找原始告警
-                )\
-                .order_by(WebhookEvent.timestamp.desc())\
-                .first()
+            # 并发场景下，recent beyond_window 用于判断是否可直接复用他 worker 的结果。
+            last_beyond_window = _query_last_beyond_window_event(session, alert_hash)
+            history_event = _query_latest_original_event(session, alert_hash)
 
             if history_event:
-                time_diff = (datetime.now() - history_event.timestamp).total_seconds() / 3600
-                logger.info(f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时")
-                # 返回历史事件，用于可能的分析结果复用
-                # 同时返回 last_beyond_window（可能为None，如果有则用于并发检测）
-                return False, history_event, True, last_beyond_window
+                time_diff = (now - history_event.timestamp).total_seconds() / 3600
+                logger.info(
+                    f"窗口外发现历史告警: hash={alert_hash}, "
+                    f"原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时"
+                )
+                # 返回历史原始事件与 recent beyond_window，交给上层做“复用或重算”决策。
+                return DuplicateCheckResult(False, history_event, True, last_beyond_window)
 
-        return False, None, False, None
+        return DuplicateCheckResult(False, None, False, None)
 
     except Exception as e:
         logger.error(f"检查重复告警失败: {str(e)}")
-        return False, None, False, None
+        return DuplicateCheckResult(False, None, False, None)
     finally:
         if should_close:
             session.close()
+
+
+
+
+def _decode_raw_payload(raw_payload: Optional[bytes]) -> Optional[str]:
+    return raw_payload.decode('utf-8') if raw_payload else None
+
+
+def _normalize_headers(headers: Optional[HeadersDict]) -> HeadersDict:
+    return dict(headers) if headers else {}
+
+
+def _resolve_analysis_for_duplicate(
+    ai_analysis: Optional[AnalysisResult],
+    original: WebhookEvent,
+    reanalyzed: bool
+) -> tuple[AnalysisResult, Optional[str]]:
+    if ai_analysis:
+        final_analysis = ai_analysis
+        final_importance = ai_analysis.get('importance')
+    elif original.ai_analysis:
+        final_analysis = original.ai_analysis
+        final_importance = original.importance
+    else:
+        final_analysis = {}
+        final_importance = None
+
+    if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get('summary')):
+        logger.info(f"更新原始告警 ID={original.id} 的AI分析结果（之前缺失）")
+        original.ai_analysis = ai_analysis
+        original.importance = ai_analysis.get('importance')
+
+    return final_analysis, final_importance
+
+
+def _build_event(
+    *,
+    source: str,
+    client_ip: Optional[str],
+    raw_payload: Optional[bytes],
+    headers: Optional[HeadersDict],
+    data: WebhookData,
+    alert_hash: str,
+    ai_analysis: Optional[AnalysisResult],
+    importance: Optional[str],
+    forward_status: str,
+    is_duplicate: int,
+    duplicate_of: Optional[int],
+    duplicate_count: int,
+    beyond_window: int,
+    last_notified_at: Optional[datetime] = None
+) -> WebhookEvent:
+    return WebhookEvent(
+        source=source,
+        client_ip=client_ip,
+        timestamp=datetime.now(),
+        raw_payload=_decode_raw_payload(raw_payload),
+        headers=_normalize_headers(headers),
+        parsed_data=data,
+        alert_hash=alert_hash,
+        ai_analysis=ai_analysis,
+        importance=importance,
+        forward_status=forward_status,
+        is_duplicate=is_duplicate,
+        duplicate_of=duplicate_of,
+        duplicate_count=duplicate_count,
+        beyond_window=beyond_window,
+        last_notified_at=last_notified_at
+    )
+
+
+def _save_duplicate_event(
+    session: Session,
+    *,
+    source: str,
+    client_ip: Optional[str],
+    raw_payload: Optional[bytes],
+    headers: Optional[HeadersDict],
+    data: WebhookData,
+    alert_hash: str,
+    ai_analysis: Optional[AnalysisResult],
+    forward_status: str,
+    original_event: WebhookEvent,
+    beyond_window: bool,
+    reanalyzed: bool
+) -> Optional[SaveWebhookResult]:
+    original = session.get(WebhookEvent, original_event.id)
+    if not original:
+        return None
+
+    original.duplicate_count = (original.duplicate_count or 1) + 1
+    original.updated_at = datetime.now()
+    logger.info(f"发现重复告警，原始告警ID={original.id}, 已重复{original.duplicate_count}次")
+
+    final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(ai_analysis, original, reanalyzed)
+    duplicate_event = _build_event(
+        source=source,
+        client_ip=client_ip,
+        raw_payload=raw_payload,
+        headers=headers,
+        data=data,
+        alert_hash=alert_hash,
+        ai_analysis=final_ai_analysis,
+        importance=final_importance,
+        forward_status=forward_status,
+        is_duplicate=1,
+        duplicate_of=original.id,
+        duplicate_count=original.duplicate_count,
+        beyond_window=1 if beyond_window else 0
+    )
+
+    session.add(duplicate_event)
+    session.flush()
+
+    if ai_analysis:
+        logger.info(f"重复告警已保存: ID={duplicate_event.id}, 使用传入的AI分析结果")
+    elif original.ai_analysis:
+        logger.info(
+            f"重复告警已保存: ID={duplicate_event.id}, "
+            f"复用原始告警 {original.id} 的AI分析结果"
+        )
+    else:
+        logger.info(f"重复告警已保存: ID={duplicate_event.id}, 无AI分析结果")
+
+    if Config.ENABLE_FILE_BACKUP:
+        save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
+
+    return SaveWebhookResult(duplicate_event.id, True, original.id, beyond_window)
+
+
+def _save_new_event(
+    session: Session,
+    *,
+    source: str,
+    client_ip: Optional[str],
+    raw_payload: Optional[bytes],
+    headers: Optional[HeadersDict],
+    data: WebhookData,
+    alert_hash: str,
+    ai_analysis: Optional[AnalysisResult],
+    forward_status: str
+) -> SaveWebhookResult:
+    webhook_event = _build_event(
+        source=source,
+        client_ip=client_ip,
+        raw_payload=raw_payload,
+        headers=headers,
+        data=data,
+        alert_hash=alert_hash,
+        ai_analysis=ai_analysis,
+        importance=ai_analysis.get('importance') if ai_analysis else None,
+        forward_status=forward_status,
+        is_duplicate=0,
+        duplicate_of=None,
+        duplicate_count=1,
+        beyond_window=0,
+        last_notified_at=datetime.now()
+    )
+
+    session.add(webhook_event)
+    session.flush()
+    logger.info(f"Webhook 数据已保存到数据库: ID={webhook_event.id}")
+
+    if Config.ENABLE_FILE_BACKUP:
+        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+
+    return SaveWebhookResult(webhook_event.id, False, None, False)
+
+
+def _save_to_file_fallback(
+    data: WebhookData,
+    source: str,
+    raw_payload: Optional[bytes],
+    headers: Optional[HeadersDict],
+    client_ip: Optional[str],
+    ai_analysis: Optional[AnalysisResult]
+) -> SaveWebhookResult:
+    file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+    return SaveWebhookResult(file_id, False, None, False)
 
 
 def save_webhook_data(
@@ -291,195 +503,105 @@ def save_webhook_data(
     original_event: Optional[WebhookEvent] = None,
     beyond_window: bool = False,
     reanalyzed: bool = False
-) -> tuple[Union[int, str], bool, Optional[int], bool]:
-    """保存 webhook 数据到数据库（带重试机制防止并发竞态）"""
-    from sqlalchemy.exc import IntegrityError
-
-    # 如果未提供预计算的哈希值，则重新计算
+) -> SaveWebhookResult:
+    """保存 webhook 数据到数据库（带重试机制防止并发竞态）。"""
     if alert_hash is None:
         alert_hash = generate_alert_hash(data, source)
 
-    # 重试次数（用于处理并发竞态）
-    max_retries = 3
-    retry_delay = 0.1  # 100ms
-
-    for attempt in range(max_retries):
+    for attempt in range(MAX_SAVE_RETRIES):
         try:
             with session_scope() as session:
-                # 在事务内检查重复（如果未预检测）
+                # 在同一事务内重新判重，避免外层结果在高并发下过期。
                 if is_duplicate is None:
-                    is_duplicate, original_event, beyond_window_detected, _ = check_duplicate_alert(alert_hash, session=session)
-                    # 使用重新检测的结果
-                    beyond_window = beyond_window_detected
+                    duplicate_check = check_duplicate_alert(
+                        alert_hash,
+                        session=session
+                    )
+                    is_duplicate = duplicate_check.is_duplicate
+                    original_event = duplicate_check.original_event
+                    beyond_window = duplicate_check.beyond_window
 
                 if is_duplicate and original_event:
-                    # 重复告警：使用 session.get() 更高效地获取原始告警并更新重复计数
-                    orig = session.get(WebhookEvent, original_event.id)
-                    if orig:
-                        orig.duplicate_count = (orig.duplicate_count or 1) + 1
-                        orig.updated_at = datetime.now()
-
-                        logger.info(f"发现重复告警，原始告警ID={orig.id}, 已重复{orig.duplicate_count}次")
-
-                        # 决定使用哪个AI分析结果
-                        # 优先使用传入的ai_analysis（因为app.py已经做了智能选择）
-                        # 如果传入的为空，则使用原始告警的分析结果
-                        if ai_analysis:
-                            # 使用传入的分析结果（app.py已经选择了最优的：窗口外记录 > 原始告警）
-                            final_ai_analysis = ai_analysis
-                            final_importance = ai_analysis.get('importance')
-                        elif orig.ai_analysis:
-                            # 传入的为空，使用原始告警的分析结果
-                            final_ai_analysis = orig.ai_analysis
-                            final_importance = orig.importance
-                        else:
-                            # 都没有，使用空字典
-                            final_ai_analysis = {}
-                            final_importance = None
-
-                        # 如果原始告警没有有效的AI分析，但这次重新分析成功了，更新原始告警
-                        if ai_analysis and reanalyzed:
-                            if not orig.ai_analysis or not orig.ai_analysis.get('summary'):
-                                logger.info(f"更新原始告警 ID={orig.id} 的AI分析结果（之前缺失）")
-                                orig.ai_analysis = ai_analysis
-                                orig.importance = ai_analysis.get('importance')
-
-                        # 创建重复告警记录
-                        # duplicate_count 继承自原始告警的累计重复次数
-                        webhook_event = WebhookEvent(
-                            source=source,
-                            client_ip=client_ip,
-                            timestamp=datetime.now(),
-                            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                            headers=dict(headers) if headers else {},
-                            parsed_data=data,
-                            alert_hash=alert_hash,
-                            ai_analysis=final_ai_analysis,
-                            importance=final_importance,
-                            forward_status=forward_status,
-                            is_duplicate=1,
-                            duplicate_of=original_event.id,
-                            duplicate_count=orig.duplicate_count,  # 继承原始告警的累计次数
-                            beyond_window=1 if beyond_window else 0  # 窗口外重复标记
-                        )
-
-                        session.add(webhook_event)
-                        session.flush()  # 获取 ID
-
-                        webhook_id = webhook_event.id
-
-                        # 准确的日志信息
-                        if ai_analysis:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 使用传入的AI分析结果")
-                        elif orig.ai_analysis:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警 {orig.id} 的AI分析结果")
-                        else:
-                            logger.info(f"重复告警已保存: ID={webhook_id}, 无AI分析结果")
-
-                        # 可选: 同时保存到文件
-                        if Config.ENABLE_FILE_BACKUP:
-                            save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
-
-                        return webhook_id, True, orig.id, beyond_window
-                else:
-                    # 新告警：正常保存
-                    webhook_event = WebhookEvent(
+                    saved = _save_duplicate_event(
+                        session,
                         source=source,
                         client_ip=client_ip,
-                        timestamp=datetime.now(),
-                        raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                        headers=dict(headers) if headers else {},
-                        parsed_data=data,
+                        raw_payload=raw_payload,
+                        headers=headers,
+                        data=data,
                         alert_hash=alert_hash,
                         ai_analysis=ai_analysis,
-                        importance=ai_analysis.get('importance') if ai_analysis else None,
                         forward_status=forward_status,
-                        is_duplicate=0,
-                        duplicate_of=None,
-                        duplicate_count=1,
-                        beyond_window=0,  # 新告警不是窗口外重复
-                        last_notified_at=datetime.now()  # 新告警的通知时间
+                        original_event=original_event,
+                        beyond_window=beyond_window,
+                        reanalyzed=reanalyzed
                     )
+                    if saved:
+                        return saved
 
-                    session.add(webhook_event)
-                    session.flush()  # 获取 ID
-
-                    webhook_id = webhook_event.id
-                    logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
-
-                    # 可选: 同时保存到文件
-                    if Config.ENABLE_FILE_BACKUP:
-                        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-
-                    return webhook_id, False, None, False  # 新告警，beyond_window=False
+                return _save_new_event(
+                    session,
+                    source=source,
+                    client_ip=client_ip,
+                    raw_payload=raw_payload,
+                    headers=headers,
+                    data=data,
+                    alert_hash=alert_hash,
+                    ai_analysis=ai_analysis,
+                    forward_status=forward_status
+                )
 
         except IntegrityError as e:
-            # 唯一约束冲突：说明另一个 worker 已经插入了相同的原始告警
-            logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{max_retries}): {str(e)}")
+            logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {str(e)}")
 
-            if attempt < max_retries - 1:
-                # 重试：等待一小段时间后重新检查
-                import time
-                time.sleep(retry_delay * (attempt + 1))  # 指数退避
-                is_duplicate = None  # 重置状态，强制重新检查
+            if attempt < MAX_SAVE_RETRIES - 1:
+                # 小步退避让并发写入先完成，再次判重时更容易命中已落库记录。
+                time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+                is_duplicate = None
                 original_event = None
-                logger.info(f"正在重试... (attempt {attempt + 2}/{max_retries})")
+                logger.info(f"正在重试... (attempt {attempt + 2}/{MAX_SAVE_RETRIES})")
                 continue
-            else:
-                # 最后一次重试失败，尝试最后一次查找
-                logger.error(f"重试 {max_retries} 次后仍然失败，尝试最后查找")
-                from sqlalchemy import text
-                with session_scope() as fallback_session:
-                    # 直接查询（不加锁）
-                    existing = fallback_session.query(WebhookEvent)\
-                        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0)\
-                        .order_by(WebhookEvent.timestamp.desc())\
-                        .first()
 
-                    if existing:
-                        # 找到了，标记为重复
-                        logger.info(f"最终找到原始告警 ID={existing.id}，标记为重复")
-                        existing.duplicate_count += 1
+            # 最后兜底：直接读最新原始告警并降级写入重复记录，避免请求彻底失败。
+            logger.error(f"重试 {MAX_SAVE_RETRIES} 次后仍然失败，尝试最后查找")
+            with session_scope() as fallback_session:
+                existing = _query_latest_original_event(fallback_session, alert_hash)
 
-                        # 优先使用传入的ai_analysis，如果没有则使用原始告警的
-                        final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
-                        final_importance = ai_analysis.get('importance') if ai_analysis else existing.importance
+                if not existing:
+                    logger.error(f"并发冲突但无法找到原始告警: hash={alert_hash}")
+                    raise
 
-                        dup_event = WebhookEvent(
-                            source=source,
-                            client_ip=client_ip,
-                            timestamp=datetime.now(),
-                            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-                            headers=dict(headers) if headers else {},
-                            parsed_data=data,
-                            alert_hash=alert_hash,
-                            ai_analysis=final_ai_analysis,
-                            importance=final_importance,
-                            forward_status=forward_status,
-                            is_duplicate=1,
-                            duplicate_of=existing.id,
-                            duplicate_count=existing.duplicate_count  # 继承原始告警的累计次数
-                        )
-                        fallback_session.add(dup_event)
-                        fallback_session.flush()
+                logger.info(f"最终找到原始告警 ID={existing.id}，标记为重复")
+                existing.duplicate_count += 1
 
-                        # TODO: 这里应该计算 beyond_window，暂时设为 False
-                        return dup_event.id, True, existing.id, False
-                    else:
-                        # 真的没找到，记录错误
-                        logger.error(f"并发冲突但无法找到原始告警: hash={alert_hash}")
-                        raise
+                final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
+                final_importance = ai_analysis.get('importance') if ai_analysis else existing.importance
+
+                dup_event = _build_event(
+                    source=source,
+                    client_ip=client_ip,
+                    raw_payload=raw_payload,
+                    headers=headers,
+                    data=data,
+                    alert_hash=alert_hash,
+                    ai_analysis=final_ai_analysis,
+                    importance=final_importance,
+                    forward_status=forward_status,
+                    is_duplicate=1,
+                    duplicate_of=existing.id,
+                    duplicate_count=existing.duplicate_count,
+                    beyond_window=1 if beyond_window else 0
+                )
+                fallback_session.add(dup_event)
+                fallback_session.flush()
+                return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
 
         except Exception as e:
             logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
-            # 失败时至少保存到文件
-            file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-            return file_id, False, None, False
+            return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
 
-    # 不应该执行到这里
     logger.error("保存数据异常：退出重试循环但未返回结果")
-    file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-    return file_id, False, None, False
+    return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
 
 
 def save_webhook_to_file(
@@ -492,13 +614,12 @@ def save_webhook_to_file(
 ) -> str:
     """保存 webhook 数据到文件(备份方式)"""
     # 创建数据目录
-    if not os.path.exists(Config.DATA_DIR):
-        os.makedirs(Config.DATA_DIR)
+    os.makedirs(Config.DATA_DIR, exist_ok=True)
     
     # 生成文件名(基于时间戳)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     filename = f"{source}_{timestamp}.json"
-    filepath = os.path.join(Config.DATA_DIR, filename)
+    filepath = str(Path(Config.DATA_DIR) / filename)
     
     # 准备保存的完整数据
     full_data = {
@@ -521,7 +642,7 @@ def save_webhook_to_file(
     return filepath
 
 
-def get_client_ip(request) -> str:
+def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址"""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
@@ -611,7 +732,6 @@ def get_all_webhooks(
                     all_hashes = list(set(k[0] for k in lookup_map.keys()))
 
                     # 查询这些 hash 的所有记录（去重需要）
-                    from sqlalchemy import or_
                     all_alerts = session.query(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
                         .filter(WebhookEvent.alert_hash.in_(all_hashes))\
                         .order_by(WebhookEvent.alert_hash, WebhookEvent.timestamp.desc())\
@@ -661,7 +781,7 @@ def get_all_webhooks(
         return webhooks, len(webhooks), None
 
 
-def get_webhooks_from_files(limit: int = 50) -> list[dict]:  
+def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     """从文件获取 webhook 数据(备份方式)"""
     if not os.path.exists(Config.DATA_DIR):
         return []
@@ -671,12 +791,12 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     
     # 读取所有文件
     for filename in files:
-        filepath = os.path.join(Config.DATA_DIR, filename)
+        filepath = str(Path(Config.DATA_DIR) / filename)
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                data['filename'] = filename
-                webhooks.append(data)
+                webhook_data = json.load(f)
+                webhook_data['filename'] = filename
+                webhooks.append(webhook_data)
         except Exception as e:
             logger.error(f"读取文件失败 {filename}: {str(e)}")
     
