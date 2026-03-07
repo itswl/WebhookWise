@@ -191,18 +191,30 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                     # 窗口外的历史告警
                     # 注意：由于是获取锁失败进入此分支，说明可能有其他worker正在处理
                     # 优先检查是否有最近的窗口外记录可以复用，避免重复分析和转发
-                    if last_beyond_window_event and last_beyond_window_event.ai_analysis:
+                    if last_beyond_window_event:
+                        # 有其他worker正在处理或刚处理完窗口外重复，复用其结果
                         logger.info(f"窗口外历史告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
-                        analysis_result = last_beyond_window_event.ai_analysis
-                        reanalyzed = False
-                    elif not Config.REANALYZE_AFTER_TIME_WINDOW:
-                        logger.info(f"窗口外历史告警，复用历史分析: 历史 ID={original_event.id}")
-                        analysis_result = original_event.ai_analysis or {}
+                        analysis_result = last_beyond_window_event.ai_analysis or {}
                         reanalyzed = False
                     else:
-                        logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
-                        analysis_result = analyze_webhook_with_ai(webhook_full_data)
-                        reanalyzed = True
+                        # 没有last_beyond_window_event，说明其他worker可能还在处理中
+                        # 再次等待，让其他worker完成
+                        logger.info(f"窗口外历史告警，等待其他worker完成处理: 历史 ID={original_event.id}")
+                        time.sleep(_LOCK_WAIT_SECONDS)
+                        # 再次检查
+                        is_duplicate, original_event, beyond_window, last_beyond_window_event = check_duplicate_alert(alert_hash, check_beyond_window=True)
+                        if last_beyond_window_event:
+                            logger.info(f"窗口外历史告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
+                            analysis_result = last_beyond_window_event.ai_analysis or {}
+                            reanalyzed = False
+                        elif not Config.REANALYZE_AFTER_TIME_WINDOW:
+                            logger.info(f"窗口外历史告警，复用历史分析: 历史 ID={original_event.id}")
+                            analysis_result = original_event.ai_analysis or {}
+                            reanalyzed = False
+                        else:
+                            logger.info(f"窗口外历史告警，重新分析: 历史 ID={original_event.id}")
+                            analysis_result = analyze_webhook_with_ai(webhook_full_data)
+                            reanalyzed = True
                 elif is_duplicate and original_event:
                     # 其他 worker 已处理完，复用结果（优先复用最近的窗口外记录）
                     if last_beyond_window_event and last_beyond_window_event.ai_analysis:
@@ -292,9 +304,22 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
 
         if importance == 'high':
             # 注意：先判断窗口外，因为窗口外告警也有 is_duplicate=True
-            if beyond_window and not Config.FORWARD_AFTER_TIME_WINDOW:
+            if beyond_window:
                 # 窗口外的历史重复告警（超过24小时）
-                skip_reason = f'窗口外重复告警（原始 ID={original_id}），配置跳过转发'
+                # 检查是否刚刚转发过（避免并发场景下重复转发）
+                just_notified = False
+                if original_event and original_event.last_notified_at:
+                    seconds_since_notify = (datetime.now() - original_event.last_notified_at).total_seconds()
+                    if seconds_since_notify < 60:  # 60秒内刚转发过
+                        just_notified = True
+                        logger.info(f"窗口外重复告警（原始 ID={original_id}），{seconds_since_notify:.1f}秒前已转发，跳过")
+                
+                if not Config.FORWARD_AFTER_TIME_WINDOW:
+                    skip_reason = f'窗口外重复告警（原始 ID={original_id}），配置跳过转发'
+                elif just_notified:
+                    skip_reason = f'窗口外重复告警（原始 ID={original_id}），刚刚已转发'
+                else:
+                    should_forward = True
             elif is_duplicate and not beyond_window:
                 # 窗口内的重复告警
                 # 检查是否需要周期性提醒
