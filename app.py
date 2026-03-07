@@ -305,7 +305,6 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         # 重新查询 original_event 以获取最新的 last_notified_at（避免并发场景下数据过期）
         if original_id:
             try:
-                from models import get_session
                 with get_session() as session:
                     fresh_original = session.get(WebhookEvent, original_id)
                     if fresh_original:
@@ -385,7 +384,6 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             # 更新原始告警的 last_notified_at（如果成功转发）
             if forward_result.get('status') == 'success' and original_event:
                 try:
-                    from models import get_session
                     from sqlalchemy import update
                     with get_session() as session:
                         session.execute(
