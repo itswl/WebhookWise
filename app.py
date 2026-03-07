@@ -302,6 +302,17 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         skip_reason = None
         is_periodic_reminder = False  # 是否为周期性提醒
 
+        # 重新查询 original_event 以获取最新的 last_notified_at（避免并发场景下数据过期）
+        if original_id:
+            try:
+                from models import get_session
+                with get_session() as session:
+                    fresh_original = session.get(WebhookEvent, original_id)
+                    if fresh_original:
+                        original_event = fresh_original
+            except Exception as e:
+                logger.warning(f"重新查询原始告警失败: {e}")
+
         if importance == 'high':
             # 注意：先判断窗口外，因为窗口外告警也有 is_duplicate=True
             if beyond_window:
@@ -322,8 +333,17 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                     should_forward = True
             elif is_duplicate and not beyond_window:
                 # 窗口内的重复告警
-                # 检查是否需要周期性提醒
-                if Config.ENABLE_PERIODIC_REMINDER and original_event:
+                # 检查是否刚刚转发过（避免并发场景下重复转发）
+                just_notified = False
+                if original_event and original_event.last_notified_at:
+                    seconds_since_notify = (datetime.now() - original_event.last_notified_at).total_seconds()
+                    if seconds_since_notify < 60:  # 60秒内刚转发过
+                        just_notified = True
+                        logger.info(f"窗口内重复告警（原始 ID={original_id}），{seconds_since_notify:.1f}秒前已转发，跳过")
+                
+                if just_notified:
+                    skip_reason = f'窗口内重复告警（原始 ID={original_id}），刚刚已转发'
+                elif Config.ENABLE_PERIODIC_REMINDER and original_event:
                     from datetime import timedelta
 
                     # 计算距离上次通知的时间
