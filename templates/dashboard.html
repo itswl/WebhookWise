@@ -910,6 +910,22 @@
                     <input type="checkbox" id="configForwardDuplicate">
                     <label for="configForwardDuplicate">转发重复告警</label>
                 </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="configEnableNoiseReduction">
+                    <label for="configEnableNoiseReduction">启用智能降噪</label>
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="configSuppressDerivedForward">
+                    <label for="configSuppressDerivedForward">抑制衍生告警自动转发</label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">降噪关联窗口（分钟）</label>
+                    <input type="number" class="form-input" id="configNoiseWindow" placeholder="5" min="1" max="60">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">根因置信度阈值（0-1）</label>
+                    <input type="number" class="form-input" id="configRootCauseConfidence" placeholder="0.65" min="0" max="1" step="0.01">
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeConfigModal()">取消</button>
@@ -1356,6 +1372,22 @@
                 });
                 html += '</ul></div>';
             }
+            if (analysis.noise_reduction) {
+                const nr = analysis.noise_reduction;
+                const relationMap = {
+                    root_cause: '根因告警',
+                    derived: '衍生告警',
+                    standalone: '独立告警'
+                };
+                const relation = relationMap[nr.relation] || nr.relation || '未知';
+                html += '<div class="ai-item"><div class="ai-label">降噪判定</div><div class="ai-value">' + relation + '</div></div>';
+                if (nr.root_cause_event_id) {
+                    html += '<div class="ai-item"><div class="ai-label">关联根因ID</div><div class="ai-value">#' + nr.root_cause_event_id + '</div></div>';
+                }
+                if (nr.reason) {
+                    html += '<div class="ai-item"><div class="ai-label">关联说明</div><div class="ai-value">' + nr.reason + '</div></div>';
+                }
+            }
             html += '</div></div>';
             return html;
         }
@@ -1466,6 +1498,10 @@
                     document.getElementById('configEnableForward').checked = c.enable_forward;
                     document.getElementById('configEnableAi').checked = c.enable_ai_analysis;
                     document.getElementById('configForwardDuplicate').checked = c.forward_duplicate_alerts;
+                    document.getElementById('configEnableNoiseReduction').checked = c.enable_alert_noise_reduction;
+                    document.getElementById('configSuppressDerivedForward').checked = c.suppress_derived_alert_forward;
+                    document.getElementById('configNoiseWindow').value = c.noise_reduction_window_minutes || 5;
+                    document.getElementById('configRootCauseConfidence').value = c.root_cause_min_confidence ?? 0.65;
 
                     document.getElementById('configModal').classList.add('active');
                 }
@@ -1491,7 +1527,11 @@
                     duplicate_alert_time_window: parseInt(document.getElementById('configDuplicateWindow').value) || 24,
                     enable_forward: document.getElementById('configEnableForward').checked,
                     enable_ai_analysis: document.getElementById('configEnableAi').checked,
-                    forward_duplicate_alerts: document.getElementById('configForwardDuplicate').checked
+                    forward_duplicate_alerts: document.getElementById('configForwardDuplicate').checked,
+                    enable_alert_noise_reduction: document.getElementById('configEnableNoiseReduction').checked,
+                    suppress_derived_alert_forward: document.getElementById('configSuppressDerivedForward').checked,
+                    noise_reduction_window_minutes: parseInt(document.getElementById('configNoiseWindow').value) || 5,
+                    root_cause_min_confidence: parseFloat(document.getElementById('configRootCauseConfidence').value) || 0.65
                 };
 
                 // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
@@ -1758,5 +1798,4 @@
     </script>
 </body>
 </html>
-
 
