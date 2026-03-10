@@ -90,6 +90,12 @@ class Config:
     # 保存重试配置
     SAVE_MAX_RETRIES = int(os.getenv('SAVE_MAX_RETRIES', '3'))
     SAVE_RETRY_DELAY_SECONDS = float(os.getenv('SAVE_RETRY_DELAY_SECONDS', '0.1'))
+
+    # 告警智能降噪 + 根因分析配置
+    ENABLE_ALERT_NOISE_REDUCTION = os.getenv('ENABLE_ALERT_NOISE_REDUCTION', 'true').lower() == 'true'
+    NOISE_REDUCTION_WINDOW_MINUTES = int(os.getenv('NOISE_REDUCTION_WINDOW_MINUTES', '5'))
+    ROOT_CAUSE_MIN_CONFIDENCE = float(os.getenv('ROOT_CAUSE_MIN_CONFIDENCE', '0.65'))
+    SUPPRESS_DERIVED_ALERT_FORWARD = os.getenv('SUPPRESS_DERIVED_ALERT_FORWARD', 'true').lower() == 'true'
     
     # JSON 配置
     JSON_SORT_KEYS = False

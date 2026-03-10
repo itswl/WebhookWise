@@ -256,6 +256,27 @@ curl -X POST http://localhost:8000/webhook \
 }
 ```
 
+### 开源生态专用入口（新增）
+
+支持以下来源路由（也支持继续使用 `/webhook` 自动识别）：
+
+- `POST /webhook/prometheus`
+- `POST /webhook/grafana`
+- `POST /webhook/pagerduty`
+- `POST /webhook/datadog`
+
+详细字段映射和完整示例参考：
+[docs/features/OPEN_ECOSYSTEM_INTEGRATION.md](docs/features/OPEN_ECOSYSTEM_INTEGRATION.md)
+
+### 告警智能降噪 + 根因分析（新增）
+
+- 在短时间窗口内自动关联相似告警，识别 `root_cause / derived / standalone`
+- 支持对衍生告警自动抑制转发（可配置）
+- 分析结果新增 `ai_analysis.noise_reduction` 字段，包含置信度与关联 ID
+
+详细说明：
+[docs/features/ALERT_NOISE_REDUCTION_ROOT_CAUSE.md](docs/features/ALERT_NOISE_REDUCTION_ROOT_CAUSE.md)
+
 ### 配置管理
 保护配置
 ```
@@ -531,7 +552,9 @@ webhooks/
 │   │   └── AUTO_MIGRATION.md
 │   ├── features/               # 功能说明
 │   │   ├── DEDUPLICATION_FIX.md
+│   │   ├── ALERT_NOISE_REDUCTION_ROOT_CAUSE.md
 │   │   ├── DUPLICATE_TIME_WINDOW.md
+│   │   ├── OPEN_ECOSYSTEM_INTEGRATION.md
 │   │   ├── TIME_WINDOW_BEHAVIOR_CONFIG.md
 │   │   └── PROMPT_CONFIG.md
 │   ├── troubleshooting/        # 故障排查
