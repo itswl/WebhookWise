@@ -19,6 +19,8 @@ from utils import (
     SaveWebhookResult
 )
 from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
+from ecosystem_adapters import normalize_webhook_event
+from alert_noise_reduction import AlertContext, analyze_noise_reduction
 from models import WebhookEvent, ProcessingLock, session_scope, get_session, test_db_connection
 
 app = Flask(__name__)
@@ -81,6 +83,182 @@ class ForwardDecision:
     should_forward: bool
     skip_reason: Optional[str]
     is_periodic_reminder: bool
+
+
+@dataclass(frozen=True)
+class NoiseReductionContext:
+    relation: str
+    root_cause_event_id: Optional[int]
+    confidence: float
+    suppress_forward: bool
+    reason: str
+    related_alert_count: int
+    related_alert_ids: list[int]
+
+
+@dataclass(frozen=True)
+class PersistedEventContext:
+    save_result: SaveWebhookResult
+    noise_context: NoiseReductionContext
+
+
+def _default_noise_context() -> NoiseReductionContext:
+    return NoiseReductionContext(
+        relation='standalone',
+        root_cause_event_id=None,
+        confidence=0.0,
+        suppress_forward=False,
+        reason='智能降噪未启用',
+        related_alert_count=0,
+        related_alert_ids=[]
+    )
+
+
+def _build_alert_context(
+    event_id: Optional[int],
+    source: str,
+    parsed_data: dict,
+    analysis: dict,
+    timestamp: datetime,
+    alert_hash: Optional[str] = None,
+    importance: Optional[str] = None,
+) -> AlertContext:
+    derived_importance = str(importance or analysis.get('importance') or '').lower().strip()
+    if derived_importance not in {'high', 'medium', 'low'}:
+        derived_importance = 'medium'
+
+    return AlertContext(
+        event_id=event_id,
+        source=source,
+        importance=derived_importance,
+        parsed_data=parsed_data if isinstance(parsed_data, dict) else {},
+        analysis=analysis if isinstance(analysis, dict) else {},
+        timestamp=timestamp,
+        alert_hash=alert_hash,
+    )
+
+
+def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> list[AlertContext]:
+    window_minutes = max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES)
+    time_threshold = current_time - timedelta(minutes=window_minutes)
+
+    try:
+        with get_session() as session:
+            query = (
+                session.query(WebhookEvent)
+                .filter(
+                    WebhookEvent.timestamp >= time_threshold,
+                    WebhookEvent.timestamp <= current_time,
+                )
+                .order_by(WebhookEvent.timestamp.desc())
+                .limit(100)
+            )
+            events = query.all()
+    except Exception as e:
+        logger.warning(f"加载降噪候选告警失败: {e}")
+        return []
+
+    contexts: list[AlertContext] = []
+    for event in events:
+        if event.alert_hash == current_hash:
+            continue
+        contexts.append(
+            _build_alert_context(
+                event_id=event.id,
+                source=event.source,
+                parsed_data=event.parsed_data or {},
+                analysis=event.ai_analysis or {},
+                timestamp=event.timestamp or datetime.now(),
+                alert_hash=event.alert_hash,
+                importance=event.importance,
+            )
+        )
+
+    return contexts
+
+
+def _compute_noise_reduction(
+    *,
+    alert_hash: str,
+    source: str,
+    parsed_data: dict,
+    analysis_result: dict,
+) -> NoiseReductionContext:
+    if not Config.ENABLE_ALERT_NOISE_REDUCTION:
+        return _default_noise_context()
+
+    now = datetime.now()
+    current_ctx = _build_alert_context(
+        event_id=None,
+        source=source,
+        parsed_data=parsed_data,
+        analysis=analysis_result,
+        timestamp=now,
+        alert_hash=alert_hash,
+    )
+
+    recent_contexts = _load_recent_alert_contexts(alert_hash, now)
+    decision = analyze_noise_reduction(
+        current_ctx,
+        recent_contexts,
+        window_minutes=max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES),
+        min_confidence=max(0.0, min(1.0, Config.ROOT_CAUSE_MIN_CONFIDENCE)),
+        suppress_derived=Config.SUPPRESS_DERIVED_ALERT_FORWARD,
+    )
+
+    return NoiseReductionContext(
+        relation=decision.relation,
+        root_cause_event_id=decision.root_cause_event_id,
+        confidence=decision.confidence,
+        suppress_forward=decision.suppress_forward,
+        reason=decision.reason,
+        related_alert_count=decision.related_alert_count,
+        related_alert_ids=decision.related_alert_ids,
+    )
+
+
+def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionContext) -> dict:
+    merged = dict(analysis_result)
+    merged['noise_reduction'] = {
+        'relation': noise_context.relation,
+        'root_cause_event_id': noise_context.root_cause_event_id,
+        'confidence': noise_context.confidence,
+        'suppress_forward': noise_context.suppress_forward,
+        'reason': noise_context.reason,
+        'related_alert_count': noise_context.related_alert_count,
+        'related_alert_ids': noise_context.related_alert_ids,
+    }
+    return merged
+
+
+def _persist_webhook_with_noise_context(
+    *,
+    request_context: WebhookRequestContext,
+    analysis_resolution: AnalysisResolution,
+    alert_hash: str,
+) -> PersistedEventContext:
+    noise_context = _compute_noise_reduction(
+        alert_hash=alert_hash,
+        source=request_context.source,
+        parsed_data=request_context.parsed_data,
+        analysis_result=analysis_resolution.analysis_result,
+    )
+
+    analysis_with_noise = _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
+    save_result = _persist_webhook_event(
+        data=request_context.parsed_data,
+        source=request_context.source,
+        payload=request_context.payload,
+        client_ip=request_context.client_ip,
+        analysis_result=analysis_with_noise,
+        alert_hash=alert_hash,
+        is_duplicate=analysis_resolution.is_duplicate or analysis_resolution.beyond_window,
+        original_event=analysis_resolution.original_event,
+        beyond_window=analysis_resolution.beyond_window,
+        reanalyzed=analysis_resolution.reanalyzed
+    )
+
+    return PersistedEventContext(save_result=save_result, noise_context=noise_context)
 
 
 def _ok(data: Optional[dict] = None, http_status: int = 200, **extra):
@@ -381,10 +559,18 @@ def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
+    noise_context: Optional[NoiseReductionContext],
     original_event: Optional[WebhookEvent],
     original_id: Optional[int]
 ) -> ForwardDecision:
     """根据告警状态和配置决定是否自动转发。"""
+    if noise_context and noise_context.suppress_forward:
+        return ForwardDecision(
+            False,
+            f"智能降噪抑制转发: {noise_context.reason}",
+            False,
+        )
+
     if importance != 'high':
         return ForwardDecision(False, f'重要性为 {importance}，非高风险事件不自动转发', False)
 
@@ -421,10 +607,10 @@ def _update_last_notified(event_id: int) -> None:
 
 def _parse_webhook_request(source: Optional[str]) -> WebhookRequestContext:
     client_ip = get_client_ip(request)
-    resolved_source = source or request.headers.get('X-Webhook-Source', 'unknown')
+    requested_source = source or request.headers.get('X-Webhook-Source', 'unknown')
     payload = request.get_data()
 
-    logger.info(f"收到来自 {client_ip} 的 webhook 请求, 来源: {resolved_source}")
+    logger.info(f"收到来自 {client_ip} 的 webhook 请求, 来源: {requested_source}")
     logger.debug(f"原始请求体: {payload.decode('utf-8', errors='ignore')[:500]}...")
     logger.debug(f"请求头: {dict(request.headers)}")
 
@@ -437,6 +623,12 @@ def _parse_webhook_request(source: Optional[str]) -> WebhookRequestContext:
     except Exception as e:
         logger.error(f"JSON 解析失败: {str(e)}")
         raise InvalidJsonError() from e
+
+    normalized = normalize_webhook_event(data, requested_source, request.headers)
+    resolved_source = normalized.source
+    data = normalized.data
+    if normalized.adapter != 'passthrough':
+        logger.info(f"生态适配命中: adapter={normalized.adapter}, source={resolved_source}")
 
     webhook_full_data = {
         'source': resolved_source,
@@ -526,18 +718,15 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
 
             analysis_result = analysis_resolution.analysis_result
             original_event = analysis_resolution.original_event
-            save_result = _persist_webhook_event(
-                data=request_context.parsed_data,
-                source=request_context.source,
-                payload=request_context.payload,
-                client_ip=request_context.client_ip,
-                analysis_result=analysis_result,
+            persisted = _persist_webhook_with_noise_context(
+                request_context=request_context,
+                analysis_resolution=analysis_resolution,
                 alert_hash=alert_hash,
-                is_duplicate=analysis_resolution.is_duplicate or analysis_resolution.beyond_window,
-                original_event=original_event,
-                beyond_window=analysis_resolution.beyond_window,
-                reanalyzed=analysis_resolution.reanalyzed
             )
+
+            save_result = persisted.save_result
+            noise_context = persisted.noise_context
+            analysis_result = _apply_noise_metadata(analysis_result, noise_context)
 
         beyond_window = save_result.beyond_window
         is_dup = save_result.is_duplicate
@@ -550,6 +739,7 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             importance,
             is_duplicate,
             beyond_window,
+            noise_context,
             original_event,
             original_id
         )
@@ -676,7 +866,11 @@ _CONFIG_SCHEMA = {
     'duplicate_alert_time_window': ('DUPLICATE_ALERT_TIME_WINDOW', 'int', lambda x: 1 <= x <= 168),
     'forward_duplicate_alerts': ('FORWARD_DUPLICATE_ALERTS', 'bool', None),
     'reanalyze_after_time_window': ('REANALYZE_AFTER_TIME_WINDOW', 'bool', None),
-    'forward_after_time_window': ('FORWARD_AFTER_TIME_WINDOW', 'bool', None)
+    'forward_after_time_window': ('FORWARD_AFTER_TIME_WINDOW', 'bool', None),
+    'enable_alert_noise_reduction': ('ENABLE_ALERT_NOISE_REDUCTION', 'bool', None),
+    'noise_reduction_window_minutes': ('NOISE_REDUCTION_WINDOW_MINUTES', 'int', lambda x: 1 <= x <= 60),
+    'root_cause_min_confidence': ('ROOT_CAUSE_MIN_CONFIDENCE', 'float', lambda x: 0 <= x <= 1),
+    'suppress_derived_alert_forward': ('SUPPRESS_DERIVED_ALERT_FORWARD', 'bool', None)
 }
 
 
@@ -694,6 +888,8 @@ def _coerce_config_value(value, value_type: str, default=None):
         return bool(value)
     if value_type == 'int':
         return int(value) if value not in (None, '') else default
+    if value_type == 'float':
+        return float(value) if value not in (None, '') else default
     return value
 
 
@@ -720,7 +916,11 @@ def _build_config_response(env_values: dict) -> dict:
         'duplicate_alert_time_window': _resolve_config_value(env_values, 'DUPLICATE_ALERT_TIME_WINDOW', 24, 'int'),
         'forward_duplicate_alerts': _resolve_config_value(env_values, 'FORWARD_DUPLICATE_ALERTS', False, 'bool'),
         'reanalyze_after_time_window': _resolve_config_value(env_values, 'REANALYZE_AFTER_TIME_WINDOW', True, 'bool'),
-        'forward_after_time_window': _resolve_config_value(env_values, 'FORWARD_AFTER_TIME_WINDOW', True, 'bool')
+        'forward_after_time_window': _resolve_config_value(env_values, 'FORWARD_AFTER_TIME_WINDOW', True, 'bool'),
+        'enable_alert_noise_reduction': _resolve_config_value(env_values, 'ENABLE_ALERT_NOISE_REDUCTION', True, 'bool'),
+        'noise_reduction_window_minutes': _resolve_config_value(env_values, 'NOISE_REDUCTION_WINDOW_MINUTES', 5, 'int'),
+        'root_cause_min_confidence': _resolve_config_value(env_values, 'ROOT_CAUSE_MIN_CONFIDENCE', 0.65, 'float'),
+        'suppress_derived_alert_forward': _resolve_config_value(env_values, 'SUPPRESS_DERIVED_ALERT_FORWARD', True, 'bool')
     }
 
 
@@ -736,6 +936,12 @@ def _parse_update_value(key: str, raw_value, value_type: str, validator):
 
     if value_type == 'int':
         typed_value = int(raw_value)
+        if validator and not validator(typed_value):
+            raise ValueError(f"{key} 值超出有效范围")
+        return str(typed_value), typed_value
+
+    if value_type == 'float':
+        typed_value = float(raw_value)
         if validator and not validator(typed_value):
             raise ValueError(f"{key} 值超出有效范围")
         return str(typed_value), typed_value
