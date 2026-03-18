@@ -4,7 +4,7 @@
 静默模式 - 仅在需要时输出关键信息
 """
 
-from models import get_engine
+from core.models import get_engine
 from sqlalchemy import text
 import sys
 

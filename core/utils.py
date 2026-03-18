@@ -11,9 +11,9 @@ from flask import Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from config import Config
-from logger import logger
-from models import WebhookEvent, get_session, session_scope
+from core.config import Config
+from core.logger import logger
+from core.models import WebhookEvent, get_session, session_scope
 
 # 类型别名
 # helper groups: hash extraction / dedup detection / persistence / query fallback

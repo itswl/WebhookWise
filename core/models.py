@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from config import Config
+from core.config import Config
 import logging
 
 Base = declarative_base()
