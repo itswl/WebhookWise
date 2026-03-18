@@ -1178,7 +1178,7 @@ def _build_prompt_source() -> str:
 
 
 def _reload_prompt_template() -> str:
-    from ai_analyzer import reload_user_prompt_template
+    from services.ai_analyzer import reload_user_prompt_template
 
     new_template = reload_user_prompt_template()
     logger.info("AI Prompt 模板已重新加载")
@@ -1186,7 +1186,7 @@ def _reload_prompt_template() -> str:
 
 
 def _load_current_prompt_template() -> str:
-    from ai_analyzer import load_user_prompt_template
+    from services.ai_analyzer import load_user_prompt_template
 
     return load_user_prompt_template()
 
