@@ -147,7 +147,7 @@ OPENAI_API_KEY=sk-xxx
 # ...其他配置
 
 # 直接运行
-python app.py
+python main.py
 ```
 
 ### Docker 开发

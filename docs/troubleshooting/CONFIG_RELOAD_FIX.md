@@ -46,7 +46,7 @@ T3: 用户刷新页面
 
 ### 问题根源
 
-**旧代码**（app.py GET /api/config）：
+**旧代码**（core/app.py GET /api/config）：
 ```python
 @app.route('/api/config', methods=['GET'])
 def get_config():
