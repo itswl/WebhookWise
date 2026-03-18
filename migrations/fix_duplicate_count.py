@@ -14,9 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import text
-from models import init_db
-from database import session_scope
-from logger import logger
+from core.models import init_db
+from core.database import session_scope
+from core.logger import logger
 
 
 def fix_duplicate_count():

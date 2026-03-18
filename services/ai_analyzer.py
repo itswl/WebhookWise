@@ -11,8 +11,8 @@ try:
 except ImportError:
     HAS_JSON5 = False
 
-from logger import logger
-from config import Config
+from core.logger import logger
+from core.config import Config
 from openai import OpenAI
 
 # 类型别名
