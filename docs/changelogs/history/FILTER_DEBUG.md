@@ -110,7 +110,7 @@ console.log('高优先级数量:', highOnly.length);
 ```bash
 # 停止服务 (Ctrl+C)
 # 重新启动
-python app.py
+python main.py
 ```
 
 ## 已修复的功能

@@ -23,7 +23,7 @@ T2: 告警2 → AI 分析 → 写入数据库（标记为原始告警）❌
 
 ### 代码分析
 
-**旧代码**（utils.py:219）:
+**旧代码**（core/utils.py:219）:
 ```python
 # 第219行：check_duplicate_alert 在事务外执行
 if is_duplicate is None:

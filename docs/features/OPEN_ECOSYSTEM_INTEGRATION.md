@@ -18,7 +18,7 @@
 实现代码：
 
 - 适配器：`ecosystem_adapters.py`
-- 接入点：`app.py::_parse_webhook_request`
+- 接入点：`core/app.py::_parse_webhook_request`
 
 ## 路由
 

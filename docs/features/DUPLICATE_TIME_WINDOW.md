@@ -29,7 +29,7 @@ DUPLICATE_ALERT_TIME_WINDOW=24  # 24 小时（默认）
 ### 去重判断逻辑
 
 ```python
-# utils.py:190
+# core/utils.py:190
 time_threshold = datetime.now() - timedelta(hours=time_window_hours)
 
 # 查询条件

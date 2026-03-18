@@ -122,8 +122,8 @@ curl http://localhost:5000/api/prompt
 
 ```bash
 # 重启 Flask 服务
-pkill -f "python app.py"
-python app.py
+pkill -f "python main.py"
+python main.py
 ```
 
 ## API 接口
@@ -319,7 +319,7 @@ WARNING - Prompt 模板文件不存在: /path/to/file，使用默认模板
 # 检查文件是否存在
 ls -la prompts/webhook_analysis.txt
 
-# 检查相对路径（相对于 ai_analyzer.py 所在目录）
+# 检查相对路径（相对于 services/ai_analyzer.py 所在目录）
 # 或使用绝对路径
 AI_USER_PROMPT_FILE=/absolute/path/to/prompt.txt
 ```
