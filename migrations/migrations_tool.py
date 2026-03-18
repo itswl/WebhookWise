@@ -7,9 +7,9 @@
 """
 
 import sys
-from models import get_engine, session_scope, WebhookEvent
+from core.models import get_engine, session_scope, WebhookEvent
 from sqlalchemy import text
-from logger import logger
+from core.logger import logger
 import logging
 
 
