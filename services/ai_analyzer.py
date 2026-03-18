@@ -54,8 +54,8 @@ def load_user_prompt_template() -> str:
         # 支持相对路径和绝对路径
         file_path = Path(prompt_file)
         if not file_path.is_absolute():
-            # 相对于项目根目录
-            file_path = Path(__file__).parent / file_path
+            # 相对于项目根目录（services的父目录）
+            file_path = Path(__file__).parent.parent / file_path
 
         if file_path.exists():
             try:
