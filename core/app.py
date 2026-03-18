@@ -11,17 +11,17 @@ from sqlalchemy.exc import IntegrityError
 
 from pathlib import Path
 from dotenv import dotenv_values
-from config import Config
-from logger import logger
-from utils import (
+from core.config import Config
+from core.logger import logger
+from core.utils import (
     verify_signature, save_webhook_data, get_client_ip,
     get_all_webhooks, generate_alert_hash, check_duplicate_alert,
     SaveWebhookResult
 )
-from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
-from ecosystem_adapters import normalize_webhook_event
-from alert_noise_reduction import AlertContext, analyze_noise_reduction
-from models import WebhookEvent, ProcessingLock, session_scope, get_session, test_db_connection
+from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
+from adapters.ecosystem_adapters import normalize_webhook_event
+from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
+from core.models import WebhookEvent, ProcessingLock, session_scope, get_session, test_db_connection
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -1192,7 +1192,7 @@ def _load_current_prompt_template() -> str:
 
 
 def _run_add_unique_constraint_migration() -> bool:
-    from migrations_tool import add_unique_constraint
+    from migrations.migrations_tool import add_unique_constraint
 
     logger.info("开始执行数据库迁移：添加唯一约束")
     return add_unique_constraint()

@@ -13,7 +13,7 @@ max_retries=30
 retry_count=0
 
 while [ $retry_count -lt $max_retries ]; do
-    if python3 -c "from models import test_db_connection; exit(0 if test_db_connection() else 1)" 2>/dev/null; then
+    if python3 -c "from core.models import test_db_connection; exit(0 if test_db_connection() else 1)" 2>/dev/null; then
         echo "✅ 数据库连接成功"
         break
     else
@@ -30,21 +30,21 @@ fi
 
 # 2. 初始化数据库表结构
 echo "[2/4] 初始化数据库表..."
-python3 -c "from models import init_db; init_db()" || {
+python3 -c "from core.models import init_db; init_db()" || {
     echo "⚠️  表初始化失败（可能已存在），继续..."
 }
 echo "✅ 数据库表检查完成"
 
 # 3. 执行数据库迁移（添加去重字段等）
 echo "[3/4] 执行数据库迁移..."
-python3 migrate_db.py || {
+python3 -m migrations.migrate_db || {
     echo "⚠️  迁移失败，继续..."
 }
 echo "✅ 数据库迁移完成"
 
 # 4. 添加唯一约束（防止重复告警）
 echo "[4/4] 检查唯一约束..."
-python3 init_migrations.py || {
+python3 -m migrations.init_migrations || {
     echo "⚠️  唯一约束检查失败，继续启动..."
 }
 echo "✅ 数据库约束检查完成"

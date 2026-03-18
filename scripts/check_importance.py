@@ -2,7 +2,7 @@
 """
 检查数据库中告警的 importance 字段分布
 """
-from models import WebhookEvent, session_scope
+from core.models import WebhookEvent, session_scope
 
 def check_importance_distribution():
     """检查 importance 字段分布"""
