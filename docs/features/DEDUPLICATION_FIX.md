@@ -93,7 +93,7 @@ curl -X POST https://dejavu.prod.common-infra.hony.love/api/migrations/add_uniqu
 
 **方式 2：通过命令行**
 ```bash
-python migrations_tool.py add_unique_constraint
+python -m migrations.migrations_tool add_unique_constraint
 ```
 
 **方式 3：手动 SQL**
@@ -123,7 +123,7 @@ psql -h <host> -U <user> -d <database> < migrations/add_unique_constraint.sql
 
 #### 代码变更
 
-**文件**：`utils.py:194-202`
+**文件**：`core/utils.py:194-202`
 
 ```python
 original_event = session.query(WebhookEvent)\
@@ -143,7 +143,7 @@ original_event = session.query(WebhookEvent)\
 
 #### 添加重试机制
 
-**文件**：`utils.py:218-310`
+**文件**：`core/utils.py:218-310`
 
 ```python
 def save_webhook_data(...):
@@ -210,9 +210,9 @@ def save_webhook_data(...):
 
 ```bash
 # 已修改的文件
-- utils.py         # 增强事务隔离 + 重试机制
-- migrations_tool.py   # 迁移工具
-- app.py           # 添加迁移 API
+- core/utils.py         # 增强事务隔离 + 重试机制
+- migrations/migrations_tool.py   # 迁移工具
+- core/app.py           # 添加迁移 API
 ```
 
 ### 步骤 2：部署到生产环境
@@ -424,14 +424,14 @@ git revert <commit_hash>
 | 层级 | 修复项 | 文件 | 效果 |
 |------|--------|------|------|
 | **数据库** | 唯一约束 | `migrations/add_unique_constraint.sql` | 🛡️ 最强防护 |
-| **应用层** | 事务隔离 | `utils.py:201` | 🔒 防并发读取 |
-| **应用层** | 重试机制 | `utils.py:236-310` | 🔄 兜底处理 |
-| **工具** | 迁移工具 | `migrations_tool.py` | 🔧 自动化 |
-| **API** | 迁移接口 | `app.py:687-705` | 🌐 远程执行 |
+| **应用层** | 事务隔离 | `core/utils.py:201` | 🔒 防并发读取 |
+| **应用层** | 重试机制 | `core/utils.py:236-310` | 🔄 兜底处理 |
+| **工具** | 迁移工具 | `migrations/migrations_tool.py` | 🔧 自动化 |
+| **API** | 迁移接口 | `core/app.py:687-705` | 🌐 远程执行 |
 
 ### 部署清单
 
-- [x] 修改代码（utils.py, app.py）
+- [x] 修改代码（core/utils.py, core/app.py）
 - [ ] 提交并推送代码
 - [ ] 部署到生产环境
 - [ ] 执行数据库迁移

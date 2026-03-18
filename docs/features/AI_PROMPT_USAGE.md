@@ -31,7 +31,7 @@ curl -X POST http://localhost:5000/api/prompt/reload
 AI_USER_PROMPT='你的自定义 prompt 内容，支持 {source} 和 {data_json} 变量'
 
 # 重启服务
-python app.py
+python main.py
 ```
 
 ### 3. 验证修改
@@ -196,8 +196,8 @@ services:
 curl -X POST http://localhost:5000/api/prompt/reload
 
 # 或重启服务
-pkill -f "python app.py"
-python app.py
+pkill -f "python main.py"
+python main.py
 ```
 
 ### 问题 2: 文件找不到

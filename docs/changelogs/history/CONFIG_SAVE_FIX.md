@@ -169,7 +169,7 @@ else:  # str
 
 ### API key 显示逻辑
 
-**后端返回**（app.py GET /api/config）：
+**后端返回**（core/app.py GET /api/config）：
 ```python
 'openai_api_key': '已配置' if Config.OPENAI_API_KEY else ''
 ```

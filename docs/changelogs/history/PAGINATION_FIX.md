@@ -125,7 +125,7 @@ curl http://localhost:5000/api/webhooks?page=3&page_size=10
 ### 1. 检查日志
 重启服务后，查看日志：
 ```bash
-python app.py
+python main.py
 ```
 
 点击分页按钮，日志中应该**不再出现**错误信息。
@@ -158,8 +158,8 @@ curl -s http://localhost:5000/api/webhooks?page=2 | python -m json.tool
 
 ## 相关文件
 
-- `utils.py:346-388` - `get_all_webhooks()` 函数
-- `app.py:248-271` - `/api/webhooks` API 端点
+- `core/utils.py:346-388` - `get_all_webhooks()` 函数
+- `core/app.py:248-271` - `/api/webhooks` API 端点
 - `test_pagination.py` - 分页测试脚本
 
 ## 注意事项

@@ -61,13 +61,13 @@ cp .env.example .env
 createdb webhooks
 
 # 运行迁移
-python models.py
-python migrate_db.py  # 添加重复告警去重字段
+python -c "from core.models import init_db; init_db()"
+python -m migrations.migrate_db  # 添加重复告警去重字段
 ```
 
 6. **启动服务**
 ```bash
-python app.py
+python main.py
 ```
 
 服务将在 `http://localhost:8000` 启动
