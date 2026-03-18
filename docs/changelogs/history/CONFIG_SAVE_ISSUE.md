@@ -105,7 +105,7 @@ echo "# Test" >> .env
 创建 `config/settings.json` 用于动态配置：
 
 ```python
-# config.py 中添加
+# core/config.py 中添加
 import json
 from pathlib import Path
 
@@ -188,7 +188,7 @@ chmod 644 .env
 xattr -c .env
 
 # 直接运行
-python app.py
+python main.py
 ```
 
 ### Docker 开发环境

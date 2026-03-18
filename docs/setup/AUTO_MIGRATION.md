@@ -22,7 +22,7 @@
 │    ↓ 如果表已存在则跳过                                   │
 ├──────────────────────────────────────────────────────────┤
 │ 3. 执行数据库迁移                                         │
-│    ↓ migrate_db.py                                       │
+│    ↓ migrations/migrate_db.py                            │
 │    ↓ 添加 alert_hash, is_duplicate 等字段               │
 │    ↓ 创建索引和分布式锁表                                │
 │    ↓ 如果字段已存在则跳过                                │
@@ -55,16 +55,16 @@
 #!/bin/bash
 # 1. 等待数据库
 # 2. 初始化表结构
-python3 -c "from models import init_db; init_db()"
+python3 -c "from core.models import init_db; init_db()"
 # 3. 执行字段迁移
-python3 migrate_db.py
+python3 -m migrations.migrate_db
 # 4. 添加唯一约束
-python3 init_migrations.py
+python3 -m migrations.init_migrations
 # 5. 启动服务
 exec gunicorn ...
 ```
 
-### 2. models.py
+### 2. core/models.py
 
 **函数**: `init_db()`
 
@@ -81,7 +81,7 @@ def init_db():
 - `webhook_events` - 事件主表
 - `processing_locks` - 分布式锁表
 
-### 3. migrate_db.py
+### 3. migrations/migrate_db.py
 
 **作用**: 添加告警去重相关字段
 
@@ -95,7 +95,7 @@ def init_db():
 
 **幂等性**: 所有操作都检查字段是否已存在，避免重复执行
 
-### 4. init_migrations.py
+### 4. migrations/init_migrations.py
 
 **作用**: 添加唯一约束防止重复告警（静默模式）
 
@@ -118,7 +118,9 @@ def init_db():
 ```dockerfile
 # 复制启动脚本
 COPY entrypoint.sh .
-COPY init_migrations.py .
+COPY main.py .
+COPY core/ ./core/
+COPY migrations/ ./migrations/
 
 # 设置执行权限
 RUN chmod +x entrypoint.sh
@@ -189,14 +191,14 @@ cp .env.example .env
 vim .env
 
 # 4. 手动执行迁移（可选）
-python3 models.py          # 创建表
-python3 migrate_db.py      # 添加字段
-python3 init_migrations.py # 添加唯一约束
+python3 -c "from core.models import init_db; init_db()"  # 创建表
+python3 -m migrations.migrate_db      # 添加字段
+python3 -m migrations.init_migrations # 添加唯一约束
 
 # 5. 启动服务
-python3 app.py
+python3 main.py
 # 或使用 gunicorn
-gunicorn --bind 0.0.0.0:8000 --workers 4 app:app
+gunicorn --bind 0.0.0.0:8000 --workers 4 main:app
 ```
 
 **注意**: 手动部署时，即使不执行步骤4，服务启动时也会自动检查和执行必要的迁移（如果使用entrypoint.sh）。
@@ -245,7 +247,7 @@ if result.scalar():
 所有迁移步骤都设置了错误处理，**迁移失败不会阻止服务启动**：
 
 ```bash
-python3 init_migrations.py || {
+python3 -m migrations.init_migrations || {
     echo "⚠️  唯一约束检查失败，继续启动..."
 }
 ```
@@ -268,12 +270,12 @@ python3 init_migrations.py || {
 docker exec -it webhook-receiver bash
 
 # 手动执行迁移
-python3 models.py           # 创建表
-python3 migrate_db.py       # 添加字段
-python3 init_migrations.py  # 添加唯一约束
+python3 -c "from core.models import init_db; init_db()"  # 创建表
+python3 -m migrations.migrate_db       # 添加字段
+python3 -m migrations.init_migrations  # 添加唯一约束
 
 # 或使用迁移工具
-python3 migrations_tool.py add_unique_constraint
+python3 -m migrations.migrations_tool add_unique_constraint
 ```
 
 ### 删除唯一约束（如需回滚）
@@ -431,7 +433,7 @@ FORWARD_AFTER_TIME_WINDOW=true
 
 如果未来版本需要添加新字段，只需：
 
-1. 在 `migrate_db.py` 中添加迁移：
+1. 在 `migrations/migrate_db.py` 中添加迁移：
    ```python
    {
        'name': '添加新字段',

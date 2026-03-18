@@ -32,9 +32,9 @@
 /Users/imwl/webhooks/
 ├── prompts/
 │   └── webhook_analysis.txt       # 默认 Prompt 模板文件
-├── ai_analyzer.py                 # 修改：添加动态加载逻辑
-├── config.py                      # 修改：添加 Prompt 配置项
-├── app.py                         # 修改：添加 Prompt API 端点
+├── services/ai_analyzer.py        # 修改：添加动态加载逻辑
+├── core/config.py                 # 修改：添加 Prompt 配置项
+├── core/app.py                    # 修改：添加 Prompt API 端点
 ├── .env.example                   # 修改：添加配置示例
 ├── PROMPT_CONFIG.md               # 新增：详细配置文档
 ├── AI_PROMPT_USAGE.md             # 新增：使用指南
