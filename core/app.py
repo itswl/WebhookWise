@@ -23,7 +23,7 @@ from adapters.ecosystem_adapters import normalize_webhook_event
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from core.models import WebhookEvent, ProcessingLock, session_scope, get_session, test_db_connection
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates')
 app.config.from_object(Config)
 
 # 启用 gzip 压缩（减少响应体积，加快传输）
