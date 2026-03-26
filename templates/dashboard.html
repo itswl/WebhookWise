@@ -4,751 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webhook 监控中心</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            background: #fafbfc;
-            color: #24292e;
-            line-height: 1.6;
-        }
-
-        /* 顶部导航栏 */
-        .navbar {
-            background: #fff;
-            border-bottom: 1px solid #e1e4e8;
-            padding: 0 2rem;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-
-        .navbar-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            height: 64px;
-        }
-
-        .logo {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #0366d6;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .nav-actions {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        .nav-status {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: #f6f8fa;
-            border-radius: 6px;
-            font-size: 0.875rem;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #28a745;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid #e1e4e8;
-            background: #fff;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 500;
-        }
-
-        .btn:hover {
-            background: #f6f8fa;
-            border-color: #ccc;
-        }
-
-        .btn-primary {
-            background: #0366d6;
-            color: #fff;
-            border-color: #0366d6;
-        }
-
-        .btn-primary:hover {
-            background: #0256c1;
-            border-color: #0256c1;
-        }
-
-        /* 主容器 */
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        /* 统计卡片区域 */
-        .stats-section {
-            margin-bottom: 2rem;
-        }
-
-        .section-title {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: #586069;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 1rem;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .stat-card {
-            background: #fff;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 1.5rem;
-            transition: all 0.2s;
-        }
-
-        .stat-card:hover {
-            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-
-        .stat-label {
-            font-size: 0.875rem;
-            color: #586069;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #24292e;
-        }
-
-        .stat-trend {
-            font-size: 0.75rem;
-            color: #28a745;
-            margin-top: 0.5rem;
-        }
-
-        /* 筛选栏 */
-        .filter-section {
-            background: #fff;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .filter-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr;
-            gap: 1rem;
-        }
-
-        .filter-item {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .filter-label {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #24292e;
-        }
-
-        .filter-input {
-            padding: 0.5rem 0.75rem;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            background: #fafbfc;
-            transition: all 0.2s;
-        }
-
-        .filter-input:focus {
-            outline: none;
-            border-color: #0366d6;
-            background: #fff;
-            box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
-        }
-
-        /* 告警列表 */
-        .alerts-section {
-            background: #fff;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .alert-item {
-            border-bottom: 1px solid #e1e4e8;
-            transition: background 0.2s;
-        }
-
-        .alert-item:last-child {
-            border-bottom: none;
-        }
-
-        .alert-item:hover {
-            background: #f6f8fa;
-        }
-
-        .alert-header {
-            padding: 1.25rem 1.5rem;
-            cursor: pointer;
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 1rem;
-            align-items: start;
-        }
-
-        .alert-left {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .alert-title-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .alert-icon {
-            font-size: 1.25rem;
-        }
-
-        .alert-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #24292e;
-        }
-
-        .alert-meta {
-            display: flex;
-            gap: 1.5rem;
-            font-size: 0.875rem;
-            color: #586069;
-        }
-
-        .alert-meta-item {
-            display: flex;
-            align-items: center;
-            gap: 0.375rem;
-        }
-
-        .alert-right {
-            display: flex;
-            gap: 0.75rem;
-            align-items: start;
-        }
-
-        .badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .badge-high {
-            background: #ffeef0;
-            color: #d73a49;
-            border: 1px solid #f9d0d3;
-        }
-
-        .badge-medium {
-            background: #fff5e6;
-            color: #e36209;
-            border: 1px solid #ffd8a8;
-        }
-
-        .badge-low {
-            background: #dcffe4;
-            color: #28a745;
-            border: 1px solid #b1f1c1;
-        }
-
-        .badge-duplicate {
-            background: #f1f8ff;
-            color: #0366d6;
-            border: 1px solid #c8e1ff;
-        }
-
-        .alert-time {
-            font-size: 0.75rem;
-            color: #959da5;
-        }
-
-        .alert-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn-sm {
-            padding: 0.375rem 0.75rem;
-            font-size: 0.75rem;
-        }
-
-        .alert-details {
-            padding: 0 1.5rem 1.5rem;
-            display: none;
-            border-top: 1px solid #f6f8fa;
-        }
-
-        .alert-item.expanded .alert-details {
-            display: block;
-            animation: slideDown 0.2s ease-out;
-        }
-
-        .alert-item.expanded .alert-header {
-            background: #f6f8fa;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .details-tabs {
-            display: flex;
-            gap: 1rem;
-            border-bottom: 1px solid #e1e4e8;
-            margin-bottom: 1rem;
-            padding-top: 1rem;
-        }
-
-        .tab {
-            padding: 0.5rem 0;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #586069;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .tab:hover {
-            color: #24292e;
-        }
-
-        .tab.active {
-            color: #0366d6;
-            border-bottom-color: #0366d6;
-        }
-
-        .tab-content {
-            display: none;
-            padding: 1rem 0;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            padding: 1rem 0;
-        }
-
-        .info-item {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .info-label {
-            font-size: 0.75rem;
-            color: #586069;
-            font-weight: 500;
-        }
-
-        .info-value {
-            font-size: 0.875rem;
-            color: #24292e;
-            font-family: 'SF Mono', Monaco, monospace;
-        }
-
-        .code-block {
-            background: #1e1e1e;
-            border: 1px solid #2d2d2d;
-            border-radius: 8px;
-            padding: 1.25rem;
-            overflow-x: auto;
-            font-size: 0.875rem;
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
-            line-height: 1.6;
-            max-height: 600px;
-            overflow-y: auto;
-        }
-
-        .code-block pre {
-            margin: 0;
-            color: #d4d4d4;
-        }
-
-        /* JSON 语法高亮 */
-        .json-key {
-            color: #9cdcfe;
-        }
-
-        .json-string {
-            color: #ce9178;
-        }
-
-        .json-number {
-            color: #b5cea8;
-        }
-
-        .json-boolean {
-            color: #569cd6;
-        }
-
-        .json-null {
-            color: #569cd6;
-        }
-
-        .json-punctuation {
-            color: #d4d4d4;
-        }
-
-        /* 代码块头部（可选，用于添加复制按钮等） */
-        .code-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            background: #2d2d2d;
-            border-bottom: 1px solid #3d3d3d;
-            border-radius: 8px 8px 0 0;
-            margin-bottom: -1px;
-        }
-
-        .code-lang {
-            color: #858585;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-
-        .code-copy-btn {
-            padding: 0.25rem 0.75rem;
-            background: #3d3d3d;
-            border: 1px solid #4d4d4d;
-            border-radius: 4px;
-            color: #d4d4d4;
-            font-size: 0.75rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .code-copy-btn:hover {
-            background: #4d4d4d;
-            border-color: #5d5d5d;
-        }
-
-        .code-wrapper {
-            margin: 1rem 0;
-        }
-
-        .ai-section {
-            background: #f6ffed;
-            border: 1px solid #b7eb8f;
-            border-radius: 6px;
-            padding: 1.5rem;
-            margin-top: 1rem;
-        }
-
-        .ai-header {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: #389e0d;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .ai-content {
-            display: grid;
-            gap: 1rem;
-        }
-
-        .ai-item {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .ai-label {
-            font-size: 0.75rem;
-            color: #52c41a;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .ai-value {
-            font-size: 0.875rem;
-            color: #24292e;
-        }
-
-        .ai-list {
-            list-style: none;
-            padding-left: 1rem;
-        }
-
-        .ai-list li {
-            padding: 0.25rem 0;
-            position: relative;
-        }
-
-        .ai-list li:before {
-            content: "→";
-            position: absolute;
-            left: -1rem;
-            color: #52c41a;
-        }
-
-        /* 分页 */
-        .pagination {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem;
-            background: #fff;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            margin-top: 1.5rem;
-        }
-
-        .pagination-info {
-            font-size: 0.875rem;
-            color: #586069;
-        }
-
-        .pagination-buttons {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .pagination button {
-            padding: 0.5rem 1rem;
-            background: #fff;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .pagination button:hover:not(:disabled) {
-            background: #f6f8fa;
-        }
-
-        .pagination button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* 空状态 */
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-        }
-
-        .empty-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            opacity: 0.3;
-        }
-
-        .empty-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #24292e;
-            margin-bottom: 0.5rem;
-        }
-
-        .empty-text {
-            color: #586069;
-            font-size: 0.875rem;
-        }
-
-        /* 加载状态 */
-        .loading {
-            text-align: center;
-            padding: 3rem;
-        }
-
-        .spinner {
-            width: 40px;
-            height: 40px;
-            margin: 0 auto 1rem;
-            border: 3px solid #e1e4e8;
-            border-top-color: #0366d6;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* 模态框 */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(36, 41, 46, 0.5);
-            backdrop-filter: blur(4px);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: #fff;
-            border-radius: 6px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-        }
-
-        .modal-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #e1e4e8;
-        }
-
-        .modal-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #24292e;
-        }
-
-        .modal-body {
-            padding: 1.5rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: #24292e;
-            margin-bottom: 0.5rem;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 0.5rem 0.75rem;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            font-size: 0.875rem;
-        }
-
-        .form-input:focus {
-            outline: none;
-            border-color: #0366d6;
-            box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
-        }
-
-        .form-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .form-checkbox input {
-            width: auto;
-        }
-
-        .modal-footer {
-            padding: 1.5rem;
-            border-top: 1px solid #e1e4e8;
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-        }
-
-        /* 响应式 */
-        @media (max-width: 768px) {
-            .navbar-content {
-                padding: 0 1rem;
-            }
-
-            .container {
-                padding: 1rem;
-            }
-
-            .filter-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .alert-header {
-                grid-template-columns: 1fr;
-            }
-
-            .alert-right {
-                flex-wrap: wrap;
-            }
-        }
-    </style>
+    
+    <!-- 外部样式表 -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/components.css">
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -757,6 +16,26 @@
             <div class="logo">
                 <span>🔔</span>
                 <span>Webhook Monitor</span>
+            </div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="alerts">
+                    <span>🔔</span> 告警管理
+                </button>
+                <button class="nav-tab" data-tab="skills">
+                    <span>🔗</span> 平台连接
+                </button>
+                <button class="nav-tab" data-tab="ai-cost">
+                    <span>💰</span> AI 成本
+                </button>
+                <button class="nav-tab" data-tab="predictions">
+                    <span>🔮</span> 预测分析
+                </button>
+                <button class="nav-tab" data-tab="remediation">
+                    <span>🔧</span> 自动修复
+                </button>
+                <button class="nav-tab" data-tab="topology">
+                    <span>🕸️</span> 服务拓扑
+                </button>
             </div>
             <div class="nav-actions">
                 <div class="nav-status">
@@ -781,93 +60,210 @@
 
     <!-- 主容器 -->
     <div class="container">
-        <!-- 统计卡片 -->
-        <div class="stats-section">
-            <div class="section-title">实时统计</div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">总告警数</div>
-                    <div class="stat-value" id="totalCount">0</div>
-                    <div class="stat-trend">最后更新: <span id="lastUpdate">-</span></div>
+        <!-- 告警管理 Tab -->
+        <div id="alertsTab" class="tab-content active">
+            <!-- 统计卡片 -->
+            <div class="stats-section">
+                <div class="section-title">实时统计</div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">总告警数</div>
+                        <div class="stat-value" id="totalCount">0</div>
+                        <div class="stat-trend">最后更新: <span id="lastUpdate">-</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">高优先级</div>
+                        <div class="stat-value" id="highCount">0</div>
+                        <div class="stat-trend">需要立即处理</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">中优先级</div>
+                        <div class="stat-value" id="mediumCount">0</div>
+                        <div class="stat-trend">建议尽快处理</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">重复告警</div>
+                        <div class="stat-value" id="duplicateCount">0</div>
+                        <div class="stat-trend">已自动去重</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">高优先级</div>
-                    <div class="stat-value" id="highCount">0</div>
-                    <div class="stat-trend">需要立即处理</div>
+            </div>
+
+            <!-- 筛选栏 -->
+            <div class="filter-section">
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <label class="filter-label">搜索</label>
+                        <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="搜索告警内容、来源..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">优先级</label>
+                        <select class="filter-input" id="importanceFilter" onchange="filterAlerts()">
+                            <option value="">全部</option>
+                            <option value="high">高</option>
+                            <option value="medium">中</option>
+                            <option value="low">低</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">来源</label>
+                        <select class="filter-input" id="sourceFilter" onchange="filterAlerts()">
+                            <option value="">全部</option>
+                            <option value="volcengine">火山引擎</option>
+                            <option value="aliyun">阿里云</option>
+                            <option value="prometheus">Prometheus</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">状态</label>
+                        <select class="filter-input" id="duplicateFilter" onchange="filterAlerts()">
+                            <option value="">全部</option>
+                            <option value="original">原始</option>
+                            <option value="duplicate">重复</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">中优先级</div>
-                    <div class="stat-value" id="mediumCount">0</div>
-                    <div class="stat-trend">建议尽快处理</div>
+            </div>
+
+            <!-- 告警列表 -->
+            <div class="alerts-section" id="alertList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>加载中...</p>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">重复告警</div>
-                    <div class="stat-value" id="duplicateCount">0</div>
-                    <div class="stat-trend">已自动去重</div>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination" id="pagination" style="display: none;">
+                <div class="pagination-info">
+                    第 <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong> 页，共 <strong id="totalCount2">0</strong> 条
+                </div>
+                <div class="pagination-buttons">
+                    <button id="firstPage" onclick="goToPage(1)">首页</button>
+                    <button id="prevPage" onclick="goToPage('prev')">上一页</button>
+                    <button id="nextPage" onclick="goToPage('next')">下一页</button>
+                    <button id="lastPage" onclick="goToPage('last')">末页</button>
+                </div>
+                <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
+                    <option value="10">10 条/页</option>
+                    <option value="20" selected>20 条/页</option>
+                    <option value="50">50 条/页</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 平台连接 Tab -->
+        <div id="skillsTab" class="tab-content" style="display: none;">
+            <div class="skills-section">
+                <div class="section-title">平台连接</div>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="openSkillConfigModal()">
+                        <span>+</span> 添加连接
+                    </button>
+                </div>
+                <div class="skills-grid" id="skillsGrid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>加载中...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 外部 Skill 管理 -->
+            <div class="external-skills-section" style="margin-top: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #24292e;">外部 Skill</h3>
+                    <button class="btn btn-sm" onclick="reloadExternalSkills()">🔄 刷新发现</button>
+                </div>
+                <div id="external-skills-list" class="skills-grid">
+                    <p class="text-muted">加载中...</p>
                 </div>
             </div>
         </div>
 
-        <!-- 筛选栏 -->
-        <div class="filter-section">
-            <div class="filter-grid">
-                <div class="filter-item">
-                    <label class="filter-label">搜索</label>
-                    <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="搜索告警内容、来源..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
+        <!-- AI 成本 Tab -->
+        <div id="aiCostTab" class="tab-content" style="display: none;">
+            <div class="ai-cost-section">
+                <div class="section-title">AI 成本监控</div>
+                <div class="ai-period-selector" style="margin-bottom: 20px;">
+                    <button class="btn" data-ai-period="day">日</button>
+                    <button class="btn" data-ai-period="week">周</button>
+                    <button class="btn" data-ai-period="month">月</button>
                 </div>
-                <div class="filter-item">
-                    <label class="filter-label">优先级</label>
-                    <select class="filter-input" id="importanceFilter" onchange="filterAlerts()">
-                        <option value="">全部</option>
-                        <option value="high">高</option>
-                        <option value="medium">中</option>
-                        <option value="low">低</option>
-                    </select>
-                </div>
-                <div class="filter-item">
-                    <label class="filter-label">来源</label>
-                    <select class="filter-input" id="sourceFilter" onchange="filterAlerts()">
-                        <option value="">全部</option>
-                        <option value="volcengine">火山引擎</option>
-                        <option value="aliyun">阿里云</option>
-                        <option value="prometheus">Prometheus</option>
-                    </select>
-                </div>
-                <div class="filter-item">
-                    <label class="filter-label">状态</label>
-                    <select class="filter-input" id="duplicateFilter" onchange="filterAlerts()">
-                        <option value="">全部</option>
-                        <option value="original">原始</option>
-                        <option value="duplicate">重复</option>
-                    </select>
+                <div id="aiCostStats">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>加载中...</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 告警列表 -->
-        <div class="alerts-section" id="alertList">
-            <div class="loading">
-                <div class="spinner"></div>
-                <p>加载中...</p>
+        <!-- 预测分析 Tab -->
+        <div id="predictionsTab" class="tab-content" style="display: none;">
+            <div class="predictions-section">
+                <div class="section-title">预测分析</div>
+                <div class="predictions-actions" style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" id="runPredictionBtn">
+                        <span>▶️</span> 运行预测
+                    </button>
+                    <button class="btn" id="analyzePatternsBtn">
+                        <span>📊</span> 分析模式
+                    </button>
+                </div>
+                <div class="predictions-container">
+                    <div class="predictions-header"><h3>告警预测</h3></div>
+                    <div id="predictionsList">
+                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                    </div>
+                </div>
+                <div class="patterns-container" style="margin-top: 30px;">
+                    <div class="patterns-header"><h3>告警模式</h3></div>
+                    <div id="patternsList">
+                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- 分页 -->
-        <div class="pagination" id="pagination" style="display: none;">
-            <div class="pagination-info">
-                第 <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong> 页，共 <strong id="totalCount2">0</strong> 条
+        <!-- 自动修复 Tab -->
+        <div id="remediationTab" class="tab-content" style="display: none;">
+            <div class="remediation-section">
+                <div class="section-title">自动修复</div>
+                <div class="runbooks-container">
+                    <div class="container-header"><h3>修复脚本 (Runbooks)</h3></div>
+                    <div id="runbooksList">
+                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                    </div>
+                </div>
+                <div class="remediation-history-container" style="margin-top: 30px;">
+                    <div class="container-header"><h3>执行历史</h3></div>
+                    <div id="remediationHistory">
+                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                    </div>
+                </div>
             </div>
-            <div class="pagination-buttons">
-                <button id="firstPage" onclick="goToPage(1)">首页</button>
-                <button id="prevPage" onclick="goToPage(frontendCurrentPage - 1)">上一页</button>
-                <button id="nextPage" onclick="goToPage(frontendCurrentPage + 1)">下一页</button>
-                <button id="lastPage" onclick="goToPage(Math.ceil(filteredWebhooks.length / frontendPageSize))">末页</button>
+        </div>
+
+        <!-- 服务拓扑 Tab -->
+        <div id="topologyTab" class="tab-content" style="display: none;">
+            <div class="topology-section">
+                <div class="section-title">服务拓扑</div>
+                <div class="topology-actions" style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" id="addDependencyBtn">
+                        <span>➕</span> 添加依赖
+                    </button>
+                    <button class="btn" id="addServiceNodeBtn">
+                        <span>🆕</span> 添加服务
+                    </button>
+                    <button class="btn" id="discoverTopologyBtn">
+                        <span>🔍</span> 自动发现
+                    </button>
+                </div>
+                <div id="topologyGraph" class="topology-graph-container">
+                    <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                </div>
             </div>
-            <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
-                <option value="10">10 条/页</option>
-                <option value="20" selected>20 条/页</option>
-                <option value="50">50 条/页</option>
-            </select>
         </div>
     </div>
 
@@ -953,849 +349,169 @@
         </div>
     </div>
 
-    <script>
-        // 全局变量
-        let autoRefreshInterval = null;
-        let currentPage = 1;
-        let pageSize = 20;
-        let totalPages = 1;
-        let totalCount = 0;
-        let allWebhooks = [];
-        let filteredWebhooks = [];
-        let currentForwardId = null;
-        let currentTabByAlert = {};
-
-        // 前端分页配置
-        let frontendPageSize = 20;  // 每页显示数量
-        let frontendCurrentPage = 1; // 当前页码
-
-        // 工具函数
-        function formatTime(timestamp) {
-            const date = new Date(timestamp);
-            return date.toLocaleString('zh-CN', {
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-
-        function timeAgo(timestamp) {
-            const now = new Date();
-            const past = new Date(timestamp);
-            const seconds = Math.floor((now - past) / 1000);
-
-            if (seconds < 60) return seconds + '秒前';
-            if (seconds < 3600) return Math.floor(seconds / 60) + '分钟前';
-            if (seconds < 86400) return Math.floor(seconds / 3600) + '小时前';
-            return Math.floor(seconds / 86400) + '天前';
-        }
-
-        // 加载数据 - 根据实际数据量智能加载（支持游标分页）
-        async function loadWebhooks() {
-            try {
-                // 显示加载提示
-                const alertList = document.getElementById('alertList');
-                alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
-
-                // 只加载最新的200条数据（使用摘要模式）
-                const response = await fetch('/api/webhooks?page=1&page_size=200&fields=summary');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                const result = await response.json();
-
-                if (!result.success || !result.data) {
-                    throw new Error('数据格式错误');
-                }
-
-                allWebhooks = result.data;
-                totalCount = result.pagination ? result.pagination.total : 0;
-
-                console.log('✅ 数据加载完成:', allWebhooks.length, '条（总共', totalCount, '条）');
-
-                updateStats();
-                frontendCurrentPage = 1; // 重置到第一页
-                filterAlerts();
-
-                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
-            } catch (error) {
-                console.error('加载失败:', error);
-                showError('加载失败: ' + error.message);
-            }
-        }
-
-        // 更新统计
-        function updateStats() {
-            document.getElementById('totalCount').textContent = totalCount;
-
-            let highCount = 0, mediumCount = 0, duplicateCount = 0;
-
-            allWebhooks.forEach(function(w) {
-                const importance = w.importance || 'low';
-                if (importance === 'high') highCount++;
-                else if (importance === 'medium') mediumCount++;
-
-                if (w.is_duplicate === 1) duplicateCount++;
-            });
-
-            document.getElementById('highCount').textContent = highCount;
-            document.getElementById('mediumCount').textContent = mediumCount;
-            document.getElementById('duplicateCount').textContent = duplicateCount;
-        }
-
-        // 筛选 - 前端筛选和分页
-        function filterAlerts() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const importanceFilter = document.getElementById('importanceFilter').value;
-            const sourceFilter = document.getElementById('sourceFilter').value;
-            const duplicateFilter = document.getElementById('duplicateFilter').value;
-
-            // 筛选数据
-            filteredWebhooks = allWebhooks.filter(function(webhook) {
-                const matchSearch = !searchTerm || JSON.stringify(webhook).toLowerCase().indexOf(searchTerm) > -1;
-
-                let matchImportance = true;
-                if (importanceFilter) {
-                    const webhookImportance = webhook.importance || 'low';
-                    matchImportance = webhookImportance === importanceFilter;
-                }
-
-                const matchSource = !sourceFilter || webhook.source === sourceFilter;
-
-                let matchDuplicate = true;
-                if (duplicateFilter === 'original') {
-                    matchDuplicate = !webhook.is_duplicate || webhook.is_duplicate === 0;
-                } else if (duplicateFilter === 'duplicate') {
-                    matchDuplicate = webhook.is_duplicate === 1;
-                }
-
-                return matchSearch && matchImportance && matchSource && matchDuplicate;
-            });
-
-            console.log('筛选结果:', filteredWebhooks.length, '条（共', allWebhooks.length, '条）');
-
-            // 重置到第一页
-            frontendCurrentPage = 1;
-
-            // 显示当前页数据
-            displayCurrentPage();
-        }
-
-        // 显示当前页数据（前端分页）
-        function displayCurrentPage() {
-            const totalFiltered = filteredWebhooks.length;
-            const totalPagesFiltered = Math.ceil(totalFiltered / frontendPageSize);
-
-            // 确保当前页在有效范围内
-            if (frontendCurrentPage > totalPagesFiltered && totalPagesFiltered > 0) {
-                console.warn('⚠️  当前页码超出范围，重置到最后一页');
-                frontendCurrentPage = totalPagesFiltered;
-            }
-
-            // 计算当前页的数据范围
-            const startIndex = (frontendCurrentPage - 1) * frontendPageSize;
-            const endIndex = Math.min(startIndex + frontendPageSize, totalFiltered);
-            const currentPageData = filteredWebhooks.slice(startIndex, endIndex);
-
-            console.log('📄 显示第', frontendCurrentPage, '页，共', totalPagesFiltered, '页');
-            console.log('📊 数据范围:', startIndex, '-', endIndex, '，显示', currentPageData.length, '条');
-            console.log('📈 筛选后总数:', totalFiltered, '条（原始数据', allWebhooks.length, '条）');
-
-            // 更新分页信息
-            updateFrontendPagination(totalFiltered, totalPagesFiltered);
-
-            // 显示数据
-            displayAlerts(currentPageData);
-        }
-
-        // 显示告警
-        function displayAlerts(webhooks) {
-            const container = document.getElementById('alertList');
-
-            if (webhooks.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">暂无告警</div><div class="empty-text">没有符合筛选条件的告警</div></div>';
-                return;
-            }
-
-            let html = '';
-            webhooks.forEach(function(webhook) {
-                const importance = webhook.importance || 'low';
-                const isDuplicate = webhook.is_duplicate === 1;
-                // 兼容两种数据格式：完整模式(ai_analysis)和摘要模式(summary)
-                const analysis = webhook.ai_analysis || {};
-                const summary = webhook.summary || analysis.summary || '';
-
-                html += '<div class="alert-item" data-id="' + webhook.id + '">';
-                html += '<div class="alert-header">';
-                html += '<div class="alert-left">';
-                html += '<div class="alert-title-row">';
-                html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-                html += '<span class="alert-title">' + (summary || webhook.source || '告警 #' + webhook.id) + '</span>';
-                html += '</div>';
-                html += '<div class="alert-meta">';
-                html += '<span class="alert-meta-item">📍 ' + (webhook.source || 'unknown') + '</span>';
-
-                // 显示主机信息（如果有）
-                if (webhook.alert_info && webhook.alert_info.host) {
-                    html += '<span class="alert-meta-item">🖥️ ' + webhook.alert_info.host + '</span>';
-                }
-
-                // 始终显示客户端 IP
-                if (webhook.client_ip) {
-                    html += '<span class="alert-meta-item">🌐 ' + webhook.client_ip + '</span>';
-                }
-
-                html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
-
-                // 显示重复信息
-                if (isDuplicate) {
-                    html += '<span class="alert-meta-item">🔗 原始 #' + webhook.duplicate_of + '</span>';
-                    // 显示上次告警 ID 和时间
-                    if (webhook.prev_alert_id) {
-                        let prevText = '⏮️ 上次 #' + webhook.prev_alert_id;
-                        if (webhook.prev_alert_timestamp) {
-                            prevText += ' (' + timeAgo(webhook.prev_alert_timestamp) + ')';
-                        }
-                        html += '<span class="alert-meta-item">' + prevText + '</span>';
-                    }
-                }
-                html += '</div></div>';
-                html += '<div class="alert-right">';
-                html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
-                // 显示重复类型：窗口内 or 窗口外
-                if (isDuplicate) {
-                    const isWithinWindow = webhook.is_within_window || false;
-                    const isBeyondWindow = webhook.beyond_time_window || false;
-
-                    if (isBeyondWindow) {
-                        html += '<span class="badge badge-duplicate" title="超过24小时窗口的重复告警">窗口外重复</span>';
-                    } else if (isWithinWindow) {
-                        html += '<span class="badge badge-duplicate" title="24小时窗口内的重复告警">窗口内重复</span>';
-                    } else {
-                        // 兜底：没有明确标记的情况
-                        html += '<span class="badge badge-duplicate">重复</span>';
-                    }
-                }
-                html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
-                html += '<div class="alert-actions">';
-                html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + webhook.id + '">🔄 重新分析</button>';
-                html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + webhook.id + '">🚀 转发</button>';
-                html += '</div></div></div>';
-
-                html += '<div class="alert-details">';
-                html += '<div class="details-tabs">';
-                html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">概览</div>';
-                html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">原始数据</div>';
-                // AI 分析标签页：摘要模式下也显示，但内容会在展开时加载
-                if (analysis && Object.keys(analysis).length > 0) {
-                    html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
-                } else if (summary || webhook.importance) {
-                    // 摘要模式下，如果有 summary 或 importance，说明有 AI 分析
-                    html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
-                }
-                html += '</div>';
-
-                html += '<div class="tab-content active" data-tab-content="overview">';
-                html += renderOverview(webhook);
-                html += '</div>';
-
-                html += '<div class="tab-content" data-tab-content="data">';
-                // 摘要模式下显示关键信息，完整模式下显示全部数据
-                if (webhook.parsed_data) {
-                    html += renderJSONBlock(webhook.parsed_data, '原始数据');
-                } else if (webhook.alert_info && Object.keys(webhook.alert_info).length > 0) {
-                    html += '<div class="info-grid">';
-                    Object.entries(webhook.alert_info).forEach(([key, value]) => {
-                        if (value) {
-                            html += '<div class="info-item"><div class="info-label">' + key + '</div><div class="info-value">' + value + '</div></div>';
-                        }
-                    });
-                    html += '</div>';
-                    html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                    html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整原始数据</p>';
-                    html += '</div>';
-                } else {
-                    html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
-                }
-                html += '</div>';
-
-                // AI 分析内容：完整模式直接显示，摘要模式显示提示
-                if (analysis && Object.keys(analysis).length > 0) {
-                    html += '<div class="tab-content" data-tab-content="ai">';
-                    html += renderAIAnalysis(analysis);
-                    html += '</div>';
-                } else if (summary || webhook.importance) {
-                    // 摘要模式：显示简要信息和加载提示
-                    html += '<div class="tab-content" data-tab-content="ai">';
-                    html += '<div class="ai-section">';
-                    html += '<div class="ai-header">🤖 智能分析结果</div>';
-                    html += '<div class="ai-content">';
-                    if (summary) {
-                        html += '<div class="ai-item"><div class="ai-label">摘要</div><div class="ai-value">' + summary + '</div></div>';
-                    }
-                    if (webhook.importance) {
-                        html += '<div class="ai-item"><div class="ai-label">重要性</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
-                    }
-                    html += '</div></div>';
-                    html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                    html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整 AI 分析结果</p>';
-                    html += '</div>';
-                    html += '</div>';
-                }
-
-                html += '</div></div>';
-            });
-
-            container.innerHTML = html;
-        }
-
-        // 渲染概览
-        function renderOverview(webhook) {
-            let html = '<div class="info-grid">';
-            html += '<div class="info-item"><div class="info-label">告警 ID</div><div class="info-value">#' + webhook.id + '</div></div>';
-            html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + (webhook.source || '-') + '</div></div>';
-            html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + (webhook.client_ip || '-') + '</div></div>';
-            html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
-            if (webhook.is_duplicate) {
-                html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
-                if (webhook.prev_alert_id) {
-                    let prevValue = '#' + webhook.prev_alert_id;
-                    if (webhook.prev_alert_timestamp) {
-                        prevValue += ' (' + new Date(webhook.prev_alert_timestamp).toLocaleString('zh-CN') + ')';
-                    }
-                    html += '<div class="info-item"><div class="info-label">上次告警</div><div class="info-value">' + prevValue + '</div></div>';
-                }
-                html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
-
-                // 显示重复类型
-                const isWithinWindow = webhook.is_within_window || false;
-                const isBeyondWindow = webhook.beyond_time_window || false;
-                let duplicateType = '未知';
-                if (isBeyondWindow) {
-                    duplicateType = '窗口外重复（超过24小时）';
-                } else if (isWithinWindow) {
-                    duplicateType = '窗口内重复（24小时内）';
-                }
-                html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + duplicateType + '</div></div>';
-            }
-            html += '</div>';
-            return html;
-        }
-
-        // JSON 语法高亮
-        function syntaxHighlightJSON(json) {
-            if (typeof json !== 'string') {
-                json = JSON.stringify(json, null, 2);
-            }
-
-            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-                let cls = 'json-number';
-                if (/^"/.test(match)) {
-                    if (/:$/.test(match)) {
-                        cls = 'json-key';
-                    } else {
-                        cls = 'json-string';
-                    }
-                } else if (/true|false/.test(match)) {
-                    cls = 'json-boolean';
-                } else if (/null/.test(match)) {
-                    cls = 'json-null';
-                }
-                return '<span class="' + cls + '">' + match + '</span>';
-            });
-        }
-
-        // 渲染格式化的 JSON 代码块
-        function renderJSONBlock(data, title = 'JSON') {
-            const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-            const highlighted = syntaxHighlightJSON(jsonString);
-
-            let html = '<div class="code-wrapper">';
-            html += '<div class="code-header">';
-            html += '<span class="code-lang">' + title + '</span>';
-            html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 复制</button>';
-            html += '</div>';
-            html += '<div class="code-block">';
-            html += '<pre>' + highlighted + '</pre>';
-            html += '</div>';
-            html += '</div>';
-
-            return html;
-        }
-
-        // 复制到剪贴板
-        function copyToClipboard(btn) {
-            const codeBlock = btn.closest('.code-wrapper').querySelector('pre');
-            const text = codeBlock.textContent;
-
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = btn.textContent;
-                btn.textContent = '✅ 已复制';
-                btn.style.background = '#28a745';
-                btn.style.borderColor = '#28a745';
-
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.style.borderColor = '';
-                }, 2000);
-            }).catch(err => {
-                console.error('复制失败:', err);
-                alert('复制失败');
-            });
-        }
-
-        // 渲染 AI 分析
-        function renderAIAnalysis(analysis) {
-            let html = '<div class="ai-section">';
-            html += '<div class="ai-header">🤖 智能分析结果</div>';
-            html += '<div class="ai-content">';
-            if (analysis.event_type) {
-                html += '<div class="ai-item"><div class="ai-label">事件类型</div><div class="ai-value">' + analysis.event_type + '</div></div>';
-            }
-            if (analysis.impact_scope) {
-                html += '<div class="ai-item"><div class="ai-label">影响范围</div><div class="ai-value">' + analysis.impact_scope + '</div></div>';
-            }
-            if (analysis.actions && analysis.actions.length > 0) {
-                html += '<div class="ai-item"><div class="ai-label">建议操作</div><ul class="ai-list">';
-                analysis.actions.forEach(function(action) {
-                    html += '<li>' + action + '</li>';
-                });
-                html += '</ul></div>';
-            }
-            if (analysis.risks && analysis.risks.length > 0) {
-                html += '<div class="ai-item"><div class="ai-label">潜在风险</div><ul class="ai-list">';
-                analysis.risks.forEach(function(risk) {
-                    html += '<li>' + risk + '</li>';
-                });
-                html += '</ul></div>';
-            }
-            if (analysis.noise_reduction) {
-                const nr = analysis.noise_reduction;
-                const relationMap = {
-                    root_cause: '根因告警',
-                    derived: '衍生告警',
-                    standalone: '独立告警'
-                };
-                const relation = relationMap[nr.relation] || nr.relation || '未知';
-                html += '<div class="ai-item"><div class="ai-label">降噪判定</div><div class="ai-value">' + relation + '</div></div>';
-                if (nr.root_cause_event_id) {
-                    html += '<div class="ai-item"><div class="ai-label">关联根因ID</div><div class="ai-value">#' + nr.root_cause_event_id + '</div></div>';
-                }
-                if (nr.reason) {
-                    html += '<div class="ai-item"><div class="ai-label">关联说明</div><div class="ai-value">' + nr.reason + '</div></div>';
-                }
-            }
-            html += '</div></div>';
-            return html;
-        }
-
-        function getAlertIcon(importance) {
-            const icons = { high: '🔴', medium: '🟡', low: '🟢' };
-            return icons[importance] || '⚪';
-        }
-
-        function getImportanceText(importance) {
-            const texts = { high: '高', medium: '中', low: '低' };
-            return texts[importance] || '低';
-        }
-
-        function showError(message) {
-            document.getElementById('alertList').innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' + message + '</div><button class="btn btn-primary" onclick="loadWebhooks()">重试</button></div>';
-        }
-
-        // 重新分析
-        async function reanalyzeWebhook(webhookId) {
-            console.log('开始重新分析 webhook:', webhookId);
-
-            if (!confirm('确认要重新分析这条告警吗？')) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/reanalyze/' + webhookId, { method: 'POST' });
-                const result = await response.json();
-
-                console.log('重新分析结果:', result);
-
-                if (result.success) {
-                    alert('✅ 重新分析成功！');
-                    loadWebhooks();
-                } else {
-                    alert('❌ 分析失败: ' + (result.error || '未知错误'));
-                }
-            } catch (error) {
-                console.error('重新分析错误:', error);
-                alert('❌ 请求失败: ' + error.message);
-            }
-        }
-
-        // 转发
-        function openForwardModal(webhookId) {
-            console.log('打开转发模态框, webhook ID:', webhookId);
-            currentForwardId = webhookId;
-
-            // 获取配置的转发地址作为默认值
-            const configUrl = document.getElementById('configForwardUrl');
-            const forwardUrlInput = document.getElementById('forwardUrl');
-
-            if (configUrl && forwardUrlInput) {
-                forwardUrlInput.value = configUrl.value || '';
-            }
-
-            const modal = document.getElementById('forwardModal');
-            if (modal) {
-                modal.classList.add('active');
-                console.log('转发模态框已打开');
-            } else {
-                console.error('找不到转发模态框元素');
-            }
-        }
-
-        function closeForwardModal() {
-            document.getElementById('forwardModal').classList.remove('active');
-            currentForwardId = null;
-        }
-
-        async function confirmForward() {
-            const url = document.getElementById('forwardUrl').value;
-            if (!url) return alert('请输入转发地址');
-
-            try {
-                const response = await fetch('/api/forward/' + currentForwardId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ forward_url: url })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    alert('✅ 转发成功！');
-                    closeForwardModal();
-                } else {
-                    alert('❌ 转发失败: ' + (result.error || '未知错误'));
-                }
-            } catch (error) {
-                alert('❌ 请求失败: ' + error.message);
-            }
-        }
-
-        // 配置
-        async function openConfigModal() {
-            try {
-                const response = await fetch('/api/config');
-                const result = await response.json();
-
-                if (result.success) {
-                    const c = result.data;
-                    document.getElementById('configForwardUrl').value = c.forward_url || '';
-                    document.getElementById('configOpenaiApiKey').value = c.openai_api_key === '已配置' ? '' : c.openai_api_key || '';
-                    document.getElementById('configOpenaiApiUrl').value = c.openai_api_url || '';
-                    document.getElementById('configOpenaiModel').value = c.openai_model || '';
-                    document.getElementById('configDuplicateWindow').value = c.duplicate_alert_time_window || 24;
-                    document.getElementById('configEnableForward').checked = c.enable_forward;
-                    document.getElementById('configEnableAi').checked = c.enable_ai_analysis;
-                    document.getElementById('configForwardDuplicate').checked = c.forward_duplicate_alerts;
-                    document.getElementById('configEnableNoiseReduction').checked = c.enable_alert_noise_reduction;
-                    document.getElementById('configSuppressDerivedForward').checked = c.suppress_derived_alert_forward;
-                    document.getElementById('configNoiseWindow').value = c.noise_reduction_window_minutes || 5;
-                    document.getElementById('configRootCauseConfidence').value = c.root_cause_min_confidence ?? 0.65;
-
-                    document.getElementById('configModal').classList.add('active');
-                }
-            } catch (error) {
-                alert('获取配置失败: ' + error.message);
-            }
-        }
-
-        function closeConfigModal() {
-            document.getElementById('configModal').classList.remove('active');
-        }
-
-        async function saveConfig() {
-            try {
-                // 获取表单值
-                const forwardUrl = document.getElementById('configForwardUrl').value;
-                const apiKey = document.getElementById('configOpenaiApiKey').value;
-                const apiUrl = document.getElementById('configOpenaiApiUrl').value;
-                const model = document.getElementById('configOpenaiModel').value;
-
-                // 构建数据对象（只包含非空值）
-                const data = {
-                    duplicate_alert_time_window: parseInt(document.getElementById('configDuplicateWindow').value) || 24,
-                    enable_forward: document.getElementById('configEnableForward').checked,
-                    enable_ai_analysis: document.getElementById('configEnableAi').checked,
-                    forward_duplicate_alerts: document.getElementById('configForwardDuplicate').checked,
-                    enable_alert_noise_reduction: document.getElementById('configEnableNoiseReduction').checked,
-                    suppress_derived_alert_forward: document.getElementById('configSuppressDerivedForward').checked,
-                    noise_reduction_window_minutes: parseInt(document.getElementById('configNoiseWindow').value) || 5,
-                    root_cause_min_confidence: parseFloat(document.getElementById('configRootCauseConfidence').value) || 0.65
-                };
-
-                // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
-                if (forwardUrl && forwardUrl.trim()) {
-                    data.forward_url = forwardUrl.trim();
-                }
-                if (apiKey && apiKey.trim()) {
-                    data.openai_api_key = apiKey.trim();
-                }
-                if (apiUrl && apiUrl.trim()) {
-                    data.openai_api_url = apiUrl.trim();
-                }
-                if (model && model.trim()) {
-                    data.openai_model = model.trim();
-                }
-
-                console.log('📤 保存配置:', data);
-
-                const response = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-                console.log('📥 服务器响应:', result);
-
-                if (result.success) {
-                    alert('✅ 配置保存成功！');
-                    closeConfigModal();
-                } else {
-                    const errorMsg = result.error || '未知错误';
-                    console.error('❌ 保存失败:', errorMsg);
-
-                    // 提供更友好的错误提示
-                    if (errorMsg.includes('权限') || errorMsg.includes('Permission')) {
-                        alert('❌ 保存失败: 权限错误\n\n' +
-                              '可能原因：\n' +
-                              '1. .env 文件被锁定或只读\n' +
-                              '2. Docker 容器内没有写入权限\n' +
-                              '3. 文件被其他程序占用\n\n' +
-                              '建议：\n' +
-                              '- 检查 .env 文件权限\n' +
-                              '- 或使用环境变量配置（不写入文件）\n' +
-                              '- 或使用 docker-compose.yml 配置');
-                    } else {
-                        alert('❌ 保存失败: ' + errorMsg);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ 请求失败:', error);
-                alert('❌ 保存失败: ' + error.message);
-            }
-        }
-
-        // 自动刷新
-        function toggleAutoRefresh() {
-            const icon = document.getElementById('autoRefreshIcon');
-            const text = document.getElementById('autoRefreshText');
-
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
-                icon.textContent = '⏸️';
-                text.textContent = '自动刷新';
-            } else {
-                autoRefreshInterval = setInterval(loadWebhooks, 10000);
-                icon.textContent = '⏵️';
-                text.textContent = '刷新中...';
-            }
-        }
-
-        // 更新前端分页
-        function updateFrontendPagination(totalFiltered, totalPagesFiltered) {
-            const paginationDiv = document.getElementById('pagination');
-
-            if (totalPagesFiltered > 0) {
-                paginationDiv.style.display = 'flex';
-
-                document.getElementById('currentPageNum').textContent = frontendCurrentPage;
-                document.getElementById('totalPages').textContent = totalPagesFiltered;
-                document.getElementById('totalCount2').textContent = totalFiltered;
-
-                document.getElementById('firstPage').disabled = frontendCurrentPage === 1;
-                document.getElementById('prevPage').disabled = frontendCurrentPage === 1;
-                document.getElementById('nextPage').disabled = frontendCurrentPage >= totalPagesFiltered;
-                document.getElementById('lastPage').disabled = frontendCurrentPage >= totalPagesFiltered;
-            } else {
-                paginationDiv.style.display = 'none';
-            }
-        }
-
-        function goToPage(page) {
-            const totalPagesFiltered = Math.ceil(filteredWebhooks.length / frontendPageSize);
-
-            console.log('🔄 请求跳转到第', page, '页');
-            console.log('   当前筛选数据:', filteredWebhooks.length, '条');
-            console.log('   每页显示:', frontendPageSize, '条');
-            console.log('   总页数:', totalPagesFiltered, '页');
-
-            if (page < 1) {
-                console.warn('❌ 页码小于1，忽略');
-                return;
-            }
-
-            if (page > totalPagesFiltered) {
-                console.warn('❌ 页码超出范围（最大', totalPagesFiltered, '页），忽略');
-                return;
-            }
-
-            frontendCurrentPage = page;
-            console.log('✅ 跳转到第', page, '页');
-            displayCurrentPage();
-        }
-
-        function changePageSize() {
-            frontendPageSize = parseInt(document.getElementById('pageSize').value);
-            frontendCurrentPage = 1;
-            displayCurrentPage();
-        }
-
-        // 加载单条 webhook 的完整数据
-        async function loadFullWebhookData(webhookId, alertItem) {
-            console.log('🔄 加载完整数据:', webhookId);
-
-            // 显示加载状态
-            const dataTab = alertItem.querySelector('[data-tab-content="data"]');
-            const aiTab = alertItem.querySelector('[data-tab-content="ai"]');
-
-            if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>正在加载完整数据...</p></div>';
-            }
-
-            try {
-                const response = await fetch('/api/webhooks/' + webhookId);
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                const result = await response.json();
-
-                if (result.success && result.data) {
-                    const fullData = result.data;
-
-                    // 更新 allWebhooks 中的数据（合并）
-                    const index = allWebhooks.findIndex(w => w.id == webhookId);
-                    if (index !== -1) {
-                        allWebhooks[index] = { ...allWebhooks[index], ...fullData };
-                    }
-
-                    // 更新概览标签页（包含 prev_alert_id 等完整信息）
-                    const overviewTab = alertItem.querySelector('[data-tab-content="overview"]');
-                    if (overviewTab && index !== -1) {
-                        overviewTab.innerHTML = renderOverview(allWebhooks[index]);
-                    }
-
-                    // 更新原始数据标签页
-                    if (dataTab && fullData.parsed_data) {
-                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
-                    }
-
-                    // 更新 AI 分析标签页
-                    if (aiTab && fullData.ai_analysis) {
-                        aiTab.innerHTML = renderAIAnalysis(fullData.ai_analysis);
-                    } else if (aiTab) {
-                        aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无 AI 分析数据</div>';
-                    }
-
-                    console.log('✅ 完整数据加载成功');
-                } else {
-                    throw new Error(result.error || '加载失败');
-                }
-            } catch (error) {
-                console.error('❌ 加载完整数据失败:', error);
-                if (dataTab) {
-                    dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ 加载失败: ' + error.message + '</div>';
-                }
-            }
-        }
-
-        // 事件委托
-        document.addEventListener('click', function(e) {
-            // 优先处理按钮操作（必须在最前面）
-            const btn = e.target.closest('button[data-action]');
-            if (btn) {
-                e.stopPropagation(); // 阻止事件冒泡
-                const action = btn.getAttribute('data-action');
-                const id = btn.getAttribute('data-id');
-                console.log('按钮点击:', action, id);
-
-                if (action === 'reanalyze') {
-                    reanalyzeWebhook(id);
-                } else if (action === 'forward') {
-                    openForwardModal(id);
-                }
-                return;
-            }
-
-            // Tab 切换
-            if (e.target.closest('.tab')) {
-                const tab = e.target.closest('.tab');
-                const tabName = tab.getAttribute('data-tab');
-                const alertId = tab.getAttribute('data-id');
-                const alertItem = tab.closest('.alert-item');
-
-                // 切换 tab 激活状态
-                alertItem.querySelectorAll('.tab').forEach(function(t) {
-                    t.classList.remove('active');
-                });
-                tab.classList.add('active');
-
-                // 切换内容显示
-                alertItem.querySelectorAll('.tab-content').forEach(function(content) {
-                    const contentTab = content.getAttribute('data-tab-content');
-                    if (contentTab === tabName) {
-                        content.classList.add('active');
-                    } else {
-                        content.classList.remove('active');
-                    }
-                });
-                return;
-            }
-
-            // 告警展开/收起（放在最后处理）
-            if (e.target.closest('.alert-header')) {
-                const header = e.target.closest('.alert-header');
-                // 如果点击的是按钮或按钮内的元素，不处理
-                if (e.target.closest('button')) return;
-
-                const alertItem = header.closest('.alert-item');
-                const isExpanding = !alertItem.classList.contains('expanded');
-                alertItem.classList.toggle('expanded');
-
-                // 如果是展开操作，且数据是摘要模式，加载完整数据
-                if (isExpanding) {
-                    const webhookId = alertItem.getAttribute('data-id');
-                    const webhook = allWebhooks.find(w => w.id == webhookId);
-
-                    // 检查是否需要加载完整数据（摘要模式没有 parsed_data 和完整 ai_analysis）
-                    if (webhook && !webhook.parsed_data && !webhook.ai_analysis) {
-                        loadFullWebhookData(webhookId, alertItem);
-                    }
-                }
-                return;
-            }
-
-            // 模态框外部点击关闭
-            if (e.target.classList.contains('modal')) {
-                e.target.classList.remove('active');
-            }
-        });
-
-        // 初始化
-        // 强制清空搜索框（防止浏览器自动填充）
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput) {
-                searchInput.value = '';
-                // 延迟再清一次，确保浏览器自动填充后也能清空
-                setTimeout(function() {
-                    searchInput.value = '';
-                }, 100);
-            }
-        });
-        loadWebhooks();
-    </script>
+    <!-- Skill 配置模态框 -->
+    <div class="modal" id="skillConfigModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2 class="modal-title" id="skillConfigModalTitle">添加连接</h2>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="skillConfigId">
+                <div class="form-group">
+                    <label class="form-label">名称 <span style="color: #d73a49;">*</span></label>
+                    <input type="text" class="form-input" id="skillConfigName" placeholder="my-custom-skill">
+                    <small style="color: #586069; font-size: 0.75rem;">使用小写字母、数字和连字符</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">显示名称 <span style="color: #d73a49;">*</span></label>
+                    <input type="text" class="form-input" id="skillConfigDisplayName" placeholder="我的自定义连接">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">类型 <span style="color: #d73a49;">*</span></label>
+                    <select class="form-input" id="skillConfigType" onchange="onSkillTypeChange()">
+                        <option value="">请选择...</option>
+                        <option value="kubernetes">Kubernetes</option>
+                        <option value="prometheus">Prometheus</option>
+                        <option value="grafana">Grafana</option>
+                        <option value="log">日志平台</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">描述</label>
+                    <textarea class="form-input" id="skillConfigDescription" rows="2" placeholder="连接器描述..."></textarea>
+                </div>
+
+                <!-- Kubernetes 配置区域 -->
+                <div class="skill-config-section" data-type="kubernetes" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Kubeconfig 路径</label>
+                        <input type="text" class="form-input" data-config-key="kubeconfig" placeholder="~/.kube/config">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Context</label>
+                        <input type="text" class="form-input" data-config-key="context" placeholder="default">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">超时时间（秒）</label>
+                        <input type="number" class="form-input" data-config-key="timeout" value="30">
+                    </div>
+                </div>
+
+                <!-- Prometheus 配置区域 -->
+                <div class="skill-config-section" data-type="prometheus" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Prometheus URL <span style="color: #d73a49;">*</span></label>
+                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:9090">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">认证 Token</label>
+                        <input type="password" class="form-input" data-config-key="auth_token" placeholder="Bearer token">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">超时时间（秒）</label>
+                        <input type="number" class="form-input" data-config-key="timeout" value="15">
+                    </div>
+                </div>
+
+                <!-- Grafana 配置区域 -->
+                <div class="skill-config-section" data-type="grafana" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Grafana URL <span style="color: #d73a49;">*</span></label>
+                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:3000">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Token</label>
+                        <input type="password" class="form-input" data-config-key="api_token" placeholder="Bearer token or API key">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">超时时间（秒）</label>
+                        <input type="number" class="form-input" data-config-key="timeout" value="15">
+                    </div>
+                </div>
+
+                <!-- Log 配置区域 -->
+                <div class="skill-config-section" data-type="log" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">后端类型</label>
+                        <select class="form-input" data-config-key="backend">
+                            <option value="elasticsearch">Elasticsearch</option>
+                            <option value="loki">Loki</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">URL <span style="color: #d73a49;">*</span></label>
+                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:9200">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">索引模式</label>
+                        <input type="text" class="form-input" data-config-key="index" placeholder="logstash-*">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">认证用户名</label>
+                        <input type="text" class="form-input" data-config-key="auth_user" placeholder="elastic">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">认证密码</label>
+                        <input type="password" class="form-input" data-config-key="auth_pass" placeholder="password">
+                    </div>
+                </div>
+
+                <!-- 自定义 Skill 配置区域 -->
+                <div class="skill-config-section" data-type="custom" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">配置 (JSON)</label>
+                        <textarea class="form-input" data-config-key="config_json" rows="4" placeholder='{"url": "...", "token": "..."}'></textarea>
+                    </div>
+                </div>
+
+                <div class="form-checkbox">
+                    <input type="checkbox" id="skillConfigEnabled" checked>
+                    <label for="skillConfigEnabled">启用此连接</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeSkillConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveSkillConfig()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skill 代码编辑器模态框 -->
+    <div class="modal" id="skillCodeEditorModal">
+        <div class="modal-content" style="max-width: 900px; width: 90%;">
+            <div class="modal-header">
+                <h2 class="modal-title" id="skillCodeEditorTitle">编辑 Skill 代码</h2>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="skillCodeEditorId">
+                <div style="margin-bottom: 15px;">
+                    <button class="btn btn-sm" onclick="loadSkillTemplate()">加载模板</button>
+                    <button class="btn btn-sm" onclick="formatSkillCode()">格式化</button>
+                    <button class="btn btn-sm" onclick="validateSkillCode()">验证</button>
+                </div>
+                <div class="form-group">
+                    <textarea class="form-input" id="skillCodeEditorContent" rows="25" style="font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 13px; line-height: 1.5; background: #1e1e1e; color: #d4d4d4;"></textarea>
+                </div>
+                <div id="skillCodeValidationResult" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeSkillCodeEditor()">取消</button>
+                <button class="btn btn-secondary" onclick="testSkillCode()">测试执行</button>
+                <button class="btn btn-primary" onclick="saveSkillCode()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 外部脚本（按依赖顺序加载） -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/alerts.js"></script>
+    <script src="/static/js/skills.js"></script>
+    <script src="/static/js/ai-cost.js"></script>
+    <script src="/static/js/predictions.js"></script>
+    <script src="/static/js/remediation.js"></script>
+    <script src="/static/js/topology.js"></script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
-

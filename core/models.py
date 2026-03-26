@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from contextlib import contextmanager
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index, text, Float, Boolean, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import Config
@@ -134,6 +134,52 @@ class ProcessingLock(Base):
     worker_id = Column(String(100))  # 可选：记录哪个 worker 正在处理
 
 
+class AnalysisCache(Base):
+    """
+    AI 分析结果缓存
+    
+    用于存储 AI 分析结果，避免对相同告警重复调用 AI。
+    缓存 key 基于 alert_hash 生成。
+    """
+    __tablename__ = 'analysis_cache'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key = Column(String(128), unique=True, nullable=False, index=True)  # 基于 alert_hash
+    analysis_result = Column(Text, nullable=False)  # JSON 格式的分析结果
+    hit_count = Column(Integer, default=0)  # 缓存命中次数
+    created_at = Column(DateTime, default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+    
+    def is_expired(self) -> bool:
+        """检查缓存是否已过期"""
+        return datetime.now() > self.expires_at if self.expires_at else True
+
+
+class AIUsageLog(Base):
+    """
+    AI 调用成本追踪
+    
+    记录每次 AI 分析的调用信息，用于成本追踪和用量统计。
+    """
+    __tablename__ = 'ai_usage_log'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=func.now(), index=True)
+    model = Column(String(100))  # 使用的模型名称
+    tokens_in = Column(Integer, default=0)  # 输入 token 数
+    tokens_out = Column(Integer, default=0)  # 输出 token 数
+    cost_estimate = Column(Float, default=0.0)  # 估算成本（美元）
+    cache_hit = Column(Boolean, default=False)  # 是否命中缓存
+    route_type = Column(String(20))  # 'ai', 'rule', 'cache'
+    alert_hash = Column(String(64), index=True)  # 关联的告警哈希
+    source = Column(String(100))  # 告警来源
+    
+    # 复合索引：优化统计查询性能
+    __table_args__ = (
+        Index('idx_usage_timestamp_route', 'timestamp', 'route_type'),
+    )
+
+
 # 数据库连接（单例模式）
 def get_engine():
     """获取数据库引擎（单例）"""
@@ -195,6 +241,182 @@ def test_db_connection() -> bool:
     except Exception as e:
         _logger.error(f"数据库连接失败: {e}")
         return False
+
+
+class ServiceTopologyModel(Base):
+    """
+    服务拓扑模型
+    
+    存储服务间的依赖关系，用于告警拓扑感知和根因分析。
+    """
+    __tablename__ = 'service_topology'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service_name = Column(String(200), nullable=False, index=True)
+    depends_on = Column(String(200), nullable=False, index=True)
+    metadata_json = Column(Text, default='{}')  # JSON 格式的额外元数据
+    created_at = Column(DateTime, default=func.now())
+    
+    __table_args__ = (
+        # 唯一约束：同一对依赖关系不重复
+        Index('idx_service_topology_unique', 'service_name', 'depends_on', unique=True),
+        {'extend_existing': True}
+    )
+
+
+class AlertCorrelation(Base):
+    """
+    告警关联模型
+    
+    记录告警之间的关联关系和共现统计，用于优化根因分析。
+    """
+    __tablename__ = 'alert_correlation'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_hash_a = Column(String(64), nullable=False, index=True)
+    alert_hash_b = Column(String(64), nullable=False, index=True)
+    co_occurrence_count = Column(Integer, default=1)  # 共同出现次数
+    avg_time_delta = Column(Float, default=0.0)  # 平均时间差（秒），A 在 B 之前为正
+    confidence = Column(Float, default=0.0)  # 关联置信度 0-1
+    last_seen = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=func.now())
+    
+    __table_args__ = (
+        # 唯一约束：同一对告警哈希不重复
+        Index('idx_alert_correlation_unique', 'alert_hash_a', 'alert_hash_b', unique=True),
+        Index('idx_alert_correlation_lookup', 'alert_hash_a', 'alert_hash_b'),
+        {'extend_existing': True}
+    )
+
+
+class RemediationExecution(Base):
+    """
+    Runbook 执行记录
+    
+    记录每次 Runbook 执行的详细信息，包括执行状态、步骤日志等。
+    """
+    __tablename__ = 'remediation_execution'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    execution_id = Column(String(64), unique=True, nullable=False, index=True)  # UUID
+    runbook_name = Column(String(200), nullable=False)
+    trigger_alert_id = Column(Integer, nullable=True)  # 关联 WebhookEvent.id
+    trigger_alert_hash = Column(String(64))
+    status = Column(String(30), default='pending')  # pending/awaiting_approval/running/success/failed/rolled_back/dry_run_complete
+    steps_log = Column(Text, default='[]')  # JSON 格式的执行步骤日志
+    dry_run = Column(Boolean, default=False)
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    
+    # 索引：优化按状态和时间查询
+    __table_args__ = (
+        Index('idx_remediation_status_time', 'status', 'started_at'),
+    )
+    
+    def to_dict(self):
+        """转换为字典"""
+        import json
+        return {
+            'id': self.id,
+            'execution_id': self.execution_id,
+            'runbook_name': self.runbook_name,
+            'trigger_alert_id': self.trigger_alert_id,
+            'trigger_alert_hash': self.trigger_alert_hash,
+            'status': self.status,
+            'steps_log': json.loads(self.steps_log) if self.steps_log else [],
+            'dry_run': self.dry_run,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'error_message': self.error_message
+        }
+
+
+class Prediction(Base):
+    """
+    预测结果模型
+    
+    存储预测引擎生成的异常检测、趋势预测、风暴预警结果。
+    """
+    __tablename__ = 'prediction'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    prediction_type = Column(String(50), nullable=False, index=True)  # anomaly/trend/storm
+    target = Column(String(200))  # 预测目标（如 source 名称）
+    predicted_value = Column(Float)
+    confidence = Column(Float, default=0.0)
+    details = Column(Text, default='{}')  # JSON 格式详细信息
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    
+    # 索引：优化按类型和时间查询
+    __table_args__ = (
+        Index('idx_prediction_type_created', 'prediction_type', 'created_at'),
+    )
+    
+    def to_dict(self):
+        """转换为字典"""
+        import json
+        return {
+            'id': self.id,
+            'prediction_type': self.prediction_type,
+            'target': self.target,
+            'predicted_value': self.predicted_value,
+            'confidence': self.confidence,
+            'details': json.loads(self.details) if self.details else {},
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+    
+    def is_expired(self) -> bool:
+        """检查预测是否已过期"""
+        if not self.expires_at:
+            return False
+        return datetime.now() > self.expires_at
+
+
+class SkillConfig(Base):
+    """Skill 平台连接配置"""
+    __tablename__ = 'skill_configs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(64), unique=True, nullable=False)  # Skill 唯一名称
+    display_name = Column(String(128), nullable=False)      # 显示名称
+    description = Column(Text)                              # 描述
+    skill_type = Column(String(32), nullable=False)         # 类型: kubernetes/prometheus/grafana/log/custom
+    enabled = Column(Boolean, default=True)                 # 是否启用
+
+    # 连接配置 (JSON 存储)
+    config = Column(JSON, default=dict)  # 如 {"url": "...", "token": "..."}
+
+    # 代码内容 (自定义 Skill 使用)
+    code = Column(Text)  # Python 代码字符串
+
+    # 外部 Skill 扩展字段
+    source = Column(String(20), default='builtin', comment='来源: builtin/custom/external')
+    skill_version = Column(String(20), nullable=True, comment='Skill 版本号')
+    external_path = Column(String(255), nullable=True, comment='外部 Skill 目录路径')
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'display_name': self.display_name,
+            'description': self.description,
+            'skill_type': self.skill_type,
+            'enabled': self.enabled,
+            'config': self.config or {},
+            'code': self.code,
+            'source': self.source or 'builtin',
+            'skill_version': self.skill_version,
+            'external_path': self.external_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
 
 
 if __name__ == '__main__':
