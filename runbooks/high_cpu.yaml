@@ -1,0 +1,39 @@
+name: high_cpu_auto_scale
+description: "CPU 使用率过高时自动扩容 Deployment"
+version: "1.0"
+
+trigger:
+  alert_type: "cpu_high"
+  severity:
+    - critical
+    - warning
+  conditions:
+    - metric: "cpu_usage"
+      operator: ">"
+      value: 90
+
+safety:
+  require_approval: false
+  dry_run: false
+  max_retries: 2
+  rollback_on_failure: true
+  timeout: 600
+
+steps:
+  - action: "kubectl_scale"
+    params:
+      deployment: "{{ alert.labels.deployment }}"
+      namespace: "{{ alert.labels.namespace | default('default') }}"
+      replicas: "+2"
+    on_failure: "rollback"
+  
+  - action: "wait"
+    duration: 60
+  
+  - action: "verify_alert_resolved"
+    timeout: 300
+    on_failure: "continue"
+  
+  - action: "notify"
+    params:
+      message: "自动扩容完成：{{ alert.labels.deployment }} 增加 2 个副本"

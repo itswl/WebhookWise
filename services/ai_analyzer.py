@@ -2,6 +2,7 @@ import requests
 import json
 import re
 import os
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from pathlib import Path
 
@@ -22,6 +23,387 @@ ForwardResult = dict[str, Any]
 
 # 缓存 prompt 模板
 _user_prompt_template: Optional[str] = None
+
+
+def _add_suggested_runbook(analysis_result: dict, parsed_data: dict) -> dict:
+    """
+    在分析结果中添加建议的 Runbook
+    
+    尝试匹配告警数据与可用的 Runbook，如果找到匹配的 Runbook，
+    将其名称添加到分析结果中。
+    
+    Args:
+        analysis_result: AI 分析结果
+        parsed_data: 解析后的告警数据
+        
+    Returns:
+        dict: 添加了 suggested_runbook 字段的分析结果
+    """
+    try:
+        from services.remediation.engine import remediation_engine
+        
+        runbook_name = remediation_engine.find_matching_runbook({'parsed_data': parsed_data})
+        if runbook_name:
+            analysis_result['suggested_runbook'] = runbook_name
+            logger.info(f"找到匹配的 Runbook: {runbook_name}")
+    except ImportError:
+        logger.debug("remediation 模块未初始化，跳过 Runbook 匹配")
+    except Exception as e:
+        logger.warning(f"查找匹配 Runbook 失败（不影响主流程）: {e}")
+    
+    return analysis_result
+
+
+class SmartRouter:
+    """
+    智能路由：已知类型告警用规则引擎，未知/复杂告警用 AI
+    
+    通过预定义的告警模式库，对常见告警类型使用规则匹配，
+    减少不必要的 AI 调用，降低成本。
+    """
+    
+    # 已知告警模式库（可通过配置扩展）
+    KNOWN_PATTERNS = {
+        'cpu_high': {
+            'match': lambda data: any(k in str(data).lower() for k in ['cpu', 'processor', 'load average']),
+            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
+            'event_type': 'resource_alert',
+            'description': 'CPU 使用率告警'
+        },
+        'memory_high': {
+            'match': lambda data: any(k in str(data).lower() for k in ['memory', 'mem', 'oom', 'out of memory']),
+            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
+            'event_type': 'resource_alert',
+            'description': '内存使用率告警'
+        },
+        'disk_full': {
+            'match': lambda data: any(k in str(data).lower() for k in ['disk', 'storage', 'filesystem', 'mount']),
+            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
+            'event_type': 'resource_alert',
+            'description': '磁盘空间告警'
+        },
+        'pod_crash': {
+            'match': lambda data: any(k in str(data).lower() for k in ['crashloopbackoff', 'oomkilled', 'pod restart', 'container crash']),
+            'severity_keywords': {},
+            'event_type': 'container_alert',
+            'description': 'Pod 异常告警'
+        },
+        'network_error': {
+            'match': lambda data: any(k in str(data).lower() for k in ['connection refused', 'timeout', 'network unreachable', 'dns']),
+            'severity_keywords': {},
+            'event_type': 'network_alert',
+            'description': '网络异常告警'
+        },
+        'database_issue': {
+            'match': lambda data: any(k in str(data).lower() for k in ['database', 'mysql', 'postgresql', 'mongodb', 'redis', 'connection pool']),
+            'severity_keywords': {'critical': 'high', 'error': 'high', 'warning': 'medium'},
+            'event_type': 'database_alert',
+            'description': '数据库告警'
+        },
+        'http_error': {
+            'match': lambda data: any(k in str(data).lower() for k in ['4xx', '5xx', '500', '502', '503', '504', 'http error']),
+            'severity_keywords': {},
+            'event_type': 'http_alert',
+            'description': 'HTTP 错误告警'
+        }
+    }
+    
+    @classmethod
+    def route(cls, parsed_data: dict) -> tuple[bool, Optional[dict]]:
+        """
+        根据告警数据决定使用 AI 还是规则引擎
+        
+        Args:
+            parsed_data: 解析后的告警数据
+            
+        Returns:
+            tuple: (use_ai: bool, rule_result: dict or None)
+                - use_ai=True, rule_result=None: 需要使用 AI 分析
+                - use_ai=False, rule_result=dict: 使用规则引擎结果
+        """
+        if not Config.SMART_ROUTING_ENABLED:
+            return True, None
+        
+        # 遍历已知模式
+        for pattern_key, pattern in cls.KNOWN_PATTERNS.items():
+            try:
+                if pattern['match'](parsed_data):
+                    logger.info(f"智能路由命中模式: {pattern_key} - {pattern['description']}")
+                    result = cls.rule_based_analysis(parsed_data, pattern_key, pattern)
+                    return False, result
+            except Exception as e:
+                logger.warning(f"模式匹配错误 ({pattern_key}): {e}")
+                continue
+        
+        # 未匹配任何已知模式，使用 AI
+        logger.debug("智能路由: 未匹配已知模式，使用 AI 分析")
+        return True, None
+    
+    @classmethod
+    def rule_based_analysis(cls, parsed_data: dict, pattern_key: str, pattern: dict) -> dict:
+        """
+        基于规则生成分析结果，格式与 AI 分析结果一致
+        
+        Args:
+            parsed_data: 解析后的告警数据
+            pattern_key: 匹配的模式 key
+            pattern: 模式配置
+            
+        Returns:
+            dict: 分析结果，格式与 AI 分析一致
+        """
+        data_str = str(parsed_data).lower()
+        
+        # 确定重要性
+        importance = 'medium'  # 默认中等
+        severity_keywords = pattern.get('severity_keywords', {})
+        for keyword, level in severity_keywords.items():
+            if keyword in data_str:
+                importance = level
+                break
+        
+        # 特殊规则：检查阈值超标情况
+        current_value = parsed_data.get('CurrentValue') or parsed_data.get('current_value')
+        threshold = parsed_data.get('Threshold') or parsed_data.get('threshold')
+        if current_value is not None and threshold is not None:
+            try:
+                current_num = float(current_value)
+                threshold_num = float(threshold)
+                if threshold_num > 0 and current_num > threshold_num * 4:
+                    importance = 'high'
+                elif threshold_num > 0 and current_num > threshold_num * 2:
+                    importance = 'medium' if importance == 'low' else importance
+            except (ValueError, TypeError):
+                pass
+        
+        # 提取告警名称
+        alert_name = (
+            parsed_data.get('RuleName') or 
+            parsed_data.get('alertname') or 
+            parsed_data.get('MetricName') or 
+            pattern['description']
+        )
+        
+        # 构建分析结果
+        result = {
+            'source': parsed_data.get('source', 'rule_engine'),
+            'event_type': pattern['event_type'],
+            'importance': importance,
+            'summary': f"[规则引擎] {pattern['description']}: {alert_name}",
+            'actions': cls._get_suggested_actions(pattern_key, importance),
+            'risks': cls._get_potential_risks(pattern_key),
+            '_route_type': 'rule',
+            '_pattern_matched': pattern_key
+        }
+        
+        # 如果有影响范围信息
+        resources = parsed_data.get('Resources') or parsed_data.get('resources', [])
+        if resources and isinstance(resources, list):
+            result['impact_scope'] = f'影响 {len(resources)} 个资源'
+        
+        return result
+    
+    @classmethod
+    def _get_suggested_actions(cls, pattern_key: str, importance: str) -> list[str]:
+        """根据模式和重要性返回建议操作"""
+        actions_map = {
+            'cpu_high': ['检查高 CPU 进程', '评估是否需要扩容', '检查是否有异常任务'],
+            'memory_high': ['检查内存泄漏', '重启异常服务', '增加内存或优化代码'],
+            'disk_full': ['清理日志和临时文件', '扩容磁盘', '检查大文件来源'],
+            'pod_crash': ['查看 Pod 日志', '检查资源限制配置', '分析崩溃原因'],
+            'network_error': ['检查网络连接', '验证 DNS 解析', '检查防火墙规则'],
+            'database_issue': ['检查数据库连接池', '查看慢查询日志', '评估数据库负载'],
+            'http_error': ['检查上游服务状态', '查看错误日志', '分析请求链路']
+        }
+        actions = actions_map.get(pattern_key, ['查看告警详情', '检查服务状态'])
+        
+        if importance == 'high':
+            actions.insert(0, '⚠️ 立即处理')
+        
+        return actions
+    
+    @classmethod
+    def _get_potential_risks(cls, pattern_key: str) -> list[str]:
+        """根据模式返回潜在风险"""
+        risks_map = {
+            'cpu_high': ['服务响应变慢', '可能导致服务不可用'],
+            'memory_high': ['可能触发 OOM Killer', '服务可能被强制终止'],
+            'disk_full': ['写入操作失败', '日志丢失', '服务可能崩溃'],
+            'pod_crash': ['服务中断', '请求失败'],
+            'network_error': ['服务间通信失败', '用户请求超时'],
+            'database_issue': ['数据读写失败', '事务阻塞'],
+            'http_error': ['用户体验受影响', '业务功能异常']
+        }
+        return risks_map.get(pattern_key, ['需要进一步评估风险'])
+
+
+def get_cache_key(alert_hash: str) -> str:
+    """生成缓存 key"""
+    return f"analysis_{alert_hash}"
+
+
+def get_cached_analysis(alert_hash: str) -> Optional[dict]:
+    """
+    从缓存获取分析结果
+    
+    Args:
+        alert_hash: 告警哈希值
+        
+    Returns:
+        dict or None: 缓存的分析结果，未命中返回 None
+    """
+    if not Config.CACHE_ENABLED:
+        return None
+    
+    try:
+        from core.models import AnalysisCache, get_session
+        
+        session = get_session()
+        try:
+            cache_key = get_cache_key(alert_hash)
+            cache_entry = session.query(AnalysisCache).filter(
+                AnalysisCache.cache_key == cache_key
+            ).first()
+            
+            if not cache_entry:
+                logger.debug(f"缓存未命中: {cache_key[:20]}...")
+                return None
+            
+            # 检查是否过期
+            if cache_entry.is_expired():
+                logger.info(f"缓存已过期: {cache_key[:20]}...")
+                session.delete(cache_entry)
+                session.commit()
+                return None
+            
+            # 命中缓存，增加计数
+            cache_entry.hit_count += 1
+            session.commit()
+            
+            result = json.loads(cache_entry.analysis_result)
+            result['_cache_hit'] = True
+            result['_cache_hit_count'] = cache_entry.hit_count
+            
+            logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {cache_entry.hit_count} 次")
+            return result
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.warning(f"读取缓存失败: {e}")
+        return None
+
+
+def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
+    """
+    将分析结果保存到缓存
+    
+    Args:
+        alert_hash: 告警哈希值
+        analysis_result: 分析结果
+        
+    Returns:
+        bool: 是否保存成功
+    """
+    if not Config.CACHE_ENABLED:
+        return False
+    
+    try:
+        from core.models import AnalysisCache, get_session
+        
+        session = get_session()
+        try:
+            cache_key = get_cache_key(alert_hash)
+            expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
+            
+            # 清理内部字段
+            result_to_cache = {k: v for k, v in analysis_result.items() 
+                             if not k.startswith('_')}
+            
+            # 检查是否已存在
+            existing = session.query(AnalysisCache).filter(
+                AnalysisCache.cache_key == cache_key
+            ).first()
+            
+            if existing:
+                existing.analysis_result = json.dumps(result_to_cache, ensure_ascii=False)
+                existing.expires_at = expires_at
+                existing.created_at = datetime.now()
+            else:
+                cache_entry = AnalysisCache(
+                    cache_key=cache_key,
+                    analysis_result=json.dumps(result_to_cache, ensure_ascii=False),
+                    expires_at=expires_at
+                )
+                session.add(cache_entry)
+            
+            session.commit()
+            logger.info(f"分析结果已缓存: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}秒")
+            return True
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.warning(f"保存缓存失败: {e}")
+        return False
+
+
+def log_ai_usage(
+    route_type: str,
+    alert_hash: str,
+    source: str,
+    model: Optional[str] = None,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cache_hit: bool = False
+) -> None:
+    """
+    记录 AI 使用日志
+    
+    Args:
+        route_type: 路由类型 ('ai', 'rule', 'cache')
+        alert_hash: 告警哈希
+        source: 告警来源
+        model: 使用的模型名称
+        tokens_in: 输入 token 数
+        tokens_out: 输出 token 数
+        cache_hit: 是否命中缓存
+    """
+    try:
+        from core.models import AIUsageLog, get_session
+        
+        # 计算估算成本
+        cost_estimate = 0.0
+        if route_type == 'ai' and tokens_in > 0:
+            cost_estimate = (
+                (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS +
+                (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
+            )
+        
+        session = get_session()
+        try:
+            usage_log = AIUsageLog(
+                model=model or Config.OPENAI_MODEL,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_estimate=cost_estimate,
+                cache_hit=cache_hit,
+                route_type=route_type,
+                alert_hash=alert_hash,
+                source=source
+            )
+            session.add(usage_log)
+            session.commit()
+            
+            logger.debug(f"AI 使用记录: type={route_type}, tokens={tokens_in}+{tokens_out}, cost=${cost_estimate:.6f}")
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.warning(f"记录 AI 使用日志失败: {e}")
 
 
 def load_user_prompt_template() -> str:
@@ -477,35 +859,108 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
     return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
 
 
-def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
-    """使用 AI 分析 webhook 数据"""
+def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str] = None, skip_cache: bool = False) -> AnalysisResult:
+    """
+    使用 AI 分析 webhook 数据
+    
+    分析流程：
+    1. 检查缓存（如果启用且 skip_cache=False）
+    2. 智能路由判断（如果启用且 skip_cache=False）
+    3. 调用 AI 分析（如果需要）
+    4. 记录使用日志
+    
+    Args:
+        webhook_data: Webhook 数据
+        alert_hash: 告警哈希值（可选，未提供时自动生成）
+        skip_cache: 是否跳过缓存，强制重新分析（默认 False）
+    """
     source = webhook_data.get('source', 'unknown')
     parsed_data = webhook_data.get('parsed_data', {})
-
-    # 检查是否启用 AI 分析
+    
+    # 生成 alert_hash（如果未提供）
+    if not alert_hash:
+        from core.utils import generate_alert_hash
+        alert_hash = generate_alert_hash(parsed_data, source)
+    
+    # Step 1: 检查缓存（skip_cache=True 时跳过）
+    if Config.CACHE_ENABLED and not skip_cache:
+        cached_result = get_cached_analysis(alert_hash)
+        if cached_result:
+            logger.info(f"使用缓存的分析结果: source={source}")
+            cached_result['_route_type'] = 'cache'
+            # 记录缓存命中
+            log_ai_usage(
+                route_type='cache',
+                alert_hash=alert_hash,
+                source=source,
+                cache_hit=True
+            )
+            # 添加 suggested_runbook
+            return _add_suggested_runbook(cached_result, parsed_data)
+    elif skip_cache:
+        logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
+    
+    # Step 2: 智能路由检查（skip_cache=True 时跳过，强制使用 AI 重新分析）
+    if Config.SMART_ROUTING_ENABLED and not skip_cache:
+        use_ai, rule_result = SmartRouter.route(parsed_data)
+        if not use_ai and rule_result:
+            logger.info(f"使用规则引擎分析: source={source}, pattern={rule_result.get('_pattern_matched')}")
+            # 保存到缓存
+            save_to_cache(alert_hash, rule_result)
+            # 记录规则引擎使用
+            log_ai_usage(
+                route_type='rule',
+                alert_hash=alert_hash,
+                source=source
+            )
+            # 添加 suggested_runbook
+            return _add_suggested_runbook(rule_result, parsed_data)
+    
+    # Step 3: 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
         result = analyze_with_rules(parsed_data, source)
         result['_degraded'] = True
         result['_degraded_reason'] = 'AI 分析功能已禁用'
-        return result
+        result['_route_type'] = 'rule'
+        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        # 添加 suggested_runbook
+        return _add_suggested_runbook(result, parsed_data)
 
-    # 检查 API Key
+    # Step 4: 检查 API Key
     if not Config.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
         result = analyze_with_rules(parsed_data, source)
         result['_degraded'] = True
         result['_degraded_reason'] = 'OpenAI API Key 未配置'
+        result['_route_type'] = 'rule'
         # 发送降级通知
         _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
-        return result
+        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        # 添加 suggested_runbook
+        return _add_suggested_runbook(result, parsed_data)
 
+    # Step 5: 调用 AI 分析
     try:
-        # 使用真实的 OpenAI API 分析
-        analysis = analyze_with_openai(parsed_data, source)
+        analysis, tokens_in, tokens_out = analyze_with_openai_tracked(parsed_data, source)
 
         logger.info(f"AI 分析完成: {source}")
         analysis['_degraded'] = False
+        analysis['_route_type'] = 'ai'
+        
+        # 保存到缓存
+        save_to_cache(alert_hash, analysis)
+        
+        # 记录 AI 使用
+        log_ai_usage(
+            route_type='ai',
+            alert_hash=alert_hash,
+            source=source,
+            model=Config.OPENAI_MODEL,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out
+        )
+        
         return analysis
 
     except Exception as e:
@@ -514,9 +969,111 @@ def analyze_webhook_with_ai(webhook_data: WebhookData) -> AnalysisResult:
         result = analyze_with_rules(parsed_data, source)
         result['_degraded'] = True
         result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
+        result['_route_type'] = 'rule'
         # 发送降级通知
         _send_degradation_alert(webhook_data, str(e))
+        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
         return result
+
+
+def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
+    """
+    使用 OpenAI API 分析 webhook 数据，并返回 token 使用量
+    
+    Returns:
+        tuple: (分析结果, 输入 tokens, 输出 tokens)
+    """
+    try:
+        client = OpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            base_url=Config.OPENAI_API_URL
+        )
+
+        prompt_template = load_user_prompt_template()
+        data_json = json.dumps(data, ensure_ascii=False, indent=2)
+        user_prompt = prompt_template.format(source=source, data_json=data_json)
+        messages = [
+            {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        logger.info(f"调用 OpenAI API 分析 webhook: {source}")
+        response = _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+
+        # 提取 token 使用量
+        tokens_in = 0
+        tokens_out = 0
+        if hasattr(response, 'usage') and response.usage:
+            tokens_in = getattr(response.usage, 'prompt_tokens', 0) or 0
+            tokens_out = getattr(response.usage, 'completion_tokens', 0) or 0
+
+        if not hasattr(response, 'choices') or not response.choices:
+            error_message = f"OpenAI API 返回无效响应: {response}"
+            logger.error(error_message)
+            raise TypeError(error_message)
+
+        choice = response.choices[0]
+        finish_reason = getattr(choice, 'finish_reason', None)
+        raw_content = getattr(choice.message, 'content', None)
+        ai_response = (raw_content or '').strip()
+        if not ai_response:
+            # 记录详细诊断信息，方便排查原因
+            logger.error(
+                "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | "
+                "tokens_in=%d | tokens_out=%d | choice=%r",
+                finish_reason,
+                raw_content,
+                Config.OPENAI_MODEL,
+                tokens_in,
+                tokens_out,
+                choice,
+            )
+            # finish_reason=content_filter 表示内容被过滤
+            if finish_reason == 'content_filter':
+                raise ValueError(f"AI 返回空响应（内容被过滤，finish_reason={finish_reason}）")
+            # raw_content 为 None 通常是 API 账户/配额/模型名称问题
+            if raw_content is None:
+                raise ValueError(
+                    f"AI 返回 None 内容（finish_reason={finish_reason}），"
+                    "请检查 API Key 余额、模型名称及 API 提供商状态"
+                )
+            raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
+
+        if finish_reason == 'length':
+            retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
+            if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
+                logger.warning(
+                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
+                    retry_max_tokens
+                )
+                retry_response = _request_openai_completion(client, messages, retry_max_tokens)
+                
+                # 更新 token 使用量
+                if hasattr(retry_response, 'usage') and retry_response.usage:
+                    tokens_in += getattr(retry_response.usage, 'prompt_tokens', 0) or 0
+                    tokens_out += getattr(retry_response.usage, 'completion_tokens', 0) or 0
+                
+                if hasattr(retry_response, 'choices') and retry_response.choices:
+                    retry_choice = retry_response.choices[0]
+                    retry_text = (retry_choice.message.content or '').strip()
+                    if retry_text:
+                        ai_response = retry_text
+                        finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
+
+        logger.debug(f"AI 原始响应: {ai_response}")
+        logger.info(f"Token 使用: input={tokens_in}, output={tokens_out}")
+        
+        analysis_result = _parse_ai_analysis_response(ai_response, source)
+
+        if finish_reason == 'length':
+            analysis_result['_truncated'] = True
+            logger.warning("AI 最终响应仍为截断状态，已使用容错解析")
+
+        return analysis_result, tokens_in, tokens_out
+
+    except Exception as e:
+        logger.error(f"OpenAI API 调用失败: {str(e)}")
+        raise
 
 
 def _request_openai_completion(client: OpenAI, messages: list[dict[str, str]], max_tokens: int):

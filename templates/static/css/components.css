@@ -1,0 +1,808 @@
+/**
+ * components.css
+ * Webhook 监控中心 - 组件样式
+ * 包含：告警列表、卡片、模态框、表格、徽章、分页、代码块、时间线、AI分析等
+ */
+
+/* ==================== 告警列表 ==================== */
+.alerts-section {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alert-list {
+    /* 告警列表容器 */
+}
+
+.alert-item {
+    border-bottom: 1px solid #e1e4e8;
+    transition: background 0.2s;
+}
+
+.alert-item:last-child {
+    border-bottom: none;
+}
+
+.alert-item:hover {
+    background: #f6f8fa;
+}
+
+.alert-header {
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: start;
+}
+
+.alert-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.alert-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.alert-icon {
+    font-size: 1.25rem;
+}
+
+.alert-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #24292e;
+}
+
+.alert-meta {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.875rem;
+    color: #586069;
+}
+
+.alert-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.alert-right {
+    display: flex;
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.alert-time {
+    font-size: 0.75rem;
+    color: #959da5;
+}
+
+.alert-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.alert-details {
+    padding: 0 1.5rem 1.5rem;
+    display: none;
+    border-top: 1px solid #f6f8fa;
+}
+
+.alert-item.expanded .alert-details {
+    display: block;
+    animation: slideDown 0.2s ease-out;
+}
+
+.alert-item.expanded .alert-header {
+    background: #f6f8fa;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.details-tabs {
+    display: flex;
+    gap: 1rem;
+    border-bottom: 1px solid #e1e4e8;
+    margin-bottom: 1rem;
+    padding-top: 1rem;
+}
+
+/* ==================== 卡片组件 ==================== */
+.card {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* ==================== 模态框 ==================== */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(36, 41, 46, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 6px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #24292e;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    padding: 1.5rem;
+    border-top: 1px solid #e1e4e8;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* ==================== 表格 ==================== */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+/* ==================== 徽章 ==================== */
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-high {
+    background: #ffeef0;
+    color: #d73a49;
+    border: 1px solid #f9d0d3;
+}
+
+.badge-medium {
+    background: #fff5e6;
+    color: #e36209;
+    border: 1px solid #ffd8a8;
+}
+
+.badge-low {
+    background: #dcffe4;
+    color: #28a745;
+    border: 1px solid #b1f1c1;
+}
+
+.badge-duplicate {
+    background: #f1f8ff;
+    color: #0366d6;
+    border: 1px solid #c8e1ff;
+}
+
+/* ==================== 分页 ==================== */
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    margin-top: 1.5rem;
+}
+
+.pagination-info {
+    font-size: 0.875rem;
+    color: #586069;
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.pagination button {
+    padding: 0.5rem 1rem;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #f6f8fa;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==================== 代码块 ==================== */
+.code-block {
+    background: #1e1e1e;
+    border: 1px solid #2d2d2d;
+    border-radius: 8px;
+    padding: 1.25rem;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+    line-height: 1.6;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.code-block pre {
+    margin: 0;
+    color: #d4d4d4;
+}
+
+/* JSON 语法高亮 */
+.json-key {
+    color: #9cdcfe;
+}
+
+.json-string {
+    color: #ce9178;
+}
+
+.json-number {
+    color: #b5cea8;
+}
+
+.json-boolean {
+    color: #569cd6;
+}
+
+.json-null {
+    color: #569cd6;
+}
+
+.json-punctuation {
+    color: #d4d4d4;
+}
+
+/* 代码块头部 */
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: #2d2d2d;
+    border-bottom: 1px solid #3d3d3d;
+    border-radius: 8px 8px 0 0;
+    margin-bottom: -1px;
+}
+
+.code-lang {
+    color: #858585;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.code-copy-btn {
+    padding: 0.25rem 0.75rem;
+    background: #3d3d3d;
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    color: #d4d4d4;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.code-copy-btn:hover {
+    background: #4d4d4d;
+    border-color: #5d5d5d;
+}
+
+.code-wrapper {
+    margin: 1rem 0;
+}
+
+/* ==================== 时间线 ==================== */
+.timeline {
+    /* 时间线组件样式 */
+}
+
+/* ==================== 证据链 ==================== */
+.evidence-list {
+    /* 证据链列表样式 */
+}
+
+/* ==================== 技能卡片 ==================== */
+.skill-card {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 1rem;
+    transition: all 0.2s;
+}
+
+.skill-card:hover {
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+.skill-card.disabled {
+    opacity: 0.6;
+    background: #f6f8fa;
+}
+
+.skill-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.skill-name {
+    font-weight: 600;
+    color: #24292e;
+}
+
+.skill-type {
+    font-size: 0.75rem;
+    color: #586069;
+    background: #f6f8fa;
+    padding: 0.125rem 0.5rem;
+    border-radius: 12px;
+}
+
+.skill-type.external-tag {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+
+.skill-version {
+    font-size: 0.75rem;
+    color: #959da5;
+    margin-bottom: 0.5rem;
+}
+
+.skill-desc {
+    font-size: 0.875rem;
+    color: #586069;
+    margin-bottom: 0.75rem;
+    min-height: 1.5rem;
+}
+
+.skill-meta {
+    font-size: 0.75rem;
+    color: #959da5;
+    margin-bottom: 0.5rem;
+}
+
+.skill-path {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.skill-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-indicator.healthy {
+    background: #28a745;
+}
+
+.status-indicator.unhealthy {
+    background: #d73a49;
+}
+
+.status-indicator.unknown {
+    background: #959da5;
+}
+
+.skill-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* 外部 Skill 卡片特殊样式 */
+.external-skill-card {
+    border-left: 3px solid #28a745;
+}
+
+.external-skill-card:hover {
+    border-left-color: #22863a;
+}
+
+/* Skill 文档内容样式 */
+.skill-doc-content {
+    line-height: 1.6;
+}
+
+.skill-doc-content h1,
+.skill-doc-content h2,
+.skill-doc-content h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #24292e;
+}
+
+.skill-doc-content h1 {
+    font-size: 1.5rem;
+    border-bottom: 1px solid #e1e4e8;
+    padding-bottom: 0.5rem;
+}
+
+.skill-doc-content h2 {
+    font-size: 1.25rem;
+}
+
+.skill-doc-content h3 {
+    font-size: 1rem;
+}
+
+.skill-doc-content p {
+    margin-bottom: 1rem;
+}
+
+.skill-doc-content code {
+    background: #f6f8fa;
+    padding: 0.125rem 0.375rem;
+    border-radius: 3px;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 0.875em;
+}
+
+.skill-doc-content pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.skill-doc-content pre code {
+    background: none;
+    padding: 0;
+}
+
+.skill-doc-content ul,
+.skill-doc-content ol {
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+}
+
+.skill-doc-content li {
+    margin-bottom: 0.25rem;
+}
+
+.skills-section {
+    margin-bottom: 2rem;
+}
+
+.skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.external-skills-section {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 1.5rem;
+}
+
+.text-muted {
+    color: #586069;
+}
+
+/* ==================== AI 分析区域 ==================== */
+.ai-section {
+    background: #f6ffed;
+    border: 1px solid #b7eb8f;
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-top: 1rem;
+}
+
+.ai-header {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #389e0d;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ai-content {
+    display: grid;
+    gap: 1rem;
+}
+
+.ai-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ai-label {
+    font-size: 0.75rem;
+    color: #52c41a;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.ai-value {
+    font-size: 0.875rem;
+    color: #24292e;
+}
+
+.ai-list {
+    list-style: none;
+    padding-left: 1rem;
+}
+
+.ai-list li {
+    padding: 0.25rem 0;
+    position: relative;
+}
+
+.ai-list li:before {
+    content: "→";
+    position: absolute;
+    left: -1rem;
+    color: #52c41a;
+}
+
+/* ==================== AI 成本监控路由分布 ==================== */
+.route-distribution {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 1.25rem;
+}
+
+.route-item {
+    margin-bottom: 1rem;
+}
+
+.route-item:last-child {
+    margin-bottom: 0;
+}
+
+.route-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.route-label {
+    font-size: 0.875rem;
+    color: #24292e;
+    font-weight: 500;
+}
+
+.route-value {
+    font-size: 0.875rem;
+    color: #586069;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e1e4e8;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-ai {
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+.progress-rule {
+    background: linear-gradient(90deg, #f093fb, #f5576c);
+}
+
+.progress-cache {
+    background: linear-gradient(90deg, #4facfe, #00f2fe);
+}
+
+/* 绿色高亮卡片 */
+.stat-card.highlight-green {
+    background: linear-gradient(135deg, #dcffe4 0%, #f0fff4 100%);
+    border-color: #b1f1c1;
+}
+
+.stat-card.highlight-green .stat-value {
+    color: #28a745;
+}
+
+/* ==================== 空状态 ==================== */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+.empty-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #24292e;
+    margin-bottom: 0.5rem;
+}
+
+.empty-text {
+    color: #586069;
+    font-size: 0.875rem;
+}
+
+/* ==================== 加载状态 ==================== */
+.loading {
+    text-align: center;
+    padding: 3rem;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 1rem;
+    border: 3px solid #e1e4e8;
+    border-top-color: #0366d6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== 代码编辑器相关样式 ==================== */
+.code-editor {
+    /* 代码编辑器样式 */
+}
+
+/* ==================== 响应式媒体查询 ==================== */
+@media (max-width: 768px) {
+    .navbar-content {
+        padding: 0 1rem;
+    }
+
+    .container {
+        padding: 1rem;
+    }
+
+    .filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .alert-header {
+        grid-template-columns: 1fr;
+    }
+
+    .alert-right {
+        flex-wrap: wrap;
+    }
+}
+
+/* ==================== Runbook 参数表单 ==================== */
+.runbook-parameters {
+    margin: 12px 0;
+    padding: 12px;
+    background: #f8f9fa;
+    border-left: 3px solid #0066cc;
+    border-radius: 4px;
+}
+
+.params-header {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.params-hint {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.param-row {
+    margin-bottom: 8px;
+}
+
+.param-row label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 3px;
+    color: #444;
+}
+
+.param-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.param-input:focus {
+    outline: none;
+    border-color: #0066cc;
+    box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
+}
+
+.param-input::placeholder {
+    color: #aaa;
+}
