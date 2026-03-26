@@ -97,6 +97,17 @@ class Config:
     ROOT_CAUSE_MIN_CONFIDENCE = float(os.getenv('ROOT_CAUSE_MIN_CONFIDENCE', '0.65'))
     SUPPRESS_DERIVED_ALERT_FORWARD = os.getenv('SUPPRESS_DERIVED_ALERT_FORWARD', 'true').lower() == 'true'
     
+    # AI 分析结果缓存配置
+    CACHE_ENABLED = os.getenv('CACHE_ENABLED', 'true').lower() == 'true'
+    ANALYSIS_CACHE_TTL = int(os.getenv('ANALYSIS_CACHE_TTL', '21600'))  # 默认 6 小时（秒）
+    
+    # 智能分析路由配置
+    SMART_ROUTING_ENABLED = os.getenv('SMART_ROUTING_ENABLED', 'true').lower() == 'true'
+    
+    # AI 成本追踪配置（估算价格，美元/1K tokens）
+    AI_COST_PER_1K_INPUT_TOKENS = float(os.getenv('AI_COST_PER_1K_INPUT_TOKENS', '0.003'))  # $3/1M input
+    AI_COST_PER_1K_OUTPUT_TOKENS = float(os.getenv('AI_COST_PER_1K_OUTPUT_TOKENS', '0.015'))  # $15/1M output
+    
     # JSON 配置
     JSON_SORT_KEYS = False
     JSONIFY_PRETTYPRINT_REGULAR = True
@@ -107,6 +118,14 @@ class Config:
         'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
         'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
     }
+    
+    # ChatOps 配置
+    CHATOPS_ENABLED = os.getenv('CHATOPS_ENABLED', 'false').lower() == 'true'
+    FEISHU_BOT_APP_ID = os.getenv('FEISHU_BOT_APP_ID', '')
+    FEISHU_BOT_APP_SECRET = os.getenv('FEISHU_BOT_APP_SECRET', '')
+    
+    # 预测引擎配置
+    PREDICTION_INTERVAL = int(os.getenv('PREDICTION_INTERVAL', '300'))  # 预测分析运行间隔（秒）
     
     @classmethod
     def validate(cls) -> list[str]:
@@ -135,3 +154,37 @@ class Config:
             _config_logger.warning(warning)
         
         return warnings
+
+    # === Skill 平台连接配置 ===
+    
+    # 外部 Skill 配置
+    EXTERNAL_SKILLS_DIR = os.environ.get('EXTERNAL_SKILLS_DIR', 'skills')
+    ENABLE_EXTERNAL_SKILLS = os.environ.get('ENABLE_EXTERNAL_SKILLS', 'true').lower() == 'true'
+    SKILLS_SECRETS_DIR = os.environ.get('SKILLS_SECRETS_DIR', 'skills_secrets')
+    
+    # Kubernetes
+    SKILL_K8S_ENABLED = os.getenv('SKILL_K8S_ENABLED', 'true').lower() == 'true'
+    SKILL_K8S_KUBECONFIG = os.getenv('SKILL_K8S_KUBECONFIG', '')  # 留空则使用 in-cluster config
+    SKILL_K8S_CONTEXT = os.getenv('SKILL_K8S_CONTEXT', '')  # kubectl context
+    
+    # Prometheus
+    SKILL_PROMETHEUS_ENABLED = os.getenv('SKILL_PROMETHEUS_ENABLED', 'true').lower() == 'true'
+    SKILL_PROMETHEUS_URL = os.getenv('SKILL_PROMETHEUS_URL', 'http://prometheus:9090')
+    SKILL_PROMETHEUS_AUTH_TOKEN = os.getenv('SKILL_PROMETHEUS_AUTH_TOKEN', '')
+    
+    # Grafana
+    SKILL_GRAFANA_ENABLED = os.getenv('SKILL_GRAFANA_ENABLED', 'true').lower() == 'true'
+    SKILL_GRAFANA_URL = os.getenv('SKILL_GRAFANA_URL', 'http://grafana:3000')
+    SKILL_GRAFANA_API_TOKEN = os.getenv('SKILL_GRAFANA_API_TOKEN', '')
+    
+    # 日志平台
+    SKILL_LOGS_ENABLED = os.getenv('SKILL_LOGS_ENABLED', 'true').lower() == 'true'
+    SKILL_LOGS_BACKEND = os.getenv('SKILL_LOGS_BACKEND', 'elasticsearch')  # elasticsearch 或 loki
+    SKILL_LOGS_URL = os.getenv('SKILL_LOGS_URL', 'http://elasticsearch:9200')
+    SKILL_LOGS_INDEX = os.getenv('SKILL_LOGS_INDEX', 'app-logs-*')
+    SKILL_LOGS_AUTH_USER = os.getenv('SKILL_LOGS_AUTH_USER', '')
+    SKILL_LOGS_AUTH_PASS = os.getenv('SKILL_LOGS_AUTH_PASS', '')
+    
+    # Agent 引擎配置
+    AGENT_MAX_ROUNDS = int(os.getenv('AGENT_MAX_ROUNDS', '3'))
+    AGENT_TIMEOUT = int(os.getenv('AGENT_TIMEOUT', '120'))

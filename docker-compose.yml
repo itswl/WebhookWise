@@ -29,7 +29,7 @@ services:
       WEBHOOK_SECRET: "whk_9F3sLxE2pQ7MZrK8YdA"
 
       # 数据库连接
-      DATABASE_URL: "postgresql://<REDACTED_DB_CREDENTIALS>@postgres:5432/webhooks"
+      DATABASE_URL: "postgresql://webhook_user:WbP9mA7X2rLQ4E@postgres:5432/webhooks"
 
     volumes:
       - ./.env:/app/.env # 挂载 .env 文件 

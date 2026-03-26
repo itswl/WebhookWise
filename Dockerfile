@@ -41,6 +41,7 @@ COPY adapters/ ./adapters/
 COPY templates/ ./templates/
 COPY prompts/ ./prompts/
 COPY migrations/ ./migrations/
+COPY runbooks/ ./runbooks/
 
 # 注意: 不复制 .env 文件以避免敏感信息打包进镜像
 # 部署时通过挂载卷或环境变量方式注入配置
