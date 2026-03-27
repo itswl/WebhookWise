@@ -21,20 +21,14 @@
                 <button class="nav-tab active" data-tab="alerts">
                     <span>🔔</span> 告警管理
                 </button>
-                <button class="nav-tab" data-tab="skills">
-                    <span>🔗</span> 平台连接
-                </button>
                 <button class="nav-tab" data-tab="ai-cost">
                     <span>💰</span> AI 成本
                 </button>
                 <button class="nav-tab" data-tab="predictions">
                     <span>🔮</span> 预测分析
                 </button>
-                <button class="nav-tab" data-tab="remediation">
-                    <span>🔧</span> 自动修复
-                </button>
-                <button class="nav-tab" data-tab="topology">
-                    <span>🕸️</span> 服务拓扑
+                <button class="nav-tab" data-tab="forward-rules">
+                    <span>⚙️</span> 转发规则
                 </button>
             </div>
             <div class="nav-actions">
@@ -152,35 +146,6 @@
             </div>
         </div>
 
-        <!-- 平台连接 Tab -->
-        <div id="skillsTab" class="tab-content" style="display: none;">
-            <div class="skills-section">
-                <div class="section-title">平台连接</div>
-                <div style="margin-bottom: 20px;">
-                    <button class="btn btn-primary" onclick="openSkillConfigModal()">
-                        <span>+</span> 添加连接
-                    </button>
-                </div>
-                <div class="skills-grid" id="skillsGrid">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>加载中...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 外部 Skill 管理 -->
-            <div class="external-skills-section" style="margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #24292e;">外部 Skill</h3>
-                    <button class="btn btn-sm" onclick="reloadExternalSkills()">🔄 刷新发现</button>
-                </div>
-                <div id="external-skills-list" class="skills-grid">
-                    <p class="text-muted">加载中...</p>
-                </div>
-            </div>
-        </div>
-
         <!-- AI 成本 Tab -->
         <div id="aiCostTab" class="tab-content" style="display: none;">
             <div class="ai-cost-section">
@@ -226,45 +191,24 @@
             </div>
         </div>
 
-        <!-- 自动修复 Tab -->
-        <div id="remediationTab" class="tab-content" style="display: none;">
-            <div class="remediation-section">
-                <div class="section-title">自动修复</div>
-                <div class="runbooks-container">
-                    <div class="container-header"><h3>修复脚本 (Runbooks)</h3></div>
-                    <div id="runbooksList">
-                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
-                    </div>
+        <!-- 转发规则 Tab -->
+        <div id="forwardRulesTab" class="tab-content" style="display: none;">
+            <div class="forward-rules-section">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div class="section-title">转发规则配置</div>
+                    <button class="btn btn-primary" onclick="showRuleForm()">
+                        <span>➕</span> 新增规则
+                    </button>
                 </div>
-                <div class="remediation-history-container" style="margin-top: 30px;">
-                    <div class="container-header"><h3>执行历史</h3></div>
-                    <div id="remediationHistory">
-                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+                <div id="forwardRulesList">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>加载中...</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 服务拓扑 Tab -->
-        <div id="topologyTab" class="tab-content" style="display: none;">
-            <div class="topology-section">
-                <div class="section-title">服务拓扑</div>
-                <div class="topology-actions" style="margin-bottom: 20px;">
-                    <button class="btn btn-primary" id="addDependencyBtn">
-                        <span>➕</span> 添加依赖
-                    </button>
-                    <button class="btn" id="addServiceNodeBtn">
-                        <span>🆕</span> 添加服务
-                    </button>
-                    <button class="btn" id="discoverTopologyBtn">
-                        <span>🔍</span> 自动发现
-                    </button>
-                </div>
-                <div id="topologyGraph" class="topology-graph-container">
-                    <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- 配置模态框 -->
@@ -349,156 +293,80 @@
         </div>
     </div>
 
-    <!-- Skill 配置模态框 -->
-    <div class="modal" id="skillConfigModal">
-        <div class="modal-content" style="max-width: 700px;">
+    <!-- 转发规则模态框 -->
+    <div class="modal" id="ruleFormModal">
+        <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
-                <h2 class="modal-title" id="skillConfigModalTitle">添加连接</h2>
+                <h2 class="modal-title" id="ruleFormTitle">新增转发规则</h2>
             </div>
             <div class="modal-body">
-                <input type="hidden" id="skillConfigId">
+                <input type="hidden" id="ruleFormId">
                 <div class="form-group">
-                    <label class="form-label">名称 <span style="color: #d73a49;">*</span></label>
-                    <input type="text" class="form-input" id="skillConfigName" placeholder="my-custom-skill">
-                    <small style="color: #586069; font-size: 0.75rem;">使用小写字母、数字和连字符</small>
+                    <label class="form-label">规则名称 *</label>
+                    <input type="text" class="form-input" id="ruleFormName" placeholder="例如：高优转飞书运维群">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">显示名称 <span style="color: #d73a49;">*</span></label>
-                    <input type="text" class="form-input" id="skillConfigDisplayName" placeholder="我的自定义连接">
+                    <label class="form-label">优先级</label>
+                    <input type="number" class="form-input" id="ruleFormPriority" placeholder="10" value="10" min="0" max="100">
+                    <small style="color: var(--text-secondary); font-size: 12px;">数字越大优先级越高，先匹配</small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">类型 <span style="color: #d73a49;">*</span></label>
-                    <select class="form-input" id="skillConfigType" onchange="onSkillTypeChange()">
-                        <option value="">请选择...</option>
-                        <option value="kubernetes">Kubernetes</option>
-                        <option value="prometheus">Prometheus</option>
-                        <option value="grafana">Grafana</option>
-                        <option value="log">日志平台</option>
-                        <option value="custom">自定义</option>
+                    <label class="form-label">匹配条件 - 重要性</label>
+                    <div style="display: flex; gap: 15px;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="ruleFormImportanceHigh" value="high"> 高
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> 中
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="ruleFormImportanceLow" value="low"> 低
+                        </label>
+                    </div>
+                    <small style="color: var(--text-secondary); font-size: 12px;">不选=匹配全部</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">匹配条件 - 告警状态</label>
+                    <select class="form-input" id="ruleFormDuplicate">
+                        <option value="all">全部</option>
+                        <option value="new">新告警</option>
+                        <option value="duplicate">窗口内重复</option>
+                        <option value="beyond_window">窗口外重复</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">描述</label>
-                    <textarea class="form-input" id="skillConfigDescription" rows="2" placeholder="连接器描述..."></textarea>
-                </div>
-
-                <!-- Kubernetes 配置区域 -->
-                <div class="skill-config-section" data-type="kubernetes" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">Kubeconfig 路径</label>
-                        <input type="text" class="form-input" data-config-key="kubeconfig" placeholder="~/.kube/config">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Context</label>
-                        <input type="text" class="form-input" data-config-key="context" placeholder="default">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">超时时间（秒）</label>
-                        <input type="number" class="form-input" data-config-key="timeout" value="30">
-                    </div>
-                </div>
-
-                <!-- Prometheus 配置区域 -->
-                <div class="skill-config-section" data-type="prometheus" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">Prometheus URL <span style="color: #d73a49;">*</span></label>
-                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:9090">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">认证 Token</label>
-                        <input type="password" class="form-input" data-config-key="auth_token" placeholder="Bearer token">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">超时时间（秒）</label>
-                        <input type="number" class="form-input" data-config-key="timeout" value="15">
-                    </div>
-                </div>
-
-                <!-- Grafana 配置区域 -->
-                <div class="skill-config-section" data-type="grafana" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">Grafana URL <span style="color: #d73a49;">*</span></label>
-                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:3000">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">API Token</label>
-                        <input type="password" class="form-input" data-config-key="api_token" placeholder="Bearer token or API key">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">超时时间（秒）</label>
-                        <input type="number" class="form-input" data-config-key="timeout" value="15">
-                    </div>
-                </div>
-
-                <!-- Log 配置区域 -->
-                <div class="skill-config-section" data-type="log" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">后端类型</label>
-                        <select class="form-input" data-config-key="backend">
-                            <option value="elasticsearch">Elasticsearch</option>
-                            <option value="loki">Loki</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL <span style="color: #d73a49;">*</span></label>
-                        <input type="text" class="form-input" data-config-key="url" placeholder="http://localhost:9200">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">索引模式</label>
-                        <input type="text" class="form-input" data-config-key="index" placeholder="logstash-*">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">认证用户名</label>
-                        <input type="text" class="form-input" data-config-key="auth_user" placeholder="elastic">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">认证密码</label>
-                        <input type="password" class="form-input" data-config-key="auth_pass" placeholder="password">
-                    </div>
-                </div>
-
-                <!-- 自定义 Skill 配置区域 -->
-                <div class="skill-config-section" data-type="custom" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label">配置 (JSON)</label>
-                        <textarea class="form-input" data-config-key="config_json" rows="4" placeholder='{"url": "...", "token": "..."}'></textarea>
-                    </div>
-                </div>
-
-                <div class="form-checkbox">
-                    <input type="checkbox" id="skillConfigEnabled" checked>
-                    <label for="skillConfigEnabled">启用此连接</label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" onclick="closeSkillConfigModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveSkillConfig()">保存</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Skill 代码编辑器模态框 -->
-    <div class="modal" id="skillCodeEditorModal">
-        <div class="modal-content" style="max-width: 900px; width: 90%;">
-            <div class="modal-header">
-                <h2 class="modal-title" id="skillCodeEditorTitle">编辑 Skill 代码</h2>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="skillCodeEditorId">
-                <div style="margin-bottom: 15px;">
-                    <button class="btn btn-sm" onclick="loadSkillTemplate()">加载模板</button>
-                    <button class="btn btn-sm" onclick="formatSkillCode()">格式化</button>
-                    <button class="btn btn-sm" onclick="validateSkillCode()">验证</button>
+                    <label class="form-label">匹配条件 - 来源</label>
+                    <input type="text" class="form-input" id="ruleFormSource" placeholder="逗号分隔多个来源，空=全部">
+                    <small style="color: var(--text-secondary); font-size: 12px;">例如：prometheus,alertmanager</small>
                 </div>
                 <div class="form-group">
-                    <textarea class="form-input" id="skillCodeEditorContent" rows="25" style="font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 13px; line-height: 1.5; background: #1e1e1e; color: #d4d4d4;"></textarea>
+                    <label class="form-label">目标类型 *</label>
+                    <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
+                        <option value="feishu">飞书</option>
+                        <option value="openocta">OpenOcta</option>
+                        <option value="webhook">Webhook</option>
+                    </select>
                 </div>
-                <div id="skillCodeValidationResult" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
+                <div class="form-group" id="ruleFormTargetUrlGroup">
+                    <label class="form-label">目标地址 *</label>
+                    <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">目标名称</label>
+                    <input type="text" class="form-input" id="ruleFormTargetName" placeholder="例如：运维飞书群">
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="ruleFormStopOnMatch">
+                    <label for="ruleFormStopOnMatch">匹配后停止继续匹配其他规则</label>
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="ruleFormEnabled" checked>
+                    <label for="ruleFormEnabled">启用规则</label>
+                </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeSkillCodeEditor()">取消</button>
-                <button class="btn btn-secondary" onclick="testSkillCode()">测试执行</button>
-                <button class="btn btn-primary" onclick="saveSkillCode()">保存</button>
+                <button class="btn" onclick="closeRuleForm()">取消</button>
+                <button class="btn btn-primary" onclick="saveRule()">保存</button>
             </div>
         </div>
     </div>
@@ -507,11 +375,9 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/api.js"></script>
     <script src="/static/js/alerts.js"></script>
-    <script src="/static/js/skills.js"></script>
     <script src="/static/js/ai-cost.js"></script>
     <script src="/static/js/predictions.js"></script>
-    <script src="/static/js/remediation.js"></script>
-    <script src="/static/js/topology.js"></script>
+    <script src="/static/js/forward-rules.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
