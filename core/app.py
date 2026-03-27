@@ -4,7 +4,7 @@ import socket
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, render_template, Response
 from flask_compress import Compress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional, Generator, Union
 from sqlalchemy.exc import IntegrityError
@@ -21,22 +21,10 @@ from core.utils import (
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
 from adapters.ecosystem_adapters import normalize_webhook_event
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from services.topology import topology_manager
-from services.skills import skill_registry
-from services.skills.agent_engine import agent_engine
-from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, ServiceTopologyModel, AlertCorrelation, SkillConfig, session_scope, get_session, test_db_connection
+from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, AlertCorrelation, ForwardRule, session_scope, get_session, test_db_connection
 
 app = Flask(__name__, template_folder='../templates', static_folder='../templates/static')
 app.config.from_object(Config)
-
-# 初始化 Skill 插件系统
-try:
-    skill_registry.auto_discover()
-    # 从数据库加载配置更新内置 Skill
-    skill_registry.load_from_db()
-    logger.info(f"Skill system initialized: {len(skill_registry.list_skills())} skills registered")
-except Exception as e:
-    logger.error(f"Skill system initialization failed: {e}")
 
 # 启用 gzip 压缩（减少响应体积，加快传输）
 Compress(app)
@@ -90,11 +78,12 @@ class WebhookRequestContext:
     webhook_full_data: dict
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ForwardDecision:
     should_forward: bool
     skip_reason: Optional[str]
     is_periodic_reminder: bool
+    matched_rules: list = field(default_factory=list)  # 匹配的 ForwardRule 列表
 
 
 @dataclass(frozen=True)
@@ -567,22 +556,91 @@ def _resolve_analysis(alert_hash: str, webhook_full_data: dict, got_lock: bool) 
     return _resolve_analysis_without_lock(alert_hash, webhook_full_data)
 
 
+def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: bool, source: str) -> list:
+    """从数据库加载启用的规则，返回匹配的规则列表"""
+    from core.models import ForwardRule
+    
+    try:
+        with session_scope() as session:
+            rules = session.query(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc()).all()
+            
+            if not rules:
+                return []
+            
+            matched = []
+            for rule in rules:
+                # 检查 importance 匹配
+                if rule.match_importance:
+                    allowed = [x.strip().lower() for x in rule.match_importance.split(',')]
+                    if importance.lower() not in allowed:
+                        continue
+                
+                # 检查 duplicate 状态匹配
+                if rule.match_duplicate and rule.match_duplicate != 'all':
+                    if rule.match_duplicate == 'new' and (is_duplicate or beyond_window):
+                        continue
+                    elif rule.match_duplicate == 'duplicate' and not is_duplicate:
+                        continue
+                    elif rule.match_duplicate == 'beyond_window' and not beyond_window:
+                        continue
+                
+                # 检查 source 匹配
+                if rule.match_source:
+                    allowed_sources = [x.strip().lower() for x in rule.match_source.split(',')]
+                    if source.lower() not in allowed_sources:
+                        continue
+                
+                matched.append(rule.to_dict())  # 用 dict 避免 session 关闭后访问问题
+                
+                if rule.stop_on_match:
+                    break
+            
+            return matched
+    except Exception as e:
+        logger.warning(f"加载转发规则失败: {e}")
+        return []
+
+
 def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
     noise_context: Optional[NoiseReductionContext],
     original_event: Optional[WebhookEvent],
-    original_id: Optional[int]
+    original_id: Optional[int],
+    source: str = ''
 ) -> ForwardDecision:
     """根据告警状态和配置决定是否自动转发。"""
+    # 降噪抑制 - 优先级最高
     if noise_context and noise_context.suppress_forward:
         return ForwardDecision(
             False,
             f"智能降噪抑制转发: {noise_context.reason}",
             False,
         )
-
+    
+    # 尝试规则匹配
+    matched_rules = _match_forward_rules(importance, is_duplicate, beyond_window, source)
+    
+    if matched_rules:
+        # 基于规则的转发决策
+        # 仍然需要检查重复告警的冷却和周期提醒
+        if is_duplicate:
+            dup_decision = _decide_duplicate_forwarding(original_event, original_id)
+            if not dup_decision.should_forward:
+                return ForwardDecision(False, dup_decision.skip_reason, False)
+            return ForwardDecision(True, None, dup_decision.is_periodic_reminder, matched_rules)
+        
+        if beyond_window:
+            if not Config.FORWARD_AFTER_TIME_WINDOW:
+                return ForwardDecision(False, '窗口外重复告警，配置不转发', False)
+            if _recently_notified(original_event, original_id, '窗口外重复告警'):
+                return ForwardDecision(False, '近期已通知', False)
+            return ForwardDecision(True, None, False, matched_rules)
+        
+        return ForwardDecision(True, None, False, matched_rules)
+    
+    # 无规则 - 降级到原有逻辑（importance == high + FORWARD_URL）
     if importance != 'high':
         return ForwardDecision(False, f'重要性为 {importance}，非高风险事件不自动转发', False)
 
@@ -753,17 +811,46 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             beyond_window,
             noise_context,
             original_event,
-            original_id
+            original_id,
+            source=request_context.source
         )
 
         forward_result = {'status': 'skipped', 'reason': forward_decision.skip_reason}
         if forward_decision.should_forward:
             alert_type = _resolve_alert_type_label(is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
-            logger.info(f"开始自动转发高风险{alert_type}告警...")
-            forward_result = forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
-
-            if forward_result.get('status') == 'success' and original_event:
-                _update_last_notified(original_event.id)
+            
+            if forward_decision.matched_rules:
+                # 多规则转发
+                from services.ai_analyzer import forward_to_openocta
+                forward_results = []
+                for rule in forward_decision.matched_rules:
+                    try:
+                        logger.info(f"执行规则转发: {rule['name']} -> {rule['target_type']}")
+                        if rule['target_type'] == 'openocta':
+                            result = forward_to_openocta(request_context.webhook_full_data, analysis_result)
+                        else:
+                            result = forward_to_remote(
+                                request_context.webhook_full_data,
+                                analysis_result,
+                                target_url=rule['target_url'],
+                                is_periodic_reminder=forward_decision.is_periodic_reminder
+                            )
+                        result['rule_name'] = rule['name']
+                        forward_results.append(result)
+                    except Exception as e:
+                        logger.error(f"规则 {rule['name']} 转发失败: {e}")
+                        forward_results.append({'status': 'error', 'rule_name': rule['name'], 'message': str(e)})
+                
+                forward_result = {'status': 'success', 'results': forward_results}
+                # 更新最后通知时间
+                if any(r.get('status') == 'success' for r in forward_results) and original_event:
+                    _update_last_notified(original_event.id)
+            else:
+                # 降级到原有单目标转发
+                logger.info(f"开始自动转发高风险{alert_type}告警...")
+                forward_result = forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
+                if forward_result.get('status') == 'success' and original_event:
+                    _update_last_notified(original_event.id)
         else:
             logger.info(f"跳过自动转发: {forward_decision.skip_reason}")
 
@@ -1416,301 +1503,6 @@ def method_not_allowed(error):
 
 
 
-@app.route('/api/topology', methods=['GET'])
-def get_topology() -> tuple[Response, int]:
-    """
-    获取服务拓扑
-    
-    Query params:
-        service: 可选，指定服务名称则返回该服务的上下游关系
-    
-    Returns:
-        JSON 格式的拓扑数据
-    """
-    try:
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            service = request.args.get('service')
-            
-            if service:
-                service = service.strip().lower()
-                upstream = list(topology_manager.get_upstream(service))
-                downstream = list(topology_manager.get_downstream(service))
-                
-                return _ok({
-                    'service': service,
-                    'upstream': upstream,
-                    'downstream': downstream,
-                    'upstream_count': len(upstream),
-                    'downstream_count': len(downstream)
-                }, 200)
-            else:
-                topology_data = topology_manager.get_topology_dict()
-                # 转换为前端期望的格式
-                nodes = [{'id': svc, 'name': svc, 'type': 'service', 'health': 'unknown'} 
-                         for svc in topology_data.get('services', [])]
-                edges = []
-                for src, targets in topology_data.get('dependencies', {}).items():
-                    for tgt in targets:
-                        edges.append({'source': src, 'target': tgt})
-                return _ok({'nodes': nodes, 'edges': edges}, 200)
-                
-    except Exception as e:
-        logger.error(f"获取拓扑失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology', methods=['POST'])
-def add_topology() -> tuple[Response, int]:
-    """
-    添加服务依赖关系
-    
-    请求体: {"service": "api-server", "depends_on": "database"}
-    
-    Returns:
-        JSON 格式的结果
-    """
-    try:
-        payload = request.get_json(silent=True) or {}
-        if not payload:
-            return _fail('请求体为空', 400)
-        
-        service = payload.get('service')
-        depends_on = payload.get('depends_on')
-        
-        if not service or not depends_on:
-            return _fail('service 和 depends_on 字段必填', 400)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            # 添加到内存
-            if not topology_manager.add_dependency(service, depends_on):
-                return _fail(f'添加失败：依赖关系已存在或会形成循环依赖', 400)
-            
-            # 保存到数据库
-            topology_manager.save_to_db(session, service, depends_on)
-            
-            return _ok({
-                'message': f'服务依赖添加成功: {service} -> {depends_on}',
-                'service': service,
-                'depends_on': depends_on
-            }, 201)
-            
-    except Exception as e:
-        logger.error(f"添加服务依赖失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology', methods=['DELETE'])
-def remove_topology() -> tuple[Response, int]:
-    """
-    移除服务依赖关系
-    
-    Query params 或请求体: service, depends_on
-    
-    Returns:
-        JSON 格式的结果
-    """
-    try:
-        # 支持从查询参数或请求体获取
-        if request.is_json:
-            payload = request.get_json(silent=True) or {}
-            service = payload.get('service')
-            depends_on = payload.get('depends_on')
-        else:
-            service = request.args.get('service')
-            depends_on = request.args.get('depends_on')
-        
-        if not service or not depends_on:
-            return _fail('service 和 depends_on 字段必填', 400)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            # 从内存移除
-            if not topology_manager.remove_dependency(service, depends_on):
-                return _fail(f'依赖关系不存在: {service} -> {depends_on}', 404)
-            
-            # 从数据库删除
-            topology_manager.delete_from_db(session, service, depends_on)
-            
-            return _ok({
-                'message': f'服务依赖移除成功: {service} -> {depends_on}',
-                'service': service,
-                'depends_on': depends_on
-            }, 200)
-            
-    except Exception as e:
-        logger.error(f"移除服务依赖失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology/dependencies', methods=['POST'])
-def add_topology_dependency() -> tuple[Response, int]:
-    """
-    添加服务依赖关系
-    
-    请求体: {"source": "api-server", "target": "database"}
-    
-    Returns:
-        JSON 格式的结果
-    """
-    try:
-        payload = request.get_json(silent=True) or {}
-        if not payload:
-            return _fail('请求体为空', 400)
-        
-        source = payload.get('source')
-        target = payload.get('target')
-        
-        if not source or not target:
-            return _fail('source 和 target 字段必填', 400)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            # 添加到内存
-            if not topology_manager.add_dependency(source, target):
-                return _fail(f'添加失败：依赖关系已存在或会形成循环依赖', 400)
-            
-            # 保存到数据库
-            topology_manager.save_to_db(session, source, target)
-            
-            return _ok({
-                'message': f'服务依赖添加成功: {source} -> {target}',
-                'source': source,
-                'target': target
-            }, 201)
-            
-    except Exception as e:
-        logger.error(f"添加服务依赖失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology/dependencies', methods=['DELETE'])
-def delete_topology_dependency() -> tuple[Response, int]:
-    """
-    删除服务依赖关系
-    
-    Query params: source, target
-    
-    Returns:
-        JSON 格式的结果
-    """
-    try:
-        source = request.args.get('source')
-        target = request.args.get('target')
-        
-        if not source or not target:
-            return _fail('source 和 target 参数必填', 400)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            # 从内存移除
-            if not topology_manager.remove_dependency(source, target):
-                return _fail(f'依赖关系不存在: {source} -> {target}', 404)
-            
-            # 从数据库删除
-            topology_manager.delete_from_db(session, source, target)
-            
-            return _ok({
-                'message': f'服务依赖移除成功: {source} -> {target}',
-                'source': source,
-                'target': target
-            }, 200)
-            
-    except Exception as e:
-        logger.error(f"移除服务依赖失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology/discover', methods=['POST'])
-def discover_topology() -> tuple[Response, int]:
-    """
-    触发自动拓扑发现
-    
-    请求体（可选）: {"lookback_hours": 168, "auto_apply": false}
-    
-    Returns:
-        JSON 格式的发现结果
-    """
-    try:
-        payload = request.get_json(silent=True) or {}
-        lookback_hours = payload.get('lookback_hours', 168)
-        auto_apply = payload.get('auto_apply', False)
-        min_confidence = payload.get('min_confidence', 0.5)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            # 执行自动发现
-            discovered = topology_manager.auto_discover_from_alerts(session, lookback_hours)
-            
-            applied_count = 0
-            if auto_apply and discovered:
-                # 自动应用高置信度的依赖关系
-                for item in discovered:
-                    if item['confidence'] >= min_confidence:
-                        if topology_manager.add_dependency(item['service'], item['depends_on']):
-                            topology_manager.save_to_db(session, item['service'], item['depends_on'])
-                            applied_count += 1
-            
-            return _ok({
-                'discovered': discovered,
-                'discovered_count': len(discovered),
-                'applied_count': applied_count,
-                'lookback_hours': lookback_hours
-            }, 200)
-            
-    except Exception as e:
-        logger.error(f"自动发现拓扑失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/topology/relation', methods=['GET'])
-def check_topology_relation() -> tuple[Response, int]:
-    """
-    检查两个服务之间的关系
-    
-    Query params: service_a, service_b
-    
-    Returns:
-        JSON 格式的关系信息
-    """
-    try:
-        service_a = request.args.get('service_a')
-        service_b = request.args.get('service_b')
-        
-        if not service_a or not service_b:
-            return _fail('service_a 和 service_b 参数必填', 400)
-        
-        with session_scope() as session:
-            # 确保拓扑已加载
-            topology_manager.ensure_loaded(session)
-            
-            is_related, relationship = topology_manager.are_related(service_a, service_b)
-            
-            return _ok({
-                'service_a': service_a,
-                'service_b': service_b,
-                'is_related': is_related,
-                'relationship': relationship
-            }, 200)
-            
-    except Exception as e:
-        logger.error(f"检查服务关系失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
-
-
 @app.route('/api/migrations/add_unique_constraint', methods=['POST'])
 def migration_add_unique_constraint() -> tuple[Response, int]:
     """执行数据库迁移：添加唯一约束"""
@@ -1726,175 +1518,109 @@ def migration_add_unique_constraint() -> tuple[Response, int]:
         return _fail(str(e), 500)
 
 
-# ========== 修复执行 API 端点 ==========
+# ========== 转发规则 CRUD API ==========
 
-@app.route('/api/remediation/runbooks', methods=['GET'])
-def list_runbooks() -> tuple[Response, int]:
-    """列出所有可用的 Runbook"""
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        runbooks = remediation_engine.parser.list_runbooks()
-        result = []
-        for rb in runbooks:
-            result.append({
-                'name': rb.name,
-                'description': rb.description,
-                'version': rb.version,
-                'trigger': {
-                    'alert_type': rb.trigger.alert_type if rb.trigger else None,
-                    'severity': rb.trigger.severity if rb.trigger else []
-                } if rb.trigger else None,
-                'safety': {
-                    'require_approval': rb.safety.require_approval,
-                    'dry_run': rb.safety.dry_run,
-                    'timeout': rb.safety.timeout
-                },
-                'steps_count': len(rb.steps),
-                'parameters': remediation_engine.extract_parameters_from_runbook(rb)
-            })
-        
-        return _ok(status=200, data=result, count=len(result))
-    
-    except Exception as e:
-        logger.error(f"列出 Runbooks 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
+@app.route('/api/forward-rules', methods=['GET'])
+def get_forward_rules():
+    """获取所有转发规则，按 priority 降序排列"""
+    with session_scope() as session:
+        rules = session.query(ForwardRule).order_by(ForwardRule.priority.desc()).all()
+        return _ok(data=[r.to_dict() for r in rules])
 
 
-@app.route('/api/remediation/execute/<runbook_name>', methods=['POST'])
-def execute_remediation(runbook_name: str) -> tuple[Response, int]:
-    """
-    手动触发 Runbook 执行
+@app.route('/api/forward-rules', methods=['POST'])
+def create_forward_rule():
+    """创建转发规则"""
+    payload = request.get_json(silent=True) or {}
     
-    请求体: {"alert_data": {...}, "alert_id": 123, "dry_run": false, "force": false}
+    name = payload.get('name', '').strip()
+    target_type = payload.get('target_type', '').strip()
     
-    修复：支持通过 alert_id 从数据库查询告警数据
-    - 如果提供了 alert_data，优先使用 alert_data
-    - 如果提供了 alert_id，从数据库查询对应告警数据
-    - 如果两者都未提供，返回 400 错误
-    """
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        payload = request.get_json(silent=True) or {}
-        alert_data = payload.get('alert_data')
-        alert_id = payload.get('alert_id')
-        manual_parameters = payload.get('manual_parameters', {})
-        dry_run = payload.get('dry_run', False)
-        force = payload.get('force', False)
-        
-        # 如果没有 alert_data 且提供了 alert_id，从数据库查询
-        if not alert_data and alert_id:
-            with session_scope() as session:
-                event = session.query(WebhookEvent).filter_by(id=alert_id).first()
-                if event:
-                    alert_data = event.parsed_data or {}
-                else:
-                    return _fail(f'找不到 alert_id={alert_id} 对应的告警', 404)
-        
-        # 如果没有 alert_data 但有 manual_parameters，用手动参数构建 alert_data
-        if not alert_data and manual_parameters:
-            alert_data = {
-                'labels': manual_parameters,
-                'source': 'manual'
-            }
-        
-        # 如果仍然没有 alert_data，使用空字典（允许 dry_run 空参数执行来展示需要哪些参数）
-        if not alert_data:
-            alert_data = {}
-        
-        logger.info(f"手动触发 Runbook: {runbook_name}, dry_run={dry_run}, force={force}, alert_id={alert_id}, manual_params={list(manual_parameters.keys()) if manual_parameters else []}")
-        
-        result = remediation_engine.execute_runbook(
-            runbook_name=runbook_name,
-            alert_data=alert_data,
-            dry_run=dry_run,
-            force=force,
-            alert_id=alert_id
+    if not name:
+        return _fail('规则名称不能为空', 400)
+    if target_type not in ('feishu', 'openocta', 'webhook'):
+        return _fail('目标类型必须为 feishu/openocta/webhook', 400)
+    if target_type != 'openocta' and not payload.get('target_url', '').strip():
+        return _fail('目标地址不能为空', 400)
+    
+    with session_scope() as session:
+        rule = ForwardRule(
+            name=name,
+            enabled=payload.get('enabled', True),
+            priority=payload.get('priority', 0),
+            match_importance=payload.get('match_importance', ''),
+            match_duplicate=payload.get('match_duplicate', 'all'),
+            match_source=payload.get('match_source', ''),
+            target_type=target_type,
+            target_url=payload.get('target_url', ''),
+            target_name=payload.get('target_name', ''),
+            stop_on_match=payload.get('stop_on_match', False)
         )
-        
-        # 如果执行失败且是因为找不到告警，返回 404 错误
-        if result.get('status') == 'failed' and result.get('error_message'):
-            error_msg = result.get('error_message')
-            if '找不到 alert_id' in error_msg:
-                return _fail(error_msg, 404)
-        
-        return _ok(status=200, execution=result)
+        session.add(rule)
+        session.flush()
+        return _ok(data=rule.to_dict(), message='规则创建成功')
+
+
+@app.route('/api/forward-rules/<int:rule_id>', methods=['PUT'])
+def update_forward_rule(rule_id):
+    """更新转发规则"""
+    payload = request.get_json(silent=True) or {}
     
-    except Exception as e:
-        logger.error(f"执行 Runbook 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
+    with session_scope() as session:
+        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+        if not rule:
+            return _fail('规则不存在', 404)
+        
+        # 更新允许的字段
+        for field in ['name', 'enabled', 'priority', 'match_importance', 'match_duplicate',
+                       'match_source', 'target_type', 'target_url', 'target_name', 'stop_on_match']:
+            if field in payload:
+                setattr(rule, field, payload[field])
+        
+        rule.updated_at = datetime.now()
+        session.flush()
+        return _ok(data=rule.to_dict(), message='规则更新成功')
 
 
-@app.route('/api/remediation/history', methods=['GET'])
-def remediation_history() -> tuple[Response, int]:
-    """获取修复执行历史"""
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        limit = request.args.get('limit', 50, type=int)
-        limit = min(limit, 100)  # 最大100条
-        
-        executions = remediation_engine.list_executions(limit=limit)
-        
-        return _ok(status=200, data=executions, count=len(executions))
-    
-    except Exception as e:
-        logger.error(f"获取修复历史失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
+@app.route('/api/forward-rules/<int:rule_id>', methods=['DELETE'])
+def delete_forward_rule(rule_id):
+    """删除转发规则"""
+    with session_scope() as session:
+        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+        if not rule:
+            return _fail('规则不存在', 404)
+        session.delete(rule)
+        return _ok(message='规则已删除')
 
 
-@app.route('/api/remediation/approve/<execution_id>', methods=['POST'])
-def approve_remediation(execution_id: str) -> tuple[Response, int]:
-    """审批执行"""
-    try:
-        from services.remediation.engine import remediation_engine
+@app.route('/api/forward-rules/<int:rule_id>/test', methods=['POST'])
+def test_forward_rule(rule_id):
+    """测试转发规则（发送测试消息到目标）"""
+    with session_scope() as session:
+        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+        if not rule:
+            return _fail('规则不存在', 404)
         
-        logger.info(f"审批执行: {execution_id}")
-        result = remediation_engine.approve_execution(execution_id)
+        # 构造测试数据
+        test_data = {
+            'source': 'test',
+            'parsed_data': {'message': '这是一条转发规则测试消息', 'rule_name': rule.name},
+            'timestamp': datetime.now().isoformat()
+        }
+        test_analysis = {
+            'importance': 'medium',
+            'summary': f'转发规则测试 - {rule.name}',
+            'event_type': 'test'
+        }
         
-        if result.get('success'):
-            return _ok(status=200, execution=result.get('execution'), message='审批通过，执行已开始')
+        if rule.target_type == 'openocta':
+            from services.ai_analyzer import forward_to_openocta
+            result = forward_to_openocta(test_data, test_analysis)
+        else:
+            from services.ai_analyzer import forward_to_remote
+            result = forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
         
-        return _fail(result.get('error', '审批失败'), 400)
-    
-    except Exception as e:
-        logger.error(f"审批执行失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/remediation/<execution_id>', methods=['GET'])
-def get_remediation_detail(execution_id: str) -> tuple[Response, int]:
-    """获取单次执行详情"""
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        execution = remediation_engine.get_execution(execution_id)
-        
-        if not execution:
-            return _fail(f'执行记录不存在: {execution_id}', 404)
-        
-        return _ok(status=200, execution=execution)
-    
-    except Exception as e:
-        logger.error(f"获取执行详情失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/remediation/runbooks/reload', methods=['POST'])
-def reload_runbooks() -> tuple[Response, int]:
-    """热重载所有 Runbook"""
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        remediation_engine.reload_runbooks()
-        runbook_count = len(remediation_engine.parser)
-        
-        return _ok(status=200, message=f'Runbook 重载成功，当前共 {runbook_count} 个')
-    
-    except Exception as e:
-        logger.error(f"重载 Runbook 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
+        return _ok(data=result, message='测试完成')
 
 
 # ========== 预测与模式分析 API 端点 ==========
@@ -2069,792 +1795,208 @@ def analyze_patterns() -> tuple[Response, int]:
         return _fail(str(e), 500)
 
 
-# ========== Skill & Agent 深度分析 API 端点 ==========
+# ========== 深度分析 API 端点 ==========
 
 @app.route('/api/deep-analyze/<int:webhook_id>', methods=['POST'])
 def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
     """
-    触发深度分析
+    触发深度分析（支持多引擎）
     
-    请求体（可选）: {"user_question": "用户问题"}
+    请求体（可选）: 
+    {
+        "user_question": "用户问题",
+        "engine": "auto"  // local | openocta | auto
+    }
     
     Returns:
         JSON 格式的深度分析报告
     """
+    import json
+    import time
+    from pathlib import Path
+    from openai import OpenAI
+    from services.ai_analyzer import analyze_with_openocta
+    
+    def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
+        """本地 AI 分析逻辑"""
+        start_time = time.time()
+        
+        # 检查 AI 配置
+        if not Config.OPENAI_API_KEY:
+            raise ValueError('AI 服务未配置')
+        
+        # 加载深度分析 prompt
+        prompt_path = Path(__file__).parent.parent / 'prompts' / 'deep_analysis.txt'
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            system_prompt = """你是一个专业的 SRE 分析专家。请对以下告警进行深度分析，包括：
+1. 根因分析
+2. 影响范围评估
+3. 修复建议
+请用 JSON 格式返回分析结果。"""
+        
+        # 构建用户 prompt
+        alert_json = json.dumps(alert_data, ensure_ascii=False, indent=2)
+        user_prompt = f"""请对以下告警进行深度分析：
+
+## 告警数据
+```json
+{alert_json}
+```
+"""
+        if user_question:
+            user_prompt += f"\n## 用户问题\n{user_question}\n"
+        
+        user_prompt += """
+请返回 JSON 格式的分析报告，包含以下字段：
+- root_cause: 根因分析
+- impact: 影响范围
+- recommendations: 修复建议列表
+- confidence: 置信度 (0-1)
+"""
+        
+        # 调用 AI
+        client = OpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            base_url=Config.OPENAI_API_URL
+        )
+        
+        response = client.chat.completions.create(
+            model=Config.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=Config.OPENAI_TEMPERATURE,
+            max_tokens=Config.OPENAI_MAX_TOKENS * 2
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        duration = time.time() - start_time
+        
+        # 尝试解析 JSON 结果
+        try:
+            import re
+            json_match = re.search(r'```json\s*([\s\S]*?)```', ai_response)
+            if json_match:
+                report = json.loads(json_match.group(1))
+            else:
+                report = json.loads(ai_response)
+        except (json.JSONDecodeError, TypeError):
+            report = {
+                'root_cause': ai_response,
+                'impact': '请查看上方分析',
+                'recommendations': [],
+                'confidence': 0.5
+            }
+        
+        return report, duration
+    
+    def _determine_engine(requested_engine: str) -> str:
+        """根据请求和配置决定使用哪个引擎"""
+        if requested_engine == 'local':
+            return 'local'
+        elif requested_engine == 'openocta':
+            if Config.OPENOCTA_ENABLED:
+                return 'openocta'
+            else:
+                logger.warning("OpenOcta 未启用，回退到本地 AI")
+                return 'local'
+        else:  # auto
+            if Config.DEEP_ANALYSIS_ENGINE == 'openocta' and Config.OPENOCTA_ENABLED:
+                return 'openocta'
+            elif Config.DEEP_ANALYSIS_ENGINE == 'local':
+                return 'local'
+            else:  # auto 或其他
+                return 'openocta' if Config.OPENOCTA_ENABLED else 'local'
+    
     try:
         with session_scope() as session:
             event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
             if not event:
                 return _fail('Webhook not found', 404)
             
-            # 获取原始数据（raw_payload 是 Text 字段，parsed_data 是 JSON 字段）
+            # 获取告警数据
             alert_data = event.parsed_data or {}
             if not alert_data and event.raw_payload:
                 try:
-                    import json
                     alert_data = json.loads(event.raw_payload)
                 except (json.JSONDecodeError, TypeError):
                     alert_data = {"raw": event.raw_payload}
             
-            # 获取可选的用户问题
+            # 获取请求参数
             payload = request.get_json(silent=True) or {}
-            user_question = payload.get('user_question')
+            user_question = payload.get('user_question', '')
+            requested_engine = payload.get('engine', 'auto')
             
-            logger.info(f"开始深度分析 webhook ID: {webhook_id}")
+            # 决定使用哪个引擎
+            engine = _determine_engine(requested_engine)
+            logger.info(f"开始深度分析 webhook ID: {webhook_id}, engine: {engine}")
             
-            # 调用 Agent 引擎进行深度分析
-            result = agent_engine.deep_analyze(
-                alert_data=alert_data,
-                user_question=user_question,
-                alert_id=webhook_id
-            )
+            if engine == 'openocta':
+                # 使用 OpenOcta 分析
+                start_time = time.time()
+                webhook_data = {
+                    'source': event.source,
+                    'parsed_data': alert_data
+                }
+                result = analyze_with_openocta(webhook_data, user_question)
+                duration = time.time() - start_time
+                
+                # 检查是否降级
+                if result.get('_degraded'):
+                    logger.warning(f"OpenOcta 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
+                    # 降级到本地 AI
+                    try:
+                        report, duration = _local_ai_analysis(alert_data, user_question)
+                        engine = 'local (fallback)'
+                    except Exception as e:
+                        return _fail(f'深度分析失败: {str(e)}', 500)
+                else:
+                    # OpenOcta 返回的结果可能在 content 字段中
+                    if 'content' in result:
+                        # 尝试解析 content 中的 JSON
+                        content = result.get('content', '')
+                        try:
+                            import re
+                            json_match = re.search(r'```json\s*([\s\S]*?)```', content)
+                            if json_match:
+                                report = json.loads(json_match.group(1))
+                            elif content.strip().startswith('{'):
+                                report = json.loads(content)
+                            else:
+                                report = {
+                                    'root_cause': content,
+                                    'impact': '请查看上方分析',
+                                    'recommendations': [],
+                                    'confidence': 0.7
+                                }
+                        except (json.JSONDecodeError, TypeError):
+                            report = {
+                                'root_cause': content,
+                                'impact': '请查看上方分析',
+                                'recommendations': [],
+                                'confidence': 0.7
+                            }
+                    else:
+                        report = result
+            else:
+                # 使用本地 AI 分析
+                report, duration = _local_ai_analysis(alert_data, user_question)
             
             return _ok(
-                status=200,
-                analysis=result.get('report'),
-                tool_calls_log=result.get('tool_calls_log'),
-                rounds_used=result.get('rounds_used'),
-                duration_seconds=result.get('duration_seconds'),
-                success=result.get('success', False),
-                error=result.get('error')
+                data={
+                    'analysis': report,
+                    'duration_seconds': round(duration, 2),
+                    'engine': engine
+                }
             )
             
     except Exception as e:
         logger.error(f"深度分析失败: {e}", exc_info=True)
         return _fail(str(e), 500)
-
-
-@app.route('/api/skills', methods=['GET'])
-def list_skills() -> tuple[Response, int]:
-    """
-    列出所有已注册 Skill 及状态
-    
-    Returns:
-        JSON 格式的 Skill 状态列表
-    """
-    try:
-        status = skill_registry.get_status()
-        return _ok(
-            status=200,
-            data=status,
-            total=status.get('total', 0),
-            enabled=status.get('enabled', 0)
-        )
-    except Exception as e:
-        logger.error(f"获取 Skill 列表失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skills/<skill_name>/test', methods=['POST'])
-def test_skill(skill_name: str) -> tuple[Response, int]:
-    """
-    测试指定 Skill 的连接
-
-    Args:
-        skill_name: Skill 名称
-
-    Returns:
-        JSON 格式的健康检查结果
-    """
-    try:
-        skill = skill_registry.get_skill(skill_name)
-        if not skill:
-            return _fail(f'Skill not found: {skill_name}', 404)
-
-        health_result = skill.health_check()
-
-        return _ok(
-            status=200,
-            skill_name=skill_name,
-            healthy=health_result.get('healthy', False),
-            message=health_result.get('message', ''),
-            details=health_result.get('details', {})
-        )
-    except Exception as e:
-        logger.error(f"测试 Skill 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-# ========== Skill 配置管理 API 端点 ==========
-
-@app.route('/api/skill-configs', methods=['GET'])
-def list_skill_configs() -> tuple[Response, int]:
-    """
-    列出所有 Skill 配置（包括数据库配置和运行时状态）
-
-    Returns:
-        JSON 格式的 Skill 配置列表
-    """
-    try:
-        with session_scope() as session:
-            configs = session.query(SkillConfig).all()
-            result = []
-            for config in configs:
-                config_dict = config.to_dict()
-                # 合并运行时状态
-                skill = skill_registry.get_skill(config.name)
-                if skill:
-                    config_dict['runtime_enabled'] = skill.enabled
-                    config_dict['is_builtin'] = skill.is_builtin
-                    config_dict['health'] = skill.health_check()
-                else:
-                    config_dict['runtime_enabled'] = config.enabled
-                    config_dict['is_builtin'] = skill_registry.is_builtin_name(config.name)
-                    config_dict['health'] = None
-                result.append(config_dict)
-
-            return _ok(
-                status=200,
-                data=result,
-                total=len(result)
-            )
-    except Exception as e:
-        logger.error(f"获取 Skill 配置列表失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>', methods=['GET'])
-def get_skill_config(config_id: int) -> tuple[Response, int]:
-    """
-    获取单个 Skill 配置
-
-    Args:
-        config_id: 配置 ID
-
-    Returns:
-        JSON 格式的 Skill 配置
-    """
-    try:
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail(f'Skill 配置 ID {config_id} 不存在', 404)
-
-            config_dict = config.to_dict()
-            # 合并运行时状态
-            skill = skill_registry.get_skill(config.name)
-            if skill:
-                config_dict['runtime_enabled'] = skill.enabled
-                config_dict['is_builtin'] = skill.is_builtin
-                config_dict['health'] = skill.health_check()
-            else:
-                config_dict['runtime_enabled'] = config.enabled
-                config_dict['is_builtin'] = skill_registry.is_builtin_name(config.name)
-                config_dict['health'] = None
-
-            return _ok(
-                status=200,
-                data=config_dict
-            )
-    except Exception as e:
-        logger.error(f"获取 Skill 配置失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs', methods=['POST'])
-def create_skill_config() -> tuple[Response, int]:
-    """
-    创建新的 Skill 配置
-
-    请求体:
-    {
-        "name": "skill_name",
-        "display_name": "显示名称",
-        "description": "描述",
-        "skill_type": "kubernetes|prometheus|grafana|log|custom",
-        "enabled": true,
-        "config": {"url": "...", "token": "..."}
-    }
-
-    Returns:
-        JSON 格式的创建结果
-    """
-    try:
-        data = request.get_json(silent=True) or {}
-
-        # 验证必填字段
-        name = data.get('name', '').strip()
-        display_name = data.get('display_name', '').strip()
-        skill_type = data.get('skill_type', '').strip()
-
-        if not name:
-            return _fail('Skill 名称不能为空', 400)
-        if not display_name:
-            return _fail('显示名称不能为空', 400)
-        if not skill_type:
-            return _fail('Skill 类型不能为空', 400)
-
-        # 检查是否为内置 Skill 名称（不允许创建同名自定义 Skill）
-        if skill_registry.is_builtin_name(name):
-            return _fail(f'名称 "{name}" 是内置 Skill 保留名称，请使用其他名称', 400)
-
-        # 检查名称是否已存在
-        with session_scope() as session:
-            existing = session.query(SkillConfig).filter_by(name=name).first()
-            if existing:
-                return _fail(f'Skill "{name}" 已存在', 409)
-
-            # 创建新配置
-            config = SkillConfig(
-                name=name,
-                display_name=display_name,
-                description=data.get('description', ''),
-                skill_type=skill_type,
-                enabled=data.get('enabled', True),
-                config=data.get('config', {}),
-                code=data.get('code') if skill_type == 'custom' else None
-            )
-            session.add(config)
-            session.flush()
-
-            result = config.to_dict()
-
-        # 热重载 Skill 配置
-        try:
-            skill_registry.load_from_db()
-        except Exception as e:
-            logger.warning(f"Skill 热重载失败: {e}")
-
-        return _ok(
-            status=201,
-            message=f'Skill "{name}" 创建成功',
-            data=result
-        )
-
-    except IntegrityError as e:
-        logger.error(f"创建 Skill 配置失败（完整性错误）: {e}")
-        return _fail('Skill 名称已存在', 409)
-    except Exception as e:
-        logger.error(f"创建 Skill 配置失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>', methods=['PUT'])
-def update_skill_config(config_id: int) -> tuple[Response, int]:
-    """
-    更新 Skill 配置
-
-    Args:
-        config_id: 配置 ID
-
-    请求体:
-    {
-        "display_name": "显示名称",
-        "description": "描述",
-        "enabled": true,
-        "config": {"url": "...", "token": "..."}
-    }
-
-    Returns:
-        JSON 格式的更新结果
-    """
-    try:
-        data = request.get_json(silent=True) or {}
-
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail(f'Skill 配置 ID {config_id} 不存在', 404)
-
-            # 不允许修改内置 Skill 的名称
-            if skill_registry.is_builtin_name(config.name):
-                # 只允许修改 enabled 和 config 字段
-                if 'enabled' in data:
-                    config.enabled = data['enabled']
-                if 'config' in data:
-                    config.config = data['config']
-            else:
-                # 自定义 Skill 可以修改更多字段
-                if 'display_name' in data:
-                    config.display_name = data['display_name'].strip()
-                if 'description' in data:
-                    config.description = data['description']
-                if 'enabled' in data:
-                    config.enabled = data['enabled']
-                if 'config' in data:
-                    config.config = data['config']
-                if 'skill_type' in data and config.skill_type == 'custom':
-                    config.skill_type = data['skill_type']
-                if 'code' in data and config.skill_type == 'custom':
-                    config.code = data['code']
-
-            session.flush()
-            # 在会话关闭前获取配置名称
-            config_name = config.name
-            result = config.to_dict()
-
-        # 热重载 Skill 配置
-        try:
-            skill_registry.load_from_db()
-        except Exception as e:
-            logger.warning(f"Skill 热重载失败: {e}")
-
-        return _ok(
-            status=200,
-            message=f'Skill "{config_name}" 更新成功',
-            data=result
-        )
-
-    except Exception as e:
-        logger.error(f"更新 Skill 配置失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>', methods=['DELETE'])
-def delete_skill_config(config_id: int) -> tuple[Response, int]:
-    """
-    删除 Skill 配置
-
-    Args:
-        config_id: 配置 ID
-
-    Returns:
-        JSON 格式的删除结果
-    """
-    try:
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail(f'Skill 配置 ID {config_id} 不存在', 404)
-
-            name = config.name
-
-            # 不允许删除内置 Skill 的数据库记录（可以禁用）
-            if skill_registry.is_builtin_name(name):
-                return _fail(f'内置 Skill "{name}" 不能删除，但可以禁用', 400)
-
-            session.delete(config)
-
-        # 热重载 Skill 配置
-        try:
-            skill_registry.load_from_db()
-        except Exception as e:
-            logger.warning(f"Skill 热重载失败: {e}")
-
-        return _ok(
-            status=200,
-            message=f'Skill "{name}" 删除成功'
-        )
-
-    except Exception as e:
-        logger.error(f"删除 Skill 配置失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>/toggle', methods=['POST'])
-def toggle_skill_config(config_id: int) -> tuple[Response, int]:
-    """
-    切换 Skill 启用/禁用状态
-
-    Args:
-        config_id: 配置 ID
-
-    Returns:
-        JSON 格式的切换结果
-    """
-    try:
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail(f'Skill 配置 ID {config_id} 不存在', 404)
-
-            # 切换状态
-            config.enabled = not config.enabled
-            new_status = config.enabled
-
-            session.flush()
-            # 在会话关闭前获取配置名称
-            config_name = config.name
-
-        # 热重载 Skill 配置
-        try:
-            skill_registry.load_from_db()
-        except Exception as e:
-            logger.warning(f"Skill 热重载失败: {e}")
-
-        return _ok(
-            status=200,
-            message=f'Skill "{config_name}" 已{"启用" if new_status else "禁用"}',
-            enabled=new_status
-        )
-
-    except Exception as e:
-        logger.error(f"切换 Skill 状态失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-# ========== Skill 代码管理 API 端点 ==========
-
-@app.route('/api/skill-configs/<int:config_id>/code', methods=['GET'])
-def get_skill_code(config_id: int) -> tuple[Response, int]:
-    """
-    获取 Skill 代码
-
-    Args:
-        config_id: 配置 ID
-
-    Returns:
-        JSON 格式的代码内容
-    """
-    try:
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail('Skill 配置不存在', 404)
-
-            # 动态导入避免循环依赖
-            from services.skills.dynamic_skill import get_skill_template
-
-            # 如果没有代码，返回模板
-            code = config.code or get_skill_template(config.name)
-            is_template = not config.code
-
-            return _ok(
-                status=200,
-                data={
-                    'id': config.id,
-                    'name': config.name,
-                    'display_name': config.display_name,
-                    'skill_type': config.skill_type,
-                    'code': code,
-                    'is_template': is_template
-                }
-            )
-    except Exception as e:
-        logger.error(f"获取 Skill 代码失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>/code', methods=['PUT'])
-def update_skill_code(config_id: int) -> tuple[Response, int]:
-    """
-    更新 Skill 代码
-
-    Args:
-        config_id: 配置 ID
-
-    请求体:
-    {
-        "code": "python code string"
-    }
-
-    Returns:
-        JSON 格式的更新结果
-    """
-    try:
-        # 动态导入避免循环依赖
-        from services.skills.dynamic_skill import validate_skill_code
-
-        data = request.get_json(silent=True) or {}
-        code = data.get('code', '')
-
-        # 验证代码
-        is_valid, error_msg = validate_skill_code(code)
-        if not is_valid:
-            return _fail(f'代码验证失败: {error_msg}', 400)
-
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail('Skill 配置不存在', 404)
-
-            # 只有自定义 Skill 可以编辑代码
-            if config.skill_type != 'custom':
-                return _fail('只有自定义 Skill 可以编辑代码', 400)
-
-            # 更新代码
-            config.code = code
-            session.flush()
-
-            # 获取配置信息用于热重载
-            config_dict = config.to_dict()
-            config_name = config.name
-
-        # 热重载 Skill
-        try:
-            skill_registry.load_dynamic_skill(config_dict)
-            logger.info(f"Skill {config_name} code updated and reloaded")
-        except Exception as e:
-            logger.error(f"代码保存成功但热重载失败: {e}")
-            return _fail(f'代码已保存但重载失败: {e}', 500)
-
-        return _ok(
-            status=200,
-            message=f'Skill "{config_name}" 代码更新成功',
-            data={'id': config_id, 'name': config_name, 'reloaded': True}
-        )
-
-    except Exception as e:
-        logger.error(f"更新 Skill 代码失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-configs/<int:config_id>/test-code', methods=['POST'])
-def test_skill_code(config_id: int) -> tuple[Response, int]:
-    """
-    测试 Skill 代码
-
-    Args:
-        config_id: 配置 ID
-
-    请求体:
-    {
-        "code": "python code string",
-        "action": "action_name",  // 可选
-        "params": {}  // 可选
-    }
-
-    Returns:
-        JSON 格式的测试结果
-    """
-    try:
-        # 动态导入避免循环依赖
-        from services.skills.dynamic_skill import DynamicSkill, validate_skill_code
-
-        data = request.get_json(silent=True) or {}
-        code = data.get('code', '')
-        test_action = data.get('action', '')
-        test_params = data.get('params', {})
-
-        with session_scope() as session:
-            config = session.query(SkillConfig).filter_by(id=config_id).first()
-            if not config:
-                return _fail('Skill 配置不存在', 404)
-
-            # 验证代码
-            is_valid, error_msg = validate_skill_code(code)
-            if not is_valid:
-                return _ok(
-                    status=200,
-                    data={
-                        'valid': False,
-                        'error': error_msg,
-                        'capabilities': [],
-                        'execution': None
-                    }
-                )
-
-            # 临时创建 Skill 实例进行测试
-            test_config = config.to_dict()
-            test_config['code'] = code
-
-            try:
-                skill = DynamicSkill(test_config)
-                capabilities = skill.get_capabilities()
-
-                # 如果提供了 action，执行测试
-                execution_result = None
-                if test_action:
-                    execution_result = skill.execute(test_action, test_params)
-
-                return _ok(
-                    status=200,
-                    data={
-                        'valid': True,
-                        'error': None,
-                        'capabilities': capabilities,
-                        'execution': execution_result
-                    }
-                )
-            except Exception as e:
-                return _ok(
-                    status=200,
-                    data={
-                        'valid': False,
-                        'error': str(e),
-                        'capabilities': [],
-                        'execution': None
-                    }
-                )
-
-    except Exception as e:
-        logger.error(f"测试 Skill 代码失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/skill-template', methods=['GET'])
-def get_skill_template_api() -> tuple[Response, int]:
-    """
-    获取 Skill 代码模板
-
-    Query params:
-        name: Skill 名称，用于生成模板
-
-    Returns:
-        JSON 格式的模板内容
-    """
-    try:
-        # 动态导入避免循环依赖
-        from services.skills.dynamic_skill import get_skill_template
-
-        skill_name = request.args.get('name', 'my_skill')
-        template = get_skill_template(skill_name)
-
-        return _ok(
-            status=200,
-            data={'template': template}
-        )
-
-    except Exception as e:
-        logger.error(f"获取 Skill 模板失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-# ========== 外部 Skill API 端点 ==========
-
-@app.route('/api/external-skills', methods=['GET'])
-def get_external_skills():
-    """获取所有外部 Skill 列表"""
-    try:
-        external_skills = skill_registry.get_external_skills()
-        return _ok(
-            data=[skill.to_dict() for skill in external_skills],
-            total=len(external_skills)
-        )
-    except Exception as e:
-        logger.error(f"获取外部 Skill 列表失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/external-skills/reload', methods=['POST'])
-def reload_external_skills():
-    """重新扫描并加载外部 Skill"""
-    try:
-        skills = skill_registry.reload_external_skills()
-        return _ok(
-            data=[skill.to_dict() for skill in skills],
-            total=len(skills),
-            message=f'已重新扫描，发现 {len(skills)} 个外部 Skill'
-        )
-    except Exception as e:
-        logger.error(f"重新加载外部 Skill 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/external-skills/<name>/detail', methods=['GET'])
-def get_external_skill_detail(name: str):
-    """获取外部 Skill 的详细文档"""
-    try:
-        external_skills = skill_registry.get_external_skills()
-        skill = None
-        for s in external_skills:
-            if s.name == name:
-                skill = s
-                break
-        
-        if not skill:
-            return _fail(f'外部 Skill "{name}" 未找到', 404)
-        
-        detail = skill.to_dict()
-        detail['content'] = skill.skill_content  # SKILL.md 完整内容
-        return _ok(data=detail)
-    except Exception as e:
-        logger.error(f"获取外部 Skill 详情失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/external-skills/<name>/secrets', methods=['GET'])
-def get_external_skill_secrets(name: str):
-    """获取外部 Skill 的 secrets 配置键列表（不返回值）"""
-    try:
-        external_skills = skill_registry.get_external_skills()
-        skill = None
-        for s in external_skills:
-            if s.name == name:
-                skill = s
-                break
-        
-        if not skill:
-            return _fail(f'外部 Skill "{name}" 未找到', 404)
-        
-        return _ok(
-            data={
-                'has_secrets': bool(skill.secrets),
-                'secrets': list(skill.secrets.keys()) if skill.secrets else [],
-                'values': {k: '***' for k in skill.secrets.keys()} if skill.secrets else {}
-            }
-        )
-    except Exception as e:
-        logger.error(f"获取 Skill secrets 信息失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/external-skills/<name>/secrets', methods=['PUT'])
-def update_external_skill_secrets(name: str):
-    """更新外部 Skill 的 secrets 配置"""
-    try:
-        import json as json_module
-        
-        external_skills = skill_registry.get_external_skills()
-        skill = None
-        for s in external_skills:
-            if s.name == name:
-                skill = s
-                break
-        
-        if not skill:
-            return _fail(f'外部 Skill "{name}" 未找到', 404)
-        
-        data = request.get_json(silent=True) or {}
-        if 'secrets' not in data:
-            return _fail('请提供 secrets 数据', 400)
-        
-        # 保存到 skills_secrets/{name}.json
-        secrets_dir = getattr(Config, 'SKILLS_SECRETS_DIR', 'skills_secrets')
-        if not os.path.isabs(secrets_dir):
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            secrets_dir = os.path.join(project_root, secrets_dir)
-        
-        os.makedirs(secrets_dir, exist_ok=True)
-        secrets_file = os.path.join(secrets_dir, f'{name}.json')
-        
-        with open(secrets_file, 'w', encoding='utf-8') as f:
-            json_module.dump(data['secrets'], f, indent=2, ensure_ascii=False)
-        
-        # 重新加载该 Skill 的 secrets
-        skill._load_secrets()
-        
-        return _ok(
-            message=f'已更新 {name} 的 secrets 配置',
-            data={
-                'has_secrets': bool(skill.secrets),
-                'keys': list(skill.secrets.keys())
-            }
-        )
-    except Exception as e:
-        logger.error(f"更新 Skill secrets 失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-# ========== ChatOps API 端点 ==========
-
-@app.route('/api/chatops/webhook', methods=['POST'])
-def chatops_webhook():
-    """ChatOps Bot 回调端点 - 接收飞书/企业微信的消息回调"""
-    from core.config import Config
-    
-    if not getattr(Config, 'CHATOPS_ENABLED', False):
-        return jsonify({'code': -1, 'msg': 'ChatOps is disabled'}), 403
-    
-    data = request.get_json(silent=True) or {}
-    
-    from services.chatops import chatops_handler
-    result = chatops_handler.handle_feishu_callback(data)
-    return jsonify(result)
-
-
-@app.route('/api/chatops/test', methods=['POST'])
-def chatops_test():
-    """ChatOps 测试端点 - 模拟发送消息，返回处理结果"""
-    data = request.get_json(silent=True) or {}
-    text = data.get('text', '')
-    
-    if not text:
-        return _fail('请提供 text 参数', 400)
-    
-    from services.chatops.nlp_router import nlp_router
-    result = nlp_router.process(text, {'sender': 'test', 'chat_id': 'test'})
-    return jsonify({'response': result})
 
 
 if __name__ == '__main__':

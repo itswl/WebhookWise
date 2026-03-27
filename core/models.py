@@ -243,26 +243,6 @@ def test_db_connection() -> bool:
         return False
 
 
-class ServiceTopologyModel(Base):
-    """
-    服务拓扑模型
-    
-    存储服务间的依赖关系，用于告警拓扑感知和根因分析。
-    """
-    __tablename__ = 'service_topology'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    service_name = Column(String(200), nullable=False, index=True)
-    depends_on = Column(String(200), nullable=False, index=True)
-    metadata_json = Column(Text, default='{}')  # JSON 格式的额外元数据
-    created_at = Column(DateTime, default=func.now())
-    
-    __table_args__ = (
-        # 唯一约束：同一对依赖关系不重复
-        Index('idx_service_topology_unique', 'service_name', 'depends_on', unique=True),
-        {'extend_existing': True}
-    )
-
 
 class AlertCorrelation(Base):
     """
@@ -375,45 +355,44 @@ class Prediction(Base):
         return datetime.now() > self.expires_at
 
 
-class SkillConfig(Base):
-    """Skill 平台连接配置"""
-    __tablename__ = 'skill_configs'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(64), unique=True, nullable=False)  # Skill 唯一名称
-    display_name = Column(String(128), nullable=False)      # 显示名称
-    description = Column(Text)                              # 描述
-    skill_type = Column(String(32), nullable=False)         # 类型: kubernetes/prometheus/grafana/log/custom
-    enabled = Column(Boolean, default=True)                 # 是否启用
-
-    # 连接配置 (JSON 存储)
-    config = Column(JSON, default=dict)  # 如 {"url": "...", "token": "..."}
-
-    # 代码内容 (自定义 Skill 使用)
-    code = Column(Text)  # Python 代码字符串
-
-    # 外部 Skill 扩展字段
-    source = Column(String(20), default='builtin', comment='来源: builtin/custom/external')
-    skill_version = Column(String(20), nullable=True, comment='Skill 版本号')
-    external_path = Column(String(255), nullable=True, comment='外部 Skill 目录路径')
-
+class ForwardRule(Base):
+    """转发规则配置"""
+    __tablename__ = 'forward_rules'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)           # 规则名称
+    enabled = Column(Boolean, default=True)              # 是否启用
+    priority = Column(Integer, default=0)                # 规则优先级（越大越先匹配）
+    
+    # 匹配条件
+    match_importance = Column(String(50), default='')    # high,medium,low（逗号分隔，空=全部匹配）
+    match_duplicate = Column(String(20), default='all')  # new/duplicate/beyond_window/all
+    match_source = Column(String(200), default='')       # 来源匹配（逗号分隔列表，空=全部）
+    
+    # 转发目标
+    target_type = Column(String(20), nullable=False)     # feishu / openocta / webhook
+    target_url = Column(String(500), default='')         # 飞书/webhook 的 URL
+    target_name = Column(String(100), default='')        # 显示名称
+    
+    # 行为配置
+    stop_on_match = Column(Boolean, default=False)       # 匹配后是否停止后续规则
+    
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
+    
     def to_dict(self):
-        """转换为字典"""
         return {
             'id': self.id,
             'name': self.name,
-            'display_name': self.display_name,
-            'description': self.description,
-            'skill_type': self.skill_type,
             'enabled': self.enabled,
-            'config': self.config or {},
-            'code': self.code,
-            'source': self.source or 'builtin',
-            'skill_version': self.skill_version,
-            'external_path': self.external_path,
+            'priority': self.priority,
+            'match_importance': self.match_importance,
+            'match_duplicate': self.match_duplicate,
+            'match_source': self.match_source,
+            'target_type': self.target_type,
+            'target_url': self.target_url,
+            'target_name': self.target_name,
+            'stop_on_match': self.stop_on_match,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

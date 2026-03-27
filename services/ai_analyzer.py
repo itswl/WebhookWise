@@ -25,35 +25,6 @@ ForwardResult = dict[str, Any]
 _user_prompt_template: Optional[str] = None
 
 
-def _add_suggested_runbook(analysis_result: dict, parsed_data: dict) -> dict:
-    """
-    在分析结果中添加建议的 Runbook
-    
-    尝试匹配告警数据与可用的 Runbook，如果找到匹配的 Runbook，
-    将其名称添加到分析结果中。
-    
-    Args:
-        analysis_result: AI 分析结果
-        parsed_data: 解析后的告警数据
-        
-    Returns:
-        dict: 添加了 suggested_runbook 字段的分析结果
-    """
-    try:
-        from services.remediation.engine import remediation_engine
-        
-        runbook_name = remediation_engine.find_matching_runbook({'parsed_data': parsed_data})
-        if runbook_name:
-            analysis_result['suggested_runbook'] = runbook_name
-            logger.info(f"找到匹配的 Runbook: {runbook_name}")
-    except ImportError:
-        logger.debug("remediation 模块未初始化，跳过 Runbook 匹配")
-    except Exception as e:
-        logger.warning(f"查找匹配 Runbook 失败（不影响主流程）: {e}")
-    
-    return analysis_result
-
-
 class SmartRouter:
     """
     智能路由：已知类型告警用规则引擎，未知/复杂告警用 AI
@@ -895,8 +866,8 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
                 source=source,
                 cache_hit=True
             )
-            # 添加 suggested_runbook
-            return _add_suggested_runbook(cached_result, parsed_data)
+            # 返回缓存结果
+            return cached_result
     elif skip_cache:
         logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
     
@@ -913,8 +884,8 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
                 alert_hash=alert_hash,
                 source=source
             )
-            # 添加 suggested_runbook
-            return _add_suggested_runbook(rule_result, parsed_data)
+            # 返回规则引擎结果
+            return rule_result
     
     # Step 3: 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
@@ -924,8 +895,8 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         result['_degraded_reason'] = 'AI 分析功能已禁用'
         result['_route_type'] = 'rule'
         log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
-        # 添加 suggested_runbook
-        return _add_suggested_runbook(result, parsed_data)
+        # 返回结果
+        return result
 
     # Step 4: 检查 API Key
     if not Config.OPENAI_API_KEY:
@@ -937,8 +908,8 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         # 发送降级通知
         _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
         log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
-        # 添加 suggested_runbook
-        return _add_suggested_runbook(result, parsed_data)
+        # 返回结果
+        return result
 
     # Step 5: 调用 AI 分析
     try:
@@ -1575,3 +1546,122 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
         "msg_type": "interactive",
         "card": card_content
     }
+
+
+def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
+    """将告警推送到 OpenOcta 触发深度分析（异步，不等待完成）"""
+    from core.config import Config
+    
+    if not Config.OPENOCTA_ENABLED:
+        return {'status': 'disabled', 'message': 'OpenOcta 未启用'}
+    
+    alert_data = webhook_data.get('parsed_data', {})
+    source = webhook_data.get('source', 'unknown')
+    importance = analysis_result.get('importance', 'medium') if analysis_result else 'medium'
+    
+    message = f"""新告警需要深度分析：
+    
+来源: {source}
+重要性: {importance}
+
+告警数据:
+```json
+{json.dumps(alert_data, ensure_ascii=False, indent=2)}
+```
+
+AI 初步分析:
+{json.dumps(analysis_result, ensure_ascii=False, indent=2) if analysis_result else '无'}
+
+请进行根因分析并提供修复建议。"""
+    
+    payload = {
+        "message": message,
+        "name": f"alert-{source}",
+        "wakeMode": "now",
+        "deliver": False,
+        "thinking": "high",
+        "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {Config.OPENOCTA_GATEWAY_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        # 使用较短超时，不等待分析完成
+        response = requests.post(
+            f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
+            json=payload,
+            headers=headers,
+            timeout=30  # 只等待接受请求，不等待分析完成
+        )
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"OpenOcta 转发成功: run_id={result.get('runId')}")
+        return {'status': 'success', 'message': 'OpenOcta 分析已触发', 'run_id': result.get('runId')}
+    except Exception as e:
+        logger.error(f"OpenOcta 转发失败: {e}")
+        return {'status': 'error', 'message': str(e)}
+
+
+def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
+    """通过 OpenOcta Agent 进行深度分析"""
+    from core.config import Config
+    
+    if not Config.OPENOCTA_ENABLED:
+        logger.warning("OpenOcta 未启用")
+        return {'_degraded': True, '_degraded_reason': 'OpenOcta 未启用'}
+    
+    alert_data = webhook_data.get('parsed_data', {})
+    source = webhook_data.get('source', 'unknown')
+    
+    message = f"""请对以下告警进行深度根因分析：
+
+告警来源: {source}
+
+## 告警数据
+```json
+{json.dumps(alert_data, ensure_ascii=False, indent=2)}
+```
+
+## 分析要求
+1. **根因分析**: 深度挖掘问题根本原因
+2. **影响评估**: 评估对系统的影响范围
+3. **修复建议**: 提供可执行的解决方案
+4. **置信度**: 评估分析可信度 (0-1)
+
+请返回 JSON 格式:
+"root_cause": "...", "impact": "...", "recommendations": [...], "confidence": 0.85"""
+    
+    if user_question:
+        message += f"\n\n## 用户补充问题\n{user_question}"
+    
+    payload = {
+        "message": message,
+        "name": "deep-analysis",
+        "wakeMode": "now",
+        "deliver": False,
+        "thinking": thinking_level,
+        "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {Config.OPENOCTA_GATEWAY_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.post(
+            f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
+            json=payload,
+            headers=headers,
+            timeout=Config.OPENOCTA_TIMEOUT_SECONDS + 10
+        )
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"OpenOcta 分析完成: status={response.status_code}")
+        return result
+    except requests.exceptions.RequestException as e:
+        logger.error(f"OpenOcta 请求失败: {e}")
+        return {'_degraded': True, '_degraded_reason': f'OpenOcta 不可用: {str(e)}'}
