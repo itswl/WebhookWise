@@ -10,4 +10,3 @@ httpx==0.28.0
 json5==0.9.14
 python-json-logger==2.0.7
 PyYAML==6.0.1
-elasticsearch>=8.0.0

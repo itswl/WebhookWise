@@ -316,9 +316,64 @@ def add_last_notified_at_field():
         return False
 
 
+def add_forward_rules_table():
+    """
+    添加 forward_rules 转发规则表（静默模式）
+
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查表是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'forward_rules'
+                )
+            """))
+            table_exists = result.scalar()
+
+            if table_exists:
+                # 表已存在，无需操作
+                return True
+
+            # 表不存在，需要创建
+            print("⚙️  首次启动：正在创建 forward_rules 表...")
+
+            conn.execute(text("""
+                CREATE TABLE forward_rules (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    priority INTEGER DEFAULT 0,
+                    match_importance VARCHAR(50) DEFAULT '',
+                    match_duplicate VARCHAR(20) DEFAULT 'all',
+                    match_source VARCHAR(200) DEFAULT '',
+                    target_type VARCHAR(20) NOT NULL,
+                    target_url VARCHAR(500) DEFAULT '',
+                    target_name VARCHAR(100) DEFAULT '',
+                    stop_on_match BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("   ✅ forward_rules 表创建成功")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
     success3 = add_beyond_window_field()
     success4 = add_last_notified_at_field()
-    sys.exit(0 if (success1 and success2 and success3 and success4) else 1)
+    success5 = add_forward_rules_table()
+    sys.exit(0 if (success1 and success2 and success3 and success4 and success5) else 1)

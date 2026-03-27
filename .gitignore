@@ -26,7 +26,3 @@ postgres_data/
 *.tmp
 .DS_Store
 .qoder/
-
-# Skill secrets (私密配置)
-skills_secrets/
-!skills_secrets/.gitkeep
