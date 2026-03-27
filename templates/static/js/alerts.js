@@ -661,13 +661,24 @@ const AlertsModule = {
      * 深度分析告警
      */
     async deepAnalyzeAlert(id) {
+        // 让用户选择分析引擎
+        const engineChoice = confirm('使用 OpenOcta Agent 深度分析？\n\n点击「确定」使用 OpenOcta（更深度）\n点击「取消」使用本地 AI');
+        const engine = engineChoice ? 'openocta' : 'local';
+
         const question = prompt('请输入您想问的问题（可选）:', '');
-        if (question === null) return;
+        if (question === null) return;  // 用户取消
 
         try {
-            const result = await API.deepAnalyze(id, question);
-            if (result.success) {
-                alert('分析完成：\n' + JSON.stringify(result.data, null, 2));
+            const result = await API.deepAnalyze(id, question, engine);
+            if (result.success && result.data) {
+                const engineLabel = result.data.engine === 'openocta' ? '🐙 OpenOcta' : '🤖 本地 AI';
+                const analysis = result.data.analysis;
+                const duration = result.data.duration_seconds;
+
+                let displayText = '分析引擎: ' + engineLabel + '\n耗时: ' + duration + 's\n\n';
+                displayText += JSON.stringify(analysis, null, 2);
+
+                alert('分析完成：\n' + displayText);
             } else {
                 alert('分析失败: ' + (result.error || '未知错误'));
             }

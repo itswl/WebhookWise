@@ -30,14 +30,8 @@ function initDashboard() {
     if (typeof PredictionsModule !== 'undefined') {
         PredictionsModule.init();
     }
-    if (typeof RemediationModule !== 'undefined') {
-        RemediationModule.init();
-    }
-    if (typeof TopologyModule !== 'undefined') {
-        TopologyModule.init();
-    }
-    if (typeof SkillsModule !== 'undefined') {
-        SkillsModule.init();
+    if (typeof ForwardRulesModule !== 'undefined') {
+        ForwardRulesModule.init();
     }
 
     // 绑定全局事件
@@ -180,11 +174,9 @@ function switchMainTab(tabId) {
     // 显示/隐藏内容区域
     const tabContents = {
         'alerts': 'alertsTab',
-        'skills': 'skillsTab',
         'ai-cost': 'aiCostTab',
         'predictions': 'predictionsTab',
-        'remediation': 'remediationTab',
-        'topology': 'topologyTab'
+        'forward-rules': 'forwardRulesTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -196,11 +188,6 @@ function switchMainTab(tabId) {
 
     // 触发 Tab 特定的初始化
     switch (tabId) {
-        case 'skills':
-            if (typeof SkillsModule !== 'undefined') {
-                SkillsModule.loadSkills();
-            }
-            break;
         case 'ai-cost':
             if (typeof AICostModule !== 'undefined') {
                 AICostModule.loadStats('day');
@@ -211,15 +198,9 @@ function switchMainTab(tabId) {
                 PredictionsModule.loadPredictions();
             }
             break;
-        case 'remediation':
-            if (typeof RemediationModule !== 'undefined') {
-                RemediationModule.loadRunbooks();
-                RemediationModule.loadHistory();
-            }
-            break;
-        case 'topology':
-            if (typeof TopologyModule !== 'undefined') {
-                TopologyModule.loadTopology();
+        case 'forward-rules':
+            if (typeof loadForwardRules === 'function') {
+                loadForwardRules();
             }
             break;
     }
@@ -412,58 +393,4 @@ function goToPage(page) {
             AlertsModule.goToPage(page);
         }
     }
-}
-
-// Skill 模块
-function openSkillConfigModal(configId) {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.openConfigModal(configId);
-}
-
-function closeSkillConfigModal() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.closeConfigModal();
-}
-
-function saveSkillConfig() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.saveSkillConfig();
-}
-
-function onSkillTypeChange() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.onSkillTypeChange();
-}
-
-function loadSkillTemplate() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.loadSkillTemplate();
-}
-
-function formatSkillCode() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.formatSkillCode();
-}
-
-function validateSkillCode() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.validateSkillCode();
-}
-
-function testSkillCode() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.testSkillCode();
-}
-
-function closeSkillCodeEditor() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.closeCodeEditor();
-}
-
-function saveSkillCode() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.saveSkillCode();
-}
-
-// 外部 Skill 模块
-function reloadExternalSkills() {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.reloadExternalSkills();
-}
-
-function showSkillDetail(name) {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.showSkillDetail(name);
-}
-
-function showSkillSecrets(name) {
-    if (typeof SkillsModule !== 'undefined') SkillsModule.showSkillSecrets(name);
 }
