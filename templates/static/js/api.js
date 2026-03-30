@@ -168,6 +168,17 @@ const API = {
     // ========== 深度分析 API ==========
 
     /**
+     * 获取深度分析历史记录
+     * @param {number} webhookId - 告警 ID
+     * @returns {Promise<object>} 深度分析历史记录列表
+     */
+    async getDeepAnalyses(webhookId) {
+        const response = await fetch('/api/deep-analyses/' + webhookId);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * 执行深度分析
      * @param {number} id - 告警 ID
      * @param {string} question - 分析问题

@@ -131,6 +131,7 @@ class Config:
     OPENOCTA_ENABLED = os.getenv('OPENOCTA_ENABLED', 'false').lower() == 'true'
     OPENOCTA_GATEWAY_URL = os.getenv('OPENOCTA_GATEWAY_URL', 'http://127.0.0.1:18900')
     OPENOCTA_GATEWAY_TOKEN = os.getenv('OPENOCTA_GATEWAY_TOKEN', '')
+    OPENOCTA_HOOKS_TOKEN = os.getenv('OPENOCTA_HOOKS_TOKEN', '')
     OPENOCTA_TIMEOUT_SECONDS = int(os.getenv('OPENOCTA_TIMEOUT_SECONDS', '300'))
     DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openocta | auto
     
