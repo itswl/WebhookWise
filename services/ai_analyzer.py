@@ -1559,32 +1559,42 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
     source = webhook_data.get('source', 'unknown')
     importance = analysis_result.get('importance', 'medium') if analysis_result else 'medium'
     
-    message = f"""新告警需要深度分析：
-    
+    message = f"""收到新告警，请自主排查分析：
+
 来源: {source}
 重要性: {importance}
 
-告警数据:
+## 告警数据
 ```json
 {json.dumps(alert_data, ensure_ascii=False, indent=2)}
 ```
 
-AI 初步分析:
+## AI 初步分析
 {json.dumps(analysis_result, ensure_ascii=False, indent=2) if analysis_result else '无'}
 
-请进行根因分析并提供修复建议。"""
+## 指令
+你可以自主使用 MCP 工具和 Skills 进行排查：
+- 根据告警内容，自行决定需要查询哪些数据、执行哪些排查命令
+- 如果涉及 Kubernetes，可以使用 kubectl 相关能力查看 Pod/Node/Service 状态
+- 如果涉及监控指标，可以查询 Prometheus/Grafana 获取历史数据
+- 分析完成后，提供根因分析和可执行的修复建议"""
     
+    import uuid
+    session_key = f"hook:alert:{source}:{uuid.uuid4()}"
     payload = {
         "message": message,
         "name": f"alert-{source}",
+        "sessionKey": session_key,
         "wakeMode": "now",
         "deliver": False,
         "thinking": "high",
         "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
     }
     
+    # hooks 端点使用 hooks token 认证（Authorization: Bearer）
+    hooks_token = Config.OPENOCTA_HOOKS_TOKEN or Config.OPENOCTA_GATEWAY_TOKEN
     headers = {
-        "Authorization": f"Bearer {Config.OPENOCTA_GATEWAY_TOKEN}",
+        "Authorization": f"Bearer {hooks_token}",
         "Content-Type": "application/json"
     }
     
@@ -1625,29 +1635,41 @@ def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_
 {json.dumps(alert_data, ensure_ascii=False, indent=2)}
 ```
 
+## 可用能力
+你可以自主决策并使用以下能力来排查和分析问题：
+- **MCP 工具**: 你可以调用已连接的 MCP 服务（如 Kubernetes、Prometheus、日志系统等）获取实时数据
+- **Skills**: 你可以调用已配置的 Skills 执行自动化排查操作
+- **自主决策**: 根据告警内容，自行决定需要调用哪些工具、查询哪些数据、执行哪些排查步骤
+
 ## 分析要求
-1. **根因分析**: 深度挖掘问题根本原因
-2. **影响评估**: 评估对系统的影响范围
-3. **修复建议**: 提供可执行的解决方案
-4. **置信度**: 评估分析可信度 (0-1)
+1. **根因分析**: 结合实际环境数据，深度挖掘问题根本原因
+2. **影响评估**: 评估对系统的影响范围和紧急程度
+3. **排查过程**: 说明你执行了哪些排查步骤、调用了哪些工具、获取了哪些数据
+4. **修复建议**: 提供可执行的解决方案，优先给出可直接执行的命令或操作
+5. **置信度**: 评估分析可信度 (0-1)
 
 请返回 JSON 格式:
-"root_cause": "...", "impact": "...", "recommendations": [...], "confidence": 0.85"""
+"root_cause": "...", "impact": "...", "investigation_steps": [...], "recommendations": [...], "confidence": 0.85"""
     
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
     
+    import uuid
+    session_key = f"hook:deep-analysis:{source}:{uuid.uuid4()}"
     payload = {
         "message": message,
         "name": "deep-analysis",
+        "sessionKey": session_key,
         "wakeMode": "now",
         "deliver": False,
         "thinking": thinking_level,
         "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
     }
     
+    # hooks 端点使用 hooks token 认证（Authorization: Bearer）
+    hooks_token = Config.OPENOCTA_HOOKS_TOKEN or Config.OPENOCTA_GATEWAY_TOKEN
     headers = {
-        "Authorization": f"Bearer {Config.OPENOCTA_GATEWAY_TOKEN}",
+        "Authorization": f"Bearer {hooks_token}",
         "Content-Type": "application/json"
     }
     

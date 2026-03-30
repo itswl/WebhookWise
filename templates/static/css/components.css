@@ -671,6 +671,10 @@
     background: linear-gradient(90deg, #4facfe, #00f2fe);
 }
 
+.progress-reuse {
+    background: linear-gradient(90deg, #11998e, #38ef7d);
+}
+
 /* 绿色高亮卡片 */
 .stat-card.highlight-green {
     background: linear-gradient(135deg, #dcffe4 0%, #f0fff4 100%);
