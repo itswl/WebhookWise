@@ -18,10 +18,10 @@ from core.utils import (
     get_all_webhooks, generate_alert_hash, check_duplicate_alert,
     SaveWebhookResult
 )
-from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
+from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from adapters.ecosystem_adapters import normalize_webhook_event
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, AlertCorrelation, ForwardRule, session_scope, get_session, test_db_connection
+from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, AlertCorrelation, ForwardRule, DeepAnalysis, session_scope, get_session, test_db_connection
 
 app = Flask(__name__, template_folder='../templates', static_folder='../templates/static')
 app.config.from_object(Config)
@@ -368,10 +368,22 @@ def _resolve_duplicate_analysis(
 ) -> tuple[dict, bool]:
     if last_beyond_window_event and last_beyond_window_event.ai_analysis:
         logger.info(f"复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
+        # 记录分析复用
+        log_ai_usage(
+            route_type='reuse',
+            alert_hash=last_beyond_window_event.alert_hash or '',
+            source=last_beyond_window_event.source or ''
+        )
         return last_beyond_window_event.ai_analysis, False
 
     if original_event.ai_analysis:
         logger.info(f"复用原始告警 ID={original_event.id} 的分析结果")
+        # 记录分析复用
+        log_ai_usage(
+            route_type='reuse',
+            alert_hash=original_event.alert_hash or '',
+            source=original_event.source or ''
+        )
         return original_event.ai_analysis, False
 
     return _analyze_now(webhook_full_data, f"原始告警 ID={original_event.id} 缺少AI分析，重新分析")
@@ -386,10 +398,22 @@ def _resolve_beyond_window_analysis(
 ) -> tuple[dict, bool]:
     if prefer_recent_beyond_window and last_beyond_window_event:
         logger.info(f"窗口外历史告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
+        # 记录分析复用
+        log_ai_usage(
+            route_type='reuse',
+            alert_hash=last_beyond_window_event.alert_hash or '',
+            source=last_beyond_window_event.source or ''
+        )
         return last_beyond_window_event.ai_analysis or {}, False
 
     if original_event and not allow_reanalyze:
         logger.info(f"窗口外历史告警(ID={original_event.id})，复用历史分析结果")
+        # 记录分析复用
+        log_ai_usage(
+            route_type='reuse',
+            alert_hash=original_event.alert_hash or '',
+            source=original_event.source or ''
+        )
         return original_event.ai_analysis or {}, False
 
     if original_event:
@@ -454,6 +478,12 @@ def _resolve_analysis_without_lock(
         if seconds_since_created < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
             logger.info(
                 f"检测到其他 worker 刚处理完窗口外重复(ID={last_beyond_window_event.id}, {seconds_since_created:.1f}秒前)，复用结果"
+            )
+            # 记录分析复用（复用其他 worker 的处理结果）
+            log_ai_usage(
+                route_type='reuse',
+                alert_hash=last_beyond_window_event.alert_hash or '',
+                source=last_beyond_window_event.source or ''
             )
             analysis_result = last_beyond_window_event.ai_analysis or {}
             return AnalysisResolution(analysis_result, False, True, original_event, False)
@@ -1034,14 +1064,16 @@ def get_ai_usage() -> tuple[Response, int]:
             ai_calls = route_breakdown.get('ai', 0)
             rule_calls = route_breakdown.get('rule', 0)
             cache_calls = route_breakdown.get('cache', 0)
+            reuse_calls = route_breakdown.get('reuse', 0)
             
             cache_hit_rate = (cache_calls / total_calls * 100) if total_calls > 0 else 0
             rule_route_rate = (rule_calls / total_calls * 100) if total_calls > 0 else 0
             ai_route_rate = (ai_calls / total_calls * 100) if total_calls > 0 else 0
+            reuse_rate = (reuse_calls / total_calls * 100) if total_calls > 0 else 0
             
-            # 估算节省的成本（假设每次缓存/规则命中都节省一次 AI 调用）
+            # 估算节省的成本（假设每次缓存/规则/复用都节省一次 AI 调用）
             avg_ai_cost = (ai_stats.total_cost / ai_calls) if ai_calls > 0 and ai_stats.total_cost else 0.01
-            cost_saved = (cache_calls + rule_calls) * avg_ai_cost
+            cost_saved = (cache_calls + rule_calls + reuse_calls) * avg_ai_cost
             
             # 统计活跃（未过期）缓存
             active_caches = session.query(
@@ -1072,12 +1104,14 @@ def get_ai_usage() -> tuple[Response, int]:
                 'route_breakdown': {
                     'ai': ai_calls,
                     'rule': rule_calls,
-                    'cache': cache_calls
+                    'cache': cache_calls,
+                    'reuse': reuse_calls
                 },
                 'percentages': {
                     'ai': round(ai_route_rate, 1),
                     'rule': round(rule_route_rate, 1),
-                    'cache': round(cache_hit_rate, 1)
+                    'cache': round(cache_hit_rate, 1),
+                    'reuse': round(reuse_rate, 1)
                 },
                 'tokens': {
                     'input': ai_stats.total_tokens_in or 0,
@@ -1091,7 +1125,8 @@ def get_ai_usage() -> tuple[Response, int]:
                 'efficiency': {
                     'cache_hit_rate': round(cache_hit_rate, 1),
                     'rule_route_rate': round(rule_route_rate, 1),
-                    'ai_calls_avoided': cache_calls + rule_calls
+                    'reuse_rate': round(reuse_rate, 1),
+                    'ai_calls_avoided': cache_calls + rule_calls + reuse_calls
                 },
                 'cache_statistics': cache_statistics
             }
@@ -1980,23 +2015,62 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                                 'recommendations': [],
                                 'confidence': 0.7
                             }
+                    elif 'runId' in result and 'content' not in result:
+                        # OpenOcta 异步 API 只返回 runId，构建触发状态的标准化 report
+                        report = {
+                            'status': 'triggered',
+                            'runId': result.get('runId', ''),
+                            'root_cause': 'OpenOcta Agent 正在分析中，请在 OpenOcta 控制台查看结果',
+                            'impact': '分析已触发，结果将在 OpenOcta 平台上展示',
+                            'recommendations': ['前往 OpenOcta 控制台查看完整分析结果'],
+                            'confidence': 0
+                        }
+                        logger.info(f"OpenOcta 分析已触发，runId={result.get('runId')}")
                     else:
                         report = result
             else:
                 # 使用本地 AI 分析
                 report, duration = _local_ai_analysis(alert_data, user_question)
             
+            # 存储深度分析结果到数据库
+            record_id = None
+            try:
+                deep_record = DeepAnalysis(
+                    webhook_event_id=webhook_id,
+                    engine=engine,
+                    user_question=user_question or '',
+                    analysis_result=report,
+                    duration_seconds=duration
+                )
+                session.add(deep_record)
+                session.flush()
+                record_id = deep_record.id
+                logger.info(f"深度分析结果已保存: id={record_id}, webhook_id={webhook_id}")
+            except Exception as e:
+                logger.error(f"保存深度分析结果失败: {e}")
+            
             return _ok(
                 data={
                     'analysis': report,
                     'duration_seconds': round(duration, 2),
-                    'engine': engine
+                    'engine': engine,
+                    'record_id': record_id
                 }
             )
             
     except Exception as e:
         logger.error(f"深度分析失败: {e}", exc_info=True)
         return _fail(str(e), 500)
+
+
+@app.route('/api/deep-analyses/<int:webhook_id>', methods=['GET'])
+def get_deep_analyses(webhook_id: int) -> tuple[Response, int]:
+    """获取某告警的所有深度分析记录"""
+    with session_scope() as session:
+        records = session.query(DeepAnalysis).filter_by(
+            webhook_event_id=webhook_id
+        ).order_by(DeepAnalysis.created_at.desc()).all()
+        return _ok(data=[r.to_dict() for r in records])
 
 
 if __name__ == '__main__':

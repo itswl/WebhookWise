@@ -23,6 +23,8 @@ function initDashboard() {
     // 初始化各模块
     if (typeof AlertsModule !== 'undefined') {
         AlertsModule.init();
+        // 设置全局引用，供 onclick 回调使用
+        window.alertsModule = AlertsModule;
     }
     if (typeof AICostModule !== 'undefined') {
         AICostModule.init();

@@ -370,10 +370,62 @@ def add_forward_rules_table():
         return False
 
 
+def add_deep_analyses_table():
+    """
+    添加 deep_analyses 深度分析历史表（静默模式）
+
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查表是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'deep_analyses'
+                )
+            """))
+            table_exists = result.scalar()
+
+            if table_exists:
+                # 表已存在，无需操作
+                return True
+
+            # 表不存在，需要创建
+            print("⚙️  首次启动：正在创建 deep_analyses 表...")
+
+            conn.execute(text("""
+                CREATE TABLE deep_analyses (
+                    id SERIAL PRIMARY KEY,
+                    webhook_event_id INTEGER NOT NULL,
+                    engine VARCHAR(20) DEFAULT 'local',
+                    user_question TEXT DEFAULT '',
+                    analysis_result JSON,
+                    duration_seconds FLOAT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX idx_deep_analyses_webhook_event_id ON deep_analyses(webhook_event_id)
+            """))
+            conn.commit()
+            print("   ✅ deep_analyses 表创建成功")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
     success3 = add_beyond_window_field()
     success4 = add_last_notified_at_field()
     success5 = add_forward_rules_table()
-    sys.exit(0 if (success1 and success2 and success3 and success4 and success5) else 1)
+    success6 = add_deep_analyses_table()
+    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6) else 1)

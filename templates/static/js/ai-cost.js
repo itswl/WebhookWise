@@ -107,10 +107,12 @@ const AICostModule = {
         const percentAi = this.safeGet(data, 'percentages.ai', 0);
         const percentRule = this.safeGet(data, 'percentages.rule', 0);
         const percentCache = this.safeGet(data, 'percentages.cache', 0);
+        const percentReuse = this.safeGet(data, 'percentages.reuse', 0);
 
         const routeAi = this.safeGet(data, 'route_breakdown.ai', 0);
         const routeRule = this.safeGet(data, 'route_breakdown.rule', 0);
         const routeCache = this.safeGet(data, 'route_breakdown.cache', 0);
+        const routeReuse = this.safeGet(data, 'route_breakdown.reuse', 0);
 
         const cacheStats = data.cache_statistics || {};
         const cacheEntries = this.safeGet(cacheStats, 'total_cache_entries', 0);
@@ -192,6 +194,15 @@ const AICostModule = {
         html += '<span class="route-value">' + formatNumber(routeCache) + ' 次 (' + this.formatPercent(percentCache) + ')</span>';
         html += '</div>';
         html += '<div class="progress-bar"><div class="progress-fill progress-cache" style="width: ' + percentCache + '%"></div></div>';
+        html += '</div>';
+
+        // 分析复用
+        html += '<div class="route-item">';
+        html += '<div class="route-header">';
+        html += '<span class="route-label">🔄 分析复用</span>';
+        html += '<span class="route-value">' + formatNumber(routeReuse) + ' 次 (' + this.formatPercent(percentReuse) + ')</span>';
+        html += '</div>';
+        html += '<div class="progress-bar"><div class="progress-fill progress-reuse" style="width: ' + percentReuse + '%"></div></div>';
         html += '</div>';
 
         html += '</div>';

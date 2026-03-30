@@ -398,5 +398,29 @@ class ForwardRule(Base):
         }
 
 
+class DeepAnalysis(Base):
+    """深度分析历史记录"""
+    __tablename__ = 'deep_analyses'
+    
+    id = Column(Integer, primary_key=True)
+    webhook_event_id = Column(Integer, nullable=False, index=True)  # 关联告警 ID
+    engine = Column(String(20), default='local')    # local / openocta
+    user_question = Column(Text, default='')         # 用户输入的问题
+    analysis_result = Column(JSON)                   # 完整分析结果 JSON
+    duration_seconds = Column(Float, default=0)      # 分析耗时（秒）
+    created_at = Column(DateTime, default=datetime.now)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'webhook_event_id': self.webhook_event_id,
+            'engine': self.engine,
+            'user_question': self.user_question,
+            'analysis_result': self.analysis_result,
+            'duration_seconds': self.duration_seconds,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 if __name__ == '__main__':
     init_db()
