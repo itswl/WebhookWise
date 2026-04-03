@@ -96,48 +96,6 @@ const API = {
         return await response.json();
     },
 
-    // ========== 预测相关 API ==========
-
-    /**
-     * 获取预测列表
-     * @returns {Promise<object>} 预测数据列表
-     */
-    async getPredictions() {
-        const response = await fetch('/api/predictions');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    /**
-     * 运行预测分析
-     * @returns {Promise<object>} 预测结果
-     */
-    async runPrediction() {
-        const response = await fetch('/api/predictions/run', { method: 'POST' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    /**
-     * 获取模式分析结果
-     * @returns {Promise<object>} 模式分析数据
-     */
-    async getPatterns() {
-        const response = await fetch('/api/patterns');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    /**
-     * 分析告警模式
-     * @returns {Promise<object>} 分析结果
-     */
-    async analyzePatterns() {
-        const response = await fetch('/api/patterns/analyze', { method: 'POST' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
     // ========== 配置相关 API ==========
 
     /**
@@ -168,6 +126,18 @@ const API = {
     // ========== 深度分析 API ==========
 
     /**
+     * 获取所有深度分析记录（分页+筛选）
+     */
+    async getAllDeepAnalyses(page = 1, perPage = 20, status = '', engine = '') {
+        const params = new URLSearchParams({ page: page, per_page: perPage });
+        if (status) params.set('status', status);
+        if (engine) params.set('engine', engine);
+        const response = await fetch('/api/deep-analyses?' + params.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * 获取深度分析历史记录
      * @param {number} webhookId - 告警 ID
      * @returns {Promise<object>} 深度分析历史记录列表
@@ -195,6 +165,21 @@ const API = {
             })
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * 转发深度分析结果
+     * @param {number} analysisId - 深度分析记录 ID
+     * @param {string} targetUrl - 转发目标 URL
+     * @returns {Promise<object>} 转发结果
+     */
+    async forwardDeepAnalysis(analysisId, targetUrl) {
+        const response = await fetch('/api/deep-analyses/' + analysisId + '/forward', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_url: targetUrl })
+        });
         return await response.json();
     },
 

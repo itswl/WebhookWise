@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Optional
+
+import requests
+
+logger = logging.getLogger('webhook_service.ecosystem_adapters')
 
 WebhookData = dict[str, Any]
 HeadersLike = Mapping[str, Any]
@@ -349,3 +354,134 @@ def normalize_webhook_event(
         final_source = adapter_name
 
     return NormalizedWebhook(final_source, normalized, adapter_name)
+
+
+# ========== 飞书深度分析通知 ==========
+
+def _truncate_text(text: str, max_len: int) -> str:
+    """截断文本，超长时添加省略号"""
+    if not text:
+        return ''
+    text = str(text)
+    if len(text) <= max_len:
+        return text
+    return text[:max_len - 3] + '...'
+
+
+def _format_recommendations(recs: Any, max_items: int = 5, max_item_len: int = 200) -> str:
+    """格式化修复建议列表，兼容字符串数组和对象数组"""
+    if not recs:
+        return '无'
+    
+    if not isinstance(recs, (list, tuple)):
+        return _truncate_text(str(recs), max_item_len)
+    
+    lines = []
+    for i, rec in enumerate(recs[:max_items], 1):
+        if isinstance(rec, dict):
+            priority = rec.get('priority', '')
+            action = rec.get('action', str(rec))
+            action = _truncate_text(action, max_item_len)
+            if priority:
+                lines.append(f"{i}. **{priority}**: {action}")
+            else:
+                lines.append(f"{i}. {action}")
+        else:
+            lines.append(f"{i}. {_truncate_text(str(rec), max_item_len)}")
+    
+    if len(recs) > max_items:
+        lines.append(f"... 还有 {len(recs) - max_items} 条建议")
+    
+    return '\n'.join(lines) if lines else '无'
+
+
+def send_feishu_deep_analysis(
+    webhook_url: str,
+    analysis_record: dict,
+    source: str = '',
+    webhook_event_id: int = 0
+) -> bool:
+    """
+    发送深度分析结果到飞书
+    
+    Args:
+        webhook_url: 飞书 webhook URL
+        analysis_record: 深度分析记录，包含 analysis_result, engine, duration_seconds 等
+        source: 告警来源
+        webhook_event_id: 关联的 webhook 事件 ID
+    
+    Returns:
+        bool: 是否发送成功
+    """
+    if not webhook_url:
+        return False
+    
+    result = analysis_record.get('analysis_result', {})
+    if not isinstance(result, dict):
+        result = {}
+    
+    engine = analysis_record.get('engine', 'unknown')
+    duration = analysis_record.get('duration_seconds', 0)
+    confidence = result.get('confidence', 0)
+    if isinstance(confidence, (int, float)):
+        confidence = round(confidence * 100)
+    
+    # 提取分析结果字段（排除内部字段）
+    root_cause = _truncate_text(result.get('root_cause', '无'), 500)
+    impact = _truncate_text(result.get('impact', '无'), 500)
+    recommendations = _format_recommendations(result.get('recommendations', []))
+    
+    # 构建标题
+    title = '🔬 深度分析完成'
+    if source:
+        title = f'🔬 [{source}] 深度分析完成'
+    
+    # 构建飞书消息卡片
+    card = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": title},
+                "template": "blue"
+            },
+            "elements": [
+                # 根因分析
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": f"**🔍 根因分析：**\n{root_cause}"}
+                },
+                {"tag": "hr"},
+                # 影响范围
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": f"**💥 影响范围：**\n{impact}"}
+                },
+                {"tag": "hr"},
+                # 修复建议
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": f"**✅ 修复建议：**\n{recommendations}"}
+                },
+                {"tag": "hr"},
+                # 元信息
+                {
+                    "tag": "note",
+                    "elements": [
+                        {"tag": "plain_text", "content": f"引擎: {engine} | 置信度: {confidence}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}"}
+                    ]
+                }
+            ]
+        }
+    }
+    
+    try:
+        resp = requests.post(webhook_url, json=card, timeout=10)
+        if resp.status_code == 200:
+            logger.info(f"飞书深度分析通知发送成功: webhook_event_id={webhook_event_id}")
+            return True
+        else:
+            logger.warning(f"飞书深度分析通知发送失败: status={resp.status_code}, response={resp.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"飞书深度分析通知异常: {e}")
+        return False

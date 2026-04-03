@@ -3,8 +3,7 @@
 Webhook AI分析服务主入口
 """
 import sys
-import threading
-import time
+import os
 from pathlib import Path
 
 # 添加项目根目录到Python路径
@@ -12,35 +11,27 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.app import app
 from core.config import Config
-from core.models import test_db_connection, get_session
+from core.models import test_db_connection
 from core.logger import logger
 
+# 启动 OpenOcta 轮询后台任务（仅启动一个实例）
+def _start_poller_once():
+    """使用文件锁确保只有一个 worker 启动轮询"""
+    import fcntl
+    lock_path = Path('/tmp/openocta_poller.lock')
+    try:
+        lock_file = open(lock_path, 'w')
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # 获得锁，启动轮询
+        from services.openocta_poller import start_poller
+        start_poller(interval=30)
+        logger.info("当前 worker 启动了 OpenOcta 轮询任务")
+        # 注意：不要关闭 lock_file，保持锁
+    except (IOError, OSError):
+        # 其他 worker 已经持有锁，跳过
+        logger.debug("其他 worker 已启动轮询任务，跳过")
 
-def start_prediction_scheduler():
-    """启动预测引擎的后台调度器"""
-    def _scheduler_loop():
-        from services.predictor import alert_predictor
-        
-        interval = Config.PREDICTION_INTERVAL
-        # 启动后等待一段时间，让应用完全启动
-        time.sleep(30)
-        logger.info(f"Prediction scheduler started (interval: {interval}s)")
-        
-        while True:
-            try:
-                session = get_session()
-                try:
-                    alert_predictor.run_prediction_cycle(session)
-                finally:
-                    session.close()
-            except Exception as e:
-                logger.error(f"Prediction scheduler error: {e}")
-            
-            time.sleep(interval)
-    
-    thread = threading.Thread(target=_scheduler_loop, daemon=True)
-    thread.start()
-    logger.info("Prediction scheduler thread initialized")
+_start_poller_once()
 
 
 if __name__ == '__main__':
@@ -49,9 +40,6 @@ if __name__ == '__main__':
     if not test_db_connection():
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
-    
-    # 启动后台预测调度器
-    start_prediction_scheduler()
     
     logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
     app.run(

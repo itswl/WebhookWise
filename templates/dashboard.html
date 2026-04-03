@@ -8,6 +8,9 @@
     <!-- 外部样式表 -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/components.css">
+    
+    <!-- Markdown 渲染库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -24,8 +27,8 @@
                 <button class="nav-tab" data-tab="ai-cost">
                     <span>💰</span> AI 成本
                 </button>
-                <button class="nav-tab" data-tab="predictions">
-                    <span>🔮</span> 预测分析
+                <button class="nav-tab" data-tab="deep-analyses">
+                    <span>🔬</span> 深度分析
                 </button>
                 <button class="nav-tab" data-tab="forward-rules">
                     <span>⚙️</span> 转发规则
@@ -164,30 +167,30 @@
             </div>
         </div>
 
-        <!-- 预测分析 Tab -->
-        <div id="predictionsTab" class="tab-content" style="display: none;">
-            <div class="predictions-section">
-                <div class="section-title">预测分析</div>
-                <div class="predictions-actions" style="margin-bottom: 20px;">
-                    <button class="btn btn-primary" id="runPredictionBtn">
-                        <span>▶️</span> 运行预测
-                    </button>
-                    <button class="btn" id="analyzePatternsBtn">
-                        <span>📊</span> 分析模式
-                    </button>
-                </div>
-                <div class="predictions-container">
-                    <div class="predictions-header"><h3>告警预测</h3></div>
-                    <div id="predictionsList">
-                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
+        <!-- 深度分析 Tab -->
+        <div id="deepAnalysesTab" class="tab-content" style="display: none;">
+            <div class="deep-analyses-section">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div class="section-title">深度分析记录</div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="daStatusFilter" class="form-input" style="width: auto; padding: 6px 12px;">
+                            <option value="">全部状态</option>
+                            <option value="pending">分析中</option>
+                            <option value="completed">已完成</option>
+                            <option value="failed">失败</option>
+                        </select>
+                        <select id="daEngineFilter" class="form-input" style="width: auto; padding: 6px 12px;">
+                            <option value="">全部引擎</option>
+                            <option value="openocta">OpenOcta</option>
+                            <option value="local">本地 AI</option>
+                        </select>
+                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 刷新</button>
                     </div>
                 </div>
-                <div class="patterns-container" style="margin-top: 30px;">
-                    <div class="patterns-header"><h3>告警模式</h3></div>
-                    <div id="patternsList">
-                        <div class="loading"><div class="spinner"></div><p>加载中...</p></div>
-                    </div>
+                <div id="deepAnalysesList">
+                    <div style="text-align: center; padding: 40px; color: #888;">点击「深度分析」标签加载数据...</div>
                 </div>
+                <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -376,8 +379,8 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/alerts.js"></script>
     <script src="/static/js/ai-cost.js"></script>
-    <script src="/static/js/predictions.js"></script>
     <script src="/static/js/forward-rules.js"></script>
+    <script src="/static/js/deep-analyses.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

@@ -713,8 +713,18 @@ const AlertsModule = {
                     html += '</div>';
                 }
                             
-                // \u68c0\u67e5\u662f\u5426\u4e3a triggered \u72b6\u6001\uff08OpenOcta \u5f02\u6b65\u89e6\u53d1\uff09
-                if (analysis.status === 'triggered') {
+                // 检查是否为 pending 状态（OpenOcta 异步等待结果）
+                if (record.status === 'pending') {
+                    // 分析中状态卡片
+                    html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
+                    html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenOcta 正在分析中...</div>';
+                    if (record.openocta_run_id) {
+                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + record.openocta_run_id + '</div>';
+                    }
+                    html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
+                    html += '</div>';
+                } else if (analysis.status === 'triggered') {
                     // \u7279\u6b8a\u5361\u7247\u6837\u5f0f\uff1a\u5df2\u89e6\u53d1 OpenOcta \u5206\u6790
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">\ud83d\ude80</div>';
@@ -726,27 +736,48 @@ const AlertsModule = {
                     html += '</div>';
                 } else {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
-                    if (analysis.root_cause) {
-                        html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d \u6839\u56e0\u5206\u6790\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.root_cause + '</p></div>';
-                    }
-                    if (analysis.impact) {
-                        html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 \u5f71\u54cd\u8303\u56f4\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.impact + '</p></div>';
-                    }
-                    if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-                        html += '<div style="margin-bottom:8px;"><strong>\u2705 \u4fee\u590d\u5efa\u8bae\uff1a</strong><ul style="margin:4px 0; padding-left:20px;">';
-                        analysis.recommendations.forEach(function(rec) {
-                            html += '<li>' + rec + '</li>';
-                        });
-                        html += '</ul></div>';
-                    }
-                    if (analysis.confidence !== undefined) {
-                        const pct = (analysis.confidence * 100).toFixed(0);
-                        html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
-                    }
+                    // 如果有完整的 OpenOcta 文本，优先渲染 markdown
+                    if (analysis._openocta_text) {
+                        if (typeof marked !== 'undefined') {
+                            html += '<div class="openocta-analysis-content">' + marked.parse(analysis._openocta_text) + '</div>';
+                        } else {
+                            // fallback: 用 pre 显示
+                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + analysis._openocta_text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+                        }
+                        // 如果有置信度，单独显示
+                        if (analysis.confidence !== undefined) {
+                            const pct = (analysis.confidence * 100).toFixed(0);
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
+                        }
+                    } else {
+                        // 原有的 JSON 字段渲染逻辑
+                        if (analysis.root_cause) {
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d \u6839\u56e0\u5206\u6790\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.root_cause + '</p></div>';
+                        }
+                        if (analysis.impact) {
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 \u5f71\u54cd\u8303\u56f4\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.impact + '</p></div>';
+                        }
+                        if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
+                            html += '<div style="margin-bottom:8px;"><strong>\u2705 \u4fee\u590d\u5efa\u8bae\uff1a</strong><ul style="margin:4px 0; padding-left:20px;">';
+                            analysis.recommendations.forEach(function(rec) {
+                                if (typeof rec === 'object' && rec !== null) {
+                                    var label = (rec.priority ? '<strong>' + rec.priority + '</strong>: ' : '') + (rec.action || JSON.stringify(rec));
+                                    html += '<li>' + label + '</li>';
+                                } else {
+                                    html += '<li>' + rec + '</li>';
+                                }
+                            });
+                            html += '</ul></div>';
+                        }
+                        if (analysis.confidence !== undefined) {
+                            const pct = (analysis.confidence * 100).toFixed(0);
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
+                        }
                                 
-                    // \u5982\u679c\u6ca1\u6709\u7ed3\u6784\u5316\u5b57\u6bb5\uff0cfallback \u663e\u793a\u539f\u59cb JSON
-                    if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
-                        html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + JSON.stringify(analysis, null, 2) + '</pre>';
+                        // \u5982\u679c\u6ca1\u6709\u7ed3\u6784\u5316\u5b57\u6bb5\uff0cfallback \u663e\u793a\u539f\u59cb JSON
+                        if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
+                            html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + JSON.stringify(analysis, null, 2) + '</pre>';
+                        }
                     }
                 }
                             
