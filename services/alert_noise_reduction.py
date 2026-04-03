@@ -308,60 +308,17 @@ def get_historical_weight(
     """
     获取历史频率权重
     
-    查询 AlertCorrelation 表，如果两个告警经常一起出现则权重更高
+    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 0.0
     
     Args:
         alert_hash_a: 告警 A 的哈希
         alert_hash_b: 告警 B 的哈希
-        session: 数据库会话（可选）
+        session: 数据库会话（已忽略）
         
     Returns:
-        float: 历史权重 (0.0 - 0.25)
+        float: 始终返回 0.0
     """
-    if not alert_hash_a or not alert_hash_b:
-        return 0.0
-    
-    try:
-        if not session:
-            from core.models import get_session
-            session = get_session()
-            should_close = True
-        else:
-            should_close = False
-        
-        try:
-            from core.models import AlertCorrelation
-            
-            # 查询两个哈希的关联记录（顺序无关）
-            correlation = session.query(AlertCorrelation).filter(
-                ((AlertCorrelation.alert_hash_a == alert_hash_a) & 
-                 (AlertCorrelation.alert_hash_b == alert_hash_b)) |
-                ((AlertCorrelation.alert_hash_a == alert_hash_b) & 
-                 (AlertCorrelation.alert_hash_b == alert_hash_a))
-            ).first()
-            
-            if not correlation:
-                return 0.0
-            
-            # 基于共现次数和置信度计算权重
-            # 共现 10 次以上达到最大权重 0.25
-            co_occurrence_factor = min(1.0, correlation.co_occurrence_count / 10)
-            confidence_factor = correlation.confidence or 0.0
-            
-            weight = 0.25 * (0.6 * co_occurrence_factor + 0.4 * confidence_factor)
-            
-            logger.debug(f"历史权重: {alert_hash_a[:8]}... <-> {alert_hash_b[:8]}..., "
-                        f"共现={correlation.co_occurrence_count}, 权重={weight:.4f}")
-            
-            return round(weight, 4)
-            
-        finally:
-            if should_close:
-                session.close()
-                
-    except Exception as e:
-        logger.warning(f"获取历史权重失败: {e}")
-        return 0.0
+    return 0.0
 
 
 def update_alert_correlation(
@@ -374,76 +331,19 @@ def update_alert_correlation(
     """
     更新告警关联记录
     
+    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 False
+    
     Args:
         alert_hash_a: 告警 A 的哈希
         alert_hash_b: 告警 B 的哈希
-        time_delta: 时间差（秒），A 在 B 之前为正
+        time_delta: 时间差（秒）
         confidence: 关联置信度
-        session: 数据库会话
+        session: 数据库会话（已忽略）
         
     Returns:
-        bool: 是否更新成功
+        bool: 始终返回 False
     """
-    if not alert_hash_a or not alert_hash_b:
-        return False
-    
-    try:
-        if not session:
-            from core.models import get_session
-            session = get_session()
-            should_close = True
-        else:
-            should_close = False
-        
-        try:
-            from core.models import AlertCorrelation
-            from sqlalchemy import func
-            
-            # 确保 hash_a < hash_b 以保持一致性
-            if alert_hash_a > alert_hash_b:
-                alert_hash_a, alert_hash_b = alert_hash_b, alert_hash_a
-                time_delta = -time_delta
-            
-            # 查询现有记录
-            correlation = session.query(AlertCorrelation).filter(
-                AlertCorrelation.alert_hash_a == alert_hash_a,
-                AlertCorrelation.alert_hash_b == alert_hash_b
-            ).first()
-            
-            if correlation:
-                # 更新现有记录
-                # 使用增量平均计算 avg_time_delta
-                old_count = correlation.co_occurrence_count
-                new_count = old_count + 1
-                correlation.avg_time_delta = (
-                    (correlation.avg_time_delta * old_count + time_delta) / new_count
-                )
-                correlation.co_occurrence_count = new_count
-                # 更新置信度（取较大值）
-                correlation.confidence = max(correlation.confidence, confidence)
-                correlation.last_seen = func.now()
-            else:
-                # 创建新记录
-                correlation = AlertCorrelation(
-                    alert_hash_a=alert_hash_a,
-                    alert_hash_b=alert_hash_b,
-                    co_occurrence_count=1,
-                    avg_time_delta=time_delta,
-                    confidence=confidence
-                )
-                session.add(correlation)
-            
-            session.commit()
-            logger.debug(f"更新告警关联: {alert_hash_a[:8]}... <-> {alert_hash_b[:8]}...")
-            return True
-            
-        finally:
-            if should_close:
-                session.close()
-                
-    except Exception as e:
-        logger.warning(f"更新告警关联失败: {e}")
-        return False
+    return False
 
 
 def calculate_dynamic_threshold(
@@ -454,63 +354,16 @@ def calculate_dynamic_threshold(
     """
     动态计算根因判定阈值
     
-    基于近期告警的平均相似度调整阈值
+    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 base_threshold
     
     Args:
-        session: 数据库会话
-        lookback_hours: 回溯时间（小时）
+        session: 数据库会话（已忽略）
+        lookback_hours: 回溯时间（已忽略）
         base_threshold: 基础阈值
         
     Returns:
-        float: 动态阈值 (0.5 - 0.8)
+        float: 直接返回 base_threshold
     """
-    try:
-        if not session:
-            from core.models import get_session
-            session = get_session()
-            should_close = True
-        else:
-            should_close = False
-        
-        try:
-            from core.models import AlertCorrelation
-            from sqlalchemy import func
-            
-            # 查询近期的关联记录
-            time_threshold = datetime.now() - timedelta(hours=lookback_hours)
-            
-            stats = session.query(
-                func.avg(AlertCorrelation.confidence).label('avg_confidence'),
-                func.count(AlertCorrelation.id).label('count')
-            ).filter(
-                AlertCorrelation.last_seen >= time_threshold
-            ).first()
-            
-            if not stats or not stats.count or stats.count < 5:
-                logger.debug(f"动态阈值: 数据不足，使用基础阈值 {base_threshold}")
-                return base_threshold
-            
-            avg_confidence = stats.avg_confidence or base_threshold
-            
-            # 根据平均置信度调整阈值
-            # 如果平均置信度高，提高阈值以减少误判
-            # 如果平均置信度低，降低阈值以提高敏感度
-            dynamic_threshold = base_threshold + 0.1 * (avg_confidence - 0.5)
-            
-            # 限制范围
-            dynamic_threshold = max(0.5, min(0.8, dynamic_threshold))
-            
-            logger.debug(f"动态阈值: avg_confidence={avg_confidence:.2f}, "
-                        f"threshold={dynamic_threshold:.2f}")
-            
-            return round(dynamic_threshold, 4)
-            
-        finally:
-            if should_close:
-                session.close()
-                
-    except Exception as e:
-        logger.warning(f"计算动态阈值失败: {e}")
-        return base_threshold
+    return base_threshold
 
 

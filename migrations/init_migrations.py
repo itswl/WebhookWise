@@ -421,6 +421,46 @@ def add_deep_analyses_table():
         return False
 
 
+def add_polling_fields():
+    """
+    为 deep_analyses 表添加轮询相关字段（静默模式）
+    
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_engine()
+    
+    try:
+        with engine.connect() as conn:
+            # 检查 openocta_run_id 字段是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'deep_analyses' AND column_name = 'openocta_run_id'
+                )
+            """))
+            field_exists = result.scalar()
+            
+            if field_exists:
+                return True
+            
+            print("⚙️  正在为 deep_analyses 表添加轮询字段...")
+            
+            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_run_id VARCHAR(64)"))
+            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_session_key VARCHAR(200)"))
+            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openocta_run_id ON deep_analyses(openocta_run_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)"))
+            conn.commit()
+            
+            print("   ✅ deep_analyses 轮询字段添加成功")
+            return True
+    
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
@@ -428,4 +468,5 @@ if __name__ == '__main__':
     success4 = add_last_notified_at_field()
     success5 = add_forward_rules_table()
     success6 = add_deep_analyses_table()
-    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6) else 1)
+    success7 = add_polling_fields()
+    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6 and success7) else 1)

@@ -244,31 +244,6 @@ def test_db_connection() -> bool:
 
 
 
-class AlertCorrelation(Base):
-    """
-    告警关联模型
-    
-    记录告警之间的关联关系和共现统计，用于优化根因分析。
-    """
-    __tablename__ = 'alert_correlation'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    alert_hash_a = Column(String(64), nullable=False, index=True)
-    alert_hash_b = Column(String(64), nullable=False, index=True)
-    co_occurrence_count = Column(Integer, default=1)  # 共同出现次数
-    avg_time_delta = Column(Float, default=0.0)  # 平均时间差（秒），A 在 B 之前为正
-    confidence = Column(Float, default=0.0)  # 关联置信度 0-1
-    last_seen = Column(DateTime, default=func.now())
-    created_at = Column(DateTime, default=func.now())
-    
-    __table_args__ = (
-        # 唯一约束：同一对告警哈希不重复
-        Index('idx_alert_correlation_unique', 'alert_hash_a', 'alert_hash_b', unique=True),
-        Index('idx_alert_correlation_lookup', 'alert_hash_a', 'alert_hash_b'),
-        {'extend_existing': True}
-    )
-
-
 class RemediationExecution(Base):
     """
     Runbook 执行记录
@@ -310,49 +285,6 @@ class RemediationExecution(Base):
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'error_message': self.error_message
         }
-
-
-class Prediction(Base):
-    """
-    预测结果模型
-    
-    存储预测引擎生成的异常检测、趋势预测、风暴预警结果。
-    """
-    __tablename__ = 'prediction'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    prediction_type = Column(String(50), nullable=False, index=True)  # anomaly/trend/storm
-    target = Column(String(200))  # 预测目标（如 source 名称）
-    predicted_value = Column(Float)
-    confidence = Column(Float, default=0.0)
-    details = Column(Text, default='{}')  # JSON 格式详细信息
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    
-    # 索引：优化按类型和时间查询
-    __table_args__ = (
-        Index('idx_prediction_type_created', 'prediction_type', 'created_at'),
-    )
-    
-    def to_dict(self):
-        """转换为字典"""
-        import json
-        return {
-            'id': self.id,
-            'prediction_type': self.prediction_type,
-            'target': self.target,
-            'predicted_value': self.predicted_value,
-            'confidence': self.confidence,
-            'details': json.loads(self.details) if self.details else {},
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-    
-    def is_expired(self) -> bool:
-        """检查预测是否已过期"""
-        if not self.expires_at:
-            return False
-        return datetime.now() > self.expires_at
 
 
 class ForwardRule(Base):
@@ -409,6 +341,9 @@ class DeepAnalysis(Base):
     analysis_result = Column(JSON)                   # 完整分析结果 JSON
     duration_seconds = Column(Float, default=0)      # 分析耗时（秒）
     created_at = Column(DateTime, default=datetime.now)
+    openocta_run_id = Column(String(64), index=True)      # OpenOcta runId
+    openocta_session_key = Column(String(200))             # OpenOcta sessionKey（用于轮询）
+    status = Column(String(20), default='completed', index=True)  # pending / completed / failed
     
     def to_dict(self):
         return {
@@ -418,7 +353,10 @@ class DeepAnalysis(Base):
             'user_question': self.user_question,
             'analysis_result': self.analysis_result,
             'duration_seconds': self.duration_seconds,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'openocta_run_id': self.openocta_run_id,
+            'openocta_session_key': self.openocta_session_key,
+            'status': self.status or 'completed',
         }
 
 

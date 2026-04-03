@@ -25,189 +25,6 @@ ForwardResult = dict[str, Any]
 _user_prompt_template: Optional[str] = None
 
 
-class SmartRouter:
-    """
-    智能路由：已知类型告警用规则引擎，未知/复杂告警用 AI
-    
-    通过预定义的告警模式库，对常见告警类型使用规则匹配，
-    减少不必要的 AI 调用，降低成本。
-    """
-    
-    # 已知告警模式库（可通过配置扩展）
-    KNOWN_PATTERNS = {
-        'cpu_high': {
-            'match': lambda data: any(k in str(data).lower() for k in ['cpu', 'processor', 'load average']),
-            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
-            'event_type': 'resource_alert',
-            'description': 'CPU 使用率告警'
-        },
-        'memory_high': {
-            'match': lambda data: any(k in str(data).lower() for k in ['memory', 'mem', 'oom', 'out of memory']),
-            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
-            'event_type': 'resource_alert',
-            'description': '内存使用率告警'
-        },
-        'disk_full': {
-            'match': lambda data: any(k in str(data).lower() for k in ['disk', 'storage', 'filesystem', 'mount']),
-            'severity_keywords': {'critical': 'high', 'warning': 'medium', 'info': 'low'},
-            'event_type': 'resource_alert',
-            'description': '磁盘空间告警'
-        },
-        'pod_crash': {
-            'match': lambda data: any(k in str(data).lower() for k in ['crashloopbackoff', 'oomkilled', 'pod restart', 'container crash']),
-            'severity_keywords': {},
-            'event_type': 'container_alert',
-            'description': 'Pod 异常告警'
-        },
-        'network_error': {
-            'match': lambda data: any(k in str(data).lower() for k in ['connection refused', 'timeout', 'network unreachable', 'dns']),
-            'severity_keywords': {},
-            'event_type': 'network_alert',
-            'description': '网络异常告警'
-        },
-        'database_issue': {
-            'match': lambda data: any(k in str(data).lower() for k in ['database', 'mysql', 'postgresql', 'mongodb', 'redis', 'connection pool']),
-            'severity_keywords': {'critical': 'high', 'error': 'high', 'warning': 'medium'},
-            'event_type': 'database_alert',
-            'description': '数据库告警'
-        },
-        'http_error': {
-            'match': lambda data: any(k in str(data).lower() for k in ['4xx', '5xx', '500', '502', '503', '504', 'http error']),
-            'severity_keywords': {},
-            'event_type': 'http_alert',
-            'description': 'HTTP 错误告警'
-        }
-    }
-    
-    @classmethod
-    def route(cls, parsed_data: dict) -> tuple[bool, Optional[dict]]:
-        """
-        根据告警数据决定使用 AI 还是规则引擎
-        
-        Args:
-            parsed_data: 解析后的告警数据
-            
-        Returns:
-            tuple: (use_ai: bool, rule_result: dict or None)
-                - use_ai=True, rule_result=None: 需要使用 AI 分析
-                - use_ai=False, rule_result=dict: 使用规则引擎结果
-        """
-        if not Config.SMART_ROUTING_ENABLED:
-            return True, None
-        
-        # 遍历已知模式
-        for pattern_key, pattern in cls.KNOWN_PATTERNS.items():
-            try:
-                if pattern['match'](parsed_data):
-                    logger.info(f"智能路由命中模式: {pattern_key} - {pattern['description']}")
-                    result = cls.rule_based_analysis(parsed_data, pattern_key, pattern)
-                    return False, result
-            except Exception as e:
-                logger.warning(f"模式匹配错误 ({pattern_key}): {e}")
-                continue
-        
-        # 未匹配任何已知模式，使用 AI
-        logger.debug("智能路由: 未匹配已知模式，使用 AI 分析")
-        return True, None
-    
-    @classmethod
-    def rule_based_analysis(cls, parsed_data: dict, pattern_key: str, pattern: dict) -> dict:
-        """
-        基于规则生成分析结果，格式与 AI 分析结果一致
-        
-        Args:
-            parsed_data: 解析后的告警数据
-            pattern_key: 匹配的模式 key
-            pattern: 模式配置
-            
-        Returns:
-            dict: 分析结果，格式与 AI 分析一致
-        """
-        data_str = str(parsed_data).lower()
-        
-        # 确定重要性
-        importance = 'medium'  # 默认中等
-        severity_keywords = pattern.get('severity_keywords', {})
-        for keyword, level in severity_keywords.items():
-            if keyword in data_str:
-                importance = level
-                break
-        
-        # 特殊规则：检查阈值超标情况
-        current_value = parsed_data.get('CurrentValue') or parsed_data.get('current_value')
-        threshold = parsed_data.get('Threshold') or parsed_data.get('threshold')
-        if current_value is not None and threshold is not None:
-            try:
-                current_num = float(current_value)
-                threshold_num = float(threshold)
-                if threshold_num > 0 and current_num > threshold_num * 4:
-                    importance = 'high'
-                elif threshold_num > 0 and current_num > threshold_num * 2:
-                    importance = 'medium' if importance == 'low' else importance
-            except (ValueError, TypeError):
-                pass
-        
-        # 提取告警名称
-        alert_name = (
-            parsed_data.get('RuleName') or 
-            parsed_data.get('alertname') or 
-            parsed_data.get('MetricName') or 
-            pattern['description']
-        )
-        
-        # 构建分析结果
-        result = {
-            'source': parsed_data.get('source', 'rule_engine'),
-            'event_type': pattern['event_type'],
-            'importance': importance,
-            'summary': f"[规则引擎] {pattern['description']}: {alert_name}",
-            'actions': cls._get_suggested_actions(pattern_key, importance),
-            'risks': cls._get_potential_risks(pattern_key),
-            '_route_type': 'rule',
-            '_pattern_matched': pattern_key
-        }
-        
-        # 如果有影响范围信息
-        resources = parsed_data.get('Resources') or parsed_data.get('resources', [])
-        if resources and isinstance(resources, list):
-            result['impact_scope'] = f'影响 {len(resources)} 个资源'
-        
-        return result
-    
-    @classmethod
-    def _get_suggested_actions(cls, pattern_key: str, importance: str) -> list[str]:
-        """根据模式和重要性返回建议操作"""
-        actions_map = {
-            'cpu_high': ['检查高 CPU 进程', '评估是否需要扩容', '检查是否有异常任务'],
-            'memory_high': ['检查内存泄漏', '重启异常服务', '增加内存或优化代码'],
-            'disk_full': ['清理日志和临时文件', '扩容磁盘', '检查大文件来源'],
-            'pod_crash': ['查看 Pod 日志', '检查资源限制配置', '分析崩溃原因'],
-            'network_error': ['检查网络连接', '验证 DNS 解析', '检查防火墙规则'],
-            'database_issue': ['检查数据库连接池', '查看慢查询日志', '评估数据库负载'],
-            'http_error': ['检查上游服务状态', '查看错误日志', '分析请求链路']
-        }
-        actions = actions_map.get(pattern_key, ['查看告警详情', '检查服务状态'])
-        
-        if importance == 'high':
-            actions.insert(0, '⚠️ 立即处理')
-        
-        return actions
-    
-    @classmethod
-    def _get_potential_risks(cls, pattern_key: str) -> list[str]:
-        """根据模式返回潜在风险"""
-        risks_map = {
-            'cpu_high': ['服务响应变慢', '可能导致服务不可用'],
-            'memory_high': ['可能触发 OOM Killer', '服务可能被强制终止'],
-            'disk_full': ['写入操作失败', '日志丢失', '服务可能崩溃'],
-            'pod_crash': ['服务中断', '请求失败'],
-            'network_error': ['服务间通信失败', '用户请求超时'],
-            'database_issue': ['数据读写失败', '事务阻塞'],
-            'http_error': ['用户体验受影响', '业务功能异常']
-        }
-        return risks_map.get(pattern_key, ['需要进一步评估风险'])
-
-
 def get_cache_key(alert_hash: str) -> str:
     """生成缓存 key"""
     return f"analysis_{alert_hash}"
@@ -871,23 +688,7 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
     elif skip_cache:
         logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
     
-    # Step 2: 智能路由检查（skip_cache=True 时跳过，强制使用 AI 重新分析）
-    if Config.SMART_ROUTING_ENABLED and not skip_cache:
-        use_ai, rule_result = SmartRouter.route(parsed_data)
-        if not use_ai and rule_result:
-            logger.info(f"使用规则引擎分析: source={source}, pattern={rule_result.get('_pattern_matched')}")
-            # 保存到缓存
-            save_to_cache(alert_hash, rule_result)
-            # 记录规则引擎使用
-            log_ai_usage(
-                route_type='rule',
-                alert_hash=alert_hash,
-                source=source
-            )
-            # 返回规则引擎结果
-            return rule_result
-    
-    # Step 3: 检查是否启用 AI 分析
+    # Step 2: 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
         result = analyze_with_rules(parsed_data, source)
@@ -898,7 +699,7 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         # 返回结果
         return result
 
-    # Step 4: 检查 API Key
+    # Step 3: 检查 API Key
     if not Config.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
         result = analyze_with_rules(parsed_data, source)
@@ -911,7 +712,7 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         # 返回结果
         return result
 
-    # Step 5: 调用 AI 分析
+    # Step 4: 调用 AI 分析
     try:
         analysis, tokens_in, tokens_out = analyze_with_openai_tracked(parsed_data, source)
 
@@ -1549,7 +1350,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
 
 
 def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
-    """将告警推送到 OpenOcta 触发深度分析（异步，不等待完成）"""
+    """将告警推送到 OpenOcta 触发深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
     if not Config.OPENOCTA_ENABLED:
@@ -1599,24 +1400,34 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
     }
     
     try:
-        # 使用较短超时，不等待分析完成
+        # 超时配置：(连接超时, 读取超时)
+        # - 连接超时 10s: TCP 连接建立
+        # - 读取超时 60s: 等待服务端 session 初始化并返回 202
         response = requests.post(
             f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
             json=payload,
             headers=headers,
-            timeout=30  # 只等待接受请求，不等待分析完成
+            timeout=(10, 60)
         )
         response.raise_for_status()
         result = response.json()
-        logger.info(f"OpenOcta 转发成功: run_id={result.get('runId')}")
-        return {'status': 'success', 'message': 'OpenOcta 分析已触发', 'run_id': result.get('runId')}
+        run_id = result.get('runId')
+        logger.info(f"OpenOcta 转发成功: run_id={run_id}, session_key={session_key}")
+        
+        # 非阻塞触发：HTTP POST 成功后立即返回
+        return {
+            'status': 'success',
+            'run_id': run_id,
+            'session_key': session_key,
+            '_pending': True
+        }
     except Exception as e:
         logger.error(f"OpenOcta 转发失败: {e}")
         return {'status': 'error', 'message': str(e)}
 
 
 def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
-    """通过 OpenOcta Agent 进行深度分析"""
+    """通过 OpenOcta Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
     if not Config.OPENOCTA_ENABLED:
@@ -1674,16 +1485,26 @@ def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_
     }
     
     try:
+        # 超时配置：(连接超时, 读取超时)
+        # - 连接超时 10s: TCP 连接建立
+        # - 读取超时 60s: 等待服务端 session 初始化并返回 202
         response = requests.post(
             f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
             json=payload,
             headers=headers,
-            timeout=Config.OPENOCTA_TIMEOUT_SECONDS + 10
+            timeout=(10, 60)
         )
         response.raise_for_status()
         result = response.json()
-        logger.info(f"OpenOcta 分析完成: status={response.status_code}")
-        return result
+        run_id = result.get('runId')
+        logger.info(f"OpenOcta 分析已触发: run_id={run_id}, session_key={session_key}")
+        
+        # 非阻塞触发：HTTP POST 成功后立即返回
+        return {
+            '_pending': True,
+            '_openocta_run_id': run_id,
+            '_openocta_session_key': session_key
+        }
     except requests.exceptions.RequestException as e:
         logger.error(f"OpenOcta 请求失败: {e}")
         return {'_degraded': True, '_degraded_reason': f'OpenOcta 不可用: {str(e)}'}

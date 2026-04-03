@@ -63,5 +63,16 @@ def setup_logger():
     return logger
 
 
+def get_logger(name: str = 'webhook_service') -> logging.Logger:
+    """获取指定名称的 logger，继承主 logger 配置"""
+    if name == 'webhook_service':
+        return setup_logger()
+    
+    # 创建子 logger
+    child_logger = logging.getLogger(f'webhook_service.{name}')
+    # 子 logger 会自动继承父 logger 的配置
+    return child_logger
+
+
 # 创建全局 logger 实例
 logger = setup_logger()
