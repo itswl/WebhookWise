@@ -21,7 +21,7 @@ from core.utils import (
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from adapters.ecosystem_adapters import normalize_webhook_event
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, AlertCorrelation, ForwardRule, DeepAnalysis, session_scope, get_session, test_db_connection
+from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, ForwardRule, DeepAnalysis, session_scope, get_session, test_db_connection
 
 app = Flask(__name__, template_folder='../templates', static_folder='../templates/static')
 app.config.from_object(Config)
@@ -858,6 +858,30 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
                         logger.info(f"执行规则转发: {rule['name']} -> {rule['target_type']}")
                         if rule['target_type'] == 'openocta':
                             result = forward_to_openocta(request_context.webhook_full_data, analysis_result)
+                            # 为 OpenOcta 转发创建 DeepAnalysis 记录（供后台轮询获取结果）
+                            if result.get('_pending') and result.get('run_id'):
+                                try:
+                                    with session_scope() as session:
+                                        deep_record = DeepAnalysis(
+                                            webhook_event_id=save_result.webhook_id,
+                                            engine='openocta',
+                                            user_question='',
+                                            analysis_result={
+                                                'status': 'pending',
+                                                'root_cause': 'OpenOcta Agent 正在分析中，结果将自动更新...',
+                                                'impact': '分析已触发，预计几分钟内完成',
+                                                'recommendations': ['结果将自动更新，请稍后刷新页面'],
+                                                'confidence': 0
+                                            },
+                                            openocta_run_id=result.get('run_id', ''),
+                                            openocta_session_key=result.get('session_key', ''),
+                                            status='pending'
+                                        )
+                                        session.add(deep_record)
+                                        session.flush()
+                                        logger.info(f"转发分析记录已创建: id={deep_record.id}, run_id={result.get('run_id')}")
+                                except Exception as e:
+                                    logger.error(f"创建转发分析记录失败: {e}")
                         else:
                             result = forward_to_remote(
                                 request_context.webhook_full_data,
@@ -1658,178 +1682,6 @@ def test_forward_rule(rule_id):
         return _ok(data=result, message='测试完成')
 
 
-# ========== 预测与模式分析 API 端点 ==========
-
-@app.route('/api/predictions', methods=['GET'])
-def get_predictions() -> tuple[Response, int]:
-    """
-    获取当前预测结果
-    
-    Query params:
-        type: 可选，过滤预测类型 (anomaly/trend/storm)
-        limit: 返回数量限制，默认50
-    
-    Returns:
-        JSON 格式的预测数据
-    """
-    try:
-        from core.models import Prediction
-        from sqlalchemy import desc
-        
-        pred_type = request.args.get('type')
-        limit = request.args.get('limit', 50, type=int)
-        limit = min(limit, 200)  # 最大200条
-        
-        with session_scope() as session:
-            query = session.query(Prediction).filter(
-                Prediction.expires_at > datetime.now()  # 只返回未过期的预测
-            )
-            
-            if pred_type and pred_type in ('anomaly', 'trend', 'storm'):
-                query = query.filter(Prediction.prediction_type == pred_type)
-            
-            predictions = query.order_by(
-                desc(Prediction.created_at)
-            ).limit(limit).all()
-            
-            result = [p.to_dict() for p in predictions]
-            
-            # 按类型统计
-            type_counts = {}
-            for p in predictions:
-                t = p.prediction_type
-                type_counts[t] = type_counts.get(t, 0) + 1
-            
-            return _ok(status=200, data=result, count=len(result), type_breakdown=type_counts)
-    
-    except Exception as e:
-        logger.error(f"获取预测结果失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/predictions/run', methods=['POST'])
-def run_predictions() -> tuple[Response, int]:
-    """
-    手动触发一次预测分析
-    
-    Returns:
-        JSON 格式的预测结果
-    """
-    try:
-        from services.predictor import alert_predictor
-        
-        with session_scope() as session:
-            predictions = alert_predictor.run_prediction_cycle(session)
-            
-            return _ok(
-                status=200,
-                message='预测分析完成',
-                anomalies_count=predictions.get('anomalies_count', 0),
-                trends_count=predictions.get('trends_count', 0),
-                storm_warnings_count=predictions.get('storm_warnings_count', 0),
-                data=predictions
-            )
-    
-    except Exception as e:
-        logger.error(f"执行预测分析失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/patterns', methods=['GET'])
-def get_patterns() -> tuple[Response, int]:
-    """
-    获取历史模式分析结果
-    
-    Query params:
-        type: 可选，过滤模式类型 (periodic/bursts/correlations)
-    
-    Returns:
-        JSON 格式的模式数据
-    """
-    try:
-        from services.pattern_detector import pattern_detector
-        
-        pattern_type = request.args.get('type')
-        
-        with session_scope() as session:
-            all_patterns = pattern_detector.get_all_patterns(session)
-            
-            if pattern_type:
-                if pattern_type == 'periodic':
-                    result = {
-                        'periodic': all_patterns.get('periodic', []),
-                        'count': all_patterns.get('periodic_count', 0),
-                        'analyzed_at': all_patterns.get('analyzed_at')
-                    }
-                elif pattern_type == 'bursts':
-                    result = {
-                        'bursts': all_patterns.get('bursts', []),
-                        'count': all_patterns.get('bursts_count', 0),
-                        'analyzed_at': all_patterns.get('analyzed_at')
-                    }
-                elif pattern_type == 'correlations':
-                    result = {
-                        'correlations': all_patterns.get('correlations', []),
-                        'count': all_patterns.get('correlations_count', 0),
-                        'analyzed_at': all_patterns.get('analyzed_at')
-                    }
-                else:
-                    return _fail(f'未知的模式类型: {pattern_type}', 400)
-                
-                return _ok(status=200, data=result)
-            
-            return _ok(status=200, data=all_patterns)
-    
-    except Exception as e:
-        logger.error(f"获取模式分析结果失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@app.route('/api/patterns/analyze', methods=['POST'])
-def analyze_patterns() -> tuple[Response, int]:
-    """
-    手动触发模式分析
-    
-    请求体（可选）: {"lookback_days": 30}
-    
-    Returns:
-        JSON 格式的分析结果
-    """
-    try:
-        from services.pattern_detector import pattern_detector
-        
-        payload = request.get_json(silent=True) or {}
-        lookback_days = payload.get('lookback_days', 30)
-        lookback_days = max(1, min(90, lookback_days))  # 限制1-90天
-        
-        with session_scope() as session:
-            # 运行各类模式检测
-            periodic = pattern_detector.detect_periodic_patterns(session, lookback_days)
-            bursts = pattern_detector.detect_burst_patterns(session)
-            correlations = pattern_detector.detect_correlation_rules(session, lookback_days)
-            
-            result = {
-                'periodic': periodic,
-                'periodic_count': len(periodic),
-                'bursts': bursts,
-                'bursts_count': len(bursts),
-                'correlations': correlations,
-                'correlations_count': len(correlations),
-                'lookback_days': lookback_days,
-                'analyzed_at': datetime.utcnow().isoformat()
-            }
-            
-            return _ok(
-                status=200,
-                message='模式分析完成',
-                data=result
-            )
-    
-    except Exception as e:
-        logger.error(f"执行模式分析失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
-
-
 # ========== 深度分析 API 端点 ==========
 
 @app.route('/api/deep-analyze/<int:webhook_id>', methods=['POST'])
@@ -1983,51 +1835,25 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                 # 检查是否降级
                 if result.get('_degraded'):
                     logger.warning(f"OpenOcta 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
-                    # 降级到本地 AI
                     try:
                         report, duration = _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
                     except Exception as e:
                         return _fail(f'深度分析失败: {str(e)}', 500)
+                elif result.get('_pending'):
+                    # OpenOcta 分析已触发，异步等待结果
+                    run_id = result.get('_openocta_run_id', '')
+                    session_key = result.get('_openocta_session_key', '')
+                    report = {
+                        'status': 'pending',
+                        'root_cause': 'OpenOcta Agent 正在分析中，结果将自动更新...',
+                        'impact': '分析已触发，预计几分钟内完成',
+                        'recommendations': ['请稍后刷新页面查看分析结果'],
+                        'confidence': 0
+                    }
+                    logger.info(f"OpenOcta 分析已触发: run_id={run_id}, session_key={session_key}")
                 else:
-                    # OpenOcta 返回的结果可能在 content 字段中
-                    if 'content' in result:
-                        # 尝试解析 content 中的 JSON
-                        content = result.get('content', '')
-                        try:
-                            import re
-                            json_match = re.search(r'```json\s*([\s\S]*?)```', content)
-                            if json_match:
-                                report = json.loads(json_match.group(1))
-                            elif content.strip().startswith('{'):
-                                report = json.loads(content)
-                            else:
-                                report = {
-                                    'root_cause': content,
-                                    'impact': '请查看上方分析',
-                                    'recommendations': [],
-                                    'confidence': 0.7
-                                }
-                        except (json.JSONDecodeError, TypeError):
-                            report = {
-                                'root_cause': content,
-                                'impact': '请查看上方分析',
-                                'recommendations': [],
-                                'confidence': 0.7
-                            }
-                    elif 'runId' in result and 'content' not in result:
-                        # OpenOcta 异步 API 只返回 runId，构建触发状态的标准化 report
-                        report = {
-                            'status': 'triggered',
-                            'runId': result.get('runId', ''),
-                            'root_cause': 'OpenOcta Agent 正在分析中，请在 OpenOcta 控制台查看结果',
-                            'impact': '分析已触发，结果将在 OpenOcta 平台上展示',
-                            'recommendations': ['前往 OpenOcta 控制台查看完整分析结果'],
-                            'confidence': 0
-                        }
-                        logger.info(f"OpenOcta 分析已触发，runId={result.get('runId')}")
-                    else:
-                        report = result
+                    report = result
             else:
                 # 使用本地 AI 分析
                 report, duration = _local_ai_analysis(alert_data, user_question)
@@ -2040,12 +1866,34 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                     engine=engine,
                     user_question=user_question or '',
                     analysis_result=report,
-                    duration_seconds=duration
+                    duration_seconds=duration,
+                    openocta_run_id=result.get('_openocta_run_id', '') if isinstance(result, dict) else '',
+                    openocta_session_key=result.get('_openocta_session_key', '') if isinstance(result, dict) else '',
+                    status='pending' if isinstance(result, dict) and result.get('_pending') else 'completed'
                 )
                 session.add(deep_record)
                 session.flush()
                 record_id = deep_record.id
                 logger.info(f"深度分析结果已保存: id={record_id}, webhook_id={webhook_id}")
+                
+                # 非 pending 状态时发送飞书通知（pending 由 poller 完成后通知）
+                if deep_record.status == 'completed':
+                    try:
+                        from adapters.ecosystem_adapters import send_feishu_deep_analysis
+                        if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                            analysis_data = {
+                                'analysis_result': report,
+                                'engine': engine,
+                                'duration_seconds': duration,
+                            }
+                            send_feishu_deep_analysis(
+                                webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                                analysis_record=analysis_data,
+                                source=event.source,
+                                webhook_event_id=webhook_id
+                            )
+                    except Exception as notify_err:
+                        logger.warning(f"飞书深度分析通知失败: {notify_err}")
             except Exception as e:
                 logger.error(f"保存深度分析结果失败: {e}")
             
@@ -2063,6 +1911,48 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
         return _fail(str(e), 500)
 
 
+@app.route('/api/deep-analyses', methods=['GET'])
+def list_all_deep_analyses():
+    """获取所有深度分析记录（分页 + 筛选）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    status_filter = request.args.get('status', '')
+    engine_filter = request.args.get('engine', '')
+    
+    with session_scope() as session:
+        query = session.query(DeepAnalysis).order_by(DeepAnalysis.created_at.desc())
+        
+        if status_filter:
+            query = query.filter(DeepAnalysis.status == status_filter)
+        if engine_filter:
+            query = query.filter(DeepAnalysis.engine == engine_filter)
+        
+        total = query.count()
+        records = query.offset((page - 1) * per_page).limit(per_page).all()
+        
+        # 关联查询告警的 source 信息
+        webhook_ids = [r.webhook_event_id for r in records]
+        source_map = {}
+        if webhook_ids:
+            events = session.query(WebhookEvent.id, WebhookEvent.source).filter(
+                WebhookEvent.id.in_(webhook_ids)
+            ).all()
+            source_map = {e.id: e.source for e in events}
+        
+        data = []
+        for r in records:
+            d = r.to_dict()
+            d['source'] = source_map.get(r.webhook_event_id, 'unknown')
+            data.append(d)
+        
+        return _ok(data={
+            'items': data,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+
+
 @app.route('/api/deep-analyses/<int:webhook_id>', methods=['GET'])
 def get_deep_analyses(webhook_id: int) -> tuple[Response, int]:
     """获取某告警的所有深度分析记录"""
@@ -2071,6 +1961,71 @@ def get_deep_analyses(webhook_id: int) -> tuple[Response, int]:
             webhook_event_id=webhook_id
         ).order_by(DeepAnalysis.created_at.desc()).all()
         return _ok(data=[r.to_dict() for r in records])
+
+
+@app.route('/api/deep-analyses/<int:analysis_id>/forward', methods=['POST'])
+def forward_deep_analysis(analysis_id: int):
+    """转发深度分析结果到指定目标"""
+    try:
+        data = request.get_json(silent=True) or {}
+        target_url = (data.get('target_url') or '').strip()
+        if not target_url:
+            return jsonify({'success': False, 'message': '转发 URL 不能为空'}), 400
+        if not target_url.startswith(('http://', 'https://')):
+            return jsonify({'success': False, 'message': 'URL 格式无效'}), 400
+        
+        with session_scope() as session:
+            analysis = session.query(DeepAnalysis).get(analysis_id)
+            if not analysis:
+                return jsonify({'success': False, 'message': '分析记录不存在'}), 404
+            if analysis.status != 'completed':
+                return jsonify({'success': False, 'message': '分析尚未完成'}), 400
+            
+            # 获取关联告警的 source
+            source = 'unknown'
+            if analysis.webhook_event_id:
+                event = session.query(WebhookEvent).get(analysis.webhook_event_id)
+                if event:
+                    source = event.source or 'unknown'
+            
+            # 判断目标类型
+            is_feishu = 'feishu.cn' in target_url or 'larksuite.com' in target_url
+            
+            if is_feishu:
+                from adapters.ecosystem_adapters import send_feishu_deep_analysis
+                success = send_feishu_deep_analysis(
+                    webhook_url=target_url,
+                    analysis_record={
+                        'analysis_result': analysis.analysis_result,
+                        'engine': analysis.engine,
+                        'duration_seconds': analysis.duration_seconds
+                    },
+                    source=source,
+                    webhook_event_id=analysis.webhook_event_id or 0
+                )
+                if success:
+                    return jsonify({'success': True, 'message': '已发送到飞书'})
+                else:
+                    return jsonify({'success': False, 'message': '飞书发送失败'}), 500
+            else:
+                # 通用 webhook: POST 分析结果 JSON
+                import requests as req_lib
+                payload = {
+                    'type': 'deep_analysis',
+                    'analysis_id': analysis_id,
+                    'source': source,
+                    'engine': analysis.engine,
+                    'webhook_event_id': analysis.webhook_event_id,
+                    'analysis_result': analysis.analysis_result,
+                    'duration_seconds': analysis.duration_seconds,
+                    'created_at': analysis.created_at.isoformat() if analysis.created_at else None
+                }
+                resp = req_lib.post(target_url, json=payload, timeout=10)
+                resp.raise_for_status()
+                return jsonify({'success': True, 'message': f'已转发 (HTTP {resp.status_code})'})
+    except Exception as e:
+        logger.error(f"转发深度分析失败: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 if __name__ == '__main__':

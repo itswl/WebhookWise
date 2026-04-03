@@ -26,3 +26,4 @@ postgres_data/
 *.tmp
 .DS_Store
 .qoder/
+openocta-main/
