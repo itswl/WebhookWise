@@ -124,9 +124,6 @@ class Config:
     FEISHU_BOT_APP_ID = os.getenv('FEISHU_BOT_APP_ID', '')
     FEISHU_BOT_APP_SECRET = os.getenv('FEISHU_BOT_APP_SECRET', '')
     
-    # 预测引擎配置
-    PREDICTION_INTERVAL = int(os.getenv('PREDICTION_INTERVAL', '300'))  # 预测分析运行间隔（秒）
-    
     # OpenOcta 集成配置
     OPENOCTA_ENABLED = os.getenv('OPENOCTA_ENABLED', 'false').lower() == 'true'
     OPENOCTA_GATEWAY_URL = os.getenv('OPENOCTA_GATEWAY_URL', 'http://127.0.0.1:18900')
@@ -134,6 +131,9 @@ class Config:
     OPENOCTA_HOOKS_TOKEN = os.getenv('OPENOCTA_HOOKS_TOKEN', '')
     OPENOCTA_TIMEOUT_SECONDS = int(os.getenv('OPENOCTA_TIMEOUT_SECONDS', '300'))
     DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openocta | auto
+    
+    # 深度分析飞书通知配置
+    DEEP_ANALYSIS_FEISHU_WEBHOOK = os.getenv('DEEP_ANALYSIS_FEISHU_WEBHOOK', '')
     
     @classmethod
     def validate(cls) -> list[str]:

@@ -29,9 +29,6 @@ function initDashboard() {
     if (typeof AICostModule !== 'undefined') {
         AICostModule.init();
     }
-    if (typeof PredictionsModule !== 'undefined') {
-        PredictionsModule.init();
-    }
     if (typeof ForwardRulesModule !== 'undefined') {
         ForwardRulesModule.init();
     }
@@ -177,7 +174,7 @@ function switchMainTab(tabId) {
     const tabContents = {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
-        'predictions': 'predictionsTab',
+        'deep-analyses': 'deepAnalysesTab',
         'forward-rules': 'forwardRulesTab'
     };
 
@@ -190,17 +187,29 @@ function switchMainTab(tabId) {
 
     // 触发 Tab 特定的初始化
     switch (tabId) {
+        case 'alerts':
+            // 切换到告警 Tab 时停止深度分析自动刷新
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            break;
         case 'ai-cost':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
             if (typeof AICostModule !== 'undefined') {
                 AICostModule.loadStats('day');
             }
             break;
-        case 'predictions':
-            if (typeof PredictionsModule !== 'undefined') {
-                PredictionsModule.loadPredictions();
+        case 'deep-analyses':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.load();
             }
             break;
         case 'forward-rules':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
             if (typeof loadForwardRules === 'function') {
                 loadForwardRules();
             }
