@@ -928,8 +928,8 @@ def _should_send_degradation_alert() -> bool:
     from datetime import datetime, timedelta
     from pathlib import Path
 
-    # 使用临时文件记录上次通知时间
-    marker_file = Path('/tmp/.ai_degradation_last_alert')
+    # 使用数据目录记录上次通知时间
+    marker_file = Path(Config.DATA_DIR) / '.ai_degradation_last_alert'
 
     try:
         # 读取上次通知时间
@@ -1029,7 +1029,7 @@ def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> Non
                 Config.FORWARD_URL,
                 json=forward_data,
                 headers={'Content-Type': 'application/json'},
-                timeout=10
+                timeout=Config.FEISHU_WEBHOOK_TIMEOUT
             )
 
             if 200 <= response.status_code < 300:
@@ -1203,7 +1203,7 @@ def forward_to_remote(
             target_url,
             json=forward_data,
             headers=headers,
-            timeout=10
+            timeout=Config.FORWARD_TIMEOUT
         )
         
         if 200 <= response.status_code < 300:
