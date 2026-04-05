@@ -198,7 +198,7 @@ function formatDuplicateStatus(status) {
 function formatTargetType(type) {
     const map = {
         'feishu': '飞书',
-        'openocta': 'OpenOcta',
+        'openclaw': 'OpenOcta',
         'webhook': 'Webhook'
     };
     return map[type] || type || '未知';
@@ -291,7 +291,7 @@ function onTargetTypeChange() {
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
     
     // OpenOcta 类型不需要填写地址
-    if (targetType === 'openocta') {
+    if (targetType === 'openclaw') {
         urlGroup.style.display = 'none';
     } else {
         urlGroup.style.display = 'block';
@@ -316,7 +316,7 @@ async function saveRule() {
         return;
     }
     
-    if (targetType !== 'openocta' && !targetUrl) {
+    if (targetType !== 'openclaw' && !targetUrl) {
         alert('请输入目标地址');
         return;
     }
@@ -336,7 +336,7 @@ async function saveRule() {
         match_duplicate: document.getElementById('ruleFormDuplicate').value,
         match_source: document.getElementById('ruleFormSource').value.trim(),
         target_type: targetType,
-        target_url: targetType === 'openocta' ? '' : targetUrl,
+        target_url: targetType === 'openclaw' ? '' : targetUrl,
         target_name: targetName,
         stop_on_match: document.getElementById('ruleFormStopOnMatch').checked
     };

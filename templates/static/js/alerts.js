@@ -694,7 +694,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openocta' ? '\ud83d\udc19 OpenOcta' : '\ud83e\udd16 \u672c\u5730 AI';
+                const engineLabel = record.engine === 'openclaw' ? '\ud83d\udc19 OpenOcta' : '\ud83e\udd16 \u672c\u5730 AI';
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
                             
@@ -719,8 +719,8 @@ const AlertsModule = {
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenOcta 正在分析中...</div>';
-                    if (record.openocta_run_id) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + record.openocta_run_id + '</div>';
+                    if (record.openclaw_run_id) {
+                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + record.openclaw_run_id + '</div>';
                     }
                     html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
                     html += '</div>';
@@ -737,12 +737,12 @@ const AlertsModule = {
                 } else {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
                     // 如果有完整的 OpenOcta 文本，优先渲染 markdown
-                    if (analysis._openocta_text) {
+                    if (analysis._openclaw_text) {
                         if (typeof marked !== 'undefined') {
-                            html += '<div class="openocta-analysis-content">' + marked.parse(analysis._openocta_text) + '</div>';
+                            html += '<div class="openclaw-analysis-content">' + marked.parse(analysis._openclaw_text) + '</div>';
                         } else {
                             // fallback: 用 pre 显示
-                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + analysis._openocta_text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + analysis._openclaw_text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
                         }
                         // 如果有置信度，单独显示
                         if (analysis.confidence !== undefined) {
@@ -801,7 +801,7 @@ const AlertsModule = {
     async deepAnalyzeAlert(id) {
         // 让用户选择分析引擎
         const engineChoice = confirm('使用 OpenOcta Agent 深度分析？\n\n点击「确定」使用 OpenOcta（更深度）\n点击「取消」使用本地 AI');
-        const engine = engineChoice ? 'openocta' : 'local';
+        const engine = engineChoice ? 'openclaw' : 'local';
 
         const question = prompt('请输入您想问的问题（可选）:', '');
         if (question === null) return;  // 用户取消
