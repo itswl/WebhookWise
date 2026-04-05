@@ -64,5 +64,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 ENTRYPOINT ["./entrypoint.sh"]
 
 # 使用 gunicorn 运行应用(生产环境)
-# timeout 120 秒：OpenOcta 分析已改为异步轮询，handler 不再长时间阻塞
+# timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "--graceful-timeout", "30", "main:app"]

@@ -198,7 +198,7 @@ function formatDuplicateStatus(status) {
 function formatTargetType(type) {
     const map = {
         'feishu': '飞书',
-        'openclaw': 'OpenOcta',
+        'openclaw': 'OpenClaw',
         'webhook': 'Webhook'
     };
     return map[type] || type || '未知';
@@ -290,7 +290,7 @@ function onTargetTypeChange() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
     
-    // OpenOcta 类型不需要填写地址
+    // OpenClaw 类型不需要填写地址
     if (targetType === 'openclaw') {
         urlGroup.style.display = 'none';
     } else {
