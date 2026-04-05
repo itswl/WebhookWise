@@ -851,30 +851,30 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
             
             if forward_decision.matched_rules:
                 # 多规则转发
-                from services.ai_analyzer import forward_to_openocta
+                from services.ai_analyzer import forward_to_openclaw
                 forward_results = []
                 for rule in forward_decision.matched_rules:
                     try:
                         logger.info(f"执行规则转发: {rule['name']} -> {rule['target_type']}")
-                        if rule['target_type'] == 'openocta':
-                            result = forward_to_openocta(request_context.webhook_full_data, analysis_result)
-                            # 为 OpenOcta 转发创建 DeepAnalysis 记录（供后台轮询获取结果）
+                        if rule['target_type'] == 'openclaw':
+                            result = forward_to_openclaw(request_context.webhook_full_data, analysis_result)
+                            # 为 OpenClaw 转发创建 DeepAnalysis 记录（供后台轮询获取结果）
                             if result.get('_pending') and result.get('run_id'):
                                 try:
                                     with session_scope() as session:
                                         deep_record = DeepAnalysis(
                                             webhook_event_id=save_result.webhook_id,
-                                            engine='openocta',
+                                            engine='openclaw',
                                             user_question='',
                                             analysis_result={
                                                 'status': 'pending',
-                                                'root_cause': 'OpenOcta Agent 正在分析中，结果将自动更新...',
+                                                'root_cause': 'OpenClaw Agent 正在分析中，结果将自动更新...',
                                                 'impact': '分析已触发，预计几分钟内完成',
                                                 'recommendations': ['结果将自动更新，请稍后刷新页面'],
                                                 'confidence': 0
                                             },
-                                            openocta_run_id=result.get('run_id', ''),
-                                            openocta_session_key=result.get('session_key', ''),
+                                            openclaw_run_id=result.get('run_id', ''),
+                                            openclaw_session_key=result.get('session_key', ''),
                                             status='pending'
                                         )
                                         session.add(deep_record)
@@ -1597,9 +1597,9 @@ def create_forward_rule():
     
     if not name:
         return _fail('规则名称不能为空', 400)
-    if target_type not in ('feishu', 'openocta', 'webhook'):
-        return _fail('目标类型必须为 feishu/openocta/webhook', 400)
-    if target_type != 'openocta' and not payload.get('target_url', '').strip():
+    if target_type not in ('feishu', 'openclaw', 'webhook'):
+        return _fail('目标类型必须为 feishu/openclaw/webhook', 400)
+    if target_type != 'openclaw' and not payload.get('target_url', '').strip():
         return _fail('目标地址不能为空', 400)
     
     with session_scope() as session:
@@ -1672,9 +1672,9 @@ def test_forward_rule(rule_id):
             'event_type': 'test'
         }
         
-        if rule.target_type == 'openocta':
-            from services.ai_analyzer import forward_to_openocta
-            result = forward_to_openocta(test_data, test_analysis)
+        if rule.target_type == 'openclaw':
+            from services.ai_analyzer import forward_to_openclaw
+            result = forward_to_openclaw(test_data, test_analysis)
         else:
             from services.ai_analyzer import forward_to_remote
             result = forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
@@ -1692,7 +1692,7 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
     请求体（可选）: 
     {
         "user_question": "用户问题",
-        "engine": "auto"  // local | openocta | auto
+        "engine": "auto"  // local | openclaw | auto
     }
     
     Returns:
@@ -1702,7 +1702,7 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
     import time
     from pathlib import Path
     from openai import OpenAI
-    from services.ai_analyzer import analyze_with_openocta
+    from services.ai_analyzer import analyze_with_openclaw
     
     def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
         """本地 AI 分析逻辑"""
@@ -1785,19 +1785,19 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
         """根据请求和配置决定使用哪个引擎"""
         if requested_engine == 'local':
             return 'local'
-        elif requested_engine == 'openocta':
-            if Config.OPENOCTA_ENABLED:
-                return 'openocta'
+        elif requested_engine == 'openclaw':
+            if Config.OPENCLAW_ENABLED:
+                return 'openclaw'
             else:
-                logger.warning("OpenOcta 未启用，回退到本地 AI")
+                logger.warning("OpenClaw 未启用，回退到本地 AI")
                 return 'local'
         else:  # auto
-            if Config.DEEP_ANALYSIS_ENGINE == 'openocta' and Config.OPENOCTA_ENABLED:
-                return 'openocta'
+            if Config.DEEP_ANALYSIS_ENGINE == 'openclaw' and Config.OPENCLAW_ENABLED:
+                return 'openclaw'
             elif Config.DEEP_ANALYSIS_ENGINE == 'local':
                 return 'local'
             else:  # auto 或其他
-                return 'openocta' if Config.OPENOCTA_ENABLED else 'local'
+                return 'openclaw' if Config.OPENCLAW_ENABLED else 'local'
     
     try:
         with session_scope() as session:
@@ -1822,36 +1822,36 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
             engine = _determine_engine(requested_engine)
             logger.info(f"开始深度分析 webhook ID: {webhook_id}, engine: {engine}")
             
-            if engine == 'openocta':
-                # 使用 OpenOcta 分析
+            if engine == 'openclaw':
+                # 使用 OpenClaw 分析
                 start_time = time.time()
                 webhook_data = {
                     'source': event.source,
                     'parsed_data': alert_data
                 }
-                result = analyze_with_openocta(webhook_data, user_question)
+                result = analyze_with_openclaw(webhook_data, user_question)
                 duration = time.time() - start_time
                 
                 # 检查是否降级
                 if result.get('_degraded'):
-                    logger.warning(f"OpenOcta 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
+                    logger.warning(f"OpenClaw 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
                     try:
                         report, duration = _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
                     except Exception as e:
                         return _fail(f'深度分析失败: {str(e)}', 500)
                 elif result.get('_pending'):
-                    # OpenOcta 分析已触发，异步等待结果
-                    run_id = result.get('_openocta_run_id', '')
-                    session_key = result.get('_openocta_session_key', '')
+                    # OpenClaw 分析已触发，异步等待结果
+                    run_id = result.get('_openclaw_run_id', '')
+                    session_key = result.get('_openclaw_session_key', '')
                     report = {
                         'status': 'pending',
-                        'root_cause': 'OpenOcta Agent 正在分析中，结果将自动更新...',
+                        'root_cause': 'OpenClaw Agent 正在分析中，结果将自动更新...',
                         'impact': '分析已触发，预计几分钟内完成',
                         'recommendations': ['请稍后刷新页面查看分析结果'],
                         'confidence': 0
                     }
-                    logger.info(f"OpenOcta 分析已触发: run_id={run_id}, session_key={session_key}")
+                    logger.info(f"OpenClaw 分析已触发: run_id={run_id}, session_key={session_key}")
                 else:
                     report = result
             else:
@@ -1867,8 +1867,8 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                     user_question=user_question or '',
                     analysis_result=report,
                     duration_seconds=duration,
-                    openocta_run_id=result.get('_openocta_run_id', '') if isinstance(result, dict) else '',
-                    openocta_session_key=result.get('_openocta_session_key', '') if isinstance(result, dict) else '',
+                    openclaw_run_id=result.get('_openclaw_run_id', '') if isinstance(result, dict) else '',
+                    openclaw_session_key=result.get('_openclaw_session_key', '') if isinstance(result, dict) else '',
                     status='pending' if isinstance(result, dict) and result.get('_pending') else 'completed'
                 )
                 session.add(deep_record)
@@ -2040,7 +2040,7 @@ def retry_deep_analysis(analysis_id: int):
             if record.status != 'failed':
                 return jsonify({'error': f'只能重试失败的分析，当前状态: {record.status}'}), 400
 
-            if not record.openocta_session_key:
+            if not record.openclaw_session_key:
                 return jsonify({'error': '缺少 session key，无法重新拉取'}), 400
 
             # 重置状态为 pending，更新 created_at 避免立即被轮询超时
