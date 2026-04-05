@@ -21,10 +21,10 @@ class Config:
     
     # 日志配置
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-    LOG_FILE = 'logs/webhook.log'
-    
+    LOG_FILE = os.getenv('LOG_FILE', 'logs/webhook.log')
+
     # 数据存储配置
-    DATA_DIR = 'webhooks_data'
+    DATA_DIR = os.getenv('DATA_DIR', 'webhooks_data')
     ENABLE_FILE_BACKUP = os.getenv('ENABLE_FILE_BACKUP', 'false').lower() == 'true'  # 是否启用文件备份
     
     # 数据库配置
@@ -41,7 +41,7 @@ class Config:
     
     # AI 分析和转发配置
     ENABLE_AI_ANALYSIS = os.getenv('ENABLE_AI_ANALYSIS', 'true').lower() == 'true'
-    FORWARD_URL = os.getenv('FORWARD_URL', 'http://92.38.131.57:8000/webhook')
+    FORWARD_URL = os.getenv('FORWARD_URL', '')
     ENABLE_FORWARD = os.getenv('ENABLE_FORWARD', 'true').lower() == 'true'
     
     # OpenAI API 配置
@@ -131,9 +131,26 @@ class Config:
     OPENOCTA_HOOKS_TOKEN = os.getenv('OPENOCTA_HOOKS_TOKEN', '')
     OPENOCTA_TIMEOUT_SECONDS = int(os.getenv('OPENOCTA_TIMEOUT_SECONDS', '300'))
     DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openocta | auto
+
+    # OpenOcta/OpenClaw 轮询稳定性参数
+    OPENCLAW_STABILITY_REQUIRED_HITS = int(os.getenv('OPENCLAW_STABILITY_REQUIRED_HITS', '2'))   # 连续 N 次一致才确认完成
+    OPENCLAW_MIN_WAIT_SECONDS = int(os.getenv('OPENCLAW_MIN_WAIT_SECONDS', '30'))              # 创建后最少等待秒数再开始轮询
+    OPENCLAW_MAX_CONSECUTIVE_ERRORS = int(os.getenv('OPENCLAW_MAX_CONSECUTIVE_ERRORS', '5'))   # 连续超时最大次数
     
     # 深度分析飞书通知配置
     DEEP_ANALYSIS_FEISHU_WEBHOOK = os.getenv('DEEP_ANALYSIS_FEISHU_WEBHOOK', '')
+
+    # OpenOcta WebSocket 连接超时配置（秒）
+    OPENOCTA_CONNECT_TIMEOUT = int(os.getenv('OPENOCTA_CONNECT_TIMEOUT', '10'))    # TCP + WS 握手超时
+    OPENOCTA_HANDSHAKE_TIMEOUT = int(os.getenv('OPENOCTA_HANDSHAKE_TIMEOUT', '5'))  # OpenOcta 协议握手超时
+    OPENOCTA_RECV_TIMEOUT = float(os.getenv('OPENOCTA_RECV_TIMEOUT', '1.0'))        # recv 超时（检查 _done 事件）
+    OPENOCTA_NONCE_TIMEOUT = float(os.getenv('OPENOCTA_NONCE_TIMEOUT', '2.0'))      # 接收 nonce challenge 超时
+    OPENOCTA_POLL_TIMEOUT = int(os.getenv('OPENOCTA_POLL_TIMEOUT', '90'))           # 轮询结果超时（高延迟网络适配）
+
+    # HTTP 请求超时配置（秒）
+    AI_API_TIMEOUT = int(os.getenv('AI_API_TIMEOUT', '10'))              # AI API 请求超时
+    FEISHU_WEBHOOK_TIMEOUT = int(os.getenv('FEISHU_WEBHOOK_TIMEOUT', '10'))  # 飞书 webhook 请求超时
+    FORWARD_TIMEOUT = int(os.getenv('FORWARD_TIMEOUT', '10'))          # 转发请求超时
     
     @classmethod
     def validate(cls) -> list[str]:

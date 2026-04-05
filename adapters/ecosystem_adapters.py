@@ -6,6 +6,8 @@ from typing import Any, Callable, Mapping, Optional
 
 import requests
 
+from core.config import Config
+
 logger = logging.getLogger('webhook_service.ecosystem_adapters')
 
 WebhookData = dict[str, Any]
@@ -475,7 +477,7 @@ def send_feishu_deep_analysis(
     }
     
     try:
-        resp = requests.post(webhook_url, json=card, timeout=10)
+        resp = requests.post(webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
         if resp.status_code == 200:
             logger.info(f"飞书深度分析通知发送成功: webhook_event_id={webhook_event_id}")
             return True

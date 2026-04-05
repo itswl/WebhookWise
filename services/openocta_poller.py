@@ -6,6 +6,8 @@ import threading
 import logging
 from datetime import datetime, timedelta
 
+from core.config import Config
+
 logger = logging.getLogger('webhook_service.openocta_poller')
 
 # 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
@@ -13,9 +15,6 @@ logger = logging.getLogger('webhook_service.openocta_poller')
 # 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
 _poll_stability_cache = {}
 _poll_lock = threading.Lock()
-STABILITY_REQUIRED_HITS = 2       # 连续 2 次一致即可确认完成（加快确认速度）
-MIN_WAIT_SECONDS = 30            # 从创建起最少等待秒数（加快首次轮询）
-MAX_CONSECUTIVE_ERRORS = 5       # 连续超时最大次数，超过则降级使用首次结果
 
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
@@ -134,16 +133,16 @@ def _poll_pending_analyses_inner():
 
                     # 最小等待时间检查
                     elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else 999
-                    if elapsed < MIN_WAIT_SECONDS:
-                        logger.debug(f"分析创建未满 {MIN_WAIT_SECONDS}s (已 {elapsed:.0f}s), 跳过: id={record.id}")
+                    if elapsed < Config.OPENCLAW_MIN_WAIT_SECONDS:
+                        logger.debug(f"分析创建未满 {Config.OPENCLAW_MIN_WAIT_SECONDS}s (已 {elapsed:.0f}s), 跳过: id={record.id}")
                         continue
 
-                    # 短连接轮询（高延迟网络建议 90 秒）
+                    # 短连接轮询
                     result = poll_session_result(
                         gateway_url=Config.OPENOCTA_GATEWAY_URL,
                         gateway_token=Config.OPENOCTA_GATEWAY_TOKEN,
                         session_key=record.openocta_session_key,
-                        timeout=90  # 增加超时时间，适应高延迟网络
+                        timeout=Config.OPENOCTA_POLL_TIMEOUT
                     )
 
                     if result.get('status') == 'completed':
@@ -162,13 +161,13 @@ def _poll_pending_analyses_inner():
                             # 结果与上次一致，增加命中计数
                             hit_count = prev_snapshot.get('hit_count', 1) + 1
 
-                            if hit_count >= STABILITY_REQUIRED_HITS:
+                            if hit_count >= Config.OPENCLAW_STABILITY_REQUIRED_HITS:
                                 # 达到要求的连续一致次数 → 真正完成
                                 logger.info(f"分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                             else:
                                 # 还未达到，继续等待
                                 _poll_stability_cache[record.id] = {**current_snapshot, 'hit_count': hit_count}
-                                logger.info(f"分析结果一致({hit_count}/{STABILITY_REQUIRED_HITS}), 继续等待: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
+                                logger.info(f"分析结果一致({hit_count}/{Config.OPENCLAW_STABILITY_REQUIRED_HITS}), 继续等待: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                                 continue
 
                             # 清理缓存
@@ -238,7 +237,7 @@ def _poll_pending_analyses_inner():
                         prev_snapshot = _poll_stability_cache.get(record.id)
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
-                            if error_count >= MAX_CONSECUTIVE_ERRORS:
+                            if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS:
                                 # 连续超时过多，降级使用首次结果
                                 logger.warning(f"连续超时 {error_count} 次，降级使用首次结果: id={record.id}")
                                 first_result = prev_snapshot['first_result']
@@ -276,7 +275,7 @@ def _poll_pending_analyses_inner():
                             else:
                                 # 增加错误计数
                                 prev_snapshot['error_count'] = error_count
-                                logger.debug(f"降级倒计时: {error_count}/{MAX_CONSECUTIVE_ERRORS}: id={record.id}")
+                                logger.debug(f"降级倒计时: {error_count}/{Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS}: id={record.id}")
                         else:
                             # 清理稳定性缓存
                             _poll_stability_cache.pop(record.id, None)

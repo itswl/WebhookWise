@@ -17,6 +17,7 @@ from typing import Optional
 import websocket
 
 from core.logger import get_logger
+from core.config import Config
 
 logger = get_logger('openocta_ws')
 
@@ -144,7 +145,9 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
         return None
 
 
-def _try_recv_challenge(ws, timeout: float = 2.0) -> Optional[str]:
+def _try_recv_challenge(ws, timeout: Optional[float] = None) -> Optional[str]:
+    if timeout is None:
+        timeout = Config.OPENOCTA_NONCE_TIMEOUT
     """尝试接收 connect.challenge 帧并提取 nonce
     
     OpenClaw Gateway 在 WebSocket 连接建立后、客户端发送 connect 之前，
@@ -181,10 +184,10 @@ def _try_recv_challenge(ws, timeout: float = 2.0) -> Optional[str]:
     return None
 
 
-# 连接相关常量
-CONNECT_TIMEOUT = 10  # TCP + WebSocket 握手超时（秒）
-HANDSHAKE_TIMEOUT = 5  # OpenOcta 协议握手超时（秒）
-RECV_TIMEOUT = 1.0     # recv 超时，用于检查 _done 事件
+# 连接相关常量（从 Config 读取，保留模块级默认值作为后备）
+CONNECT_TIMEOUT = Config.OPENOCTA_CONNECT_TIMEOUT   # TCP + WebSocket 握手超时（秒）
+HANDSHAKE_TIMEOUT = Config.OPENOCTA_HANDSHAKE_TIMEOUT  # OpenOcta 协议握手超时（秒）
+RECV_TIMEOUT = Config.OPENOCTA_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
 
 
 class OpenOctaWSClient:
@@ -221,7 +224,7 @@ class OpenOctaWSClient:
         
         try:
             # Step 1: 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
-            nonce = _try_recv_challenge(self._ws, timeout=2.0)
+            nonce = _try_recv_challenge(self._ws)
             
             # Step 2: 构造 connect frame（带或不带设备认证）
             device_auth = None
@@ -548,7 +551,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         )
         
         # 2. 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
-        nonce = _try_recv_challenge(ws, timeout=2.0)
+        nonce = _try_recv_challenge(ws)
         
         # 3. 构造 connect frame（带或不带设备认证）
         device_auth = None
