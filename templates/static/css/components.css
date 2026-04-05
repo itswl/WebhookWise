@@ -812,13 +812,13 @@
 }
 
 /* ==================== OpenOcta Markdown 分析内容样式 ==================== */
-.openocta-analysis-content {
+.openclaw-analysis-content {
     line-height: 1.6;
     font-size: 0.9em;
 }
 
-.openocta-analysis-content h1,
-.openocta-analysis-content h2 {
+.openclaw-analysis-content h1,
+.openclaw-analysis-content h2 {
     margin: 16px 0 10px;
     font-weight: 600;
     color: #24292e;
@@ -826,47 +826,47 @@
     padding-bottom: 6px;
 }
 
-.openocta-analysis-content h1 { font-size: 1.3em; }
-.openocta-analysis-content h2 { font-size: 1.15em; }
+.openclaw-analysis-content h1 { font-size: 1.3em; }
+.openclaw-analysis-content h2 { font-size: 1.15em; }
 
-.openocta-analysis-content h3,
-.openocta-analysis-content h4 {
+.openclaw-analysis-content h3,
+.openclaw-analysis-content h4 {
     margin: 12px 0 8px;
     font-weight: 600;
     color: #24292e;
 }
 
-.openocta-analysis-content h3 { font-size: 1.05em; }
-.openocta-analysis-content h4 { font-size: 1em; }
+.openclaw-analysis-content h3 { font-size: 1.05em; }
+.openclaw-analysis-content h4 { font-size: 1em; }
 
-.openocta-analysis-content p {
+.openclaw-analysis-content p {
     margin: 8px 0;
 }
 
-.openocta-analysis-content table {
+.openclaw-analysis-content table {
     border-collapse: collapse;
     width: 100%;
     margin: 10px 0;
     font-size: 0.9em;
 }
 
-.openocta-analysis-content th,
-.openocta-analysis-content td {
+.openclaw-analysis-content th,
+.openclaw-analysis-content td {
     border: 1px solid #ddd;
     padding: 8px 12px;
     text-align: left;
 }
 
-.openocta-analysis-content th {
+.openclaw-analysis-content th {
     background: #f5f5f5;
     font-weight: 600;
 }
 
-.openocta-analysis-content tr:nth-child(even) {
+.openclaw-analysis-content tr:nth-child(even) {
     background: #fafafa;
 }
 
-.openocta-analysis-content pre {
+.openclaw-analysis-content pre {
     background: #f5f5f5;
     padding: 12px;
     border-radius: 6px;
@@ -875,7 +875,7 @@
     margin: 10px 0;
 }
 
-.openocta-analysis-content code {
+.openclaw-analysis-content code {
     background: #f0f0f0;
     padding: 2px 6px;
     border-radius: 4px;
@@ -883,40 +883,40 @@
     font-family: 'SF Mono', Monaco, Consolas, monospace;
 }
 
-.openocta-analysis-content pre code {
+.openclaw-analysis-content pre code {
     background: none;
     padding: 0;
 }
 
-.openocta-analysis-content ul,
-.openocta-analysis-content ol {
+.openclaw-analysis-content ul,
+.openclaw-analysis-content ol {
     padding-left: 24px;
     margin: 8px 0;
 }
 
-.openocta-analysis-content li {
+.openclaw-analysis-content li {
     margin: 4px 0;
 }
 
-.openocta-analysis-content blockquote {
+.openclaw-analysis-content blockquote {
     border-left: 3px solid #0366d6;
     padding-left: 12px;
     margin: 10px 0;
     color: #586069;
 }
 
-.openocta-analysis-content hr {
+.openclaw-analysis-content hr {
     border: none;
     border-top: 1px solid #e1e4e8;
     margin: 16px 0;
 }
 
-.openocta-analysis-content strong {
+.openclaw-analysis-content strong {
     font-weight: 600;
     color: #24292e;
 }
 
-.openocta-analysis-content em {
+.openclaw-analysis-content em {
     font-style: italic;
 }
 

@@ -44,7 +44,7 @@ var DeepAnalysesModule = (function() {
             items.forEach(function(record) {
                 var analysis = record.analysis_result || {};
                 var statusLabel = getStatusLabel(record.status);
-                var engineLabel = record.engine === 'openocta' ? '🐙 OpenOcta' : '🤖 本地 AI';
+                var engineLabel = record.engine === 'openclaw' ? '🐙 OpenOcta' : '🤖 本地 AI';
                 var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
                 var duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
                 var source = record.source || 'unknown';
@@ -60,11 +60,11 @@ var DeepAnalysesModule = (function() {
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
                 html += '<span style="color:#666; font-size:0.85em;">来源: ' + source + '</span>';
                 html += '<span style="color:#888; font-size:0.85em;">告警 #' + record.webhook_event_id + '</span>';
-                if (record.openocta_run_id) {
-                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Run: ' + escapeHtml(record.openocta_run_id) + '</span>';
+                if (record.openclaw_run_id) {
+                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Run: ' + escapeHtml(record.openclaw_run_id) + '</span>';
                 }
-                if (record.openocta_session_key) {
-                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Session: ' + escapeHtml(record.openocta_session_key) + '</span>';
+                if (record.openclaw_session_key) {
+                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Session: ' + escapeHtml(record.openclaw_session_key) + '</span>';
                 }
                 html += '</div>';
                 html += '<span style="color:#888; font-size:0.85em;">' + time + ' | 耗时 ' + duration + '</span>';
@@ -82,27 +82,27 @@ var DeepAnalysesModule = (function() {
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:1.5em; margin-bottom:8px;">⏳</div>';
                     html += '<div style="font-weight:600;">OpenOcta 正在分析中...</div>';
-                    if (record.openocta_run_id) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-top:4px;">Run ID: ' + record.openocta_run_id + '</div>';
+                    if (record.openclaw_run_id) {
+                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-top:4px;">Run ID: ' + record.openclaw_run_id + '</div>';
                     }
                     html += '</div>';
                 } else if (record.status === 'failed') {
                     html += '<div style="padding:12px; background:#fff3f3; border-radius:4px; color:#d32f2f;">';
                     html += '<strong>分析失败</strong>';
                     if (analysis.root_cause) html += '<p style="margin:4px 0;">' + escapeHtml(analysis.root_cause) + '</p>';
-                    if (record.openocta_session_key) {
+                    if (record.openclaw_session_key) {
                         html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="margin-top:8px; padding:6px 16px; background:#1976d2; color:white; border:none; border-radius:4px; cursor:pointer; font-size:13px;">🔄 重新拉取</button>';
                     }
                     html += '</div>';
                 } else {
                     // completed - 展示分析结果
                     // 如果有完整的 OpenOcta 文本，优先渲染 markdown
-                    if (analysis._openocta_text) {
+                    if (analysis._openclaw_text) {
                         if (typeof marked !== 'undefined') {
-                            html += '<div class="openocta-analysis-content">' + marked.parse(analysis._openocta_text) + '</div>';
+                            html += '<div class="openclaw-analysis-content">' + marked.parse(analysis._openclaw_text) + '</div>';
                         } else {
                             // fallback: 用 pre 显示
-                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + escapeHtml(analysis._openocta_text) + '</pre>';
+                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + escapeHtml(analysis._openclaw_text) + '</pre>';
                         }
                         // 如果有置信度且不在 markdown 中，单独显示
                         if (analysis.confidence !== undefined && analysis.confidence !== null) {
