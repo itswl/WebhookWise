@@ -42,6 +42,37 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
+
+def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
+    """发送深度分析失败的飞书通知"""
+    from core.config import Config
+    from adapters.ecosystem_adapters import send_feishu_deep_analysis
+    
+    webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    if not webhook_url:
+        return
+    
+    try:
+        # 构建失败结果
+        failed_result = record.analysis_result.copy() if record.analysis_result else {}
+        failed_result['analysis_failed'] = True
+        failed_result['failure_reason'] = reason
+        
+        analysis_data = {
+            'analysis_result': failed_result,
+            'engine': record.engine,
+            'duration_seconds': record.duration_seconds or 0,
+        }
+        send_feishu_deep_analysis(
+            webhook_url=webhook_url,
+            analysis_record=analysis_data,
+            source='',
+            webhook_event_id=record.webhook_event_id
+        )
+        logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
+    except Exception as e:
+        logger.warning(f"飞书深度分析失败通知失败: {e}")
+
 def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
     # 防止多个轮询器并发执行（Docker 多 worker 场景）
@@ -87,6 +118,8 @@ def _poll_pending_analyses_inner():
                         # 清理稳定性缓存
                         _poll_stability_cache.pop(record.id, None)
                         logger.warning(f"分析超时: id={record.id}, run_id={record.openocta_run_id}")
+                        # 发送失败通知
+                        _notify_feishu_deep_analysis_failed(record, '超时失败')
                         continue
 
                     # 没有 session_key 的记录无法轮询
@@ -95,6 +128,8 @@ def _poll_pending_analyses_inner():
                         record.analysis_result = {'root_cause': '缺少 sessionKey，无法轮询'}
                         # 清理稳定性缓存
                         _poll_stability_cache.pop(record.id, None)
+                        # 发送失败通知
+                        _notify_feishu_deep_analysis_failed(record, '缺少sessionKey')
                         continue
 
                     # 最小等待时间检查
