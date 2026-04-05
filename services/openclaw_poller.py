@@ -271,6 +271,15 @@ def _poll_pending_analyses_inner():
                                 record.status = 'completed'
                                 record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
                                 logger.info(f"分析完成(降级): id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
+                                
+                                # 获取告警来源并发送飞书通知
+                                try:
+                                    from core.models import WebhookEvent
+                                    event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                                    source = event.source if event else ''
+                                    _notify_feishu_deep_analysis(record, source)
+                                except Exception as notify_err:
+                                    logger.warning(f"发送飞书通知失败: {notify_err}")
                                 continue
                             else:
                                 # 增加错误计数
