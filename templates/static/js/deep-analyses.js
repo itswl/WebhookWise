@@ -44,7 +44,7 @@ var DeepAnalysesModule = (function() {
             items.forEach(function(record) {
                 var analysis = record.analysis_result || {};
                 var statusLabel = getStatusLabel(record.status);
-                var engineLabel = record.engine === 'openclaw' ? '🐙 OpenOcta' : '🤖 本地 AI';
+                var engineLabel = record.engine === 'openclaw' ? '🐙 OpenClaw' : '🤖 本地 AI';
                 var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
                 var duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
                 var source = record.source || 'unknown';
@@ -81,7 +81,7 @@ var DeepAnalysesModule = (function() {
                 if (record.status === 'pending') {
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:1.5em; margin-bottom:8px;">⏳</div>';
-                    html += '<div style="font-weight:600;">OpenOcta 正在分析中...</div>';
+                    html += '<div style="font-weight:600;">OpenClaw 正在分析中...</div>';
                     if (record.openclaw_run_id) {
                         html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-top:4px;">Run ID: ' + record.openclaw_run_id + '</div>';
                     }
@@ -96,7 +96,7 @@ var DeepAnalysesModule = (function() {
                     html += '</div>';
                 } else {
                     // completed - 展示分析结果
-                    // 如果有完整的 OpenOcta 文本，优先渲染 markdown
+                    // 如果有完整的 OpenClaw 文本，优先渲染 markdown
                     if (analysis._openclaw_text) {
                         if (typeof marked !== 'undefined') {
                             html += '<div class="openclaw-analysis-content">' + marked.parse(analysis._openclaw_text) + '</div>';
