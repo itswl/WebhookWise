@@ -14,21 +14,21 @@ from core.config import Config
 from core.models import test_db_connection
 from core.logger import logger
 
-# 启动 OpenOcta 轮询后台任务（仅启动一个实例）
+# 启动 OpenClaw 轮询后台任务（仅启动一个实例）
 _poller_lock_file = None  # 全局变量，防止 GC 关闭文件描述符释放锁
 
 def _start_poller_once():
     """使用文件锁确保只有一个 worker 启动轮询"""
     global _poller_lock_file
     import fcntl
-    lock_path = Path(Config.DATA_DIR) / 'openocta_poller.lock'
+    lock_path = Path(Config.DATA_DIR) / 'openclaw_poller.lock'
     try:
         _poller_lock_file = open(lock_path, 'w')
         fcntl.flock(_poller_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         # 获得锁，启动轮询
-        from services.openocta_poller import start_poller
+        from services.openclaw_poller import start_poller
         start_poller(interval=30)
-        logger.info("当前 worker 启动了 OpenOcta 轮询任务")
+        logger.info("当前 worker 启动了 OpenClaw 轮询任务")
         # lock_file 保存在全局变量中，防止函数返回后被 GC 释放锁
     except (IOError, OSError):
         # 其他 worker 已经持有锁，跳过

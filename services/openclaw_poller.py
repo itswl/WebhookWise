@@ -1,4 +1,4 @@
-"""OpenOcta 分析结果后台轮询"""
+"""OpenClaw 分析结果后台轮询"""
 import time
 import json
 import re
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from core.config import Config
 
-logger = logging.getLogger('webhook_service.openocta_poller')
+logger = logging.getLogger('webhook_service.openclaw_poller')
 
 # 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
@@ -88,7 +88,7 @@ def _poll_pending_analyses_inner():
     """轮询逻辑主体（由 poll_pending_analyses 在持锁状态下调用）"""
     from core.models import DeepAnalysis, session_scope
     from core.config import Config
-    from services.openocta_ws_client import poll_session_result
+    from services.openclaw_ws_client import poll_session_result
 
     try:
         with session_scope() as session:
@@ -100,29 +100,29 @@ def _poll_pending_analyses_inner():
             if not pending:
                 return
 
-            logger.info(f"发现 {len(pending)} 条待轮询的 OpenOcta 分析")
+            logger.info(f"发现 {len(pending)} 条待轮询的 OpenClaw 分析")
 
             for record in pending:
                 try:
-                    # 检查是否超时（created_at 距今超过 OPENOCTA_TIMEOUT_SECONDS）
-                    timeout_seconds = getattr(Config, 'OPENOCTA_TIMEOUT_SECONDS', 300)
+                    # 检查是否超时（created_at 距今超过 OPENCLAW_TIMEOUT_SECONDS）
+                    timeout_seconds = getattr(Config, 'OPENCLAW_TIMEOUT_SECONDS', 300)
                     if record.created_at and (datetime.now() - record.created_at).total_seconds() > timeout_seconds:
                         record.status = 'failed'
                         record.analysis_result = {
-                            'root_cause': 'OpenOcta 分析超时',
+                            'root_cause': 'OpenClaw 分析超时',
                             'impact': '分析未在规定时间内完成',
-                            'recommendations': ['请重新触发分析', '检查 OpenOcta 服务状态'],
+                            'recommendations': ['请重新触发分析', '检查 OpenClaw 服务状态'],
                             'confidence': 0
                         }
                         # 清理稳定性缓存
                         _poll_stability_cache.pop(record.id, None)
-                        logger.warning(f"分析超时: id={record.id}, run_id={record.openocta_run_id}")
+                        logger.warning(f"分析超时: id={record.id}, run_id={record.openclaw_run_id}")
                         # 发送失败通知
                         _notify_feishu_deep_analysis_failed(record, '超时失败')
                         continue
 
                     # 没有 session_key 的记录无法轮询
-                    if not record.openocta_session_key:
+                    if not record.openclaw_session_key:
                         record.status = 'failed'
                         record.analysis_result = {'root_cause': '缺少 sessionKey，无法轮询'}
                         # 清理稳定性缓存
@@ -139,10 +139,10 @@ def _poll_pending_analyses_inner():
 
                     # 短连接轮询
                     result = poll_session_result(
-                        gateway_url=Config.OPENOCTA_GATEWAY_URL,
-                        gateway_token=Config.OPENOCTA_GATEWAY_TOKEN,
-                        session_key=record.openocta_session_key,
-                        timeout=Config.OPENOCTA_POLL_TIMEOUT
+                        gateway_url=Config.OPENCLAW_GATEWAY_URL,
+                        gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
+                        session_key=record.openclaw_session_key,
+                        timeout=Config.OPENCLAW_POLL_TIMEOUT
                     )
 
                     if result.get('status') == 'completed':
@@ -183,8 +183,8 @@ def _poll_pending_analyses_inner():
                                     pass
 
                             if parsed_result and isinstance(parsed_result, dict):
-                                parsed_result['_openocta_run_id'] = record.openocta_run_id
-                                parsed_result['_openocta_text'] = text
+                                parsed_result['_openclaw_run_id'] = record.openclaw_run_id
+                                parsed_result['_openclaw_text'] = text
                                 record.analysis_result = parsed_result
                             else:
                                 record.analysis_result = {
@@ -192,13 +192,13 @@ def _poll_pending_analyses_inner():
                                     'impact': '',
                                     'recommendations': [],
                                     'confidence': 0.5,
-                                    '_openocta_run_id': record.openocta_run_id,
-                                    '_openocta_text': text
+                                    '_openclaw_run_id': record.openclaw_run_id,
+                                    '_openclaw_text': text
                                 }
 
                             record.status = 'completed'
                             record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                            logger.info(f"分析完成: id={record.id}, run_id={record.openocta_run_id}, text_len={len(text)}")
+                            logger.info(f"分析完成: id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
 
                             # 获取告警来源并发送飞书通知
                             try:
@@ -227,7 +227,7 @@ def _poll_pending_analyses_inner():
                     elif result.get('status') == 'pending':
                         # 仍在分析中，清理缓存（重新开始计数）
                         _poll_stability_cache.pop(record.id, None)
-                        logger.debug(f"分析进行中: id={record.id}, run_id={record.openocta_run_id}")
+                        logger.debug(f"分析进行中: id={record.id}, run_id={record.openclaw_run_id}")
 
                     elif result.get('status') == 'error':
                         error = result.get('error', 'unknown')
@@ -255,8 +255,8 @@ def _poll_pending_analyses_inner():
                                         pass
                                 
                                 if parsed_result and isinstance(parsed_result, dict):
-                                    parsed_result['_openocta_run_id'] = record.openocta_run_id
-                                    parsed_result['_openocta_text'] = text
+                                    parsed_result['_openclaw_run_id'] = record.openclaw_run_id
+                                    parsed_result['_openclaw_text'] = text
                                     record.analysis_result = parsed_result
                                 else:
                                     record.analysis_result = {
@@ -264,13 +264,13 @@ def _poll_pending_analyses_inner():
                                         'impact': '',
                                         'recommendations': [],
                                         'confidence': 0.5,
-                                        '_openocta_run_id': record.openocta_run_id,
-                                        '_openocta_text': text
+                                        '_openclaw_run_id': record.openclaw_run_id,
+                                        '_openclaw_text': text
                                     }
                                 
                                 record.status = 'completed'
                                 record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                                logger.info(f"分析完成(降级): id={record.id}, run_id={record.openocta_run_id}, text_len={len(text)}")
+                                logger.info(f"分析完成(降级): id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
                                 continue
                             else:
                                 # 增加错误计数
@@ -291,7 +291,7 @@ def _poll_pending_analyses_inner():
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
     def _loop():
-        logger.info(f"OpenOcta 轮询任务已启动，间隔 {interval} 秒")
+        logger.info(f"OpenClaw 轮询任务已启动，间隔 {interval} 秒")
         while True:
             try:
                 poll_pending_analyses()
@@ -299,6 +299,6 @@ def start_poller(interval: int = 30):
                 logger.error(f"轮询循环异常: {e}")
             time.sleep(interval)
     
-    t = threading.Thread(target=_loop, daemon=True, name='openocta-poller')
+    t = threading.Thread(target=_loop, daemon=True, name='openclaw-poller')
     t.start()
     return t
