@@ -8,11 +8,14 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger('webhook_service.openocta_poller')
 
-# 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int}}
+# 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
+# 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
 _poll_stability_cache = {}
-STABILITY_REQUIRED_HITS = 3       # 需要连续一致的次数
-MIN_WAIT_SECONDS = 60             # 从创建起最少等待秒数
+_poll_lock = threading.Lock()
+STABILITY_REQUIRED_HITS = 2       # 连续 2 次一致即可确认完成（加快确认速度）
+MIN_WAIT_SECONDS = 30            # 从创建起最少等待秒数（加快首次轮询）
+MAX_CONSECUTIVE_ERRORS = 5       # 连续超时最大次数，超过则降级使用首次结果
 
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
@@ -41,22 +44,34 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
 
 def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
+    # 防止多个轮询器并发执行（Docker 多 worker 场景）
+    if not _poll_lock.acquire(blocking=False):
+        logger.debug("另一个轮询正在执行，跳过本轮")
+        return
+    try:
+        _poll_pending_analyses_inner()
+    finally:
+        _poll_lock.release()
+
+
+def _poll_pending_analyses_inner():
+    """轮询逻辑主体（由 poll_pending_analyses 在持锁状态下调用）"""
     from core.models import DeepAnalysis, session_scope
     from core.config import Config
     from services.openocta_ws_client import poll_session_result
-    
+
     try:
         with session_scope() as session:
             # 查询 pending 记录（限制批次大小）
             pending = session.query(DeepAnalysis).filter_by(
                 status='pending'
             ).order_by(DeepAnalysis.created_at.asc()).limit(10).all()
-            
+
             if not pending:
                 return
-            
+
             logger.info(f"发现 {len(pending)} 条待轮询的 OpenOcta 分析")
-            
+
             for record in pending:
                 try:
                     # 检查是否超时（created_at 距今超过 OPENOCTA_TIMEOUT_SECONDS）
@@ -73,7 +88,7 @@ def poll_pending_analyses():
                         _poll_stability_cache.pop(record.id, None)
                         logger.warning(f"分析超时: id={record.id}, run_id={record.openocta_run_id}")
                         continue
-                    
+
                     # 没有 session_key 的记录无法轮询
                     if not record.openocta_session_key:
                         record.status = 'failed'
@@ -81,37 +96,37 @@ def poll_pending_analyses():
                         # 清理稳定性缓存
                         _poll_stability_cache.pop(record.id, None)
                         continue
-                    
+
                     # 最小等待时间检查
                     elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else 999
                     if elapsed < MIN_WAIT_SECONDS:
                         logger.debug(f"分析创建未满 {MIN_WAIT_SECONDS}s (已 {elapsed:.0f}s), 跳过: id={record.id}")
                         continue
-                    
-                    # 短连接轮询
+
+                    # 短连接轮询（高延迟网络建议 90 秒）
                     result = poll_session_result(
                         gateway_url=Config.OPENOCTA_GATEWAY_URL,
                         gateway_token=Config.OPENOCTA_GATEWAY_TOKEN,
                         session_key=record.openocta_session_key,
-                        timeout=15
+                        timeout=90  # 增加超时时间，适应高延迟网络
                     )
-                    
+
                     if result.get('status') == 'completed':
                         text = result.get('text', '')
                         message = result.get('message', {})
                         msg_count = result.get('msg_count', 0)
-                        
+
                         # 稳定性检测：连续 N 次轮询结果一致才确认完成
                         current_snapshot = {
                             'msg_count': msg_count,
                             'text_len': len(text)
                         }
                         prev_snapshot = _poll_stability_cache.get(record.id)
-                        
+
                         if prev_snapshot and prev_snapshot['msg_count'] == current_snapshot['msg_count'] and prev_snapshot['text_len'] == current_snapshot['text_len']:
                             # 结果与上次一致，增加命中计数
                             hit_count = prev_snapshot.get('hit_count', 1) + 1
-                            
+
                             if hit_count >= STABILITY_REQUIRED_HITS:
                                 # 达到要求的连续一致次数 → 真正完成
                                 logger.info(f"分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
@@ -120,10 +135,10 @@ def poll_pending_analyses():
                                 _poll_stability_cache[record.id] = {**current_snapshot, 'hit_count': hit_count}
                                 logger.info(f"分析结果一致({hit_count}/{STABILITY_REQUIRED_HITS}), 继续等待: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                                 continue
-                            
+
                             # 清理缓存
                             _poll_stability_cache.pop(record.id, None)
-                            
+
                             # 尝试从文本中提取 JSON 结构化数据
                             parsed_result = None
                             json_match = re.search(r'\{[\s\S]*\}', text)
@@ -132,7 +147,7 @@ def poll_pending_analyses():
                                     parsed_result = json.loads(json_match.group())
                                 except json.JSONDecodeError:
                                     pass
-                            
+
                             if parsed_result and isinstance(parsed_result, dict):
                                 parsed_result['_openocta_run_id'] = record.openocta_run_id
                                 parsed_result['_openocta_text'] = text
@@ -146,11 +161,11 @@ def poll_pending_analyses():
                                     '_openocta_run_id': record.openocta_run_id,
                                     '_openocta_text': text
                                 }
-                            
+
                             record.status = 'completed'
                             record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
                             logger.info(f"分析完成: id={record.id}, run_id={record.openocta_run_id}, text_len={len(text)}")
-                            
+
                             # 获取告警来源并发送飞书通知
                             try:
                                 from core.models import WebhookEvent
@@ -163,22 +178,78 @@ def poll_pending_analyses():
                             # 首次获取或结果有变化 → 重置计数
                             change_type = '变化' if prev_snapshot else '首次获取'
                             logger.info(f"分析结果{change_type}, 开始稳定计数: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
-                            _poll_stability_cache[record.id] = {**current_snapshot, 'hit_count': 1}
+                            # 首次获取时更新 created_at，延长超时窗口（因为分析已完成，只需等待稳定性确认）
+                            if not prev_snapshot:
+                                record.created_at = datetime.now()
+                                logger.debug(f"首次获取结果，更新 created_at 以延长超时窗口: id={record.id}")
+                            # 保存首次结果用于降级
+                            _poll_stability_cache[record.id] = {
+                                **current_snapshot,
+                                'hit_count': 1,
+                                'first_result': {'text': text, 'message': message}
+                            }
                             # 不保存，继续下一轮轮询
-                    
+
                     elif result.get('status') == 'pending':
                         # 仍在分析中，清理缓存（重新开始计数）
                         _poll_stability_cache.pop(record.id, None)
                         logger.debug(f"分析进行中: id={record.id}, run_id={record.openocta_run_id}")
-                    
+
                     elif result.get('status') == 'error':
                         error = result.get('error', 'unknown')
                         logger.warning(f"轮询出错: id={record.id}, error={error}")
+                        
+                        # 检查是否有首次结果可以降级使用
+                        prev_snapshot = _poll_stability_cache.get(record.id)
+                        if prev_snapshot and 'first_result' in prev_snapshot:
+                            error_count = prev_snapshot.get('error_count', 0) + 1
+                            if error_count >= MAX_CONSECUTIVE_ERRORS:
+                                # 连续超时过多，降级使用首次结果
+                                logger.warning(f"连续超时 {error_count} 次，降级使用首次结果: id={record.id}")
+                                first_result = prev_snapshot['first_result']
+                                text = first_result['text']
+                                message = first_result['message']
+                                _poll_stability_cache.pop(record.id, None)
+                                
+                                # 尝试从文本中提取 JSON 结构化数据
+                                parsed_result = None
+                                json_match = re.search(r'\{[\s\S]*\}', text)
+                                if json_match:
+                                    try:
+                                        parsed_result = json.loads(json_match.group())
+                                    except json.JSONDecodeError:
+                                        pass
+                                
+                                if parsed_result and isinstance(parsed_result, dict):
+                                    parsed_result['_openocta_run_id'] = record.openocta_run_id
+                                    parsed_result['_openocta_text'] = text
+                                    record.analysis_result = parsed_result
+                                else:
+                                    record.analysis_result = {
+                                        'root_cause': text,
+                                        'impact': '',
+                                        'recommendations': [],
+                                        'confidence': 0.5,
+                                        '_openocta_run_id': record.openocta_run_id,
+                                        '_openocta_text': text
+                                    }
+                                
+                                record.status = 'completed'
+                                record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
+                                logger.info(f"分析完成(降级): id={record.id}, run_id={record.openocta_run_id}, text_len={len(text)}")
+                                continue
+                            else:
+                                # 增加错误计数
+                                prev_snapshot['error_count'] = error_count
+                                logger.debug(f"降级倒计时: {error_count}/{MAX_CONSECUTIVE_ERRORS}: id={record.id}")
+                        else:
+                            # 清理稳定性缓存
+                            _poll_stability_cache.pop(record.id, None)
                         # 不立即标记失败，下次重试
-                
+
                 except Exception as e:
                     logger.error(f"轮询记录 id={record.id} 失败: {e}")
-    
+
     except Exception as e:
         logger.error(f"轮询任务异常: {e}")
 

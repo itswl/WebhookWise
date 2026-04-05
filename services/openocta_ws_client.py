@@ -6,6 +6,9 @@ OpenOcta WebSocket 客户端模块
 """
 
 import json
+import os
+import time
+import base64
 import uuid
 import platform
 import threading
@@ -30,9 +33,18 @@ def _http_to_ws_url(http_url: str) -> str:
         return f'ws://{url}/ws'
 
 
-def _build_connect_frame(token: str) -> dict:
-    """构建 WebSocket 握手请求帧"""
-    return {
+def _build_connect_frame(token: str, device_auth: dict = None) -> dict:
+    """构建 WebSocket 握手请求帧
+    
+    Args:
+        token: Gateway 认证 token
+        device_auth: OpenClaw 设备认证参数（可选），由 _build_device_auth 返回
+    """
+    # 如果有设备认证，platform 必须为 linux、mode 为 cli（匹配已配对设备）
+    client_platform = 'linux' if device_auth else platform.system().lower()
+    client_mode = 'cli' if device_auth else 'backend'
+    
+    frame = {
         "type": "req",
         "id": str(uuid.uuid4()),
         "method": "connect",
@@ -42,14 +54,131 @@ def _build_connect_frame(token: str) -> dict:
             "client": {
                 "id": "gateway-client",
                 "version": "1.0.0",
-                "platform": platform.system().lower(),
-                "mode": "backend"
+                "platform": client_platform,
+                "mode": client_mode
             },
             "auth": {
                 "token": token
             }
         }
     }
+    
+    # 添加 OpenClaw 设备认证字段
+    if device_auth:
+        params = frame['params']
+        params['role'] = device_auth['role']
+        params['scopes'] = device_auth['scopes']
+        params['auth']['deviceToken'] = device_auth['device_token']
+        params['device'] = device_auth['device']
+        logger.debug(f"Device auth attached: deviceId={device_auth['device']['id'][:16]}...")
+    
+    return frame
+
+
+def _build_device_auth(nonce: str) -> Optional[dict]:
+    """构造 OpenClaw 设备认证参数（Ed25519 签名）
+    
+    认证流程：
+    1. 从环境变量读取设备 ID、私钥 PEM、设备 token
+    2. 用 Ed25519 私钥对 v2 签名 payload 签名
+    3. 返回 role、scopes、device 等字段，供 connect frame 使用
+    
+    v2 签名 payload 格式（字段用 | 分隔）：
+    v2|{deviceId}|{clientId}|{clientMode}|{role}|{scopes}|{signedAtMs}|{token}|{nonce}
+    
+    Args:
+        nonce: 从 connect.challenge 事件中提取的随机数
+    Returns:
+        设备认证参数字典，或 None（未配置/签名失败）
+    """
+    device_id = os.getenv('OPENCLAW_DEVICE_ID', '')
+    private_key_b64 = os.getenv('OPENCLAW_DEVICE_PRIVATE_KEY_PEM', '')
+    device_token = os.getenv('OPENCLAW_DEVICE_TOKEN', '')
+    
+    if not device_id or not private_key_b64:
+        return None
+    
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    except ImportError:
+        logger.warning("cryptography package not installed, skipping device auth. "
+                       "Install with: pip install cryptography>=42.0.0")
+        return None
+    
+    try:
+        # 从 base64 编码的私钥数据重建完整 PEM
+        pem = f"-----BEGIN PRIVATE KEY-----\n{private_key_b64}\n-----END PRIVATE KEY-----\n"
+        private_key = serialization.load_pem_private_key(pem.encode(), password=None)
+        
+        # 获取 raw public key 并 base64url 编码（无 padding）
+        pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip('=')
+        
+        # 构造 v2 签名 payload
+        signed_at = int(time.time() * 1000)
+        gateway_token = os.getenv('OPENOCTA_GATEWAY_TOKEN', '')
+        scopes_str = 'operator.read'
+        payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
+        
+        # Ed25519 签名，base64url 编码（无 padding）
+        signature = private_key.sign(payload.encode())
+        sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip('=')
+        
+        logger.debug(f"Device auth built: signedAt={signed_at}, nonce={nonce[:16]}...")
+        
+        return {
+            'role': 'operator',
+            'scopes': ['operator.read'],
+            'device_token': device_token,
+            'device': {
+                'id': device_id,
+                'publicKey': pub_b64url,
+                'signature': sig_b64url,
+                'signedAt': signed_at,
+                'nonce': nonce
+            }
+        }
+    except Exception as e:
+        logger.warning(f"Failed to build device auth: {e}")
+        return None
+
+
+def _try_recv_challenge(ws, timeout: float = 2.0) -> Optional[str]:
+    """尝试接收 connect.challenge 帧并提取 nonce
+    
+    OpenClaw Gateway 在 WebSocket 连接建立后、客户端发送 connect 之前，
+    会主动推送一个 connect.challenge 事件帧，包含用于签名的 nonce。
+    
+    Args:
+        ws: WebSocket 连接对象
+        timeout: 接收超时（秒）
+    Returns:
+        nonce 字符串，或 None（非 OpenClaw / 超时）
+    """
+    old_timeout = ws.gettimeout()
+    try:
+        ws.settimeout(timeout)
+        raw = ws.recv()
+        frame = json.loads(raw)
+        
+        # connect.challenge 帧格式: {"type": "event", "event": "connect.challenge", "payload": {"nonce": "..."}}
+        if frame.get('type') == 'event' and frame.get('event') == 'connect.challenge':
+            nonce = frame.get('payload', {}).get('nonce', '')
+            if nonce:
+                logger.info(f"Received connect.challenge, nonce={nonce[:16]}...")
+                return nonce
+            else:
+                logger.warning("connect.challenge frame has no nonce")
+        else:
+            logger.debug(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
+    except websocket.WebSocketTimeoutException:
+        logger.debug("No connect.challenge received (timeout) — likely OpenOcta, not OpenClaw")
+    except Exception as e:
+        logger.debug(f"Error receiving challenge: {e}")
+    finally:
+        ws.settimeout(old_timeout)
+    return None
 
 
 # 连接相关常量
@@ -79,24 +208,50 @@ class OpenOctaWSClient:
         self._connection_error: Optional[str] = None  # 记录连接错误类型
     
     def _send_connect(self) -> bool:
-        """发送握手请求并验证响应"""
-        connect_frame = _build_connect_frame(self.gateway_token)
+        """发送握手请求并验证响应
+        
+        流程（兼容 OpenOcta 和 OpenClaw）：
+        1. 先尝试 recv() 接收 connect.challenge 帧 → 提取 nonce
+        2. 如果有 nonce + 设备配置，构造带设备认证的 connect frame
+        3. 否则构造普通 connect frame（向后兼容 OpenOcta）
+        4. send(connect_frame)
+        5. 循环 recv() 等待 type=res 的响应（跳过 event 帧）
+        """
         logger.debug(f"Sending connect frame for runId={self.run_id}")
         
         try:
+            # Step 1: 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
+            nonce = _try_recv_challenge(self._ws, timeout=2.0)
+            
+            # Step 2: 构造 connect frame（带或不带设备认证）
+            device_auth = None
+            if nonce:
+                device_auth = _build_device_auth(nonce)
+                if device_auth:
+                    logger.info("Using OpenClaw device auth for connect handshake")
+                else:
+                    logger.debug("Challenge received but device auth not configured, using simple connect")
+            
+            connect_frame = _build_connect_frame(self.gateway_token, device_auth=device_auth)
+            
             # 临时设置较短的超时用于握手
             self._ws.settimeout(HANDSHAKE_TIMEOUT)
             
+            # Step 3: 发送 connect frame
             self._ws.send(json.dumps(connect_frame))
             
-            # 等待握手响应
-            response_raw = self._ws.recv()
-            response = json.loads(response_raw)
+            # Step 4: 等待握手响应（跳过 event 帧）
+            response = None
+            for _ in range(5):
+                response_raw = self._ws.recv()
+                response = json.loads(response_raw)
+                if response.get('type') == 'res':
+                    break
+                logger.debug(f"Skipping non-res frame during handshake: type={response.get('type')}, event={response.get('event', '')}")
             
-            # 验证响应
-            if response.get('type') != 'res':
+            if not response or response.get('type') != 'res':
                 self._connection_error = 'auth_protocol_error'
-                logger.error(f"Unexpected response type: {response.get('type')}")
+                logger.error(f"Unexpected response type after retries: {response.get('type') if response else 'none'}")
                 return False
             
             if not response.get('ok'):
@@ -361,7 +516,7 @@ class OpenOctaWSClient:
         return error_messages.get(self._connection_error, 'WebSocket connection failed')
 
 
-def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, timeout: int = 15) -> dict:
+def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, timeout: int = 30) -> dict:
     """
     短连接轮询：连接 WS -> 握手 -> 调用 chat.history -> 提取结果 -> 断开
     整个过程 < 15 秒
@@ -379,11 +534,12 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
     """
     ws_url = _http_to_ws_url(gateway_url)
     ws = None
+    start_time = time.time()
     
     try:
         # 1. 建立 WebSocket 连接（使用较短超时快速失败）
         connect_timeout = min(5, timeout // 3)
-        logger.debug(f"Polling session result: connecting to {ws_url}, session_key={session_key}")
+        logger.info(f"Polling session result: connecting to {ws_url}, session_key={session_key}")
         
         ws = websocket.create_connection(
             ws_url,
@@ -391,20 +547,35 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
             skip_utf8_validation=True
         )
         
-        # 2. 发送握手请求
-        connect_frame = _build_connect_frame(gateway_token)
+        # 2. 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
+        nonce = _try_recv_challenge(ws, timeout=2.0)
+        
+        # 3. 构造 connect frame（带或不带设备认证）
+        device_auth = None
+        if nonce:
+            device_auth = _build_device_auth(nonce)
+            if device_auth:
+                logger.info("Poll: using OpenClaw device auth for connect handshake")
+        
+        connect_frame = _build_connect_frame(gateway_token, device_auth=device_auth)
         ws.send(json.dumps(connect_frame))
         
-        # 3. 等待握手响应
-        handshake_timeout = min(5, timeout // 3)
+        # 4. 等待握手响应（基于实际剩余时间动态分配）
+        elapsed = time.time() - start_time
+        handshake_timeout = max(5, min(15, timeout - elapsed - 5))  # 握手最多 15s，但不超过剩余时间
         ws.settimeout(handshake_timeout)
         
-        response_raw = ws.recv()
-        response = json.loads(response_raw)
+        # 等待握手响应（跳过 event 帧）
+        response = None
+        for _ in range(5):
+            response_raw = ws.recv()
+            response = json.loads(response_raw)
+            if response.get('type') == 'res':
+                break
+            logger.debug(f"Skipping non-res frame during poll handshake: type={response.get('type')}, event={response.get('event', '')}")
         
-        # 验证握手响应
-        if response.get('type') != 'res':
-            return {"status": "error", "error": f"Unexpected response type: {response.get('type')}"}
+        if not response or response.get('type') != 'res':
+            return {"status": "error", "error": f"Unexpected response type: {response.get('type') if response else 'none'}"}
         
         if not response.get('ok'):
             error = response.get('error', {})
@@ -414,7 +585,8 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         if payload.get('type') != 'hello-ok':
             return {"status": "error", "error": f"Unexpected payload type: {payload.get('type')}"}
         
-        logger.debug(f"Handshake OK, sending chat.history request")
+        elapsed_hs = time.time() - start_time
+        logger.info(f"Handshake OK in {elapsed_hs:.1f}s, sending chat.history request")
         
         # 4. 发送 chat.history 请求
         request_id = str(uuid.uuid4())
@@ -429,20 +601,31 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         ws.send(json.dumps(history_request))
         
         # 5. 等待 chat.history 响应
-        remaining_timeout = max(2, timeout - connect_timeout - handshake_timeout)
+        elapsed = time.time() - start_time
+        remaining_timeout = max(15, timeout - elapsed - 3)  # chat.history 需要更多时间（高延迟网络）
         ws.settimeout(remaining_timeout)
+        logger.info(f"chat.history sent, remaining_timeout={remaining_timeout:.1f}s")
         
         # 可能收到多个帧（event 帧等），需要找到匹配 id 的 res 帧
         max_frames = 50  # 避免无限循环
+        frame_count = 0
         for _ in range(max_frames):
             frame_raw = ws.recv()
             if not frame_raw:
                 continue
             
+            frame_count += 1
             frame = json.loads(frame_raw)
+            frame_type = frame.get('type', '')
+            frame_id = frame.get('id', '')
+            
+            # 记录每个收到的帧（诊断用）
+            if frame_type != 'res' or frame_id != request_id:
+                event_name = frame.get('event', '')
+                logger.info(f"chat.history wait: skip frame #{frame_count} type={frame_type}, event={event_name}, id={frame_id[:8] if frame_id else ''}")
             
             # 只处理 type=="res" 且 id 匹配的响应
-            if frame.get('type') == 'res' and frame.get('id') == request_id:
+            if frame_type == 'res' and frame_id == request_id:
                 if not frame.get('ok'):
                     error = frame.get('error', {})
                     return {"status": "error", "error": f"chat.history failed: {error.get('message', 'Unknown error')}"}
@@ -494,7 +677,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 if isinstance(content, list):
                     content_types = [c.get('type') for c in content if isinstance(c, dict)]
                 
-                logger.debug(f"Poll: last message role={role}, content_types={content_types}, has_duration={has_duration}")
+                logger.info(f"Poll: last message role={role}, content_types={content_types}, has_duration={has_duration}")
                 
                 if role != 'assistant':
                     # 最后一条是 user/toolResult 等，agent 还在处理

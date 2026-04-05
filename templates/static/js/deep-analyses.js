@@ -60,6 +60,12 @@ var DeepAnalysesModule = (function() {
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
                 html += '<span style="color:#666; font-size:0.85em;">来源: ' + source + '</span>';
                 html += '<span style="color:#888; font-size:0.85em;">告警 #' + record.webhook_event_id + '</span>';
+                if (record.openocta_run_id) {
+                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Run: ' + escapeHtml(record.openocta_run_id) + '</span>';
+                }
+                if (record.openocta_session_key) {
+                    html += '<span style="color:#999; font-size:0.8em; font-family:monospace;">Session: ' + escapeHtml(record.openocta_session_key) + '</span>';
+                }
                 html += '</div>';
                 html += '<span style="color:#888; font-size:0.85em;">' + time + ' | 耗时 ' + duration + '</span>';
                 html += '</div>';
@@ -84,6 +90,9 @@ var DeepAnalysesModule = (function() {
                     html += '<div style="padding:12px; background:#fff3f3; border-radius:4px; color:#d32f2f;">';
                     html += '<strong>分析失败</strong>';
                     if (analysis.root_cause) html += '<p style="margin:4px 0;">' + escapeHtml(analysis.root_cause) + '</p>';
+                    if (record.openocta_session_key) {
+                        html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="margin-top:8px; padding:6px 16px; background:#1976d2; color:white; border:none; border-radius:4px; cursor:pointer; font-size:13px;">🔄 重新拉取</button>';
+                    }
                     html += '</div>';
                 } else {
                     // completed - 展示分析结果
@@ -236,9 +245,27 @@ var DeepAnalysesModule = (function() {
         if (engineFilter) engineFilter.addEventListener('change', function() { load(1); });
     });
     
+    async function retryAnalysis(analysisId) {
+        if (!confirm('确定要重新拉取此分析结果吗？')) return;
+
+        try {
+            var result = await API.retryDeepAnalysis(analysisId);
+            if (result.success) {
+                alert('已重新开始拉取，请等待结果');
+                load();
+                startAutoRefresh();
+            } else {
+                alert('重试失败: ' + (result.error || '未知错误'));
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    }
+
     return {
         load: load,
         stopAutoRefresh: stopAutoRefresh,
-        forwardAnalysis: forwardAnalysis
+        forwardAnalysis: forwardAnalysis,
+        retryAnalysis: retryAnalysis
     };
 })();
