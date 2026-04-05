@@ -2020,7 +2020,7 @@ def forward_deep_analysis(analysis_id: int):
                     'duration_seconds': analysis.duration_seconds,
                     'created_at': analysis.created_at.isoformat() if analysis.created_at else None
                 }
-                resp = req_lib.post(target_url, json=payload, timeout=10)
+                resp = req_lib.post(target_url, json=payload, timeout=Config.FORWARD_TIMEOUT)
                 resp.raise_for_status()
                 return jsonify({'success': True, 'message': f'已转发 (HTTP {resp.status_code})'})
     except Exception as e:

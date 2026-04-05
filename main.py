@@ -21,7 +21,7 @@ def _start_poller_once():
     """使用文件锁确保只有一个 worker 启动轮询"""
     global _poller_lock_file
     import fcntl
-    lock_path = Path('/tmp/openocta_poller.lock')
+    lock_path = Path(Config.DATA_DIR) / 'openocta_poller.lock'
     try:
         _poller_lock_file = open(lock_path, 'w')
         fcntl.flock(_poller_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
