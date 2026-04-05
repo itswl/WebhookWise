@@ -1,8 +1,8 @@
 """
-OpenOcta WebSocket 客户端模块
+OpenClaw WebSocket 客户端模块
 
-同步连接 OpenOcta Gateway WebSocket，等待指定 runId 的分析结果。
-协议参考: openocta-main/src/pkg/gateway/protocol/frames.go
+同步连接 OpenClaw Gateway WebSocket，等待指定 runId 的分析结果。
+协议参考: openclaw-main/src/pkg/gateway/protocol/frames.go
 """
 
 import json
@@ -19,7 +19,7 @@ import websocket
 from core.logger import get_logger
 from core.config import Config
 
-logger = get_logger('openocta_ws')
+logger = get_logger('openclaw_ws')
 
 
 def _http_to_ws_url(http_url: str) -> str:
@@ -118,7 +118,7 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
         
         # 构造 v2 签名 payload
         signed_at = int(time.time() * 1000)
-        gateway_token = os.getenv('OPENOCTA_GATEWAY_TOKEN', '')
+        gateway_token = os.getenv('OPENCLAW_GATEWAY_TOKEN', '')
         scopes_str = 'operator.read'
         payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
         
@@ -147,7 +147,7 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
 
 def _try_recv_challenge(ws, timeout: Optional[float] = None) -> Optional[str]:
     if timeout is None:
-        timeout = Config.OPENOCTA_NONCE_TIMEOUT
+        timeout = Config.OPENCLAW_NONCE_TIMEOUT
     """尝试接收 connect.challenge 帧并提取 nonce
     
     OpenClaw Gateway 在 WebSocket 连接建立后、客户端发送 connect 之前，
@@ -176,7 +176,7 @@ def _try_recv_challenge(ws, timeout: Optional[float] = None) -> Optional[str]:
         else:
             logger.debug(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
     except websocket.WebSocketTimeoutException:
-        logger.debug("No connect.challenge received (timeout) — likely OpenOcta, not OpenClaw")
+        logger.debug("No connect.challenge received (timeout) — likely OpenClaw, not OpenClaw")
     except Exception as e:
         logger.debug(f"Error receiving challenge: {e}")
     finally:
@@ -185,13 +185,13 @@ def _try_recv_challenge(ws, timeout: Optional[float] = None) -> Optional[str]:
 
 
 # 连接相关常量（从 Config 读取，保留模块级默认值作为后备）
-CONNECT_TIMEOUT = Config.OPENOCTA_CONNECT_TIMEOUT   # TCP + WebSocket 握手超时（秒）
-HANDSHAKE_TIMEOUT = Config.OPENOCTA_HANDSHAKE_TIMEOUT  # OpenOcta 协议握手超时（秒）
-RECV_TIMEOUT = Config.OPENOCTA_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
+CONNECT_TIMEOUT = Config.OPENCLAW_CONNECT_TIMEOUT   # TCP + WebSocket 握手超时（秒）
+HANDSHAKE_TIMEOUT = Config.OPENCLAW_HANDSHAKE_TIMEOUT  # OpenClaw 协议握手超时（秒）
+RECV_TIMEOUT = Config.OPENCLAW_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
 
 
-class OpenOctaWSClient:
-    """OpenOcta WebSocket 客户端（线程安全，每次调用独立连接）"""
+class OpenClawWSClient:
+    """OpenClaw WebSocket 客户端（线程安全，每次调用独立连接）"""
     
     def __init__(self, gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int = None):
         self.ws_url = _http_to_ws_url(gateway_url)
@@ -213,10 +213,10 @@ class OpenOctaWSClient:
     def _send_connect(self) -> bool:
         """发送握手请求并验证响应
         
-        流程（兼容 OpenOcta 和 OpenClaw）：
+        流程（兼容 OpenClaw 和 OpenClaw）：
         1. 先尝试 recv() 接收 connect.challenge 帧 → 提取 nonce
         2. 如果有 nonce + 设备配置，构造带设备认证的 connect frame
-        3. 否则构造普通 connect frame（向后兼容 OpenOcta）
+        3. 否则构造普通 connect frame（向后兼容 OpenClaw）
         4. send(connect_frame)
         5. 循环 recv() 等待 type=res 的响应（跳过 event 帧）
         """
@@ -269,12 +269,12 @@ class OpenOctaWSClient:
                 logger.error(f"Unexpected payload type: {payload.get('type')}")
                 return False
             
-            logger.info(f"Connected to OpenOcta Gateway, connId={payload.get('server', {}).get('connId', 'unknown')}")
+            logger.info(f"Connected to OpenClaw Gateway, connId={payload.get('server', {}).get('connId', 'unknown')}")
             return True
             
         except websocket.WebSocketTimeoutException:
             self._connection_error = 'handshake_timeout'
-            logger.error(f"OpenOcta handshake timeout ({HANDSHAKE_TIMEOUT}s) - server may be overloaded")
+            logger.error(f"OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s) - server may be overloaded")
             return False
         except json.JSONDecodeError as e:
             self._connection_error = 'invalid_response'
@@ -414,9 +414,9 @@ class OpenOctaWSClient:
                 timeout=self.connect_timeout,  # 连接超时，不是等待结果超时
                 skip_utf8_validation=True
             )
-            logger.debug("WebSocket connection established, starting OpenOcta handshake...")
+            logger.debug("WebSocket connection established, starting OpenClaw handshake...")
             
-            # 发送 OpenOcta 握手
+            # 发送 OpenClaw 握手
             if not self._send_connect():
                 error_msg = self._get_connection_error_message()
                 return {
@@ -510,11 +510,11 @@ class OpenOctaWSClient:
         """根据连接错误类型返回清晰的错误信息"""
         error_messages = {
             'connect_timeout': f'Connection timeout ({self.connect_timeout}s): Unable to reach server.',
-            'handshake_timeout': f'OpenOcta handshake timeout ({HANDSHAKE_TIMEOUT}s): Server may be overloaded.',
+            'handshake_timeout': f'OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s): Server may be overloaded.',
             'auth_failed': 'Authentication failed: Invalid gateway token.',
             'auth_protocol_error': 'Protocol error: Unexpected response from server.',
             'invalid_response': 'Invalid response: Failed to parse server response.',
-            'handshake_error': 'Handshake error: Failed to complete OpenOcta handshake.',
+            'handshake_error': 'Handshake error: Failed to complete OpenClaw handshake.',
         }
         return error_messages.get(self._connection_error, 'WebSocket connection failed')
 
@@ -525,8 +525,8 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
     整个过程 < 15 秒
     
     Args:
-        gateway_url: OpenOcta Gateway HTTP URL (如 http://127.0.0.1:18900)
-        gateway_token: Gateway 认证 token (OPENOCTA_GATEWAY_TOKEN)
+        gateway_url: OpenClaw Gateway HTTP URL (如 http://127.0.0.1:18900)
+        gateway_token: Gateway 认证 token (OPENCLAW_GATEWAY_TOKEN)
         session_key: 会话 Key (如 "agent:main:employee:xxx:run:yyy")
         timeout: 整体超时时间（秒），默认 15
     
@@ -754,11 +754,11 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
 
 def wait_for_result(gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int = None) -> dict:
     """
-    连接 OpenOcta WebSocket，等待指定 runId 的分析结果。
+    连接 OpenClaw WebSocket，等待指定 runId 的分析结果。
     
     Args:
-        gateway_url: OpenOcta Gateway HTTP URL (如 http://127.0.0.1:18900)
-        gateway_token: Gateway 认证 token (OPENOCTA_GATEWAY_TOKEN)
+        gateway_url: OpenClaw Gateway HTTP URL (如 http://127.0.0.1:18900)
+        gateway_token: Gateway 认证 token (OPENCLAW_GATEWAY_TOKEN)
         run_id: 要监听的分析任务 ID
         timeout: 等待分析结果超时时间（秒），默认 300
         connect_timeout: 连接超时时间（秒），默认 10，用于快速失败
@@ -768,5 +768,5 @@ def wait_for_result(gateway_url: str, gateway_token: str, run_id: str, timeout: 
         - 失败: {"status": "error", "run_id": "...", "error": "错误信息", "error_type": "..."}
         - 超时: {"status": "timeout", "run_id": "...", "partial_text": "已收集的部分文本"}
     """
-    client = OpenOctaWSClient(gateway_url, gateway_token, run_id, timeout, connect_timeout)
+    client = OpenClawWSClient(gateway_url, gateway_token, run_id, timeout, connect_timeout)
     return client.wait_for_result()

@@ -302,7 +302,7 @@ class ForwardRule(Base):
     match_source = Column(String(200), default='')       # 来源匹配（逗号分隔列表，空=全部）
     
     # 转发目标
-    target_type = Column(String(20), nullable=False)     # feishu / openocta / webhook
+    target_type = Column(String(20), nullable=False)     # feishu / openclaw / webhook
     target_url = Column(String(500), default='')         # 飞书/webhook 的 URL
     target_name = Column(String(100), default='')        # 显示名称
     
@@ -336,13 +336,13 @@ class DeepAnalysis(Base):
     
     id = Column(Integer, primary_key=True)
     webhook_event_id = Column(Integer, nullable=False, index=True)  # 关联告警 ID
-    engine = Column(String(20), default='local')    # local / openocta
+    engine = Column(String(20), default='local')    # local / openclaw
     user_question = Column(Text, default='')         # 用户输入的问题
     analysis_result = Column(JSON)                   # 完整分析结果 JSON
     duration_seconds = Column(Float, default=0)      # 分析耗时（秒）
     created_at = Column(DateTime, default=datetime.now)
-    openocta_run_id = Column(String(64), index=True)      # OpenOcta runId
-    openocta_session_key = Column(String(200))             # OpenOcta sessionKey（用于轮询）
+    openclaw_run_id = Column(String(64), index=True)      # OpenClaw runId
+    openclaw_session_key = Column(String(200))             # OpenClaw sessionKey（用于轮询）
     status = Column(String(20), default='completed', index=True)  # pending / completed / failed
     
     def to_dict(self):
@@ -354,8 +354,8 @@ class DeepAnalysis(Base):
             'analysis_result': self.analysis_result,
             'duration_seconds': self.duration_seconds,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'openocta_run_id': self.openocta_run_id,
-            'openocta_session_key': self.openocta_session_key,
+            'openclaw_run_id': self.openclaw_run_id,
+            'openclaw_session_key': self.openclaw_session_key,
             'status': self.status or 'completed',
         }
 

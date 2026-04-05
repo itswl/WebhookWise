@@ -15,8 +15,8 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(env_path)
 
-gateway_url = os.getenv('OPENOCTA_GATEWAY_URL', 'http://127.0.0.1:18900').replace('http://', 'ws://').replace('https://', 'wss://') + '/ws'
-gateway_token = os.getenv('OPENOCTA_GATEWAY_TOKEN', '')
+gateway_url = os.getenv('OPENCLAW_GATEWAY_URL', 'http://127.0.0.1:18900').replace('http://', 'ws://').replace('https://', 'wss://') + '/ws'
+gateway_token = os.getenv('OPENCLAW_GATEWAY_TOKEN', '')
 session_key = sys.argv[1] if len(sys.argv) > 1 else 'hook:deep-analysis:unknown:10d9ce63-31cf-48c1-98fa-c5c175d3cc33'
 
 print(f"Polling session_key: {session_key}")
@@ -73,7 +73,7 @@ try:
     else:
         print(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
 except Exception:
-    print("No connect.challenge received (likely OpenOcta, not OpenClaw)")
+    print("No connect.challenge received (likely OpenClaw, not OpenClaw)")
 
 # Connect (v3 protocol)
 client_platform = 'linux' if device_auth else platform.system().lower()
