@@ -44,7 +44,7 @@ var DeepAnalysesModule = (function() {
             items.forEach(function(record) {
                 var analysis = record.analysis_result || {};
                 var statusLabel = getStatusLabel(record.status);
-                var engineLabel = record.engine === 'openclaw' ? '🐙 OpenClaw' : '🤖 本地 AI';
+                var engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '🤖 本地 AI';
                 var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
                 var duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
                 var source = record.source || 'unknown';
@@ -86,13 +86,22 @@ var DeepAnalysesModule = (function() {
                         html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-top:4px;">Run ID: ' + record.openclaw_run_id + '</div>';
                     }
                     html += '</div>';
+                    // pending 状态按钮区
+                    html += '<div style="margin-top:10px; padding-top:8px; border-top:1px solid #eee;">';
+                    html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="background:#1976d2; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em; margin-right:8px;">🔄 重新拉取</button>';
+                    html += '<button onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(' + record.webhook_event_id + ')" style="background:#4a90d9; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em;">🔬 重新分析</button>';
+                    html += '</div>';
                 } else if (record.status === 'failed') {
                     html += '<div style="padding:12px; background:#fff3f3; border-radius:4px; color:#d32f2f;">';
                     html += '<strong>分析失败</strong>';
                     if (analysis.root_cause) html += '<p style="margin:4px 0;">' + escapeHtml(analysis.root_cause) + '</p>';
+                    html += '</div>';
+                    // failed 状态按钮区
+                    html += '<div style="margin-top:10px; padding-top:8px; border-top:1px solid #eee;">';
                     if (record.openclaw_session_key) {
-                        html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="margin-top:8px; padding:6px 16px; background:#1976d2; color:white; border:none; border-radius:4px; cursor:pointer; font-size:13px;">🔄 重新拉取</button>';
+                        html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="background:#1976d2; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em; margin-right:8px;">🔄 重新拉取</button>';
                     }
+                    html += '<button onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(' + record.webhook_event_id + ')" style="background:#4a90d9; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em;">🔬 重新分析</button>';
                     html += '</div>';
                 } else {
                     // completed - 展示分析结果
@@ -139,9 +148,13 @@ var DeepAnalysesModule = (function() {
                         }
                     }
                     
-                    // 转发按钮（仅 completed 状态）
+                    // 按钮区（completed 状态）
                     html += '<div style="margin-top:10px; padding-top:8px; border-top:1px solid #eee;">';
-                    html += '<button onclick="DeepAnalysesModule.forwardAnalysis(' + record.id + ')" style="background:#4a90d9; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em;">📤 转发</button>';
+                    if (record.openclaw_session_key) {
+                        html += '<button onclick="DeepAnalysesModule.retryAnalysis(' + record.id + ')" style="background:#1976d2; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em; margin-right:8px;">🔄 重新拉取</button>';
+                    }
+                    html += '<button onclick="DeepAnalysesModule.forwardAnalysis(' + record.id + ')" style="background:#4a90d9; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em; margin-right:8px;">📤 转发</button>';
+                    html += '<button onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(' + record.webhook_event_id + ')" style="background:#4caf50; color:#fff; border:none; padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.85em;">🔬 重新分析</button>';
                     html += '</div>';
                 }
                 
@@ -245,6 +258,27 @@ var DeepAnalysesModule = (function() {
         if (engineFilter) engineFilter.addEventListener('change', function() { load(1); });
     });
     
+    /**
+     * 对告警重新触发深度分析（基于 webhook_event_id）
+     */
+    async function reanalyzeFromDeepAnalysis(webhookEventId) {
+        if (!confirm('确定要对此告警重新触发 OpenClaw 深度分析吗？\n\n这将创建一个新的分析记录。')) return;
+        
+        try {
+            // 调用深度分析 API（不传问题，使用默认提示词）
+            var result = await API.deepAnalyze(webhookEventId, '', 'auto');
+            if (result.success) {
+                alert('已重新开始深度分析，请等待结果');
+                load();
+                startAutoRefresh();
+            } else {
+                alert('重新分析失败: ' + (result.message || result.error || '未知错误'));
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    }
+    
     async function retryAnalysis(analysisId) {
         if (!confirm('确定要重新拉取此分析结果吗？')) return;
 
@@ -266,6 +300,7 @@ var DeepAnalysesModule = (function() {
         load: load,
         stopAutoRefresh: stopAutoRefresh,
         forwardAnalysis: forwardAnalysis,
-        retryAnalysis: retryAnalysis
+        retryAnalysis: retryAnalysis,
+        reanalyzeFromDeepAnalysis: reanalyzeFromDeepAnalysis
     };
 })();
