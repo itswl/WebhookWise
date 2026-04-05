@@ -2028,6 +2028,34 @@ def forward_deep_analysis(analysis_id: int):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+@app.route('/api/deep-analyses/<int:analysis_id>/retry', methods=['POST'])
+def retry_deep_analysis(analysis_id: int):
+    """重新拉取失败的深度分析结果"""
+    try:
+        with session_scope() as session:
+            record = session.query(DeepAnalysis).get(analysis_id)
+            if not record:
+                return jsonify({'error': '分析记录不存在'}), 404
+
+            if record.status != 'failed':
+                return jsonify({'error': f'只能重试失败的分析，当前状态: {record.status}'}), 400
+
+            if not record.openocta_session_key:
+                return jsonify({'error': '缺少 session key，无法重新拉取'}), 400
+
+            # 重置状态为 pending，更新 created_at 避免立即被轮询超时
+            record.status = 'pending'
+            record.created_at = datetime.now()
+            record.analysis_result = None  # 清除旧的失败信息
+            session.commit()
+
+            logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
+            return jsonify({'success': True, 'message': '已重新开始拉取，请等待结果'})
+    except Exception as e:
+        logger.error(f"重试深度分析失败: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # 启动前验证
     Config.validate()

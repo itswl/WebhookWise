@@ -183,6 +183,19 @@ const API = {
         return await response.json();
     },
 
+    /**
+     * 重新拉取失败的深度分析结果
+     * @param {number} analysisId - 深度分析记录 ID
+     * @returns {Promise<object>} 重试结果
+     */
+    async retryDeepAnalysis(analysisId) {
+        const response = await fetch('/api/deep-analyses/' + analysisId + '/retry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        return await response.json();
+    },
+
     // ========== 转发规则 API ==========
 
     /**
