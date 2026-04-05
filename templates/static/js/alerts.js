@@ -694,7 +694,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? '\ud83d\udc19 OpenOcta' : '\ud83e\udd16 \u672c\u5730 AI';
+                const engineLabel = record.engine === 'openclaw' ? '\ud83d\udc19 OpenClaw' : '\ud83e\udd16 \u672c\u5730 AI';
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
                             
@@ -713,30 +713,30 @@ const AlertsModule = {
                     html += '</div>';
                 }
                             
-                // 检查是否为 pending 状态（OpenOcta 异步等待结果）
+                // 检查是否为 pending 状态（OpenClaw 异步等待结果）
                 if (record.status === 'pending') {
                     // 分析中状态卡片
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenOcta 正在分析中...</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw 正在分析中...</div>';
                     if (record.openclaw_run_id) {
                         html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + record.openclaw_run_id + '</div>';
                     }
                     html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
                     html += '</div>';
                 } else if (analysis.status === 'triggered') {
-                    // \u7279\u6b8a\u5361\u7247\u6837\u5f0f\uff1a\u5df2\u89e6\u53d1 OpenOcta \u5206\u6790
+                    // \u7279\u6b8a\u5361\u7247\u6837\u5f0f\uff1a\u5df2\u89e6\u53d1 OpenClaw \u5206\u6790
                     html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">\ud83d\ude80</div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">\u5df2\u89e6\u53d1 OpenOcta \u5206\u6790</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">\u5df2\u89e6\u53d1 OpenClaw \u5206\u6790</div>';
                     if (analysis.runId) {
                         html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + analysis.runId + '</div>';
                     }
-                    html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">\u5206\u6790\u7ed3\u679c\u8bf7\u5728 OpenOcta \u63a7\u5236\u53f0\u67e5\u770b</div>';
+                    html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">\u5206\u6790\u7ed3\u679c\u8bf7\u5728 OpenClaw \u63a7\u5236\u53f0\u67e5\u770b</div>';
                     html += '</div>';
                 } else {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
-                    // 如果有完整的 OpenOcta 文本，优先渲染 markdown
+                    // 如果有完整的 OpenClaw 文本，优先渲染 markdown
                     if (analysis._openclaw_text) {
                         if (typeof marked !== 'undefined') {
                             html += '<div class="openclaw-analysis-content">' + marked.parse(analysis._openclaw_text) + '</div>';
@@ -800,7 +800,7 @@ const AlertsModule = {
      */
     async deepAnalyzeAlert(id) {
         // 让用户选择分析引擎
-        const engineChoice = confirm('使用 OpenOcta Agent 深度分析？\n\n点击「确定」使用 OpenOcta（更深度）\n点击「取消」使用本地 AI');
+        const engineChoice = confirm('使用 OpenClaw Agent 深度分析？\n\n点击「确定」使用 OpenClaw（更深度）\n点击「取消」使用本地 AI');
         const engine = engineChoice ? 'openclaw' : 'local';
 
         const question = prompt('请输入您想问的问题（可选）:', '');
@@ -811,7 +811,7 @@ const AlertsModule = {
             if (result.success && result.data) {
                 const analysisResult = result.data.analysis || {};
                 
-                // 检查是否为 triggered 状态（OpenOcta 异步触发）
+                // 检查是否为 triggered 状态（OpenClaw 异步触发）
                 if (analysisResult.status === 'triggered') {
                     // 显示友好的浮层提示（不用 alert）
                     this.showTriggeredNotification(analysisResult.runId);
@@ -851,7 +851,7 @@ const AlertsModule = {
     },
 
     /**
-     * 显示 OpenOcta 分析已触发的友好提示
+     * 显示 OpenClaw 分析已触发的友好提示
      */
     showTriggeredNotification(runId) {
         // 创建浮层提示
@@ -872,10 +872,10 @@ const AlertsModule = {
         notification.innerHTML = `
             <div style="display:flex; align-items:center; margin-bottom:8px;">
                 <span style="font-size:1.5em; margin-right:10px;">\ud83d\ude80</span>
-                <strong style="font-size:1.1em;">已触发 OpenOcta 分析</strong>
+                <strong style="font-size:1.1em;">已触发 OpenClaw 分析</strong>
             </div>
             <div style="font-size:0.9em; color:rgba(255,255,255,0.9); margin-bottom:8px;">
-                分析请求已发送，结果将在 OpenOcta 控制台展示
+                分析请求已发送，结果将在 OpenClaw 控制台展示
             </div>
             ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${runId}</div>` : ''}
         `;
