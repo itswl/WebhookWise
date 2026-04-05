@@ -432,11 +432,11 @@ def add_polling_fields():
     
     try:
         with engine.connect() as conn:
-            # 检查 openocta_run_id 字段是否已存在
+            # 检查 openclaw_run_id 字段是否已存在
             result = conn.execute(text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'deep_analyses' AND column_name = 'openocta_run_id'
+                    WHERE table_name = 'deep_analyses' AND column_name = 'openclaw_run_id'
                 )
             """))
             field_exists = result.scalar()
@@ -446,10 +446,10 @@ def add_polling_fields():
             
             print("⚙️  正在为 deep_analyses 表添加轮询字段...")
             
-            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_run_id VARCHAR(64)"))
-            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_session_key VARCHAR(200)"))
+            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_run_id VARCHAR(64)"))
+            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_session_key VARCHAR(200)"))
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openocta_run_id ON deep_analyses(openocta_run_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)"))
             conn.commit()
             

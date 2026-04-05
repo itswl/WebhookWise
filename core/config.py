@@ -124,15 +124,15 @@ class Config:
     FEISHU_BOT_APP_ID = os.getenv('FEISHU_BOT_APP_ID', '')
     FEISHU_BOT_APP_SECRET = os.getenv('FEISHU_BOT_APP_SECRET', '')
     
-    # OpenOcta 集成配置
-    OPENOCTA_ENABLED = os.getenv('OPENOCTA_ENABLED', 'false').lower() == 'true'
-    OPENOCTA_GATEWAY_URL = os.getenv('OPENOCTA_GATEWAY_URL', 'http://127.0.0.1:18900')
-    OPENOCTA_GATEWAY_TOKEN = os.getenv('OPENOCTA_GATEWAY_TOKEN', '')
-    OPENOCTA_HOOKS_TOKEN = os.getenv('OPENOCTA_HOOKS_TOKEN', '')
-    OPENOCTA_TIMEOUT_SECONDS = int(os.getenv('OPENOCTA_TIMEOUT_SECONDS', '300'))
-    DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openocta | auto
+    # OpenClaw 集成配置
+    OPENCLAW_ENABLED = os.getenv('OPENCLAW_ENABLED', 'false').lower() == 'true'
+    OPENCLAW_GATEWAY_URL = os.getenv('OPENCLAW_GATEWAY_URL', 'http://127.0.0.1:18900')
+    OPENCLAW_GATEWAY_TOKEN = os.getenv('OPENCLAW_GATEWAY_TOKEN', '')
+    OPENCLAW_HOOKS_TOKEN = os.getenv('OPENCLAW_HOOKS_TOKEN', '')
+    OPENCLAW_TIMEOUT_SECONDS = int(os.getenv('OPENCLAW_TIMEOUT_SECONDS', '300'))
+    DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openclaw | auto
 
-    # OpenOcta/OpenClaw 轮询稳定性参数
+    # OpenClaw/OpenClaw 轮询稳定性参数
     OPENCLAW_STABILITY_REQUIRED_HITS = int(os.getenv('OPENCLAW_STABILITY_REQUIRED_HITS', '2'))   # 连续 N 次一致才确认完成
     OPENCLAW_MIN_WAIT_SECONDS = int(os.getenv('OPENCLAW_MIN_WAIT_SECONDS', '30'))              # 创建后最少等待秒数再开始轮询
     OPENCLAW_MAX_CONSECUTIVE_ERRORS = int(os.getenv('OPENCLAW_MAX_CONSECUTIVE_ERRORS', '5'))   # 连续超时最大次数
@@ -140,12 +140,12 @@ class Config:
     # 深度分析飞书通知配置
     DEEP_ANALYSIS_FEISHU_WEBHOOK = os.getenv('DEEP_ANALYSIS_FEISHU_WEBHOOK', '')
 
-    # OpenOcta WebSocket 连接超时配置（秒）
-    OPENOCTA_CONNECT_TIMEOUT = int(os.getenv('OPENOCTA_CONNECT_TIMEOUT', '10'))    # TCP + WS 握手超时
-    OPENOCTA_HANDSHAKE_TIMEOUT = int(os.getenv('OPENOCTA_HANDSHAKE_TIMEOUT', '5'))  # OpenOcta 协议握手超时
-    OPENOCTA_RECV_TIMEOUT = float(os.getenv('OPENOCTA_RECV_TIMEOUT', '1.0'))        # recv 超时（检查 _done 事件）
-    OPENOCTA_NONCE_TIMEOUT = float(os.getenv('OPENOCTA_NONCE_TIMEOUT', '2.0'))      # 接收 nonce challenge 超时
-    OPENOCTA_POLL_TIMEOUT = int(os.getenv('OPENOCTA_POLL_TIMEOUT', '90'))           # 轮询结果超时（高延迟网络适配）
+    # OpenClaw WebSocket 连接超时配置（秒）
+    OPENCLAW_CONNECT_TIMEOUT = int(os.getenv('OPENCLAW_CONNECT_TIMEOUT', '10'))    # TCP + WS 握手超时
+    OPENCLAW_HANDSHAKE_TIMEOUT = int(os.getenv('OPENCLAW_HANDSHAKE_TIMEOUT', '5'))  # OpenClaw 协议握手超时
+    OPENCLAW_RECV_TIMEOUT = float(os.getenv('OPENCLAW_RECV_TIMEOUT', '1.0'))        # recv 超时（检查 _done 事件）
+    OPENCLAW_NONCE_TIMEOUT = float(os.getenv('OPENCLAW_NONCE_TIMEOUT', '2.0'))      # 接收 nonce challenge 超时
+    OPENCLAW_POLL_TIMEOUT = int(os.getenv('OPENCLAW_POLL_TIMEOUT', '90'))           # 轮询结果超时（高延迟网络适配）
 
     # HTTP 请求超时配置（秒）
     AI_API_TIMEOUT = int(os.getenv('AI_API_TIMEOUT', '10'))              # AI API 请求超时

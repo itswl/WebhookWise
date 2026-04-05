@@ -9,16 +9,16 @@ from sqlalchemy import create_engine, text
 
 
 def migrate():
-    """添加 openocta_run_id, openocta_session_key, status 字段（幂等）"""
+    """添加 openclaw_run_id, openclaw_session_key, status 字段（幂等）"""
     engine = create_engine(Config.DATABASE_URL)
     
     with engine.connect() as conn:
         # 添加字段
         conn.execute(text("""
-            ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_run_id VARCHAR(64)
+            ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_run_id VARCHAR(64)
         """))
         conn.execute(text("""
-            ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openocta_session_key VARCHAR(200)
+            ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_session_key VARCHAR(200)
         """))
         conn.execute(text("""
             ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'
@@ -26,7 +26,7 @@ def migrate():
         
         # 创建索引
         conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_deep_analyses_openocta_run_id ON deep_analyses(openocta_run_id)
+            CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)
         """))
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)

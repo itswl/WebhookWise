@@ -1349,12 +1349,12 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
     }
 
 
-def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
-    """将告警推送到 OpenOcta 触发深度分析（非阻塞触发，立即返回）"""
+def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
+    """将告警推送到 OpenClaw 触发深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
-    if not Config.OPENOCTA_ENABLED:
-        return {'status': 'disabled', 'message': 'OpenOcta 未启用'}
+    if not Config.OPENCLAW_ENABLED:
+        return {'status': 'disabled', 'message': 'OpenClaw 未启用'}
     
     alert_data = webhook_data.get('parsed_data', {})
     source = webhook_data.get('source', 'unknown')
@@ -1389,11 +1389,11 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
         "wakeMode": "now",
         "deliver": False,
         "thinking": "high",
-        "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
+        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
     
     # hooks 端点使用 hooks token 认证（Authorization: Bearer）
-    hooks_token = Config.OPENOCTA_HOOKS_TOKEN or Config.OPENOCTA_GATEWAY_TOKEN
+    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     headers = {
         "Authorization": f"Bearer {hooks_token}",
         "Content-Type": "application/json"
@@ -1404,7 +1404,7 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
         # - 连接超时 10s: TCP 连接建立
         # - 读取超时 60s: 等待服务端 session 初始化并返回 202
         response = requests.post(
-            f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
+            f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
             json=payload,
             headers=headers,
             timeout=(10, 60)
@@ -1412,7 +1412,7 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
         response.raise_for_status()
         result = response.json()
         run_id = result.get('runId')
-        logger.info(f"OpenOcta 转发成功: run_id={run_id}, session_key={session_key}")
+        logger.info(f"OpenClaw 转发成功: run_id={run_id}, session_key={session_key}")
         
         # 非阻塞触发：HTTP POST 成功后立即返回
         return {
@@ -1422,17 +1422,17 @@ def forward_to_openocta(webhook_data: dict, analysis_result: dict) -> dict:
             '_pending': True
         }
     except Exception as e:
-        logger.error(f"OpenOcta 转发失败: {e}")
+        logger.error(f"OpenClaw 转发失败: {e}")
         return {'status': 'error', 'message': str(e)}
 
 
-def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
-    """通过 OpenOcta Agent 进行深度分析（非阻塞触发，立即返回）"""
+def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
+    """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
-    if not Config.OPENOCTA_ENABLED:
-        logger.warning("OpenOcta 未启用")
-        return {'_degraded': True, '_degraded_reason': 'OpenOcta 未启用'}
+    if not Config.OPENCLAW_ENABLED:
+        logger.warning("OpenClaw 未启用")
+        return {'_degraded': True, '_degraded_reason': 'OpenClaw 未启用'}
     
     alert_data = webhook_data.get('parsed_data', {})
     source = webhook_data.get('source', 'unknown')
@@ -1474,11 +1474,11 @@ def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_
         "wakeMode": "now",
         "deliver": False,
         "thinking": thinking_level,
-        "timeoutSeconds": Config.OPENOCTA_TIMEOUT_SECONDS
+        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
     
     # hooks 端点使用 hooks token 认证（Authorization: Bearer）
-    hooks_token = Config.OPENOCTA_HOOKS_TOKEN or Config.OPENOCTA_GATEWAY_TOKEN
+    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     headers = {
         "Authorization": f"Bearer {hooks_token}",
         "Content-Type": "application/json"
@@ -1489,7 +1489,7 @@ def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_
         # - 连接超时 10s: TCP 连接建立
         # - 读取超时 60s: 等待服务端 session 初始化并返回 202
         response = requests.post(
-            f"{Config.OPENOCTA_GATEWAY_URL}/hooks/agent",
+            f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
             json=payload,
             headers=headers,
             timeout=(10, 60)
@@ -1497,14 +1497,14 @@ def analyze_with_openocta(webhook_data: dict, user_question: str = '', thinking_
         response.raise_for_status()
         result = response.json()
         run_id = result.get('runId')
-        logger.info(f"OpenOcta 分析已触发: run_id={run_id}, session_key={session_key}")
+        logger.info(f"OpenClaw 分析已触发: run_id={run_id}, session_key={session_key}")
         
         # 非阻塞触发：HTTP POST 成功后立即返回
         return {
             '_pending': True,
-            '_openocta_run_id': run_id,
-            '_openocta_session_key': session_key
+            '_openclaw_run_id': run_id,
+            '_openclaw_session_key': session_key
         }
     except requests.exceptions.RequestException as e:
-        logger.error(f"OpenOcta 请求失败: {e}")
-        return {'_degraded': True, '_degraded_reason': f'OpenOcta 不可用: {str(e)}'}
+        logger.error(f"OpenClaw 请求失败: {e}")
+        return {'_degraded': True, '_degraded_reason': f'OpenClaw 不可用: {str(e)}'}
