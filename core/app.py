@@ -2030,15 +2030,16 @@ def forward_deep_analysis(analysis_id: int):
 
 @app.route('/api/deep-analyses/<int:analysis_id>/retry', methods=['POST'])
 def retry_deep_analysis(analysis_id: int):
-    """重新拉取失败的深度分析结果"""
+    """重新拉取深度分析结果（支持 failed 和 completed 状态）"""
     try:
         with session_scope() as session:
             record = session.query(DeepAnalysis).get(analysis_id)
             if not record:
                 return jsonify({'error': '分析记录不存在'}), 404
 
-            if record.status != 'failed':
-                return jsonify({'error': f'只能重试失败的分析，当前状态: {record.status}'}), 400
+            # 允许 failed 和 completed 状态重新拉取
+            if record.status not in ('failed', 'completed'):
+                return jsonify({'error': f'只能在失败或已完成状态下重新拉取，当前状态: {record.status}'}), 400
 
             if not record.openclaw_session_key:
                 return jsonify({'error': '缺少 session key，无法重新拉取'}), 400
@@ -2046,7 +2047,7 @@ def retry_deep_analysis(analysis_id: int):
             # 重置状态为 pending，更新 created_at 避免立即被轮询超时
             record.status = 'pending'
             record.created_at = datetime.now()
-            record.analysis_result = None  # 清除旧的失败信息
+            record.analysis_result = None  # 清除旧的结果
             session.commit()
 
             logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
