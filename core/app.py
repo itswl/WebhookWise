@@ -1913,23 +1913,32 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
 
 @app.route('/api/deep-analyses', methods=['GET'])
 def list_all_deep_analyses():
-    """获取所有深度分析记录（分页 + 筛选）"""
-    page = request.args.get('page', 1, type=int)
+    """获取所有深度分析记录（游标分页 + 筛选）"""
     per_page = request.args.get('per_page', 20, type=int)
+    cursor = request.args.get('cursor', None, type=int)
     status_filter = request.args.get('status', '')
     engine_filter = request.args.get('engine', '')
-    
+
     with session_scope() as session:
-        query = session.query(DeepAnalysis).order_by(DeepAnalysis.created_at.desc())
-        
+        query = session.query(DeepAnalysis).order_by(DeepAnalysis.id.desc())
+
         if status_filter:
             query = query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
             query = query.filter(DeepAnalysis.engine == engine_filter)
-        
-        total = query.count()
-        records = query.offset((page - 1) * per_page).limit(per_page).all()
-        
+
+        # 游标优先：cursor 为上一页最后一条记录的 id，实现高效翻页
+        if cursor is not None:
+            query = query.filter(DeepAnalysis.id < cursor)
+
+        records = query.limit(per_page).all()
+
+        # 总数仅在首页时查询，避免每次都 COUNT(*)（深分页场景下代价高）
+        if cursor is None:
+            total = query.count()
+        else:
+            total = None
+
         # 关联查询告警的 source 信息
         webhook_ids = [r.webhook_event_id for r in records]
         source_map = {}
@@ -1945,11 +1954,11 @@ def list_all_deep_analyses():
             d['source'] = source_map.get(r.webhook_event_id, 'unknown')
             data.append(d)
         
+        next_cursor = records[-1].id if len(records) == per_page else None
         return _ok(data={
             'items': data,
             'total': total,
-            'page': page,
-            'per_page': per_page
+            'next_cursor': next_cursor,
         })
 
 
