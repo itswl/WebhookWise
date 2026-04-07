@@ -6,7 +6,7 @@ import requests
 import json
 import hmac
 import hashlib
-from config import Config
+from core.config import Config
 
 
 def generate_signature(payload, secret):
