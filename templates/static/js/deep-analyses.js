@@ -189,7 +189,7 @@ var DeepAnalysesModule = (function() {
             items.forEach(function(record) {
                 if (record.status === 'pending') hasPending = true;
                 var isExpanded = expandedIds.has(record.id);
-                html += '<div class="da-card' + (isExpanded ? ' da-card-expanded' : '') + '" id="card-' + record.id + '" data-id="' + record.id + '">';
+                html += '<div class="da-card' + (isExpanded ? ' da-card-expanded' : '') + '" id="card-' + record.id + '" data-id="' + record.id + '" data-record="' + encodeURIComponent(JSON.stringify(record)) + '">';
                 html += buildSummaryHtml(record);
                 if (isExpanded) {
                     html += '<div class="da-detail" id="detail-' + record.id + '">';
@@ -214,35 +214,31 @@ var DeepAnalysesModule = (function() {
     }
 
     function toggleExpand(id) {
+        var card = document.getElementById('card-' + id);
+        var detail = document.getElementById('detail-' + id);
+        var icon = document.getElementById('expand-icon-' + id);
+
         if (expandedIds.has(id)) {
             expandedIds.delete(id);
-            var card = document.getElementById('card-' + id);
-            var detail = document.getElementById('detail-' + id);
-            var icon = document.getElementById('expand-icon-' + id);
             if (card) card.classList.remove('da-card-expanded');
             if (detail) detail.style.display = 'none';
             if (icon) icon.textContent = '▶';
         } else {
             expandedIds.add(id);
-            var card = document.getElementById('card-' + id);
-            var detail = document.getElementById('detail-' + id);
-            var icon = document.getElementById('expand-icon-' + id);
             if (card) card.classList.add('da-card-expanded');
             if (detail) {
                 detail.style.display = 'block';
-            } else {
-                // 需要创建 detail 元素
-                var record = null;
-                var cards = document.querySelectorAll('.da-card');
-                cards.forEach(function(c) {
-                    if (c.dataset.id == id) {
-                        record = window._daRecords ? window._daRecords[id] : null;
-                    }
-                });
+            } else if (card && card.dataset.record) {
+                var record;
+                try {
+                    record = JSON.parse(decodeURIComponent(card.dataset.record));
+                } catch (e) {
+                    record = { id: id, status: 'unknown', analysis_result: {} };
+                }
                 var detailDiv = document.createElement('div');
                 detailDiv.className = 'da-detail';
                 detailDiv.id = 'detail-' + id;
-                detailDiv.innerHTML = buildDetailHtml(record || {id: id, status: 'unknown', analysis_result: {}});
+                detailDiv.innerHTML = buildDetailHtml(record);
                 card.appendChild(detailDiv);
             }
             if (icon) icon.textContent = '▼';
