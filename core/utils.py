@@ -3,9 +3,12 @@ import hashlib
 import json
 import os
 import time
+import threading
+import requests
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Optional, Union
+from enum import Enum
+from typing import Any, Callable, Optional, Union
 
 from flask import Request
 from sqlalchemy.exc import IntegrityError
@@ -15,9 +18,87 @@ from core.config import Config
 from core.logger import logger
 from core.models import WebhookEvent, get_session, session_scope
 
-# 类型别名
-# helper groups: hash extraction / dedup detection / persistence / query fallback
 WebhookData = dict[str, Any]
+
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # 正常，允许请求通过
+    OPEN = "open"          # 熔断，拒绝所有请求
+    HALF_OPEN = "half_open"  # 半开，允许试探请求
+
+
+class CircuitBreaker:
+    """
+    熔断器实现，防止级联故障。
+
+    - CLOSED（正常）：请求通过，失败计数；达到阈值后转为 OPEN
+    - OPEN（熔断）：请求直接拒绝（返回 None），超时后转为 HALF_OPEN
+    - HALF_OPEN（半开）：允许一个试探请求；成功则回 CLOSED，失败则回 OPEN
+    """
+
+    def __init__(
+        self,
+        name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 30.0,
+        expected_exceptions: tuple = (requests.exceptions.RequestException,),
+    ):
+        self.name = name
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.expected_exceptions = expected_exceptions
+
+        self._lock = threading.RLock()
+        self._failure_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._state = CircuitState.CLOSED
+
+    @property
+    def state(self) -> CircuitState:
+        with self._lock:
+            if self._state == CircuitState.OPEN:
+                if (
+                    self._last_failure_time is not None
+                    and time.time() - self._last_failure_time >= self.recovery_timeout
+                ):
+                    self._state = CircuitState.HALF_OPEN
+            return self._state
+
+    def call(self, func: Callable, *args, **kwargs):
+        """执行函数，失败时触发熔断。"""
+        if self.state == CircuitState.OPEN:
+            logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
+            return None
+
+        try:
+            result = func(*args, **kwargs)
+            self._on_success()
+            return result
+        except self.expected_exceptions as e:
+            self._on_failure()
+            logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
+            return None
+
+    def _on_success(self):
+        with self._lock:
+            self._failure_count = 0
+            self._state = CircuitState.CLOSED
+
+    def _on_failure(self):
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            if self._failure_count >= self.failure_threshold:
+                self._state = CircuitState.OPEN
+                logger.error(f"CircuitBreaker [{self.name}] 转为 OPEN（连续 {self._failure_count} 次失败）")
+
+
+# 预置熔断器实例
+feishu_cb = CircuitBreaker(name="feishu", failure_threshold=5, recovery_timeout=30)
+openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=5, recovery_timeout=30)
+forward_cb = CircuitBreaker(name="forward", failure_threshold=5, recovery_timeout=30)
+
+
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
@@ -555,8 +636,8 @@ def save_webhook_data(
             logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {str(e)}")
 
             if attempt < MAX_SAVE_RETRIES - 1:
-                # 小步退避让并发写入先完成，再次判重时更容易命中已落库记录。
-                time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+                # 指数退避让并发写入先完成，再次判重时更容易命中已落库记录。
+                time.sleep(RETRY_DELAY_SECONDS * (2 ** attempt))
                 is_duplicate = None
                 original_event = None
                 logger.info(f"正在重试... (attempt {attempt + 2}/{MAX_SAVE_RETRIES})")
