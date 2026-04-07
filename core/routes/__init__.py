@@ -72,7 +72,7 @@ class PersistedEventContext:
 
 def _ok(data=None, http_status: int = 200, **extra) -> tuple[Response, int]:
     """Build success JSON response."""
-    payload = {'status': 'ok', **(extra if extra else {'data': data})}
+    payload = {'success': True, **(extra if extra else {'data': data})}
     if data is not None and 'data' not in extra:
         payload['data'] = data
     return jsonify(payload), http_status
@@ -80,5 +80,5 @@ def _ok(data=None, http_status: int = 200, **extra) -> tuple[Response, int]:
 
 def _fail(error: str, http_status: int = 400, **extra) -> tuple[Response, int]:
     """Build error JSON response."""
-    payload = {'status': 'error', 'error': error, **extra}
+    payload = {'success': False, 'error': error, **extra}
     return jsonify(payload), http_status
