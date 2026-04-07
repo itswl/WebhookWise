@@ -221,13 +221,25 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
 
 @deep_analysis_bp.route('/api/deep-analyses', methods=['GET'])
 def list_all_deep_analyses() -> tuple[Response, int]:
-    """获取所有深度分析记录（游标分页 + 筛选）"""
+    """获取所有深度分析记录（分页 + 筛选）"""
+    page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     cursor = request.args.get('cursor', None, type=int)
     status_filter = request.args.get('status', '')
     engine_filter = request.args.get('engine', '')
 
+    per_page = max(1, min(per_page, 100))
+
     with session_scope() as session:
+        # 总数（始终计算）
+        count_query = session.query(DeepAnalysis)
+        if status_filter:
+            count_query = count_query.filter(DeepAnalysis.status == status_filter)
+        if engine_filter:
+            count_query = count_query.filter(DeepAnalysis.engine == engine_filter)
+        total = count_query.count()
+
+        # 主查询
         query = session.query(DeepAnalysis).order_by(DeepAnalysis.id.desc())
 
         if status_filter:
@@ -237,10 +249,11 @@ def list_all_deep_analyses() -> tuple[Response, int]:
 
         if cursor is not None:
             query = query.filter(DeepAnalysis.id < cursor)
+        else:
+            offset = (page - 1) * per_page
+            query = query.offset(offset)
 
         records = query.limit(per_page).all()
-
-        total = query.count() if cursor is None else None
 
         webhook_ids = [r.webhook_event_id for r in records]
         source_map = {}
@@ -257,11 +270,16 @@ def list_all_deep_analyses() -> tuple[Response, int]:
             data.append(d)
 
         next_cursor = records[-1].id if len(records) == per_page else None
-        return _ok(data={
-            'items': data,
-            'total': total,
-            'next_cursor': next_cursor,
-        })
+        return _ok(
+            data={
+                'items': data,
+                'total': total,
+                'next_cursor': next_cursor,
+                'page': page,
+                'per_page': per_page,
+                'total_pages': (total + per_page - 1) // per_page if total > 0 else 0,
+            }
+        )
 
 
 @deep_analysis_bp.route('/api/deep-analyses/<int:webhook_id>', methods=['GET'])
