@@ -311,7 +311,11 @@ class ForwardRule(Base):
     
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    
+
+    __table_args__ = (
+        Index('idx_forward_rules_priority', 'priority'),
+    )
+
     def to_dict(self):
         return {
             'id': self.id,

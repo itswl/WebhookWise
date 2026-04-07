@@ -1,7 +1,6 @@
 import requests
 import json
 import re
-import os
 from datetime import datetime, timedelta
 from typing import Any, Optional
 from pathlib import Path
@@ -14,6 +13,7 @@ except ImportError:
 
 from core.logger import logger
 from core.config import Config
+from core.utils import feishu_cb, openclaw_cb, forward_cb
 from openai import OpenAI
 
 # 类型别名
@@ -1024,18 +1024,19 @@ def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> Non
                 "card": card_content
             }
 
-            # 发送通知
-            response = requests.post(
+            # 发送通知（熔断保护）
+            response = feishu_cb.call(
+                requests.post,
                 Config.FORWARD_URL,
                 json=forward_data,
                 headers={'Content-Type': 'application/json'},
                 timeout=Config.FEISHU_WEBHOOK_TIMEOUT
             )
 
-            if 200 <= response.status_code < 300:
+            if response is not None and 200 <= response.status_code < 300:
                 logger.info(f"AI 降级通知已发送到飞书")
             else:
-                logger.warning(f"AI 降级通知发送失败，状态码: {response.status_code}")
+                logger.warning(f"AI 降级通知发送失败或被熔断拦截")
 
     except Exception as e:
         # 降级通知失败不应影响主流程
@@ -1199,13 +1200,17 @@ def forward_to_remote(
             headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
         
         logger.info(f"转发数据到 {target_url}")
-        response = requests.post(
+        response = forward_cb.call(
+            requests.post,
             target_url,
             json=forward_data,
             headers=headers,
             timeout=Config.FORWARD_TIMEOUT
         )
-        
+
+        if response is None:
+            return {'status': 'failed', 'message': '转发请求被熔断拦截'}
+
         if 200 <= response.status_code < 300:
             logger.info(f"成功转发到远程服务器: {target_url} (状态码: {response.status_code})")
             return {
@@ -1399,21 +1404,26 @@ def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
         "Content-Type": "application/json"
     }
     
+    # 超时配置：(连接超时, 读取超时)
+    # - 连接超时 10s: TCP 连接建立
+    # - 读取超时 60s: 等待服务端 session 初始化并返回 202
+    response = openclaw_cb.call(
+        requests.post,
+        f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
+        json=payload,
+        headers=headers,
+        timeout=(10, 60)
+    )
+
+    if response is None:
+        return {'status': 'error', 'message': 'OpenClaw 请求被熔断拦截'}
+
     try:
-        # 超时配置：(连接超时, 读取超时)
-        # - 连接超时 10s: TCP 连接建立
-        # - 读取超时 60s: 等待服务端 session 初始化并返回 202
-        response = requests.post(
-            f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-            json=payload,
-            headers=headers,
-            timeout=(10, 60)
-        )
         response.raise_for_status()
         result = response.json()
         run_id = result.get('runId')
         logger.info(f"OpenClaw 转发成功: run_id={run_id}, session_key={session_key}")
-        
+
         # 非阻塞触发：HTTP POST 成功后立即返回
         return {
             'status': 'success',
@@ -1484,21 +1494,23 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
         "Content-Type": "application/json"
     }
     
+    response = openclaw_cb.call(
+        requests.post,
+        f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
+        json=payload,
+        headers=headers,
+        timeout=(10, 60)
+    )
+
+    if response is None:
+        return {'_degraded': True, '_degraded_reason': 'OpenClaw 请求被熔断拦截'}
+
     try:
-        # 超时配置：(连接超时, 读取超时)
-        # - 连接超时 10s: TCP 连接建立
-        # - 读取超时 60s: 等待服务端 session 初始化并返回 202
-        response = requests.post(
-            f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-            json=payload,
-            headers=headers,
-            timeout=(10, 60)
-        )
         response.raise_for_status()
         result = response.json()
         run_id = result.get('runId')
         logger.info(f"OpenClaw 分析已触发: run_id={run_id}, session_key={session_key}")
-        
+
         # 非阻塞触发：HTTP POST 成功后立即返回
         return {
             '_pending': True,

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import logging
-from typing import Any, Iterable, Optional, List, Tuple
+from typing import Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -235,20 +235,10 @@ def analyze_noise_reduction(
         use_dynamic_threshold: 是否使用动态阈值
         session: 数据库会话（可选）
     """
-    # 使用动态阈值
+    # 动态阈值功能已下线（AlertCorrelation 模型已废弃），始终使用固定阈值
     effective_threshold = min_confidence
-    if use_dynamic_threshold:
-        try:
-            dynamic_threshold = calculate_dynamic_threshold(
-                session=session,
-                lookback_hours=24,
-                base_threshold=min_confidence
-            )
-            effective_threshold = dynamic_threshold
-            logger.debug(f"使用动态阈值: {effective_threshold:.4f}")
-        except Exception as e:
-            logger.warning(f"计算动态阈值失败，使用默认值: {e}")
-    
+    logger.debug(f"使用固定阈值: {effective_threshold:.4f}")
+
     # 收集相关告警
     recent_alerts_list = list(recent_alerts)
     scored = _collect_related(current, recent_alerts_list, window_minutes)
@@ -298,72 +288,5 @@ def analyze_noise_reduction(
         related_alert_count=len(related_ids),
         related_alert_ids=related_ids,
     )
-
-
-def get_historical_weight(
-    alert_hash_a: str,
-    alert_hash_b: str,
-    session: Any = None
-) -> float:
-    """
-    获取历史频率权重
-    
-    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 0.0
-    
-    Args:
-        alert_hash_a: 告警 A 的哈希
-        alert_hash_b: 告警 B 的哈希
-        session: 数据库会话（已忽略）
-        
-    Returns:
-        float: 始终返回 0.0
-    """
-    return 0.0
-
-
-def update_alert_correlation(
-    alert_hash_a: str,
-    alert_hash_b: str,
-    time_delta: float,
-    confidence: float,
-    session: Any = None
-) -> bool:
-    """
-    更新告警关联记录
-    
-    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 False
-    
-    Args:
-        alert_hash_a: 告警 A 的哈希
-        alert_hash_b: 告警 B 的哈希
-        time_delta: 时间差（秒）
-        confidence: 关联置信度
-        session: 数据库会话（已忽略）
-        
-    Returns:
-        bool: 始终返回 False
-    """
-    return False
-
-
-def calculate_dynamic_threshold(
-    session: Any = None,
-    lookback_hours: int = 24,
-    base_threshold: float = 0.65
-) -> float:
-    """
-    动态计算根因判定阈值
-    
-    注意：AlertCorrelation 模型已下线，此函数保留接口兼容性，直接返回 base_threshold
-    
-    Args:
-        session: 数据库会话（已忽略）
-        lookback_hours: 回溯时间（已忽略）
-        base_threshold: 基础阈值
-        
-    Returns:
-        float: 直接返回 base_threshold
-    """
-    return base_threshold
 
 

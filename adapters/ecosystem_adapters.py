@@ -7,6 +7,7 @@ from typing import Any, Callable, Mapping, Optional
 import requests
 
 from core.config import Config
+from core.utils import feishu_cb
 
 logger = logging.getLogger('webhook_service.ecosystem_adapters')
 
@@ -476,8 +477,13 @@ def send_feishu_deep_analysis(
         }
     }
     
+    resp = feishu_cb.call(requests.post, webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
+
+    if resp is None:
+        logger.warning(f"飞书深度分析通知被熔断拦截: webhook_event_id={webhook_event_id}")
+        return False
+
     try:
-        resp = requests.post(webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
         if resp.status_code == 200:
             logger.info(f"飞书深度分析通知发送成功: webhook_event_id={webhook_event_id}")
             return True

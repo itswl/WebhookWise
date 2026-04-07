@@ -1,0 +1,84 @@
+"""
+core/routes/__init__.py
+=======================
+共享 dataclass 和响应工具，所有 route 模块共用。
+"""
+from dataclasses import dataclass, field
+from typing import Optional
+
+from flask import Response, jsonify
+
+
+# ── 异常类 ──────────────────────────────────────────────────────────────────
+
+class WebhookRequestError(Exception):
+    """基类：Webhook 请求解析错误。"""
+
+
+class InvalidSignatureError(WebhookRequestError):
+    """签名校验失败。"""
+
+
+class InvalidJsonError(WebhookRequestError):
+    """JSON 解析失败。"""
+
+
+# ── Dataclass ────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class AnalysisResolution:
+    analysis_result: dict
+    reanalyzed: bool
+    is_duplicate: bool
+    original_event: Optional[object]  # WebhookEvent
+    beyond_window: bool
+
+
+@dataclass(frozen=True)
+class WebhookRequestContext:
+    client_ip: str
+    source: str
+    payload: bytes
+    parsed_data: dict
+    webhook_full_data: dict
+
+
+@dataclass
+class ForwardDecision:
+    should_forward: bool
+    skip_reason: Optional[str]
+    is_periodic_reminder: bool
+    matched_rules: list = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class NoiseReductionContext:
+    relation: str
+    root_cause_event_id: Optional[int]
+    confidence: float
+    suppress_forward: bool
+    reason: str
+    related_alert_count: int
+    related_alert_ids: list[int]
+
+
+@dataclass(frozen=True)
+class PersistedEventContext:
+    save_result: object   # SaveWebhookResult
+    noise_context: NoiseReductionContext
+
+
+# ── 响应工具 ─────────────────────────────────────────────────────────────────
+
+def _ok(data=None, http_status: int = 200, **extra) -> tuple[Response, int]:
+    """Build success JSON response."""
+    payload = {'status': 'ok', **(extra if extra else {'data': data})}
+    if data is not None and 'data' not in extra:
+        payload['data'] = data
+    return jsonify(payload), http_status
+
+
+def _fail(error: str, http_status: int = 400, **extra) -> tuple[Response, int]:
+    """Build error JSON response."""
+    payload = {'status': 'error', 'error': error, **extra}
+    return jsonify(payload), http_status
