@@ -11,6 +11,114 @@
     
     <!-- Markdown 渲染库 -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+    /* 深度分析可折叠卡片 */
+    .da-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        background: #fafafa;
+        overflow: hidden;
+        transition: box-shadow 0.2s;
+    }
+    .da-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .da-card-expanded { border-color: #1976d2; box-shadow: 0 2px 12px rgba(25,118,210,0.15); }
+
+    /* 折叠行 */
+    .da-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .da-summary:hover { background: #f0f4f8; }
+    .da-summary-left, .da-summary-right {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        min-width: 0;
+    }
+    .da-summary-right { flex: 1; justify-content: flex-end; }
+    .da-summary-text { color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+    .da-expand-icon { color: #1976d2; font-size: 0.8em; margin-left: 8px; flex-shrink: 0; }
+
+    /* 状态标签 */
+    .da-status { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; }
+    .da-status-pending { background: #fff3e0; color: #e65100; }
+    .da-status-completed { background: #e8f5e9; color: #2e7d32; }
+    .da-status-failed { background: #ffebee; color: #c62828; }
+    .da-status-unknown { background: #f5f5f5; color: #666; }
+
+    /* 引擎/来源/ID 标签 */
+    .da-engine { font-weight: 600; font-size: 0.85em; }
+    .da-source, .da-webhook-id { color: #666; font-size: 0.85em; }
+    .da-time { color: #888; font-size: 0.85em; white-space: nowrap; }
+
+    /* 展开详情区 */
+    .da-detail {
+        border-top: 1px solid #eee;
+        padding: 16px;
+        background: #fff;
+        display: none;
+    }
+    .da-detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .da-detail-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .da-detail-time { display: flex; gap: 10px; align-items: center; color: #888; font-size: 0.85em; white-space: nowrap; }
+    .da-engine-tag { font-weight: 600; font-size: 0.85em; }
+    .da-source-tag, .da-webhook-tag { color: #666; font-size: 0.85em; }
+    .da-run-id, .da-session-key { color: #999; font-size: 0.8em; font-family: monospace; }
+    .da-collapse-btn {
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 2px 10px;
+        cursor: pointer;
+        font-size: 0.8em;
+        color: #666;
+        margin-left: 12px;
+    }
+    .da-collapse-btn:hover { background: #f5f5f5; }
+
+    /* 内容区 */
+    .da-user-question { margin-bottom: 10px; padding: 8px 12px; background: #e8f4fd; border-radius: 4px; font-size: 0.9em; }
+    .da-pending-box { text-align: center; padding: 24px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white; margin-bottom: 12px; }
+    .da-pending-icon { font-size: 2em; margin-bottom: 8px; }
+    .da-pending-text { font-weight: 600; }
+    .da-pending-run { font-size: 0.8em; color: rgba(255,255,255,0.7); margin-top: 4px; }
+    .da-failed-box { padding: 12px; background: #fff3f3; border-radius: 4px; color: #d32f2f; margin-bottom: 12px; }
+    .da-section { margin-bottom: 10px; }
+    .da-section p { margin: 4px 0; white-space: pre-wrap; }
+    .da-section ul { margin: 4px 0; padding-left: 20px; }
+    .da-section li { margin: 2px 0; }
+    .da-analysis-content { background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 0.9em; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    .da-confidence { color: #888; font-size: 0.85em; margin-top: 8px; }
+
+    /* 按钮 */
+    .da-btn-row { margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; display: flex; gap: 8px; flex-wrap: wrap; }
+    .da-btn { border: none; border-radius: 4px; padding: 5px 14px; cursor: pointer; font-size: 0.85em; }
+    .da-btn-retry { background: #1976d2; color: #fff; }
+    .da-btn-forward { background: #4a90d9; color: #fff; }
+    .da-btn-reanalyze { background: #4caf50; color: #fff; }
+
+    /* 分页 */
+    .da-pagination { display: flex; gap: 4px; align-items: center; }
+    .da-page-btn { border: 1px solid #ddd; background: #fff; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 0.85em; color: #333; }
+    .da-page-btn:hover { background: #f0f0f0; }
+    .da-page-btn-active { background: #1976d2; color: #fff; border-color: #1976d2; }
+    .da-page-btn-disabled { color: #ccc; cursor: not-allowed; }
+    .da-page-ellipsis { color: #888; padding: 0 4px; }
+    .da-total { color: #888; font-size: 0.85em; margin-left: 12px; }
+    </style>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -183,6 +291,12 @@
                             <option value="">全部引擎</option>
                             <option value="openclaw">OpenClaw</option>
                             <option value="local">本地 AI</option>
+                        </select>
+                        <select id="daPerPage" class="form-input" style="width: auto; padding: 6px 12px;">
+                            <option value="10">10条/页</option>
+                            <option value="20" selected>20条/页</option>
+                            <option value="50">50条/页</option>
+                            <option value="100">100条/页</option>
                         </select>
                         <button class="btn" onclick="DeepAnalysesModule.load()">🔄 刷新</button>
                     </div>
