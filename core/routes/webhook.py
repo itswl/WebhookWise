@@ -89,14 +89,18 @@ def list_webhooks() -> tuple[Response, int]:
             has_more = len(events) == page_size
             next_cursor = events[-1].id if has_more else None
 
-            return _ok({
-                'items': items,
-                'total': total,
-                'page': page,
-                'page_size': page_size,
-                'has_more': has_more,
-                'next_cursor': next_cursor,
-            })
+            return _ok(
+                items,
+                status=200,
+                pagination={
+                    'page': page,
+                    'page_size': page_size,
+                    'total': total,
+                    'total_pages': (total + page_size - 1) // page_size if total > 0 else 0,
+                    'next_cursor': next_cursor,
+                    'has_more': has_more,
+                }
+            )
     except Exception as e:
         logger.error(f"获取 webhook 列表失败: {str(e)}", exc_info=True)
         return _fail(str(e), 500)
