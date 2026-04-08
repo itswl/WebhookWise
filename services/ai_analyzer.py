@@ -971,6 +971,38 @@ def _should_send_degradation_alert() -> bool:
         return True
 
 
+def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
+    """发送 OpenClaw 深度分析失败通知到飞书"""
+    try:
+        from core.config import Config
+        from adapters.ecosystem_adapters import send_feishu_deep_analysis
+        
+        if not Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+            return
+        
+        # 构造失败通知数据
+        analysis_data = {
+            'summary': 'OpenClaw 深度分析触发失败',
+            'root_cause': f'连续 3 次重试后仍失败: {error}',
+            'impact': '无法获取深度根因分析结果',
+            'recommendations': [
+                '检查 OpenClaw 服务是否正常运行',
+                f'检查网络连接: {Config.OPENCLAW_GATEWAY_URL}',
+                '查看服务端日志获取详细错误信息',
+                '稍后手动重试深度分析'
+            ],
+            'confidence': 0,
+            'status': 'failed',
+            'error': error
+        }
+        
+        event_id = webhook_data.get('id', 'unknown')
+        send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, event_id, source, analysis_data)
+        logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
+    except Exception as e:
+        logger.error(f"发送 OpenClaw 失败通知失败: {e}")
+
+
 def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
     """发送 AI 降级通知（带24小时限流）"""
     try:
@@ -1509,22 +1541,61 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
         "Content-Type": "application/json"
     }
     
-    response = openclaw_cb.call(
-        requests.post,
-        f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-        json=payload,
-        headers=headers,
-        timeout=(10, 60)
-    )
+    # 重试逻辑：最多 3 次
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = openclaw_cb.call(
+                requests.post,
+                f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
+                json=payload,
+                headers=headers,
+                timeout=(10, 60)
+            )
 
-    if response is None:
+            if response is None:
+                last_error = "OpenClaw 请求失败（熔断器拦截或服务不可用）"
+                logger.warning(f"OpenClaw 请求失败 (尝试 {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # 等待 2 秒后重试
+                continue
+            
+            # 请求成功，跳出重试循环
+            break
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"OpenClaw 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(2)  # 等待 2 秒后重试
+            continue
+    else:
+        # 所有重试都失败
+        logger.error(f"OpenClaw 请求失败，已重试 {max_retries} 次: {last_error}")
+        
+        # 发送失败通知
+        try:
+            from core.models import WebhookEvent
+            from flask import current_app
+            with current_app.app_context():
+                from core.config import Config
+                if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                    event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
+                    source = event.source if event else 'unknown'
+                    _send_openclaw_failure_notification(webhook_data, source, last_error)
+        except Exception as notify_err:
+            logger.warning(f"发送 OpenClaw 失败通知失败: {notify_err}")
+        
         # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
             logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': 'OpenClaw 请求失败'}
+            return {'_degraded': True, '_degraded_reason': f'OpenClaw 请求失败: {last_error}'}
         else:
             logger.error("OpenClaw 请求失败，未启用降级策略")
-            raise Exception('OpenClaw 请求失败')
+            raise Exception(f'OpenClaw 请求失败: {last_error}')
 
     try:
         response.raise_for_status()
