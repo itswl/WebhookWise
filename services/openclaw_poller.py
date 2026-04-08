@@ -86,64 +86,101 @@ def poll_pending_analyses():
 
 
 
-def _poll_via_http(session_key: str, limit: int = 100) -> dict:
+def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     """
-    通过 HTTP API 轮询获取分析结果
+    通过 HTTP API /final 接口获取分析结果（带重试）
     
     Returns:
         - 成功: {"status": "completed", "text": "...", "msg_count": N}
         - 暂无结果: {"status": "pending"}
         - 错误: {"status": "error", "error": "..."}
     """
-    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
+    import requests as req
     
-    try:
-        import requests as req
-        url = f"{base_url}/sessions/{session_key}/messages?limit={limit}"
-        logger.debug(f"HTTP 轮询请求: {url}")
-        
-        response = req.get(url, timeout=30)
-        
-        if response.status_code == 404:
-            return {"status": "error", "error": "Session not found"}
-        
-        if response.status_code != 200:
-            return {"status": "error", "error": f"HTTP {response.status_code}"}
-        
-        data = response.json()
-        messages = data.get('messages', [])
-        
-        if not messages:
-            return {"status": "pending"}
-        
-        # 提取最后一条 assistant 消息的文本
-        final_text = None
-        for msg in reversed(messages):
-            if msg.get('role') == 'assistant':
-                content_list = msg.get('content', [])
-                if isinstance(content_list, list):
-                    for c in content_list:
-                        if isinstance(c, dict) and c.get('type') == 'text':
-                            final_text = c.get('content', '')
-                            break
-                elif isinstance(content_list, str):
-                    final_text = content_list
-                if final_text:
-                    break
-        
-        if not final_text:
-            return {"status": "pending"}
-        
-        return {
-            "status": "completed",
-            "text": final_text,
-            "message": msg,
-            "msg_count": len(messages)
-        }
-        
-    except Exception as e:
-        logger.warning(f"HTTP 轮询失败: {e}")
-        return {"status": "error", "error": str(e)}
+    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
+    last_error = None
+    
+    for attempt in range(retry_count):
+        try:
+            # 使用 /final 接口直接获取最终结果
+            url = f"{base_url}/sessions/{session_key}/final"
+            logger.debug(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
+            
+            response = req.get(url, timeout=30)
+            
+            if response.status_code == 404:
+                last_error = "Session not found"
+                logger.debug(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
+                continue
+            
+            if response.status_code == 204 or response.status_code == 202:
+                # 204 No Content / 202 Accepted - 分析仍在进行中
+                last_error = "分析进行中"
+                logger.debug(f"分析进行中 (尝试 {attempt + 1}/{retry_count})")
+                continue
+            
+            if response.status_code != 200:
+                last_error = f"HTTP {response.status_code}"
+                continue
+            
+            data = response.json()
+            
+            # 根据 /final 接口返回的字段判断状态
+            is_final = data.get('isFinal', False)
+            is_processing = data.get('isProcessing', False)
+            stop_reason = data.get('stopReason', '')
+            status = data.get('status', 'unknown')
+            text = data.get('text', '')
+            msg_count = data.get('messageCount', 0)
+            
+            # 判断是否完成
+            if is_processing and not text:
+                # 正在处理且无文本内容
+                last_error = "分析进行中"
+                logger.debug(f"分析处理中 (尝试 {attempt + 1}/{retry_count})")
+                continue
+            
+            if not is_final and status == 'running':
+                # 仍在运行且未完成
+                last_error = "分析进行中"
+                logger.debug(f"分析运行中 status={status} (尝试 {attempt + 1}/{retry_count})")
+                continue
+            
+            # 有文本内容，认为是完成
+            if text:
+                return {
+                    "status": "completed",
+                    "text": text,
+                    "message": {
+                        'stopReason': stop_reason,
+                        'status': status,
+                        'isFinal': is_final
+                    },
+                    "msg_count": msg_count
+                }
+            
+            # 无文本内容，可能还在处理
+            if not is_final:
+                last_error = "分析进行中"
+                continue
+            
+            # isFinal 但无文本，可能是异常情况
+            last_error = "No text content"
+            continue
+            
+        except req.exceptions.Timeout:
+            last_error = "连接超时"
+            logger.debug(f"HTTP 轮询超时 (尝试 {attempt + 1}/{retry_count})")
+        except req.exceptions.ConnectionError as e:
+            last_error = f"连接失败: {str(e)[:50]}"
+            logger.debug(f"HTTP 连接错误 (尝试 {attempt + 1}/{retry_count})")
+        except Exception as e:
+            last_error = str(e)
+            logger.debug(f"HTTP 轮询异常 (尝试 {attempt + 1}/{retry_count}): {e}")
+    
+    if last_error in ("分析进行中",):
+        return {"status": "pending"}
+    return {"status": "error", "error": f"重试 {retry_count} 次后仍失败: {last_error}"}
 
 def _poll_pending_analyses_inner():
     """轮询逻辑主体（由 poll_pending_analyses 在持锁状态下调用）"""

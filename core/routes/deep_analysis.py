@@ -383,12 +383,16 @@ def retry_deep_analysis(analysis_id: int):
 
             # 检查是否配置了 HTTP API URL
             if Config.OPENCLAW_HTTP_API_URL:
-                # 直接通过 HTTP API 获取
+                # 直接通过 HTTP API 获取（复用轮询器的重试逻辑）
+                from services.openclaw_poller import _poll_via_http
                 logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
-                result = _fetch_openclaw_via_http(record.openclaw_session_key)
+                result = _poll_via_http(record.openclaw_session_key, retry_count=3)
                 
                 if result.get('status') == 'error':
                     return jsonify({'error': result.get('error', '获取失败')}), 400
+                
+                if result.get('status') != 'completed':
+                    return jsonify({'error': f'获取未完成: {result.get("status")}'}), 400
                 
                 text = result.get('text', '')
                 
@@ -461,61 +465,3 @@ def retry_deep_analysis(analysis_id: int):
         logger.error(f"重试深度分析失败: {e}")
         return jsonify({'error': str(e)}), 500
 
-
-def _fetch_openclaw_via_http(session_key: str, limit: int = 100) -> dict:
-    """
-    通过 OpenClaw HTTP API 获取分析结果
-    """
-    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
-    
-    try:
-        url = f"{base_url}/sessions/{session_key}/messages?limit={limit}"
-        logger.info(f"HTTP API 请求: {url}")
-        
-        response = requests.get(
-            url,
-            headers={'Content-Type': 'application/json'},
-            timeout=30
-        )
-        
-        if response.status_code == 404:
-            return {"status": "error", "error": "Session not found"}
-        
-        if response.status_code != 200:
-            return {"status": "error", "error": f"HTTP {response.status_code}: {response.text[:200]}"}
-        
-        data = response.json()
-        messages = data.get('messages', [])
-        
-        if not messages:
-            return {"status": "error", "error": "No messages found"}
-        
-        # 提取最后一条 assistant 消息的文本
-        final_text = None
-        for msg in reversed(messages):
-            if msg.get('role') == 'assistant':
-                content = msg.get('content', [])
-                if isinstance(content, list):
-                    for c in content:
-                        if isinstance(c, dict) and c.get('type') == 'text':
-                            final_text = c.get('content', '')
-                            break
-                elif isinstance(content, str):
-                    final_text = content
-                if final_text:
-                    break
-        
-        return {
-            "status": "success",
-            "text": final_text or "",
-            "messages": messages,
-            "total": data.get('total', len(messages))
-        }
-        
-    except requests.exceptions.ConnectionError:
-        return {"status": "error", "error": f"连接失败: {base_url}"}
-    except requests.exceptions.Timeout:
-        return {"status": "error", "error": "请求超时"}
-    except Exception as e:
-        logger.error(f"HTTP API 获取失败: {e}")
-        return {"status": "error", "error": str(e)}
