@@ -66,6 +66,14 @@ class CircuitBreaker:
 
     def call(self, func: Callable, *args, **kwargs):
         """执行函数，失败时触发熔断。"""
+        # threshold 为 0 表示禁用熔断器，直接执行
+        if self.failure_threshold == 0:
+            try:
+                return func(*args, **kwargs)
+            except self.expected_exceptions as e:
+                logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
+                return None
+        
         if self.state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
             return None
@@ -88,7 +96,8 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.time()
-            if self._failure_count >= self.failure_threshold:
+            # threshold 为 0 表示禁用熔断器
+            if self.failure_threshold > 0 and self._failure_count >= self.failure_threshold:
                 self._state = CircuitState.OPEN
                 logger.error(f"CircuitBreaker [{self.name}] 转为 OPEN（连续 {self._failure_count} 次失败）")
 
