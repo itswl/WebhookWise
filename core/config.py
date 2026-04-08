@@ -41,6 +41,7 @@ class Config:
     
     # AI 分析和转发配置
     ENABLE_AI_ANALYSIS = os.getenv('ENABLE_AI_ANALYSIS', 'true').lower() == 'true'
+    ENABLE_AI_DEGRADATION = os.getenv('ENABLE_AI_DEGRADATION', 'false').lower() == 'true'  # AI 失败时是否降级到本地规则分析
     FORWARD_URL = os.getenv('FORWARD_URL', '')
     ENABLE_FORWARD = os.getenv('ENABLE_FORWARD', 'true').lower() == 'true'
     
