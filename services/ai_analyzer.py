@@ -736,16 +736,31 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         return analysis
 
     except Exception as e:
-        logger.error(f"AI 分析失败: {str(e)}，降级为规则分析", exc_info=True)
-        # 如果 AI 分析失败，降级为规则分析
-        result = analyze_with_rules(parsed_data, source)
-        result['_degraded'] = True
-        result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
-        result['_route_type'] = 'rule'
-        # 发送降级通知
-        _send_degradation_alert(webhook_data, str(e))
-        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
-        return result
+        logger.error(f"AI 分析失败: {str(e)}", exc_info=True)
+        # 根据配置决定是否降级
+        if Config.ENABLE_AI_DEGRADATION:
+            logger.warning("启用 AI 降级策略，使用本地规则分析")
+            result = analyze_with_rules(parsed_data, source)
+            result['_degraded'] = True
+            result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
+            result['_route_type'] = 'rule'
+            _send_degradation_alert(webhook_data, str(e))
+            log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+            return result
+        else:
+            # 不降级，直接返回错误
+            logger.error("AI 分析失败且未启用降级策略，返回错误")
+            _send_degradation_alert(webhook_data, str(e))
+            return {
+                'summary': f'AI 分析失败: {str(e)}',
+                'root_cause': '分析失败，请检查 AI 服务配置',
+                'impact': '未知',
+                'recommendations': ['检查 AI 服务连接', '查看日志获取详细信息'],
+                'severity': 'critical',
+                '_degraded': True,
+                '_degraded_reason': f'AI 分析失败: {str(e)}',
+                '_route_type': 'error'
+            }
 
 
 def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
