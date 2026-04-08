@@ -1520,11 +1520,11 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
     if response is None:
         # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
-            logger.warning("OpenClaw 请求被熔断拦截，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': 'OpenClaw 请求被熔断拦截'}
+            logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
+            return {'_degraded': True, '_degraded_reason': 'OpenClaw 请求失败'}
         else:
-            logger.error("OpenClaw 请求被熔断拦截，未启用降级策略")
-            raise Exception('OpenClaw 请求被熔断拦截')
+            logger.error("OpenClaw 请求失败，未启用降级策略")
+            raise Exception('OpenClaw 请求失败')
 
     try:
         response.raise_for_status()
