@@ -84,6 +84,67 @@ def poll_pending_analyses():
         _poll_lock.release()
 
 
+
+
+def _poll_via_http(session_key: str, limit: int = 100) -> dict:
+    """
+    通过 HTTP API 轮询获取分析结果
+    
+    Returns:
+        - 成功: {"status": "completed", "text": "...", "msg_count": N}
+        - 暂无结果: {"status": "pending"}
+        - 错误: {"status": "error", "error": "..."}
+    """
+    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
+    
+    try:
+        import requests as req
+        url = f"{base_url}/sessions/{session_key}/messages?limit={limit}"
+        logger.debug(f"HTTP 轮询请求: {url}")
+        
+        response = req.get(url, timeout=30)
+        
+        if response.status_code == 404:
+            return {"status": "error", "error": "Session not found"}
+        
+        if response.status_code != 200:
+            return {"status": "error", "error": f"HTTP {response.status_code}"}
+        
+        data = response.json()
+        messages = data.get('messages', [])
+        
+        if not messages:
+            return {"status": "pending"}
+        
+        # 提取最后一条 assistant 消息的文本
+        final_text = None
+        for msg in reversed(messages):
+            if msg.get('role') == 'assistant':
+                content_list = msg.get('content', [])
+                if isinstance(content_list, list):
+                    for c in content_list:
+                        if isinstance(c, dict) and c.get('type') == 'text':
+                            final_text = c.get('content', '')
+                            break
+                elif isinstance(content_list, str):
+                    final_text = content_list
+                if final_text:
+                    break
+        
+        if not final_text:
+            return {"status": "pending"}
+        
+        return {
+            "status": "completed",
+            "text": final_text,
+            "message": msg,
+            "msg_count": len(messages)
+        }
+        
+    except Exception as e:
+        logger.warning(f"HTTP 轮询失败: {e}")
+        return {"status": "error", "error": str(e)}
+
 def _poll_pending_analyses_inner():
     """轮询逻辑主体（由 poll_pending_analyses 在持锁状态下调用）"""
     from core.models import DeepAnalysis, session_scope
@@ -137,13 +198,19 @@ def _poll_pending_analyses_inner():
                         logger.debug(f"分析创建未满 {Config.OPENCLAW_MIN_WAIT_SECONDS}s (已 {elapsed:.0f}s), 跳过: id={record.id}")
                         continue
 
-                    # 短连接轮询
-                    result = poll_session_result(
-                        gateway_url=Config.OPENCLAW_GATEWAY_URL,
-                        gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
-                        session_key=record.openclaw_session_key,
-                        timeout=Config.OPENCLAW_POLL_TIMEOUT
-                    )
+                    # 根据配置选择获取方式
+                    if Config.OPENCLAW_HTTP_API_URL:
+                        # 使用 HTTP API 轮询
+                        result = _poll_via_http(record.openclaw_session_key)
+                        logger.debug(f"HTTP 轮询结果: id={record.id}, status={result.get('status')}")
+                    else:
+                        # 使用 WebSocket 轮询
+                        result = poll_session_result(
+                            gateway_url=Config.OPENCLAW_GATEWAY_URL,
+                            gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
+                            session_key=record.openclaw_session_key,
+                            timeout=Config.OPENCLAW_POLL_TIMEOUT
+                        )
 
                     if result.get('status') == 'completed':
                         text = result.get('text', '')
