@@ -93,10 +93,21 @@ class CircuitBreaker:
                 logger.error(f"CircuitBreaker [{self.name}] 转为 OPEN（连续 {self._failure_count} 次失败）")
 
 
-# 预置熔断器实例
-feishu_cb = CircuitBreaker(name="feishu", failure_threshold=5, recovery_timeout=30)
-openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=5, recovery_timeout=30)
-forward_cb = CircuitBreaker(name="forward", failure_threshold=5, recovery_timeout=30)
+# 预置熔断器实例（可通过环境变量调整）
+import os
+
+_feishu_threshold = int(os.getenv('CIRCUIT_BREAKER_FEISHU_THRESHOLD', '5'))
+_feishu_timeout = float(os.getenv('CIRCUIT_BREAKER_FEISHU_TIMEOUT', '30'))
+
+_openclaw_threshold = int(os.getenv('CIRCUIT_BREAKER_OPENCLAW_THRESHOLD', '5'))
+_openclaw_timeout = float(os.getenv('CIRCUIT_BREAKER_OPENCLAW_TIMEOUT', '30'))
+
+_forward_threshold = int(os.getenv('CIRCUIT_BREAKER_FORWARD_THRESHOLD', '5'))
+_forward_timeout = float(os.getenv('CIRCUIT_BREAKER_FORWARD_TIMEOUT', '30'))
+
+feishu_cb = CircuitBreaker(name="feishu", failure_threshold=_feishu_threshold, recovery_timeout=_feishu_timeout)
+openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=_openclaw_threshold, recovery_timeout=_openclaw_timeout)
+forward_cb = CircuitBreaker(name="forward", failure_threshold=_forward_threshold, recovery_timeout=_forward_timeout)
 
 
 HeadersDict = dict[str, str]
