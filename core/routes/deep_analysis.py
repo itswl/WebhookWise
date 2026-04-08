@@ -361,7 +361,13 @@ def forward_deep_analysis(analysis_id: int):
 
 @deep_analysis_bp.route('/api/deep-analyses/<int:analysis_id>/retry', methods=['POST'])
 def retry_deep_analysis(analysis_id: int):
-    """重新拉取深度分析结果（支持 failed 和 completed 状态）"""
+    """
+    重新拉取深度分析结果
+    
+    策略：
+    - 配置了 OPENCLAW_HTTP_API_URL → 直接通过 HTTP API 获取
+    - 未配置 → 重置为 pending，由轮询器通过 WebSocket 获取
+    """
     from flask import jsonify
     try:
         with session_scope() as session:
@@ -373,15 +379,143 @@ def retry_deep_analysis(analysis_id: int):
                 return jsonify({'error': f'只能在失败或已完成状态下重新拉取，当前状态: {record.status}'}), 400
 
             if not record.openclaw_session_key:
-                return jsonify({'error': '缺少 session key，无法重新拉取'}), 400
+                return jsonify({'error': '缺少 session key，无法重新拉取'})
 
-            record.status = 'pending'
-            record.created_at = datetime.now()
-            record.analysis_result = None
-            session.commit()
+            # 检查是否配置了 HTTP API URL
+            if Config.OPENCLAW_HTTP_API_URL:
+                # 直接通过 HTTP API 获取
+                logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
+                result = _fetch_openclaw_via_http(record.openclaw_session_key)
+                
+                if result.get('status') == 'error':
+                    return jsonify({'error': result.get('error', '获取失败')}), 400
+                
+                text = result.get('text', '')
+                
+                # 尝试解析 JSON
+                parsed_result = None
+                json_match = re.search(r'\{[\s\S]*\}', text)
+                if json_match:
+                    try:
+                        parsed_result = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        pass
+                
+                if parsed_result and isinstance(parsed_result, dict):
+                    parsed_result['_openclaw_run_id'] = record.openclaw_run_id
+                    parsed_result['_openclaw_text'] = text
+                    parsed_result['_fetched_via'] = 'http-retry'
+                    record.analysis_result = parsed_result
+                else:
+                    record.analysis_result = {
+                        'root_cause': text,
+                        'impact': '',
+                        'recommendations': [],
+                        'confidence': 0.5,
+                        '_openclaw_run_id': record.openclaw_run_id,
+                        '_openclaw_text': text,
+                        '_fetched_via': 'http-retry'
+                    }
+                
+                record.status = 'completed'
+                record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
+                session.commit()
+                
+                logger.info(f"HTTP API 获取成功: id={analysis_id}, text_len={len(text)}")
+                
+                # 发送飞书通知
+                try:
+                    from adapters.ecosystem_adapters import send_feishu_deep_analysis
+                    if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                        source = event.source if event else ''
+                        analysis_data = {
+                            'analysis_result': record.analysis_result,
+                            'engine': record.engine,
+                            'duration_seconds': record.duration_seconds,
+                        }
+                        send_feishu_deep_analysis(
+                            webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                            analysis_record=analysis_data,
+                            source=source,
+                            webhook_event_id=record.webhook_event_id
+                        )
+                except Exception as notify_err:
+                    logger.warning(f"飞书深度分析通知失败: {notify_err}")
+                
+                return jsonify({
+                    'success': True, 
+                    'message': f'获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果'
+                })
+            else:
+                # 没有配置 HTTP API，重置为 pending 让轮询器处理
+                record.status = 'pending'
+                record.created_at = datetime.now()
+                record.analysis_result = None
+                session.commit()
 
-            logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
-            return jsonify({'success': True, 'message': '已重新开始拉取，请等待结果'})
+                logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
+                return jsonify({'success': True, 'message': '已重新开始拉取，请等待结果'})
+                
     except Exception as e:
         logger.error(f"重试深度分析失败: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def _fetch_openclaw_via_http(session_key: str, limit: int = 100) -> dict:
+    """
+    通过 OpenClaw HTTP API 获取分析结果
+    """
+    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
+    
+    try:
+        url = f"{base_url}/sessions/{session_key}/messages?limit={limit}"
+        logger.info(f"HTTP API 请求: {url}")
+        
+        response = requests.get(
+            url,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        
+        if response.status_code == 404:
+            return {"status": "error", "error": "Session not found"}
+        
+        if response.status_code != 200:
+            return {"status": "error", "error": f"HTTP {response.status_code}: {response.text[:200]}"}
+        
+        data = response.json()
+        messages = data.get('messages', [])
+        
+        if not messages:
+            return {"status": "error", "error": "No messages found"}
+        
+        # 提取最后一条 assistant 消息的文本
+        final_text = None
+        for msg in reversed(messages):
+            if msg.get('role') == 'assistant':
+                content = msg.get('content', [])
+                if isinstance(content, list):
+                    for c in content:
+                        if isinstance(c, dict) and c.get('type') == 'text':
+                            final_text = c.get('content', '')
+                            break
+                elif isinstance(content, str):
+                    final_text = content
+                if final_text:
+                    break
+        
+        return {
+            "status": "success",
+            "text": final_text or "",
+            "messages": messages,
+            "total": data.get('total', len(messages))
+        }
+        
+    except requests.exceptions.ConnectionError:
+        return {"status": "error", "error": f"连接失败: {base_url}"}
+    except requests.exceptions.Timeout:
+        return {"status": "error", "error": "请求超时"}
+    except Exception as e:
+        logger.error(f"HTTP API 获取失败: {e}")
+        return {"status": "error", "error": str(e)}
