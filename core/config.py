@@ -129,6 +129,7 @@ class Config:
     OPENCLAW_GATEWAY_URL = os.getenv('OPENCLAW_GATEWAY_URL', 'http://127.0.0.1:18900')
     OPENCLAW_GATEWAY_TOKEN = os.getenv('OPENCLAW_GATEWAY_TOKEN', '')
     OPENCLAW_HOOKS_TOKEN = os.getenv('OPENCLAW_HOOKS_TOKEN', '')
+    OPENCLAW_HTTP_API_URL = os.getenv('OPENCLAW_HTTP_API_URL', 'http://127.0.0.1:8085')  # OpenClaw HTTP API 地址
     OPENCLAW_TIMEOUT_SECONDS = int(os.getenv('OPENCLAW_TIMEOUT_SECONDS', '300'))
     DEEP_ANALYSIS_ENGINE = os.getenv('DEEP_ANALYSIS_ENGINE', 'local')  # local | openclaw | auto
 
