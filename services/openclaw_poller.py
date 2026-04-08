@@ -104,13 +104,13 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
         try:
             # 使用 /final 接口直接获取最终结果
             url = f"{base_url}/sessions/{session_key}/final"
-            logger.debug(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
+            logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
             
             response = req.get(url, timeout=30)
             
             if response.status_code == 404:
                 last_error = "Session not found"
-                logger.debug(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
+                logger.warning(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
                 continue
             
             if response.status_code == 204 or response.status_code == 202:
@@ -170,13 +170,13 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
             
         except req.exceptions.Timeout:
             last_error = "连接超时"
-            logger.debug(f"HTTP 轮询超时 (尝试 {attempt + 1}/{retry_count})")
+            logger.warning(f"HTTP 轮询超时 (尝试 {attempt + 1}/{retry_count})")
         except req.exceptions.ConnectionError as e:
             last_error = f"连接失败: {str(e)[:50]}"
-            logger.debug(f"HTTP 连接错误 (尝试 {attempt + 1}/{retry_count})")
+            logger.warning(f"HTTP 连接错误 (尝试 {attempt + 1}/{retry_count}): {last_error}")
         except Exception as e:
             last_error = str(e)
-            logger.debug(f"HTTP 轮询异常 (尝试 {attempt + 1}/{retry_count}): {e}")
+            logger.warning(f"HTTP 轮询异常 (尝试 {attempt + 1}/{retry_count}): {e}")
     
     if last_error in ("分析进行中",):
         return {"status": "pending"}
@@ -342,49 +342,69 @@ def _poll_pending_analyses_inner():
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
                             if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS:
-                                # 连续超时过多，降级使用首次结果
-                                logger.warning(f"连续超时 {error_count} 次，降级使用首次结果: id={record.id}")
-                                first_result = prev_snapshot['first_result']
-                                text = first_result['text']
-                                message = first_result['message']
-                                _poll_stability_cache.pop(record.id, None)
-                                
-                                # 尝试从文本中提取 JSON 结构化数据
-                                parsed_result = None
-                                json_match = re.search(r'\{[\s\S]*\}', text)
-                                if json_match:
+                                # 连续超时过多
+                                if Config.OPENCLAW_ENABLE_DEGRADATION:
+                                    # 启用降级：使用首次结果
+                                    logger.warning(f"连续超时 {error_count} 次，降级使用首次结果: id={record.id}")
+                                    first_result = prev_snapshot['first_result']
+                                    text = first_result['text']
+                                    message = first_result['message']
+                                    _poll_stability_cache.pop(record.id, None)
+                                    
+                                    # 尝试从文本中提取 JSON 结构化数据
+                                    parsed_result = None
+                                    json_match = re.search(r'\{[\s\S]*\}', text)
+                                    if json_match:
+                                        try:
+                                            parsed_result = json.loads(json_match.group())
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    if parsed_result and isinstance(parsed_result, dict):
+                                        parsed_result['_openclaw_run_id'] = record.openclaw_run_id
+                                        parsed_result['_openclaw_text'] = text
+                                        record.analysis_result = parsed_result
+                                    else:
+                                        record.analysis_result = {
+                                            'root_cause': text,
+                                            'impact': '',
+                                            'recommendations': [],
+                                            'confidence': 0.5,
+                                            '_openclaw_run_id': record.openclaw_run_id,
+                                            '_openclaw_text': text
+                                        }
+                                    
+                                    record.status = 'completed'
+                                    record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
+                                    logger.info(f"分析完成(降级): id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
+                                    
+                                    # 获取告警来源并发送飞书通知
                                     try:
-                                        parsed_result = json.loads(json_match.group())
-                                    except json.JSONDecodeError:
-                                        pass
-                                
-                                if parsed_result and isinstance(parsed_result, dict):
-                                    parsed_result['_openclaw_run_id'] = record.openclaw_run_id
-                                    parsed_result['_openclaw_text'] = text
-                                    record.analysis_result = parsed_result
+                                        from core.models import WebhookEvent
+                                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                                        source = event.source if event else ''
+                                        _notify_feishu_deep_analysis(record, source)
+                                    except Exception as notify_err:
+                                        logger.warning(f"发送飞书通知失败: {notify_err}")
+                                    continue
                                 else:
-                                    record.analysis_result = {
-                                        'root_cause': text,
-                                        'impact': '',
-                                        'recommendations': [],
-                                        'confidence': 0.5,
-                                        '_openclaw_run_id': record.openclaw_run_id,
-                                        '_openclaw_text': text
-                                    }
-                                
-                                record.status = 'completed'
-                                record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                                logger.info(f"分析完成(降级): id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
-                                
-                                # 获取告警来源并发送飞书通知
-                                try:
-                                    from core.models import WebhookEvent
-                                    event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
-                                    source = event.source if event else ''
-                                    _notify_feishu_deep_analysis(record, source)
-                                except Exception as notify_err:
-                                    logger.warning(f"发送飞书通知失败: {notify_err}")
-                                continue
+                                    # 不降级：直接标记失败并发送通知
+                                    logger.error(f"连续超时 {error_count} 次，未启用降级策略，标记为失败: id={record.id}")
+                                    record.status = 'failed'
+                                    record.error_message = f"轮询连续超时 {error_count} 次"
+                                    record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
+                                    
+                                    # 发送失败通知
+                                    try:
+                                        from core.models import WebhookEvent
+                                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                                        source = event.source if event else ''
+                                        _notify_feishu_deep_analysis(record, source)
+                                    except Exception as notify_err:
+                                        logger.warning(f"发送飞书通知失败: {notify_err}")
+                                    
+                                    _poll_stability_cache.pop(record.id, None)
+                                    continue
                             else:
                                 # 增加错误计数
                                 prev_snapshot['error_count'] = error_count
