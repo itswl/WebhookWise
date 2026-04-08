@@ -100,13 +100,19 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
     last_error = None
     
+    # 使用 hooks token 认证
+    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
+    headers = {
+        "Authorization": f"Bearer {hooks_token}"
+    }
+    
     for attempt in range(retry_count):
         try:
             # 使用 /final 接口直接获取最终结果
             url = f"{base_url}/sessions/{session_key}/final"
             logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
             
-            response = req.get(url, timeout=30)
+            response = req.get(url, headers=headers, timeout=30)
             
             if response.status_code == 404:
                 last_error = "Session not found"
