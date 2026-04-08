@@ -13,8 +13,16 @@ var DeepAnalysesModule = (function() {
         var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
         var duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
         var source = record.source || 'unknown';
-        var summary = '';
 
+        // 告警类型标签
+        var alertTypeTag = '';
+        if (record.is_duplicate) {
+            alertTypeTag = record.beyond_window ? '<span class="da-alert-type da-alert-type-beyond">🔁 窗口外重复</span>' : '<span class="da-alert-type da-alert-type-dup">🔁 窗口内重复</span>';
+        } else {
+            alertTypeTag = '<span class="da-alert-type da-alert-type-new">🆕 新告警</span>';
+        }
+
+        var summary = '';
         if (record.status === 'completed') {
             summary = analysis.root_cause || analysis._openclaw_text || '';
             if (summary.length > 80) summary = summary.substring(0, 80) + '...';
@@ -28,6 +36,7 @@ var DeepAnalysesModule = (function() {
         var html = '<div class="da-summary" onclick="DeepAnalysesModule.toggleExpand(' + record.id + ')">';
         html += '<div class="da-summary-left">';
         html += getStatusLabel(record.status);
+        html += alertTypeTag;
         html += '<span class="da-engine">' + engineLabel + '</span>';
         html += '<span class="da-source">来源: ' + escapeHtml(source) + '</span>';
         html += '<span class="da-webhook-id">告警 #' + record.webhook_event_id + '</span>';
