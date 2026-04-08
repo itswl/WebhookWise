@@ -22,30 +22,74 @@ var DeepAnalysesModule = (function() {
             alertTypeTag = '<span class="da-alert-type da-alert-type-new">🆕 新告警</span>';
         }
 
-        var summary = '';
+        // 构建更丰富的摘要信息
+        var summaryLines = [];
+        
         if (record.status === 'completed') {
-            summary = analysis.root_cause || analysis._openclaw_text || '';
-            if (summary.length > 80) summary = summary.substring(0, 80) + '...';
+            // 根因分析
+            var rootCause = analysis.root_cause || '';
+            if (rootCause) {
+                if (rootCause.length > 100) rootCause = rootCause.substring(0, 100) + '...';
+                summaryLines.push('<div class="da-summary-root"><strong>🔍 根因：</strong>' + escapeHtml(rootCause) + '</div>');
+            }
+            
+            // 影响范围
+            var impact = analysis.impact || '';
+            if (impact) {
+                if (impact.length > 80) impact = impact.substring(0, 80) + '...';
+                summaryLines.push('<div class="da-summary-impact"><strong>💥 影响：</strong>' + escapeHtml(impact) + '</div>');
+            }
+            
+            // 修复建议数量
+            if (analysis.recommendations && Array.isArray(analysis.recommendations) && analysis.recommendations.length > 0) {
+                summaryLines.push('<div class="da-summary-recs">✅ ' + analysis.recommendations.length + ' 条修复建议</div>');
+            }
+            
+            // 置信度
+            if (analysis.confidence !== undefined && analysis.confidence !== null) {
+                var confPercent = (analysis.confidence * 100).toFixed(0);
+                var confColor = analysis.confidence >= 0.8 ? '#52c41a' : (analysis.confidence >= 0.6 ? '#faad14' : '#ff4d4f');
+                summaryLines.push('<div class="da-summary-conf" style="color:' + confColor + '">📊 置信度: ' + confPercent + '%</div>');
+            }
+            
+            // OpenClaw 原始文本（如果没有结构化数据）
+            if (!rootCause && analysis._openclaw_text) {
+                var textPreview = analysis._openclaw_text;
+                if (textPreview.length > 120) textPreview = textPreview.substring(0, 120) + '...';
+                summaryLines.push('<div class="da-summary-text">' + escapeHtml(textPreview) + '</div>');
+            }
+            
         } else if (record.status === 'pending') {
-            summary = '⏳ OpenClaw 正在分析中...';
+            summaryLines.push('<div class="da-summary-pending">⏳ OpenClaw 正在分析中' + (record.openclaw_run_id ? ' (Run: ' + escapeHtml(record.openclaw_run_id.substring(0, 8)) + '...)' : '') + '</div>');
         } else if (record.status === 'failed') {
-            summary = '❌ ' + (analysis.root_cause || '分析失败');
-            if (summary.length > 80) summary = summary.substring(0, 80) + '...';
+            var errorMsg = analysis.root_cause || analysis.error || '分析失败';
+            if (errorMsg.length > 100) errorMsg = errorMsg.substring(0, 100) + '...';
+            summaryLines.push('<div class="da-summary-failed">❌ ' + escapeHtml(errorMsg) + '</div>');
         }
 
         var html = '<div class="da-summary" onclick="DeepAnalysesModule.toggleExpand(' + record.id + ')">';
+        html += '<div class="da-summary-header">';
         html += '<div class="da-summary-left">';
         html += getStatusLabel(record.status);
         html += alertTypeTag;
         html += '<span class="da-engine">' + engineLabel + '</span>';
-        html += '<span class="da-source">来源: ' + escapeHtml(source) + '</span>';
-        html += '<span class="da-webhook-id">告警 #' + record.webhook_event_id + '</span>';
+        html += '<span class="da-source">📡 ' + escapeHtml(source) + '</span>';
+        html += '<span class="da-webhook-id">🔔 告警 #' + record.webhook_event_id + '</span>';
         html += '</div>';
         html += '<div class="da-summary-right">';
-        html += '<span class="da-time">' + time + ' | ' + duration + '</span>';
-        html += '<span class="da-summary-text">' + escapeHtml(summary) + '</span>';
+        html += '<span class="da-time">🕒 ' + time + '</span>';
+        html += '<span class="da-duration">⏱️ ' + duration + '</span>';
         html += '<span class="da-expand-icon" id="expand-icon-' + record.id + '">▶</span>';
         html += '</div>';
+        html += '</div>';
+        
+        // 添加详细信息行
+        if (summaryLines.length > 0) {
+            html += '<div class="da-summary-details">';
+            html += summaryLines.join('');
+            html += '</div>';
+        }
+        
         html += '</div>';
         return html;
     }
