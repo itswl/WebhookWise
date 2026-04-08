@@ -52,7 +52,7 @@ def list_webhooks() -> tuple[Response, int]:
 
     try:
         with session_scope() as session:
-            query = session.query(WebhookEvent).order_by(WebhookEvent.id.desc())
+            query = session.query(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
             if importance:
                 query = query.filter(WebhookEvent.importance == importance)
@@ -64,26 +64,21 @@ def list_webhooks() -> tuple[Response, int]:
             total = query.count()
             events = query.offset(offset).limit(page_size).all()
 
-            # 批量计算 prev_alert_id
-            prev_map = {}
-            if events:
-                all_hashes = [getattr(e, 'alert_hash', '') or '' for e in events]
-                all_alerts = session.query(
-                    WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp
-                ).filter(
-                    WebhookEvent.alert_hash.in_(all_hashes),
-                    WebhookEvent.id < events[0].id
-                ).all()
-                for a in all_alerts:
-                    h = getattr(a, 'alert_hash', '') or ''
-                    if h not in prev_map or a.id > prev_map[h][0]:
-                        prev_map[h] = (a.id, a.timestamp)
+            # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
+            prev_ids_seen = {}
+            prev_map = {}  # event.id -> prev_alert_id
+            for event in reversed(events):
+                h = getattr(event, 'alert_hash', '') or ''
+                prev_map[event.id] = prev_ids_seen.get(h)
+                prev_ids_seen[h] = event.id
 
             items = []
             for event in events:
                 d = event.to_dict()
-                h = getattr(event, 'alert_hash', '') or ''
-                d['prev_alert_id'] = prev_map.get(h, (None, None))[0] if h in prev_map else None
+                d['prev_alert_id'] = prev_map.get(event.id)
+                beyond_window = bool(event.beyond_window)
+                d['beyond_time_window'] = beyond_window
+                d['is_within_window'] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
                 items.append(d)
 
             has_more = len(events) == page_size
