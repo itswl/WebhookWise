@@ -256,17 +256,23 @@ def list_all_deep_analyses() -> tuple[Response, int]:
         records = query.limit(per_page).all()
 
         webhook_ids = [r.webhook_event_id for r in records]
-        source_map = {}
+        webhook_map = {}
         if webhook_ids:
-            events = session.query(WebhookEvent.id, WebhookEvent.source).filter(
+            events = session.query(
+                WebhookEvent.id, WebhookEvent.source,
+                WebhookEvent.is_duplicate, WebhookEvent.beyond_window
+            ).filter(
                 WebhookEvent.id.in_(webhook_ids)
             ).all()
-            source_map = {e.id: e.source for e in events}
+            webhook_map = {e.id: e for e in events}
 
         data = []
         for r in records:
             d = r.to_dict()
-            d['source'] = source_map.get(r.webhook_event_id, 'unknown')
+            webhook = webhook_map.get(r.webhook_event_id)
+            d['source'] = webhook.source if webhook else 'unknown'
+            d['is_duplicate'] = bool(webhook and webhook.is_duplicate) if webhook else False
+            d['beyond_window'] = bool(webhook and webhook.beyond_window) if webhook else False
             data.append(d)
 
         next_cursor = records[-1].id if len(records) == per_page else None
