@@ -1579,13 +1579,11 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
         # 发送失败通知
         try:
             from core.models import WebhookEvent
-            from flask import current_app
-            with current_app.app_context():
-                from core.config import Config
-                if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                    event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
-                    source = event.source if event else 'unknown'
-                    _send_openclaw_failure_notification(webhook_data, source, last_error)
+            from core.config import Config
+            if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
+                source = event.source if event else 'unknown'
+                _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
             logger.warning(f"发送 OpenClaw 失败通知失败: {notify_err}")
         

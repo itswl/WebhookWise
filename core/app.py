@@ -2,8 +2,10 @@ import os
 import time
 import socket
 from contextlib import contextmanager
-from flask import Flask, request, jsonify, Response
-from flask_compress import Compress
+from fastapi import FastAPI, Request, Query, Body
+from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional, Generator, Union
@@ -21,25 +23,22 @@ from core.utils import (
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from adapters.ecosystem_adapters import normalize_webhook_event
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from core.models import WebhookEvent, ProcessingLock, AIUsageLog, AnalysisCache, DeepAnalysis, session_scope, get_session, test_db_connection
-from core.routes.deep_analysis import deep_analysis_bp
-from core.routes.forward_rules import forward_rules_bp
-from core.routes.reanalysis import reanalysis_bp
-from core.routes.webhook import webhook_bp
+from core.models import WebhookEvent, AIUsageLog, AnalysisCache, DeepAnalysis, session_scope, get_session, test_db_connection
+from core.routes.deep_analysis import deep_analysis_router
+from core.routes.forward_rules import forward_rules_router
+from core.routes.reanalysis import reanalysis_router
+from core.routes.webhook import webhook_router
 
-app = Flask(__name__, template_folder='../templates', static_folder='../templates/static')
-app.config.from_object(Config)
+app = FastAPI(title="Webhook AI Assistant")
+
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
+
 
 # 启用 gzip 压缩（减少响应体积，加快传输）
-Compress(app)
-app.config['COMPRESS_MIMETYPES'] = [
-    'application/json',
-    'text/html',
-    'text/css',
-    'application/javascript'
-]
-app.config['COMPRESS_LEVEL'] = 6  # 压缩级别 1-9（6是平衡值）
-app.config['COMPRESS_MIN_SIZE'] = 500  # 超过500字节才压缩
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
 # Worker 标识（用于调试）
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
@@ -48,11 +47,11 @@ _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 _LOCK_TTL_SECONDS = Config.PROCESSING_LOCK_TTL_SECONDS  # 锁过期时间（秒），防止崩溃后死锁
 _LOCK_WAIT_SECONDS = Config.PROCESSING_LOCK_WAIT_SECONDS   # 等待锁的时间（秒）
 
-# 注册 Blueprint（业务路由已拆分至 core/routes/）
-app.register_blueprint(deep_analysis_bp)
-app.register_blueprint(forward_rules_bp)
-app.register_blueprint(reanalysis_bp)
-app.register_blueprint(webhook_bp)
+# 注册 Router（业务路由已拆分至 core/routes/）
+app.include_router(deep_analysis_router)
+app.include_router(forward_rules_router)
+app.include_router(reanalysis_router)
+app.include_router(webhook_router)
 
 # 响应工具函数：统一 success/error 返回结构
 # 业务逻辑 helper：按“告警处理 / 配置管理 / 运维接口”分组
@@ -86,6 +85,7 @@ class WebhookRequestContext:
     payload: bytes
     parsed_data: dict
     webhook_full_data: dict
+    headers: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=False)
@@ -260,6 +260,7 @@ def _persist_webhook_with_noise_context(
         data=request_context.parsed_data,
         source=request_context.source,
         payload=request_context.payload,
+        headers=request_context.headers,
         client_ip=request_context.client_ip,
         analysis_result=analysis_with_noise,
         alert_hash=alert_hash,
@@ -277,94 +278,57 @@ def _ok(data: Optional[dict] = None, http_status: int = 200, **extra):
     if data is not None:
         payload['data'] = data
     payload.update(extra)
-    return jsonify(payload), http_status
+    return JSONResponse(content=payload, status_code=http_status)
 
 
 def _fail(error: str, http_status: int = 500, **extra):
     payload = {'success': False, 'error': error}
     payload.update(extra)
-    return jsonify(payload), http_status
+    return JSONResponse(content=payload, status_code=http_status)
 
 
-def _cleanup_expired_locks() -> int:
-    """
-    清理过期的处理锁（防止死锁）
-    
-    Returns:
-        int: 清理的锁数量
-    """
-    try:
-        session = get_session()
-        try:
-            threshold = datetime.now() - timedelta(seconds=_LOCK_TTL_SECONDS)
-            deleted = session.query(ProcessingLock).filter(
-                ProcessingLock.created_at < threshold
-            ).delete()
-            session.commit()
-            if deleted > 0:
-                logger.warning(f"清理了 {deleted} 个过期的处理锁")
-            return deleted
-        finally:
-            session.close()
-    except Exception as e:
-        logger.error(f"清理过期锁失败: {e}")
-        return 0
 
 
 @contextmanager
 def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
     """
-    告警处理锁上下文管理器（数据库级别分布式锁）
+    告警处理锁上下文管理器（Redis 分布式锁）
     
-    利用数据库主键约束防止多 worker 并发处理同一告警。
-    
-    Yields:
-        bool: True 表示成功获取锁，False 表示已有其他 worker 在处理
+    利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
     """
-    # 先清理过期锁
-    _cleanup_expired_locks()
+    import core.redis_client
+    redis_client = core.redis_client.get_redis()
+    lock_key = f"lock:webhook:{alert_hash}"
+    lock_value = _WORKER_ID
     
-    session = get_session()
     lock_acquired = False
     
     try:
-        # 尝试插入锁记录
-        lock = ProcessingLock(
-            alert_hash=alert_hash,
-            created_at=datetime.now(),
-            worker_id=_WORKER_ID
-        )
-        session.add(lock)
-        session.commit()
-        lock_acquired = True
-        logger.debug(f"获取处理锁成功: hash={alert_hash[:16]}..., worker={_WORKER_ID}")
-        yield True
-        
-    except IntegrityError:
-        # 主键冲突，说明已有其他 worker 在处理
-        session.rollback()
-        logger.info(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
-        yield False
-        
+        # 尝试获取锁
+        lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=_LOCK_TTL_SECONDS))
+        if lock_acquired:
+            logger.debug(f"获取处理锁成功: hash={alert_hash[:16]}..., worker={_WORKER_ID}")
+        else:
+            logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
     except Exception as e:
-        session.rollback()
-        logger.error(f"获取处理锁失败: {e}", exc_info=True)
-        yield False
-        
+        logger.error(f"获取处理锁失败: {e}")
+
+    try:
+        yield lock_acquired
     finally:
-        # 无论成功与否，都尝试释放锁
         if lock_acquired:
             try:
-                session.query(ProcessingLock).filter(
-                    ProcessingLock.alert_hash == alert_hash
-                ).delete()
-                session.commit()
+                release_lua = """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                else
+                    return 0
+                end
+                """
+                redis_client.eval(release_lua, 1, lock_key, lock_value)
                 logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
             except Exception as e:
                 logger.error(f"释放锁失败: {e}")
-                session.rollback()
-        session.close()
-
 
 def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
     logger.info(message)
@@ -715,68 +679,40 @@ def _update_last_notified(event_id: int) -> None:
 
 
 
-def _parse_webhook_request(source: Optional[str]) -> WebhookRequestContext:
-    client_ip = get_client_ip(request)
+def _parse_webhook_request(request: Request, payload: dict, raw_body: bytes, source: Optional[str]) -> WebhookRequestContext:
+    client_ip = request.client.host if request.client else "127.0.0.1"
     requested_source = source or request.headers.get('X-Webhook-Source', 'unknown')
-    payload = request.get_data()
 
     logger.info(f"收到来自 {client_ip} 的 webhook 请求, 来源: {requested_source}")
-    logger.debug(f"原始请求体: {payload.decode('utf-8', errors='ignore')[:500]}...")
-    logger.debug(f"请求头: {dict(request.headers)}")
+    logger.debug(f"原始请求体: {raw_body.decode('utf-8', errors='ignore')[:500]}...")
 
     signature = request.headers.get('X-Webhook-Signature', '')
-    if signature and not verify_signature(payload, signature):
+    if signature and not verify_signature(raw_body, signature):
         raise InvalidSignatureError()
 
-    try:
-        data = request.get_json(silent=True) or {}
-    except Exception as e:
-        logger.error(f"JSON 解析失败: {str(e)}")
-        raise InvalidJsonError() from e
+    if not payload and raw_body:
+        import json
+        try:
+            payload = json.loads(raw_body)
+        except:
+            raise InvalidJsonError()
 
-    normalized = normalize_webhook_event(data, requested_source, request.headers)
-    resolved_source = normalized.source
-    data = normalized.data
-    if normalized.adapter != 'passthrough':
-        logger.info(f"生态适配命中: adapter={normalized.adapter}, source={resolved_source}")
-
+    data = payload
+    
+    parsed_data = normalize_webhook_event(data, requested_source)
     webhook_full_data = {
-        'source': resolved_source,
-        'parsed_data': data,
-        'timestamp': datetime.now().isoformat(),
-        'client_ip': client_ip
+        'body': data,
+        'headers': dict(request.headers),
+        'query': dict(request.query_params)
     }
-    return WebhookRequestContext(client_ip, resolved_source, payload, data, webhook_full_data)
 
-
-def _persist_webhook_event(
-    *,
-    data: dict,
-    source: str,
-    payload: bytes,
-    client_ip: str,
-    analysis_result: dict,
-    alert_hash: str,
-    is_duplicate: bool,
-    original_event: Optional[WebhookEvent],
-    beyond_window: bool,
-    reanalyzed: bool
-) -> SaveWebhookResult:
-    return save_webhook_data(
-        data=data,
-        source=source,
-        raw_payload=payload,
-        headers=request.headers,
+    return WebhookRequestContext(
         client_ip=client_ip,
-        ai_analysis=analysis_result,
-        forward_status='pending',
-        alert_hash=alert_hash,
-        is_duplicate=is_duplicate,
-        original_event=original_event,
-        beyond_window=beyond_window,
-        reanalyzed=reanalyzed
+        source=requested_source,
+        payload=raw_body,
+        parsed_data=parsed_data,
+        webhook_full_data=webhook_full_data
     )
-
 
 def _build_webhook_response(
     webhook_id: Union[int, str],
@@ -786,7 +722,7 @@ def _build_webhook_response(
     original_id: Optional[int],
     beyond_window: bool,
     is_within_window: bool
-) -> tuple[Response, int]:
+) -> JSONResponse:
     is_degraded = analysis_result.get('_degraded', False)
     degraded_reason = analysis_result.get('_degraded_reason')
     clean_analysis = {k: v for k, v in analysis_result.items() if not k.startswith('_')}
@@ -807,16 +743,17 @@ def _build_webhook_response(
     )
 
 
-def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]:
+def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, source: Optional[str] = None) -> JSONResponse:
     """通用 Webhook 处理逻辑"""
     analysis_result = {}
     original_event = None
 
     try:
         try:
-            request_context = _parse_webhook_request(source)
+            request_context = _parse_webhook_request(request, payload, raw_body, source)
         except InvalidSignatureError:
-            logger.warning(f"签名验证失败: IP={get_client_ip(request)}, Source={source or 'unknown'}")
+            client_ip = request.client.host if request.client else "127.0.0.1"
+            logger.warning(f"签名验证失败: IP={client_ip}, Source={source or 'unknown'}")
             return _fail('Invalid signature', 401)
         except InvalidJsonError:
             return _fail('Invalid JSON payload', 400)
@@ -933,8 +870,10 @@ def handle_webhook_process(source: Optional[str] = None) -> tuple[Response, int]
         return _fail('Internal server error', 500)
 
 
-@app.route('/api/ai-usage', methods=['GET'])
-def get_ai_usage() -> tuple[Response, int]:
+from fastapi import Query, Body
+
+@app.get('/api/ai-usage')
+def get_ai_usage(period: str = Query('day')) -> JSONResponse:
     """
     获取 AI 使用统计
     
@@ -952,7 +891,7 @@ def get_ai_usage() -> tuple[Response, int]:
     try:
         from sqlalchemy import func, case
         
-        period = request.args.get('period', 'day')
+        
         
         # 根据周期计算时间范围
         now = datetime.now()
@@ -1240,7 +1179,7 @@ def _persist_config_updates(updates: dict, env_file: str = '.env') -> None:
         os.environ[var_name] = str(typed_value).lower() if isinstance(typed_value, bool) else str(typed_value)
 
 
-@app.route('/api/config', methods=['GET'])
+@app.get('/api/config')
 def get_config():
     """获取当前配置（从 .env 文件实时读取）"""
     try:
@@ -1251,11 +1190,11 @@ def get_config():
         return _fail(str(e), 500)
 
 
-@app.route('/api/config', methods=['POST'])
-def update_config():
+@app.post('/api/config')
+def update_config(payload: dict = Body(default_factory=dict)):
     """更新配置"""
     try:
-        payload = request.get_json(silent=True) or {}
+        
         if not payload:
             return _fail('请求体为空', 400)
 
@@ -1310,8 +1249,8 @@ def _run_add_unique_constraint_migration() -> bool:
     return add_unique_constraint()
 
 
-@app.route('/api/prompt/reload', methods=['POST'])
-def reload_prompt() -> tuple[Response, int]:
+@app.post('/api/prompt/reload')
+def reload_prompt() -> JSONResponse:
     """重新加载 AI Prompt 模板"""
     try:
         new_template = _reload_prompt_template()
@@ -1326,8 +1265,8 @@ def reload_prompt() -> tuple[Response, int]:
         return _fail(str(e), 500)
 
 
-@app.route('/api/prompt', methods=['GET'])
-def get_prompt() -> tuple[Response, int]:
+@app.get('/api/prompt')
+def get_prompt() -> JSONResponse:
     """获取当前 AI Prompt 模板"""
     try:
         template = _load_current_prompt_template()
@@ -1341,8 +1280,8 @@ def get_prompt() -> tuple[Response, int]:
         return _fail(str(e), 500)
 
 
-@app.route('/api/migrations/add_unique_constraint', methods=['POST'])
-def migration_add_unique_constraint() -> tuple[Response, int]:
+@app.post('/api/migrations/add_unique_constraint')
+def migration_add_unique_constraint() -> JSONResponse:
     """执行数据库迁移：添加唯一约束"""
     try:
         success = _run_add_unique_constraint_migration()
