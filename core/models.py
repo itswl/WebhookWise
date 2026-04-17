@@ -120,20 +120,6 @@ class WebhookEvent(Base):
         }
 
 
-class ProcessingLock(Base):
-    """
-    告警处理锁（分布式锁，用于多 worker 环境）
-    
-    在开始处理告警前插入记录，处理完成后删除。
-    利用数据库主键约束防止并发处理同一告警。
-    """
-    __tablename__ = 'processing_locks'
-    
-    alert_hash = Column(String(64), primary_key=True)  # 告警哈希作为主键
-    created_at = Column(DateTime, default=datetime.now)
-    worker_id = Column(String(100))  # 可选：记录哪个 worker 正在处理
-
-
 class AnalysisCache(Base):
     """
     AI 分析结果缓存

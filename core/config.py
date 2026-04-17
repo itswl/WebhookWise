@@ -27,6 +27,9 @@ class Config:
     DATA_DIR = os.getenv('DATA_DIR', 'webhooks_data')
     ENABLE_FILE_BACKUP = os.getenv('ENABLE_FILE_BACKUP', 'false').lower() == 'true'  # 是否启用文件备份
     
+    # Redis 配置
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
     # 数据库配置
     DATABASE_URL = os.getenv(
         'DATABASE_URL',

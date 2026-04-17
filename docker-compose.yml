@@ -29,6 +29,7 @@ services:
       WEBHOOK_SECRET: "whk_9F3sLxE2pQ7MZrK8YdA"
 
       # 数据库连接
+      REDIS_URL: "redis://redis:6379/0"
       DATABASE_URL: "postgresql://webhook_user:WbP9mA7X2rLQ4E@postgres:5432/webhooks"
 
     volumes:
@@ -53,6 +54,24 @@ services:
       retries: 3
       start_period: 40s
 
+    networks:
+      - webhook_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: webhook-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - webhook_net
 
