@@ -6,7 +6,7 @@ core/routes/__init__.py
 from dataclasses import dataclass, field
 from typing import Optional
 
-from flask import Response, jsonify
+from fastapi.responses import JSONResponse
 
 
 # ── 异常类 ──────────────────────────────────────────────────────────────────
@@ -70,15 +70,15 @@ class PersistedEventContext:
 
 # ── 响应工具 ─────────────────────────────────────────────────────────────────
 
-def _ok(data=None, http_status: int = 200, **extra) -> tuple[Response, int]:
+def _ok(data=None, http_status: int = 200, **extra) -> JSONResponse:
     """Build success JSON response."""
     payload = {'success': True, **(extra if extra else {'data': data})}
     if data is not None and 'data' not in extra:
         payload['data'] = data
-    return jsonify(payload), http_status
+    return JSONResponse(content=payload, status_code=http_status)
 
 
-def _fail(error: str, http_status: int = 400, **extra) -> tuple[Response, int]:
+def _fail(error: str, http_status: int = 400, **extra) -> JSONResponse:
     """Build error JSON response."""
     payload = {'success': False, 'error': error, **extra}
-    return jsonify(payload), http_status
+    return JSONResponse(content=payload, status_code=http_status)

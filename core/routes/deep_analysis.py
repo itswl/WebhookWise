@@ -11,16 +11,16 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from flask import Blueprint, Response, request
+from fastapi import APIRouter, Request, HTTPException, Body, Query
+from fastapi.responses import JSONResponse
 
 from core.config import Config
 from core.logger import logger
 from core.models import DeepAnalysis, WebhookEvent, session_scope
-from core.routes import _fail, _ok
 from openai import OpenAI
 from services.ai_analyzer import analyze_with_openclaw
 
-deep_analysis_bp = Blueprint('deep_analysis', __name__)
+deep_analysis_router = APIRouter()
 
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
@@ -109,8 +109,8 @@ def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, floa
 
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
-@deep_analysis_bp.route('/api/deep-analyze/<int:webhook_id>', methods=['POST'])
-def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
+@deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
+def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=None)):
     """
     触发深度分析（支持多引擎）
 
@@ -120,11 +120,12 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
         "engine": "auto"  // local | openclaw | auto
     }
     """
+    payload = payload or {}
     try:
         with session_scope() as session:
             event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
             if not event:
-                return _fail('Webhook not found', 404)
+                return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
             alert_data = event.parsed_data or {}
             if not alert_data and event.raw_payload:
@@ -133,7 +134,6 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                 except (json.JSONDecodeError, TypeError):
                     alert_data = {"raw": event.raw_payload}
 
-            payload = request.get_json(silent=True) or {}
             user_question = payload.get('user_question', '')
             requested_engine = payload.get('engine', 'auto')
 
@@ -152,7 +152,7 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
                         report, duration = _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
                     except Exception as e:
-                        return _fail(f'深度分析失败: {str(e)}', 500)
+                        return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {str(e)}"})
                 elif result.get('_pending'):
                     run_id = result.get('_openclaw_run_id', '')
                     session_key = result.get('_openclaw_session_key', '')
@@ -205,29 +205,30 @@ def deep_analyze_webhook(webhook_id: int) -> tuple[Response, int]:
             except Exception as e:
                 logger.error(f"保存深度分析结果失败: {e}")
 
-            return _ok(
-                data={
+            return {
+                "success": True,
+                "data": {
                     'analysis': report,
                     'duration_seconds': round(duration, 2),
                     'engine': engine,
                     'record_id': record_id
                 }
-            )
+            }
 
     except Exception as e:
         logger.error(f"深度分析失败: {e}", exc_info=True)
-        return _fail(str(e), 500)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
-@deep_analysis_bp.route('/api/deep-analyses', methods=['GET'])
-def list_all_deep_analyses() -> tuple[Response, int]:
+@deep_analysis_router.get('/api/deep-analyses')
+def list_all_deep_analyses(
+    page: int = Query(1),
+    per_page: int = Query(20),
+    cursor: Optional[int] = Query(None),
+    status_filter: str = Query('', alias='status'),
+    engine_filter: str = Query('', alias='engine')
+):
     """获取所有深度分析记录（分页 + 筛选）"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    cursor = request.args.get('cursor', None, type=int)
-    status_filter = request.args.get('status', '')
-    engine_filter = request.args.get('engine', '')
-
     per_page = max(1, min(per_page, 100))
 
     with session_scope() as session:
@@ -276,8 +277,9 @@ def list_all_deep_analyses() -> tuple[Response, int]:
             data.append(d)
 
         next_cursor = records[-1].id if len(records) == per_page else None
-        return _ok(
-            data={
+        return {
+            "success": True,
+            "data": {
                 'items': data,
                 'total': total,
                 'next_cursor': next_cursor,
@@ -285,37 +287,39 @@ def list_all_deep_analyses() -> tuple[Response, int]:
                 'per_page': per_page,
                 'total_pages': (total + per_page - 1) // per_page if total > 0 else 0,
             }
-        )
+        }
 
 
-@deep_analysis_bp.route('/api/deep-analyses/<int:webhook_id>', methods=['GET'])
-def get_deep_analyses(webhook_id: int) -> tuple[Response, int]:
+@deep_analysis_router.get('/api/deep-analyses/{webhook_id}')
+def get_deep_analyses(webhook_id: int):
     """获取某告警的所有深度分析记录"""
     with session_scope() as session:
         records = session.query(DeepAnalysis).filter_by(
             webhook_event_id=webhook_id
         ).order_by(DeepAnalysis.created_at.desc()).all()
-        return _ok(data=[r.to_dict() for r in records])
+        return {
+            "success": True,
+            "data": [r.to_dict() for r in records]
+        }
 
 
-@deep_analysis_bp.route('/api/deep-analyses/<int:analysis_id>/forward', methods=['POST'])
-def forward_deep_analysis(analysis_id: int):
+@deep_analysis_router.post('/api/deep-analyses/{analysis_id}/forward')
+def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
     """转发深度分析结果到指定目标"""
-    from flask import jsonify
+    payload = payload or {}
     try:
-        data = request.get_json(silent=True) or {}
-        target_url = (data.get('target_url') or '').strip()
+        target_url = (payload.get('target_url') or '').strip()
         if not target_url:
-            return jsonify({'success': False, 'message': '转发 URL 不能为空'}), 400
+            return JSONResponse(status_code=400, content={'success': False, 'message': '转发 URL 不能为空'})
         if not target_url.startswith(('http://', 'https://')):
-            return jsonify({'success': False, 'message': 'URL 格式无效'}), 400
+            return JSONResponse(status_code=400, content={'success': False, 'message': 'URL 格式无效'})
 
         with session_scope() as session:
             analysis = session.query(DeepAnalysis).get(analysis_id)
             if not analysis:
-                return jsonify({'success': False, 'message': '分析记录不存在'}), 404
+                return JSONResponse(status_code=404, content={'success': False, 'message': '分析记录不存在'})
             if analysis.status != 'completed':
-                return jsonify({'success': False, 'message': '分析尚未完成'}), 400
+                return JSONResponse(status_code=400, content={'success': False, 'message': '分析尚未完成'})
 
             source = 'unknown'
             if analysis.webhook_event_id:
@@ -338,10 +342,10 @@ def forward_deep_analysis(analysis_id: int):
                     webhook_event_id=analysis.webhook_event_id or 0
                 )
                 if success:
-                    return jsonify({'success': True, 'message': '已发送到飞书'})
-                return jsonify({'success': False, 'message': '飞书发送失败'}), 500
+                    return {'success': True, 'message': '已发送到飞书'}
+                return JSONResponse(status_code=500, content={'success': False, 'message': '飞书发送失败'})
             else:
-                payload = {
+                fwd_payload = {
                     'type': 'deep_analysis',
                     'analysis_id': analysis_id,
                     'source': source,
@@ -351,15 +355,15 @@ def forward_deep_analysis(analysis_id: int):
                     'duration_seconds': analysis.duration_seconds,
                     'created_at': analysis.created_at.isoformat() if analysis.created_at else None
                 }
-                resp = requests.post(target_url, json=payload, timeout=Config.FORWARD_TIMEOUT)
+                resp = requests.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
                 resp.raise_for_status()
-                return jsonify({'success': True, 'message': f'已转发 (HTTP {resp.status_code})'})
+                return {'success': True, 'message': f'已转发 (HTTP {resp.status_code})'}
     except Exception as e:
         logger.error(f"转发深度分析失败: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return JSONResponse(status_code=500, content={'success': False, 'message': str(e)})
 
 
-@deep_analysis_bp.route('/api/deep-analyses/<int:analysis_id>/retry', methods=['POST'])
+@deep_analysis_router.post('/api/deep-analyses/{analysis_id}/retry')
 def retry_deep_analysis(analysis_id: int):
     """
     重新拉取深度分析结果
@@ -368,18 +372,17 @@ def retry_deep_analysis(analysis_id: int):
     - 配置了 OPENCLAW_HTTP_API_URL → 直接通过 HTTP API 获取
     - 未配置 → 重置为 pending，由轮询器通过 WebSocket 获取
     """
-    from flask import jsonify
     try:
         with session_scope() as session:
             record = session.query(DeepAnalysis).get(analysis_id)
             if not record:
-                return jsonify({'error': '分析记录不存在'}), 404
+                return JSONResponse(status_code=404, content={'error': '分析记录不存在'})
 
             if record.status not in ('failed', 'completed'):
-                return jsonify({'error': f'只能在失败或已完成状态下重新拉取，当前状态: {record.status}'}), 400
+                return JSONResponse(status_code=400, content={'error': f'只能在失败或已完成状态下重新拉取，当前状态: {record.status}'})
 
             if not record.openclaw_session_key:
-                return jsonify({'error': '缺少 session key，无法重新拉取'})
+                return JSONResponse(status_code=400, content={'error': '缺少 session key，无法重新拉取'})
 
             # 检查是否配置了 HTTP API URL
             if Config.OPENCLAW_HTTP_API_URL:
@@ -389,10 +392,10 @@ def retry_deep_analysis(analysis_id: int):
                 result = _poll_via_http(record.openclaw_session_key, retry_count=3)
                 
                 if result.get('status') == 'error':
-                    return jsonify({'error': result.get('error', '获取失败')}), 400
+                    return JSONResponse(status_code=400, content={'error': result.get('error', '获取失败')})
                 
                 if result.get('status') != 'completed':
-                    return jsonify({'error': f'获取未完成: {result.get("status")}'}), 400
+                    return JSONResponse(status_code=400, content={'error': f'获取未完成: {result.get("status")}'})
                 
                 text = result.get('text', '')
                 
@@ -447,10 +450,10 @@ def retry_deep_analysis(analysis_id: int):
                 except Exception as notify_err:
                     logger.warning(f"飞书深度分析通知失败: {notify_err}")
                 
-                return jsonify({
+                return {
                     'success': True, 
                     'message': f'获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果'
-                })
+                }
             else:
                 # 没有配置 HTTP API，重置为 pending 让轮询器处理
                 record.status = 'pending'
@@ -459,9 +462,8 @@ def retry_deep_analysis(analysis_id: int):
                 session.commit()
 
                 logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
-                return jsonify({'success': True, 'message': '已重新开始拉取，请等待结果'})
+                return {'success': True, 'message': '已重新开始拉取，请等待结果'}
                 
     except Exception as e:
         logger.error(f"重试深度分析失败: {e}")
-        return jsonify({'error': str(e)}), 500
-
+        return JSONResponse(status_code=500, content={'error': str(e)})
