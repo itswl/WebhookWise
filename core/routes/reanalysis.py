@@ -5,15 +5,14 @@ core/routes/reanalysis.py
 """
 from typing import Optional
 
-from flask import Blueprint, Response
+from fastapi import APIRouter, HTTPException, Body
 
 from core.config import Config
 from core.logger import logger
 from core.models import WebhookEvent, session_scope
-from core.routes import _fail, _ok
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
 
-reanalysis_bp = Blueprint('reanalysis', __name__)
+reanalysis_router = APIRouter()
 
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
@@ -75,53 +74,57 @@ def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int, custo
 
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
-@reanalysis_bp.route('/api/reanalyze/<int:webhook_id>', methods=['POST'])
-def reanalyze_webhook(webhook_id: int) -> tuple[Response, int]:
+@reanalysis_router.post('/api/reanalyze/{webhook_id}')
+def reanalyze_webhook(webhook_id: int):
     """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:
         with session_scope() as session:
             webhook_event = _get_webhook_event_by_id(session, webhook_id)
             if not webhook_event:
-                return _fail('Webhook not found', 404)
+                raise HTTPException(status_code=404, detail='Webhook not found')
 
             analysis_result, old_importance, new_importance, updated_duplicates = _reanalyze_webhook_event(
                 session, webhook_event, webhook_id
             )
 
-            return _ok(
-                status=200,
-                analysis=analysis_result,
-                original_importance=old_importance,
-                new_importance=new_importance,
-                updated_duplicates=updated_duplicates,
-                message=f'重新分析完成，importance: {old_importance} → {new_importance}' +
-                        (f'，同时更新了 {updated_duplicates} 条重复告警' if updated_duplicates > 0 else '')
-            )
+            return {
+                "success": True,
+                "status": 200,
+                "analysis": analysis_result,
+                "original_importance": old_importance,
+                "new_importance": new_importance,
+                "updated_duplicates": updated_duplicates,
+                "message": f'重新分析完成，importance: {old_importance} → {new_importance}' +
+                           (f'，同时更新了 {updated_duplicates} 条重复告警' if updated_duplicates > 0 else '')
+            }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"重新分析失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@reanalysis_bp.route('/api/forward/<int:webhook_id>', methods=['POST'])
-def manual_forward_webhook(webhook_id: int) -> tuple[Response, int]:
+@reanalysis_router.post('/api/forward/{webhook_id}')
+def manual_forward_webhook(webhook_id: int, data: dict = Body(default={})):
     """手动转发 webhook"""
-    from flask import request
     try:
-        data = request.get_json(silent=True) or {}
         custom_url = data.get('target_url')
 
         with session_scope() as session:
             webhook_event = _get_webhook_event_by_id(session, webhook_id)
             if not webhook_event:
-                return _fail('Webhook not found', 404)
+                raise HTTPException(status_code=404, detail='Webhook not found')
 
             forward_result = _manual_forward(session, webhook_event, webhook_id, custom_url)
 
-            return _ok(
-                data=forward_result,
-                message=f"已转发至 {custom_url or Config.FORWARD_URL}"
-            )
+            return {
+                "success": True,
+                "data": forward_result,
+                "message": f"已转发至 {custom_url or Config.FORWARD_URL}"
+            }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"手动转发失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        raise HTTPException(status_code=500, detail=str(e))

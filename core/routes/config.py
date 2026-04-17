@@ -3,7 +3,7 @@ core/routes/config.py
 =====================
 配置管理相关路由（GET/POST /api/config）及辅助函数。
 """
-from flask import Blueprint, request
+from fastapi import APIRouter, Request, Body
 
 from core.config import Config
 from core.logger import logger
@@ -171,7 +171,7 @@ def _persist_config_updates(updates: dict, env_file: str = '.env'):
 
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
-@config_bp.route('/api/config', methods=['GET'])
+@config_router.route('/api/config', methods=['GET'])
 def get_config():
     """获取当前配置（从 .env 文件实时读取）"""
     try:
@@ -182,7 +182,7 @@ def get_config():
         return _fail(str(e), 500)
 
 
-@config_bp.route('/api/config', methods=['POST'])
+@config_router.route('/api/config', methods=['POST'])
 def update_config():
     """更新配置"""
     try:

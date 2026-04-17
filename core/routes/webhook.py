@@ -3,48 +3,55 @@ core/routes/webhook.py
 =====================
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
-from flask import Blueprint, Response, request, render_template
+from typing import Optional
+from fastapi import APIRouter, Request, HTTPException, Body, Query, Response
+from fastapi.responses import JSONResponse, FileResponse
+import os
 
 from core.logger import logger
-from core.routes import _ok, _fail
 
-webhook_bp = Blueprint('webhook', __name__)
+webhook_router = APIRouter()
 
 
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
 
-@webhook_bp.route('/health', methods=['GET'])
+@webhook_router.get('/health')
 def health_check():
     from core.models import test_db_connection
     db_ok = test_db_connection()
     status = 'healthy' if db_ok else 'unhealthy'
-    return _ok({'status': status, 'database': 'ok' if db_ok else 'failed'}, 200 if db_ok else 503)
+    code = 200 if db_ok else 503
+    return JSONResponse(
+        content={'success': True, 'data': {'status': status, 'database': 'ok' if db_ok else 'failed'}},
+        status_code=code
+    )
 
 
-@webhook_bp.route('/', methods=['GET'])
+@webhook_router.get('/')
 def dashboard():
-    return render_template('dashboard.html')
+    return FileResponse('templates/dashboard.html')
 
 
-@webhook_bp.route('/static/<path:filename>', methods=['GET'])
-def serve_static(filename):
-    from flask import send_from_directory
-    from core.app import app
-    static_folder = app.static_folder or 'templates/static'
-    return send_from_directory(static_folder, filename)
+@webhook_router.get('/static/{filename:path}')
+def serve_static(filename: str):
+    static_folder = 'templates/static'
+    file_path = os.path.join(static_folder, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return JSONResponse({'success': False, 'error': 'Not found'}, status_code=404)
 
 
 # ── Webhooks API ────────────────────────────────────────────────────────────────
 
-@webhook_bp.route('/api/webhooks', methods=['GET'])
-def list_webhooks() -> tuple[Response, int]:
+@webhook_router.get('/api/webhooks')
+def list_webhooks(
+    page: int = Query(1),
+    page_size: int = Query(20),
+    importance: str = Query(''),
+    source: str = Query(''),
+    cursor_id: Optional[int] = Query(None)
+):
     from core.models import WebhookEvent, session_scope
-
-    page = request.args.get('page', 1, type=int)
-    page_size = request.args.get('page_size', 20, type=int)
-    importance = request.args.get('importance', '')
-    source = request.args.get('source', '')
-    cursor_id = request.args.get('cursor_id', None, type=int)
 
     offset = (page - 1) * page_size
     if cursor_id is not None:
@@ -84,10 +91,11 @@ def list_webhooks() -> tuple[Response, int]:
             has_more = len(events) == page_size
             next_cursor = events[-1].id if has_more else None
 
-            return _ok(
-                items,
-                status=200,
-                pagination={
+            return {
+                'success': True,
+                'data': items,
+                'status': 200,
+                'pagination': {
                     'page': page,
                     'page_size': page_size,
                     'total': total,
@@ -95,44 +103,44 @@ def list_webhooks() -> tuple[Response, int]:
                     'next_cursor': next_cursor,
                     'has_more': has_more,
                 }
-            )
+            }
     except Exception as e:
         logger.error(f"获取 webhook 列表失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
 
 
-@webhook_bp.route('/api/webhooks/<int:webhook_id>', methods=['GET'])
-def get_webhook_detail(webhook_id: int) -> tuple[Response, int]:
+@webhook_router.get('/api/webhooks/{webhook_id}')
+def get_webhook_detail(webhook_id: int):
     from core.models import WebhookEvent, session_scope
 
     with session_scope() as session:
         event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
         if not event:
-            return _fail('Webhook not found', 404)
-        return _ok(event.to_dict())
+            return JSONResponse({'success': False, 'error': 'Webhook not found'}, status_code=404)
+        return {'success': True, 'data': event.to_dict()}
 
 
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
 
-@webhook_bp.route('/webhook', methods=['POST'])
-def receive_webhook():
+@webhook_router.post('/webhook')
+async def receive_webhook(request: Request):
+    raw_body = await request.body()
+    try:
+        payload = await request.json()
+    except:
+        payload = {}
+    from fastapi.concurrency import run_in_threadpool
     from core.app import handle_webhook_process
-    return handle_webhook_process(None)
+    return await run_in_threadpool(handle_webhook_process, request, payload, raw_body, None)
 
 
-@webhook_bp.route('/webhook/<source>', methods=['POST'])
-def receive_webhook_with_source(source: str):
+@webhook_router.post('/webhook/{source}')
+async def receive_webhook_with_source(source: str, request: Request):
+    raw_body = await request.body()
+    try:
+        payload = await request.json()
+    except:
+        payload = {}
+    from fastapi.concurrency import run_in_threadpool
     from core.app import handle_webhook_process
-    return handle_webhook_process(source)
-
-
-# ── 错误处理 ──────────────────────────────────────────────────────────────────
-
-@webhook_bp.errorhandler(404)
-def not_found(_error):
-    return {'status': 'error', 'error': 'Not found'}, 404
-
-
-@webhook_bp.errorhandler(405)
-def method_not_allowed(_error):
-    return {'status': 'error', 'error': 'Method not allowed'}, 405
+    return await run_in_threadpool(handle_webhook_process, request, payload, raw_body, source)

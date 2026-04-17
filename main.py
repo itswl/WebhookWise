@@ -45,8 +45,10 @@ if __name__ == '__main__':
         sys.exit(1)
     
     logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
-    app.run(
+    import uvicorn
+    uvicorn.run(
+        "main:app",
         host=Config.HOST,
         port=Config.PORT,
-        debug=Config.DEBUG
+        log_level="debug" if Config.DEBUG else "info"
     )
