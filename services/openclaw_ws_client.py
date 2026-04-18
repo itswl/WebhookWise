@@ -92,9 +92,9 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
     Returns:
         设备认证参数字典，或 None（未配置/签名失败）
     """
-    device_id = os.getenv('OPENCLAW_DEVICE_ID', '')
-    private_key_b64 = os.getenv('OPENCLAW_DEVICE_PRIVATE_KEY_PEM', '')
-    device_token = os.getenv('OPENCLAW_DEVICE_TOKEN', '')
+    device_id = Config.OPENCLAW_DEVICE_ID
+    private_key_b64 = Config.OPENCLAW_DEVICE_PRIVATE_KEY_PEM
+    device_token = Config.OPENCLAW_DEVICE_TOKEN
     
     if not device_id or not private_key_b64:
         return None
@@ -118,7 +118,7 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
         
         # 构造 v2 签名 payload
         signed_at = int(time.time() * 1000)
-        gateway_token = os.getenv('OPENCLAW_GATEWAY_TOKEN', '')
+        gateway_token = Config.OPENCLAW_GATEWAY_TOKEN
         scopes_str = 'operator.read'
         payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
         
