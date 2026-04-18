@@ -4,7 +4,7 @@ import json
 import os
 import time
 import threading
-import requests
+import httpx
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -41,7 +41,7 @@ class CircuitBreaker:
         name: str,
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
-        expected_exceptions: tuple = (requests.exceptions.RequestException,),
+        expected_exceptions: tuple = (httpx.RequestError,),
     ):
         self.name = name
         self.failure_threshold = failure_threshold
@@ -87,6 +87,28 @@ class CircuitBreaker:
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
 
+    async def call_async(self, func: Callable, *args, **kwargs):
+        """异步执行函数，失败时触发熔断。"""
+        if self.failure_threshold == 0:
+            try:
+                return await func(*args, **kwargs)
+            except self.expected_exceptions as e:
+                logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
+                return None
+        
+        if self.state == CircuitState.OPEN:
+            logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
+            return None
+
+        try:
+            result = await func(*args, **kwargs)
+            self._on_success()
+            return result
+        except self.expected_exceptions as e:
+            self._on_failure()
+            logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
+            raise
+
     def _on_success(self):
         with self._lock:
             self._failure_count = 0
@@ -102,21 +124,11 @@ class CircuitBreaker:
                 logger.error(f"CircuitBreaker [{self.name}] 转为 OPEN（连续 {self._failure_count} 次失败）")
 
 
-# 预置熔断器实例（可通过环境变量调整）
-import os
+# 预置熔断器实例（通过 Config）
 
-_feishu_threshold = int(os.getenv('CIRCUIT_BREAKER_FEISHU_THRESHOLD', '5'))
-_feishu_timeout = float(os.getenv('CIRCUIT_BREAKER_FEISHU_TIMEOUT', '30'))
-
-_openclaw_threshold = int(os.getenv('CIRCUIT_BREAKER_OPENCLAW_THRESHOLD', '5'))
-_openclaw_timeout = float(os.getenv('CIRCUIT_BREAKER_OPENCLAW_TIMEOUT', '30'))
-
-_forward_threshold = int(os.getenv('CIRCUIT_BREAKER_FORWARD_THRESHOLD', '5'))
-_forward_timeout = float(os.getenv('CIRCUIT_BREAKER_FORWARD_TIMEOUT', '30'))
-
-feishu_cb = CircuitBreaker(name="feishu", failure_threshold=_feishu_threshold, recovery_timeout=_feishu_timeout)
-openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=_openclaw_threshold, recovery_timeout=_openclaw_timeout)
-forward_cb = CircuitBreaker(name="forward", failure_threshold=_forward_threshold, recovery_timeout=_forward_timeout)
+feishu_cb = CircuitBreaker(name="feishu", failure_threshold=Config.CIRCUIT_BREAKER_FEISHU_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_FEISHU_TIMEOUT)
+openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=Config.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT)
+forward_cb = CircuitBreaker(name="forward", failure_threshold=Config.CIRCUIT_BREAKER_FORWARD_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_FORWARD_TIMEOUT)
 
 
 HeadersDict = dict[str, str]
