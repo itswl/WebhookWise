@@ -4,7 +4,7 @@ core/routes/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, Body, Query, Response
+from fastapi import APIRouter, Request, HTTPException, Body, Query, Response, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 import os
 
@@ -123,24 +123,28 @@ def get_webhook_detail(webhook_id: int):
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
 
 @webhook_router.post('/webhook')
-async def receive_webhook(request: Request):
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     raw_body = await request.body()
     try:
         payload = await request.json()
     except:
         payload = {}
-    from fastapi.concurrency import run_in_threadpool
     from core.app import handle_webhook_process
-    return await run_in_threadpool(handle_webhook_process, request, payload, raw_body, None)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    headers = dict(request.headers)
+    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None)
+    return JSONResponse(status_code=202, content={"success": True, "message": "Webhook received and queued for processing"})
 
 
 @webhook_router.post('/webhook/{source}')
-async def receive_webhook_with_source(source: str, request: Request):
+async def receive_webhook_with_source(source: str, request: Request, background_tasks: BackgroundTasks):
     raw_body = await request.body()
     try:
         payload = await request.json()
     except:
         payload = {}
-    from fastapi.concurrency import run_in_threadpool
     from core.app import handle_webhook_process
-    return await run_in_threadpool(handle_webhook_process, request, payload, raw_body, source)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    headers = dict(request.headers)
+    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source)
+    return JSONResponse(status_code=202, content={"success": True, "message": "Webhook received and queued for processing"})
