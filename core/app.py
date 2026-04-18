@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 import socket
 from contextlib import contextmanager
 from fastapi import FastAPI, Request, Query, Body
@@ -330,12 +331,12 @@ def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
             except Exception as e:
                 logger.error(f"释放锁失败: {e}")
 
-def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
+async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
     logger.info(message)
-    return analyze_webhook_with_ai(webhook_full_data), True
+    return await analyze_webhook_with_ai(webhook_full_data), True
 
 
-def _resolve_duplicate_analysis(
+async def _resolve_duplicate_analysis(
     original_event: WebhookEvent,
     last_beyond_window_event: Optional[WebhookEvent],
     webhook_full_data: dict
@@ -360,10 +361,10 @@ def _resolve_duplicate_analysis(
         )
         return original_event.ai_analysis, False
 
-    return _analyze_now(webhook_full_data, f"原始告警 ID={original_event.id} 缺少AI分析，重新分析")
+    return await _analyze_now(webhook_full_data, f"原始告警 ID={original_event.id} 缺少AI分析，重新分析")
 
 
-def _resolve_beyond_window_analysis(
+async def _resolve_beyond_window_analysis(
     original_event: Optional[WebhookEvent],
     last_beyond_window_event: Optional[WebhookEvent],
     webhook_full_data: dict,
@@ -391,17 +392,17 @@ def _resolve_beyond_window_analysis(
         return original_event.ai_analysis or {}, False
 
     if original_event:
-        return _analyze_now(webhook_full_data, f"窗口外历史告警(ID={original_event.id})，重新分析")
+        return await _analyze_now(webhook_full_data, f"窗口外历史告警(ID={original_event.id})，重新分析")
 
-    return _analyze_now(webhook_full_data, "窗口外历史告警缺少原始上下文，重新分析")
+    return await _analyze_now(webhook_full_data, "窗口外历史告警缺少原始上下文，重新分析")
 
 
-def _resolve_analysis_with_lock(
+async def _resolve_analysis_with_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> AnalysisResolution:
     """在成功获取处理锁后决定分析结果。"""
-    duplicate_check = check_duplicate_alert(
+    duplicate_check = await run_in_threadpool(check_duplicate_alert,
         alert_hash,
         check_beyond_window=True
     )
@@ -411,7 +412,7 @@ def _resolve_analysis_with_lock(
     last_beyond_window_event = duplicate_check.last_beyond_window_event
 
     if beyond_window and original_event:
-        analysis_result, reanalyzed = _resolve_beyond_window_analysis(
+        analysis_result, reanalyzed = await _resolve_beyond_window_analysis(
             original_event,
             last_beyond_window_event,
             webhook_full_data,
@@ -419,26 +420,26 @@ def _resolve_analysis_with_lock(
             prefer_recent_beyond_window=False
         )
     elif is_duplicate and original_event:
-        analysis_result, reanalyzed = _resolve_duplicate_analysis(
+        analysis_result, reanalyzed = await _resolve_duplicate_analysis(
             original_event,
             last_beyond_window_event,
             webhook_full_data
         )
     else:
-        analysis_result, reanalyzed = _analyze_now(webhook_full_data, "新告警，开始 AI 分析...")
+        analysis_result, reanalyzed = await _analyze_now(webhook_full_data, "新告警，开始 AI 分析...")
 
     return AnalysisResolution(analysis_result, reanalyzed, is_duplicate, original_event, beyond_window)
 
 
-def _resolve_analysis_without_lock(
+async def _resolve_analysis_without_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> AnalysisResolution:
     """在处理锁被占用时决定分析结果（尽量复用其他 worker 的处理结果）。"""
     logger.info(f"等待其他 worker 处理完成: hash={alert_hash[:16]}...")
-    time.sleep(_LOCK_WAIT_SECONDS)
+    await asyncio.sleep(_LOCK_WAIT_SECONDS)
 
-    duplicate_check = check_duplicate_alert(
+    duplicate_check = await run_in_threadpool(check_duplicate_alert,
         alert_hash,
         check_beyond_window=True
     )
@@ -465,8 +466,8 @@ def _resolve_analysis_without_lock(
     if beyond_window and original_event:
         if not last_beyond_window_event:
             logger.info(f"窗口外历史告警，等待其他worker完成处理: 历史 ID={original_event.id}")
-            time.sleep(_LOCK_WAIT_SECONDS)
-            duplicate_check = check_duplicate_alert(
+            await asyncio.sleep(_LOCK_WAIT_SECONDS)
+            duplicate_check = await run_in_threadpool(check_duplicate_alert,
                 alert_hash,
                 check_beyond_window=True
             )
@@ -475,7 +476,7 @@ def _resolve_analysis_without_lock(
             beyond_window = duplicate_check.beyond_window
             last_beyond_window_event = duplicate_check.last_beyond_window_event
 
-        analysis_result, reanalyzed = _resolve_beyond_window_analysis(
+        analysis_result, reanalyzed = await _resolve_beyond_window_analysis(
             original_event,
             last_beyond_window_event,
             webhook_full_data,
@@ -483,13 +484,13 @@ def _resolve_analysis_without_lock(
             prefer_recent_beyond_window=True
         )
     elif is_duplicate and original_event:
-        analysis_result, reanalyzed = _resolve_duplicate_analysis(
+        analysis_result, reanalyzed = await _resolve_duplicate_analysis(
             original_event,
             last_beyond_window_event,
             webhook_full_data
         )
     else:
-        analysis_result, reanalyzed = _analyze_now(webhook_full_data, "未找到已处理结果，重新处理...")
+        analysis_result, reanalyzed = await _analyze_now(webhook_full_data, "未找到已处理结果，重新处理...")
 
     return AnalysisResolution(analysis_result, reanalyzed, is_duplicate, original_event, beyond_window)
 
@@ -554,10 +555,10 @@ def _decide_duplicate_forwarding(
     return ForwardDecision(True, None, False)
 
 
-def _resolve_analysis(alert_hash: str, webhook_full_data: dict, got_lock: bool) -> AnalysisResolution:
+async def _resolve_analysis(alert_hash: str, webhook_full_data: dict, got_lock: bool) -> AnalysisResolution:
     if got_lock:
-        return _resolve_analysis_with_lock(alert_hash, webhook_full_data)
-    return _resolve_analysis_without_lock(alert_hash, webhook_full_data)
+        return await _resolve_analysis_with_lock(alert_hash, webhook_full_data)
+    return await _resolve_analysis_without_lock(alert_hash, webhook_full_data)
 
 
 def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: bool, source: str) -> list:
@@ -679,14 +680,14 @@ def _update_last_notified(event_id: int) -> None:
 
 
 
-def _parse_webhook_request(request: Request, payload: dict, raw_body: bytes, source: Optional[str]) -> WebhookRequestContext:
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    requested_source = source or request.headers.get('X-Webhook-Source', 'unknown')
+def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str]) -> WebhookRequestContext:
+    
+    requested_source = source or headers.get('X-Webhook-Source', 'unknown')
 
     logger.info(f"收到来自 {client_ip} 的 webhook 请求, 来源: {requested_source}")
     logger.debug(f"原始请求体: {raw_body.decode('utf-8', errors='ignore')[:500]}...")
 
-    signature = request.headers.get('X-Webhook-Signature', '')
+    signature = headers.get('X-Webhook-Signature', '')
     if signature and not verify_signature(raw_body, signature):
         raise InvalidSignatureError()
 
@@ -702,8 +703,8 @@ def _parse_webhook_request(request: Request, payload: dict, raw_body: bytes, sou
     parsed_data = normalize_webhook_event(data, requested_source)
     webhook_full_data = {
         'body': data,
-        'headers': dict(request.headers),
-        'query': dict(request.query_params)
+        'headers': headers,
+        'query': {}
     }
 
     return WebhookRequestContext(
@@ -743,33 +744,33 @@ def _build_webhook_response(
     )
 
 
-def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, source: Optional[str] = None) -> JSONResponse:
+async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str] = None):
     """通用 Webhook 处理逻辑"""
     analysis_result = {}
     original_event = None
 
     try:
         try:
-            request_context = _parse_webhook_request(request, payload, raw_body, source)
+            request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
         except InvalidSignatureError:
-            client_ip = request.client.host if request.client else "127.0.0.1"
             logger.warning(f"签名验证失败: IP={client_ip}, Source={source or 'unknown'}")
-            return _fail('Invalid signature', 401)
+            logger.error(f"Processing failed: Invalid signature, 401")
+            return
         except InvalidJsonError:
-            return _fail('Invalid JSON payload', 400)
+            logger.error(f"Processing failed: Invalid JSON payload, 400")
+            return
 
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
 
         with processing_lock(alert_hash) as got_lock:
-            analysis_resolution = _resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
+            analysis_resolution = await _resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
 
             analysis_result = analysis_resolution.analysis_result
             original_event = analysis_resolution.original_event
-            persisted = _persist_webhook_with_noise_context(
+            persisted = await run_in_threadpool(_persist_webhook_with_noise_context, 
                 request_context=request_context,
                 analysis_resolution=analysis_resolution,
-                alert_hash=alert_hash,
-            )
+                alert_hash=alert_hash)
 
             save_result = persisted.save_result
             noise_context = persisted.noise_context
@@ -781,20 +782,19 @@ def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, sou
         is_duplicate = is_dup and not beyond_window
         importance = str(analysis_result.get('importance', '')).lower()
 
-        original_event = _refresh_original_event(original_id, original_event)
-        forward_decision = _decide_forwarding(
+        original_event = await run_in_threadpool(_refresh_original_event, original_id, original_event)
+        forward_decision = await run_in_threadpool(_decide_forwarding, 
             importance,
             is_duplicate,
             beyond_window,
             noise_context,
             original_event,
             original_id,
-            source=request_context.source
-        )
+            source=request_context.source)
 
         forward_result = {'status': 'skipped', 'reason': forward_decision.skip_reason}
         if forward_decision.should_forward:
-            alert_type = _resolve_alert_type_label(is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
+            alert_type = await run_in_threadpool(_resolve_alert_type_label, is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
             
             if forward_decision.matched_rules:
                 # 多规则转发
@@ -804,7 +804,7 @@ def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, sou
                     try:
                         logger.info(f"执行规则转发: {rule['name']} -> {rule['target_type']}")
                         if rule['target_type'] == 'openclaw':
-                            result = forward_to_openclaw(request_context.webhook_full_data, analysis_result)
+                            result = await forward_to_openclaw(request_context.webhook_full_data, analysis_result)
                             # 为 OpenClaw 转发创建 DeepAnalysis 记录（供后台轮询获取结果）
                             if result.get('_pending') and result.get('run_id'):
                                 try:
@@ -849,7 +849,7 @@ def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, sou
             else:
                 # 降级到原有单目标转发
                 logger.info(f"开始自动转发高风险{alert_type}告警...")
-                forward_result = forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
+                forward_result = await forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
                 if forward_result.get('status') == 'success' and original_event:
                     _update_last_notified(original_event.id)
         else:
@@ -867,10 +867,11 @@ def handle_webhook_process(request: Request, payload: dict, raw_body: bytes, sou
 
     except Exception as e:
         logger.error(f"处理 Webhook 时发生错误: {str(e)}", exc_info=True)
-        return _fail('Internal server error', 500)
+        return
 
 
 from fastapi import Query, Body
+from fastapi.concurrency import run_in_threadpool
 
 @app.get('/api/ai-usage')
 def get_ai_usage(period: str = Query('day')) -> JSONResponse:
@@ -1012,7 +1013,8 @@ def get_ai_usage(period: str = Query('day')) -> JSONResponse:
             
     except Exception as e:
         logger.error(f"获取 AI 使用统计失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 # 配置管理 Schema: key -> (env_var, value_type, validator)
 _CONFIG_SCHEMA = {
@@ -1070,11 +1072,11 @@ def _build_config_response(env_values: dict) -> dict:
         'enable_forward': _resolve_config_value(env_values, 'ENABLE_FORWARD', False, 'bool'),
         'enable_ai_analysis': _resolve_config_value(env_values, 'ENABLE_AI_ANALYSIS', True, 'bool'),
         'openai_api_key': masked_key,
-        'openai_api_url': _resolve_config_value(env_values, 'OPENAI_API_URL', 'https://openrouter.ai/api/v1'),
-        'openai_model': _resolve_config_value(env_values, 'OPENAI_MODEL', 'anthropic/claude-sonnet-4'),
+        'openai_api_url': _resolve_config_value(env_values, 'OPENAI_API_URL', Config.OPENAI_API_URL),
+        'openai_model': _resolve_config_value(env_values, 'OPENAI_MODEL', Config.OPENAI_MODEL),
         'ai_system_prompt': _resolve_config_value(env_values, 'AI_SYSTEM_PROMPT', Config.AI_SYSTEM_PROMPT),
         'log_level': _resolve_config_value(env_values, 'LOG_LEVEL', 'INFO'),
-        'duplicate_alert_time_window': _resolve_config_value(env_values, 'DUPLICATE_ALERT_TIME_WINDOW', 24, 'int'),
+        'duplicate_alert_time_window': _resolve_config_value(env_values, 'DUPLICATE_ALERT_TIME_WINDOW', Config.DUPLICATE_ALERT_TIME_WINDOW, 'int'),
         'forward_duplicate_alerts': _resolve_config_value(env_values, 'FORWARD_DUPLICATE_ALERTS', False, 'bool'),
         'reanalyze_after_time_window': _resolve_config_value(env_values, 'REANALYZE_AFTER_TIME_WINDOW', True, 'bool'),
         'forward_after_time_window': _resolve_config_value(env_values, 'FORWARD_AFTER_TIME_WINDOW', True, 'bool'),
@@ -1187,7 +1189,8 @@ def get_config():
         return _ok(_build_config_response(env_values), 200)
     except Exception as e:
         logger.error(f"获取配置失败: {str(e)}")
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 
 @app.post('/api/config')
@@ -1196,17 +1199,20 @@ def update_config(payload: dict = Body(default_factory=dict)):
     try:
         
         if not payload:
-            return _fail('请求体为空', 400)
+            logger.error(f"Processing failed: 请求体为空")
+        return
 
         updates, errors = _collect_config_updates(payload)
         if errors:
-            return _fail('; '.join(errors), 400)
+            logger.error(f"Processing failed: {'; '.join(errors)}")
+        return
 
         try:
             _persist_config_updates(updates, '.env')
         except PermissionError as e:
             logger.error(f"权限错误，无法写入 .env 文件: {str(e)}")
-            return _fail('权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。', 500)
+            logger.error(f"Processing failed: 权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。")
+            return
         except Exception as e:
             logger.error(f"更新 .env 文件失败: {str(e)}", exc_info=True)
             raise
@@ -1216,7 +1222,8 @@ def update_config(payload: dict = Body(default_factory=dict)):
 
     except Exception as e:
         logger.error(f"更新配置失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 
 
@@ -1262,7 +1269,8 @@ def reload_prompt() -> JSONResponse:
         )
     except Exception as e:
         logger.error(f"重新加载 prompt 模板失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 
 @app.get('/api/prompt')
@@ -1277,7 +1285,8 @@ def get_prompt() -> JSONResponse:
         )
     except Exception as e:
         logger.error(f"获取 prompt 模板失败: {str(e)}", exc_info=True)
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 
 @app.post('/api/migrations/add_unique_constraint')
@@ -1288,11 +1297,13 @@ def migration_add_unique_constraint() -> JSONResponse:
         if success:
             return _ok(status=200, message='数据库迁移成功：唯一约束已添加')
 
-        return _fail('数据库迁移失败，请查看日志', 500)
+        logger.error(f"Processing failed: 数据库迁移失败，请查看日志")
+        return
 
     except Exception as e:
         logger.error(f"执行迁移失败: {e}")
-        return _fail(str(e), 500)
+        logger.error(f"Processing failed: {str(e)}")
+        return
 
 
 if __name__ == '__main__':

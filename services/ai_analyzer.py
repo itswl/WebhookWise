@@ -1,4 +1,4 @@
-import requests
+import httpx
 import json
 import re
 from datetime import datetime, timedelta
@@ -14,7 +14,7 @@ except ImportError:
 from core.logger import logger
 from core.config import Config
 from core.utils import feishu_cb, openclaw_cb, forward_cb
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # 类型别名
 WebhookData = dict[str, Any]
@@ -647,7 +647,7 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
     return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
 
 
-def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str] = None, skip_cache: bool = False) -> AnalysisResult:
+async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str] = None, skip_cache: bool = False) -> AnalysisResult:
     """
     使用 AI 分析 webhook 数据
     
@@ -707,7 +707,7 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
         result['_degraded_reason'] = 'OpenAI API Key 未配置'
         result['_route_type'] = 'rule'
         # 发送降级通知
-        _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
+        await _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
         log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
         # 返回结果
         return result
@@ -744,13 +744,13 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
             result['_degraded'] = True
             result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
             result['_route_type'] = 'rule'
-            _send_degradation_alert(webhook_data, str(e))
+            await _send_degradation_alert(webhook_data, str(e))
             log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
             return result
         else:
             # 不降级，直接返回错误
             logger.error("AI 分析失败且未启用降级策略，返回错误")
-            _send_degradation_alert(webhook_data, str(e))
+            await _send_degradation_alert(webhook_data, str(e))
             return {
                 'summary': f'AI 分析失败: {str(e)}',
                 'root_cause': '分析失败，请检查 AI 服务配置',
@@ -763,7 +763,7 @@ def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str]
             }
 
 
-def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
+async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
     """
     使用 OpenAI API 分析 webhook 数据，并返回 token 使用量
     
@@ -771,7 +771,7 @@ def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[Anal
         tuple: (分析结果, 输入 tokens, 输出 tokens)
     """
     try:
-        client = OpenAI(
+        client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL
         )
@@ -785,7 +785,7 @@ def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[Anal
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        response = _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+        response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         # 提取 token 使用量
         tokens_in = 0
@@ -833,7 +833,7 @@ def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[Anal
                     "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
                     retry_max_tokens
                 )
-                retry_response = _request_openai_completion(client, messages, retry_max_tokens)
+                retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
                 
                 # 更新 token 使用量
                 if hasattr(retry_response, 'usage') and retry_response.usage:
@@ -863,8 +863,8 @@ def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[Anal
         raise
 
 
-def _request_openai_completion(client: OpenAI, messages: list[dict[str, str]], max_tokens: int):
-    return client.chat.completions.create(
+async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
+    return await client.chat.completions.create(
         model=Config.OPENAI_MODEL,
         messages=messages,
         temperature=Config.OPENAI_TEMPERATURE,
@@ -872,10 +872,10 @@ def _request_openai_completion(client: OpenAI, messages: list[dict[str, str]], m
     )
 
 
-def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
+async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
     """使用 OpenAI API 分析 webhook 数据"""
     try:
-        client = OpenAI(
+        client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL
         )
@@ -889,7 +889,7 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        response = _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+        response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         if not hasattr(response, 'choices') or not response.choices:
             error_message = f"OpenAI API 返回无效响应: {response}"
@@ -909,7 +909,7 @@ def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
                     "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
                     retry_max_tokens
                 )
-                retry_response = _request_openai_completion(client, messages, retry_max_tokens)
+                retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
                 if hasattr(retry_response, 'choices') and retry_response.choices:
                     retry_choice = retry_response.choices[0]
                     retry_text = (retry_choice.message.content or '').strip()
@@ -971,7 +971,7 @@ def _should_send_degradation_alert() -> bool:
         return True
 
 
-def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
+async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
     """发送 OpenClaw 深度分析失败通知到飞书"""
     try:
         from core.config import Config
@@ -1003,7 +1003,7 @@ def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, 
         logger.error(f"发送 OpenClaw 失败通知失败: {e}")
 
 
-def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
+async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
     """发送 AI 降级通知（带24小时限流）"""
     try:
         # 检查是否在限流期内
@@ -1072,13 +1072,14 @@ def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> Non
             }
 
             # 发送通知（熔断保护）
-            response = feishu_cb.call(
-                requests.post,
-                Config.FORWARD_URL,
-                json=forward_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=Config.FEISHU_WEBHOOK_TIMEOUT
-            )
+            async with httpx.AsyncClient() as client:
+                response = await feishu_cb.call_async(
+                    client.post,
+                    Config.FORWARD_URL,
+                    json=forward_data,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=Config.FEISHU_WEBHOOK_TIMEOUT
+                )
 
             if response is not None and 200 <= response.status_code < 300:
                 logger.info(f"AI 降级通知已发送到飞书")
@@ -1194,7 +1195,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     return analysis
 
 
-def forward_to_remote(
+async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
     target_url: Optional[str] = None,
@@ -1247,13 +1248,14 @@ def forward_to_remote(
             headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
         
         logger.info(f"转发数据到 {target_url}")
-        response = forward_cb.call(
-            requests.post,
-            target_url,
-            json=forward_data,
-            headers=headers,
-            timeout=Config.FORWARD_TIMEOUT
-        )
+        async with httpx.AsyncClient() as client:
+            response = await forward_cb.call_async(
+                client.post,
+                target_url,
+                json=forward_data,
+                headers=headers,
+                timeout=Config.FORWARD_TIMEOUT
+            )
 
         if response is None:
             return {'status': 'failed', 'message': '转发请求被熔断拦截'}
@@ -1273,13 +1275,13 @@ def forward_to_remote(
                 'response': response.text
             }
             
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.error(f"转发超时: {target_url}")
         return {
             'status': 'timeout',
             'message': '请求超时'
         }
-    except requests.exceptions.ConnectionError:
+    except httpx.ConnectError:
         logger.error(f"无法连接到远程服务器: {target_url}")
         return {
             'status': 'connection_error',
@@ -1401,7 +1403,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
     }
 
 
-def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
+async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
     """将告警推送到 OpenClaw 触发深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
@@ -1454,13 +1456,14 @@ def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
     # 超时配置：(连接超时, 读取超时)
     # - 连接超时 10s: TCP 连接建立
     # - 读取超时 60s: 等待服务端 session 初始化并返回 202
-    response = openclaw_cb.call(
-        requests.post,
-        f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-        json=payload,
-        headers=headers,
-        timeout=(10, 60)
-    )
+    async with httpx.AsyncClient() as client:
+            response = await openclaw_cb.call_async(
+                client.post,
+                f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
+                json=payload,
+                headers=headers,
+                timeout=60
+            )
 
     if response is None:
         return {'status': 'error', 'message': 'OpenClaw 请求被熔断拦截'}
@@ -1483,7 +1486,7 @@ def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
         return {'status': 'error', 'message': str(e)}
 
 
-def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
+async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
@@ -1547,12 +1550,13 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
     
     for attempt in range(max_retries):
         try:
-            response = openclaw_cb.call(
-                requests.post,
+            async with httpx.AsyncClient() as client:
+                response = await openclaw_cb.call_async(
+                client.post,
                 f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
                 json=payload,
                 headers=headers,
-                timeout=(10, 60)
+                timeout=60
             )
 
             if response is None:
@@ -1583,7 +1587,7 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
                 source = event.source if event else 'unknown'
-                _send_openclaw_failure_notification(webhook_data, source, last_error)
+                await _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
             logger.warning(f"发送 OpenClaw 失败通知失败: {notify_err}")
         
@@ -1607,7 +1611,7 @@ def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_
             '_openclaw_run_id': run_id,
             '_openclaw_session_key': session_key
         }
-    except requests.exceptions.RequestException as e:
+    except httpx.RequestError as e:
         logger.error(f"OpenClaw 请求失败: {e}")
         # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
