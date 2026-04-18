@@ -257,10 +257,10 @@ def _persist_webhook_with_noise_context(
     )
 
     analysis_with_noise = _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
-    save_result = _persist_webhook_event(
+    save_result = save_webhook_data(
         data=request_context.parsed_data,
         source=request_context.source,
-        payload=request_context.payload,
+        raw_payload=request_context.payload,
         headers=request_context.headers,
         client_ip=request_context.client_ip,
         analysis_result=analysis_with_noise,
