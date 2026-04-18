@@ -1462,7 +1462,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
                 f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
                 json=payload,
                 headers=headers,
-                timeout=60
+                timeout=httpx.Timeout(60.0, connect=10.0)
             )
 
     if response is None:
@@ -1556,15 +1556,15 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                 f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
                 json=payload,
                 headers=headers,
-                timeout=60
+                timeout=httpx.Timeout(60.0, connect=10.0)
             )
 
             if response is None:
                 last_error = "OpenClaw 请求失败（熔断器拦截或服务不可用）"
                 logger.warning(f"OpenClaw 请求失败 (尝试 {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
-                    import time
-                    time.sleep(2)  # 等待 2 秒后重试
+                    import asyncio
+                    await asyncio.sleep(2)  # 等待 2 秒后重试
                 continue
             
             # 请求成功，跳出重试循环
@@ -1573,8 +1573,8 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             last_error = str(e)
             logger.warning(f"OpenClaw 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
-                import time
-                time.sleep(2)  # 等待 2 秒后重试
+                import asyncio
+                await asyncio.sleep(2)  # 等待 2 秒后重试
             continue
     else:
         # 所有重试都失败
