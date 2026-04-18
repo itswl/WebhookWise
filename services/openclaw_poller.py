@@ -13,8 +13,23 @@ logger = logging.getLogger('webhook_service.openclaw_poller')
 # 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
 # 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
-_poll_stability_cache = {}
-_poll_lock = threading.Lock()
+# 移除原有的内存锁和缓存字典
+import core.redis_client
+
+def _get_poll_stability(record_id: int) -> dict:
+    redis_client = core.redis_client.get_redis()
+    val = redis_client.get(f"openclaw:poller:stability:{record_id}")
+    return json.loads(val) if val else None
+
+def _set_poll_stability(record_id: int, data: dict):
+    redis_client = core.redis_client.get_redis()
+    # 缓存保留 1 小时
+    redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
+
+def _clear_poll_stability(record_id: int):
+    redis_client = core.redis_client.get_redis()
+    redis_client.delete(f"openclaw:poller:stability:{record_id}")
+
 
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
@@ -74,14 +89,20 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
 
 def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
-    # 防止多个轮询器并发执行（Docker 多 worker 场景）
-    if not _poll_lock.acquire(blocking=False):
-        logger.debug("另一个轮询正在执行，跳过本轮")
+    import core.redis_client
+    redis_client = core.redis_client.get_redis()
+    # Redis 全局分布式锁（防止多个 worker 同时查表和调接口）
+    lock_key = "openclaw:poller:global_lock"
+    
+    # 尝试获取锁，有效时间 60 秒
+    if not redis_client.set(lock_key, "locked", nx=True, ex=60):
+        logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
         return
+        
     try:
         _poll_pending_analyses_inner()
     finally:
-        _poll_lock.release()
+        redis_client.delete(lock_key)
 
 
 
@@ -219,7 +240,7 @@ def _poll_pending_analyses_inner():
                             'confidence': 0
                         }
                         # 清理稳定性缓存
-                        _poll_stability_cache.pop(record.id, None)
+                        _clear_poll_stability(record.id)
                         logger.warning(f"分析超时: id={record.id}, run_id={record.openclaw_run_id}")
                         # 发送失败通知
                         _notify_feishu_deep_analysis_failed(record, '超时失败')
@@ -230,7 +251,7 @@ def _poll_pending_analyses_inner():
                         record.status = 'failed'
                         record.analysis_result = {'root_cause': '缺少 sessionKey，无法轮询'}
                         # 清理稳定性缓存
-                        _poll_stability_cache.pop(record.id, None)
+                        _clear_poll_stability(record.id)
                         # 发送失败通知
                         _notify_feishu_deep_analysis_failed(record, '缺少sessionKey')
                         continue
@@ -265,7 +286,7 @@ def _poll_pending_analyses_inner():
                             'msg_count': msg_count,
                             'text_len': len(text)
                         }
-                        prev_snapshot = _poll_stability_cache.get(record.id)
+                        prev_snapshot = _get_poll_stability(record.id)
 
                         if prev_snapshot and prev_snapshot['msg_count'] == current_snapshot['msg_count'] and prev_snapshot['text_len'] == current_snapshot['text_len']:
                             # 结果与上次一致，增加命中计数
@@ -276,12 +297,12 @@ def _poll_pending_analyses_inner():
                                 logger.info(f"分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                             else:
                                 # 还未达到，继续等待
-                                _poll_stability_cache[record.id] = {**current_snapshot, 'hit_count': hit_count}
+                                _set_poll_stability(record.id, {**current_snapshot, 'hit_count': hit_count})
                                 logger.info(f"分析结果一致({hit_count}/{Config.OPENCLAW_STABILITY_REQUIRED_HITS}), 继续等待: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                                 continue
 
                             # 清理缓存
-                            _poll_stability_cache.pop(record.id, None)
+                            _clear_poll_stability(record.id)
 
                             # 尝试从文本中提取 JSON 结构化数据
                             parsed_result = None
@@ -327,16 +348,12 @@ def _poll_pending_analyses_inner():
                                 record.created_at = datetime.now()
                                 logger.debug(f"首次获取结果，更新 created_at 以延长超时窗口: id={record.id}")
                             # 保存首次结果用于降级
-                            _poll_stability_cache[record.id] = {
-                                **current_snapshot,
-                                'hit_count': 1,
-                                'first_result': {'text': text, 'message': message}
-                            }
+                            _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text, 'message': message}})
                             # 不保存，继续下一轮轮询
 
                     elif result.get('status') == 'pending':
                         # 仍在分析中，清理缓存（重新开始计数）
-                        _poll_stability_cache.pop(record.id, None)
+                        _clear_poll_stability(record.id)
                         logger.debug(f"分析进行中: id={record.id}, run_id={record.openclaw_run_id}")
 
                     elif result.get('status') == 'error':
@@ -344,7 +361,7 @@ def _poll_pending_analyses_inner():
                         logger.warning(f"轮询出错: id={record.id}, error={error}")
                         
                         # 检查是否有首次结果可以降级使用
-                        prev_snapshot = _poll_stability_cache.get(record.id)
+                        prev_snapshot = _get_poll_stability(record.id)
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
                             if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS:
@@ -355,7 +372,7 @@ def _poll_pending_analyses_inner():
                                     first_result = prev_snapshot['first_result']
                                     text = first_result['text']
                                     message = first_result['message']
-                                    _poll_stability_cache.pop(record.id, None)
+                                    _clear_poll_stability(record.id)
                                     
                                     # 尝试从文本中提取 JSON 结构化数据
                                     parsed_result = None
@@ -409,15 +426,16 @@ def _poll_pending_analyses_inner():
                                     except Exception as notify_err:
                                         logger.warning(f"发送飞书通知失败: {notify_err}")
                                     
-                                    _poll_stability_cache.pop(record.id, None)
+                                    _clear_poll_stability(record.id)
                                     continue
                             else:
                                 # 增加错误计数
                                 prev_snapshot['error_count'] = error_count
+                                _set_poll_stability(record.id, prev_snapshot)
                                 logger.debug(f"降级倒计时: {error_count}/{Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS}: id={record.id}")
                         else:
                             # 清理稳定性缓存
-                            _poll_stability_cache.pop(record.id, None)
+                            _clear_poll_stability(record.id)
                         # 不立即标记失败，下次重试
 
                 except Exception as e:
