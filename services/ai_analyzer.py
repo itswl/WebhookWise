@@ -714,7 +714,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optiona
 
     # Step 4: 调用 AI 分析
     try:
-        analysis, tokens_in, tokens_out = analyze_with_openai_tracked(parsed_data, source)
+        analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
 
         logger.info(f"AI 分析完成: {source}")
         analysis['_degraded'] = False
