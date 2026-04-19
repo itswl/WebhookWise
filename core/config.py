@@ -2,7 +2,7 @@ import os
 import logging
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=False)
 
 # 配置模块的 logger（避免循环导入）
 _config_logger = logging.getLogger('config')
@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, List, Dict, Any
 
-load_dotenv()
+load_dotenv(override=False)
 
 _config_logger = logging.getLogger('config')
 
