@@ -1446,35 +1446,57 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
     
-    # hooks 端点使用 hooks token 认证（Authorization: Bearer）
+    # 适配不同的调用平台 (OpenClaw 或 Hermes)
+    platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
-    headers = {
-        "Authorization": f"Bearer {hooks_token}",
-        "Content-Type": "application/json"
-    }
     
+    if platform == 'hermes':
+        import hmac
+        import hashlib
+        import json
+        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
+        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": signature
+        }
+        kwargs = {'content': payload_bytes}
+    else:
+        # Default OpenClaw
+        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
+        headers = {
+            "Authorization": f"Bearer {hooks_token}",
+            "Content-Type": "application/json"
+        }
+        kwargs = {'json': payload}
+
     # 超时配置：(连接超时, 读取超时)
-    # - 连接超时 10s: TCP 连接建立
-    # - 读取超时 60s: 等待服务端 session 初始化并返回 202
     async with httpx.AsyncClient() as client:
             response = await openclaw_cb.call_async(
                 client.post,
-                f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-                json=payload,
+                target_url,
                 headers=headers,
-                timeout=httpx.Timeout(60.0, connect=10.0)
+                timeout=httpx.Timeout(60.0, connect=10.0),
+                **kwargs
             )
 
     if response is None:
-        return {'status': 'error', 'message': 'OpenClaw 请求被熔断拦截'}
+        return {'status': 'error', 'message': f'{platform.capitalize()} 请求被熔断拦截'}
 
     try:
         response.raise_for_status()
         result = response.json()
-        run_id = result.get('runId')
-        logger.info(f"OpenClaw 转发成功: run_id={run_id}, session_key={session_key}")
+        
+        # 兼容两种协议的返回 ID
+        if platform == 'hermes':
+            run_id = result.get('delivery_id') or result.get('runId')
+            session_key = run_id if run_id else session_key
+        else:
+            run_id = result.get('runId')
+            
+        logger.info(f"{platform.capitalize()} 转发成功: run_id={run_id}, session_key={session_key}")
 
-        # 非阻塞触发：HTTP POST 成功后立即返回
         return {
             'status': 'success',
             'run_id': run_id,
@@ -1537,13 +1559,30 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
     
-    # hooks 端点使用 hooks token 认证（Authorization: Bearer）
+    # 适配不同的调用平台 (OpenClaw 或 Hermes)
+    platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
-    headers = {
-        "Authorization": f"Bearer {hooks_token}",
-        "Content-Type": "application/json"
-    }
     
+    if platform == 'hermes':
+        import hmac
+        import hashlib
+        import json
+        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
+        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": signature
+        }
+        kwargs = {'content': payload_bytes}
+    else:
+        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
+        headers = {
+            "Authorization": f"Bearer {hooks_token}",
+            "Content-Type": "application/json"
+        }
+        kwargs = {'json': payload}
+        
     # 重试逻辑：最多 3 次
     max_retries = 3
     last_error = None
@@ -1553,34 +1592,30 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             async with httpx.AsyncClient() as client:
                 response = await openclaw_cb.call_async(
                 client.post,
-                f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent",
-                json=payload,
+                target_url,
                 headers=headers,
-                timeout=httpx.Timeout(60.0, connect=10.0)
+                timeout=httpx.Timeout(60.0, connect=10.0),
+                **kwargs
             )
 
             if response is None:
-                last_error = "OpenClaw 请求失败（熔断器拦截或服务不可用）"
-                logger.warning(f"OpenClaw 请求失败 (尝试 {attempt + 1}/{max_retries})")
+                last_error = f"{platform.capitalize()} 请求失败（熔断器拦截或服务不可用）"
+                logger.warning(f"{platform.capitalize()} 请求失败 (尝试 {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
                     import asyncio
-                    await asyncio.sleep(2)  # 等待 2 秒后重试
+                    await asyncio.sleep(2)
                 continue
             
-            # 请求成功，跳出重试循环
             break
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"OpenClaw 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
+            logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 import asyncio
-                await asyncio.sleep(2)  # 等待 2 秒后重试
+                await asyncio.sleep(2)
             continue
     else:
-        # 所有重试都失败
-        logger.error(f"OpenClaw 请求失败，已重试 {max_retries} 次: {last_error}")
-        
-        # 发送失败通知
+        logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
         try:
             from core.models import WebhookEvent
             from core.config import Config
@@ -1589,23 +1624,27 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                 source = event.source if event else 'unknown'
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
-            logger.warning(f"发送 OpenClaw 失败通知失败: {notify_err}")
+            logger.warning(f"发送 {platform.capitalize()} 失败通知失败: {notify_err}")
         
-        # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
-            logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': f'OpenClaw 请求失败: {last_error}'}
+            logger.warning(f"{platform.capitalize()} 请求失败，降级到本地 AI 分析")
+            return {'_degraded': True, '_degraded_reason': f'{platform.capitalize()} 请求失败: {last_error}'}
         else:
-            logger.error("OpenClaw 请求失败，未启用降级策略")
-            raise Exception(f'OpenClaw 请求失败: {last_error}')
+            logger.error(f"{platform.capitalize()} 请求失败，未启用降级策略")
+            raise Exception(f'{platform.capitalize()} 请求失败: {last_error}')
 
     try:
         response.raise_for_status()
         result = response.json()
-        run_id = result.get('runId')
-        logger.info(f"OpenClaw 分析已触发: run_id={run_id}, session_key={session_key}")
+        
+        if platform == 'hermes':
+            run_id = result.get('delivery_id') or result.get('runId')
+            session_key = run_id if run_id else session_key
+        else:
+            run_id = result.get('runId')
+            
+        logger.info(f"{platform.capitalize()} 分析已触发: run_id={run_id}, session_key={session_key}")
 
-        # 非阻塞触发：HTTP POST 成功后立即返回
         return {
             '_pending': True,
             '_openclaw_run_id': run_id,

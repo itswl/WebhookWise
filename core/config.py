@@ -123,6 +123,7 @@ class _AppConfig(BaseSettings):
     OPENCLAW_HTTP_API_URL: str = Field(default='http://127.0.0.1:8085')
     OPENCLAW_TIMEOUT_SECONDS: int = Field(default=300)
     DEEP_ANALYSIS_ENGINE: str = Field(default='local')
+    DEEP_ANALYSIS_PLATFORM: str = Field(default='openclaw')  # openclaw | hermes
 
     OPENCLAW_STABILITY_REQUIRED_HITS: int = Field(default=2)
     OPENCLAW_MIN_WAIT_SECONDS: int = Field(default=30)
