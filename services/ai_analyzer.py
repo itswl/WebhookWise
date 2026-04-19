@@ -1453,7 +1453,6 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     if platform == 'hermes':
         import hmac
         import hashlib
-        import json
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
@@ -1566,7 +1565,6 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     if platform == 'hermes':
         import hmac
         import hashlib
-        import json
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
