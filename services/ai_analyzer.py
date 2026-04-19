@@ -1484,7 +1484,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         return {'status': 'error', 'message': f'{platform.capitalize()} 请求被熔断拦截'}
 
     try:
-        response.raise_for_status()
+        # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
         
         # 兼容两种协议的返回 ID
@@ -1604,6 +1604,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                     await asyncio.sleep(2)
                 continue
             
+            response.raise_for_status()
             break
         except Exception as e:
             last_error = str(e)
@@ -1632,7 +1633,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             raise Exception(f'{platform.capitalize()} 请求失败: {last_error}')
 
     try:
-        response.raise_for_status()
+        # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
         
         if platform == 'hermes':
