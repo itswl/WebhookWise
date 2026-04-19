@@ -706,7 +706,9 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     webhook_full_data = {
         'body': data,
         'headers': headers,
-        'query': {}
+        'query': {},
+        'parsed_data': parsed_data,
+        'source': requested_source
     }
 
     return WebhookRequestContext(
