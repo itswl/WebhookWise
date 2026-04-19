@@ -1518,30 +1518,21 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     alert_data = webhook_data.get('parsed_data', {})
     source = webhook_data.get('source', 'unknown')
     
-    message = f"""请对以下告警进行深度根因分析：
+    prompt_path = Path(Config.DATA_DIR).parent / 'prompts' / 'deep_analysis.txt'
+    try:
+        with open(prompt_path, 'r', encoding='utf-8') as f:
+            template = f.read()
+    except FileNotFoundError:
+        template = """请对以下告警进行深度根因分析：
+        
+{source}
+{alert_data}
+"""
+        logger.warning(f"未能找到深度分析模板文件: {prompt_path}")
 
-告警来源: {source}
+    # 将告警数据注入到提示词中
+    message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, indent=2)}\n```"
 
-## 告警数据
-```json
-{json.dumps(alert_data, ensure_ascii=False, indent=2)}
-```
-
-## 可用能力
-你可以自主决策并使用以下能力来排查和分析问题：
-- **MCP 工具**: 你可以调用已连接的 MCP 服务（如 Kubernetes、Prometheus、日志系统等）获取实时数据
-- **Skills**: 你可以调用已配置的 Skills 执行自动化排查操作
-- **自主决策**: 根据告警内容，自行决定需要调用哪些工具、查询哪些数据、执行哪些排查步骤
-
-## 分析要求
-1. **根因分析**: 结合实际环境数据，深度挖掘问题根本原因
-2. **影响评估**: 评估对系统的影响范围和紧急程度
-3. **排查过程**: 说明你执行了哪些排查步骤、调用了哪些工具、获取了哪些数据
-4. **修复建议**: 提供可执行的解决方案，优先给出可直接执行的命令或操作
-5. **置信度**: 评估分析可信度 (0-1)
-
-请返回 JSON 格式:
-"root_cause": "...", "impact": "...", "investigation_steps": [...], "recommendations": [...], "confidence": 0.85"""
     
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
