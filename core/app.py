@@ -263,7 +263,7 @@ def _persist_webhook_with_noise_context(
         raw_payload=request_context.payload,
         headers=request_context.headers,
         client_ip=request_context.client_ip,
-        analysis_result=analysis_with_noise,
+        ai_analysis=analysis_with_noise,
         alert_hash=alert_hash,
         is_duplicate=analysis_resolution.is_duplicate or analysis_resolution.beyond_window,
         original_event=analysis_resolution.original_event,
