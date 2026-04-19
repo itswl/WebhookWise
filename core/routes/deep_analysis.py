@@ -110,7 +110,7 @@ def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, floa
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
-def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=None)):
+async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=None)):
     """
     触发深度分析（支持多引擎）
 
@@ -143,7 +143,7 @@ def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=None)):
             if engine == 'openclaw':
                 start_time = time.time()
                 webhook_data = {'source': event.source, 'parsed_data': alert_data}
-                result = analyze_with_openclaw(webhook_data, user_question)
+                result = await analyze_with_openclaw(webhook_data, user_question)
                 duration = time.time() - start_time
 
                 if result.get('_degraded'):
