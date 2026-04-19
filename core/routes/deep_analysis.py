@@ -168,6 +168,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=Non
                     report = result
             else:
                 report, duration = _local_ai_analysis(alert_data, user_question)
+                result = {}  # Initialize result to prevent UnboundLocalError
 
             record_id = None
             try:
