@@ -700,7 +700,9 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
 
     data = payload
     
-    parsed_data = normalize_webhook_event(data, requested_source)
+    normalized = normalize_webhook_event(data, requested_source)
+    parsed_data = normalized.data
+    requested_source = normalized.source
     webhook_full_data = {
         'body': data,
         'headers': headers,
