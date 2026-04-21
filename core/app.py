@@ -749,6 +749,7 @@ def _build_webhook_response(
 
 
 async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str] = None):
+    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}")
     """通用 Webhook 处理逻辑"""
     analysis_result = {}
     original_event = None
@@ -767,10 +768,12 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
 
         with processing_lock(alert_hash) as got_lock:
+            logger.debug("[Pipeline] 进入 AI 分析阶段")
             analysis_resolution = await _resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
 
             analysis_result = analysis_resolution.analysis_result
             original_event = analysis_resolution.original_event
+            logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
             persisted = await run_in_threadpool(_persist_webhook_with_noise_context, 
                 request_context=request_context,
                 analysis_resolution=analysis_resolution,
@@ -787,6 +790,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
         importance = str(analysis_result.get('importance', '')).lower()
 
         original_event = await run_in_threadpool(_refresh_original_event, original_id, original_event)
+        logger.debug("[Pipeline] 进入转发决策阶段")
         forward_decision = await run_in_threadpool(_decide_forwarding, 
             importance,
             is_duplicate,
@@ -859,6 +863,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
         else:
             logger.info(f"跳过自动转发: {forward_decision.skip_reason}")
 
+        logger.info(f"[Pipeline] 处理流程结束: id={save_result.webhook_id}, forwarded={forward_decision.should_forward}")
         return _build_webhook_response(
             save_result.webhook_id,
             analysis_result,
