@@ -225,7 +225,7 @@ def _poll_pending_analyses_inner():
             if not pending:
                 return
 
-            logger.info(f"发现 {len(pending)} 条待轮询的 OpenClaw 分析")
+            logger.info(f"[Poller] 扫描到待处理分析: count={len(pending)}")
 
             for record in pending:
                 try:
@@ -294,7 +294,7 @@ def _poll_pending_analyses_inner():
 
                             if hit_count >= Config.OPENCLAW_STABILITY_REQUIRED_HITS:
                                 # 达到要求的连续一致次数 → 真正完成
-                                logger.info(f"分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
+                                logger.debug(f"[Poller] 分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                             else:
                                 # 还未达到，继续等待
                                 _set_poll_stability(record.id, {**current_snapshot, 'hit_count': hit_count})
@@ -448,7 +448,7 @@ def _poll_pending_analyses_inner():
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
     def _loop():
-        logger.info(f"OpenClaw 轮询任务已启动，间隔 {interval} 秒")
+        logger.info(f"[Poller] 任务已启动: interval={interval}s")
         while True:
             try:
                 poll_pending_analyses()

@@ -26,7 +26,7 @@ class _AppConfig(BaseSettings):
     # 服务器配置
     PORT: int = Field(default=8000)
     HOST: str = Field(default='0.0.0.0')
-    DEBUG: bool = Field(default=False) # Workaround for backward compatibility
+    DEBUG: bool = os.getenv('FLASK_ENV', 'production') == 'development'
 
     # 安全配置
     WEBHOOK_SECRET: str = Field(default='')

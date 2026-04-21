@@ -308,7 +308,7 @@ def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
         # 尝试获取锁
         lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=_LOCK_TTL_SECONDS))
         if lock_acquired:
-            logger.debug(f"获取处理锁成功: hash={alert_hash[:16]}..., worker={_WORKER_ID}")
+            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={_WORKER_ID}")
         else:
             logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
     except Exception as e:
@@ -436,7 +436,7 @@ async def _resolve_analysis_without_lock(
     webhook_full_data: dict
 ) -> AnalysisResolution:
     """在处理锁被占用时决定分析结果（尽量复用其他 worker 的处理结果）。"""
-    logger.info(f"等待其他 worker 处理完成: hash={alert_hash[:16]}...")
+    logger.info(f"[Lock] 告警正在由其他节点处理，等待中: hash={alert_hash[:16]}")
     await asyncio.sleep(_LOCK_WAIT_SECONDS)
 
     duplicate_check = await run_in_threadpool(check_duplicate_alert,
@@ -684,8 +684,8 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     
     requested_source = source or headers.get('X-Webhook-Source', 'unknown')
 
-    logger.info(f"收到来自 {client_ip} 的 webhook 请求, 来源: {requested_source}")
-    logger.debug(f"原始请求体: {raw_body.decode('utf-8', errors='ignore')[:500]}...")
+    logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
+    logger.debug(f"[Webhook] 原始载荷: {raw_body.decode('utf-8', errors='ignore')}")
 
     signature = headers.get('X-Webhook-Signature', '')
     if signature and not verify_signature(raw_body, signature):
