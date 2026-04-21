@@ -838,7 +838,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
                                 except Exception as e:
                                     logger.error(f"创建转发分析记录失败: {e}")
                         else:
-                            result = forward_to_remote(
+                            result = await forward_to_remote(
                                 request_context.webhook_full_data,
                                 analysis_result,
                                 target_url=rule['target_url'],
@@ -853,13 +853,13 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
                 forward_result = {'status': 'success', 'results': forward_results}
                 # 更新最后通知时间
                 if any(r.get('status') == 'success' for r in forward_results) and original_event:
-                    _update_last_notified(original_event.id)
+                    await run_in_threadpool(_update_last_notified, original_event.id)
             else:
                 # 降级到原有单目标转发
                 logger.info(f"开始自动转发高风险{alert_type}告警...")
                 forward_result = await forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
                 if forward_result.get('status') == 'success' and original_event:
-                    _update_last_notified(original_event.id)
+                    await run_in_threadpool(_update_last_notified, original_event.id)
         else:
             logger.info(f"跳过自动转发: {forward_decision.skip_reason}")
 
