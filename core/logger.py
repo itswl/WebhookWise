@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from core.config import Config
 
@@ -19,9 +20,12 @@ def setup_logger():
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
     
+    # 解析日志级别
+    log_level = getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO)
+    
     # 创建 logger
     logger = logging.getLogger('webhook_service')
-    logger.setLevel(getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO))
+    logger.setLevel(log_level)
     
     # 避免重复添加 handler
     if logger.handlers:
@@ -29,7 +33,7 @@ def setup_logger():
     
     # 标准日志格式（控制台）
     console_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
@@ -40,9 +44,9 @@ def setup_logger():
         backupCount=5,
         encoding='utf-8'
     )
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(log_level)
     
-    # 文件使用结构化 JSON 日志（如果可用）
+    # 文件使用结构化 JSON 日志（如果可用且配置允许）
     if HAS_JSON_LOGGER:
         json_formatter = jsonlogger.JsonFormatter(
             '%(asctime)s %(name)s %(levelname)s %(message)s',
@@ -52,13 +56,18 @@ def setup_logger():
     else:
         file_handler.setFormatter(console_formatter)
     
-    # 控制台处理器（保持可读格式）
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if Config.DEBUG else logging.INFO)
+    # 控制台处理器
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(console_formatter)
     
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+    
+    # 设置第三方库的日志级别，防止干扰
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     
     return logger
 
@@ -70,7 +79,6 @@ def get_logger(name: str = 'webhook_service') -> logging.Logger:
     
     # 创建子 logger
     child_logger = logging.getLogger(f'webhook_service.{name}')
-    # 子 logger 会自动继承父 logger 的配置
     return child_logger
 
 
