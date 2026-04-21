@@ -72,6 +72,8 @@ def _tokenize_text(*values: Any) -> set[str]:
         for token in re.findall(r'[\u4e00-\u9fff]{2,}', text):
             tokens.add(token)
 
+    if tokens:
+        logger.debug(f"[Noise] 文本分词结果: count={len(tokens)}, sample={list(tokens)[:5]}")
     return tokens
 
 
@@ -244,7 +246,8 @@ def analyze_noise_reduction(
     scored = _collect_related(current, recent_alerts_list, window_minutes)
     
     if not scored:
-        return default_decision()
+        logger.info("[Noise] 降噪决策: relation=standalone")
+    return default_decision()
 
     related = [(alert, score) for alert, score in scored if score >= 0.35]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
@@ -255,6 +258,7 @@ def analyze_noise_reduction(
     if best_alert.event_id is not None and best_score >= effective_threshold:
         reason = f'与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）'
         
+        logger.info(f"[Noise] 降噪决策: relation=derived, confidence={best_score:.2f}, suppress={suppress_derived}")
         return NoiseReductionDecision(
             relation='derived',
             root_cause_event_id=best_alert.event_id,
@@ -269,6 +273,7 @@ def analyze_noise_reduction(
     if current.importance == 'high' and len(related_ids) >= 2:
         reason = f'检测到告警风暴，已关联 {len(related_ids)} 条近邻告警'
         
+        logger.info(f"[Noise] 降噪决策: relation=root_cause, count={len(related_ids)}")
         return NoiseReductionDecision(
             relation='root_cause',
             root_cause_event_id=current.event_id,
