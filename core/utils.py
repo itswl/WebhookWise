@@ -167,7 +167,12 @@ def verify_signature(payload: bytes, signature: str, secret: Optional[str] = Non
         hashlib.sha256
     ).hexdigest()
     
-    return hmac.compare_digest(expected_signature, signature)
+    result = hmac.compare_digest(expected_signature, signature)
+    if not result:
+        logger.warning(f"[Auth] 签名比对不匹配: expected_prefix={expected_signature[:8]}, actual_prefix={signature[:8]}")
+    else:
+        logger.debug("[Auth] 签名验证通过")
+    return result
 
 
 # ====== 告警哈希字段配置 ======
@@ -275,7 +280,7 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
     hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
 
-    logger.debug(f"生成告警哈希: {hash_value}, 关键字段: {key_fields}")
+    logger.debug(f"[Hash] 生成告警哈希: hash={hash_value[:16]}..., input_keys={list(key_fields.keys())}")
     return hash_value
 
 

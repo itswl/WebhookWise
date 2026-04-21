@@ -426,7 +426,8 @@ def normalize_webhook_event(
 
     if adapter_name is None:
         final_source = source_hint or 'unknown'
-        return NormalizedWebhook(final_source, dict(data), 'passthrough')
+        logger.info(f"[Adapter] 未能匹配特定适配器，使用透传模式: source={final_source}")
+    return NormalizedWebhook(final_source, dict(data), 'passthrough')
 
     aliases, _detector, normalizer = ADAPTERS[adapter_name]
     normalized = normalizer(dict(data))
@@ -439,6 +440,7 @@ def normalize_webhook_event(
     else:
         final_source = adapter_name
 
+    logger.info(f"[Adapter] 成功匹配适配器: name={adapter_name}, final_source={final_source}")
     return NormalizedWebhook(final_source, normalized, adapter_name)
 
 

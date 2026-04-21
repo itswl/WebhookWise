@@ -674,7 +674,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optiona
     if Config.CACHE_ENABLED and not skip_cache:
         cached_result = get_cached_analysis(alert_hash)
         if cached_result:
-            logger.info(f"使用缓存的分析结果: source={source}")
+            logger.info(f"[Cache] 命中历史分析缓存: source={source}, key={cache_key[:16]}...")
             cached_result['_route_type'] = 'cache'
             # 记录缓存命中
             log_ai_usage(
@@ -785,6 +785,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
+        logger.debug(f"[AI] 请求消息内容: {messages}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         # 提取 token 使用量
@@ -848,7 +849,10 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                         finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
 
         logger.debug(f"AI 原始响应: {ai_response}")
-        logger.info(f"Token 使用: input={tokens_in}, output={tokens_out}")
+        input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
+        output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
+        total_cost = input_cost + output_cost
+        logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
         
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
@@ -889,6 +893,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
+        logger.debug(f"[AI] 请求消息内容: {messages}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         if not hasattr(response, 'choices') or not response.choices:
