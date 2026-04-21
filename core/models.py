@@ -171,6 +171,7 @@ def get_engine():
     """获取数据库引擎（单例）"""
     global _engine
     if _engine is None:
+        _logger.info(f"[DB] 正在初始化数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
         _engine = create_engine(
             Config.DATABASE_URL, 
             echo=False, 
