@@ -674,7 +674,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optiona
     if Config.CACHE_ENABLED and not skip_cache:
         cached_result = get_cached_analysis(alert_hash)
         if cached_result:
-            logger.info(f"[Cache] 命中历史分析缓存: source={source}, key={cache_key[:16]}...")
+            logger.info(f"[Cache] 命中历史分析缓存: source={source}, hash={alert_hash[:16]}...")
             cached_result['_route_type'] = 'cache'
             # 记录缓存命中
             log_ai_usage(
