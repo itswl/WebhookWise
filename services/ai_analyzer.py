@@ -1421,7 +1421,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
 
 ## 告警数据
 ```json
-{json.dumps(alert_data, ensure_ascii=False, indent=2)}
+{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}
 ```
 
 ## AI 初步分析
@@ -1470,6 +1470,8 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         }
         kwargs = {'json': payload}
 
+    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
+    logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
     # 超时配置：(连接超时, 读取超时)
     async with httpx.AsyncClient() as client:
             response = await openclaw_cb.call_async(
@@ -1494,7 +1496,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         else:
             run_id = result.get('runId')
             
-        logger.info(f"{platform.capitalize()} 转发成功: run_id={run_id}, session_key={session_key}")
+        logger.info(f"[{platform.upper()}] 转发成功: run_id={run_id}")
 
         return {
             'status': 'success',
@@ -1508,6 +1510,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
 
 
 async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
+
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
     
@@ -1531,7 +1534,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         logger.warning(f"未能找到深度分析模板文件: {prompt_path}")
 
     # 将告警数据注入到提示词中
-    message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, indent=2)}\n```"
+    message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}\n```"
 
     
     if user_question:
@@ -1572,6 +1575,8 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         }
         kwargs = {'json': payload}
         
+    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
+    logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
     # 重试逻辑：最多 3 次
     max_retries = 3
     last_error = None
@@ -1633,7 +1638,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         else:
             run_id = result.get('runId')
             
-        logger.info(f"{platform.capitalize()} 分析已触发: run_id={run_id}, session_key={session_key}")
+        logger.info(f"[{platform.upper()}] 成功触发深度分析: ID={run_id}")
 
         return {
             '_pending': True,
