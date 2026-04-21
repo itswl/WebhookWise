@@ -38,11 +38,11 @@ def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result:
     return len(duplicate_events)
 
 
-def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: int) -> tuple[dict, Optional[str], Optional[str], int]:
+async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: int) -> tuple[dict, Optional[str], Optional[str], int]:
     webhook_data = _build_webhook_context(webhook_event)
 
     logger.info(f"重新分析 webhook ID: {webhook_id}")
-    analysis_result = analyze_webhook_with_ai(webhook_data, skip_cache=True)
+    analysis_result = await analyze_webhook_with_ai(webhook_data, skip_cache=True)
 
     old_importance = webhook_event.importance
     new_importance = analysis_result.get('importance')
@@ -61,12 +61,12 @@ def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: i
     return analysis_result, old_importance, new_importance, updated_duplicates
 
 
-def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int, custom_url) -> dict:
+async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int, custom_url) -> dict:
     webhook_data = _build_webhook_context(webhook_event)
     analysis_result = webhook_event.ai_analysis or {}
 
     logger.info(f"手动转发 webhook ID: {webhook_id} 到 {custom_url or Config.FORWARD_URL}")
-    forward_result = forward_to_remote(webhook_data, analysis_result, custom_url)
+    forward_result = await forward_to_remote(webhook_data, analysis_result, custom_url)
 
     webhook_event.forward_status = forward_result.get('status', 'unknown')
     return forward_result
@@ -75,7 +75,7 @@ def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int, custo
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @reanalysis_router.post('/api/reanalyze/{webhook_id}')
-def reanalyze_webhook(webhook_id: int):
+async def reanalyze_webhook(webhook_id: int):
     """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:
         with session_scope() as session:
@@ -83,7 +83,7 @@ def reanalyze_webhook(webhook_id: int):
             if not webhook_event:
                 raise HTTPException(status_code=404, detail='Webhook not found')
 
-            analysis_result, old_importance, new_importance, updated_duplicates = _reanalyze_webhook_event(
+            analysis_result, old_importance, new_importance, updated_duplicates = await _reanalyze_webhook_event(
                 session, webhook_event, webhook_id
             )
 
@@ -106,7 +106,7 @@ def reanalyze_webhook(webhook_id: int):
 
 
 @reanalysis_router.post('/api/forward/{webhook_id}')
-def manual_forward_webhook(webhook_id: int, data: dict = Body(default={})):
+async def manual_forward_webhook(webhook_id: int, data: dict = Body(default={})):
     """手动转发 webhook"""
     try:
         custom_url = data.get('target_url')
@@ -116,7 +116,7 @@ def manual_forward_webhook(webhook_id: int, data: dict = Body(default={})):
             if not webhook_event:
                 raise HTTPException(status_code=404, detail='Webhook not found')
 
-            forward_result = _manual_forward(session, webhook_event, webhook_id, custom_url)
+            forward_result = await _manual_forward(session, webhook_event, webhook_id, custom_url)
 
             return {
                 "success": True,

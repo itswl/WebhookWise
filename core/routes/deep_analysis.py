@@ -10,14 +10,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import requests
+import httpx
 from fastapi import APIRouter, Request, HTTPException, Body, Query
 from fastapi.responses import JSONResponse
 
 from core.config import Config
 from core.logger import logger
 from core.models import DeepAnalysis, WebhookEvent, session_scope
-from openai import OpenAI
+from openai import AsyncOpenAI
 from services.ai_analyzer import analyze_with_openclaw
 
 deep_analysis_router = APIRouter()
@@ -42,7 +42,7 @@ def _determine_engine(requested_engine: str) -> str:
         return 'openclaw' if Config.OPENCLAW_ENABLED else 'local'
 
 
-def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
+async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
     """本地 AI 深度分析"""
     start_time = time.time()
 
@@ -79,8 +79,8 @@ def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, floa
 - confidence: 置信度 (0-1)
 """
 
-    client = OpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
+    response = await client.chat.completions.create(
         model=Config.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -149,7 +149,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=Non
                 if result.get('_degraded'):
                     logger.warning(f"OpenClaw 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
                     try:
-                        report, duration = _local_ai_analysis(alert_data, user_question)
+                        report, duration = await _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
                     except Exception as e:
                         return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {str(e)}"})
@@ -167,7 +167,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=Non
                 else:
                     report = result
             else:
-                report, duration = _local_ai_analysis(alert_data, user_question)
+                report, duration = await _local_ai_analysis(alert_data, user_question)
                 result = {}  # Initialize result to prevent UnboundLocalError
 
             record_id = None
@@ -305,7 +305,7 @@ def get_deep_analyses(webhook_id: int):
 
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/forward')
-def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
+async def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
     """转发深度分析结果到指定目标"""
     payload = payload or {}
     try:
@@ -356,8 +356,9 @@ def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
                     'duration_seconds': analysis.duration_seconds,
                     'created_at': analysis.created_at.isoformat() if analysis.created_at else None
                 }
-                resp = requests.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
-                resp.raise_for_status()
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
+                    resp.raise_for_status()
                 return {'success': True, 'message': f'已转发 (HTTP {resp.status_code})'}
     except Exception as e:
         logger.error(f"转发深度分析失败: {e}")
@@ -365,7 +366,7 @@ def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
 
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/retry')
-def retry_deep_analysis(analysis_id: int):
+async def retry_deep_analysis(analysis_id: int):
     """
     重新拉取深度分析结果
     
@@ -389,8 +390,9 @@ def retry_deep_analysis(analysis_id: int):
             if Config.OPENCLAW_HTTP_API_URL:
                 # 直接通过 HTTP API 获取（复用轮询器的重试逻辑）
                 from services.openclaw_poller import _poll_via_http
+                from fastapi.concurrency import run_in_threadpool
                 logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
-                result = _poll_via_http(record.openclaw_session_key, retry_count=3)
+                result = await run_in_threadpool(_poll_via_http, record.openclaw_session_key, retry_count=3)
                 
                 if result.get('status') == 'error':
                     return JSONResponse(status_code=400, content={'error': result.get('error', '获取失败')})
