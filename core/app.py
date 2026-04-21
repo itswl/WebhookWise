@@ -341,8 +341,9 @@ async def _resolve_duplicate_analysis(
     last_beyond_window_event: Optional[WebhookEvent],
     webhook_full_data: dict
 ) -> tuple[dict, bool]:
+    # 如果该告警链在近期（本窗口内）已经由 AI 重新分析过，则优先复用那次最新的分析结果
     if last_beyond_window_event and last_beyond_window_event.ai_analysis:
-        logger.info(f"复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
+        logger.info(f"检测到窗口内重复，复用本窗口内最新分析结果 (ID={last_beyond_window_event.id})")
         # 记录分析复用
         log_ai_usage(
             route_type='reuse',
@@ -371,15 +372,25 @@ async def _resolve_beyond_window_analysis(
     allow_reanalyze: bool,
     prefer_recent_beyond_window: bool
 ) -> tuple[dict, bool]:
+    # 仅当明确要求优先复用（通常在等待锁失败后）且记录足够新鲜时，才复用上一个窗口外的结果
     if prefer_recent_beyond_window and last_beyond_window_event:
-        logger.info(f"窗口外历史告警，复用最近窗口外记录 ID={last_beyond_window_event.id} 的分析结果")
-        # 记录分析复用
-        log_ai_usage(
-            route_type='reuse',
-            alert_hash=last_beyond_window_event.alert_hash or '',
-            source=last_beyond_window_event.source or ''
-        )
-        return last_beyond_window_event.ai_analysis or {}, False
+        is_recent = False
+        if last_beyond_window_event.created_at:
+            seconds_since = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
+            if seconds_since < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
+                is_recent = True
+        
+        if is_recent:
+            logger.info(f"窗口外历史告警，发现其他worker刚完成分析(ID={last_beyond_window_event.id})，复用结果")
+            # 记录分析复用
+            log_ai_usage(
+                route_type='reuse',
+                alert_hash=last_beyond_window_event.alert_hash or '',
+                source=last_beyond_window_event.source or ''
+            )
+            return last_beyond_window_event.ai_analysis or {}, False
+        else:
+            logger.debug(f"窗口外历史记录 ID={last_beyond_window_event.id} 已超过复用窗口({Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS}s)，将尝试重新分析")
 
     if original_event and not allow_reanalyze:
         logger.info(f"窗口外历史告警(ID={original_event.id})，复用历史分析结果")
