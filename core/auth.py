@@ -15,7 +15,18 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
     
     if not auth or auth.credentials != Config.API_KEY:
         client_ip = request.client.host if request.client else 'unknown'
-        logger.warning(f"[Auth] 未授权的 API 访问尝试: IP={client_ip}, URL={request.url.path}")
+        
+        # 尝试读取请求体 (由于 request.body() 是异步的，在 depends 里直接 await 可能影响性能，但这是异常分支，影响不大)
+        try:
+            body_bytes = await request.body()
+            body_preview = body_bytes.decode('utf-8', errors='ignore')[:200]
+        except Exception:
+            body_preview = "无法读取"
+            
+        logger.warning(
+            f"[Auth] 未授权的 API 访问尝试: IP={client_ip}, URL={request.url.path}, "
+            f"Method={request.method}, Headers={dict(request.headers)}, Body Preview={body_preview}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API Key",
