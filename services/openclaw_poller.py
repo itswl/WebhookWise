@@ -1,7 +1,8 @@
+import re
+from typing import Optional
 """OpenClaw 分析结果后台轮询"""
 import time
 import json
-import re
 import threading
 import logging
 from datetime import datetime, timedelta
@@ -29,7 +30,6 @@ def _set_poll_stability(record_id: int, data: dict):
 def _clear_poll_stability(record_id: int):
     redis_client = core.redis_client.get_redis()
     redis_client.delete(f"openclaw:poller:stability:{record_id}")
-
 
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
@@ -87,6 +87,7 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
     except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
+
 def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
     import core.redis_client
@@ -103,8 +104,6 @@ def poll_pending_analyses():
         _poll_pending_analyses_inner()
     finally:
         redis_client.delete(lock_key)
-
-
 
 
 def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
@@ -155,69 +154,45 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
             # 根据 /final 接口返回的字段判断状态
             is_final = data.get('isFinal', False)
             is_processing = data.get('isProcessing', False)
-            stop_reason = data.get('stopReason', '')
-            status = data.get('status', 'unknown')
             text = data.get('text', '')
             msg_count = data.get('messageCount', 0)
             
             # 判断是否完成
             if is_processing and not text:
-                # 正在处理且无文本内容
                 last_error = "分析进行中"
-                logger.debug(f"分析处理中 (尝试 {attempt + 1}/{retry_count})")
                 continue
             
-            if not is_final and status == 'running':
-                # 仍在运行且未完成
-                last_error = "分析进行中"
-                logger.debug(f"分析运行中 status={status} (尝试 {attempt + 1}/{retry_count})")
-                continue
-            
-            # 有文本内容，认为是完成
             if text:
                 return {
                     "status": "completed",
                     "text": text,
-                    "message": {
-                        'stopReason': stop_reason,
-                        'status': status,
-                        'isFinal': is_final
-                    },
                     "msg_count": msg_count
                 }
             
-            # 无文本内容，可能还在处理
             if not is_final:
                 last_error = "分析进行中"
                 continue
             
-            # isFinal 但无文本，可能是异常情况
             last_error = "No text content"
             continue
             
-        except req.exceptions.Timeout:
-            last_error = "连接超时"
-            logger.warning(f"HTTP 轮询超时 (尝试 {attempt + 1}/{retry_count})")
-        except req.exceptions.ConnectionError as e:
-            last_error = f"连接失败: {str(e)[:50]}"
-            logger.warning(f"HTTP 连接错误 (尝试 {attempt + 1}/{retry_count}): {last_error}")
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"HTTP 轮询异常 (尝试 {attempt + 1}/{retry_count}): {e}")
+            logger.warning(f"HTTP 轮询异常: {e}")
     
-    if last_error in ("分析进行中",):
+    if last_error == "分析进行中":
         return {"status": "pending"}
-    return {"status": "error", "error": f"重试 {retry_count} 次后仍失败: {last_error}"}
+    return {"status": "error", "error": last_error}
+
 
 def _poll_pending_analyses_inner():
-    """轮询逻辑主体（由 poll_pending_analyses 在持锁状态下调用）"""
+    """轮询逻辑主体"""
     from core.models import DeepAnalysis, session_scope
     from core.config import Config
     from services.openclaw_ws_client import poll_session_result
 
     try:
         with session_scope() as session:
-            # 查询 pending 记录（限制批次大小）
             pending = session.query(DeepAnalysis).filter_by(
                 status='pending'
             ).order_by(DeepAnalysis.created_at.asc()).limit(10).all()
@@ -229,46 +204,27 @@ def _poll_pending_analyses_inner():
 
             for record in pending:
                 try:
-                    # 检查是否超时（created_at 距今超过 OPENCLAW_TIMEOUT_SECONDS）
                     timeout_seconds = getattr(Config, 'OPENCLAW_TIMEOUT_SECONDS', 300)
                     if record.created_at and (datetime.now() - record.created_at).total_seconds() > timeout_seconds:
                         record.status = 'failed'
-                        record.analysis_result = {
-                            'root_cause': 'OpenClaw 分析超时',
-                            'impact': '分析未在规定时间内完成',
-                            'recommendations': ['请重新触发分析', '检查 OpenClaw 服务状态'],
-                            'confidence': 0
-                        }
-                        # 清理稳定性缓存
+                        record.analysis_result = {'root_cause': 'OpenClaw 分析超时'}
                         _clear_poll_stability(record.id)
-                        logger.warning(f"分析超时: id={record.id}, run_id={record.openclaw_run_id}")
-                        # 发送失败通知
                         _notify_feishu_deep_analysis_failed(record, '超时失败')
                         continue
 
-                    # 没有 session_key 的记录无法轮询
                     if not record.openclaw_session_key:
                         record.status = 'failed'
-                        record.analysis_result = {'root_cause': '缺少 sessionKey，无法轮询'}
-                        # 清理稳定性缓存
                         _clear_poll_stability(record.id)
-                        # 发送失败通知
-                        _notify_feishu_deep_analysis_failed(record, '缺少sessionKey')
                         continue
 
-                    # 最小等待时间检查
+                    # 最小等待时间
                     elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else 999
                     if elapsed < Config.OPENCLAW_MIN_WAIT_SECONDS:
-                        logger.debug(f"分析创建未满 {Config.OPENCLAW_MIN_WAIT_SECONDS}s (已 {elapsed:.0f}s), 跳过: id={record.id}")
                         continue
 
-                    # 根据配置选择获取方式
                     if Config.OPENCLAW_HTTP_API_URL:
-                        # 使用 HTTP API 轮询
                         result = _poll_via_http(record.openclaw_session_key)
-                        logger.debug(f"HTTP 轮询结果: id={record.id}, status={result.get('status')}")
                     else:
-                        # 使用 WebSocket 轮询
                         result = poll_session_result(
                             gateway_url=Config.OPENCLAW_GATEWAY_URL,
                             gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
@@ -278,40 +234,26 @@ def _poll_pending_analyses_inner():
 
                     if result.get('status') == 'completed':
                         text = result.get('text', '')
-                        message = result.get('message', {})
                         msg_count = result.get('msg_count', 0)
 
-                        # 稳定性检测：连续 N 次轮询结果一致才确认完成
-                        current_snapshot = {
-                            'msg_count': msg_count,
-                            'text_len': len(text)
-                        }
+                        current_snapshot = {'msg_count': msg_count, 'text_len': len(text)}
                         prev_snapshot = _get_poll_stability(record.id)
 
                         if prev_snapshot and prev_snapshot['msg_count'] == current_snapshot['msg_count'] and prev_snapshot['text_len'] == current_snapshot['text_len']:
-                            # 结果与上次一致，增加命中计数
                             hit_count = prev_snapshot.get('hit_count', 1) + 1
-
                             if hit_count >= Config.OPENCLAW_STABILITY_REQUIRED_HITS:
-                                # 达到要求的连续一致次数 → 真正完成
-                                logger.debug(f"[Poller] 分析稳定确认: id={record.id}, hits={hit_count}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
+                                logger.debug(f"[Poller] 分析稳定确认: id={record.id}")
                             else:
-                                # 还未达到，继续等待
                                 _set_poll_stability(record.id, {**current_snapshot, 'hit_count': hit_count})
-                                logger.info(f"分析结果一致({hit_count}/{Config.OPENCLAW_STABILITY_REQUIRED_HITS}), 继续等待: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
                                 continue
 
-                            # 清理缓存
                             _clear_poll_stability(record.id)
-
-                            # 尝试从文本中提取 JSON 结构化数据
                             parsed_result = None
-                            json_match = re.search(r'\{[\s\S]*\}', text)
-                            if json_match:
+                            json_text = _extract_robust_json(text)
+                            if json_text:
                                 try:
-                                    parsed_result = json.loads(json_match.group())
-                                except json.JSONDecodeError:
-                                    pass
+                                    parsed_result = json.loads(json_text)
+                                except: pass
 
                             if parsed_result and isinstance(parsed_result, dict):
                                 parsed_result['_openclaw_run_id'] = record.openclaw_run_id
@@ -320,123 +262,39 @@ def _poll_pending_analyses_inner():
                             else:
                                 record.analysis_result = {
                                     'root_cause': text,
-                                    'impact': '',
-                                    'recommendations': [],
-                                    'confidence': 0.5,
-                                    '_openclaw_run_id': record.openclaw_run_id,
                                     '_openclaw_text': text
                                 }
 
                             record.status = 'completed'
                             record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                            logger.info(f"分析完成: id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
-
-                            # 获取告警来源并发送飞书通知
+                            
                             try:
                                 from core.models import WebhookEvent
                                 event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)
-                            except Exception as notify_err:
-                                logger.warning(f"发送飞书通知失败: {notify_err}")
+                            except: pass
                         else:
-                            # 首次获取或结果有变化 → 重置计数
-                            change_type = '变化' if prev_snapshot else '首次获取'
-                            logger.info(f"分析结果{change_type}, 开始稳定计数: id={record.id}, msg_count={current_snapshot['msg_count']}, text_len={current_snapshot['text_len']}")
-                            # 首次获取时更新 created_at，延长超时窗口（因为分析已完成，只需等待稳定性确认）
-                            if not prev_snapshot:
-                                record.created_at = datetime.now()
-                                logger.debug(f"首次获取结果，更新 created_at 以延长超时窗口: id={record.id}")
-                            # 保存首次结果用于降级
-                            _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text, 'message': message}})
-                            # 不保存，继续下一轮轮询
-
-                    elif result.get('status') == 'pending':
-                        # 仍在分析中，清理缓存（重新开始计数）
-                        _clear_poll_stability(record.id)
-                        logger.debug(f"分析进行中: id={record.id}, run_id={record.openclaw_run_id}")
+                            _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
 
                     elif result.get('status') == 'error':
-                        error = result.get('error', 'unknown')
-                        logger.warning(f"轮询出错: id={record.id}, error={error}")
-                        
-                        # 检查是否有首次结果可以降级使用
                         prev_snapshot = _get_poll_stability(record.id)
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
                             if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS:
-                                # 连续超时过多
                                 if Config.OPENCLAW_ENABLE_DEGRADATION:
-                                    # 启用降级：使用首次结果
-                                    logger.warning(f"连续超时 {error_count} 次，降级使用首次结果: id={record.id}")
-                                    first_result = prev_snapshot['first_result']
-                                    text = first_result['text']
-                                    message = first_result['message']
+                                    text = prev_snapshot['first_result']['text']
                                     _clear_poll_stability(record.id)
-                                    
-                                    # 尝试从文本中提取 JSON 结构化数据
                                     parsed_result = None
-                                    json_match = re.search(r'\{[\s\S]*\}', text)
-                                    if json_match:
-                                        try:
-                                            parsed_result = json.loads(json_match.group())
-                                        except json.JSONDecodeError:
-                                            pass
+                                    json_text = _extract_robust_json(text)
+                                    if json_text:
+                                        try: parsed_result = json.loads(json_text)
+                                        except: pass
                                     
-                                    if parsed_result and isinstance(parsed_result, dict):
-                                        parsed_result['_openclaw_run_id'] = record.openclaw_run_id
-                                        parsed_result['_openclaw_text'] = text
-                                        record.analysis_result = parsed_result
-                                    else:
-                                        record.analysis_result = {
-                                            'root_cause': text,
-                                            'impact': '',
-                                            'recommendations': [],
-                                            'confidence': 0.5,
-                                            '_openclaw_run_id': record.openclaw_run_id,
-                                            '_openclaw_text': text
-                                        }
-                                    
+                                    record.analysis_result = parsed_result or {'root_cause': text}
                                     record.status = 'completed'
-                                    record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                                    logger.info(f"分析完成(降级): id={record.id}, run_id={record.openclaw_run_id}, text_len={len(text)}")
-                                    
-                                    # 获取告警来源并发送飞书通知
-                                    try:
-                                        from core.models import WebhookEvent
-                                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
-                                        source = event.source if event else ''
-                                        _notify_feishu_deep_analysis(record, source)
-                                    except Exception as notify_err:
-                                        logger.warning(f"发送飞书通知失败: {notify_err}")
                                     continue
-                                else:
-                                    # 不降级：直接标记失败并发送通知
-                                    logger.error(f"连续超时 {error_count} 次，未启用降级策略，标记为失败: id={record.id}")
-                                    record.status = 'failed'
-                                    record.error_message = f"轮询连续超时 {error_count} 次"
-                                    record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                                    
-                                    # 发送失败通知
-                                    try:
-                                        from core.models import WebhookEvent
-                                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
-                                        source = event.source if event else ''
-                                        _notify_feishu_deep_analysis(record, source)
-                                    except Exception as notify_err:
-                                        logger.warning(f"发送飞书通知失败: {notify_err}")
-                                    
-                                    _clear_poll_stability(record.id)
-                                    continue
-                            else:
-                                # 增加错误计数
-                                prev_snapshot['error_count'] = error_count
-                                _set_poll_stability(record.id, prev_snapshot)
-                                logger.debug(f"降级倒计时: {error_count}/{Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS}: id={record.id}")
-                        else:
-                            # 清理稳定性缓存
-                            _clear_poll_stability(record.id)
-                        # 不立即标记失败，下次重试
+                        _clear_poll_stability(record.id)
 
                 except Exception as e:
                     logger.error(f"轮询记录 id={record.id} 失败: {e}")
@@ -459,3 +317,17 @@ def start_poller(interval: int = 30):
     t = threading.Thread(target=_loop, daemon=True, name='openclaw-poller')
     t.start()
     return t
+
+def _extract_robust_json(text: str) -> Optional[str]:
+    """从文本中寻找并提取第一个完整的 JSON 对象（处理嵌套大括号）"""
+    try:
+        start_idx = text.find('{')
+        if start_idx == -1: return None
+        stack = 0
+        for i in range(start_idx, len(text)):
+            if text[i] == '{': stack += 1
+            elif text[i] == '}':
+                stack -= 1
+                if stack == 0: return text[start_idx:i+1]
+    except: pass
+    return None
