@@ -1,3 +1,4 @@
+import time
 from core.http_client import get_http_client
 from core.metrics import AI_TOKENS_TOTAL, AI_COST_USD_TOTAL, AI_ANALYSIS_DURATION_SECONDS
 import httpx
