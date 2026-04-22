@@ -120,6 +120,37 @@ class WebhookEvent(Base):
         }
 
 
+
+class ArchivedWebhookEvent(Base):
+    """已归档的 Webhook 事件模型（历史备份）"""
+    __tablename__ = 'archived_webhook_events'
+    
+    id = Column(Integer, primary_key=True)
+    source = Column(String(100), nullable=False, index=True)
+    client_ip = Column(String(50))
+    timestamp = Column(DateTime, nullable=False, index=True)
+    
+    raw_payload = Column(Text)
+    headers = Column(JSON)
+    parsed_data = Column(JSON)
+    alert_hash = Column(String(64), index=True)
+    ai_analysis = Column(JSON)
+    importance = Column(String(20), index=True)
+    forward_status = Column(String(20))
+    is_duplicate = Column(Integer)
+    duplicate_of = Column(Integer)
+    duplicate_count = Column(Integer)
+    beyond_window = Column(Integer)
+    last_notified_at = Column(DateTime)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    archived_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('idx_archived_hash_timestamp', 'alert_hash', 'timestamp'),
+    )
+
+
 class AnalysisCache(Base):
     """
     AI 分析结果缓存
