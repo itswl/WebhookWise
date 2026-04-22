@@ -707,6 +707,8 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optiona
     try:
         analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
 
+        duration = time.time() - start_time
+        AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='openai').observe(duration)
         logger.info(f"AI 分析完成: {source}")
         analysis['_degraded'] = False
         analysis['_route_type'] = 'ai'
@@ -1091,6 +1093,7 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
 
 
 def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
+    start_time = time.time()
     """基于规则的简单分析（AI 降级方案）"""
     # 基础分析结果
     analysis = {
@@ -1191,6 +1194,8 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
                 analysis['importance'] = 'medium'
                 analysis['summary'] = f'🟡 警告事件: {event}'
 
+    duration = time.time() - start_time
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='rule').observe(duration)
     return analysis
 
 
