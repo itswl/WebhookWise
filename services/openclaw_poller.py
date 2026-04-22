@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import Optional
 """OpenClaw 分析结果后台轮询"""
@@ -47,12 +48,12 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
             'engine': record.engine,
             'duration_seconds': record.duration_seconds or 0,
         }
-        send_feishu_deep_analysis(
+        asyncio.run(send_feishu_deep_analysis(
             webhook_url=webhook_url,
             analysis_record=analysis_data,
             source=source,
             webhook_event_id=record.webhook_event_id
-        )
+        ))
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
@@ -77,12 +78,12 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
             'engine': record.engine,
             'duration_seconds': record.duration_seconds or 0,
         }
-        send_feishu_deep_analysis(
+        asyncio.run(send_feishu_deep_analysis(
             webhook_url=webhook_url,
             analysis_record=analysis_data,
             source='',
             webhook_event_id=record.webhook_event_id
-        )
+        ))
         logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
     except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
