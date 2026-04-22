@@ -10,7 +10,7 @@ import httpx
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Generator
 
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
