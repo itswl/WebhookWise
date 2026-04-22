@@ -3,7 +3,7 @@ import time
 import asyncio
 import socket
 from contextlib import contextmanager, asynccontextmanager
-from fastapi import FastAPI, Request, Query, Body
+from fastapi import FastAPI, Request, Query, Body, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +16,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 from core.config import Config
 from core.http_client import get_http_client, close_http_client
+from core.auth import verify_api_key
 from core.logger import logger
 from core.utils import (
     processing_lock,
@@ -61,9 +62,9 @@ _LOCK_TTL_SECONDS = Config.PROCESSING_LOCK_TTL_SECONDS  # 锁过期时间（秒�
 _LOCK_WAIT_SECONDS = Config.PROCESSING_LOCK_WAIT_SECONDS   # 等待锁的时间（秒）
 
 # 注册 Router（业务路由已拆分至 core/routes/）
-app.include_router(deep_analysis_router)
-app.include_router(forward_rules_router)
-app.include_router(reanalysis_router)
+app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(forward_rules_router, dependencies=[Depends(verify_api_key)])
+app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
 app.include_router(webhook_router)
 
 # 响应工具函数：统一 success/error 返回结构
@@ -866,7 +867,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
 from fastapi import Query, Body
 from fastapi.concurrency import run_in_threadpool
 
-@app.get('/api/ai-usage')
+@app.get('/api/ai-usage', dependencies=[Depends(verify_api_key)])
 def get_ai_usage(period: str = Query('day')) -> JSONResponse:
     """
     获取 AI 使用统计
@@ -1174,7 +1175,7 @@ def _persist_config_updates(updates: dict, env_file: str = '.env') -> None:
         os.environ[var_name] = str(typed_value).lower() if isinstance(typed_value, bool) else str(typed_value)
 
 
-@app.get('/api/config')
+@app.get('/api/config', dependencies=[Depends(verify_api_key)])
 def get_config():
     """获取当前配置（从 .env 文件实时读取）"""
     try:
@@ -1186,7 +1187,7 @@ def get_config():
         return
 
 
-@app.post('/api/config')
+@app.post('/api/config', dependencies=[Depends(verify_api_key)])
 def update_config(payload: dict = Body(default_factory=dict)):
     """更新配置"""
     try:
@@ -1249,7 +1250,7 @@ def _run_add_unique_constraint_migration() -> bool:
     return add_unique_constraint()
 
 
-@app.post('/api/prompt/reload')
+@app.post('/api/prompt/reload', dependencies=[Depends(verify_api_key)])
 def reload_prompt() -> JSONResponse:
     """重新加载 AI Prompt 模板"""
     try:
@@ -1266,7 +1267,7 @@ def reload_prompt() -> JSONResponse:
         return
 
 
-@app.get('/api/prompt')
+@app.get('/api/prompt', dependencies=[Depends(verify_api_key)])
 def get_prompt() -> JSONResponse:
     """获取当前 AI Prompt 模板"""
     try:
@@ -1282,7 +1283,7 @@ def get_prompt() -> JSONResponse:
         return
 
 
-@app.post('/api/migrations/add_unique_constraint')
+@app.post('/api/migrations/add_unique_constraint', dependencies=[Depends(verify_api_key)])
 def migration_add_unique_constraint() -> JSONResponse:
     """执行数据库迁移：添加唯一约束"""
     try:
