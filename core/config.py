@@ -20,6 +20,7 @@ load_dotenv(override=False)
 _config_logger = logging.getLogger('config')
 
 class _AppConfig(BaseSettings):
+    WORKER_ID: str = Field(default='iMacBook-Air.local-39865')
     """应用配置类"""
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
