@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request, HTTPException, Body, Query
 from fastapi.responses import JSONResponse
 
 from core.config import Config
+from core.http_client import get_http_client
 from core.logger import logger
 from core.models import DeepAnalysis, WebhookEvent, session_scope
 from openai import AsyncOpenAI
@@ -356,9 +357,9 @@ async def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=N
                     'duration_seconds': analysis.duration_seconds,
                     'created_at': analysis.created_at.isoformat() if analysis.created_at else None
                 }
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
-                    resp.raise_for_status()
+                client = get_http_client()
+                resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
+                resp.raise_for_status()
                 return {'success': True, 'message': f'已转发 (HTTP {resp.status_code})'}
     except Exception as e:
         logger.error(f"转发深度分析失败: {e}")
