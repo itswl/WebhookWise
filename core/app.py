@@ -751,7 +751,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
 
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
 
-        with processing_lock(alert_hash) as got_lock:
+        async with processing_lock(alert_hash) as got_lock:
             logger.debug("[Pipeline] 进入 AI 分析阶段")
             analysis_resolution = await _resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
 

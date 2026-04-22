@@ -992,7 +992,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         }
         
         event_id = webhook_data.get('id', 'unknown')
-        send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, event_id, source, analysis_data)
+        await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
         logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
     except Exception as e:
         logger.error(f"发送 OpenClaw 失败通知失败: {e}")

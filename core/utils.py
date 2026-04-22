@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from pathlib import Path
 import hmac
 import hashlib
@@ -10,7 +10,7 @@ import httpx
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Optional, Union, Generator
+from typing import Any, Callable, Optional, Union, Generator, AsyncGenerator
 
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
@@ -927,8 +927,8 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     return webhooks[:limit]
 
 
-@contextmanager
-def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
+@asynccontextmanager
+async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     """
     告警处理锁上下文管理器（Redis 分布式锁）
     
