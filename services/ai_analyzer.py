@@ -1,4 +1,5 @@
 from core.http_client import get_http_client
+from core.metrics import AI_TOKENS_TOTAL, AI_COST_USD_TOTAL, AI_ANALYSIS_DURATION_SECONDS
 import httpx
 import json
 import re
@@ -842,6 +843,9 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
+        AI_TOKENS_TOTAL.labels(model=model or Config.OPENAI_MODEL, token_type='input').inc(tokens_in)
+        AI_TOKENS_TOTAL.labels(model=model or Config.OPENAI_MODEL, token_type='output').inc(tokens_out)
+        AI_COST_USD_TOTAL.labels(model=model or Config.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
         
         analysis_result = _parse_ai_analysis_response(ai_response, source)

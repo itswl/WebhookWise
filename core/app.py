@@ -45,8 +45,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
 
 
-from prometheus_fastapi_instrumentator import Instrumentator
-Instrumentator().instrument(app).expose(app)
+from core.metrics import setup_metrics, WEBHOOK_RECEIVED_TOTAL, WEBHOOK_NOISE_REDUCED_TOTAL
+setup_metrics(app)
 
 
 # 启用 gzip 压缩（减少响应体积，加快传输）
@@ -735,6 +735,7 @@ def _build_webhook_response(
 
 async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str] = None):
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}")
+    WEBHOOK_RECEIVED_TOTAL.labels(source=source or 'unknown', status='received').inc()
     """通用 Webhook 处理逻辑"""
     analysis_result = {}
     original_event = None
@@ -767,6 +768,11 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
             save_result = persisted.save_result
             noise_context = persisted.noise_context
             analysis_result = _apply_noise_metadata(analysis_result, noise_context)
+            WEBHOOK_NOISE_REDUCED_TOTAL.labels(
+                source=request_context.source,
+                relation=noise_context.relation,
+                suppressed=str(noise_context.suppress_forward).lower()
+            ).inc()
 
         beyond_window = save_result.beyond_window
         is_dup = save_result.is_duplicate
