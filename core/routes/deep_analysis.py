@@ -192,7 +192,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=Non
                     try:
                         from adapters.ecosystem_adapters import send_feishu_deep_analysis
                         if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                            send_feishu_deep_analysis(
+                            await send_feishu_deep_analysis(
                                 webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                                 analysis_record={
                                     'analysis_result': report,
@@ -333,7 +333,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=N
 
             if is_feishu:
                 from adapters.ecosystem_adapters import send_feishu_deep_analysis
-                success = send_feishu_deep_analysis(
+                success = await send_feishu_deep_analysis(
                     webhook_url=target_url,
                     analysis_record={
                         'analysis_result': analysis.analysis_result,
@@ -445,7 +445,7 @@ async def retry_deep_analysis(analysis_id: int):
                             'engine': record.engine,
                             'duration_seconds': record.duration_seconds,
                         }
-                        send_feishu_deep_analysis(
+                        await send_feishu_deep_analysis(
                             webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                             analysis_record=analysis_data,
                             source=source,
