@@ -1,3 +1,4 @@
+from core.http_client import get_http_client
 import httpx
 import json
 import re
@@ -98,10 +99,9 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         return False
     
     try:
-        from core.models import AnalysisCache, get_session
+        from core.models import AnalysisCache, session_scope
         
-        session = get_session()
-        try:
+        with session_scope() as session:
             cache_key = get_cache_key(alert_hash)
             expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
             
@@ -126,12 +126,8 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
                 )
                 session.add(cache_entry)
             
-            session.commit()
             logger.info(f"分析结果已缓存: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}秒")
             return True
-            
-        finally:
-            session.close()
             
     except Exception as e:
         logger.warning(f"保存缓存失败: {e}")
@@ -160,7 +156,7 @@ def log_ai_usage(
         cache_hit: 是否命中缓存
     """
     try:
-        from core.models import AIUsageLog, get_session
+        from core.models import AIUsageLog, session_scope
         
         # 计算估算成本
         cost_estimate = 0.0
@@ -170,8 +166,7 @@ def log_ai_usage(
                 (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
             )
         
-        session = get_session()
-        try:
+        with session_scope() as session:
             usage_log = AIUsageLog(
                 model=model or Config.OPENAI_MODEL,
                 tokens_in=tokens_in,
@@ -183,12 +178,7 @@ def log_ai_usage(
                 source=source
             )
             session.add(usage_log)
-            session.commit()
-            
             logger.debug(f"AI 使用记录: type={route_type}, tokens={tokens_in}+{tokens_out}, cost=${cost_estimate:.6f}")
-            
-        finally:
-            session.close()
             
     except Exception as e:
         logger.warning(f"记录 AI 使用日志失败: {e}")
@@ -731,7 +721,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optiona
             model=Config.OPENAI_MODEL,
             tokens_in=tokens_in,
             tokens_out=tokens_out
-        )
+    )
         
         return analysis
 
@@ -774,7 +764,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL
-        )
+    )
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
@@ -882,7 +872,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL
-        )
+    )
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
@@ -1077,14 +1067,14 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             }
 
             # 发送通知（熔断保护）
-            async with httpx.AsyncClient() as client:
-                response = await feishu_cb.call_async(
-                    client.post,
-                    Config.FORWARD_URL,
-                    json=forward_data,
-                    headers={'Content-Type': 'application/json'},
-                    timeout=Config.FEISHU_WEBHOOK_TIMEOUT
-                )
+            client = get_http_client()
+            response = await feishu_cb.call_async(
+                client.post,
+                Config.FORWARD_URL,
+                json=forward_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=Config.FEISHU_WEBHOOK_TIMEOUT
+            )
 
             if response is not None and 200 <= response.status_code < 300:
                 logger.info(f"AI 降级通知已发送到飞书")
@@ -1253,14 +1243,14 @@ async def forward_to_remote(
             headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
         
         logger.info(f"转发数据到 {target_url}")
-        async with httpx.AsyncClient() as client:
-            response = await forward_cb.call_async(
-                client.post,
-                target_url,
-                json=forward_data,
-                headers=headers,
-                timeout=Config.FORWARD_TIMEOUT
-            )
+        client = get_http_client()
+        response = await forward_cb.call_async(
+        client.post,
+        target_url,
+            json=forward_data,
+        headers=headers,
+            timeout=Config.FORWARD_TIMEOUT
+    )
 
         if response is None:
             return {'status': 'failed', 'message': '转发请求被熔断拦截'}
@@ -1478,14 +1468,14 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
     logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
     # 超时配置：(连接超时, 读取超时)
-    async with httpx.AsyncClient() as client:
-            response = await openclaw_cb.call_async(
-                client.post,
-                target_url,
-                headers=headers,
-                timeout=httpx.Timeout(60.0, connect=10.0),
-                **kwargs
-            )
+    client = get_http_client()
+    response = await openclaw_cb.call_async(
+        client.post,
+        target_url,
+        headers=headers,
+        timeout=httpx.Timeout(60.0, connect=10.0),
+        **kwargs
+    )
 
     if response is None:
         return {'status': 'error', 'message': f'{platform.capitalize()} 请求被熔断拦截'}
@@ -1588,13 +1578,13 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
-                response = await openclaw_cb.call_async(
-                client.post,
-                target_url,
-                headers=headers,
-                timeout=httpx.Timeout(60.0, connect=10.0),
-                **kwargs
+            client = get_http_client()
+            response = await openclaw_cb.call_async(
+        client.post,
+        target_url,
+        headers=headers,
+        timeout=httpx.Timeout(60.0, connect=10.0),
+        **kwargs
             )
 
             if response is None:

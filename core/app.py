@@ -2,7 +2,7 @@ import os
 import time
 import asyncio
 import socket
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from fastapi import FastAPI, Request, Query, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
@@ -15,8 +15,10 @@ from sqlalchemy.exc import IntegrityError
 from pathlib import Path
 from dotenv import dotenv_values
 from core.config import Config
+from core.http_client import get_http_client, close_http_client
 from core.logger import logger
 from core.utils import (
+    processing_lock,
     verify_signature, save_webhook_data, get_client_ip,
     generate_alert_hash, check_duplicate_alert,
     SaveWebhookResult
@@ -30,7 +32,17 @@ from core.routes.forward_rules import forward_rules_router
 from core.routes.reanalysis import reanalysis_router
 from core.routes.webhook import webhook_router
 
-app = FastAPI(title="Webhook AI Assistant")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    get_http_client()
+    yield
+    # Shutdown
+    await close_http_client()
+
+app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
+
 
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app)
@@ -290,46 +302,7 @@ def _fail(error: str, http_status: int = 500, **extra):
 
 
 
-@contextmanager
-def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
-    """
-    告警处理锁上下文管理器（Redis 分布式锁）
-    
-    利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
-    """
-    import core.redis_client
-    redis_client = core.redis_client.get_redis()
-    lock_key = f"lock:webhook:{alert_hash}"
-    lock_value = _WORKER_ID
-    
-    lock_acquired = False
-    
-    try:
-        # 尝试获取锁
-        lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=_LOCK_TTL_SECONDS))
-        if lock_acquired:
-            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={_WORKER_ID}")
-        else:
-            logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
-    except Exception as e:
-        logger.error(f"获取处理锁失败: {e}")
 
-    try:
-        yield lock_acquired
-    finally:
-        if lock_acquired:
-            try:
-                release_lua = """
-                if redis.call("get", KEYS[1]) == ARGV[1] then
-                    return redis.call("del", KEYS[1])
-                else
-                    return 0
-                end
-                """
-                redis_client.eval(release_lua, 1, lock_key, lock_value)
-                logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
-            except Exception as e:
-                logger.error(f"释放锁失败: {e}")
 
 async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
     logger.info(message)

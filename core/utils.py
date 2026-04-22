@@ -924,3 +924,45 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     
     # 返回限制数量的结果
     return webhooks[:limit]
+
+
+@contextmanager
+def processing_lock(alert_hash: str) -> Generator[bool, None, None]:
+    """
+    告警处理锁上下文管理器（Redis 分布式锁）
+    
+    利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
+    """
+    import core.redis_client
+    redis_client = core.redis_client.get_redis()
+    lock_key = f"lock:webhook:{alert_hash}"
+    lock_value = Config.WORKER_ID
+    
+    lock_acquired = False
+    
+    try:
+        # 尝试获取锁
+        lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS))
+        if lock_acquired:
+            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
+        else:
+            logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
+    except Exception as e:
+        logger.error(f"获取处理锁失败: {e}")
+
+    try:
+        yield lock_acquired
+    finally:
+        if lock_acquired:
+            try:
+                release_lua = """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                else
+                    return 0
+                end
+                """
+                redis_client.eval(release_lua, 1, lock_key, lock_value)
+                logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
+            except Exception as e:
+                logger.error(f"释放锁失败: {e}")
