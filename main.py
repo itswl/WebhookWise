@@ -20,6 +20,8 @@ from core.logger import logger
 def _start_poller():
     from services.openclaw_poller import start_poller
     start_poller(interval=30)
+    from services.maintenance_poller import start_maintenance_poller
+    start_maintenance_poller()
 
 _start_poller()
 
