@@ -4,7 +4,8 @@ core/routes/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, Body, Query, Response, BackgroundTasks
+from core.auth import verify_api_key
+from fastapi import APIRouter, Request, HTTPException, Body, Query, Response, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, FileResponse
 import os
 
@@ -43,7 +44,7 @@ def serve_static(filename: str):
 
 # ── Webhooks API ────────────────────────────────────────────────────────────────
 
-@webhook_router.get('/api/webhooks')
+@webhook_router.get('/api/webhooks', dependencies=[Depends(verify_api_key)])
 def list_webhooks(
     page: int = Query(1),
     page_size: int = Query(20),
@@ -109,7 +110,7 @@ def list_webhooks(
         return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
 
 
-@webhook_router.get('/api/webhooks/{webhook_id}')
+@webhook_router.get('/api/webhooks/{webhook_id}', dependencies=[Depends(verify_api_key)])
 def get_webhook_detail(webhook_id: int):
     from core.models import WebhookEvent, session_scope
 
