@@ -667,14 +667,36 @@ def _update_last_notified(event_id: int) -> None:
 
 def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str]) -> WebhookRequestContext:
     
-    requested_source = source or headers.get('X-Webhook-Source', 'unknown')
+    requested_source = source or headers.get('x-webhook-source', 'unknown')
 
     logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
     logger.debug(f"[Webhook] 原始载荷: {raw_body.decode('utf-8', errors='ignore')}")
 
-    signature = headers.get('X-Webhook-Signature', '')
+    from core.config import Config
+    # 1. 检查 HMAC 签名 (向后兼容)
+    signature = headers.get('x-webhook-signature', '')
     if signature and not verify_signature(raw_body, signature):
         raise InvalidSignatureError()
+        
+    # 2. 检查静态 Token 认证
+    # 格式要求：Header 中携带 Token:<加密token>
+    token = headers.get('token', '')
+    if not token and headers.get('authorization', '').startswith('Token '):
+        token = headers.get('authorization', '')[6:].strip()
+        
+    # 如果配置了 WEBHOOK_SECRET，且没有收到 HMAC 签名，那么必须验证 Token
+    if Config.WEBHOOK_SECRET and not signature:
+        if not token:
+            logger.warning(f"[Auth] 缺少认证信息: IP={client_ip}")
+            raise InvalidSignatureError()
+            
+        import hmac
+        # 使用安全的字符串比较防止时序攻击
+        if not hmac.compare_digest(token, Config.WEBHOOK_SECRET):
+            logger.warning(f"[Auth] Token 验证失败: IP={client_ip}, Token={token[:8]}...")
+            raise InvalidSignatureError()
+        else:
+            logger.debug("[Auth] Token 验证通过")
 
     if not payload and raw_body:
         import json
@@ -744,7 +766,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
         except InvalidSignatureError:
-            logger.warning(f"签名验证失败: IP={client_ip}, Source={source or 'unknown'}")
+            logger.warning(f"认证失败 (Token/Signature 不匹配或缺失): IP={client_ip}, Source={source or 'unknown'}")
             logger.error(f"Processing failed: Invalid signature, 401")
             return
         except InvalidJsonError:
