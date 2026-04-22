@@ -24,12 +24,14 @@ const API = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await this.authenticatedFetch(url, { ...options, headers });
+        // 调用原生 fetch
+        const response = await fetch(url, { ...options, headers });
         
         if (response.status === 401) {
             const key = prompt('请输入管理接口 API Key:');
             if (key) {
                 localStorage.setItem('webhook_api_key', key);
+                // 递归调用自己，使用新 token
                 return this.authenticatedFetch(url, options);
             }
         }
