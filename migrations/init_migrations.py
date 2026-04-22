@@ -461,6 +461,47 @@ def add_polling_fields():
         return False
 
 
+
+def add_archive_and_indexes():
+    """
+    执行归档表创建和复合索引优化
+    """
+    engine = get_engine()
+    from pathlib import Path
+    
+    sql_path = Path(__file__).parent / 'sql' / 'archive_and_index.sql'
+    if not sql_path.exists():
+        return True
+
+    try:
+        with engine.connect() as conn:
+            # 检查其中一个新索引是否已存在
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_indexes
+                    WHERE indexname = 'idx_webhook_hash_timestamp'
+                )
+            """))
+            if result.scalar():
+                return True
+            
+            print("⚙️  正在执行数据库性能优化 (复合索引与归档表)...")
+            
+            with open(sql_path, 'r') as f:
+                sql_content = f.read()
+                
+            # 执行 SQL 脚本
+            conn.execute(text(sql_content))
+            conn.commit()
+            
+            print("   ✅ 数据库性能优化脚本执行成功")
+            return True
+            
+    except Exception as e:
+        print(f"   ⚠️  性能优化迁移警告: {e}")
+        return False
+
+
 if __name__ == '__main__':
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
@@ -469,4 +510,5 @@ if __name__ == '__main__':
     success5 = add_forward_rules_table()
     success6 = add_deep_analyses_table()
     success7 = add_polling_fields()
-    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6 and success7) else 1)
+    success8 = add_archive_and_indexes()
+    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6 and success7 and success8) else 1)
