@@ -2,7 +2,7 @@ import time
 import threading
 import logging
 from datetime import datetime
-from scripts.archive_data import archive_old_data
+from services.data_maintenance import archive_old_data
 
 logger = logging.getLogger('webhook_service.maintenance')
 
