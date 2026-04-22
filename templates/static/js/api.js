@@ -4,6 +4,39 @@
  */
 
 const API = {
+    /**
+     * 获取认证 Token
+     */
+    getToken() {
+        return localStorage.getItem('webhook_api_key') || '';
+    },
+
+    /**
+     * 包装 fetch，自动添加 Auth 头和处理 401
+     */
+    async authenticatedFetch(url, options = {}) {
+        const token = this.getToken();
+        const headers = {
+            ...options.headers,
+            'Content-Type': 'application/json'
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await this.authenticatedFetch(url, { ...options, headers });
+        
+        if (response.status === 401) {
+            const key = prompt('请输入管理接口 API Key:');
+            if (key) {
+                localStorage.setItem('webhook_api_key', key);
+                return this.authenticatedFetch(url, options);
+            }
+        }
+        
+        return response;
+    },
+
     // ========== 告警相关 API ==========
 
     /**
@@ -20,7 +53,7 @@ const API = {
         if (params.page_size) queryParams.append('page_size', params.page_size);
         if (params.fields) queryParams.append('fields', params.fields);
 
-        const response = await fetch('/api/webhooks?' + queryParams.toString());
+        const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -31,7 +64,7 @@ const API = {
      * @returns {Promise<object>} 告警详情数据
      */
     async getWebhook(id) {
-        const response = await fetch('/api/webhooks/' + id);
+        const response = await this.authenticatedFetch('/api/webhooks/' + id);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -42,7 +75,7 @@ const API = {
      * @returns {Promise<object>} 分析结果
      */
     async reanalyze(id) {
-        const response = await fetch('/api/reanalyze/' + id, { method: 'POST' });
+        const response = await this.authenticatedFetch('/api/reanalyze/' + id, { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -54,7 +87,7 @@ const API = {
      * @returns {Promise<object>} 转发结果
      */
     async forward(id, url) {
-        const response = await fetch('/api/forward/' + id, {
+        const response = await this.authenticatedFetch('/api/forward/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ forward_url: url })
@@ -71,7 +104,7 @@ const API = {
      * @returns {Promise<object>} AI 使用统计数据
      */
     async getAIUsage(period = 'day') {
-        const response = await fetch('/api/ai-usage?period=' + period);
+        const response = await this.authenticatedFetch('/api/ai-usage?period=' + period);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -81,7 +114,7 @@ const API = {
      * @returns {Promise<object>} Prompt 配置
      */
     async getPrompt() {
-        const response = await fetch('/api/prompt');
+        const response = await this.authenticatedFetch('/api/prompt');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -91,7 +124,7 @@ const API = {
      * @returns {Promise<object>} 重载结果
      */
     async reloadPrompt() {
-        const response = await fetch('/api/prompt/reload', { method: 'POST' });
+        const response = await this.authenticatedFetch('/api/prompt/reload', { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -103,7 +136,7 @@ const API = {
      * @returns {Promise<object>} 配置数据
      */
     async getConfig() {
-        const response = await fetch('/api/config');
+        const response = await this.authenticatedFetch('/api/config');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -114,7 +147,7 @@ const API = {
      * @returns {Promise<object>} 保存结果
      */
     async saveConfig(data) {
-        const response = await fetch('/api/config', {
+        const response = await this.authenticatedFetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -132,7 +165,7 @@ const API = {
         const params = new URLSearchParams({ page: page, per_page: perPage });
         if (status) params.set('status', status);
         if (engine) params.set('engine', engine);
-        const response = await fetch('/api/deep-analyses?' + params.toString());
+        const response = await this.authenticatedFetch('/api/deep-analyses?' + params.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -143,7 +176,7 @@ const API = {
      * @returns {Promise<object>} 深度分析历史记录列表
      */
     async getDeepAnalyses(webhookId) {
-        const response = await fetch('/api/deep-analyses/' + webhookId);
+        const response = await this.authenticatedFetch('/api/deep-analyses/' + webhookId);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -156,7 +189,7 @@ const API = {
      * @returns {Promise<object>} 分析结果
      */
     async deepAnalyze(id, question, engine = 'auto') {
-        const response = await fetch('/api/deep-analyze/' + id, {
+        const response = await this.authenticatedFetch('/api/deep-analyze/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -175,7 +208,7 @@ const API = {
      * @returns {Promise<object>} 转发结果
      */
     async forwardDeepAnalysis(analysisId, targetUrl) {
-        const response = await fetch('/api/deep-analyses/' + analysisId + '/forward', {
+        const response = await this.authenticatedFetch('/api/deep-analyses/' + analysisId + '/forward', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_url: targetUrl })
@@ -189,7 +222,7 @@ const API = {
      * @returns {Promise<object>} 重试结果
      */
     async retryDeepAnalysis(analysisId) {
-        const response = await fetch('/api/deep-analyses/' + analysisId + '/retry', {
+        const response = await this.authenticatedFetch('/api/deep-analyses/' + analysisId + '/retry', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -203,7 +236,7 @@ const API = {
      * @returns {Promise<object>} 规则列表
      */
     async getForwardRules() {
-        const response = await fetch('/api/forward-rules');
+        const response = await this.authenticatedFetch('/api/forward-rules');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -214,7 +247,7 @@ const API = {
      * @returns {Promise<object>} 创建结果
      */
     async createForwardRule(ruleData) {
-        const response = await fetch('/api/forward-rules', {
+        const response = await this.authenticatedFetch('/api/forward-rules', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ruleData)
@@ -230,7 +263,7 @@ const API = {
      * @returns {Promise<object>} 更新结果
      */
     async updateForwardRule(id, ruleData) {
-        const response = await fetch('/api/forward-rules/' + id, {
+        const response = await this.authenticatedFetch('/api/forward-rules/' + id, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ruleData)
@@ -245,7 +278,7 @@ const API = {
      * @returns {Promise<object>} 删除结果
      */
     async deleteForwardRule(id) {
-        const response = await fetch('/api/forward-rules/' + id, {
+        const response = await this.authenticatedFetch('/api/forward-rules/' + id, {
             method: 'DELETE'
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -258,7 +291,7 @@ const API = {
      * @returns {Promise<object>} 测试结果
      */
     async testForwardRule(id) {
-        const response = await fetch('/api/forward-rules/' + id + '/test', {
+        const response = await this.authenticatedFetch('/api/forward-rules/' + id + '/test', {
             method: 'POST'
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
