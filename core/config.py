@@ -31,6 +31,7 @@ class _AppConfig(BaseSettings):
 
     # 安全配置
     WEBHOOK_SECRET: str = Field(default='')
+    API_KEY: str = Field(default='')
 
     # 日志配置
     LOG_LEVEL: str = Field(default='INFO')
@@ -165,6 +166,8 @@ class _AppConfig(BaseSettings):
         warnings = []
         if not self.WEBHOOK_SECRET:
             warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
+        if not self.API_KEY:
+            warnings.append("API_KEY 未配置，管理接口将处于公开状态 (不建议)")
         if self.ENABLE_AI_ANALYSIS and not self.OPENAI_API_KEY:
             warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
         if self.ENABLE_FORWARD and not self.FORWARD_URL:
