@@ -7,6 +7,7 @@ from typing import Any, Callable, Mapping, Optional
 import requests
 
 from core.config import Config
+from core.http_client import get_http_client
 from core.utils import feishu_cb
 
 logger = logging.getLogger('webhook_service.ecosystem_adapters')
@@ -483,7 +484,7 @@ def _format_recommendations(recs: Any, max_items: int = 5, max_item_len: int = 2
     return '\n'.join(lines) if lines else '无'
 
 
-def send_feishu_deep_analysis(
+async def send_feishu_deep_analysis(
     webhook_url: str,
     analysis_record: dict,
     source: str = '',
