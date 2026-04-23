@@ -17,8 +17,18 @@
 }
 
 .alert-item {
-    border-bottom: 1px solid #e1e4e8;
-    transition: background 0.2s;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.alert-item:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: #cbd5e1;
+    transform: translateY(-2px);
 }
 
 .alert-item:last-child {
@@ -30,12 +40,13 @@
 }
 
 .alert-header {
-    padding: 1.25rem 1.5rem;
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(248, 250, 252, 0.5);
+    border-bottom: 1px solid #e2e8f0;
     cursor: pointer;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 1rem;
-    align-items: start;
 }
 
 .alert-left {
@@ -101,7 +112,13 @@
 }
 
 .alert-item.expanded .alert-header {
-    background: #f6f8fa;
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(248, 250, 252, 0.5);
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
 }
 
 @keyframes slideDown {
@@ -191,30 +208,19 @@
 
 /* ==================== 徽章 ==================== */
 .badge {
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
-    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-.badge-high {
-    background: #ffeef0;
-    color: #d73a49;
-    border: 1px solid #f9d0d3;
-}
+.badge-high { background: #fee2e2; color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
 
-.badge-medium {
-    background: #fff5e6;
-    color: #e36209;
-    border: 1px solid #ffd8a8;
-}
+.badge-medium { background: #fef3c7; color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
 
-.badge-low {
-    background: #dcffe4;
-    color: #28a745;
-    border: 1px solid #b1f1c1;
-}
+.badge-low { background: #d1fae5; color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
 
 .badge-duplicate {
     background: #f1f8ff;
@@ -749,8 +755,14 @@
     }
 
     .alert-header {
-        grid-template-columns: 1fr;
-    }
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(248, 250, 252, 0.5);
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+}
 
     .alert-right {
         flex-wrap: wrap;

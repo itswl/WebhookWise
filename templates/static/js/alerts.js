@@ -434,46 +434,108 @@ const AlertsModule = {
      * 渲染 AI 分析结果
      */
     renderAIAnalysis(analysis) {
-        let html = '<div class="ai-section">';
-        html += '<div class="ai-header">🤖 智能分析结果</div>';
-        html += '<div class="ai-content">';
-        if (analysis.event_type) {
-            html += '<div class="ai-item"><div class="ai-label">事件类型</div><div class="ai-value">' + analysis.event_type + '</div></div>';
+        if (!analysis || Object.keys(analysis).length === 0) {
+            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无 AI 分析数据</div>';
         }
-        if (analysis.impact_scope) {
-            html += '<div class="ai-item"><div class="ai-label">影响范围</div><div class="ai-value">' + analysis.impact_scope + '</div></div>';
+
+        let html = `
+            <div class="ai-analysis" style="border-left: 4px solid #4f46e5; background: #ffffff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 1rem;">
+                <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: #4f46e5; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                    <span>🤖</span> AIOps 智能诊断报告
+                    <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
+                        ${analysis._degraded ? '本地规则降级' : analysis._route_type || '智能路由'}
+                    </span>
+                </div>
+                
+                <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
+                    ${analysis.summary || '无分析摘要'}
+                </div>
+                
+                <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
+        `;
+
+        if (analysis.root_cause) {
+            html += `
+                <div class="detail-section">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 根因定位</h4>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${analysis.root_cause}</p>
+                </div>
+            `;
+        } else if (analysis.event_type) {
+            html += `
+                <div class="detail-section">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ 事件类型</h4>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${analysis.event_type}</p>
+                </div>
+            `;
         }
-        if (analysis.actions && analysis.actions.length > 0) {
-            html += '<div class="ai-item"><div class="ai-label">建议操作</div><ul class="ai-list">';
-            analysis.actions.forEach(function(action) {
-                html += '<li>' + action + '</li>';
-            });
-            html += '</ul></div>';
+
+        if (analysis.impact || analysis.impact_scope) {
+            const impact = analysis.impact || analysis.impact_scope;
+            html += `
+                <div class="detail-section">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 影响评估</h4>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${impact}</p>
+                </div>
+            `;
         }
+
+        const actions = analysis.recommendations || analysis.actions;
+        if (actions && actions.length > 0) {
+            html += `
+                <div class="detail-section" style="grid-column: 1 / -1;">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ 修复建议与操作</h4>
+                    <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
+                        ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${r}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        
         if (analysis.risks && analysis.risks.length > 0) {
-            html += '<div class="ai-item"><div class="ai-label">潜在风险</div><ul class="ai-list">';
-            analysis.risks.forEach(function(risk) {
-                html += '<li>' + risk + '</li>';
-            });
-            html += '</ul></div>';
+            html += `
+                <div class="detail-section" style="grid-column: 1 / -1;">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ 潜在风险</h4>
+                    <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
+                        ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${r}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
         }
+
+        html += `</div>`; // Close grid
+        
+        // Metadata footer
+        html += `
+            <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <span>⚡ 重要性: <strong style="color: #0f172a;">${analysis.importance || '未知'}</strong></span>
+        `;
+        
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
-            const relationMap = {
-                root_cause: '根因告警',
-                derived: '衍生告警',
-                standalone: '独立告警'
-            };
+            const relationMap = { root_cause: '根因告警', derived: '衍生告警', standalone: '独立告警' };
             const relation = relationMap[nr.relation] || nr.relation || '未知';
-            html += '<div class="ai-item"><div class="ai-label">降噪判定</div><div class="ai-value">' + relation + '</div></div>';
+            html += `<span>🛡️ 降噪判定: <strong style="color: #0f172a;">${relation}</strong> (置信度: ${(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += '<div class="ai-item"><div class="ai-label">关联根因ID</div><div class="ai-value">#' + nr.root_cause_event_id + '</div></div>';
-            }
-            if (nr.reason) {
-                html += '<div class="ai-item"><div class="ai-label">关联说明</div><div class="ai-value">' + nr.reason + '</div></div>';
+                html += `<span>🔗 关联根因: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
-        html += '</div></div>';
+        
+        html += `<span>🔀 路由通道: <strong style="color: #0f172a;">${analysis._route_type || '未知'}</strong></span>`;
+        if (analysis._cache_hit) {
+            html += `<span title="命中次数: ${analysis._cache_hit_count || 1}" style="color: #10b981; font-weight: 600;">🎯 缓存命中 (${analysis._cache_hit_count || 1}次)</span>`;
+        }
+        
+        html += `
+            </div>
+        </div>
+        `;
+        
+        // Render Raw JSON analysis below it for debugging
+        if (typeof renderJSONBlock === 'function') {
+            html += renderJSONBlock(analysis, '原始分析数据');
+        }
+        
         return html;
     },
 
