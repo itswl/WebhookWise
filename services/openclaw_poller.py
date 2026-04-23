@@ -103,6 +103,8 @@ def poll_pending_analyses():
         
     try:
         _poll_pending_analyses_inner()
+    except Exception as e:
+        logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
         redis_client.delete(lock_key)
 
