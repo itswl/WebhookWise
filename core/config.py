@@ -27,6 +27,7 @@ class _AppConfig(BaseSettings):
     # 服务器配置
     PORT: int = Field(default=8000)
     HOST: str = Field(default='0.0.0.0')
+    METRICS_PORT: int = Field(default=0)  # 0 means use main PORT
     DEBUG: bool = os.getenv('FLASK_ENV', 'production') == 'development'
 
     # 安全配置
