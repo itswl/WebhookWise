@@ -12,163 +12,181 @@
     <!-- Markdown 渲染库 -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-    <style>
-    /* 深度分析可折叠卡片 */
+        <style>
+    /* 深度分析可折叠卡片 - Modernized */
     .da-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        background: #fafafa;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        margin-bottom: 1rem;
+        background: var(--bg-surface);
         overflow: hidden;
-        transition: box-shadow 0.2s;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-sm);
     }
-    .da-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .da-card-expanded { border-color: #1976d2; box-shadow: 0 2px 12px rgba(25,118,210,0.15); }
+    .da-card:hover { 
+        box-shadow: var(--shadow-md); 
+        border-color: #d1d5db;
+        transform: translateY(-2px);
+    }
+    .da-card-expanded { 
+        border-color: var(--primary); 
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15); 
+    }
 
     /* 折叠行 */
     .da-summary {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        padding: 12px 16px;
+        padding: 1rem 1.5rem;
         cursor: pointer;
-        user-select: none;
+        gap: 1rem;
+        background: rgba(249, 250, 251, 0.5);
+        border-bottom: 1px solid transparent;
+        transition: background 0.2s;
     }
-    .da-summary:hover { background: #f0f4f8; }
-    .da-summary-left, .da-summary-right {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        min-width: 0;
+    .da-summary:hover { background: #f3f4f6; }
+    .da-card-expanded .da-summary { 
+        border-bottom-color: var(--border);
+        background: var(--bg-surface);
     }
-    .da-summary-right { flex: 1; justify-content: flex-end; }
-    .da-summary-text { color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
-    .da-expand-icon { color: #1976d2; font-size: 0.8em; margin-left: 8px; flex-shrink: 0; }
-    
-    /* 新增：摘要头部布局 */
-    .da-summary-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-    .da-duration { color: #888; font-size: 0.85em; white-space: nowrap; }
-    
-    /* 新增：详细信息行 */
-    .da-summary-details {
-        margin-top: 10px;
-        padding: 10px 12px;
-        background: #f8f9fa;
-        border-radius: 6px;
-        border-left: 3px solid #1976d2;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 10px;
-        font-size: 0.85em;
-        line-height: 1.5;
-    }
-    .da-summary-root { 
-        color: #333; 
-        padding: 4px 0;
-    }
-    .da-summary-impact { 
-        color: #555; 
-        padding: 4px 0;
-    }
-    .da-summary-recs { 
-        color: #2e7d32; 
-        padding: 4px 0;
-    }
-    .da-summary-conf { 
+
+    .da-id { 
         font-weight: 600; 
-        padding: 4px 0;
+        color: var(--text-muted); 
+        width: 60px; 
+        font-size: 0.875rem;
     }
-    .da-summary-pending { 
-        color: #e65100; 
-        font-style: italic; 
-        grid-column: 1 / -1;
-        padding: 4px 0;
+    .da-engine {
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: #e0e7ff;
+        color: var(--primary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
-    .da-summary-failed { 
-        color: #c62828; 
-        grid-column: 1 / -1;
-        padding: 4px 0;
+    .da-engine-openclaw { background: #dbeafe; color: #4338ca; }
+    .da-engine-local { background: #f3f4f6; color: #4b5563; }
+    .da-engine-hermes { background: #fae8ff; color: #4c1d95; }
+
+    .da-question { 
+        flex-grow: 1; 
+        color: var(--text-main); 
+        font-weight: 500;
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        font-size: 0.95rem;
     }
+    
+    .da-status {
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+    }
+    .da-status-completed { background: var(--success-bg); color: var(--success); }
+    .da-status-pending { background: var(--warning-bg); color: var(--warning); animation: pulse 2s infinite;}
+    .da-status-failed { background: var(--danger-bg); color: var(--danger); }
+    
+    .da-time { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; }
+    .da-duration { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; font-family: monospace;}
+    
+    /* 详细信息行 */
+    .da-summary-details {
+        margin-top: 1rem;
+        padding: 1.25rem;
+        background: #f8fafc;
+        border-radius: var(--radius-md);
+        border-left: 4px solid var(--primary);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        font-size: 0.875rem;
+        line-height: 1.6;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .da-summary-root { color: var(--text-main); }
+    .da-summary-impact { color: var(--text-muted); }
+    .da-summary-recs { color: var(--success); }
+    .da-summary-conf { font-weight: 600; color: var(--primary); }
 
-    /* 状态标签 */
-    .da-status { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; }
-    .da-status-pending { background: #fff3e0; color: #e65100; }
-    .da-status-completed { background: #e8f5e9; color: #2e7d32; }
-    .da-status-failed { background: #ffebee; color: #c62828; }
-    .da-status-unknown { background: #f5f5f5; color: #666; }
-
-    /* 告警类型标签 */
-    .da-alert-type { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.78em; }
-    .da-alert-type-new { background: #e3f2fd; color: #1565c0; }
-    .da-alert-type-dup { background: #fff8e1; color: #f57f17; }
-    .da-alert-type-beyond { background: #fce4ec; color: #c62828; }
-
-    /* 引擎/来源/ID 标签 */
-    .da-engine { font-weight: 600; font-size: 0.85em; }
-    .da-source, .da-webhook-id { color: #666; font-size: 0.85em; }
-    .da-time { color: #888; font-size: 0.85em; white-space: nowrap; }
-
-    /* 展开详情区 */
-    .da-detail {
-        border-top: 1px solid #eee;
-        padding: 16px;
-        background: #fff;
+    /* 展开内容 */
+    .da-details {
         display: none;
+        padding: 1.5rem;
+        border-top: 1px solid var(--border);
+        background: var(--bg-surface);
     }
-    .da-detail-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #f0f0f0;
+    .da-card-expanded .da-details { 
+        display: block; 
+        animation: slideDown 0.3s ease-out forwards;
     }
-    .da-detail-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .da-detail-time { display: flex; gap: 10px; align-items: center; color: #888; font-size: 0.85em; white-space: nowrap; }
-    .da-engine-tag { font-weight: 600; font-size: 0.85em; }
-    .da-source-tag, .da-webhook-tag { color: #666; font-size: 0.85em; }
-    .da-run-id, .da-session-key { color: #999; font-size: 0.8em; font-family: monospace; }
-    .da-collapse-btn {
-        background: none;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 2px 10px;
-        cursor: pointer;
-        font-size: 0.8em;
-        color: #666;
-        margin-left: 12px;
-    }
-    .da-collapse-btn:hover { background: #f5f5f5; }
 
-    /* 内容区 */
-    .da-user-question { margin-bottom: 10px; padding: 8px 12px; background: #e8f4fd; border-radius: 4px; font-size: 0.9em; }
-    .da-pending-box { text-align: center; padding: 24px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 8px; color: white; margin-bottom: 12px; }
-    .da-pending-icon { font-size: 2em; margin-bottom: 8px; }
-    .da-pending-text { font-weight: 600; }
-    .da-pending-run { font-size: 0.8em; color: rgba(255,255,255,0.7); margin-top: 4px; }
-    .da-failed-box { padding: 12px; background: #fff3f3; border-radius: 4px; color: #d32f2f; margin-bottom: 12px; }
-    .da-section { margin-bottom: 10px; }
-    .da-section p { margin: 4px 0; white-space: pre-wrap; }
-    .da-section ul { margin: 4px 0; padding-left: 20px; }
-    .da-section li { margin: 2px 0; }
-    .da-analysis-content { background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 0.9em; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
-    .da-confidence { color: #888; font-size: 0.85em; margin-top: 8px; }
+    .da-section { margin-bottom: 1.5rem; }
+    .da-section h4 {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+    }
+    .da-section p { margin: 0.5rem 0; white-space: pre-wrap; color: var(--text-main); font-size: 0.95rem; }
+    .da-section ul { margin: 0.5rem 0; padding-left: 1.5rem; color: var(--text-main); font-size: 0.95rem;}
+    .da-section li { margin: 0.25rem 0; }
+    
+    .da-analysis-content { 
+        background: #1f2937; 
+        color: #e5e7eb;
+        padding: 1.25rem; 
+        border-radius: var(--radius-md); 
+        font-size: 0.875rem; 
+        font-family: 'Fira Code', 'Consolas', monospace;
+        max-height: 500px; 
+        overflow-y: auto; 
+        white-space: pre-wrap; 
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .da-analysis-content::-webkit-scrollbar { height: 8px; width: 8px; }
+    .da-analysis-content::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+
+    .da-confidence { color: var(--text-muted); font-size: 0.85em; margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem;}
 
     /* 按钮 */
-    .da-btn-row { margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; display: flex; gap: 8px; flex-wrap: wrap; }
-    .da-btn { border: none; border-radius: 4px; padding: 5px 14px; cursor: pointer; font-size: 0.85em; }
-    .da-btn-retry { background: #1976d2; color: #fff; }
-    .da-btn-forward { background: #4a90d9; color: #fff; }
-    .da-btn-reanalyze { background: #4caf50; color: #fff; }
+    .da-btn-row { 
+        margin-top: 1.5rem; 
+        padding-top: 1.25rem; 
+        border-top: 1px dashed var(--border); 
+        display: flex; 
+        gap: 0.75rem; 
+        flex-wrap: wrap; 
+    }
 
     /* 分页 */
-    .da-pagination { display: flex; gap: 4px; align-items: center; }
-    .da-page-btn { border: 1px solid #ddd; background: #fff; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 0.85em; color: #333; }
-    .da-page-btn:hover { background: #f0f0f0; }
-    .da-page-btn-active { background: #1976d2; color: #fff; border-color: #1976d2; }
-    .da-page-btn-disabled { color: #ccc; cursor: not-allowed; }
-    .da-page-ellipsis { color: #888; padding: 0 4px; }
-    .da-total { color: #888; font-size: 0.85em; margin-left: 12px; }
+    .da-pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 2rem; padding: 1rem;}
+    .da-page-btn { 
+        border: 1px solid var(--border); 
+        background: var(--bg-surface); 
+        border-radius: var(--radius-md); 
+        min-width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer; 
+        font-size: 0.875rem; 
+        color: var(--text-main); 
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    .da-page-btn:hover:not(.da-page-btn-disabled) { background: var(--bg-base); border-color: #d1d5db; }
+    .da-page-btn-active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);}
+    .da-page-btn-disabled { color: #9ca3af; cursor: not-allowed; background: #f9fafb; border-color: #e5e7eb;}
+    .da-page-ellipsis { color: var(--text-muted); padding: 0 0.5rem; font-weight: bold;}
+    .da-total { color: var(--text-muted); font-size: 0.875rem; margin-left: 1rem; font-weight: 500;}
     </style>
 </head>
 <body>
