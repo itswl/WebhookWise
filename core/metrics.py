@@ -42,6 +42,10 @@ DATABASE_EVENTS_COUNT = Gauge(
     'Current number of webhook events in active table'
 )
 
+from core.config import Config
+from core.logger import logger
+import prometheus_client
+
 def setup_metrics(app):
     """初始化并挂载 Prometheus 指标"""
     instrumentator = Instrumentator(
@@ -52,5 +56,23 @@ def setup_metrics(app):
         inprogress_name="webhook_requests_inprogress",
         inprogress_labels=True,
     )
-    instrumentator.instrument(app).expose(app)
+    instrumentator.instrument(app)
+    
+    if Config.METRICS_PORT > 0 and Config.METRICS_PORT != Config.PORT:
+        # 启动独立的 Prometheus metrics 服务器
+        import socket
+        try:
+            prometheus_client.start_http_server(port=Config.METRICS_PORT, addr=Config.HOST)
+            logger.info(f"[Metrics] 成功启动独立的 Prometheus 监控端口: {Config.METRICS_PORT}")
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.debug(f"[Metrics] 独立监控端口 {Config.METRICS_PORT} 已被其他 Worker 绑定，复用该指标服务。")
+            else:
+                logger.error(f"[Metrics] 启动独立监控端口失败: {e}")
+        # 注意：无论是否绑定成功，都不向主 FastAPI 挂载 /metrics 路由，实现端口隔离。
+    else:
+        # 复用主程序的端口
+        logger.info(f"[Metrics] 复用主程序端口暴露 Prometheus 监控: {Config.PORT}/metrics")
+        instrumentator.expose(app, endpoint="/metrics")
+        
     return instrumentator
