@@ -96,7 +96,6 @@ const AICostModule = {
         const container = document.getElementById('aiCostStats');
         if (!container) return;
 
-        // 从 API 返回格式中提取数据
         const totalCalls = this.safeGet(data, 'total_calls', 0);
         const tokensTotal = this.safeGet(data, 'tokens.total', 0);
         const tokensInput = this.safeGet(data, 'tokens.input', 0);
@@ -121,127 +120,106 @@ const AICostModule = {
         const cacheHitRate = this.safeGet(cacheStats, 'cache_hit_rate', 0);
         const cacheSavedCalls = this.safeGet(cacheStats, 'saved_calls', 0);
 
-        let html = '';
+        let html = `
+            <!-- 核心数据看板 -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">核心账单 (USD)</div>
+            <div class="stats-grid" style="margin-bottom: 2.5rem;">
+                <div class="stat-card" style="border-left: 4px solid var(--primary);">
+                    <div class="stat-label">总消耗预算 (Estimated)</div>
+                    <div class="stat-value" style="color: var(--primary); font-size: 2.5rem;">${this.formatCurrency(costTotal)}</div>
+                    <div class="stat-trend" style="display: flex; justify-content: space-between;">
+                        <span>Tokens: ${formatNumber(tokensTotal)}</span>
+                        <span>API Call: ${formatNumber(totalCalls)}</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">
+                    <div class="stat-label" style="color: #059669;">累计节省 (Saved)</div>
+                    <div class="stat-value" style="color: var(--success); font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
+                    <div class="stat-trend" style="color: #059669;">通过降噪策略与缓存重用</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">输入吞吐量 (Prompt)</div>
+                    <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensInput)}</div>
+                    <div class="stat-trend">Tokens 发送</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">输出生成量 (Completion)</div>
+                    <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensOutput)}</div>
+                    <div class="stat-trend">Tokens 接收</div>
+                </div>
+            </div>
 
-        // ========== 统计卡片区域 ==========
-        html += '<div class="section-title">使用统计</div>';
-        html += '<div class="stats-grid">';
+            <!-- 分析路由分布 -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">处理路由漏斗 (Traffic Routing)</div>
+            <div style="background: var(--bg-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 2.5rem;">
+                
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                        <span style="font-weight: 500; color: var(--primary);">🤖 原生大模型分析 (AI Engine)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeAi)} 次 (${this.formatPercent(percentAi)})</span>
+                    </div>
+                    <div style="height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--primary); width: ${percentAi}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
 
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">总调用次数</div>';
-        html += '<div class="stat-value">' + formatNumber(totalCalls) + '</div>';
-        html += '<div class="stat-trend">本周期内所有请求</div>';
-        html += '</div>';
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                        <span style="font-weight: 500; color: var(--success);">💾 语义缓存拦截 (Cache Hit)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeCache)} 次 (${this.formatPercent(percentCache)})</span>
+                    </div>
+                    <div style="height: 8px; background: #d1fae5; border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--success); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
 
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">总 Token 数</div>';
-        html += '<div class="stat-value">' + formatNumber(tokensTotal) + '</div>';
-        html += '<div class="stat-trend">输入 + 输出</div>';
-        html += '</div>';
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                        <span style="font-weight: 500; color: var(--warning);">🔄 衍生降噪合并 (Deduplication)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeReuse)} 次 (${this.formatPercent(percentReuse)})</span>
+                    </div>
+                    <div style="height: 8px; background: #fef3c7; border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--warning); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
 
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">输入 Token</div>';
-        html += '<div class="stat-value">' + formatNumber(tokensInput) + '</div>';
-        html += '<div class="stat-trend">Prompt 消耗</div>';
-        html += '</div>';
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                        <span style="font-weight: 500; color: var(--text-muted);">📋 规则降级 (Rule Fallback)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeRule)} 次 (${this.formatPercent(percentRule)})</span>
+                    </div>
+                    <div style="height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: #94a3b8; width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
 
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">输出 Token</div>';
-        html += '<div class="stat-value">' + formatNumber(tokensOutput) + '</div>';
-        html += '<div class="stat-trend">Completion 消耗</div>';
-        html += '</div>';
+            </div>
 
-        html += '<div class="stat-card highlight">';
-        html += '<div class="stat-label">预估成本</div>';
-        html += '<div class="stat-value">' + this.formatCurrency(costTotal) + '</div>';
-        html += '<div class="stat-trend">基于实际 API 费率</div>';
-        html += '</div>';
-
-        html += '<div class="stat-card highlight-green">';
-        html += '<div class="stat-label">节省成本</div>';
-        html += '<div class="stat-value">' + this.formatCurrency(costSaved) + '</div>';
-        html += '<div class="stat-trend">通过缓存和规则路由</div>';
-        html += '</div>';
-
-        html += '</div>';
-
-        // ========== 路由分布区域 ==========
-        html += '<div class="section-title" style="margin-top: 30px;">路由分布</div>';
-        html += '<div class="route-distribution">';
-
-        // AI 调用
-        html += '<div class="route-item">';
-        html += '<div class="route-header">';
-        html += '<span class="route-label">🤖 AI 调用</span>';
-        html += '<span class="route-value">' + formatNumber(routeAi) + ' 次 (' + this.formatPercent(percentAi) + ')</span>';
-        html += '</div>';
-        html += '<div class="progress-bar"><div class="progress-fill progress-ai" style="width: ' + percentAi + '%"></div></div>';
-        html += '</div>';
-
-        // 规则路由
-        html += '<div class="route-item">';
-        html += '<div class="route-header">';
-        html += '<span class="route-label">📋 规则路由</span>';
-        html += '<span class="route-value">' + formatNumber(routeRule) + ' 次 (' + this.formatPercent(percentRule) + ')</span>';
-        html += '</div>';
-        html += '<div class="progress-bar"><div class="progress-fill progress-rule" style="width: ' + percentRule + '%"></div></div>';
-        html += '</div>';
-
-        // 缓存命中
-        html += '<div class="route-item">';
-        html += '<div class="route-header">';
-        html += '<span class="route-label">💾 缓存命中</span>';
-        html += '<span class="route-value">' + formatNumber(routeCache) + ' 次 (' + this.formatPercent(percentCache) + ')</span>';
-        html += '</div>';
-        html += '<div class="progress-bar"><div class="progress-fill progress-cache" style="width: ' + percentCache + '%"></div></div>';
-        html += '</div>';
-
-        // 分析复用
-        html += '<div class="route-item">';
-        html += '<div class="route-header">';
-        html += '<span class="route-label">🔄 分析复用</span>';
-        html += '<span class="route-value">' + formatNumber(routeReuse) + ' 次 (' + this.formatPercent(percentReuse) + ')</span>';
-        html += '</div>';
-        html += '<div class="progress-bar"><div class="progress-fill progress-reuse" style="width: ' + percentReuse + '%"></div></div>';
-        html += '</div>';
-
-        html += '</div>';
-
-        // ========== 缓存效能区域 ==========
-        html += '<div class="section-title" style="margin-top: 30px;">缓存效能</div>';
-        html += '<div class="stats-grid">';
-
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">活跃缓存条目</div>';
-        html += '<div class="stat-value">' + formatNumber(cacheEntries) + '</div>';
-        html += '<div class="stat-trend">当前缓存的分析结果</div>';
-        html += '</div>';
-
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">缓存累计命中</div>';
-        html += '<div class="stat-value">' + formatNumber(cacheTotalHits) + '</div>';
-        html += '<div class="stat-trend">复用已有分析结果</div>';
-        html += '</div>';
-
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">平均命中次数</div>';
-        html += '<div class="stat-value">' + cacheAvgHits.toFixed(1) + '</div>';
-        html += '<div class="stat-trend">每条缓存平均使用</div>';
-        html += '</div>';
-
-        html += '<div class="stat-card">';
-        html += '<div class="stat-label">缓存命中率</div>';
-        html += '<div class="stat-value">' + this.formatPercent(cacheHitRate) + '</div>';
-        html += '<div class="stat-trend">缓存利用效率</div>';
-        html += '</div>';
-
-        html += '<div class="stat-card highlight-green">';
-        html += '<div class="stat-label">缓存节省调用</div>';
-        html += '<div class="stat-value">' + formatNumber(cacheSavedCalls) + '</div>';
-        html += '<div class="stat-trend">避免的 AI API 调用</div>';
-        html += '</div>';
-
-        html += '</div>';
+            <!-- 缓存效能区域 -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">降本增效雷达 (Efficiency Radar)</div>
+            <div class="stats-grid">
+                <div class="stat-card" style="padding: 1.25rem;">
+                    <div class="stat-label">活跃语义指纹</div>
+                    <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheEntries)}</div>
+                    <div class="stat-trend">Redis 活跃键值</div>
+                </div>
+                <div class="stat-card" style="padding: 1.25rem;">
+                    <div class="stat-label">缓存防穿透次数</div>
+                    <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheSavedCalls)}</div>
+                    <div class="stat-trend">成功拦截 AI 调用</div>
+                </div>
+                <div class="stat-card" style="padding: 1.25rem;">
+                    <div class="stat-label">单条指纹平均利用率</div>
+                    <div class="stat-value" style="font-size: 1.75rem;">${cacheAvgHits.toFixed(1)} <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">x</span></div>
+                    <div class="stat-trend">每条缓存使用频次</div>
+                </div>
+                <div class="stat-card" style="padding: 1.25rem; border-left: 3px solid var(--success);">
+                    <div class="stat-label">全局缓存命中率</div>
+                    <div class="stat-value" style="font-size: 1.75rem; color: var(--success);">${this.formatPercent(cacheHitRate)}</div>
+                    <div class="stat-trend">缓存 / (缓存+穿透)</div>
+                </div>
+            </div>
+        `;
 
         container.innerHTML = html;
     },
