@@ -87,89 +87,101 @@ function renderRuleCard(rule) {
     const sourceText = rule.match_source || '全部';
     const targetTypeText = formatTargetType(rule.target_type);
     
-    const enabledClass = rule.enabled ? '' : 'disabled';
-    const enabledStyle = rule.enabled ? '' : 'opacity: 0.6;';
+    const isEnabled = rule.enabled;
+    const cardBorder = isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;';
+    const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
+    const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
     
     return `
         <div class="rule-card" style="
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px 20px;
-            ${enabledStyle}
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            ${cardBorder}
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            ${cardOpacity}
         ">
-            <div class="rule-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px;">
-                        <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleRule(${rule.id}, this.checked)" style="opacity: 0; width: 0; height: 0;">
+            <div class="rule-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <!-- Modern Toggle Switch -->
+                    <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0;">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleRule(${rule.id}, this.checked)" style="opacity: 0; width: 0; height: 0;">
                         <span class="slider" style="
                             position: absolute;
                             cursor: pointer;
-                            top: 0;
-                            left: 0;
-                            right: 0;
-                            bottom: 0;
-                            background-color: ${rule.enabled ? 'var(--primary)' : '#ccc'};
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            background-color: ${isEnabled ? 'var(--primary)' : '#cbd5e1'};
                             transition: 0.3s;
                             border-radius: 24px;
+                            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
                         ">
                             <span style="
                                 position: absolute;
                                 content: '';
-                                height: 18px;
-                                width: 18px;
-                                left: ${rule.enabled ? '23px' : '3px'};
+                                height: 18px; width: 18px;
+                                left: ${isEnabled ? '23px' : '3px'};
                                 bottom: 3px;
                                 background-color: white;
                                 transition: 0.3s;
                                 border-radius: 50%;
+                                box-shadow: 0 1px 2px rgba(0,0,0,0.2);
                             "></span>
                         </span>
                     </label>
-                    <span style="font-weight: 600; font-size: 15px; color: var(--text-primary);">${escapeHtml(rule.name)}</span>
+                    <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
+                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">已停用</span>' : ''}
                 </div>
                 <span style="
-                    background: var(--bg-secondary);
-                    padding: 4px 10px;
-                    border-radius: 4px;
-                    font-size: 13px;
-                    color: var(--text-secondary);
-                ">优先级: ${rule.priority || 0}</span>
+                    background: #f1f5f9;
+                    padding: 4px 12px;
+                    border-radius: 9999px;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    color: #475569;
+                    border: 1px solid #cbd5e1;
+                ">⬆️ 优先级: ${rule.priority || 0}</span>
             </div>
             
-            <div class="rule-conditions" style="margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);">
-                <span style="margin-right: 15px;">
-                    <strong>匹配:</strong> 
-                    重要性=${importanceText} | 
-                    状态=${duplicateText} | 
-                    来源=${sourceText}
-                </span>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+                <!-- 匹配条件区 -->
+                <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 命中条件</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
+                    <div><strong>事件来源:</strong> ${sourceText}</div>
+                </div>
+                
+                <!-- 转发目标区 -->
+                <div class="rule-target" style="font-size: 0.95rem; color: #334155; background: #f0fdf4; padding: 1.25rem; border-radius: 8px; border: 1px dashed #86efac;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 动作执行</div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>推送到:</strong> ${targetTypeText}
+                        ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
+                    </div>
+                    <div style="word-break: break-all; color: #0f172a; font-family: 'Fira Code', monospace; font-size: 0.85rem; background: #ffffff; padding: 0.75rem; border-radius: 6px; border: 1px solid #d1fae5; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+                        ${escapeHtml(rule.target_url || '-')}
+                    </div>
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> 命中此规则后，停止匹配后续规则</div>' : ''}
+                </div>
             </div>
             
-            <div class="rule-target" style="margin-bottom: 15px; font-size: 13px;">
-                <span style="color: var(--text-secondary);">
-                    <strong>目标:</strong> 
-                    ${targetTypeText} → 
-                    <span style="color: var(--primary);">${escapeHtml(rule.target_name || rule.target_url || '-')}</span>
-                </span>
-                ${rule.stop_on_match ? '<span style="margin-left: 10px; color: #e67e22; font-size: 12px;">🛑 匹配后停止</span>' : ''}
-            </div>
-            
-            <div class="rule-actions" style="display: flex; gap: 8px; justify-content: flex-end;">
-                <button class="btn" onclick="testRule(${rule.id})" style="font-size: 13px; padding: 6px 12px;">
-                    🧪 测试
+            <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
+                <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
+                    🧪 测试通道
                 </button>
-                <button class="btn" onclick="showRuleForm(${rule.id})" style="font-size: 13px; padding: 6px 12px;">
+                <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
                     ✏️ 编辑
                 </button>
-                <button class="btn" onclick="deleteRule(${rule.id})" style="font-size: 13px; padding: 6px 12px; color: var(--danger);">
+                <button class="btn" onclick="deleteRule(${rule.id})" style="color: #dc2626; border-color: #fecaca; background: #fef2f2; font-weight: 600;">
                     🗑️ 删除
                 </button>
             </div>
         </div>
     `;
 }
-
 /**
  * 格式化重要性显示
  */
