@@ -313,10 +313,10 @@ var DeepAnalysesModule = (function() {
         }
 
         API.getAllDeepAnalyses(currentPage, perPage, status, engine)
-            .then(function(data) {
-                if (data.success) {
-                    renderDeepAnalyses(data.data);
-                    renderPagination(data.pagination.total_pages, data.pagination.current_page, data.pagination.total);
+            .then(function(res) {
+                if (res.success) {
+                    renderDeepAnalyses(res.data.items || []);
+                    renderPagination(res.data.total_pages || 1, res.data.page || 1, res.data.total || 0);
                 } else {
                     if (container) container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">加载失败: ' + escapeHtml(data.error) + '</div>';
                     stopAutoRefresh();
