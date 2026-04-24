@@ -113,44 +113,7 @@ function bindGlobalEvents() {
         }
     });
 
-    // 分页按钮事件
-    const firstPageBtn = document.getElementById('firstPage');
-    const prevPageBtn = document.getElementById('prevPage');
-    const nextPageBtn = document.getElementById('nextPage');
-    const lastPageBtn = document.getElementById('lastPage');
-
-    if (firstPageBtn) {
-        firstPageBtn.addEventListener('click', () => {
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.goToPage(1);
-            }
-        });
-    }
-
-    if (prevPageBtn) {
-        prevPageBtn.addEventListener('click', () => {
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.goToPage(AlertsModule.currentPage - 1);
-            }
-        });
-    }
-
-    if (nextPageBtn) {
-        nextPageBtn.addEventListener('click', () => {
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.goToPage(AlertsModule.currentPage + 1);
-            }
-        });
-    }
-
-    if (lastPageBtn) {
-        lastPageBtn.addEventListener('click', () => {
-            if (typeof AlertsModule !== 'undefined') {
-                const totalPages = Math.ceil(AlertsModule.filteredAlerts.length / AlertsModule.pageSize);
-                AlertsModule.goToPage(totalPages);
-            }
-        });
-    }
+    // 移除了重复的分页按钮监听器，因为在 HTML 中已经绑定了 onclick 事件
 }
 
 /**
