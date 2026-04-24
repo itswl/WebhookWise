@@ -11,10 +11,18 @@ const API = {
         return localStorage.getItem('webhook_api_key') || '';
     },
 
+    // 全局鉴权锁，防止并发请求时弹出多个输入框
+    _authPromise: null,
+
     /**
      * 包装 fetch，自动添加 Auth 头和处理 401
      */
     async authenticatedFetch(url, options = {}) {
+        // 如果有正在进行的鉴权弹窗，则等待它完成
+        if (this._authPromise) {
+            await this._authPromise;
+        }
+
         const token = this.getToken();
         const headers = {
             ...options.headers,
@@ -24,14 +32,34 @@ const API = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        // 调用原生 fetch
         const response = await fetch(url, { ...options, headers });
         
         if (response.status === 401) {
-            const key = prompt('请输入管理接口 API Key:');
-            if (key) {
-                localStorage.setItem('webhook_api_key', key);
-                // 递归调用自己，使用新 token
+            // 在弹窗前再次检查是否已经被其他并发请求处理过了
+            const currentToken = this.getToken();
+            if (currentToken && currentToken !== token) {
+                // Token 已被更新，直接使用新 Token 重试
+                return this.authenticatedFetch(url, options);
+            }
+
+            if (!this._authPromise) {
+                // 创建一个 Promise 锁，并阻塞其他并发请求
+                this._authPromise = new Promise((resolve) => {
+                    // 使用 setTimeout 确保 UI 线程不被死锁，并给浏览器渲染机会
+                    setTimeout(() => {
+                        const key = prompt('请输入 WebhookWise 的管理接口 API Key:');
+                        if (key) {
+                            localStorage.setItem('webhook_api_key', key);
+                        }
+                        resolve(key);
+                        this._authPromise = null;
+                    }, 50);
+                });
+            }
+
+            const newKey = await this._authPromise;
+            if (newKey) {
+                // 有了新 Token，递归重试该请求
                 return this.authenticatedFetch(url, options);
             }
         }
