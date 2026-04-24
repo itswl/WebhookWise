@@ -1057,3 +1057,85 @@
     gap: 1rem;
     background: #f8fafc;
 }
+
+/* ==================== Mobile Responsiveness Components ==================== */
+@media (max-width: 768px) {
+    /* Cards & Summaries */
+    .alert-header, .da-summary {
+        padding: 1rem !important;
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+    }
+    
+    .alert-body, .da-details, .rule-card {
+        padding: 1rem !important;
+    }
+    
+    /* Force 1 column for any grid that might overflow on 320px-400px screens */
+    .ai-details, 
+    .da-summary-details,
+    div[style*="grid-template-columns: repeat(auto-fit"] {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+    
+    /* Action Buttons Row - Stack vertically on mobile */
+    .rule-actions, .da-btn-row, 
+    div[style*="display: flex; gap: 1rem; flex-wrap: wrap;"] {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 0.5rem !important;
+    }
+    
+    .rule-actions .btn, .da-btn-row .btn, 
+    div[style*="display: flex; gap: 1rem; flex-wrap: wrap;"] .btn {
+        width: 100%;
+        justify-content: center;
+        margin: 0 !important;
+    }
+    
+    /* Modals */
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
+        max-height: 95vh;
+    }
+    .modal-header, .modal-body, .modal-footer {
+        padding: 1rem;
+    }
+    .modal-footer {
+        flex-direction: column;
+    }
+    .modal-footer .btn {
+        width: 100%;
+        margin-left: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Pagination - wrap gracefully */
+    .pagination, .da-pagination {
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        padding: 0.5rem !important;
+    }
+    .page-btn, .da-page-btn {
+        min-width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+        padding: 0 0.25rem;
+    }
+    
+    /* Break long words in raw data to prevent horizontal scrolling */
+    .raw-data pre, .markdown-body pre {
+        white-space: pre-wrap !important;
+        word-break: break-all;
+    }
+    
+    /* Rule Card Header */
+    .rule-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 1rem;
+    }
+}

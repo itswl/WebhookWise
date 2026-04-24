@@ -429,3 +429,93 @@ body {
     display: flex;
     gap: 8px;
 }
+
+/* ==================== Mobile Responsiveness (Smartphones & Tablets) ==================== */
+@media (max-width: 768px) {
+    .container {
+        padding: 0 1rem;
+        margin: 1rem auto;
+    }
+    
+    /* Navbar tweaks */
+    .navbar {
+        padding: 0 1rem;
+    }
+    .navbar-content {
+        flex-direction: column;
+        height: auto;
+        padding: 1rem 0;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    /* Make tabs scrollable horizontally */
+    .nav-tabs {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 5px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox */
+        gap: 1rem;
+    }
+    .nav-tabs::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
+    }
+    .nav-tab {
+        white-space: nowrap;
+        height: 40px;
+        padding: 0 0.5rem;
+        font-size: 0.85rem;
+    }
+    
+    /* Nav actions stack */
+    .nav-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .nav-status {
+        display: none; /* Hide 'Service Running' to save space */
+    }
+    .nav-actions .btn {
+        flex: 1; /* Stretch buttons evenly */
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Stats Grid & Filters */
+    .stats-grid {
+        grid-template-columns: 1fr; /* Stack vertically on phones */
+        gap: 1rem;
+    }
+    .filter-section {
+        padding: 1rem;
+    }
+    .filter-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Section headers */
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 1rem;
+    }
+    .section-header > div, .section-header > button {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    .section-header select {
+        flex: 1; /* Stretch dropdowns */
+    }
+    
+    /* AI Cost Period Selector */
+    .ai-period-selector {
+        display: flex;
+        width: 100%;
+    }
+    .ai-period-selector .btn {
+        flex: 1;
+    }
+}
