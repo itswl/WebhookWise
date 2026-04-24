@@ -341,10 +341,26 @@ var DeepAnalysesModule = (function() {
     }
 
     async function forwardResult(analysisId) {
+        var url = prompt('请输入转发目标 URL（留空将尝试使用系统默认规则）：\n\n飞书机器人: https://open.feishu.cn/open-apis/bot/v2/hook/xxx\n企业微信/钉钉/其他 Webhook: https://your-server.com/hook', '');
+        
+        if (url === null) return; // User clicked Cancel
+        
+        url = url.trim();
+        // Since backend requires it, or we could pass an empty string if backend falls back to Config.FORWARD_URL?
+        // Wait, the backend says "转发 URL 不能为空", so we must provide one.
+        if (!url) {
+            alert('❌ 操作取消: 转发 URL 不能为空');
+            return;
+        }
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            alert('❌ 格式错误: 请输入有效的 HTTP/HTTPS URL');
+            return;
+        }
+
         try {
-            var result = await API.forwardDeepAnalysis(analysisId, '');
+            var result = await API.forwardDeepAnalysis(analysisId, url);
             if (result.success) {
-                alert('✅ 转发成功');
+                alert('✅ ' + (result.message || '推送成功'));
             } else {
                 alert('❌ 转发失败: ' + (result.message || '未知错误'));
             }
