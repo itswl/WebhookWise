@@ -13,34 +13,34 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
         <style>
-    /* 深度分析可折叠卡片 - Modernized */
+    /* 深度分析可折叠卡片 - Modernized & Spaced */
     .da-card {
-        border: 1px solid var(--border);
+        border: 1px solid #cbd5e1; /* 加深边框，明确卡片边界 */
         border-radius: var(--radius-lg);
-        margin-bottom: 1rem;
-        background: var(--bg-surface);
+        margin-bottom: 1.5rem; /* 增大卡片之间的上下间距 */
+        background: #ffffff;
         overflow: hidden;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: var(--shadow-sm);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); /* 加深常态阴影 */
     }
     .da-card:hover { 
-        box-shadow: var(--shadow-md); 
-        border-color: #d1d5db;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); 
+        border-color: #94a3b8;
         transform: translateY(-2px);
     }
     .da-card-expanded { 
         border-color: var(--primary); 
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15); 
+        box-shadow: 0 0 0 1px var(--primary), 0 10px 15px -3px rgba(79, 70, 229, 0.1); /* 展开时使用主题色高光边框 */
     }
 
     /* 折叠行 */
     .da-summary {
         display: flex;
         align-items: center;
-        padding: 1rem 1.5rem;
+        padding: 1.25rem 1.5rem; /* 增加内部留白 */
         cursor: pointer;
         gap: 1rem;
-        background: rgba(249, 250, 251, 0.5);
+        background: #f8fafc; /* 使用更明显的淡灰蓝底色，区分内容区 */
         border-bottom: 1px solid transparent;
         transition: background 0.2s;
     }
