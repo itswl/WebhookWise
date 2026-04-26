@@ -3,6 +3,7 @@
 测试同一规则的不同告警实例
 """
 import sys
+
 sys.path.insert(0, '/Users/imwl/webhooks')
 
 from core.utils import generate_alert_hash

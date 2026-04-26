@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException, Body, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from openai import AsyncOpenAI
 
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
 from core.models import DeepAnalysis, WebhookEvent, session_scope
-from openai import AsyncOpenAI
 from services.ai_analyzer import analyze_with_openclaw
 
 deep_analysis_router = APIRouter()
@@ -52,7 +52,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 
     prompt_path = Path(__file__).parent.parent.parent / 'prompts' / 'deep_analysis.txt'
     try:
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        with open(prompt_path, encoding='utf-8') as f:
             system_prompt = f.read()
     except FileNotFoundError:
         system_prompt = """你是一个专业的 SRE 分析专家。请对以下告警进行深度分析，包括：
@@ -390,8 +390,9 @@ async def retry_deep_analysis(analysis_id: int):
             # 检查是否配置了 HTTP API URL
             if Config.OPENCLAW_HTTP_API_URL:
                 # 直接通过 HTTP API 获取（复用轮询器的重试逻辑）
-                from services.openclaw_poller import _poll_via_http
                 from fastapi.concurrency import run_in_threadpool
+
+                from services.openclaw_poller import _poll_via_http
                 logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
                 result = await run_in_threadpool(_poll_via_http, record.openclaw_session_key, retry_count=3)
                 

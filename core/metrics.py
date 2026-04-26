@@ -42,9 +42,11 @@ DATABASE_EVENTS_COUNT = Gauge(
     'Current number of webhook events in active table'
 )
 
+import prometheus_client
+
 from core.config import Config
 from core.logger import logger
-import prometheus_client
+
 
 def setup_metrics(app):
     """初始化并挂载 Prometheus 指标"""

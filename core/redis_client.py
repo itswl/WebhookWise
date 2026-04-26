@@ -1,4 +1,5 @@
 import redis
+
 from core.config import Config
 from core.logger import logger
 

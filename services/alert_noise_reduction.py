@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
-import re
-import logging
 from typing import Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)

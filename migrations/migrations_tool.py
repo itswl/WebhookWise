@@ -6,11 +6,13 @@
     python migrations_tool.py add_unique_constraint
 """
 
-import sys
-from core.models import get_engine, session_scope, WebhookEvent
-from sqlalchemy import text
-from core.logger import logger
 import logging
+import sys
+
+from sqlalchemy import text
+
+from core.logger import logger
+from core.models import WebhookEvent, get_engine, session_scope
 
 
 def add_unique_constraint(verbose=True):

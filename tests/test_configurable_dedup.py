@@ -2,9 +2,10 @@
 """
 测试可配置的重复告警去重功能
 """
-import requests
 import json
 import time
+
+import requests
 
 # Webhook 服务地址
 BASE_URL = "http://localhost:8000"

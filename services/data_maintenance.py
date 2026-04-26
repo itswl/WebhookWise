@@ -1,8 +1,10 @@
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import text, insert
-from core.models import session_scope, WebhookEvent, ArchivedWebhookEvent
+
+from sqlalchemy import insert, text
+
 from core.config import Config
+from core.models import ArchivedWebhookEvent, WebhookEvent, session_scope
 
 logger = logging.getLogger("webhook_service.maintenance")
 

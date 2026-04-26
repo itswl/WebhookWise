@@ -12,10 +12,11 @@
 """
 import argparse
 import json
-import sys
 
 # 确保项目根目录在 path 中
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.models import WebhookEvent, session_scope

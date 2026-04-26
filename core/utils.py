@@ -1,17 +1,17 @@
-from contextlib import contextmanager, asynccontextmanager
-from pathlib import Path
-import hmac
 import hashlib
+import hmac
 import json
 import os
-import time
 import threading
-import httpx
+import time
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Optional, Union, Generator, AsyncGenerator
+from pathlib import Path
+from typing import Any, AsyncGenerator, Callable, Generator, Optional, Union
 
+import httpx
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -855,7 +855,7 @@ def get_all_webhooks(
             if lookup_map:
                 try:
                     # 获取所有涉及的 alert_hash
-                    all_hashes = list(set(k[0] for k in lookup_map.keys()))
+                    all_hashes = list(set(k[0] for k in lookup_map))
 
                     # 查询这些 hash 的所有记录（去重需要）
                     all_alerts = session.query(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
@@ -919,7 +919,7 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     for filename in files:
         filepath = str(Path(Config.DATA_DIR) / filename)
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, encoding='utf-8') as f:
                 webhook_data = json.load(f)
                 webhook_data['filename'] = filename
                 webhooks.append(webhook_data)
