@@ -5,11 +5,14 @@ API 性能测试脚本
 测试 /api/webhooks 接口在不同参数下的性能表现
 """
 
+import pytest
 import requests
 import time
 from typing import Dict
 
 BASE_URL = "http://localhost:8000"
+
+pytest.skip("performance/integration script, run manually", allow_module_level=True)
 
 
 def test_api_performance(params: Dict[str, str], name: str):
