@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
 """测试 JSON 格式修复功能"""
 
 import json
-import sys
-sys.path.insert(0, '/Users/imwl/webhooks')
 
 from services.ai_analyzer import fix_json_format
 
@@ -74,21 +71,15 @@ def test_json_fix():
             result = json.loads(fixed)
             print(f"✓ 解析成功: {result}")
             
-            if test['should_pass']:
-                passed += 1
-                print("✓ 测试通过")
-            else:
-                failed += 1
-                print("✗ 测试失败: 应该失败但成功了")
+            assert test['should_pass']
+            passed += 1
+            print("✓ 测试通过")
                 
         except json.JSONDecodeError as e:
             print(f"✗ 解析失败: {str(e)}")
-            if not test['should_pass']:
-                passed += 1
-                print("✓ 测试通过（预期失败）")
-            else:
-                failed += 1
-                print("✗ 测试失败")
+            assert not test['should_pass']
+            passed += 1
+            print("✓ 测试通过（预期失败）")
         except Exception as e:
             print(f"✗ 异常: {str(e)}")
             failed += 1
@@ -97,8 +88,4 @@ def test_json_fix():
     print(f"测试结果: {passed} 通过, {failed} 失败")
     print("=" * 60)
     
-    return failed == 0
-
-if __name__ == '__main__':
-    success = test_json_fix()
-    sys.exit(0 if success else 1)
+    assert failed == 0
