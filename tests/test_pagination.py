@@ -1,8 +1,10 @@
 """
 测试分页查询功能
 """
-from core.utils import get_all_webhooks
 import pytest
+
+from core.utils import get_all_webhooks
+
 
 def test_pagination():
     """测试分页查询"""

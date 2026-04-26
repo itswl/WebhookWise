@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from core.utils import _build_event, SaveWebhookResult
+from core.utils import SaveWebhookResult, _build_event
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():

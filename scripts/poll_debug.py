@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Debug script: poll chat.history for a session_key"""
-import websocket
-import json
-import uuid
-import sys
-import os
-import time
 import base64
+import json
+import os
 import platform
+import sys
+import time
+import uuid
 from pathlib import Path
+
+import websocket
 from dotenv import load_dotenv
 
 # 加载 .env

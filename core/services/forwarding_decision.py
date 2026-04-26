@@ -86,9 +86,10 @@ def _resolve_analysis_with_lock(
     Returns:
         (analysis_result, reanalyzed, is_duplicate, original_event)
     """
-    from core.services.noise_context import _compute_noise_reduction, _build_alert_context, _default_noise_context
     from datetime import datetime
+
     from core.models import WebhookEvent
+    from core.services.noise_context import _build_alert_context, _compute_noise_reduction, _default_noise_context
 
     with session_scope() as session:
         current_time = datetime.now()
@@ -132,6 +133,7 @@ def _resolve_analysis_without_lock(
     等待锁释放后复用结果，或直接返回空结果让请求失败。
     """
     import time
+
     from core.utils import _LOCK_WAIT_SECONDS
 
     wait_time = 0

@@ -5,10 +5,11 @@ API 性能测试脚本
 测试 /api/webhooks 接口在不同参数下的性能表现
 """
 
-import pytest
-import requests
 import time
 from typing import Dict
+
+import pytest
+import requests
 
 BASE_URL = "http://localhost:8000"
 

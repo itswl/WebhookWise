@@ -1,7 +1,6 @@
-from contextlib import asynccontextmanager
-
 import os
 import socket
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -12,8 +11,8 @@ from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger
 from core.metrics import setup_metrics
-from core.pollers import start_background_pollers
 from core.pipeline import _decide_forwarding, handle_webhook_process
+from core.pollers import start_background_pollers
 from core.routes.admin import admin_router
 from core.routes.ai_usage import ai_usage_router
 from core.routes.deep_analysis import deep_analysis_router

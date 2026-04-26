@@ -11,11 +11,12 @@
     DATABASE_URL="postgresql://user:pass@host:port/dbname" python apply_unique_constraint.py
 """
 
-import sys
 import os
+import sys
+from urllib.parse import urlparse
+
 import psycopg2
 from psycopg2 import sql
-from urllib.parse import urlparse
 
 # 从环境变量读取数据库连接 URL
 DATABASE_URL = os.environ.get('DATABASE_URL')

@@ -3,8 +3,9 @@
 数据库迁移脚本：添加告警去重相关字段
 """
 from sqlalchemy import text
-from core.models import get_engine
+
 from core.logger import logger
+from core.models import get_engine
 
 
 def migrate_database():

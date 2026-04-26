@@ -2,9 +2,10 @@
 """
 测试重复告警去重功能
 """
-import requests
 import json
 import time
+
+import requests
 
 # Webhook 服务地址
 WEBHOOK_URL = "http://localhost:8000/webhook"

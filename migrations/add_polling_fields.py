@@ -2,10 +2,12 @@
 """为 deep_analyses 表添加轮询相关字段"""
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.config import Config
 from sqlalchemy import create_engine, text
+
+from core.config import Config
 
 
 def migrate():
