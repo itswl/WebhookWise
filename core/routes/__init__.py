@@ -41,6 +41,7 @@ class WebhookRequestContext:
     payload: bytes
     parsed_data: dict
     webhook_full_data: dict
+    headers: dict = field(default_factory=dict)
 
 
 @dataclass
