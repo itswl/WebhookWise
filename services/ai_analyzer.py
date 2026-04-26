@@ -19,6 +19,8 @@ from core.config import Config
 from core.utils import feishu_cb, openclaw_cb, forward_cb
 from openai import AsyncOpenAI
 
+OpenAI = AsyncOpenAI
+
 # 类型别名
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
