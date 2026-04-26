@@ -241,7 +241,7 @@ def init_db():
     """初始化数据库表"""
     engine = get_engine()
     Base.metadata.create_all(engine)
-    print("数据库表初始化完成")
+    _logger.info("数据库表初始化完成")
 
 
 def test_db_connection() -> bool:
