@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from alert_noise_reduction import AlertContext, analyze_noise_reduction, score_candidate
+from services.alert_noise_reduction import AlertContext, analyze_noise_reduction, score_candidate
 
 
 def _ctx(

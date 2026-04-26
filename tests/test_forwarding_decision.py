@@ -1,15 +1,7 @@
 from datetime import datetime, timedelta
-import sys
-import types
 
-# 测试环境可能没有 flask_compress，注入最小桩避免导入 app 失败
-if 'flask_compress' not in sys.modules:
-    fake_module = types.ModuleType('flask_compress')
-    fake_module.Compress = lambda _app: None
-    sys.modules['flask_compress'] = fake_module
-
-from app import _decide_forwarding
-from config import Config
+from core.app import _decide_forwarding
+from core.config import Config
 
 
 class _Event:

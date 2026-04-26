@@ -1,4 +1,4 @@
-from ecosystem_adapters import normalize_webhook_event
+from adapters.ecosystem_adapters import normalize_webhook_event
 
 
 def test_prometheus_normalization_from_source_alias():
