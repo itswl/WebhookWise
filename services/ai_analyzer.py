@@ -782,7 +782,12 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        logger.debug(f"[AI] 请求消息内容: {messages}")
+        try:
+            import hashlib
+            prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
+        except Exception:
+            prompt_hash = None
+        logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         # 提取 token 使用量
@@ -845,7 +850,12 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                         ai_response = retry_text
                         finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
 
-        logger.debug(f"AI 原始响应: {ai_response}")
+        try:
+            import hashlib
+            resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
+        except Exception:
+            resp_hash = None
+        logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
@@ -893,7 +903,12 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         ]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        logger.debug(f"[AI] 请求消息内容: {messages}")
+        try:
+            import hashlib
+            prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
+        except Exception:
+            prompt_hash = None
+        logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
         if not hasattr(response, 'choices') or not response.choices:
@@ -922,7 +937,12 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
                         ai_response = retry_text
                         finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
 
-        logger.debug(f"AI 原始响应: {ai_response}")
+        try:
+            import hashlib
+            resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
+        except Exception:
+            resp_hash = None
+        logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
         if finish_reason == 'length':
@@ -1478,8 +1498,15 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         }
         kwargs = {'json': payload}
 
-    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
-    logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
+    try:
+        import hashlib
+        payload_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+        payload_hash = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
+        payload_size = len(payload_json)
+    except Exception:
+        payload_hash = None
+        payload_size = len(str(payload))
+    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, size={payload_size}, sha256={payload_hash}")
     # 超时配置：(连接超时, 读取超时)
     client = get_http_client()
     response = await openclaw_cb.call_async(
