@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping
 
 import requests
 
@@ -23,7 +23,7 @@ class NormalizedWebhook:
     adapter: str
 
 
-def _header_get(headers: Optional[HeadersLike], key: str) -> Optional[str]:
+def _header_get(headers: HeadersLike | None, key: str) -> str | None:
     if not headers:
         return None
 
@@ -34,7 +34,7 @@ def _header_get(headers: Optional[HeadersLike], key: str) -> Optional[str]:
     return None
 
 
-def _normalize_source(source: Optional[str]) -> str:
+def _normalize_source(source: str | None) -> str:
     return str(source or '').strip().lower()
 
 
@@ -69,7 +69,7 @@ def _normalize_level(value: Any) -> str:
     return 'warning'
 
 
-def _pick_first_string(*values: Any) -> Optional[str]:
+def _pick_first_string(*values: Any) -> str | None:
     for value in values:
         if value is None:
             continue
@@ -79,7 +79,7 @@ def _pick_first_string(*values: Any) -> Optional[str]:
     return None
 
 
-def _extract_tag_value(tags: Any, key: str) -> Optional[str]:
+def _extract_tag_value(tags: Any, key: str) -> str | None:
     if not isinstance(tags, list):
         return None
 
@@ -394,14 +394,14 @@ ADAPTERS: dict[str, tuple[set[str], Callable[[WebhookData], bool], Callable[[Web
 }
 
 
-def _find_adapter_by_source(source: str) -> Optional[str]:
+def _find_adapter_by_source(source: str) -> str | None:
     for name, (aliases, _detector, _normalizer) in ADAPTERS.items():
         if source in aliases:
             return name
     return None
 
 
-def _find_adapter_by_payload(data: WebhookData) -> Optional[str]:
+def _find_adapter_by_payload(data: WebhookData) -> str | None:
     for name, (_aliases, detector, _normalizer) in ADAPTERS.items():
         if detector(data):
             return name
@@ -410,8 +410,8 @@ def _find_adapter_by_payload(data: WebhookData) -> Optional[str]:
 
 def normalize_webhook_event(
     data: Any,
-    source: Optional[str],
-    headers: Optional[HeadersLike] = None,
+    source: str | None,
+    headers: HeadersLike | None = None,
 ) -> NormalizedWebhook:
     """根据 source 或 payload 特征选择适配器，并输出标准化数据。"""
     if not isinstance(data, dict):
