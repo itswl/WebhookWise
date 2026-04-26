@@ -3,8 +3,21 @@ tests/conftest.py
 =================
 pytest 全局 fixtures：外部服务 mock、测试数据库 session。
 """
+import sys
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock, patch
+
+_ROOT = Path(__file__).resolve().parents[1]
+_CORE = _ROOT / "core"
+_SERVICES = _ROOT / "services"
+_ADAPTERS = _ROOT / "adapters"
+
+for _p in (_ROOT, _CORE, _SERVICES, _ADAPTERS):
+    _ps = str(_p)
+    if _ps not in sys.path:
+        sys.path.insert(0, _ps)
 
 
 # ── 外部服务 Mock ─────────────────────────────────────────────────────────────
