@@ -7,7 +7,6 @@ from typing import Optional
 from core.auth import verify_api_key
 from fastapi import APIRouter, Request, HTTPException, Body, Query, Response, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, FileResponse
-import os
 import hmac
 import time
 
@@ -36,15 +35,6 @@ def health_check():
 @webhook_router.get('/')
 def dashboard():
     return FileResponse('templates/dashboard.html')
-
-
-@webhook_router.get('/static/{filename:path}')
-def serve_static(filename: str):
-    static_folder = 'templates/static'
-    file_path = os.path.join(static_folder, filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    return JSONResponse({'success': False, 'error': 'Not found'}, status_code=404)
 
 
 # ── Webhooks API ────────────────────────────────────────────────────────────────
@@ -198,10 +188,13 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    try:
-        payload = await request.json()
-    except:
-        payload = {}
+    payload = {}
+    content_type = request.headers.get('content-type', '').lower()
+    if raw_body and 'application/json' in content_type:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from core.app import handle_webhook_process
     client_ip = request.client.host if request.client else "127.0.0.1"
     headers = dict(request.headers)
@@ -225,6 +218,8 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         token = headers.get('authorization', '')[6:].strip()
 
     if signature:
+        if not Config.WEBHOOK_SECRET:
+            return JSONResponse(status_code=401, content={"success": False, "error": "Signature verification not configured"})
         if not verify_signature(raw_body, signature):
             return JSONResponse(status_code=401, content={"success": False, "error": "Invalid signature"})
     elif Config.WEBHOOK_SECRET:
@@ -242,10 +237,13 @@ async def receive_webhook_with_source(source: str, request: Request, background_
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    try:
-        payload = await request.json()
-    except:
-        payload = {}
+    payload = {}
+    content_type = request.headers.get('content-type', '').lower()
+    if raw_body and 'application/json' in content_type:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from core.app import handle_webhook_process
     client_ip = request.client.host if request.client else "127.0.0.1"
     headers = dict(request.headers)
@@ -269,6 +267,8 @@ async def receive_webhook_with_source(source: str, request: Request, background_
         token = headers.get('authorization', '')[6:].strip()
 
     if signature:
+        if not Config.WEBHOOK_SECRET:
+            return JSONResponse(status_code=401, content={"success": False, "error": "Signature verification not configured"})
         if not verify_signature(raw_body, signature):
             return JSONResponse(status_code=401, content={"success": False, "error": "Invalid signature"})
     elif Config.WEBHOOK_SECRET:

@@ -161,6 +161,9 @@ def verify_signature(payload: bytes, signature: str, secret: Optional[str] = Non
     """验证 webhook 签名"""
     if secret is None:
         secret = Config.WEBHOOK_SECRET
+
+    if not secret:
+        return False
     
     expected_signature = hmac.new(
         secret.encode('utf-8'),
@@ -170,7 +173,7 @@ def verify_signature(payload: bytes, signature: str, secret: Optional[str] = Non
     
     result = hmac.compare_digest(expected_signature, signature)
     if not result:
-        logger.warning(f"[Auth] 签名比对不匹配: expected_prefix={expected_signature[:8]}, actual_prefix={signature[:8]}")
+        logger.warning("[Auth] 签名比对不匹配")
     else:
         logger.debug("[Auth] 签名验证通过")
     return result
