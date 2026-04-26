@@ -9,6 +9,9 @@ const AlertsModule = {
     alerts: [],
     filteredAlerts: [],
     totalCount: 0,
+    nextCursor: null,
+    hasMore: false,
+    _loadingMore: false,
     currentForwardId: null,
     currentTabByAlert: {},
 
@@ -135,21 +138,23 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
 
-            // 只加载最新的200条数据（使用摘要模式）
-            const result = await API.getWebhooks({ page: 1, page_size: 200, fields: 'summary' });
+            // 使用纯游标模式加载最新数据（避免 offset/count）
+            const result = await API.getWebhooks({ use_cursor: true, limit: 200, fields: 'summary', cursor_id: null });
 
             if (!result.success || !result.data) {
                 throw new Error('数据格式错误');
             }
 
             this.alerts = result.data;
-            this.totalCount = result.pagination ? result.pagination.total : 0;
+            this.nextCursor = result.cursor ? result.cursor.next_cursor : null;
+            this.hasMore = result.cursor ? !!result.cursor.has_more : false;
+            this.totalCount = null;
 
             console.log('✅ 数据加载完成:', this.alerts.length, '条（总共', this.totalCount, '条）');
 
             this.updateStats();
             this.currentPage = 1;
-            this.filterAlerts();
+            this.filterAlerts(true);
 
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
         } catch (error) {
@@ -158,11 +163,52 @@ const AlertsModule = {
         }
     },
 
+    async loadMoreAlerts() {
+        if (!this.hasMore || this._loadingMore) return;
+        this._loadingMore = true;
+        try {
+            const btn = document.getElementById('loadMoreBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '加载中...';
+            }
+
+            const result = await API.getWebhooks({ use_cursor: true, limit: 200, fields: 'summary', cursor_id: this.nextCursor });
+            if (!result.success || !result.data) {
+                throw new Error('数据格式错误');
+            }
+
+            this.alerts = this.alerts.concat(result.data);
+            this.nextCursor = result.cursor ? result.cursor.next_cursor : null;
+            this.hasMore = result.cursor ? !!result.cursor.has_more : false;
+
+            this.updateStats();
+            this.filterAlerts(false);
+        } catch (error) {
+            console.error('加载更多失败:', error);
+            alert('加载更多失败: ' + error.message);
+        } finally {
+            const btn = document.getElementById('loadMoreBtn');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '加载更多';
+            }
+            this._loadingMore = false;
+        }
+    },
+
     /**
      * 更新统计信息
      */
     updateStats() {
-        document.getElementById('totalCount').textContent = this.totalCount;
+        const totalEl = document.getElementById('totalCount');
+        if (totalEl) {
+            if (this.totalCount !== null && this.totalCount !== undefined) {
+                totalEl.textContent = this.totalCount;
+            } else {
+                totalEl.textContent = this.hasMore ? (this.alerts.length + '+') : String(this.alerts.length);
+            }
+        }
 
         let highCount = 0, mediumCount = 0, duplicateCount = 0;
 
@@ -182,7 +228,7 @@ const AlertsModule = {
     /**
      * 筛选告警
      */
-    filterAlerts() {
+    filterAlerts(resetPage = true) {
         const searchTerm = document.getElementById('searchInput').value.toLowerCase();
         const importanceFilter = document.getElementById('importanceFilter').value;
         const sourceFilter = document.getElementById('sourceFilter').value;
@@ -212,8 +258,9 @@ const AlertsModule = {
 
         console.log('筛选结果:', this.filteredAlerts.length, '条（共', this.alerts.length, '条）');
 
-        // 重置到第一页
-        this.currentPage = 1;
+        if (resetPage) {
+            this.currentPage = 1;
+        }
 
         // 显示当前页数据
         this.displayCurrentPage();
@@ -544,27 +591,34 @@ const AlertsModule = {
      */
     updatePagination(totalFiltered, totalPagesFiltered) {
         const paginationDiv = document.getElementById('pagination');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
 
         if (totalPagesFiltered > 0) {
             paginationDiv.style.display = 'flex';
 
             document.getElementById('currentPageNum').textContent = this.currentPage;
             document.getElementById('totalPages').textContent = totalPagesFiltered;
-            document.getElementById('totalCount2').textContent = totalFiltered;
+            document.getElementById('totalCount2').textContent = this.hasMore ? (totalFiltered + '+') : totalFiltered;
 
             document.getElementById('firstPage').disabled = this.currentPage === 1;
             document.getElementById('prevPage').disabled = this.currentPage === 1;
-            document.getElementById('nextPage').disabled = this.currentPage >= totalPagesFiltered;
-            document.getElementById('lastPage').disabled = this.currentPage >= totalPagesFiltered;
+            document.getElementById('nextPage').disabled = (this.currentPage >= totalPagesFiltered) && !this.hasMore;
+            document.getElementById('lastPage').disabled = this.hasMore || (this.currentPage >= totalPagesFiltered);
+
+            if (loadMoreBtn) {
+                loadMoreBtn.style.display = this.hasMore ? 'inline-block' : 'none';
+                loadMoreBtn.disabled = this._loadingMore;
+            }
         } else {
             paginationDiv.style.display = 'none';
+            if (loadMoreBtn) loadMoreBtn.style.display = 'none';
         }
     },
 
     /**
      * 跳转到指定页
      */
-    goToPage(page) {
+    async goToPage(page) {
         const totalPagesFiltered = Math.ceil(this.filteredAlerts.length / this.pageSize);
 
         console.log('🔄 请求跳转到第', page, '页');
@@ -578,8 +632,17 @@ const AlertsModule = {
         }
 
         if (page > totalPagesFiltered) {
-            console.warn('❌ 页码超出范围（最大', totalPagesFiltered, '页），忽略');
-            return;
+            if (this.hasMore) {
+                await this.loadMoreAlerts();
+                const updatedTotalPages = Math.ceil(this.filteredAlerts.length / this.pageSize);
+                if (page > updatedTotalPages) {
+                    console.warn('❌ 页码超出范围（最大', updatedTotalPages, '页），忽略');
+                    return;
+                }
+            } else {
+                console.warn('❌ 页码超出范围（最大', totalPagesFiltered, '页），忽略');
+                return;
+            }
         }
 
         this.currentPage = page;
