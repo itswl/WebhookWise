@@ -7,13 +7,11 @@ from typing import Optional
 from core.auth import verify_api_key
 from fastapi import APIRouter, Request, HTTPException, Body, Query, Response, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, FileResponse
-import hmac
-import time
 
 from core.logger import logger
 from core.config import Config
-from core.redis_client import get_redis
-from core.utils import verify_signature
+from core.utils import get_client_ip
+from core.webhook_security import enforce_webhook_rate_limit, ensure_webhook_auth
 
 webhook_router = APIRouter()
 
@@ -196,37 +194,20 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from core.app import handle_webhook_process
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_client_ip(request)
     headers = dict(request.headers)
 
-    if Config.WEBHOOK_RATE_LIMIT_PER_MINUTE and Config.WEBHOOK_RATE_LIMIT_PER_MINUTE > 0:
-        try:
-            redis = get_redis()
-            window = int(time.time() // 60)
-            key = f"rl:webhook:{client_ip}:{window}"
-            current = redis.incr(key)
-            if current == 1:
-                redis.expire(key, 70)
-            if current > Config.WEBHOOK_RATE_LIMIT_PER_MINUTE:
-                return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-        except Exception as e:
-            logger.warning(f"限流检查失败: {e}")
+    try:
+        limited_ip = enforce_webhook_rate_limit(request)
+        if limited_ip:
+            return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
+    except Exception as e:
+        logger.warning(f"限流检查失败: {e}")
 
-    signature = headers.get('x-webhook-signature', '')
-    token = headers.get('token', '')
-    if not token and headers.get('authorization', '').startswith('Token '):
-        token = headers.get('authorization', '')[6:].strip()
-
-    if signature:
-        if not Config.WEBHOOK_SECRET:
-            return JSONResponse(status_code=401, content={"success": False, "error": "Signature verification not configured"})
-        if not verify_signature(raw_body, signature):
-            return JSONResponse(status_code=401, content={"success": False, "error": "Invalid signature"})
-    elif Config.WEBHOOK_SECRET:
-        if not token:
-            return JSONResponse(status_code=401, content={"success": False, "error": "Missing token"})
-        if not hmac.compare_digest(token, Config.WEBHOOK_SECRET):
-            return JSONResponse(status_code=401, content={"success": False, "error": "Invalid token"})
+    try:
+        ensure_webhook_auth(headers, raw_body)
+    except Exception:
+        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None)
     return JSONResponse(status_code=202, content={"success": True, "message": "Webhook received and queued for processing"})
@@ -245,37 +226,20 @@ async def receive_webhook_with_source(source: str, request: Request, background_
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from core.app import handle_webhook_process
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_client_ip(request)
     headers = dict(request.headers)
 
-    if Config.WEBHOOK_RATE_LIMIT_PER_MINUTE and Config.WEBHOOK_RATE_LIMIT_PER_MINUTE > 0:
-        try:
-            redis = get_redis()
-            window = int(time.time() // 60)
-            key = f"rl:webhook:{client_ip}:{window}"
-            current = redis.incr(key)
-            if current == 1:
-                redis.expire(key, 70)
-            if current > Config.WEBHOOK_RATE_LIMIT_PER_MINUTE:
-                return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-        except Exception as e:
-            logger.warning(f"限流检查失败: {e}")
+    try:
+        limited_ip = enforce_webhook_rate_limit(request)
+        if limited_ip:
+            return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
+    except Exception as e:
+        logger.warning(f"限流检查失败: {e}")
 
-    signature = headers.get('x-webhook-signature', '')
-    token = headers.get('token', '')
-    if not token and headers.get('authorization', '').startswith('Token '):
-        token = headers.get('authorization', '')[6:].strip()
-
-    if signature:
-        if not Config.WEBHOOK_SECRET:
-            return JSONResponse(status_code=401, content={"success": False, "error": "Signature verification not configured"})
-        if not verify_signature(raw_body, signature):
-            return JSONResponse(status_code=401, content={"success": False, "error": "Invalid signature"})
-    elif Config.WEBHOOK_SECRET:
-        if not token:
-            return JSONResponse(status_code=401, content={"success": False, "error": "Missing token"})
-        if not hmac.compare_digest(token, Config.WEBHOOK_SECRET):
-            return JSONResponse(status_code=401, content={"success": False, "error": "Invalid token"})
+    try:
+        ensure_webhook_auth(headers, raw_body)
+    except Exception:
+        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source)
     return JSONResponse(status_code=202, content={"success": True, "message": "Webhook received and queued for processing"})
