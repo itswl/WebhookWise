@@ -144,35 +144,20 @@ def test_multi_node_alerts():
     print("\n4️⃣  验证结果:")
     print("=" * 80)
 
-    if hash1 == hash2:
-        print("❌ 测试失败！两个不同节点生成了相同的哈希值")
-        print("   这会导致节点2的告警被误判为重复告警")
-        return False
-    else:
-        print("✅ 测试通过！两个不同节点生成了不同的哈希值")
-        print(f"   节点1和节点2的告警将被正确区分")
-        print(f"\n   关键差异字段:")
-        print(f"   - dim_node: '{fields1.get('dim_node')}' vs '{fields2.get('dim_node')}'")
-        return True
+    assert hash1 != hash2
+    print("✅ 测试通过！两个不同节点生成了不同的哈希值")
+    print(f"   节点1和节点2的告警将被正确区分")
+    print(f"\n   关键差异字段:")
+    print(f"   - dim_node: '{fields1.get('dim_node')}' vs '{fields2.get('dim_node')}'")
 
-    # 额外测试：相同节点的重复告警
     print("\n5️⃣  额外测试: 相同节点的重复告警（应该被去重）")
     print("=" * 80)
 
-    # 再次发送节点1的告警
     hash1_duplicate = generate_alert_hash(alert_node1, 'volcengine')
-
-    if hash1 == hash1_duplicate:
-        print("✅ 正确！相同节点的重复告警生成了相同的哈希")
-        print("   这些告警将被正确去重")
-    else:
-        print("❌ 错误！相同节点的重复告警生成了不同的哈希")
-        print("   去重机制可能失效")
+    assert hash1 == hash1_duplicate
+    print("✅ 正确！相同节点的重复告警生成了相同的哈希")
+    print("   这些告警将被正确去重")
 
     print("\n" + "=" * 80)
     print("测试完成")
     print("=" * 80)
-
-
-if __name__ == '__main__':
-    test_multi_node_alerts()

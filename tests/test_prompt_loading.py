@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 测试 AI Prompt 动态加载功能
 
@@ -34,8 +33,7 @@ def test_prompt_loading():
         print(f"   预览 (前200字符):")
         print(f"   {template[:200]}...")
     except Exception as e:
-        print(f"   ❌ 加载失败: {e}")
-        return False
+        raise AssertionError(f"加载失败: {e}") from e
 
     # 测试 3: 检查模板变量
     print("\n3️⃣  检查模板变量")
@@ -63,11 +61,9 @@ def test_prompt_loading():
         print("   ✅ 格式化成功")
         print(f"   格式化后长度: {len(formatted)} 字符")
     except KeyError as e:
-        print(f"   ❌ 格式化失败，缺少变量: {e}")
-        return False
+        raise AssertionError(f"格式化失败，缺少变量: {e}") from e
     except Exception as e:
-        print(f"   ❌ 格式化失败: {e}")
-        return False
+        raise AssertionError(f"格式化失败: {e}") from e
 
     # 测试 5: 重载功能
     print("\n5️⃣  测试重载功能")
@@ -78,8 +74,7 @@ def test_prompt_loading():
         else:
             print("   ⚠️  重载后内容发生变化")
     except Exception as e:
-        print(f"   ❌ 重载失败: {e}")
-        return False
+        raise AssertionError(f"重载失败: {e}") from e
 
     # 测试 6: 检查 prompt 文件
     print("\n6️⃣  检查 Prompt 文件")
@@ -104,8 +99,6 @@ def test_prompt_loading():
     print("\n" + "=" * 60)
     print("✅ 所有测试通过")
     print("=" * 60)
-
-    return True
 
 
 def test_api_endpoints():
