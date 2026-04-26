@@ -345,6 +345,10 @@ function loadWebhooks() {
     if (typeof AlertsModule !== 'undefined') AlertsModule.loadAlerts();
 }
 
+function loadMoreWebhooks() {
+    if (typeof AlertsModule !== 'undefined') AlertsModule.loadMoreAlerts();
+}
+
 function filterAlerts() {
     if (typeof AlertsModule !== 'undefined') AlertsModule.filterAlerts();
 }
