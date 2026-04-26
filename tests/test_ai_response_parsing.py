@@ -1,5 +1,5 @@
-import ai_analyzer
-from config import Config
+from services import ai_analyzer
+from core.config import Config
 
 
 def test_parse_truncated_json_fallback_extracts_clean_lists():
