@@ -1,10 +1,13 @@
-from fastapi import Security, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from core.config import Config
-from core.logger import logger
 import hashlib
 
+from fastapi import HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from core.config import Config
+from core.logger import logger
+
 security = HTTPBearer(auto_error=False)
+_AUTH_DEPENDENCY = Security(security)
 
 def _redact_headers(headers: dict) -> dict:
     redacted = {}
@@ -24,7 +27,7 @@ def _body_meta(body: bytes) -> dict:
     return {"size": len(body), "sha256": digest}
 
 
-async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = Security(security)):
+async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = _AUTH_DEPENDENCY):
     """
     验证 API Key (Bearer Token)
     如果 Config.API_KEY 未配置，则跳过验证（兼容模式）

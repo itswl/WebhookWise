@@ -1,8 +1,9 @@
-import os
-import socket
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Depends
+import os
+import socket
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
