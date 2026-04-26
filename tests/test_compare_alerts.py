@@ -2,8 +2,8 @@
 """
 对比两个实际告警
 """
-import json
 import hashlib
+import json
 
 
 def generate_alert_hash_debug(data, source):

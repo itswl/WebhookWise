@@ -1,5 +1,7 @@
-import httpx
 from typing import Optional
+
+import httpx
+
 from core.config import Config
 from core.logger import logger
 

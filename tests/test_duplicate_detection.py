@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """测试重复告警检测"""
 
-import json
 import hashlib
+import json
 
 # 你提供的告警数据
 alert_data = {

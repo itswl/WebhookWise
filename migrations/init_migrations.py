@@ -4,9 +4,11 @@
 静默模式 - 仅在需要时输出关键信息
 """
 
-from core.models import get_engine
-from sqlalchemy import text
 import sys
+
+from sqlalchemy import text
+
+from core.models import get_engine
 
 
 def check_and_add_unique_constraint():
@@ -487,7 +489,7 @@ def add_archive_and_indexes():
             
             print("⚙️  正在执行数据库性能优化 (复合索引与归档表)...")
             
-            with open(sql_path, 'r') as f:
+            with open(sql_path) as f:
                 sql_content = f.read()
                 
             # 执行 SQL 脚本

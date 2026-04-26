@@ -8,7 +8,6 @@ from core.config import Config
 from core.logger import logger
 from core.routes import _fail, _ok
 
-
 admin_router = APIRouter()
 
 
