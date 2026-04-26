@@ -5,7 +5,7 @@
 import sys
 sys.path.insert(0, '/Users/imwl/webhooks')
 
-from utils import generate_alert_hash
+from core.utils import generate_alert_hash
 
 # 告警1 - 04:47:04 触发，当前值 3.39
 alert1 = {

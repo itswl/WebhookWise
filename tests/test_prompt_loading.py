@@ -18,8 +18,8 @@ def test_prompt_loading():
     print("=" * 60)
 
     # 导入模块
-    from ai_analyzer import load_user_prompt_template, reload_user_prompt_template
-    from config import Config
+    from services.ai_analyzer import load_user_prompt_template, reload_user_prompt_template
+    from core.config import Config
 
     # 测试 1: 检查配置
     print("\n1️⃣  检查配置")

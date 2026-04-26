@@ -5,7 +5,7 @@ import json
 import sys
 sys.path.insert(0, '/Users/imwl/webhooks')
 
-from ai_analyzer import fix_json_format
+from services.ai_analyzer import fix_json_format
 
 # 测试用例
 test_cases = [

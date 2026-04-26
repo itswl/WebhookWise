@@ -2,7 +2,7 @@
 """
 测试分页查询功能
 """
-from utils import get_all_webhooks
+from core.utils import get_all_webhooks
 
 def test_pagination():
     """测试分页查询"""
