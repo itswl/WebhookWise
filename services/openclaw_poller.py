@@ -256,7 +256,8 @@ def _poll_pending_analyses_inner():
                             if json_text:
                                 try:
                                     parsed_result = json.loads(json_text)
-                                except: pass
+                                except Exception:
+                                    parsed_result = None
 
                             if parsed_result and isinstance(parsed_result, dict):
                                 parsed_result['_openclaw_run_id'] = record.openclaw_run_id
@@ -276,7 +277,8 @@ def _poll_pending_analyses_inner():
                                 event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)
-                            except: pass
+                            except Exception as e:
+                                logger.debug(f"飞书深度分析通知失败: {e}")
                         else:
                             _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
 
@@ -291,8 +293,10 @@ def _poll_pending_analyses_inner():
                                     parsed_result = None
                                     json_text = _extract_robust_json(text)
                                     if json_text:
-                                        try: parsed_result = json.loads(json_text)
-                                        except: pass
+                                        try:
+                                            parsed_result = json.loads(json_text)
+                                        except Exception:
+                                            parsed_result = None
                                     
                                     record.analysis_result = parsed_result or {'root_cause': text}
                                     record.status = 'completed'
@@ -332,5 +336,6 @@ def _extract_robust_json(text: str) -> Optional[str]:
             elif text[i] == '}':
                 stack -= 1
                 if stack == 0: return text[start_idx:i+1]
-    except: pass
+    except Exception:
+        return None
     return None
