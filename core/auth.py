@@ -2,8 +2,27 @@ from fastapi import Security, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from core.config import Config
 from core.logger import logger
+import hashlib
 
 security = HTTPBearer(auto_error=False)
+
+def _redact_headers(headers: dict) -> dict:
+    redacted = {}
+    for k, v in headers.items():
+        lk = str(k).lower()
+        if lk in {"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"}:
+            redacted[k] = "[REDACTED]"
+        else:
+            redacted[k] = v
+    return redacted
+
+
+def _body_meta(body: bytes) -> dict:
+    if not body:
+        return {"size": 0, "sha256": None}
+    digest = hashlib.sha256(body).hexdigest()
+    return {"size": len(body), "sha256": digest}
+
 
 async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = Security(security)):
     """
@@ -16,16 +35,14 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
     if not auth or auth.credentials != Config.API_KEY:
         client_ip = request.client.host if request.client else 'unknown'
         
-        # 尝试读取请求体 (由于 request.body() 是异步的，在 depends 里直接 await 可能影响性能，但这是异常分支，影响不大)
         try:
             body_bytes = await request.body()
-            body_preview = body_bytes.decode('utf-8', errors='ignore')[:200]
         except Exception:
-            body_preview = "无法读取"
+            body_bytes = b""
             
         logger.warning(
             f"[Auth] 未授权的 API 访问尝试: IP={client_ip}, URL={request.url.path}, "
-            f"Method={request.method}, Headers={dict(request.headers)}, Body Preview={body_preview}"
+            f"Method={request.method}, Headers={_redact_headers(dict(request.headers))}, Body={_body_meta(body_bytes)}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

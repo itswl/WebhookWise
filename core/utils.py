@@ -764,12 +764,15 @@ def save_webhook_to_file(
 
 def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址"""
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    elif request.headers.get('X-Real-IP'):
-        return request.headers.get('X-Real-IP')
-    else:
-        return request.remote_addr
+    forwarded_for = request.headers.get('x-forwarded-for')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+
+    real_ip = request.headers.get('x-real-ip')
+    if real_ip:
+        return real_ip
+
+    return request.client.host if request.client else 'unknown'
 
 
 def get_all_webhooks(

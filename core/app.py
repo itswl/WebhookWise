@@ -2,12 +2,12 @@ import os
 import time
 import asyncio
 import socket
+import json
 from contextlib import contextmanager, asynccontextmanager
 from fastapi import FastAPI, Request, Query, Body, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional, Generator, Union
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +18,19 @@ from core.config import Config
 from core.http_client import get_http_client, close_http_client
 from core.auth import verify_api_key
 from core.logger import logger
+from core.redis_client import get_redis
+from core.routes import (
+    WebhookRequestError,
+    InvalidSignatureError,
+    InvalidJsonError,
+    AnalysisResolution,
+    WebhookRequestContext,
+    ForwardDecision,
+    NoiseReductionContext,
+    PersistedEventContext,
+    _ok,
+    _fail,
+)
 from core.utils import (
     processing_lock,
     verify_signature, save_webhook_data, get_client_ip,
@@ -36,10 +49,11 @@ from core.routes.webhook import webhook_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    Config.validate()
+    if not Config.API_KEY and not (Config.DEBUG or Config.ALLOW_UNAUTHENTICATED_ADMIN):
+        raise RuntimeError("API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true")
     get_http_client()
     yield
-    # Shutdown
     await close_http_client()
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
@@ -54,6 +68,15 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
 # Worker 标识（用于调试）
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 
@@ -66,66 +89,6 @@ app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
 app.include_router(forward_rules_router, dependencies=[Depends(verify_api_key)])
 app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
 app.include_router(webhook_router)
-
-# 响应工具函数：统一 success/error 返回结构
-# 业务逻辑 helper：按“告警处理 / 配置管理 / 运维接口”分组
-
-
-class WebhookRequestError(Exception):
-    """基类：Webhook 请求解析错误。"""
-
-
-class InvalidSignatureError(WebhookRequestError):
-    """签名校验失败。"""
-
-
-class InvalidJsonError(WebhookRequestError):
-    """JSON 解析失败。"""
-
-
-@dataclass(frozen=True)
-class AnalysisResolution:
-    analysis_result: dict
-    reanalyzed: bool
-    is_duplicate: bool
-    original_event: Optional[WebhookEvent]
-    beyond_window: bool
-
-
-@dataclass(frozen=True)
-class WebhookRequestContext:
-    client_ip: str
-    source: str
-    payload: bytes
-    parsed_data: dict
-    webhook_full_data: dict
-    headers: dict = field(default_factory=dict)
-
-
-@dataclass(frozen=False)
-class ForwardDecision:
-    should_forward: bool
-    skip_reason: Optional[str]
-    is_periodic_reminder: bool
-    matched_rules: list = field(default_factory=list)  # 匹配的 ForwardRule 列表
-
-
-@dataclass(frozen=True)
-class NoiseReductionContext:
-    relation: str
-    root_cause_event_id: Optional[int]
-    confidence: float
-    suppress_forward: bool
-    reason: str
-    related_alert_count: int
-    related_alert_ids: list[int]
-
-
-@dataclass(frozen=True)
-class PersistedEventContext:
-    save_result: SaveWebhookResult
-    noise_context: NoiseReductionContext
-
 
 def _default_noise_context() -> NoiseReductionContext:
     return NoiseReductionContext(
@@ -285,20 +248,6 @@ def _persist_webhook_with_noise_context(
     )
 
     return PersistedEventContext(save_result=save_result, noise_context=noise_context)
-
-
-def _ok(data: Optional[dict] = None, http_status: int = 200, **extra):
-    payload = {'success': True}
-    if data is not None:
-        payload['data'] = data
-    payload.update(extra)
-    return JSONResponse(content=payload, status_code=http_status)
-
-
-def _fail(error: str, http_status: int = 500, **extra):
-    payload = {'success': False, 'error': error}
-    payload.update(extra)
-    return JSONResponse(content=payload, status_code=http_status)
 
 
 
@@ -723,7 +672,8 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         source=requested_source,
         payload=raw_body,
         parsed_data=parsed_data,
-        webhook_full_data=webhook_full_data
+        webhook_full_data=webhook_full_data,
+        headers=headers
     )
 
 def _build_webhook_response(
@@ -912,6 +862,16 @@ def get_ai_usage(period: str = Query('day')) -> JSONResponse:
         - Token 使用量
     """
     try:
+        cache_bucket = int(time.time() // 60)
+        cache_key = f"ai_usage:{period}:{cache_bucket}"
+        try:
+            redis = get_redis()
+            cached = redis.get(cache_key)
+            if cached:
+                return _ok(json.loads(cached), 200)
+        except Exception as e:
+            logger.debug(f"AI usage 缓存读取失败: {e}")
+
         from sqlalchemy import func, case
         
         
@@ -1030,6 +990,12 @@ def get_ai_usage(period: str = Query('day')) -> JSONResponse:
                 },
                 'cache_statistics': cache_statistics
             }
+
+            try:
+                redis = get_redis()
+                redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
+            except Exception as e:
+                logger.debug(f"AI usage 缓存写入失败: {e}")
             
             return _ok(usage_data, 200)
             
@@ -1211,41 +1177,35 @@ def get_config():
         return _ok(_build_config_response(env_values), 200)
     except Exception as e:
         logger.error(f"获取配置失败: {str(e)}")
-        logger.error(f"Processing failed: {str(e)}")
-        return
+        return _fail(str(e), 500)
 
 
 @app.post('/api/config', dependencies=[Depends(verify_api_key)])
 def update_config(payload: dict = Body(default_factory=dict)):
     """更新配置"""
     try:
-        
         if not payload:
-            logger.error(f"Processing failed: 请求体为空")
-        return
+            return _fail('请求体为空', 400)
 
         updates, errors = _collect_config_updates(payload)
         if errors:
-            logger.error(f"Processing failed: {'; '.join(errors)}")
-        return
+            return _fail('; '.join(errors), 400)
 
         try:
             _persist_config_updates(updates, '.env')
         except PermissionError as e:
             logger.error(f"权限错误，无法写入 .env 文件: {str(e)}")
-            logger.error(f"Processing failed: 权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。")
-            return
+            return _fail('权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。', 500)
         except Exception as e:
             logger.error(f"更新 .env 文件失败: {str(e)}", exc_info=True)
-            raise
+            return _fail(str(e), 500)
 
         logger.info(f"配置已更新: {list(updates.keys())}")
         return _ok(status=200, message='配置更新成功')
 
     except Exception as e:
         logger.error(f"更新配置失败: {str(e)}", exc_info=True)
-        logger.error(f"Processing failed: {str(e)}")
-        return
+        return _fail(str(e), 500)
 
 
 
