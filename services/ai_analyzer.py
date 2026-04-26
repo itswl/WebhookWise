@@ -859,8 +859,8 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='input').inc(tokens_in)
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='output').inc(tokens_out)
+        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='input').inc(tokens_in)  # nosec B106
+        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='output').inc(tokens_out)  # nosec B106
         AI_COST_USD_TOTAL.labels(model=Config.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
         
