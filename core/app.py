@@ -619,13 +619,21 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     requested_source = source or headers.get('x-webhook-source', 'unknown')
 
     logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
-    logger.debug(f"[Webhook] 原始载荷: {raw_body.decode('utf-8', errors='ignore')}")
+    try:
+        import hashlib
+        raw_hash = hashlib.sha256(raw_body).hexdigest() if raw_body else None
+    except Exception:
+        raw_hash = None
+    logger.debug(f"[Webhook] 原始载荷: size={len(raw_body) if raw_body else 0}, sha256={raw_hash}")
 
     from core.config import Config
     # 1. 检查 HMAC 签名 (向后兼容)
     signature = headers.get('x-webhook-signature', '')
-    if signature and not verify_signature(raw_body, signature):
-        raise InvalidSignatureError()
+    if signature:
+        if not Config.WEBHOOK_SECRET:
+            raise InvalidSignatureError()
+        if not verify_signature(raw_body, signature):
+            raise InvalidSignatureError()
         
     # 2. 检查静态 Token 认证
     # 格式要求：Header 中携带 Token:<加密token>
@@ -642,7 +650,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         import hmac
         # 使用安全的字符串比较防止时序攻击
         if not hmac.compare_digest(token, Config.WEBHOOK_SECRET):
-            logger.warning(f"[Auth] Token 验证失败: IP={client_ip}, Token={token[:8]}...")
+            logger.warning(f"[Auth] Token 验证失败: IP={client_ip}")
             raise InvalidSignatureError()
         else:
             logger.debug("[Auth] Token 验证通过")
@@ -651,7 +659,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         import json
         try:
             payload = json.loads(raw_body)
-        except:
+        except Exception:
             raise InvalidJsonError()
 
     data = payload
@@ -1001,8 +1009,7 @@ def get_ai_usage(period: str = Query('day')) -> JSONResponse:
             
     except Exception as e:
         logger.error(f"获取 AI 使用统计失败: {str(e)}", exc_info=True)
-        logger.error(f"Processing failed: {str(e)}")
-        return
+        return _fail(str(e), 500)
 
 # 配置管理 Schema: key -> (env_var, value_type, validator)
 _CONFIG_SCHEMA = {
@@ -1160,9 +1167,12 @@ def _persist_config_updates(updates: dict, env_file: str = '.env') -> None:
     lines = env_path.read_text(encoding='utf-8').splitlines(keepends=True) if env_path.exists() else []
     merged_lines = _merge_env_lines(lines, updates)
 
-    with open(env_path, 'w', encoding='utf-8') as f:
+    tmp_path = env_path.with_name(env_path.name + '.tmp')
+    with open(tmp_path, 'w', encoding='utf-8') as f:
         f.writelines(merged_lines)
         f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, env_path)
 
     for var_name, (_, typed_value) in updates.items():
         setattr(Config, var_name, typed_value)

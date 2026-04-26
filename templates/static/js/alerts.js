@@ -314,24 +314,24 @@ const AlertsModule = {
             const analysis = webhook.ai_analysis || {};
             const summary = webhook.summary || analysis.summary || '';
 
-            html += '<div class="alert-item" data-id="' + webhook.id + '">';
+            html += '<div class="alert-item" data-id="' + escapeHtml(String(webhook.id)) + '">';
             html += '<div class="alert-header">';
             html += '<div class="alert-left">';
             html += '<div class="alert-title-row">';
             html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-            html += '<span class="alert-title">' + (summary || webhook.source || '告警 #' + webhook.id) + '</span>';
+            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || ('告警 #' + webhook.id))) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
-            html += '<span class="alert-meta-item">📍 ' + (webhook.source || 'unknown') + '</span>';
+            html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
             // 显示主机信息（如果有）
             if (webhook.alert_info && webhook.alert_info.host) {
-                html += '<span class="alert-meta-item">🖥️ ' + webhook.alert_info.host + '</span>';
+                html += '<span class="alert-meta-item">🖥️ ' + escapeHtml(String(webhook.alert_info.host)) + '</span>';
             }
 
             // 始终显示客户端 IP
             if (webhook.client_ip) {
-                html += '<span class="alert-meta-item">🌐 ' + webhook.client_ip + '</span>';
+                html += '<span class="alert-meta-item">🌐 ' + escapeHtml(String(webhook.client_ip)) + '</span>';
             }
 
             html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
@@ -366,9 +366,9 @@ const AlertsModule = {
             }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
-            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + webhook.id + '">🔄 重新分析</button>';
-            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + webhook.id + '">🔬 深度分析</button>';
-            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + webhook.id + '">🚀 转发</button>';
+            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 重新分析</button>';
+            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 深度分析</button>';
+            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 转发</button>';
             html += '</div></div></div>';
 
             html += '<div class="alert-details">';
@@ -396,7 +396,7 @@ const AlertsModule = {
                 html += '<div class="info-grid">';
                 Object.entries(webhook.alert_info).forEach(([key, value]) => {
                     if (value) {
-                        html += '<div class="info-item"><div class="info-label">' + key + '</div><div class="info-value">' + value + '</div></div>';
+                        html += '<div class="info-item"><div class="info-label">' + escapeHtml(String(key)) + '</div><div class="info-value">' + escapeHtml(String(value)) + '</div></div>';
                     }
                 });
                 html += '</div>';
@@ -419,7 +419,7 @@ const AlertsModule = {
                 html += '<div class="ai-header">🤖 智能分析结果</div>';
                 html += '<div class="ai-content">';
                 if (summary) {
-                    html += '<div class="ai-item"><div class="ai-label">摘要</div><div class="ai-value">' + summary + '</div></div>';
+                    html += '<div class="ai-item"><div class="ai-label">摘要</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
                 }
                 if (webhook.importance) {
                     html += '<div class="ai-item"><div class="ai-label">重要性</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
@@ -448,8 +448,8 @@ const AlertsModule = {
     renderOverview(webhook) {
         let html = '<div class="info-grid">';
         html += '<div class="info-item"><div class="info-label">告警 ID</div><div class="info-value">#' + webhook.id + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + (webhook.source || '-') + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + (webhook.client_ip || '-') + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
         if (webhook.is_duplicate) {
             html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
@@ -471,7 +471,7 @@ const AlertsModule = {
             } else if (isWithinWindow) {
                 duplicateType = '窗口内重复（24小时内）';
             }
-            html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + duplicateType + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + escapeHtml(String(duplicateType)) + '</div></div>';
         }
         html += '</div>';
         return html;
@@ -490,12 +490,12 @@ const AlertsModule = {
                 <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: #4f46e5; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
                     <span>🤖</span> AIOps 智能诊断报告
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
-                        ${analysis._degraded ? '本地规则降级' : analysis._route_type || '智能路由'}
+                        ${escapeHtml(String(analysis._degraded ? '本地规则降级' : (analysis._route_type || '智能路由')))}
                     </span>
                 </div>
                 
                 <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
-                    ${analysis.summary || '无分析摘要'}
+                    ${escapeHtml(String(analysis.summary || '无分析摘要'))}
                 </div>
                 
                 <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
@@ -505,14 +505,14 @@ const AlertsModule = {
             html += `
                 <div class="detail-section">
                     <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 根因定位</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${analysis.root_cause}</p>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
                 </div>
             `;
         } else if (analysis.event_type) {
             html += `
                 <div class="detail-section">
                     <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ 事件类型</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${analysis.event_type}</p>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
                 </div>
             `;
         }
@@ -522,7 +522,7 @@ const AlertsModule = {
             html += `
                 <div class="detail-section">
                     <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 影响评估</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${impact}</p>
+                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
                 </div>
             `;
         }
@@ -533,7 +533,7 @@ const AlertsModule = {
                 <div class="detail-section" style="grid-column: 1 / -1;">
                     <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ 修复建议与操作</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
-                        ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${r}</li>`).join('')}
+                        ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
                 </div>
             `;
@@ -544,7 +544,7 @@ const AlertsModule = {
                 <div class="detail-section" style="grid-column: 1 / -1;">
                     <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ 潜在风险</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
-                        ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${r}</li>`).join('')}
+                        ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
                 </div>
             `;
@@ -555,22 +555,23 @@ const AlertsModule = {
         // Metadata footer
         html += `
             <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span>⚡ 重要性: <strong style="color: #0f172a;">${analysis.importance || '未知'}</strong></span>
+                <span>⚡ 重要性: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || '未知'))}</strong></span>
         `;
         
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
             const relationMap = { root_cause: '根因告警', derived: '衍生告警', standalone: '独立告警' };
             const relation = relationMap[nr.relation] || nr.relation || '未知';
-            html += `<span>🛡️ 降噪判定: <strong style="color: #0f172a;">${relation}</strong> (置信度: ${(nr.confidence * 100).toFixed(1)}%)</span>`;
+            html += `<span>🛡️ 降噪判定: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (置信度: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
                 html += `<span>🔗 关联根因: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
         
-        html += `<span>🔀 路由通道: <strong style="color: #0f172a;">${analysis._route_type || '未知'}</strong></span>`;
+        html += `<span>🔀 路由通道: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || '未知'))}</strong></span>`;
         if (analysis._cache_hit) {
-            html += `<span title="命中次数: ${analysis._cache_hit_count || 1}" style="color: #10b981; font-weight: 600;">🎯 缓存命中 (${analysis._cache_hit_count || 1}次)</span>`;
+            const hitCount = analysis._cache_hit_count || 1;
+            html += `<span title="命中次数: ${escapeHtml(String(hitCount))}" style="color: #10b981; font-weight: 600;">🎯 缓存命中 (${escapeHtml(String(hitCount))}次)</span>`;
         }
         
         html += `
@@ -710,7 +711,7 @@ const AlertsModule = {
         } catch (error) {
             console.error('❌ 加载完整数据失败:', error);
             if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ 加载失败: ' + error.message + '</div>';
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ 加载失败: ' + escapeHtml(String(error.message || error)) + '</div>';
             }
         }
     },
@@ -863,12 +864,7 @@ const AlertsModule = {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
                     // 如果有完整的 OpenClaw 文本，优先渲染 markdown
                     if (analysis._openclaw_text) {
-                        if (typeof marked !== 'undefined') {
-                            html += '<div class="openclaw-analysis-content">' + marked.parse(analysis._openclaw_text) + '</div>';
-                        } else {
-                            // fallback: 用 pre 显示
-                            html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + analysis._openclaw_text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
-                        }
+                        html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + escapeHtml(String(analysis._openclaw_text)) + '</pre>';
                         // 如果有置信度，单独显示
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
@@ -877,19 +873,19 @@ const AlertsModule = {
                     } else {
                         // 原有的 JSON 字段渲染逻辑
                         if (analysis.root_cause) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d \u6839\u56e0\u5206\u6790\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.root_cause + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d \u6839\u56e0\u5206\u6790\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
                         }
                         if (analysis.impact) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 \u5f71\u54cd\u8303\u56f4\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + analysis.impact + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 \u5f71\u54cd\u8303\u56f4\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
                         }
                         if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
                             html += '<div style="margin-bottom:8px;"><strong>\u2705 \u4fee\u590d\u5efa\u8bae\uff1a</strong><ul style="margin:4px 0; padding-left:20px;">';
                             analysis.recommendations.forEach(function(rec) {
                                 if (typeof rec === 'object' && rec !== null) {
-                                    var label = (rec.priority ? '<strong>' + rec.priority + '</strong>: ' : '') + (rec.action || JSON.stringify(rec));
+                                    var label = (rec.priority ? '<strong>' + escapeHtml(String(rec.priority)) + '</strong>: ' : '') + escapeHtml(String(rec.action || JSON.stringify(rec)));
                                     html += '<li>' + label + '</li>';
                                 } else {
-                                    html += '<li>' + rec + '</li>';
+                                    html += '<li>' + escapeHtml(String(rec)) + '</li>';
                                 }
                             });
                             html += '</ul></div>';
@@ -901,7 +897,7 @@ const AlertsModule = {
                                 
                         // \u5982\u679c\u6ca1\u6709\u7ed3\u6784\u5316\u5b57\u6bb5\uff0cfallback \u663e\u793a\u539f\u59cb JSON
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
-                            html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + JSON.stringify(analysis, null, 2) + '</pre>';
+                            html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }
                     }
                 }
@@ -916,7 +912,7 @@ const AlertsModule = {
             
             container.innerHTML = html;
         } catch (e) {
-            container.innerHTML = '<div style="color:red; padding:20px;">加载失败: ' + e.message + '</div>';
+            container.innerHTML = '<div style="color:red; padding:20px;">加载失败: ' + escapeHtml(String(e.message || e)) + '</div>';
         }
     },
 

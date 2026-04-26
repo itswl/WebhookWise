@@ -30,7 +30,7 @@ async function loadForwardRules() {
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    <p>❌ 加载失败: ${result.error || '未知错误'}</p>
+                    <p>❌ 加载失败: ${escapeHtml(result.error || '未知错误')}</p>
                     <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">重试</button>
                 </div>
             `;
@@ -39,7 +39,7 @@ async function loadForwardRules() {
         console.error('❌ 加载转发规则失败:', error);
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                <p>❌ 加载失败: ${error.message}</p>
+                <p>❌ 加载失败: ${escapeHtml(error.message || String(error))}</p>
                 <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">重试</button>
             </div>
         `;
@@ -82,10 +82,10 @@ function renderForwardRules(rules) {
  * @param {Object} rule - 规则对象
  */
 function renderRuleCard(rule) {
-    const importanceText = formatImportance(rule.match_importance);
-    const duplicateText = formatDuplicateStatus(rule.match_duplicate);
-    const sourceText = rule.match_source || '全部';
-    const targetTypeText = formatTargetType(rule.target_type);
+    const importanceText = escapeHtml(formatImportance(rule.match_importance));
+    const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
+    const sourceText = escapeHtml(rule.match_source || '全部');
+    const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
     
     const isEnabled = rule.enabled;
     const cardBorder = isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;';
