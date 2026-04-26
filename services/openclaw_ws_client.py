@@ -503,8 +503,8 @@ class OpenClawWSClient:
             if self._ws:
                 try:
                     self._ws.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"WebSocket close failed: {e}")
     
     def _get_connection_error_message(self) -> str:
         """根据连接错误类型返回清晰的错误信息"""
@@ -748,8 +748,8 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         if ws:
             try:
                 ws.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"WebSocket close failed: {e}")
 
 
 def wait_for_result(gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int = None) -> dict:
