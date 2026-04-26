@@ -64,7 +64,7 @@ python3 -m migrations.init_migrations
 
 | 关键变量 | 说明 |
 | :--- | :--- |
-| `API_KEY` | 管理接口的访问令牌。若设置，访问 Dashboard 需输入。 |
+| `API_KEY` | 管理接口的访问令牌。生产环境必须设置（或显式开启 `ALLOW_UNAUTHENTICATED_ADMIN=true` 仅用于本地）。 |
 | `DEEP_ANALYSIS_PLATFORM` | 深度分析协议。可选 `hermes` (HMAC) 或 `openclaw` (Bearer)。 |
 | `DUPLICATE_ALERT_TIME_WINDOW` | 重复告警去重窗口（单位：小时）。 |
 | `LOG_LEVEL` | 日志级别。排查 AI 内容建议设为 `DEBUG`，生产环境建议 `INFO`。 |
