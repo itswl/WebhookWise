@@ -335,6 +335,7 @@ def fix_json_format(json_str: str) -> str:
     fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
     fixed = re.sub(r',\s*([}\]])', r'\1', fixed)
     fixed = re.sub(r'([\[{])\s*,', r'\1', fixed)
+    fixed = re.sub(r'(")\s+("([^"\\]|\\.)*"\s*:)', r'\1, \2', fixed)
     return fixed.strip()
 
 
