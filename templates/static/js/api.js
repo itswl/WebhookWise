@@ -78,10 +78,25 @@ const API = {
      * @returns {Promise<object>} 告警列表数据
      */
     async getWebhooks(params = {}) {
+        if (params.use_cursor || params.cursor_id !== undefined || params.limit) {
+            const queryParams = new URLSearchParams();
+            const limit = params.limit || params.page_size || 200;
+            queryParams.append('limit', limit);
+            if (params.cursor_id !== null && params.cursor_id !== undefined) queryParams.append('cursor_id', params.cursor_id);
+            if (params.fields) queryParams.append('fields', params.fields);
+            if (params.importance) queryParams.append('importance', params.importance);
+            if (params.source) queryParams.append('source', params.source);
+
+            const response = await this.authenticatedFetch('/api/webhooks/cursor?' + queryParams.toString());
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return await response.json();
+        }
+
         const queryParams = new URLSearchParams();
         if (params.page) queryParams.append('page', params.page);
         if (params.page_size) queryParams.append('page_size', params.page_size);
         if (params.fields) queryParams.append('fields', params.fields);
+        if (params.include_total !== undefined) queryParams.append('include_total', String(params.include_total));
 
         const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
