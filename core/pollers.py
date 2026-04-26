@@ -7,7 +7,6 @@ from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
 
-
 _LEADER_KEY = "pollers:leader"
 _LEADER_TTL_SECONDS = 90
 _RENEW_INTERVAL_SECONDS = 30

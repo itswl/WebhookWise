@@ -1,12 +1,15 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Union
+
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
+from adapters.ecosystem_adapters import normalize_webhook_event
 from core.config import Config
 from core.logger import logger
-from core.metrics import WEBHOOK_RECEIVED_TOTAL, WEBHOOK_NOISE_REDUCED_TOTAL
+from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
+from core.models import DeepAnalysis, WebhookEvent, get_session, session_scope
 from core.routes import (
     AnalysisResolution,
     ForwardDecision,
@@ -24,8 +27,6 @@ from core.utils import (
     save_webhook_data,
 )
 from core.webhook_security import ensure_webhook_auth
-from adapters.ecosystem_adapters import normalize_webhook_event
-from core.models import DeepAnalysis, WebhookEvent, get_session, session_scope
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 

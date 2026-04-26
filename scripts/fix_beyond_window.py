@@ -13,9 +13,10 @@
 """
 
 import os
-from sqlalchemy import create_engine, text
-from datetime import datetime, timedelta
 import sys
+from datetime import datetime, timedelta
+
+from sqlalchemy import create_engine, text
 
 
 def get_engine():

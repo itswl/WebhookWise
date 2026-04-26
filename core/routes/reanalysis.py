@@ -5,7 +5,7 @@ core/routes/reanalysis.py
 """
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, Body, HTTPException
 
 from core.config import Config
 from core.logger import logger

@@ -4,6 +4,7 @@
 """
 from core.models import WebhookEvent, session_scope
 
+
 def check_importance_distribution():
     """检查 importance 字段分布"""
     with session_scope() as session:

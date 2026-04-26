@@ -3,8 +3,8 @@
 调试告警哈希生成工具
 用于查看两个告警的哈希生成过程，帮助理解为什么被判定为重复
 """
-import json
 import hashlib
+import json
 
 
 def generate_alert_hash_debug(data, source):
