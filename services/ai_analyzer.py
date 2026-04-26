@@ -1618,11 +1618,11 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     else:
         logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
         try:
-            from core.models import WebhookEvent
-            from core.config import Config
+            from core.models import WebhookEvent, session_scope
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
-                source = event.source if event else 'unknown'
+                with session_scope() as session:
+                    event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
+                    source = event.source if event else 'unknown'
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
             logger.warning(f"发送 {platform.capitalize()} 失败通知失败: {notify_err}")
