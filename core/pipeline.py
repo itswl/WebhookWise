@@ -22,8 +22,8 @@ from core.utils import (
     generate_alert_hash,
     processing_lock,
     save_webhook_data,
-    verify_signature,
 )
+from core.webhook_security import ensure_webhook_auth
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core.models import DeepAnalysis, WebhookEvent, get_session, session_scope
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
@@ -543,27 +543,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         raw_hash = None
     logger.debug(f"[Webhook] 原始载荷: size={len(raw_body) if raw_body else 0}, sha256={raw_hash}")
 
-    signature = headers.get('x-webhook-signature', '')
-    if signature:
-        if not Config.WEBHOOK_SECRET:
-            raise InvalidSignatureError()
-        if not verify_signature(raw_body, signature):
-            raise InvalidSignatureError()
-
-    token = headers.get('token', '')
-    if not token and headers.get('authorization', '').startswith('Token '):
-        token = headers.get('authorization', '')[6:].strip()
-
-    if Config.WEBHOOK_SECRET and not signature:
-        if not token:
-            logger.warning(f"[Auth] 缺少认证信息: IP={client_ip}")
-            raise InvalidSignatureError()
-
-        import hmac
-        if not hmac.compare_digest(token, Config.WEBHOOK_SECRET):
-            logger.warning(f"[Auth] Token 验证失败: IP={client_ip}")
-            raise InvalidSignatureError()
-        logger.debug("[Auth] Token 验证通过")
+    ensure_webhook_auth(headers, raw_body)
 
     if not payload and raw_body:
         import json
@@ -752,4 +732,3 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
     except Exception as e:
         logger.error(f"处理 Webhook 时发生错误: {str(e)}", exc_info=True)
         return
-

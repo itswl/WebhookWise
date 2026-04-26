@@ -26,6 +26,7 @@ class _AppConfig(BaseSettings):
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
+    ENABLE_POLLERS: bool = Field(default=True)
 
     # 日志配置
     LOG_LEVEL: str = Field(default='INFO')
