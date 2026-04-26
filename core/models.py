@@ -4,8 +4,7 @@
 from datetime import datetime
 from contextlib import contextmanager
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Index, text, Float, Boolean, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from core.config import Config
 import logging
 
