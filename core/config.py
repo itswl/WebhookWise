@@ -1,15 +1,5 @@
-import os
 import logging
-from dotenv import load_dotenv
-
-load_dotenv(override=False)
-
-# 配置模块的 logger（避免循环导入）
-_config_logger = logging.getLogger('config')
-
-
 import os
-import logging
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
@@ -33,6 +23,9 @@ class _AppConfig(BaseSettings):
     # 安全配置
     WEBHOOK_SECRET: str = Field(default='')
     API_KEY: str = Field(default='')
+    ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
+    MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
+    WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
 
     # 日志配置
     LOG_LEVEL: str = Field(default='INFO')
@@ -168,7 +161,10 @@ class _AppConfig(BaseSettings):
         if not self.WEBHOOK_SECRET:
             warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
         if not self.API_KEY:
-            warnings.append("API_KEY 未配置，管理接口将处于公开状态 (不建议)")
+            if self.DEBUG or self.ALLOW_UNAUTHENTICATED_ADMIN:
+                warnings.append("API_KEY 未配置，管理接口将处于公开状态 (仅建议本地使用)")
+            else:
+                warnings.append("API_KEY 未配置，生产环境不建议启用（建议设置 API_KEY 或开启 ALLOW_UNAUTHENTICATED_ADMIN 仅用于本地）")
         if self.ENABLE_AI_ANALYSIS and not self.OPENAI_API_KEY:
             warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
         if self.ENABLE_FORWARD and not self.FORWARD_URL:
