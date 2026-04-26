@@ -1,5 +1,6 @@
 from services import ai_analyzer
 from core.config import Config
+import pytest
 
 
 def test_parse_truncated_json_fallback_extracts_clean_lists():
@@ -50,7 +51,8 @@ def test_extract_from_text_removes_junk_tokens():
     assert result['risks'] == ['服务不可用']
 
 
-def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypatch):
+@pytest.mark.asyncio
+async def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypatch):
     class _Message:
         def __init__(self, content):
             self.content = content
@@ -66,22 +68,25 @@ def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypatch):
 
     calls = []
 
-    def fake_request(_client, _messages, max_tokens):
+    async def fake_request(_client, _messages, max_tokens):
         calls.append(max_tokens)
         if len(calls) == 1:
             return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"a"}', 'length')
         return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"b"}', 'stop')
 
     monkeypatch.setattr(ai_analyzer, '_request_openai_completion', fake_request)
-    monkeypatch.setattr(ai_analyzer, 'OpenAI', lambda **_kwargs: object())
+    monkeypatch.setattr(ai_analyzer, 'AsyncOpenAI', lambda **_kwargs: object())
 
     old_max = Config.OPENAI_MAX_TOKENS
     old_retry_max = Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS
+    old_key = Config.OPENAI_API_KEY
     try:
+        Config.OPENAI_API_KEY = "test"
         Config.OPENAI_MAX_TOKENS = 100
         Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = 200
-        result = ai_analyzer.analyze_with_openai({'k': 'v'}, 'cloud-monitor')
+        result = await ai_analyzer.analyze_with_openai({'k': 'v'}, 'cloud-monitor')
     finally:
+        Config.OPENAI_API_KEY = old_key
         Config.OPENAI_MAX_TOKENS = old_max
         Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = old_retry_max
 
