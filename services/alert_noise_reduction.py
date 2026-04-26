@@ -247,7 +247,7 @@ def analyze_noise_reduction(
     
     if not scored:
         logger.info("[Noise] 降噪决策: relation=standalone")
-    return default_decision()
+        return default_decision()
 
     related = [(alert, score) for alert, score in scored if score >= 0.35]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
@@ -293,5 +293,4 @@ def analyze_noise_reduction(
         related_alert_count=len(related_ids),
         related_alert_ids=related_ids,
     )
-
 
