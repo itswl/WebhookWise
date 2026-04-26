@@ -8,7 +8,6 @@ from typing import Optional
 
 from fastapi.responses import JSONResponse
 
-
 # ── 异常类 ──────────────────────────────────────────────────────────────────
 
 class WebhookRequestError(Exception):

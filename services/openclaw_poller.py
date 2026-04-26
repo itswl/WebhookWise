@@ -1,11 +1,12 @@
 import asyncio
 import re
 from typing import Optional
+
 """OpenClaw 分析结果后台轮询"""
-import time
 import json
-import threading
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 
 from core.config import Config
@@ -17,6 +18,7 @@ logger = logging.getLogger('webhook_service.openclaw_poller')
 # 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
 # 移除原有的内存锁和缓存字典
 import core.redis_client
+
 
 def _get_poll_stability(record_id: int) -> dict:
     redis_client = core.redis_client.get_redis()
@@ -35,8 +37,8 @@ def _clear_poll_stability(record_id: int):
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
     """发送深度分析完成的飞书通知"""
-    from core.config import Config
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
+    from core.config import Config
     
     webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
@@ -60,8 +62,8 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
 
 def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
     """发送深度分析失败的飞书通知"""
-    from core.config import Config
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
+    from core.config import Config
     
     webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
@@ -190,8 +192,8 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
 
 def _poll_pending_analyses_inner():
     """轮询逻辑主体"""
-    from core.models import DeepAnalysis, session_scope
     from core.config import Config
+    from core.models import DeepAnalysis, session_scope
     from services.openclaw_ws_client import poll_session_result
 
     try:

@@ -1,9 +1,10 @@
 import logging
 import os
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import Optional, List, Dict, Any
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv(override=False)
 

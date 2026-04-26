@@ -5,19 +5,19 @@ OpenClaw WebSocket 客户端模块
 协议参考: openclaw-main/src/pkg/gateway/protocol/frames.go
 """
 
+import base64
 import json
 import os
-import time
-import base64
-import uuid
 import platform
 import threading
+import time
+import uuid
 from typing import Optional
 
 import websocket
 
-from core.logger import get_logger
 from core.config import Config
+from core.logger import get_logger
 
 logger = get_logger('openclaw_ws')
 

@@ -9,7 +9,8 @@
 预期：两个节点的告警应该分别处理，不应该被误判为重复告警
 """
 import json
-from core.utils import generate_alert_hash, _extract_generic_fields
+
+from core.utils import _extract_generic_fields, generate_alert_hash
 
 # 完整的告警数据（节点1）
 alert_node1 = {

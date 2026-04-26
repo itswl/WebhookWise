@@ -5,9 +5,9 @@ pytest 全局 fixtures：外部服务 mock、测试数据库 session。
 """
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ps = str(_ROOT)

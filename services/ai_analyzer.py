@@ -1,12 +1,14 @@
-import time
-from core.http_client import get_http_client
-from core.metrics import AI_TOKENS_TOTAL, AI_COST_USD_TOTAL, AI_ANALYSIS_DURATION_SECONDS
-import httpx
 import json
 import re
+import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
 from pathlib import Path
+from typing import Any, Optional
+
+import httpx
+
+from core.http_client import get_http_client
+from core.metrics import AI_ANALYSIS_DURATION_SECONDS, AI_COST_USD_TOTAL, AI_TOKENS_TOTAL
 
 try:
     import json5
@@ -14,10 +16,11 @@ try:
 except ImportError:
     HAS_JSON5 = False
 
-from core.logger import logger
-from core.config import Config
-from core.utils import feishu_cb, openclaw_cb, forward_cb
 from openai import AsyncOpenAI
+
+from core.config import Config
+from core.logger import logger
+from core.utils import feishu_cb, forward_cb, openclaw_cb
 
 OpenAI = AsyncOpenAI
 
@@ -223,7 +226,7 @@ def load_user_prompt_template() -> str:
 
         if file_path.exists():
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding='utf-8') as f:
                     _user_prompt_template = f.read()
                 logger.info(f"成功从文件加载 prompt 模板: {file_path}")
                 return _user_prompt_template
@@ -975,7 +978,7 @@ def _should_send_degradation_alert() -> bool:
     try:
         # 读取上次通知时间
         if marker_file.exists():
-            with open(marker_file, 'r') as f:
+            with open(marker_file) as f:
                 last_alert_time_str = f.read().strip()
                 last_alert_time = datetime.fromisoformat(last_alert_time_str)
 
@@ -1000,8 +1003,8 @@ def _should_send_degradation_alert() -> bool:
 async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
     """发送 OpenClaw 深度分析失败通知到飞书"""
     try:
-        from core.config import Config
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
+        from core.config import Config
         
         if not Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
             return
@@ -1480,8 +1483,8 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     
     if platform == 'hermes':
-        import hmac
         import hashlib
+        import hmac
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
@@ -1559,7 +1562,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     
     prompt_path = Path(Config.DATA_DIR).parent / 'prompts' / 'deep_analysis.txt'
     try:
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        with open(prompt_path, encoding='utf-8') as f:
             template = f.read()
     except FileNotFoundError:
         template = """请对以下告警进行深度根因分析：
@@ -1593,8 +1596,8 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     
     if platform == 'hermes':
-        import hmac
         import hashlib
+        import hmac
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()

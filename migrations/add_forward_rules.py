@@ -2,10 +2,12 @@
 """添加 forward_rules 转发规则表"""
 import os
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import create_engine, inspect, text
+
 from core.config import Config
-from sqlalchemy import create_engine, text, inspect
 
 
 def migrate():
