@@ -1,12 +1,12 @@
-import asyncio
-
 """OpenClaw 分析结果后台轮询"""
+import asyncio
 import json
 import logging
 import threading
 import time
 from datetime import datetime
 
+import core.redis_client
 from core.config import Config
 
 logger = logging.getLogger('webhook_service.openclaw_poller')
@@ -15,7 +15,6 @@ logger = logging.getLogger('webhook_service.openclaw_poller')
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
 # 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
 # 移除原有的内存锁和缓存字典
-import core.redis_client
 
 
 def _get_poll_stability(record_id: int) -> dict:
