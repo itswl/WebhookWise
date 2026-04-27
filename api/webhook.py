@@ -57,7 +57,7 @@ async def list_webhooks(
 
     try:
         async with session_scope() as session:
-            query = session.query(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
             if importance:
                 query = query.filter(WebhookEvent.importance == importance)
@@ -124,7 +124,7 @@ async def list_webhooks_cursor(
 
     try:
         async with session_scope() as session:
-            query = session.query(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
             if importance:
                 query = query.filter(WebhookEvent.importance == importance)
