@@ -36,7 +36,7 @@ class _AppConfig(BaseSettings):
     # 数据存储配置
     DATA_DIR: str = Field(default='webhooks_data')
     ENABLE_FILE_BACKUP: bool = Field(default=False)
-    
+
     # Redis 配置
     REDIS_URL: str = Field(default='redis://localhost:6379/0')
 
@@ -127,7 +127,7 @@ class _AppConfig(BaseSettings):
     OPENCLAW_MIN_WAIT_SECONDS: int = Field(default=30)
     OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=5)
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
-    
+
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default='')
 
     OPENCLAW_CONNECT_TIMEOUT: int = Field(default=10)
@@ -139,7 +139,7 @@ class _AppConfig(BaseSettings):
     AI_API_TIMEOUT: int = Field(default=10)
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     FORWARD_TIMEOUT: int = Field(default=10)
-    
+
     # OpenClaw Device
     OPENCLAW_DEVICE_ID: str = Field(default='')
     OPENCLAW_DEVICE_PRIVATE_KEY_PEM: str = Field(default='')
@@ -148,7 +148,7 @@ class _AppConfig(BaseSettings):
     # Circuit Breakers
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT: float = Field(default=30.0)
-    
+
     CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_OPENCLAW_TIMEOUT: float = Field(default=30.0)
 

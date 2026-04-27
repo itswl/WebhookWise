@@ -11,17 +11,17 @@ def generate_alert_hash_debug(data, source):
     key_fields = {
         'source': source,
     }
-    
+
     if isinstance(data, dict):
         # ====== Prometheus Alertmanager 格式 ======
         # 检测是否为 Prometheus Alertmanager 格式（包含 alerts 数组和 alertingRuleName）
         if 'alerts' in data and isinstance(data.get('alerts'), list) and len(data['alerts']) > 0:
             first_alert = data['alerts'][0]
-            
+
             # 告警规则名称（最重要的标识）
             if 'alertingRuleName' in data:
                 key_fields['alerting_rule_name'] = data.get('alertingRuleName')
-            
+
             # 告警标签（alertname 是规则ID）
             if isinstance(first_alert.get('labels'), dict):
                 labels = first_alert['labels']
@@ -31,7 +31,7 @@ def generate_alert_hash_debug(data, source):
                     key_fields['alert_id'] = labels['internal_label_alert_id']
                 if 'internal_label_alert_level' in labels:
                     key_fields['alert_level'] = labels['internal_label_alert_level']
-                
+
                 # 提取资源相关标签（用于区分同一规则的不同资源）
                 if 'host' in labels:
                     key_fields['host'] = labels['host']
@@ -47,11 +47,11 @@ def generate_alert_hash_debug(data, source):
                     key_fields['path'] = labels['path']
                 if 'method' in labels:
                     key_fields['method'] = labels['method']
-            
+
             # 指纹（Prometheus 生成的唯一标识）
             if 'fingerprint' in first_alert:
                 key_fields['fingerprint'] = first_alert['fingerprint']
-        
+
         # ====== 华为云监控告警格式 ======
         else:
             # 告警类型和规则名称
@@ -63,7 +63,7 @@ def generate_alert_hash_debug(data, source):
                 key_fields['event'] = data.get('event')
             if 'event_type' in data:
                 key_fields['event_type'] = data.get('event_type')
-            
+
             # 资源标识
             if 'Resources' in data:
                 resources = data.get('Resources', [])
@@ -71,15 +71,15 @@ def generate_alert_hash_debug(data, source):
                     first_resource = resources[0]
                     if isinstance(first_resource, dict):
                         key_fields['resource_id'] = first_resource.get('InstanceId') or first_resource.get('id')
-            
+
             # 指标名称
             if 'MetricName' in data:
                 key_fields['metric_name'] = data.get('MetricName')
-            
+
             # 告警级别
             if 'Level' in data:
                 key_fields['level'] = data.get('Level')
-            
+
             # 通用字段
             if 'alert_id' in data:
                 key_fields['alert_id'] = data.get('alert_id')
@@ -89,13 +89,13 @@ def generate_alert_hash_debug(data, source):
                 key_fields['resource_id'] = data.get('resource_id')
             if 'service' in data:
                 key_fields['service'] = data.get('service')
-    
+
     # 生成稳定的JSON字符串
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
-    
+
     # 计算SHA256哈希
     hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
-    
+
     return hash_value, key_fields, key_string
 
 

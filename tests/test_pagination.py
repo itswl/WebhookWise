@@ -21,7 +21,7 @@ def setup_test_db(monkeypatch):
     engine = create_engine('sqlite:///:memory:', echo=False)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
-    
+
     @contextlib.contextmanager
     def mock_session_scope():
         session = Session()
@@ -64,24 +64,24 @@ def test_pagination():
     assert total == 15
     assert webhooks[0]['id'] == 15
     assert webhooks[-1]['id'] == 11
-    
+
     # 测试第二页
     webhooks, total, next_cursor = get_all_webhooks(page=2, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]['id'] == 10
     assert webhooks[-1]['id'] == 6
-    
+
     # 测试第三页
     webhooks, total, next_cursor = get_all_webhooks(page=3, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]['id'] == 5
     assert webhooks[-1]['id'] == 1
-    
+
     # 测试大页码
     webhooks, total, next_cursor = get_all_webhooks(page=100, page_size=5)
     assert len(webhooks) == 0
-    
+
     # 测试游标分页
-    webhooks, total, next_cursor = get_all_webhooks(cursor_id=10, page_size=5)
+    webhooks, total, _next_cursor = get_all_webhooks(cursor_id=10, page_size=5)
     assert len(webhooks) == 5
     assert all(w['id'] < 10 for w in webhooks)

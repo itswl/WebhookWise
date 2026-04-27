@@ -34,15 +34,15 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
     """
     if not Config.API_KEY:
         return True
-    
+
     if not auth or auth.credentials != Config.API_KEY:
         client_ip = request.client.host if request.client else 'unknown'
-        
+
         try:
             body_bytes = await request.body()
-        except Exception: # noqa: PERF203
+        except Exception:
             body_bytes = b""
-            
+
         logger.warning(
             f"[Auth] 未授权的 API 访问尝试: IP={client_ip}, URL={request.url.path}, "
             f"Method={request.method}, Headers={_redact_headers(dict(request.headers))}, Body={_body_meta(body_bytes)}"
@@ -52,5 +52,5 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
             detail="Invalid or missing API Key",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     return True

@@ -104,8 +104,8 @@ def list_webhooks(
                     'has_more': has_more,
                 }
             }
-    except Exception as e: # noqa: PERF203
-        logger.error(f"获取 webhook 列表失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"获取 webhook 列表失败: {e!s}", exc_info=True)
         return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
 
 
@@ -165,8 +165,8 @@ def list_webhooks_cursor(
                     'has_more': has_more,
                 }
             }
-    except Exception as e: # noqa: PERF203
-        logger.error(f"获取 webhook 游标列表失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"获取 webhook 游标列表失败: {e!s}", exc_info=True)
         return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
 
 
@@ -194,7 +194,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     if raw_body and 'application/json' in content_type:
         try:
             payload = await request.json()
-        except Exception: # noqa: PERF203
+        except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from services.pipeline import handle_webhook_process
     client_ip = get_client_ip(request)
@@ -204,12 +204,12 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         limited_ip = enforce_webhook_rate_limit(request)
         if limited_ip:
             return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"限流检查失败: {e}")
 
     try:
         ensure_webhook_auth(headers, raw_body)
-    except Exception: # noqa: PERF203
+    except Exception:
         return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None)
@@ -226,7 +226,7 @@ async def receive_webhook_with_source(source: str, request: Request, background_
     if raw_body and 'application/json' in content_type:
         try:
             payload = await request.json()
-        except Exception: # noqa: PERF203
+        except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
     from services.pipeline import handle_webhook_process
     client_ip = get_client_ip(request)
@@ -236,12 +236,12 @@ async def receive_webhook_with_source(source: str, request: Request, background_
         limited_ip = enforce_webhook_rate_limit(request)
         if limited_ip:
             return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"限流检查失败: {e}")
 
     try:
         ensure_webhook_auth(headers, raw_body)
-    except Exception: # noqa: PERF203
+    except Exception:
         return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source)

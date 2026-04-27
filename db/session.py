@@ -46,7 +46,7 @@ def session_scope():
     try:
         yield session
         session.commit()
-    except Exception: # noqa: PERF203
+    except Exception:
         session.rollback()
         raise
     finally:
@@ -72,6 +72,6 @@ def test_db_connection() -> bool:
             conn.execute(text("SELECT 1"))
         _logger.info("数据库连接测试成功")
         return True
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         _logger.error(f"数据库连接失败: {e}")
         return False

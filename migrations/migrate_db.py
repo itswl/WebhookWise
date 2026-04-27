@@ -11,7 +11,7 @@ from db.session import get_engine
 def migrate_database():
     """执行数据库迁移"""
     engine = get_engine()
-    
+
     migrations = [
         # 添加 alert_hash 字段
         {
@@ -38,14 +38,14 @@ def migrate_database():
             'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS duplicate_count INTEGER DEFAULT 1"
         }
     ]
-    
+
     with engine.connect() as conn:
         for migration in migrations:
             try:
                 # 检查字段是否已存在
                 result = conn.execute(text(migration['check']))
                 count = result.scalar()
-                
+
                 if count == 0:
                     logger.info(f"执行迁移: {migration['name']}")
                     conn.execute(text(migration['sql']))
@@ -53,21 +53,21 @@ def migrate_database():
                     logger.info(f"迁移完成: {migration['name']}")
                 else:
                     logger.info(f"跳过迁移(字段已存在): {migration['name']}")
-                    
+
             except Exception as e: # noqa: PERF203
-                logger.error(f"迁移失败: {migration['name']}, 错误: {str(e)}")
+                logger.error(f"迁移失败: {migration['name']}, 错误: {e!s}")
                 conn.rollback()
                 raise
-        
+
         # 为 alert_hash 字段创建索引
         try:
             logger.info("创建 alert_hash 索引")
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_alert_hash ON webhook_events(alert_hash)"))
             conn.commit()
             logger.info("索引创建完成")
-        except Exception as e: # noqa: PERF203
-            logger.warning(f"创建索引失败: {str(e)}")
-        
+        except Exception as e:
+            logger.warning(f"创建索引失败: {e!s}")
+
         # 创建分布式锁表（用于多 worker 并发控制）
         try:
             logger.info("创建 processing_locks 表")
@@ -80,9 +80,9 @@ def migrate_database():
             """))
             conn.commit()
             logger.info("processing_locks 表创建完成")
-        except Exception as e: # noqa: PERF203
-            logger.warning(f"创建 processing_locks 表失败: {str(e)}")
-    
+        except Exception as e:
+            logger.warning(f"创建 processing_locks 表失败: {e!s}")
+
     logger.info("数据库迁移全部完成！")
 
 

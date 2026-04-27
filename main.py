@@ -18,7 +18,7 @@ if __name__ == '__main__':
     if not test_db_connection():
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
-    
+
     logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
     import uvicorn
     uvicorn.run(

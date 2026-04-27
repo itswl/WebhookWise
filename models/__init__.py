@@ -22,27 +22,27 @@ _session_factory = None
 class WebhookEvent(Base):
     """Webhook 事件模型"""
     __tablename__ = 'webhook_events'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     source = Column(String(100), nullable=False, index=True)
     client_ip = Column(String(50))
     timestamp = Column(DateTime, nullable=False, default=datetime.now, index=True)
-    
+
     # 原始数据
     raw_payload = Column(Text)
     headers = Column(JSON)
     parsed_data = Column(JSON)
-    
+
     # 告警去重标识 (基于关键字段的哈希值)
     alert_hash = Column(String(64), index=True)
-    
+
     # AI 分析结果
     ai_analysis = Column(JSON)
     importance = Column(String(20), index=True)  # high, medium, low
-    
+
     # 转发状态
     forward_status = Column(String(20))  # success, failed, skipped
-    
+
     # 是否为重复告警
     is_duplicate = Column(Integer, default=0)  # 0: 新告警, 1: 重复告警
     duplicate_of = Column(Integer)  # 如果是重复告警，指向原始告警的ID
@@ -52,14 +52,14 @@ class WebhookEvent(Base):
 
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    
+
     # 复合索引：优化去重查询性能
     __table_args__ = (
         Index('idx_hash_timestamp', 'alert_hash', 'timestamp'),
         Index('idx_importance_timestamp', 'importance', 'timestamp'),
         Index('idx_duplicate_lookup', 'alert_hash', 'is_duplicate', 'timestamp'),
     )
-    
+
     def to_summary_dict(self):
         """返回摘要信息（用于列表显示，减少数据传输量）"""
         # 提取 AI 分析摘要
@@ -122,12 +122,12 @@ class WebhookEvent(Base):
 class ArchivedWebhookEvent(Base):
     """已归档的 Webhook 事件模型（历史备份）"""
     __tablename__ = 'archived_webhook_events'
-    
+
     id = Column(Integer, primary_key=True)
     source = Column(String(100), nullable=False, index=True)
     client_ip = Column(String(50))
     timestamp = Column(DateTime, nullable=False, index=True)
-    
+
     raw_payload = Column(Text)
     headers = Column(JSON)
     parsed_data = Column(JSON)
@@ -152,19 +152,19 @@ class ArchivedWebhookEvent(Base):
 class AnalysisCache(Base):
     """
     AI 分析结果缓存
-    
+
     用于存储 AI 分析结果，避免对相同告警重复调用 AI。
     缓存 key 基于 alert_hash 生成。
     """
     __tablename__ = 'analysis_cache'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     cache_key = Column(String(128), unique=True, nullable=False, index=True)  # 基于 alert_hash
     analysis_result = Column(Text, nullable=False)  # JSON 格式的分析结果
     hit_count = Column(Integer, default=0)  # 缓存命中次数
     created_at = Column(DateTime, default=func.now())
     expires_at = Column(DateTime, nullable=False)
-    
+
     def is_expired(self) -> bool:
         """检查缓存是否已过期"""
         return datetime.now() > self.expires_at if self.expires_at else True
@@ -173,11 +173,11 @@ class AnalysisCache(Base):
 class AIUsageLog(Base):
     """
     AI 调用成本追踪
-    
+
     记录每次 AI 分析的调用信息，用于成本追踪和用量统计。
     """
     __tablename__ = 'ai_usage_log'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, default=func.now(), index=True)
     model = Column(String(100))  # 使用的模型名称
@@ -188,7 +188,7 @@ class AIUsageLog(Base):
     route_type = Column(String(20))  # 'ai', 'rule', 'cache'
     alert_hash = Column(String(64), index=True)  # 关联的告警哈希
     source = Column(String(100))  # 告警来源
-    
+
     # 复合索引：优化统计查询性能
     __table_args__ = (
         Index('idx_usage_timestamp_route', 'timestamp', 'route_type'),
@@ -202,8 +202,8 @@ def get_engine():
     if _engine is None:
         _logger.info(f"[DB] 正在初始化数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
         _engine = create_engine(
-            Config.DATABASE_URL, 
-            echo=False, 
+            Config.DATABASE_URL,
+            echo=False,
             pool_pre_ping=True,  # 连接前检查有效性
             pool_size=Config.DB_POOL_SIZE,  # 连接池大小
             max_overflow=Config.DB_MAX_OVERFLOW,  # 最大溢出连接
@@ -228,7 +228,7 @@ def session_scope():
     try:
         yield session
         session.commit()
-    except Exception: # noqa: PERF203
+    except Exception:
         session.rollback()
         raise
     finally:
@@ -245,7 +245,7 @@ def init_db():
 def test_db_connection() -> bool:
     """
     测试数据库连接
-    
+
     Returns:
         bool: 连接成功返回 True，失败返回 False
     """
@@ -254,7 +254,7 @@ def test_db_connection() -> bool:
             conn.execute(text("SELECT 1"))
         _logger.info("数据库连接测试成功")
         return True
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         _logger.error(f"数据库连接失败: {e}")
         return False
 
@@ -263,11 +263,11 @@ def test_db_connection() -> bool:
 class RemediationExecution(Base):
     """
     Runbook 执行记录
-    
+
     记录每次 Runbook 执行的详细信息，包括执行状态、步骤日志等。
     """
     __tablename__ = 'remediation_execution'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     execution_id = Column(String(64), unique=True, nullable=False, index=True)  # UUID
     runbook_name = Column(String(200), nullable=False)
@@ -279,12 +279,12 @@ class RemediationExecution(Base):
     started_at = Column(DateTime, default=func.now())
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
-    
+
     # 索引：优化按状态和时间查询
     __table_args__ = (
         Index('idx_remediation_status_time', 'status', 'started_at'),
     )
-    
+
     def to_dict(self):
         """转换为字典"""
         import json
@@ -306,25 +306,25 @@ class RemediationExecution(Base):
 class ForwardRule(Base):
     """转发规则配置"""
     __tablename__ = 'forward_rules'
-    
+
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)           # 规则名称
     enabled = Column(Boolean, default=True)              # 是否启用
     priority = Column(Integer, default=0)                # 规则优先级（越大越先匹配）
-    
+
     # 匹配条件
     match_importance = Column(String(50), default='')    # high,medium,low（逗号分隔，空=全部匹配）
     match_duplicate = Column(String(20), default='all')  # new/duplicate/beyond_window/all
     match_source = Column(String(200), default='')       # 来源匹配（逗号分隔列表，空=全部）
-    
+
     # 转发目标
     target_type = Column(String(20), nullable=False)     # feishu / openclaw / webhook
     target_url = Column(String(500), default='')         # 飞书/webhook 的 URL
     target_name = Column(String(100), default='')        # 显示名称
-    
+
     # 行为配置
     stop_on_match = Column(Boolean, default=False)       # 匹配后是否停止后续规则
-    
+
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -353,7 +353,7 @@ class ForwardRule(Base):
 class DeepAnalysis(Base):
     """深度分析历史记录"""
     __tablename__ = 'deep_analyses'
-    
+
     id = Column(Integer, primary_key=True)
     webhook_event_id = Column(Integer, nullable=False, index=True)  # 关联告警 ID
     engine = Column(String(20), default='local')    # local / openclaw
@@ -364,7 +364,7 @@ class DeepAnalysis(Base):
     openclaw_run_id = Column(String(64), index=True)      # OpenClaw runId
     openclaw_session_key = Column(String(200))             # OpenClaw sessionKey（用于轮询）
     status = Column(String(20), default='completed', index=True)  # pending / completed / failed
-    
+
     def to_dict(self):
         return {
             'id': self.id,

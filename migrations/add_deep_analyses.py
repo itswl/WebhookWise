@@ -14,12 +14,12 @@ def migrate():
     """创建 deep_analyses 表（幂等）"""
     engine = create_engine(Config.DATABASE_URL)
     inspector = inspect(engine)
-    
+
     # 检查表是否已存在
     if 'deep_analyses' in inspector.get_table_names():
         print("deep_analyses 表已存在，跳过")
         return True
-    
+
     with engine.connect() as conn:
         conn.execute(text("""
             CREATE TABLE deep_analyses (
@@ -37,7 +37,7 @@ def migrate():
         """))
         conn.commit()
         print("deep_analyses 表创建成功")
-    
+
     return True
 
 

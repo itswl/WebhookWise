@@ -38,7 +38,7 @@ def query_by_id(event_id: int):
         return event
 
 
-def query_list(limit: int = 20, source: str = None, importance: str = None, duplicate_only: bool = False):
+def query_list(limit: int = 20, source: str | None = None, importance: str | None = None, duplicate_only: bool = False):
     with session_scope() as session:
         query = session.query(WebhookEvent).order_by(WebhookEvent.id.desc())
 
