@@ -1,5 +1,5 @@
 """
-core/routes/webhook.py
+api/webhook.py
 =====================
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """

@@ -1,5 +1,5 @@
 """
-core/routes/forward_rules.py
+api/forward_rules.py
 ============================
 转发规则 CRUD 路由。
 """
