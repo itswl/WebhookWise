@@ -1,6 +1,5 @@
 import logging
 import threading
-import time
 from datetime import datetime
 
 from services.data_maintenance import archive_old_data

@@ -10,13 +10,13 @@ from models import ForwardRule, WebhookEvent
 
 # ── 分析决策 helpers ────────────────────────────────────────────────────────────
 
-def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
+async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
     from services.ai_analyzer import analyze_webhook_with_ai
-    result = analyze_webhook_with_ai(webhook_full_data, skip_cache=True)
+    result = await analyze_webhook_with_ai(webhook_full_data, skip_cache=True)
     return result, True
 
 
-def _resolve_duplicate_analysis(
+async def _resolve_duplicate_analysis(
     original_event: WebhookEvent,
     webhook_full_data: dict
 ) -> tuple[dict, bool]:
@@ -29,13 +29,13 @@ def _resolve_duplicate_analysis(
     }, False
 
 
-def _resolve_beyond_window_analysis(
+async def _resolve_beyond_window_analysis(
     original_event: WebhookEvent | None,
     webhook_full_data: dict,
     reanalyze: bool = True
 ) -> tuple[dict, bool]:
     if reanalyze and Config.REANALYZE_AFTER_TIME_WINDOW:
-        return _analyze_now(webhook_full_data, '窗口外重复告警重新分析')
+        return await _analyze_now(webhook_full_data, '窗口外重复告警重新分析')
     if original_event and original_event.ai_analysis:
         return original_event.ai_analysis, False
     return {
@@ -85,12 +85,12 @@ async def _resolve_analysis_with_lock(
 
         # 分析决策
         if not is_duplicate:
-            analysis_result = _analyze_now(webhook_full_data, '首次告警')
+            analysis_result = await _analyze_now(webhook_full_data, '首次告警')
             reanalyzed = True
         elif not beyond_window:
-            analysis_result, reanalyzed = _resolve_duplicate_analysis(original_event, webhook_full_data)
+            analysis_result, reanalyzed = await _resolve_duplicate_analysis(original_event, webhook_full_data)
         else:
-            analysis_result, reanalyzed = _resolve_beyond_window_analysis(
+            analysis_result, reanalyzed = await _resolve_beyond_window_analysis(
                 original_event, webhook_full_data, reanalyze
             )
 

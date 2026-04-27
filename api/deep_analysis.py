@@ -135,7 +135,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 # 如果返回了 _degraded，说明 OpenClaw 调用失败降级到了本地规则
                 if result.get('_degraded'):
                     try:
-                        result = analyze_webhook_with_ai(alert_data, event.source or 'unknown')
+                        result = await analyze_webhook_with_ai(alert_data, event.source or 'unknown')
                         engine = 'local (fallback)'
                     except Exception as e:
                         return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
@@ -159,7 +159,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 from models import DeepAnalysis
                 from services.ai_analyzer import analyze_webhook_with_ai
                 # 默认走原有的本地 AI 分析
-                result = analyze_webhook_with_ai(alert_data, event.source or 'unknown')
+                result = await analyze_webhook_with_ai(alert_data, event.source or 'unknown')
                 engine = 'local'
 
                 deep_record = DeepAnalysis(
