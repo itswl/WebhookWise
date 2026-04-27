@@ -6,10 +6,9 @@ services/noise_context.py
 import logging
 from datetime import datetime, timedelta
 
-from core.services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-
 from db.session import session_scope
 from models import WebhookEvent
+from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 
 logger = logging.getLogger(__name__)
 
