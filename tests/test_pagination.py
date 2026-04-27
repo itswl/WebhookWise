@@ -59,26 +59,26 @@ def setup_test_db(monkeypatch):
 def test_pagination():
     """测试分页查询"""
     # 测试第一页
-    webhooks, total, next_cursor = get_all_webhooks(page=1, page_size=5)
+    webhooks, total, _next_cursor = get_all_webhooks(page=1, page_size=5)
     assert len(webhooks) == 5
     assert total == 15
     assert webhooks[0]['id'] == 15
     assert webhooks[-1]['id'] == 11
 
     # 测试第二页
-    webhooks, total, next_cursor = get_all_webhooks(page=2, page_size=5)
+    webhooks, total, _next_cursor = get_all_webhooks(page=2, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]['id'] == 10
     assert webhooks[-1]['id'] == 6
 
     # 测试第三页
-    webhooks, total, next_cursor = get_all_webhooks(page=3, page_size=5)
+    webhooks, total, _next_cursor = get_all_webhooks(page=3, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]['id'] == 5
     assert webhooks[-1]['id'] == 1
 
     # 测试大页码
-    webhooks, total, next_cursor = get_all_webhooks(page=100, page_size=5)
+    webhooks, total, _next_cursor = get_all_webhooks(page=100, page_size=5)
     assert len(webhooks) == 0
 
     # 测试游标分页
