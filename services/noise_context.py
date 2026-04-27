@@ -1,4 +1,5 @@
 from sqlalchemy import select
+
 """
 services/noise_context.py
 ===============================
@@ -57,7 +58,7 @@ def _build_alert_context(
     )
 
 
-async def await _load_recent_alert_contexts(
+async def _load_recent_alert_contexts(
     current_hash: str,
     current_time: datetime,
     window_minutes: int = 5
@@ -94,7 +95,7 @@ async def await _load_recent_alert_contexts(
     return recent
 
 
-def _compute_noise_reduction(
+async def _compute_noise_reduction(
     current_context: AlertContext,
     recent_contexts: list[AlertContext],
     min_confidence: float = 0.65,
