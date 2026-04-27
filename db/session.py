@@ -26,7 +26,7 @@ def get_engine():
     if _engine is None:
         _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
         _engine = create_async_engine(
-            Config.DATABASE_URL,
+            Config.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
             echo=False,
             pool_pre_ping=True,
             pool_size=Config.DB_POOL_SIZE,
@@ -40,7 +40,7 @@ def get_sync_engine():
     """获取同步数据库引擎，主要用于脚本或 DDL 初始化"""
     global _sync_engine
     if _sync_engine is None:
-        sync_url = Config.DATABASE_URL.replace('+asyncpg', '')
+        sync_url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
         _sync_engine = create_engine(sync_url, echo=False)
     return _sync_engine
 
