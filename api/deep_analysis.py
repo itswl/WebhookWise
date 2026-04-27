@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from core.config import Config
 from core.http_client import get_http_client

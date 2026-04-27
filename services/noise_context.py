@@ -1,12 +1,13 @@
-from sqlalchemy import select
-
 """
 services/noise_context.py
 ===============================
 告警智能降噪相关辅助函数。
 """
+
 import logging
 from datetime import datetime, timedelta
+
+from sqlalchemy import select
 
 from db.session import session_scope
 from models import WebhookEvent
