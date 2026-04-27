@@ -1,6 +1,6 @@
 import logging
 
-from core.models import ArchivedWebhookEvent, Base, get_engine
+from core.models import ArchivedWebhookEvent, get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,5 @@ def migrate():
         raise
 
 if __name__ == "__main__":
-    from core.config import Config
     logging.basicConfig(level=logging.INFO)
     migrate()

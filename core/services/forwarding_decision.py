@@ -3,16 +3,11 @@ core/services/forwarding_decision.py
 ====================================
 分析决策 + 转发决策相关辅助函数。
 """
-import logging
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from core.config import Config
 from core.logger import logger
 from core.models import ForwardRule, WebhookEvent, session_scope
-
-logger = logging.getLogger(__name__)
-
 
 # ── 分析决策 helpers ────────────────────────────────────────────────────────────
 
@@ -89,7 +84,6 @@ def _resolve_analysis_with_lock(
     from datetime import datetime
 
     from core.models import WebhookEvent
-    from core.services.noise_context import _build_alert_context, _compute_noise_reduction, _default_noise_context
 
     with session_scope() as session:
         current_time = datetime.now()
@@ -99,7 +93,7 @@ def _resolve_analysis_with_lock(
         ).order_by(WebhookEvent.id.desc()).first()
 
         is_duplicate = original_event is not None
-        original_id = original_event.id if original_event else None
+        _original_id = original_event.id if original_event else None
 
         # 时间窗口判断
         time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
@@ -134,7 +128,6 @@ def _resolve_analysis_without_lock(
     """
     import time
 
-    from core.utils import _LOCK_WAIT_SECONDS
 
     wait_time = 0
     while wait_time < Config.PROCESSING_LOCK_WAIT_SECONDS:

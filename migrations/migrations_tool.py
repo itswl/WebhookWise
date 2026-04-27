@@ -6,13 +6,12 @@
     python migrations_tool.py add_unique_constraint
 """
 
-import logging
 import sys
 
 from sqlalchemy import text
 
 from core.logger import logger
-from core.models import WebhookEvent, get_engine, session_scope
+from core.models import get_engine, session_scope
 
 
 def add_unique_constraint(verbose=True):
@@ -108,7 +107,7 @@ def add_unique_constraint(verbose=True):
                         WHERE id = :original_id
                     """), {'count': count, 'original_id': original_id})
 
-                logger.info(f"✅ 已处理所有重复告警")
+                logger.info("✅ 已处理所有重复告警")
             else:
                 logger.info("✅ 无重复告警")
 

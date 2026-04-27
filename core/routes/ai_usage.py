@@ -60,7 +60,7 @@ def get_ai_usage(period: str = Query('day')):
                 AIUsageLog.route_type == 'ai'
             ).first()
 
-            cache_hits = session.query(func.count(AIUsageLog.id)).filter(
+            _cache_hits = session.query(func.count(AIUsageLog.id)).filter(
                 AIUsageLog.timestamp >= start_time,
                 AIUsageLog.cache_hit == True
             ).scalar() or 0

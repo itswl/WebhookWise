@@ -62,7 +62,6 @@ def setup_metrics(app):
     
     if Config.METRICS_PORT > 0 and Config.METRICS_PORT != Config.PORT:
         # 启动独立的 Prometheus metrics 服务器
-        import socket
         try:
             prometheus_client.start_http_server(port=Config.METRICS_PORT, addr=Config.HOST)
             logger.info(f"[Metrics] 成功启动独立的 Prometheus 监控端口: {Config.METRICS_PORT}")

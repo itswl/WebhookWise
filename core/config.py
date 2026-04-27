@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import Field

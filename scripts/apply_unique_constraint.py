@@ -16,7 +16,6 @@ import sys
 from urllib.parse import urlparse
 
 import psycopg2
-from psycopg2 import sql
 
 # 从环境变量读取数据库连接 URL
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -111,7 +110,7 @@ def apply_migration():
                     WHERE id = %s
                 """, (count, original_id))
 
-            print(f"✅ 已处理所有重复告警")
+            print("✅ 已处理所有重复告警")
         else:
             print("✅ 无重复告警")
 

@@ -9,10 +9,8 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-import httpx
-from fastapi import APIRouter, Body, HTTPException, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
