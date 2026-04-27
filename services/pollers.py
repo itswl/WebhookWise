@@ -13,9 +13,10 @@ _LEADER_TTL_SECONDS = 90
 _RENEW_INTERVAL_SECONDS = 30
 
 
-async def _renew_leader(redis, token: str) -> None:
+async def _renew_leader(token: str) -> None:
     while not _stop_event.is_set():
         try:
+            redis = get_redis()
             current = await redis.get(_LEADER_KEY)
             if current is None or (isinstance(current, bytes) and current.decode('utf-8') != token) or (isinstance(current, str) and current != token):
                 return
@@ -32,11 +33,11 @@ async def _renew_leader(redis, token: str) -> None:
 
 
 
-def _run_renew(redis, token):
+def _run_renew(token):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_renew_leader(redis, token))
+        loop.run_until_complete(_renew_leader(token))
     except Exception as e:
         logger.error(f"[Pollers] _run_renew error: {e}")
     finally:
@@ -68,7 +69,7 @@ async def start_background_pollers(worker_id: str | None = None) -> bool:
         logger.info("[Pollers] leader exists, skip starting pollers")
         return False
 
-    threading.Thread(target=_run_renew, args=(redis, worker_id), daemon=True, name="pollers-leader-renew").start()
+    threading.Thread(target=_run_renew, args=(worker_id,), daemon=True, name="pollers-leader-renew").start()
 
     try:
         from services.maintenance_poller import start_maintenance_poller
