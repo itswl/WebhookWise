@@ -38,7 +38,7 @@ async def get_cache_key(alert_hash: str) -> str:
     return f"analysis_{alert_hash}"
 
 
-def get_cached_analysis(alert_hash: str) -> dict | None:
+async def get_cached_analysis(alert_hash: str) -> dict | None:
     """
     从缓存获取分析结果
 
@@ -52,14 +52,16 @@ def get_cached_analysis(alert_hash: str) -> dict | None:
         return None
 
     try:
+        from sqlalchemy import select
+
         from models import AnalysisCache, get_session
 
         session = get_session()
         try:
             cache_key = get_cache_key(alert_hash)
-            cache_entry = session.query(AnalysisCache).filter(
-                AnalysisCache.cache_key == cache_key
-            ).first()
+            stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
+            result = await session.execute(stmt)
+            cache_entry = result.scalars().first()
 
             if not cache_entry:
                 logger.debug(f"缓存未命中: {cache_key[:20]}...")
@@ -68,13 +70,13 @@ def get_cached_analysis(alert_hash: str) -> dict | None:
             # 检查是否过期
             if cache_entry.is_expired():
                 logger.info(f"缓存已过期: {cache_key[:20]}...")
-                session.delete(cache_entry)
-                session.commit()
+                await session.delete(cache_entry)
+                await session.commit()
                 return None
 
             # 命中缓存，增加计数
             cache_entry.hit_count += 1
-            session.commit()
+            await session.commit()
 
             result = json.loads(cache_entry.analysis_result)
             result['_cache_hit'] = True
@@ -672,7 +674,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
 
     # Step 1: 检查缓存（skip_cache=True 时跳过）
     if Config.CACHE_ENABLED and not skip_cache:
-        cached_result = get_cached_analysis(alert_hash)
+        cached_result = await get_cached_analysis(alert_hash)
         if cached_result:
             logger.info(f"[Cache] 命中历史分析缓存: source={source}, hash={alert_hash[:16]}...")
             cached_result['_route_type'] = 'cache'

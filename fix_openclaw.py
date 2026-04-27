@@ -1,6 +1,5 @@
-import re
 
-with open('services/openclaw_poller.py', 'r') as f:
+with open('services/openclaw_poller.py') as f:
     content = f.read()
 
 # Make the notification functions async
