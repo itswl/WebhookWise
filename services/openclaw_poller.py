@@ -3,11 +3,11 @@ import asyncio
 import json
 import logging
 import threading
-import time
 from datetime import datetime
 
 import core.redis_client
 from core.config import Config
+from services.pollers import _stop_event
 
 logger = logging.getLogger('webhook_service.openclaw_poller')
 
@@ -17,17 +17,17 @@ logger = logging.getLogger('webhook_service.openclaw_poller')
 # 移除原有的内存锁和缓存字典
 
 
-async def await _get_poll_stability(record_id: int) -> dict:
+async def _get_poll_stability(record_id: int) -> dict:
     redis_client = core.redis_client.get_redis()
     val = await redis_client.get(f"openclaw:poller:stability:{record_id}")
     return json.loads(val) if val else None
 
-async def await _set_poll_stability(record_id: int, data: dict):
+async def _set_poll_stability(record_id: int, data: dict):
     redis_client = core.redis_client.get_redis()
     # 缓存保留 1 小时
     redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
 
-async def await _clear_poll_stability(record_id: int):
+async def _clear_poll_stability(record_id: int):
     redis_client = core.redis_client.get_redis()
     await redis_client.delete(f"openclaw:poller:stability:{record_id}")
 
@@ -309,7 +309,8 @@ def _poll_pending_analyses_inner():
         logger.error(f"轮询任务异常: {e}")
 
 
-from services.pollers import _stop_event
+
+
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
     def _loop():
