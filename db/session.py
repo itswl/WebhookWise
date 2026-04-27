@@ -17,6 +17,7 @@ _session_factory = None
 # 为了让原本依赖同步执行的命令（如 migrations 和 cli scripts）可以平滑过渡，
 # 我们可以创建一个同步的 engine
 from sqlalchemy import create_engine
+
 _sync_engine = None
 
 def get_engine():

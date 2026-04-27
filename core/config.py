@@ -176,8 +176,8 @@ class _AppConfig(BaseSettings):
         return warnings
 
 Config = _AppConfig()
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if self.DATABASE_URL.startswith("postgresql://"):
-            self.DATABASE_URL = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    if self.DATABASE_URL.startswith("postgresql://"):
+        self.DATABASE_URL = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
