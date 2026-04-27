@@ -108,6 +108,8 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         return False
 
     try:
+        from sqlalchemy import select
+
         from db.session import session_scope
         from models import AnalysisCache
 
@@ -166,6 +168,7 @@ async def log_ai_usage(
         cache_hit: 是否命中缓存
     """
     try:
+
         from db.session import session_scope
         from models import AIUsageLog
 
@@ -1665,10 +1668,13 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     else:
         logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
         try:
+            from sqlalchemy import select
+
             from db.session import session_scope
             from models import WebhookEvent
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 async with session_scope() as session:
+                    from sqlalchemy import select
                     stmt = select(WebhookEvent).filter_by(id=webhook_data.get('id'))
                     result = await session.execute(stmt)
                     event = result.scalars().first()

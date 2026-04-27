@@ -80,7 +80,7 @@ async def get_ai_usage(period: str = Query('day')):
             # _cache_hits
             stmt_cache_hits = select(func.count(AIUsageLog.id)).select_from(AIUsageLog).filter(
                 AIUsageLog.timestamp >= start_time,
-                AIUsageLog.cache_hit == True
+                AIUsageLog.cache_hit
             )
             res_cache_hits = await session.execute(stmt_cache_hits)
             _cache_hits = res_cache_hits.scalar() or 0
