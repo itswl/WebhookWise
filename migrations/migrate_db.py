@@ -5,12 +5,12 @@
 from sqlalchemy import text
 
 from core.logger import logger
-from db.session import get_engine
+from db.session import get_sync_engine
 
 
 def migrate_database():
     """执行数据库迁移"""
-    engine = get_engine()
+    engine = get_sync_engine()
 
     migrations = [
         # 添加 alert_hash 字段

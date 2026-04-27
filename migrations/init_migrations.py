@@ -8,7 +8,7 @@ import sys
 
 from sqlalchemy import text
 
-from db.session import get_engine
+from db.session import get_sync_engine
 
 
 def check_and_add_unique_constraint():
@@ -18,7 +18,7 @@ def check_and_add_unique_constraint():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -122,7 +122,7 @@ def fix_duplicate_count():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -171,7 +171,7 @@ def add_beyond_window_field():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -266,7 +266,7 @@ def add_last_notified_at_field():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -325,7 +325,7 @@ def add_forward_rules_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -379,7 +379,7 @@ def add_deep_analyses_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -430,7 +430,7 @@ def add_polling_fields():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_engine()
+    engine = get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -468,7 +468,7 @@ def add_archive_and_indexes():
     """
     执行归档表创建和复合索引优化
     """
-    engine = get_engine()
+    engine = get_sync_engine()
     from pathlib import Path
 
     sql_path = Path(__file__).parent / 'sql' / 'archive_and_index.sql'
