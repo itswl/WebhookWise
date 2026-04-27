@@ -309,16 +309,17 @@ def _poll_pending_analyses_inner():
         logger.error(f"轮询任务异常: {e}")
 
 
+from services.pollers import _stop_event
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
     def _loop():
         logger.info(f"[Poller] 任务已启动: interval={interval}s")
-        while True:
+        while not _stop_event.is_set():
             try:
                 poll_pending_analyses()
             except Exception as e:
                 logger.error(f"轮询循环异常: {e}")
-            time.sleep(interval)
+            _stop_event.wait(interval)
 
     t = threading.Thread(target=_loop, daemon=True, name='openclaw-poller')
     t.start()

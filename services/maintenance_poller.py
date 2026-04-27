@@ -13,7 +13,7 @@ def run_daily_maintenance():
 
     logger.info("[Maintenance] 每日维护轮询已启动")
 
-    while True:
+    while not _stop_event.is_set():
         try:
             now = datetime.now()
             # 每天凌晨 3 点执行
@@ -31,6 +31,8 @@ def run_daily_maintenance():
 
         # 每 10 分钟检查一次时间
         time.sleep(600)
+
+from services.pollers import _stop_event
 
 def start_maintenance_poller():
     """启动维护线程"""

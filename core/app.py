@@ -17,7 +17,7 @@ from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger
 from core.metrics import setup_metrics
-from services.pollers import start_background_pollers
+from services.pollers import start_background_pollers, stop_background_pollers
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     get_http_client()
     start_background_pollers()
     yield
+    stop_background_pollers()
     await close_http_client()
 
 
