@@ -54,10 +54,10 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
     try:
         from sqlalchemy import select
 
-        from models import AnalysisCache, get_session
+        from db.session import session_scope
+        from models import AnalysisCache
 
-        session = get_session()
-        try:
+        async with session_scope() as session:
             cache_key = get_cache_key(alert_hash)
             stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
             result = await session.execute(stmt)
@@ -71,22 +71,17 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
             if cache_entry.is_expired():
                 logger.info(f"缓存已过期: {cache_key[:20]}...")
                 await session.delete(cache_entry)
-                await session.commit()
                 return None
 
             # 命中缓存，增加计数
             cache_entry.hit_count += 1
-            await session.commit()
 
-            result = json.loads(cache_entry.analysis_result)
-            result['_cache_hit'] = True
-            result['_cache_hit_count'] = cache_entry.hit_count
+            cached_result = json.loads(cache_entry.analysis_result)
+            cached_result['_cache_hit'] = True
+            cached_result['_cache_hit_count'] = cache_entry.hit_count
 
             logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {cache_entry.hit_count} 次")
-            return result
-
-        finally:
-            session.close()
+            return cached_result
 
     except Exception as e:
         logger.warning(f"读取缓存失败: {e}")

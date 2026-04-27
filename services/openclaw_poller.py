@@ -32,7 +32,7 @@ async def _clear_poll_stability(record_id: int):
     await redis_client.delete(f"openclaw:poller:stability:{record_id}")
 
 
-def _notify_feishu_deep_analysis(record, source: str = ''):
+async def _notify_feishu_deep_analysis(record, source: str = ''):
     """发送深度分析完成的飞书通知"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
@@ -47,17 +47,17 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
             'engine': record.engine,
             'duration_seconds': record.duration_seconds or 0,
         }
-        asyncio.run(send_feishu_deep_analysis(
+        await send_feishu_deep_analysis(
             webhook_url=webhook_url,
             analysis_record=analysis_data,
             source=source,
             webhook_event_id=record.webhook_event_id
-        ))
+        )
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
 
-def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
+async def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
     """发送深度分析失败的飞书通知"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
@@ -77,12 +77,12 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
             'engine': record.engine,
             'duration_seconds': record.duration_seconds or 0,
         }
-        asyncio.run(send_feishu_deep_analysis(
+        await send_feishu_deep_analysis(
             webhook_url=webhook_url,
             analysis_record=analysis_data,
             source='',
             webhook_event_id=record.webhook_event_id
-        ))
+        )
         logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
     except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
@@ -212,12 +212,23 @@ async def _poll_pending_analyses_inner():
                         record.status = 'failed'
                         record.analysis_result = {'root_cause': 'OpenClaw 分析超时'}
                         await _clear_poll_stability(record.id)
-                        _notify_feishu_deep_analysis_failed(record, '超时失败')
+                        await _notify_feishu_deep_analysis_failed(record, '超时失败')
                         continue
 
                     if not record.openclaw_session_key:
+                        # 给一定等待时间，可能 session_key 还未写入
+                        elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else 999
+                        if elapsed < Config.OPENCLAW_MIN_WAIT_SECONDS:
+                            continue
+                        # 超过等待时间还没有 session_key，标记为失败
                         record.status = 'failed'
+                        record.analysis_result = {
+                            'root_cause': '无法获取分析会话，OpenClaw 触发失败',
+                            'error': 'missing_session_key',
+                            'failure_reason': '未能获取到分析会话密钥'
+                        }
                         await _clear_poll_stability(record.id)
+                        await _notify_feishu_deep_analysis_failed(record, '无 session_key - OpenClaw 触发失败')
                         continue
 
                     # 最小等待时间
@@ -278,7 +289,7 @@ async def _poll_pending_analyses_inner():
                                 result = await session.execute(stmt)
                                 event = result.scalars().first()
                                 source = event.source if event else ''
-                                _notify_feishu_deep_analysis(record, source)
+                                await _notify_feishu_deep_analysis(record, source)
                             except Exception as e:
                                 logger.debug(f"飞书深度分析通知失败: {e}")
                         else:
@@ -303,9 +314,29 @@ async def _poll_pending_analyses_inner():
                                 record.status = 'completed'
                                 continue
                         await _clear_poll_stability(record.id)
+                        # 没有降级条件时，直接设置为失败
+                        record.status = 'failed'
+                        error_msg = result.get('error', 'OpenClaw 返回错误')
+                        record.analysis_result = {
+                            'root_cause': error_msg,
+                            'error': error_msg,
+                            'failure_reason': error_msg
+                        }
+                        await session.flush()
+                        await _notify_feishu_deep_analysis_failed(record, error_msg)
 
                 except Exception as e:
-                    logger.error(f"轮询记录 id={record.id} 失败: {e}")
+                    logger.error(f"轮询记录 id={record.id} 失败: {e}", exc_info=True)
+                    try:
+                        record.status = 'failed'
+                        record.analysis_result = {
+                            'root_cause': f'分析任务崩溃: {e}',
+                            'error': str(e),
+                            'failure_reason': f'轮询异常: {e}'
+                        }
+                        await session.flush()
+                    except Exception as inner_e:
+                        logger.error(f"更新失败状态也出错: {inner_e}")
 
     except Exception as e:
         logger.error(f"轮询任务异常: {e}")

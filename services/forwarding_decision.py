@@ -101,14 +101,14 @@ async def _resolve_analysis_without_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> tuple[dict, bool, bool, WebhookEvent | None]:
-    import time
+    import asyncio
 
 
     wait_time = 0
     while wait_time < Config.PROCESSING_LOCK_WAIT_SECONDS:
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         wait_time += 0.5
-        refreshed = _refresh_original_event(None, None)
+        refreshed = await _refresh_original_event(None, None)
         if refreshed and refreshed.ai_analysis:
             return refreshed.ai_analysis, False, True, refreshed
 
@@ -239,7 +239,7 @@ async def _decide_forwarding(
                 return False, f'窗口外重复告警（原始 ID={original_id}），刚刚已转发', False, []
             return True, None, False
         if is_duplicate:
-            should_forward, reason = _decide_duplicate_forwarding(
+            should_forward, reason = await _decide_duplicate_forwarding(
                 original_event, original_id, noise_context, importance
             )
             return should_forward, reason, False, []

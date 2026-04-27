@@ -90,7 +90,7 @@ async def delete_forward_rule(rule_id: int):
         rule = result.scalars().first()
         if not rule:
             return JSONResponse(status_code=404, content={"success": False, "error": '规则不存在'})
-        await session.delete(rule)
+        session.delete(rule)
         return {"success": True, "message": '规则已删除'}
 
 
@@ -116,9 +116,9 @@ async def test_forward_rule(rule_id: int):
 
         if rule.target_type == 'openclaw':
             from services.ai_analyzer import forward_to_openclaw
-            result = forward_to_openclaw(test_data, test_analysis)
+            result = await forward_to_openclaw(test_data, test_analysis)
         else:
             from services.ai_analyzer import forward_to_remote
-            result = forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
+            result = await forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
 
         return {"success": True, "data": result, "message": '测试完成'}
