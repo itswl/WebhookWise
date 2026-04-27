@@ -1,3 +1,4 @@
+from sqlalchemy import select
 """
 services/noise_context.py
 ===============================
@@ -56,7 +57,7 @@ def _build_alert_context(
     )
 
 
-def _load_recent_alert_contexts(
+async def await _load_recent_alert_contexts(
     current_hash: str,
     current_time: datetime,
     window_minutes: int = 5
@@ -70,11 +71,11 @@ def _load_recent_alert_contexts(
 
     async with session_scope() as session:
         # 查找时间窗口内的其他告警（排除自身）
-        events = session.query(WebhookEvent).filter(
+        events = result = await session.execute(select(WebhookEvent).filter(
             WebhookEvent.timestamp >= window_start,
-            WebhookEvent.timestamp <= current_time,
-            WebhookEvent.id != getattr(session, 'id', None)  # 已在 session 中时过滤自身
-        ).all()
+            WebhookEvent.timestamp <= current_time
+        ))
+        events = result.scalars().all()
 
         for event in events:
             parsed = {}

@@ -1,3 +1,4 @@
+from sqlalchemy import select
 import logging
 from datetime import datetime, timedelta
 
@@ -8,7 +9,7 @@ from models import ArchivedWebhookEvent, WebhookEvent
 
 logger = logging.getLogger("webhook_service.maintenance")
 
-def archive_old_data(days: int = 30):
+async def archive_old_data(days: int = 30):
     """
     归档旧数据：
     1. 将 30 天前、状态为已完成且非高风险的告警搬迁到归档表
@@ -42,7 +43,9 @@ def archive_old_data(days: int = 30):
             for chunk_start in range(0, len(target_ids), 1000):
                 chunk_ids = target_ids[chunk_start : chunk_start + 1000]
 
-                events = session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).all()
+                result = await session.execute(select(WebhookEvent).filter(WebhookEvent.timestamp < threshold_date).limit(5000))
+        events = result.scalars().all()
+        # events = session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).all()
 
                 archived_records = [{
                     'id': e.id,
@@ -66,9 +69,10 @@ def archive_old_data(days: int = 30):
                     'archived_at': datetime.now()
                 } for e in events]
                 if archived_records:
-                    session.execute(insert(ArchivedWebhookEvent), archived_records)
+                    await session.execute(insert(ArchivedWebhookEvent), archived_records)
 
-                session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).delete(synchronize_session=False)
+                from sqlalchemy import delete
+                await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
                 total_moved += len(chunk_ids)
                 logger.info(f"[Maintenance] 已搬迁 {total_moved} 条记录...")
