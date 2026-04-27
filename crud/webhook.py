@@ -177,8 +177,8 @@ def check_duplicate_alert(
 
         return DuplicateCheckResult(False, None, False, None)
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"检查重复告警失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"检查重复告警失败: {e!s}")
         return DuplicateCheckResult(False, None, False, None)
     finally:
         if should_close:
@@ -426,7 +426,7 @@ def save_webhook_data(
                 )
 
         except IntegrityError as e: # noqa: PERF203
-            logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {str(e)}")
+            logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {e!s}")
 
             if attempt < MAX_SAVE_RETRIES - 1:
                 # 指数退避让并发写入先完成，再次判重时更容易命中已落库记录。
@@ -470,8 +470,8 @@ def save_webhook_data(
                 fallback_session.flush()
                 return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
 
-        except Exception as e: # noqa: PERF203
-            logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
+        except Exception as e:
+            logger.error(f"保存 webhook 数据到数据库失败: {e!s}")
             return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
 
     logger.error("保存数据异常：退出重试循环但未返回结果")
@@ -489,12 +489,12 @@ def save_webhook_to_file(
     """保存 webhook 数据到文件(备份方式)"""
     # 创建数据目录
     os.makedirs(Config.DATA_DIR, exist_ok=True)
-    
+
     # 生成文件名(基于时间戳)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     filename = f"{source}_{timestamp}.json"
     filepath = str(Path(Config.DATA_DIR) / filename)
-    
+
     # 准备保存的完整数据
     full_data = {
         'timestamp': datetime.now().isoformat(),
@@ -504,15 +504,15 @@ def save_webhook_to_file(
         'raw_payload': raw_payload.decode('utf-8') if raw_payload else None,
         'parsed_data': data
     }
-    
+
     # 添加 AI 分析结果
     if ai_analysis:
         full_data['ai_analysis'] = ai_analysis
-    
+
     # 保存数据
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(full_data, f, indent=2, ensure_ascii=False)
-    
+
     return filepath
 
 
@@ -598,7 +598,7 @@ def get_all_webhooks(
                         current_timestamp = datetime.fromisoformat(webhook['timestamp'])
                         key = (webhook['alert_hash'], current_timestamp)
                         lookup_map[key] = webhook
-                    except Exception as e: # noqa: PERF203
+                    except Exception as e:
                         logger.warning(f"解析时间戳失败 (webhook={webhook.get('id')}): {e}")
                         webhook['prev_alert_id'] = None
 
@@ -634,7 +634,7 @@ def get_all_webhooks(
                                 break
                         webhook['prev_alert_id'] = prev_id
                         webhook['prev_alert_timestamp'] = prev_timestamp.isoformat() if prev_timestamp else None
-                except Exception as e: # noqa: PERF203
+                except Exception as e:
                     logger.warning(f"批量计算 prev_alert_id 失败: {e}")
                     # 失败时设置为 None
                     for webhook in lookup_map.values():
@@ -652,8 +652,8 @@ def get_all_webhooks(
 
             return webhooks, total, next_cursor
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"从数据库查询 webhook 数据失败: {e!s}")
         webhooks = get_webhooks_from_files(limit=page_size)
         return webhooks, len(webhooks), None
 
@@ -662,10 +662,10 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     """从文件获取 webhook 数据(备份方式)"""
     if not os.path.exists(Config.DATA_DIR):
         return []
-    
+
     webhooks = []
     files = [f for f in os.listdir(Config.DATA_DIR) if f.endswith('.json')]
-    
+
     # 读取所有文件
     for filename in files:
         filepath = str(Path(Config.DATA_DIR) / filename)
@@ -674,12 +674,12 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
                 webhook_data = json.load(f)
                 webhook_data['filename'] = filename
                 webhooks.append(webhook_data)
-        except Exception as e: # noqa: PERF203
-            logger.error(f"读取文件失败 {filename}: {str(e)}")
-    
+        except Exception as e:
+            logger.error(f"读取文件失败 {filename}: {e!s}")
+
     # 按 timestamp 字段倒序排序（最新的在前面）
     webhooks.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-    
+
     # 返回限制数量的结果
     return webhooks[:limit]
 

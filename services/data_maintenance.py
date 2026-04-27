@@ -16,9 +16,9 @@ def archive_old_data(days: int = 30):
     """
     threshold = datetime.now() - timedelta(days=days)
     logger.info(f"[Maintenance] 开始执行归档任务，清理 {threshold.strftime('%Y-%m-%d %H:%M:%S')} 之前的记录...")
-    
+
     total_moved = 0
-    
+
     try:
         with session_scope() as session:
             # 1. 查找符合条件的记录 IDs
@@ -29,9 +29,9 @@ def archive_old_data(days: int = 30):
             ).filter(
                 WebhookEvent.forward_status != 'failed'
             ).limit(5000)
-            
+
             target_ids = [r[0] for r in target_ids_query.all()]
-            
+
             if not target_ids:
                 logger.info("[Maintenance] 没有发现符合归档条件的记录。")
                 return 0
@@ -41,9 +41,9 @@ def archive_old_data(days: int = 30):
             # 2. 批量搬迁数据
             for chunk_start in range(0, len(target_ids), 1000):
                 chunk_ids = target_ids[chunk_start : chunk_start + 1000]
-                
+
                 events = session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).all()
-                
+
                 archived_records = [{
                     'id': e.id,
                     'source': e.source,
@@ -64,18 +64,18 @@ def archive_old_data(days: int = 30):
                     'created_at': e.created_at,
                     'updated_at': e.updated_at,
                     'archived_at': datetime.now()
-                } for e in events]                
+                } for e in events]
                 if archived_records:
                     session.execute(insert(ArchivedWebhookEvent), archived_records)
-                    
+
                 session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).delete(synchronize_session=False)
-                
+
                 total_moved += len(chunk_ids)
                 logger.info(f"[Maintenance] 已搬迁 {total_moved} 条记录...")
 
             logger.info(f"[Maintenance] 归档任务完成！共处理 {total_moved} 条记录。")
             return total_moved
-            
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         logger.error(f"[Maintenance] 归档任务失败: {e}", exc_info=True)
         return total_moved

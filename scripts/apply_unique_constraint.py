@@ -37,7 +37,7 @@ try:
         'password': parsed.password,
         'database': parsed.path.lstrip('/')
     }
-except Exception as e: # noqa: PERF203
+except Exception as e:
     print(f"❌ 错误：无法解析 DATABASE_URL: {e}")
     sys.exit(1)
 
@@ -123,7 +123,7 @@ def apply_migration():
                 WHERE is_duplicate = 0
             """)
             print("✅ 唯一索引创建成功")
-        except psycopg2.errors.UniqueViolation as e: # noqa: PERF203
+        except psycopg2.errors.UniqueViolation as e:
             print(f"❌ 创建索引失败（仍有重复数据）: {e}")
             return False
 
@@ -163,7 +163,7 @@ def apply_migration():
         print("\n🎉 数据库迁移完成！")
         return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"\n❌ 迁移失败: {e}")
         import traceback
         traceback.print_exc()

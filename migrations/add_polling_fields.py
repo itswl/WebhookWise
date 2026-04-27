@@ -13,7 +13,7 @@ from core.config import Config
 def migrate():
     """添加 openclaw_run_id, openclaw_session_key, status 字段（幂等）"""
     engine = create_engine(Config.DATABASE_URL)
-    
+
     with engine.connect() as conn:
         # 添加字段
         conn.execute(text("""
@@ -25,7 +25,7 @@ def migrate():
         conn.execute(text("""
             ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'
         """))
-        
+
         # 创建索引
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)
@@ -33,10 +33,10 @@ def migrate():
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)
         """))
-        
+
         conn.commit()
         print("deep_analyses 表轮询字段添加成功")
-    
+
     return True
 
 

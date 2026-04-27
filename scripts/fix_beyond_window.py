@@ -145,7 +145,7 @@ def fix_beyond_window(time_window_hours=24):
             print(f"✅ 成功修复 {len(updates)} 条记录")
             return len(updates)
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"❌ 修复失败: {e}")
         import traceback
         traceback.print_exc()
