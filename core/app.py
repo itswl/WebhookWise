@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     if not Config.API_KEY and not (Config.DEBUG or Config.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError("API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true")
     get_http_client()
-    start_background_pollers()
+    await start_background_pollers()
     yield
     stop_background_pollers()
     await close_http_client()

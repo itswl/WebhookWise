@@ -1,6 +1,5 @@
 import os
 import threading
-import time
 
 _stop_event = threading.Event()
 
@@ -13,23 +12,29 @@ _LEADER_TTL_SECONDS = 90
 _RENEW_INTERVAL_SECONDS = 30
 
 
-def _renew_leader(redis, token: str) -> None:
+async def _renew_leader(redis, token: str) -> None:
     while not _stop_event.is_set():
         try:
-            current = redis.get(_LEADER_KEY)
+            current = await redis.get(_LEADER_KEY)
             if current is None or (isinstance(current, bytes) and current.decode('utf-8') != token) or (isinstance(current, str) and current != token):
                 return
-            redis.expire(_LEADER_KEY, _LEADER_TTL_SECONDS)
+            await redis.expire(_LEADER_KEY, _LEADER_TTL_SECONDS)
         except Exception as e:
             logger.warning(f"[Pollers] leader renew failed: {e}")
             return
         _stop_event.wait(_RENEW_INTERVAL_SECONDS)
 
 
+
+
+import asyncio
+def _run_renew(redis, token):
+    asyncio.run(_renew_leader(redis, token))
+
 def stop_background_pollers():
     _stop_event.set()
 
-def start_background_pollers(worker_id: str | None = None) -> bool:
+async def start_background_pollers(worker_id: str | None = None) -> bool:
     if not getattr(Config, "ENABLE_POLLERS", True):
         logger.info("[Pollers] disabled by config")
         return False
@@ -43,7 +48,7 @@ def start_background_pollers(worker_id: str | None = None) -> bool:
         return False
 
     try:
-        acquired = redis.set(_LEADER_KEY, worker_id, nx=True, ex=_LEADER_TTL_SECONDS)
+        acquired = await redis.set(_LEADER_KEY, worker_id, nx=True, ex=_LEADER_TTL_SECONDS)
     except Exception as e:
         logger.warning(f"[Pollers] failed to acquire leader lock: {e}")
         return False
@@ -52,7 +57,7 @@ def start_background_pollers(worker_id: str | None = None) -> bool:
         logger.info("[Pollers] leader exists, skip starting pollers")
         return False
 
-    threading.Thread(target=_renew_leader, args=(redis, worker_id), daemon=True, name="pollers-leader-renew").start()
+    threading.Thread(target=_run_renew, args=(redis, worker_id), daemon=True, name="pollers-leader-renew").start()
 
     try:
         from services.maintenance_poller import start_maintenance_poller
