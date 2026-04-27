@@ -1,5 +1,5 @@
 """
-core/routes/__init__.py
+api/__init__.py
 =======================
 共享 dataclass 和响应工具，所有 route 模块共用。
 """
