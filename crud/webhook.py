@@ -606,7 +606,7 @@ def get_all_webhooks(
             if lookup_map:
                 try:
                     # 获取所有涉及的 alert_hash
-                    all_hashes = list(set(k[0] for k in lookup_map))
+                    all_hashes = list({k[0] for k in lookup_map})
 
                     # 查询这些 hash 的所有记录（去重需要）
                     all_alerts = session.query(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
