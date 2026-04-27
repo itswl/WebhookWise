@@ -5,11 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from core.config import Config
-from core.logger import logger
-from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
-from core.models import DeepAnalysis, WebhookEvent, get_session, session_scope
-from core.routes import (
+from api import (
     AnalysisResolution,
     ForwardDecision,
     InvalidJsonError,
@@ -19,6 +15,9 @@ from core.routes import (
     WebhookRequestContext,
     _ok,
 )
+from core.config import Config
+from core.logger import logger
+from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
 from core.utils import (
     check_duplicate_alert,
     generate_alert_hash,
@@ -26,6 +25,8 @@ from core.utils import (
     save_webhook_data,
 )
 from core.webhook_security import ensure_webhook_auth
+from db.session import session_scope
+from models import DeepAnalysis, WebhookEvent, get_session
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 
@@ -426,7 +427,7 @@ async def _resolve_analysis(alert_hash: str, webhook_full_data: dict, got_lock: 
 
 
 def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: bool, source: str) -> list:
-    from core.models import ForwardRule
+    from models import ForwardRule
 
     try:
         with session_scope() as session:

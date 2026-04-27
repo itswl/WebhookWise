@@ -8,7 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from core.models import ForwardRule, session_scope
+from db.session import session_scope
+from models import ForwardRule
 
 forward_rules_router = APIRouter()
 

@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 
 from core.config import Config
 from core.logger import logger
-from core.models import WebhookEvent, session_scope
+from db.session import session_scope
+from models import WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
 
 reanalysis_router = APIRouter()
