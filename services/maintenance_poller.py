@@ -8,7 +8,7 @@ from services.pollers import _stop_event
 
 logger = logging.getLogger('webhook_service.maintenance')
 
-def run_daily_maintenance():
+async def run_daily_maintenance():
     """每日维护任务：归档旧数据"""
     last_run_date = None
 
@@ -22,7 +22,7 @@ def run_daily_maintenance():
                 logger.info(f"[Maintenance] 开始执行凌晨维护任务 (当前时间: {now.strftime('%H:%M:%S')})")
 
                 # 1. 归档 30 天前的数据
-                moved = archive_old_data(days=30)
+                moved = await archive_old_data(archive_days=30)
                 logger.info(f"[Maintenance] 归档任务完成，移动了 {moved} 条记录")
 
                 last_run_date = now.date()
@@ -31,12 +31,21 @@ def run_daily_maintenance():
             logger.error(f"[Maintenance] 维护任务异常: {e}")
 
         # 每 10 分钟检查一次时间
-        time.sleep(600)
+        await __import__("asyncio").sleep(600)
 
 
+
+def _run_poller():
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_daily_maintenance())
+    finally:
+        loop.close()
 
 def start_maintenance_poller():
     """启动维护线程"""
-    t = threading.Thread(target=run_daily_maintenance, daemon=True, name='maintenance-poller')
+    t = threading.Thread(target=_run_poller, daemon=True, name='maintenance-poller')
     t.start()
     return t
