@@ -38,7 +38,7 @@ def dashboard():
 # ── Webhooks API ────────────────────────────────────────────────────────────────
 
 @webhook_router.get('/api/webhooks', dependencies=[Depends(verify_api_key)])
-def list_webhooks(
+async def list_webhooks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
     fields: str = Query('summary'),
@@ -55,7 +55,7 @@ def list_webhooks(
         offset = 0
 
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             query = session.query(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
             if importance:
@@ -121,7 +121,7 @@ def list_webhooks_cursor(
     from models import WebhookEvent
 
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             query = session.query(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
             if importance:
@@ -175,7 +175,7 @@ def get_webhook_detail(webhook_id: int):
     from db.session import session_scope
     from models import WebhookEvent
 
-    with session_scope() as session:
+    async with session_scope() as session:
         event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
         if not event:
             return JSONResponse({'success': False, 'error': 'Webhook not found'}, status_code=404)

@@ -20,7 +20,7 @@ def archive_old_data(days: int = 30):
     total_moved = 0
 
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             # 1. 查找符合条件的记录 IDs
             target_ids_query = session.query(WebhookEvent.id).filter(
                 WebhookEvent.timestamp < threshold

@@ -36,7 +36,7 @@ async def get_ai_usage(period: str = Query('day')):
         else:
             start_time = now - timedelta(days=1)
 
-        with session_scope() as session:
+        async with session_scope() as session:
             base_query = session.query(AIUsageLog).filter(
                 AIUsageLog.timestamp >= start_time
             )

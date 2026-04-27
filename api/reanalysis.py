@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 """
 api/reanalysis.py
 =========================
@@ -17,11 +19,12 @@ reanalysis_router = APIRouter()
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
-def _get_webhook_event_by_id(session, webhook_id: int) -> WebhookEvent | None:
-    return session.query(WebhookEvent).filter_by(id=webhook_id).first()
+async def _get_webhook_event_by_id(session, webhook_id: int) -> WebhookEvent | None:
+    result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
+    return result.scalars().first()
 
 
-def _build_webhook_context(event: WebhookEvent) -> dict:
+async def _build_webhook_context(event: WebhookEvent) -> dict:
     return {
         'source': event.source,
         'parsed_data': event.parsed_data,
@@ -30,8 +33,10 @@ def _build_webhook_context(event: WebhookEvent) -> dict:
     }
 
 
-def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result: dict, new_importance: str | None) -> int:
-    duplicate_events = session.query(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id).all()
+async def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result: dict, new_importance: str | None) -> int:
+    stmt = select(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id)
+    result = await session.execute(stmt)
+    duplicate_events = result.scalars().all()
     for dup in duplicate_events:
         dup.ai_analysis = analysis_result
         dup.importance = new_importance
@@ -54,7 +59,7 @@ async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook
 
     updated_duplicates = 0
     if webhook_event.is_duplicate == 0:
-        updated_duplicates = _propagate_analysis_to_duplicates(session, webhook_id, analysis_result, new_importance)
+        updated_duplicates = await _propagate_analysis_to_duplicates(session, webhook_id, analysis_result, new_importance)
         if updated_duplicates:
             logger.info(f"同时更新了 {updated_duplicates} 条重复告警的分析结果")
 
@@ -78,8 +83,8 @@ async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int,
 async def reanalyze_webhook(webhook_id: int):
     """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:
-        with session_scope() as session:
-            webhook_event = _get_webhook_event_by_id(session, webhook_id)
+        async with session_scope() as session:
+            webhook_event = await _get_webhook_event_by_id(session, webhook_id)
             if not webhook_event:
                 raise HTTPException(status_code=404, detail='Webhook not found')
 
@@ -112,8 +117,8 @@ async def manual_forward_webhook(webhook_id: int, data: dict | None = None):
     try:
         custom_url = data.get('target_url')
 
-        with session_scope() as session:
-            webhook_event = _get_webhook_event_by_id(session, webhook_id)
+        async with session_scope() as session:
+            webhook_event = await _get_webhook_event_by_id(session, webhook_id)
             if not webhook_event:
                 raise HTTPException(status_code=404, detail='Webhook not found')
 
