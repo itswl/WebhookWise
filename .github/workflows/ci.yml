@@ -17,7 +17,7 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m compileall -q .
       - run: ruff check .
-      - run: ruff check . --select I,B,UP,SIM,F,C4,PIE,PERF,E,W --exit-zero
+      - run: ruff check . --exit-zero
       - run: bandit -r core services adapters -x tests -q
       - run: pip-audit -r requirements.txt -r requirements-dev.txt
       - run: pytest -q
