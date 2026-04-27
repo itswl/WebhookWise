@@ -26,7 +26,7 @@ from core.utils import (
 from core.webhook_security import ensure_webhook_auth
 from crud.webhook import check_duplicate_alert, save_webhook_data
 from db.session import session_scope
-from models import DeepAnalysis, WebhookEvent, get_session
+from models import DeepAnalysis, WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 
@@ -75,16 +75,13 @@ async def _load_recent_alert_contexts(current_hash: str, current_time: datetime)
 
     try:
         async with session_scope() as session:
-            query = (
-                session.query(WebhookEvent)
-                .filter(
-                    WebhookEvent.timestamp >= time_threshold,
-                    WebhookEvent.timestamp <= current_time,
-                )
-                .order_by(WebhookEvent.timestamp.desc())
-                .limit(100)
-            )
-            
+            stmt = select(WebhookEvent).filter(
+                WebhookEvent.timestamp >= time_threshold,
+                WebhookEvent.timestamp <= current_time
+            ).order_by(WebhookEvent.timestamp.desc()).limit(100)
+            result = await session.execute(stmt)
+            events = result.scalars().all()
+
     except Exception as e:
         logger.warning(f"加载降噪候选告警失败: {e}")
         return []
