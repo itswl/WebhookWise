@@ -1,4 +1,3 @@
-
 import prometheus_client
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
