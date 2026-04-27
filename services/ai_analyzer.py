@@ -33,7 +33,7 @@ ForwardResult = dict[str, Any]
 _user_prompt_template: str | None = None
 
 
-async def get_cache_key(alert_hash: str) -> str:
+def get_cache_key(alert_hash: str) -> str:
     """生成缓存 key"""
     return f"analysis_{alert_hash}"
 
@@ -120,9 +120,9 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
                              if not k.startswith('_')}
 
             # 检查是否已存在
-            existing = session.query(AnalysisCache).filter(
-                AnalysisCache.cache_key == cache_key
-            ).first()
+            stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
+            result = await session.execute(stmt)
+            existing = result.scalars().first()
 
             if existing:
                 existing.analysis_result = json.dumps(result_to_cache, ensure_ascii=False)
@@ -974,7 +974,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         raise
 
 
-def _should_send_degradation_alert() -> bool:
+async def _should_send_degradation_alert() -> bool:
     """
     检查是否应该发送降级通知（24小时限流）
 
@@ -1050,7 +1050,7 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
     """发送 AI 降级通知（带24小时限流）"""
     try:
         # 检查是否在限流期内
-        if not _should_send_degradation_alert():
+        if not await _should_send_degradation_alert():
             return
 
         # 只有启用转发且配置了转发地址才发送
@@ -1669,7 +1669,9 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             from models import WebhookEvent
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 async with session_scope() as session:
-                    event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
+                    stmt = select(WebhookEvent).filter_by(id=webhook_data.get('id'))
+                    result = await session.execute(stmt)
+                    event = result.scalars().first()
                     source = event.source if event else 'unknown'
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
