@@ -122,7 +122,7 @@ async def _resolve_analysis_without_lock(
 
 # ── 转发决策 helpers ────────────────────────────────────────────────────────────
 
-async def await _recently_notified(
+async def _recently_notified(
     original_event: WebhookEvent | None,
     original_id: int | None,
     alert_type: str
@@ -149,7 +149,7 @@ async def _resolve_alert_type_label(
     return '新告警'
 
 
-def _decide_duplicate_forwarding(
+async def _decide_duplicate_forwarding(
     original_event: WebhookEvent | None,
     original_id: int | None,
     noise_context,
