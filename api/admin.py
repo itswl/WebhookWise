@@ -126,7 +126,7 @@ def _collect_config_updates(payload: dict) -> tuple[dict, list[str]]:
                 logger.debug(f"跳过空值配置: {key}")
                 continue
             updates[env_var] = (string_value, typed_value)
-        except ValueError as e: # noqa: PERF203
+        except ValueError as e:
             errors.append(str(e))
 
     return updates, errors
@@ -212,13 +212,13 @@ def get_config():
     try:
         env_values = _load_env_values('.env')
         return _ok(_build_config_response(env_values), 200)
-    except Exception as e: # noqa: PERF203
-        logger.error(f"获取配置失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"获取配置失败: {e!s}")
         return _fail(str(e), 500)
 
 
 @admin_router.post('/api/config')
-def update_config(payload: dict = None):
+def update_config(payload: dict | None = None):
     try:
         if not payload:
             return _fail('请求体为空', 400)
@@ -229,18 +229,18 @@ def update_config(payload: dict = None):
 
         try:
             _persist_config_updates(updates, '.env')
-        except PermissionError as e: # noqa: PERF203
-            logger.error(f"权限错误，无法写入 .env 文件: {str(e)}")
+        except PermissionError as e:
+            logger.error(f"权限错误，无法写入 .env 文件: {e!s}")
             return _fail('权限错误: 无法写入配置文件。请检查 .env 文件权限或使用环境变量配置。', 500)
-        except Exception as e: # noqa: PERF203
-            logger.error(f"更新 .env 文件失败: {str(e)}", exc_info=True)
+        except Exception as e:
+            logger.error(f"更新 .env 文件失败: {e!s}", exc_info=True)
             return _fail(str(e), 500)
 
         logger.info(f"配置已更新: {list(updates.keys())}")
         return _ok(status=200, message='配置更新成功')
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"更新配置失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"更新配置失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -254,8 +254,8 @@ def reload_prompt():
             template_length=len(new_template),
             preview=new_template[:200] + '...' if len(new_template) > 200 else new_template
         )
-    except Exception as e: # noqa: PERF203
-        logger.error(f"重新加载 prompt 模板失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -268,8 +268,8 @@ def get_prompt():
             template=template,
             source=_build_prompt_source()
         )
-    except Exception as e: # noqa: PERF203
-        logger.error(f"获取 prompt 模板失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"获取 prompt 模板失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -280,6 +280,6 @@ def migration_add_unique_constraint():
         if success:
             return _ok(status=200, message='数据库迁移成功：唯一约束已添加')
         return _fail('数据库迁移失败，请查看日志', 500)
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"执行迁移失败: {e}")
         return _fail(str(e), 500)

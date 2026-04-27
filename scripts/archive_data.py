@@ -13,5 +13,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         with contextlib.suppress(ValueError):
             archive_days = int(sys.argv[1])
-            
+
     archive_old_data(archive_days)

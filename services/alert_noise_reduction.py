@@ -225,10 +225,10 @@ def analyze_noise_reduction(
 ) -> NoiseReductionDecision:
     """
     分析噪声降低
-    
+
     增强功能：
     - 动态阈值：基于历史数据自动调整判定阈值
-    
+
     Args:
         current: 当前告警上下文
         recent_alerts: 近期告警列表
@@ -245,7 +245,7 @@ def analyze_noise_reduction(
     # 收集相关告警
     recent_alerts_list = list(recent_alerts)
     scored = _collect_related(current, recent_alerts_list, window_minutes)
-    
+
     if not scored:
         logger.info("[Noise] 降噪决策: relation=standalone")
         return default_decision()
@@ -254,11 +254,11 @@ def analyze_noise_reduction(
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
 
     best_alert, best_score = scored[0]
-    
+
     # 根因判定
     if best_alert.event_id is not None and best_score >= effective_threshold:
         reason = f'与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）'
-        
+
         logger.info(f"[Noise] 降噪决策: relation=derived, confidence={best_score:.2f}, suppress={suppress_derived}")
         return NoiseReductionDecision(
             relation='derived',
@@ -273,7 +273,7 @@ def analyze_noise_reduction(
     # 告警风暴检测
     if current.importance == 'high' and len(related_ids) >= 2:
         reason = f'检测到告警风暴，已关联 {len(related_ids)} 条近邻告警'
-        
+
         logger.info(f"[Noise] 降噪决策: relation=root_cause, count={len(related_ids)}")
         return NoiseReductionDecision(
             relation='root_cause',

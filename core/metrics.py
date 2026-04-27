@@ -1,9 +1,14 @@
+
+import prometheus_client
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from core.config import Config
+from core.logger import logger
+
 # 1. 业务吞吐与状态指标
 WEBHOOK_RECEIVED_TOTAL = Counter(
-    'webhook_received_total', 
+    'webhook_received_total',
     'Total number of webhooks received',
     ['source', 'status']
 )
@@ -42,10 +47,7 @@ DATABASE_EVENTS_COUNT = Gauge(
     'Current number of webhook events in active table'
 )
 
-import prometheus_client
 
-from core.config import Config
-from core.logger import logger
 
 
 def setup_metrics(app):
@@ -59,13 +61,13 @@ def setup_metrics(app):
         inprogress_labels=True,
     )
     instrumentator.instrument(app)
-    
+
     if Config.METRICS_PORT > 0 and Config.METRICS_PORT != Config.PORT:
         # 启动独立的 Prometheus metrics 服务器
         try:
             prometheus_client.start_http_server(port=Config.METRICS_PORT, addr=Config.HOST)
             logger.info(f"[Metrics] 成功启动独立的 Prometheus 监控端口: {Config.METRICS_PORT}")
-        except OSError as e: # noqa: PERF203
+        except OSError as e:
             if "Address already in use" in str(e):
                 logger.debug(f"[Metrics] 独立监控端口 {Config.METRICS_PORT} 已被其他 Worker 绑定，复用该指标服务。")
             else:
@@ -75,5 +77,5 @@ def setup_metrics(app):
         # 复用主程序的端口
         logger.info(f"[Metrics] 复用主程序端口暴露 Prometheus 监控: {Config.PORT}/metrics")
         instrumentator.expose(app, endpoint="/metrics")
-        
+
     return instrumentator

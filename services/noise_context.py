@@ -120,7 +120,7 @@ def _compute_noise_reduction(
             and result.relation in ('root_cause', 'derived')
         )
         return result, is_root
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"降噪分析失败: {e}")
         return _default_noise_context(), False
 

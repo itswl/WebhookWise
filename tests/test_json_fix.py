@@ -54,38 +54,38 @@ def test_json_fix():
     print("=" * 60)
     print("测试 JSON 格式修复功能")
     print("=" * 60)
-    
+
     passed = 0
     failed = 0
-    
+
     for i, test in enumerate(test_cases, 1):
         print(f"\n测试 {i}: {test['name']}")
         print(f"输入: {test['input'][:100]}")
-        
+
         try:
             # 修复 JSON
             fixed = fix_json_format(test['input'])
             print(f"修复后: {fixed[:100]}")
-            
+
             # 尝试解析
             result = json.loads(fixed)
             print(f"✓ 解析成功: {result}")
-            
+
             assert test['should_pass']
             passed += 1
             print("✓ 测试通过")
-                
-        except json.JSONDecodeError as e: # noqa: PERF203
-            print(f"✗ 解析失败: {str(e)}")
+
+        except json.JSONDecodeError as e:
+            print(f"✗ 解析失败: {e!s}")
             assert not test['should_pass']
             passed += 1
             print("✓ 测试通过（预期失败）")
-        except Exception as e: # noqa: PERF203
-            print(f"✗ 异常: {str(e)}")
+        except Exception as e:
+            print(f"✗ 异常: {e!s}")
             failed += 1
-    
+
     print("\n" + "=" * 60)
     print(f"测试结果: {passed} 通过, {failed} 失败")
     print("=" * 60)
-    
+
     assert failed == 0

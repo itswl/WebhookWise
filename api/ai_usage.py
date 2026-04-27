@@ -23,7 +23,7 @@ def get_ai_usage(period: str = Query('day')):
             cached = redis.get(cache_key)
             if cached:
                 return _ok(json.loads(cached), 200)
-        except Exception as e: # noqa: PERF203
+        except Exception as e:
             logger.debug(f"AI usage 缓存读取失败: {e}")
 
         from sqlalchemy import func
@@ -63,7 +63,7 @@ def get_ai_usage(period: str = Query('day')):
 
             _cache_hits = session.query(func.count(AIUsageLog.id)).filter(
                 AIUsageLog.timestamp >= start_time,
-                AIUsageLog.cache_hit == True
+                AIUsageLog.cache_hit
             ).scalar() or 0
 
             ai_calls = route_breakdown.get('ai', 0)
@@ -136,11 +136,11 @@ def get_ai_usage(period: str = Query('day')):
             try:
                 redis = get_redis()
                 redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 logger.debug(f"AI usage 缓存写入失败: {e}")
 
             return _ok(usage_data, 200)
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"获取 AI 使用统计失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"获取 AI 使用统计失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)

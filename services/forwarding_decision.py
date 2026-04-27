@@ -65,7 +65,7 @@ def _refresh_original_event(
     try:
         with session_scope() as session:
             return session.query(WebhookEvent).filter_by(id=original_id).first()
-    except Exception: # noqa: PERF203
+    except Exception:
         return fallback_event
 
 
@@ -300,5 +300,5 @@ def _update_last_notified(event_id: int) -> None:
             if event:
                 event.last_notified_at = datetime.now()
                 session.commit()
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"更新 last_notified_at 失败: {e}")

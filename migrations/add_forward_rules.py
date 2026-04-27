@@ -14,12 +14,12 @@ def migrate():
     """创建 forward_rules 表（幂等）"""
     engine = create_engine(Config.DATABASE_URL)
     inspector = inspect(engine)
-    
+
     # 检查表是否已存在
     if 'forward_rules' in inspector.get_table_names():
         print("forward_rules 表已存在，跳过")
         return True
-    
+
     with engine.connect() as conn:
         conn.execute(text("""
             CREATE TABLE forward_rules (
@@ -40,7 +40,7 @@ def migrate():
         """))
         conn.commit()
         print("forward_rules 表创建成功")
-    
+
     return True
 
 
