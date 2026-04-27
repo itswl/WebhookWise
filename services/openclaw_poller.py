@@ -101,7 +101,7 @@ async def poll_pending_analyses():
         return
 
     try:
-        _poll_pending_analyses_inner()
+        await _poll_pending_analyses_inner()
     except Exception as e:
         logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
@@ -187,7 +187,7 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     return {"status": "error", "error": last_error}
 
 
-def _poll_pending_analyses_inner():
+async def await _poll_pending_analyses_inner():
     """轮询逻辑主体"""
     from core.config import Config
     from db.session import session_scope

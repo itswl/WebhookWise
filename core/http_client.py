@@ -1,4 +1,3 @@
-
 import httpx
 
 from core.config import Config
