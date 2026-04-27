@@ -33,7 +33,7 @@ class AdapterRegistry:
             try:
                 if detector(data):
                     return source_name
-            except Exception:
+            except Exception: # noqa: PERF203
                 pass
         return None
 
