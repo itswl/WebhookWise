@@ -461,10 +461,10 @@ def _format_recommendations(recs: Any, max_items: int = 5, max_item_len: int = 2
     """格式化修复建议列表，兼容字符串数组和对象数组"""
     if not recs:
         return '无'
-    
+
     if not isinstance(recs, (list, tuple)):
         return _truncate_text(str(recs), max_item_len)
-    
+
     lines = []
     for i, rec in enumerate(recs[:max_items], 1):
         if isinstance(rec, dict):
@@ -477,10 +477,10 @@ def _format_recommendations(recs: Any, max_items: int = 5, max_item_len: int = 2
                 lines.append(f"{i}. {action}")
         else:
             lines.append(f"{i}. {_truncate_text(str(rec), max_item_len)}")
-    
+
     if len(recs) > max_items:
         lines.append(f"... 还有 {len(recs) - max_items} 条建议")
-    
+
     return '\n'.join(lines) if lines else '无'
 
 
@@ -492,39 +492,39 @@ async def send_feishu_deep_analysis(
 ) -> bool:
     """
     发送深度分析结果到飞书
-    
+
     Args:
         webhook_url: 飞书 webhook URL
         analysis_record: 深度分析记录，包含 analysis_result, engine, duration_seconds 等
         source: 告警来源
         webhook_event_id: 关联的 webhook 事件 ID
-    
+
     Returns:
         bool: 是否发送成功
     """
     if not webhook_url:
         return False
-    
+
     result = analysis_record.get('analysis_result', {})
     if not isinstance(result, dict):
         result = {}
-    
+
     engine = analysis_record.get('engine', 'unknown')
     duration = analysis_record.get('duration_seconds', 0)
     confidence = result.get('confidence', 0)
     if isinstance(confidence, (int, float)):
         confidence = round(confidence * 100)
-    
+
     # 提取分析结果字段（排除内部字段）
     root_cause = _truncate_text(result.get('root_cause', '无'), 500)
     impact = _truncate_text(result.get('impact', '无'), 500)
     recommendations = _format_recommendations(result.get('recommendations', []))
-    
+
     # 构建标题
     title = '🔬 深度分析完成'
     if source:
         title = f'🔬 [{source}] 深度分析完成'
-    
+
     # 构建飞书消息卡片
     card = {
         "msg_type": "interactive",
@@ -562,7 +562,7 @@ async def send_feishu_deep_analysis(
             ]
         }
     }
-    
+
     resp = feishu_cb.call(requests.post, webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
 
     if resp is None:
@@ -576,6 +576,6 @@ async def send_feishu_deep_analysis(
         else:
             logger.warning(f"飞书深度分析通知发送失败: status={resp.status_code}, response={resp.text[:200]}")
             return False
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"飞书深度分析通知异常: {e}")
         return False

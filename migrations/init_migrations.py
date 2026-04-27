@@ -64,7 +64,7 @@ def check_and_add_unique_constraint():
 
                 duplicates = result.fetchall()
                 for row in duplicates:
-                    alert_hash, ids_data = row
+                    _alert_hash, ids_data = row
 
                     # 处理不同格式的数组返回值
                     if isinstance(ids_data, list):
@@ -109,7 +109,7 @@ def check_and_add_unique_constraint():
             print("   ✅ 唯一约束添加成功")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -158,7 +158,7 @@ def fix_duplicate_count():
             print(f"   ✅ 成功修复 {need_fix_count} 条记录")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  修复警告: {e}")
         # 不阻止服务启动
         return False
@@ -251,7 +251,7 @@ def add_beyond_window_field():
             print(f"   ✅ 已初始化 {update_count} 条记录的 beyond_window 值")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
         traceback.print_exc()
@@ -310,7 +310,7 @@ def add_last_notified_at_field():
             print(f"   ✅ 已初始化 {updated_count} 条记录的 last_notified_at 值")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
         traceback.print_exc()
@@ -366,7 +366,7 @@ def add_forward_rules_table():
             print("   ✅ forward_rules 表创建成功")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -417,7 +417,7 @@ def add_deep_analyses_table():
             print("   ✅ deep_analyses 表创建成功")
             return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -426,12 +426,12 @@ def add_deep_analyses_table():
 def add_polling_fields():
     """
     为 deep_analyses 表添加轮询相关字段（静默模式）
-    
+
     Returns:
         bool: 成功返回 True，失败返回 False
     """
     engine = get_engine()
-    
+
     try:
         with engine.connect() as conn:
             # 检查 openclaw_run_id 字段是否已存在
@@ -442,23 +442,23 @@ def add_polling_fields():
                 )
             """))
             field_exists = result.scalar()
-            
+
             if field_exists:
                 return True
-            
+
             print("⚙️  正在为 deep_analyses 表添加轮询字段...")
-            
+
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_run_id VARCHAR(64)"))
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_session_key VARCHAR(200)"))
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)"))
             conn.commit()
-            
+
             print("   ✅ deep_analyses 轮询字段添加成功")
             return True
-    
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         return False
 
@@ -470,7 +470,7 @@ def add_archive_and_indexes():
     """
     engine = get_engine()
     from pathlib import Path
-    
+
     sql_path = Path(__file__).parent / 'sql' / 'archive_and_index.sql'
     if not sql_path.exists():
         return True
@@ -486,20 +486,20 @@ def add_archive_and_indexes():
             """))
             if result.scalar():
                 return True
-            
+
             print("⚙️  正在执行数据库性能优化 (复合索引与归档表)...")
-            
+
             with open(sql_path) as f:
                 sql_content = f.read()
-                
+
             # 执行 SQL 脚本
             conn.execute(text(sql_content))
             conn.commit()
-            
+
             print("   ✅ 数据库性能优化脚本执行成功")
             return True
-            
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         print(f"   ⚠️  性能优化迁移警告: {e}")
         return False
 

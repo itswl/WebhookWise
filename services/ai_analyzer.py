@@ -13,7 +13,7 @@ from core.metrics import AI_ANALYSIS_DURATION_SECONDS, AI_COST_USD_TOTAL, AI_TOK
 try:
     import json5
     HAS_JSON5 = True
-except ImportError: # noqa: PERF203
+except ImportError:
     HAS_JSON5 = False
 
 from openai import AsyncOpenAI
@@ -41,52 +41,52 @@ def get_cache_key(alert_hash: str) -> str:
 def get_cached_analysis(alert_hash: str) -> dict | None:
     """
     从缓存获取分析结果
-    
+
     Args:
         alert_hash: 告警哈希值
-        
+
     Returns:
         dict or None: 缓存的分析结果，未命中返回 None
     """
     if not Config.CACHE_ENABLED:
         return None
-    
+
     try:
         from models import AnalysisCache, get_session
-        
+
         session = get_session()
         try:
             cache_key = get_cache_key(alert_hash)
             cache_entry = session.query(AnalysisCache).filter(
                 AnalysisCache.cache_key == cache_key
             ).first()
-            
+
             if not cache_entry:
                 logger.debug(f"缓存未命中: {cache_key[:20]}...")
                 return None
-            
+
             # 检查是否过期
             if cache_entry.is_expired():
                 logger.info(f"缓存已过期: {cache_key[:20]}...")
                 session.delete(cache_entry)
                 session.commit()
                 return None
-            
+
             # 命中缓存，增加计数
             cache_entry.hit_count += 1
             session.commit()
-            
+
             result = json.loads(cache_entry.analysis_result)
             result['_cache_hit'] = True
             result['_cache_hit_count'] = cache_entry.hit_count
-            
+
             logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {cache_entry.hit_count} 次")
             return result
-            
+
         finally:
             session.close()
-            
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         logger.warning(f"读取缓存失败: {e}")
         return None
 
@@ -94,34 +94,34 @@ def get_cached_analysis(alert_hash: str) -> dict | None:
 def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
     """
     将分析结果保存到缓存
-    
+
     Args:
         alert_hash: 告警哈希值
         analysis_result: 分析结果
-        
+
     Returns:
         bool: 是否保存成功
     """
     if not Config.CACHE_ENABLED:
         return False
-    
+
     try:
         from db.session import session_scope
         from models import AnalysisCache
-        
+
         with session_scope() as session:
             cache_key = get_cache_key(alert_hash)
             expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
-            
+
             # 清理内部字段
-            result_to_cache = {k: v for k, v in analysis_result.items() 
+            result_to_cache = {k: v for k, v in analysis_result.items()
                              if not k.startswith('_')}
-            
+
             # 检查是否已存在
             existing = session.query(AnalysisCache).filter(
                 AnalysisCache.cache_key == cache_key
             ).first()
-            
+
             if existing:
                 existing.analysis_result = json.dumps(result_to_cache, ensure_ascii=False)
                 existing.expires_at = expires_at
@@ -133,11 +133,11 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
                     expires_at=expires_at
                 )
                 session.add(cache_entry)
-            
+
             logger.info(f"分析结果已缓存: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}秒")
             return True
-            
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         logger.warning(f"保存缓存失败: {e}")
         return False
 
@@ -153,7 +153,7 @@ def log_ai_usage(
 ) -> None:
     """
     记录 AI 使用日志
-    
+
     Args:
         route_type: 路由类型 ('ai', 'rule', 'cache')
         alert_hash: 告警哈希
@@ -166,7 +166,7 @@ def log_ai_usage(
     try:
         from db.session import session_scope
         from models import AIUsageLog
-        
+
         # 计算估算成本
         cost_estimate = 0.0
         if route_type == 'ai' and tokens_in > 0:
@@ -174,7 +174,7 @@ def log_ai_usage(
                 (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS +
                 (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
             )
-        
+
         with session_scope() as session:
             usage_log = AIUsageLog(
                 model=model or Config.OPENAI_MODEL,
@@ -188,8 +188,8 @@ def log_ai_usage(
             )
             session.add(usage_log)
             logger.debug(f"AI 使用记录: type={route_type}, tokens={tokens_in}+{tokens_out}, cost=${cost_estimate:.6f}")
-            
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         logger.warning(f"记录 AI 使用日志失败: {e}")
 
 
@@ -232,7 +232,7 @@ def load_user_prompt_template() -> str:
                     _user_prompt_template = f.read()
                 logger.info(f"成功从文件加载 prompt 模板: {file_path}")
                 return _user_prompt_template
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 logger.warning(f"从文件加载 prompt 模板失败: {e}，使用默认模板")
         else:
             logger.warning(f"Prompt 模板文件不存在: {file_path}，使用默认模板")
@@ -325,14 +325,14 @@ def fix_json_format(json_str: str) -> str:
     try:
         json.loads(json_str)
         return json_str
-    except json.JSONDecodeError: # noqa: PERF203
+    except json.JSONDecodeError:
         pass
 
     if HAS_JSON5:
         try:
             parsed = json5.loads(json_str)
             return json.dumps(parsed, ensure_ascii=False)
-        except Exception as e: # noqa: PERF203
+        except Exception as e:
             logger.debug(f"json5 解析失败: {e}")
 
     fixed = json_str
@@ -437,7 +437,7 @@ def _close_truncated_json(candidate: str) -> str:
 def _safe_json_string(raw: str) -> str:
     try:
         return json.loads(f'"{raw}"')
-    except Exception: # noqa: PERF203
+    except Exception:
         return raw.replace('\\n', ' ').replace('\\"', '"').strip()
 
 
@@ -557,7 +557,7 @@ def _try_parse_json_analysis(candidate: str) -> AnalysisResult | None:
     for text in attempts:
         try:
             parsed = json.loads(text)
-        except json.JSONDecodeError: # noqa: PERF203
+        except json.JSONDecodeError:
             continue
 
         if isinstance(parsed, dict):
@@ -617,8 +617,8 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
         logger.info(f"文本提取完成: {normalized}")
         return normalized
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"文本提取失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"文本提取失败: {e!s}")
         result['summary'] = 'AI 分析响应格式错误，已降级处理'
         return _normalize_analysis_result(result, source)
 
@@ -650,13 +650,13 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
 async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False) -> AnalysisResult:
     """
     使用 AI 分析 webhook 数据
-    
+
     分析流程：
     1. 检查缓存（如果启用且 skip_cache=False）
     2. 智能路由判断（如果启用且 skip_cache=False）
     3. 调用 AI 分析（如果需要）
     4. 记录使用日志
-    
+
     Args:
         webhook_data: Webhook 数据
         alert_hash: 告警哈希值（可选，未提供时自动生成）
@@ -664,12 +664,12 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
     """
     source = webhook_data.get('source', 'unknown')
     parsed_data = webhook_data.get('parsed_data', {})
-    
+
     # 生成 alert_hash（如果未提供）
     if not alert_hash:
         from core.utils import generate_alert_hash
         alert_hash = generate_alert_hash(parsed_data, source)
-    
+
     # Step 1: 检查缓存（skip_cache=True 时跳过）
     if Config.CACHE_ENABLED and not skip_cache:
         cached_result = get_cached_analysis(alert_hash)
@@ -687,7 +687,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
             return cached_result
     elif skip_cache:
         logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
-    
+
     # Step 2: 检查是否启用 AI 分析
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
@@ -746,17 +746,17 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         except Exception as e: # noqa: PERF203
             last_error = e
             if attempt < max_retries:
-                logger.warning(f"AI 分析失败 (尝试 {attempt}/{max_retries}): {str(e)}，等待重试...")
+                logger.warning(f"AI 分析失败 (尝试 {attempt}/{max_retries}): {e!s}，等待重试...")
                 await asyncio.sleep(2 * attempt)
             else:
-                logger.error(f"AI 分析在全部 {max_retries} 次重试后依然失败: {str(e)}", exc_info=True)
+                logger.error(f"AI 分析在全部 {max_retries} 次重试后依然失败: {e!s}", exc_info=True)
 
     # 根据配置决定是否降级
     if Config.ENABLE_AI_DEGRADATION:
         logger.warning("启用 AI 降级策略，使用本地规则分析")
         result = analyze_with_rules(parsed_data, source)
         result['_degraded'] = True
-        result['_degraded_reason'] = f'AI 分析失败: {str(last_error)}'
+        result['_degraded_reason'] = f'AI 分析失败: {last_error!s}'
         result['_route_type'] = 'rule'
         await _send_degradation_alert(webhook_data, str(last_error))
         log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
@@ -766,20 +766,20 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         logger.error("AI 分析失败且未启用降级策略，返回错误")
         await _send_degradation_alert(webhook_data, str(last_error))
         return {
-            'summary': f'AI 分析失败: {str(last_error)}',
+            'summary': f'AI 分析失败: {last_error!s}',
             'root_cause': '分析失败，请检查 AI 服务配置',
             'impact': '未知',
             'recommendations': ['检查 AI 服务连接', '查看日志获取详细信息'],
             'severity': 'critical',
             '_degraded': True,
-            '_degraded_reason': f'AI 分析失败: {str(last_error)}',
+            '_degraded_reason': f'AI 分析失败: {last_error!s}',
             '_route_type': 'error'
         }
 
 async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
     """
     使用 OpenAI API 分析 webhook 数据，并返回 token 使用量
-    
+
     Returns:
         tuple: (分析结果, 输入 tokens, 输出 tokens)
     """
@@ -801,7 +801,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         try:
             import hashlib
             prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
-        except Exception: # noqa: PERF203
+        except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
@@ -853,12 +853,12 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                     retry_max_tokens
                 )
                 retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
-                
+
                 # 更新 token 使用量
                 if hasattr(retry_response, 'usage') and retry_response.usage:
                     tokens_in += getattr(retry_response.usage, 'prompt_tokens', 0) or 0
                     tokens_out += getattr(retry_response.usage, 'completion_tokens', 0) or 0
-                
+
                 if hasattr(retry_response, 'choices') and retry_response.choices:
                     retry_choice = retry_response.choices[0]
                     retry_text = (retry_choice.message.content or '').strip()
@@ -869,7 +869,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         try:
             import hashlib
             resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
-        except Exception: # noqa: PERF203
+        except Exception:
             resp_hash = None
         logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
@@ -879,7 +879,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='output').inc(tokens_out)  # nosec B106
         AI_COST_USD_TOTAL.labels(model=Config.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
-        
+
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
         if finish_reason == 'length':
@@ -888,8 +888,8 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
 
         return analysis_result, tokens_in, tokens_out
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"OpenAI API 调用失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"OpenAI API 调用失败: {e!s}")
         raise
 
 
@@ -922,7 +922,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         try:
             import hashlib
             prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
-        except Exception: # noqa: PERF203
+        except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
@@ -956,7 +956,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         try:
             import hashlib
             resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
-        except Exception: # noqa: PERF203
+        except Exception:
             resp_hash = None
         logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         analysis_result = _parse_ai_analysis_response(ai_response, source)
@@ -967,8 +967,8 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
 
         return analysis_result
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"OpenAI API 调用失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"OpenAI API 调用失败: {e!s}")
         raise
 
 
@@ -1007,7 +1007,7 @@ def _should_send_degradation_alert() -> bool:
 
         return True
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"检查降级通知限流失败: {e}，默认允许发送")
         return True
 
@@ -1017,10 +1017,10 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
     try:
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
         from core.config import Config
-        
+
         if not Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
             return
-        
+
         # 构造失败通知数据
         analysis_data = {
             'summary': 'OpenClaw 深度分析触发失败',
@@ -1036,11 +1036,11 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
             'status': 'failed',
             'error': error
         }
-        
+
         event_id = webhook_data.get('id', 'unknown')
         await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
         logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"发送 OpenClaw 失败通知失败: {e}")
 
 
@@ -1129,7 +1129,7 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
 
     except Exception as e:
         # 降级通知失败不应影响主流程
-        logger.error(f"发送 AI 降级通知失败: {str(e)}")
+        logger.error(f"发送 AI 降级通知失败: {e!s}")
 
 
 def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
@@ -1210,7 +1210,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
                     # 超过4倍阈值，提升重要性
                     analysis['importance'] = 'high'
                     analysis['summary'] = f'🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})'
-            except (ValueError, TypeError): # noqa: PERF203
+            except (ValueError, TypeError):
                 pass
 
         # 检查资源信息
@@ -1281,16 +1281,16 @@ async def forward_to_remote(
                 'processed_by': 'webhook-analyzer',
                 'client_ip': webhook_data.get('client_ip')
             }
-        
+
         # 发送到远程服务器
         headers = {
             'Content-Type': 'application/json'
         }
-        
+
         if not is_feishu:
             headers['X-Webhook-Source'] = f"analyzed-{webhook_data.get('source', 'unknown')}"
             headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
-        
+
         logger.info(f"转发数据到 {target_url}")
         client = get_http_client()
         response = await forward_cb.call_async(
@@ -1318,21 +1318,21 @@ async def forward_to_remote(
                 'status_code': response.status_code,
                 'response': response.text
             }
-            
-    except httpx.TimeoutException: # noqa: PERF203
+
+    except httpx.TimeoutException:
         logger.error(f"转发超时: {target_url}")
         return {
             'status': 'timeout',
             'message': '请求超时'
         }
-    except httpx.ConnectError: # noqa: PERF203
+    except httpx.ConnectError:
         logger.error(f"无法连接到远程服务器: {target_url}")
         return {
             'status': 'connection_error',
             'message': '无法连接到远程服务器'
         }
-    except Exception as e: # noqa: PERF203
-        logger.error(f"转发失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"转发失败: {e!s}", exc_info=True)
         return {
             'status': 'error',
             'message': str(e)
@@ -1419,7 +1419,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
             }
         ]
     }
-    
+
     # 添加影响范围
     if analysis_result.get('impact_scope'):
         card_content['elements'].append({
@@ -1429,7 +1429,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
                 "content": f"**🎯 影响范围**\n{analysis_result.get('impact_scope')}"
             }
         })
-    
+
     # 添加建议操作
     if analysis_result.get('actions'):
         actions_text = '\n'.join([f"{i+1}. {action}" for i, action in enumerate(analysis_result.get('actions', []))])
@@ -1440,7 +1440,7 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
                 "content": f"**✅ 建议操作**\n{actions_text}"
             }
         })
-    
+
     return {
         "msg_type": "interactive",
         "card": card_content
@@ -1450,14 +1450,14 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
 async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
     """将告警推送到 OpenClaw 触发深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
-    
+
     if not Config.OPENCLAW_ENABLED:
         return {'status': 'disabled', 'message': 'OpenClaw 未启用'}
-    
+
     alert_data = webhook_data.get('parsed_data', {})
     source = webhook_data.get('source', 'unknown')
     importance = analysis_result.get('importance', 'medium') if analysis_result else 'medium'
-    
+
     message = f"""收到新告警，请自主排查分析：
 
 来源: {source}
@@ -1477,7 +1477,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
 - 如果涉及 Kubernetes，可以使用 kubectl 相关能力查看 Pod/Node/Service 状态
 - 如果涉及监控指标，可以查询 Prometheus/Grafana 获取历史数据
 - 分析完成后，提供根因分析和可执行的修复建议"""
-    
+
     import uuid
     session_key = f"hook:alert:{source}:{uuid.uuid4()}"
     payload = {
@@ -1489,11 +1489,11 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         "thinking": "high",
         "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
-    
+
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
     platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
-    
+
     if platform == 'hermes':
         import hashlib
         import hmac
@@ -1519,7 +1519,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         payload_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
         payload_hash = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
         payload_size = len(payload_json)
-    except Exception: # noqa: PERF203
+    except Exception:
         payload_hash = None
         payload_size = len(str(payload))
     logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, size={payload_size}, sha256={payload_hash}")
@@ -1539,14 +1539,14 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     try:
         # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
-        
+
         # 兼容两种协议的返回 ID
         if platform == 'hermes':
             run_id = result.get('delivery_id') or result.get('runId')
             session_key = run_id if run_id else session_key
         else:
             run_id = result.get('runId')
-            
+
         logger.info(f"[{platform.upper()}] 转发成功: run_id={run_id}")
 
         return {
@@ -1555,7 +1555,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
             'session_key': session_key,
             '_pending': True
         }
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"OpenClaw 转发失败: {e}")
         return {'status': 'error', 'message': str(e)}
 
@@ -1564,21 +1564,21 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
 
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
-    
+
     if not Config.OPENCLAW_ENABLED:
         logger.warning("OpenClaw 未启用")
         return {'_degraded': True, '_degraded_reason': 'OpenClaw 未启用'}
-    
+
     alert_data = webhook_data.get('parsed_data', {})
     source = webhook_data.get('source', 'unknown')
-    
+
     prompt_path = Path(Config.DATA_DIR).parent / 'prompts' / 'deep_analysis.txt'
     try:
         with open(prompt_path, encoding='utf-8') as f:
             template = f.read()
-    except FileNotFoundError: # noqa: PERF203
+    except FileNotFoundError:
         template = """请对以下告警进行深度根因分析：
-        
+
 {source}
 {alert_data}
 """
@@ -1587,10 +1587,10 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     # 将告警数据注入到提示词中
     message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}\n```"
 
-    
+
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
-    
+
     import uuid
     session_key = f"hook:deep-analysis:{source}:{uuid.uuid4()}"
     payload = {
@@ -1602,11 +1602,11 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         "thinking": thinking_level,
         "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
     }
-    
+
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
     platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
-    
+
     if platform == 'hermes':
         import hashlib
         import hmac
@@ -1625,13 +1625,13 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             "Content-Type": "application/json"
         }
         kwargs = {'json': payload}
-        
+
     logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
     logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
     # 重试逻辑：最多 3 次
     max_retries = 3
     last_error = None
-    
+
     for attempt in range(max_retries):
         try:
             client = get_http_client()
@@ -1650,10 +1650,10 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                     import asyncio
                     await asyncio.sleep(2)
                 continue
-            
+
             response.raise_for_status()
             break
-        except Exception as e: # noqa: PERF203
+        except Exception as e:
             last_error = str(e)
             logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
@@ -1670,9 +1670,9 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                     event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
                     source = event.source if event else 'unknown'
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
-        except Exception as notify_err: # noqa: PERF203
+        except Exception as notify_err:
             logger.warning(f"发送 {platform.capitalize()} 失败通知失败: {notify_err}")
-        
+
         if Config.ENABLE_AI_DEGRADATION:
             logger.warning(f"{platform.capitalize()} 请求失败，降级到本地 AI 分析")
             return {'_degraded': True, '_degraded_reason': f'{platform.capitalize()} 请求失败: {last_error}'}
@@ -1683,13 +1683,13 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     try:
         # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
-        
+
         if platform == 'hermes':
             run_id = result.get('delivery_id') or result.get('runId')
             session_key = run_id if run_id else session_key
         else:
             run_id = result.get('runId')
-            
+
         logger.info(f"[{platform.upper()}] 成功触发深度分析: ID={run_id}")
 
         return {
@@ -1697,12 +1697,12 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             '_openclaw_run_id': run_id,
             '_openclaw_session_key': session_key
         }
-    except httpx.RequestError as e: # noqa: PERF203
+    except httpx.RequestError as e:
         logger.error(f"OpenClaw 请求失败: {e}")
         # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
             logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': f'OpenClaw 不可用: {str(e)}'}
+            return {'_degraded': True, '_degraded_reason': f'OpenClaw 不可用: {e!s}'}
         else:
             logger.error("OpenClaw 请求失败，未启用降级策略")
             raise

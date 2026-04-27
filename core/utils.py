@@ -65,10 +65,10 @@ class CircuitBreaker:
         if self.failure_threshold == 0:
             try:
                 return func(*args, **kwargs)
-            except self.expected_exceptions as e: # noqa: PERF203
+            except self.expected_exceptions as e:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
-        
+
         if self.state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
             return None
@@ -77,7 +77,7 @@ class CircuitBreaker:
             result = func(*args, **kwargs)
             self._on_success()
             return result
-        except self.expected_exceptions as e: # noqa: PERF203
+        except self.expected_exceptions as e:
             self._on_failure()
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
@@ -87,10 +87,10 @@ class CircuitBreaker:
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
-            except self.expected_exceptions as e: # noqa: PERF203
+            except self.expected_exceptions as e:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
-        
+
         if self.state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
             return None
@@ -99,7 +99,7 @@ class CircuitBreaker:
             result = await func(*args, **kwargs)
             self._on_success()
             return result
-        except self.expected_exceptions as e: # noqa: PERF203
+        except self.expected_exceptions as e:
             self._on_failure()
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             raise
@@ -142,13 +142,13 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
 
     if not secret:
         return False
-    
+
     expected_signature = hmac.new(
         secret.encode('utf-8'),
         payload,
         hashlib.sha256
     ).hexdigest()
-    
+
     result = hmac.compare_digest(expected_signature, signature)
     if not result:
         logger.warning("[Auth] 签名比对不匹配")
@@ -270,16 +270,16 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
 async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     """
     告警处理锁上下文管理器（Redis 分布式锁）
-    
+
     利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
     """
     import core.redis_client
     redis_client = core.redis_client.get_redis()
     lock_key = f"lock:webhook:{alert_hash}"
     lock_value = Config.WORKER_ID
-    
+
     lock_acquired = False
-    
+
     try:
         # 尝试获取锁
         lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS))
@@ -287,7 +287,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
             logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
         else:
             logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"获取处理锁失败: {e}")
 
     try:
@@ -304,5 +304,5 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
                 """
                 redis_client.eval(release_lua, 1, lock_key, lock_value)
                 logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 logger.error(f"释放锁失败: {e}")

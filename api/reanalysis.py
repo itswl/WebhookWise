@@ -98,15 +98,15 @@ async def reanalyze_webhook(webhook_id: int):
                            (f'，同时更新了 {updated_duplicates} 条重复告警' if updated_duplicates > 0 else '')
             }
 
-    except HTTPException: # noqa: PERF203
+    except HTTPException:
         raise
-    except Exception as e: # noqa: PERF203
-        logger.error(f"重新分析失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"重新分析失败: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @reanalysis_router.post('/api/forward/{webhook_id}')
-async def manual_forward_webhook(webhook_id: int, data: dict = None):
+async def manual_forward_webhook(webhook_id: int, data: dict | None = None):
     data = data or {}
     """手动转发 webhook"""
     try:
@@ -124,8 +124,8 @@ async def manual_forward_webhook(webhook_id: int, data: dict = None):
                 "data": forward_result,
                 "message": f"已转发至 {custom_url or Config.FORWARD_URL}"
             }
-    except HTTPException: # noqa: PERF203
+    except HTTPException:
         raise
-    except Exception as e: # noqa: PERF203
-        logger.error(f"手动转发失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"手动转发失败: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
