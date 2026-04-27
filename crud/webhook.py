@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
 from core.logger import logger
@@ -39,44 +40,35 @@ class SaveWebhookResult:
 
 
 
-def _query_last_beyond_window_event(session: Session, alert_hash: str) -> WebhookEvent | None:
-    return (
-        session.query(WebhookEvent)
-        .filter(
-            WebhookEvent.alert_hash == alert_hash,
-            WebhookEvent.beyond_window == 1
-        )
-        .order_by(WebhookEvent.timestamp.desc())
-        .first()
-    )
+async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+    stmt = select(WebhookEvent).filter(
+        WebhookEvent.alert_hash == alert_hash,
+        WebhookEvent.beyond_window == 1
+    ).order_by(WebhookEvent.timestamp.desc())
+    result = await session.execute(stmt)
+    return result.scalars().first()
 
 
-def _query_latest_original_event(session: Session, alert_hash: str) -> WebhookEvent | None:
-    return (
-        session.query(WebhookEvent)
-        .filter(
-            WebhookEvent.alert_hash == alert_hash,
-            WebhookEvent.is_duplicate == 0
-        )
-        .order_by(WebhookEvent.timestamp.desc())
-        .first()
-    )
+async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+    stmt = select(WebhookEvent).filter(
+        WebhookEvent.alert_hash == alert_hash,
+        WebhookEvent.is_duplicate == 0
+    ).order_by(WebhookEvent.timestamp.desc())
+    result = await session.execute(stmt)
+    return result.scalars().first()
 
 
-def _find_recent_window_event(
-    session: Session,
+async def _find_recent_window_event(
+    session: AsyncSession,
     alert_hash: str,
     time_threshold: datetime
 ) -> WebhookEvent | None:
-    return (
-        session.query(WebhookEvent)
-        .filter(
-            WebhookEvent.alert_hash == alert_hash,
-            WebhookEvent.timestamp >= time_threshold
-        )
-        .order_by(WebhookEvent.timestamp.desc())
-        .first()
-    )
+    stmt = select(WebhookEvent).filter(
+        WebhookEvent.alert_hash == alert_hash,
+        WebhookEvent.timestamp >= time_threshold
+    ).order_by(WebhookEvent.timestamp.desc())
+    result = await session.execute(stmt)
+    return result.scalars().first()
 
 
 def _resolve_window_start(
@@ -91,17 +83,18 @@ def _resolve_window_start(
     return original_ref.timestamp, original_ref.id
 
 
-def _resolve_original_reference(session: Session, any_event: WebhookEvent) -> WebhookEvent:
+async def _resolve_original_reference(session: AsyncSession, any_event: WebhookEvent) -> WebhookEvent:
     original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
     if not original_id:
         return any_event
-    return session.get(WebhookEvent, original_id) or any_event
+    ref = await session.get(WebhookEvent, original_id)
+    return ref or any_event
 
 
-def check_duplicate_alert(
+async def check_duplicate_alert(
     alert_hash: str,
     time_window_hours: int | None = None,
-    session: Session | None = None,
+    session: AsyncSession | None = None,
     check_beyond_window: bool = False
 ) -> DuplicateCheckResult:
     """
@@ -133,12 +126,12 @@ def check_duplicate_alert(
 
         # 先查窗口内最新记录，保证同一时间窗口内只产生一条“原始上下文”。
         # 这样在并发写入时，后续请求可以稳定复用同一条分析结果。
-        any_event = _find_recent_window_event(session, alert_hash, time_threshold)
+        any_event = await _find_recent_window_event(session, alert_hash, time_threshold)
 
         if any_event:
-            original_ref = _resolve_original_reference(session, any_event)
+            original_ref = await _resolve_original_reference(session, any_event)
             original_id = original_ref.id
-            last_beyond_window = _query_last_beyond_window_event(session, alert_hash)
+            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
 
             # 窗口起点策略：优先 recent beyond_window，其次原始告警。
             window_start, window_start_id = _resolve_window_start(original_ref, last_beyond_window)
@@ -163,8 +156,8 @@ def check_duplicate_alert(
 
         if check_beyond_window:
             # 并发场景下，recent beyond_window 用于判断是否可直接复用他 worker 的结果。
-            last_beyond_window = _query_last_beyond_window_event(session, alert_hash)
-            history_event = _query_latest_original_event(session, alert_hash)
+            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
+            history_event = await _query_latest_original_event(session, alert_hash)
 
             if history_event:
                 time_diff = (now - history_event.timestamp).total_seconds() / 3600
@@ -182,7 +175,7 @@ def check_duplicate_alert(
         return DuplicateCheckResult(False, None, False, None)
     finally:
         if should_close:
-            session.close()
+            await session.close()
 
 
 
@@ -254,8 +247,8 @@ def _build_event(
     )
 
 
-def _save_duplicate_event(
-    session: Session,
+async def _save_duplicate_event(
+    session: AsyncSession,
     *,
     source: str,
     client_ip: str | None,
@@ -269,7 +262,7 @@ def _save_duplicate_event(
     beyond_window: bool,
     reanalyzed: bool
 ) -> SaveWebhookResult | None:
-    original = session.get(WebhookEvent, original_event.id)
+    original = await session.get(WebhookEvent, original_event.id)
     if not original:
         return None
 
@@ -295,7 +288,7 @@ def _save_duplicate_event(
     )
 
     session.add(duplicate_event)
-    session.flush()
+    await session.flush()
 
     if ai_analysis:
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 使用传入的AI分析结果")
@@ -313,8 +306,8 @@ def _save_duplicate_event(
     return SaveWebhookResult(duplicate_event.id, True, original.id, beyond_window)
 
 
-def _save_new_event(
-    session: Session,
+async def _save_new_event(
+    session: AsyncSession,
     *,
     source: str,
     client_ip: str | None,
@@ -343,7 +336,7 @@ def _save_new_event(
     )
 
     session.add(webhook_event)
-    session.flush()
+    await session.flush()
     logger.info(f"Webhook 数据已保存到数据库: ID={webhook_event.id}")
 
     if Config.ENABLE_FILE_BACKUP:
@@ -364,7 +357,7 @@ def _save_to_file_fallback(
     return SaveWebhookResult(file_id, False, None, False)
 
 
-def save_webhook_data(
+async def save_webhook_data(
     data: WebhookData,
     source: str = 'unknown',
     raw_payload: bytes | None = None,
@@ -384,10 +377,10 @@ def save_webhook_data(
 
     for attempt in range(MAX_SAVE_RETRIES):
         try:
-            with session_scope() as session:
+            async with session_scope() as session:
                 # 在同一事务内重新判重，避免外层结果在高并发下过期。
                 if is_duplicate is None:
-                    duplicate_check = check_duplicate_alert(
+                    duplicate_check = await check_duplicate_alert(
                         alert_hash,
                         session=session
                     )
@@ -396,7 +389,7 @@ def save_webhook_data(
                     beyond_window = duplicate_check.beyond_window
 
                 if is_duplicate and original_event:
-                    saved = _save_duplicate_event(
+                    saved = await _save_duplicate_event(
                         session,
                         source=source,
                         client_ip=client_ip,
@@ -413,7 +406,7 @@ def save_webhook_data(
                     if saved:
                         return saved
 
-                return _save_new_event(
+                return await _save_new_event(
                     session,
                     source=source,
                     client_ip=client_ip,
@@ -438,8 +431,8 @@ def save_webhook_data(
 
             # 最后兜底：直接读最新原始告警并降级写入重复记录，避免请求彻底失败。
             logger.error(f"重试 {MAX_SAVE_RETRIES} 次后仍然失败，尝试最后查找")
-            with session_scope() as fallback_session:
-                existing = _query_latest_original_event(fallback_session, alert_hash)
+            async with session_scope() as fallback_session:
+                existing = await _query_latest_original_event(fallback_session, alert_hash)
 
                 if not existing:
                     logger.error(f"并发冲突但无法找到原始告警: hash={alert_hash}")
@@ -467,7 +460,7 @@ def save_webhook_data(
                     beyond_window=1 if beyond_window else 0
                 )
                 fallback_session.add(dup_event)
-                fallback_session.flush()
+                await fallback_session.flush()
                 return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
 
         except Exception as e:
@@ -529,7 +522,7 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else 'unknown'
 
 
-def get_all_webhooks(
+async def get_all_webhooks(
     page: int = 1,
     page_size: int = 20,
     cursor_id: int | None = None,
@@ -548,12 +541,14 @@ def get_all_webhooks(
         tuple: (webhook数据列表, 总数量, 下一页游标ID)
     """
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             # 查询总数
-            total = session.query(WebhookEvent).count()
+            total_stmt = select(func.count()).select_from(WebhookEvent)
+            total_result = await session.execute(total_stmt)
+            total = total_result.scalar()
 
             # 构建查询
-            query = session.query(WebhookEvent)
+            query = select(WebhookEvent)
 
             # 筛选条件
             if cursor_id is not None:
@@ -571,7 +566,9 @@ def get_all_webhooks(
                     query = query.offset(offset)
 
             # 最后限制数量
-            events = query.limit(page_size).all()
+            query = query.limit(page_size)
+            result = await session.execute(query)
+            events = result.scalars().all()
 
             # 根据 fields 参数决定返回哪些字段
             if fields == 'summary':
@@ -609,10 +606,11 @@ def get_all_webhooks(
                     all_hashes = list({k[0] for k in lookup_map})
 
                     # 查询这些 hash 的所有记录（去重需要）
-                    all_alerts = session.query(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
+                    all_alerts_stmt = select(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
                         .filter(WebhookEvent.alert_hash.in_(all_hashes))\
-                        .order_by(WebhookEvent.alert_hash, WebhookEvent.timestamp.desc())\
-                        .all()
+                        .order_by(WebhookEvent.alert_hash, WebhookEvent.timestamp.desc())
+                    result = await session.execute(all_alerts_stmt)
+                    all_alerts = result.all()
 
                     # 构建 hash -> 按时间排序的记录列表
                     hash_to_alerts = {}
