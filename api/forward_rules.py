@@ -1,14 +1,9 @@
-from sqlalchemy import select
-
-"""
-api/forward_rules.py
-============================
-转发规则 CRUD 路由。
-"""
+"""转发规则 CRUD 路由。"""
 from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from db.session import session_scope
 from models import ForwardRule
@@ -20,7 +15,6 @@ forward_rules_router = APIRouter()
 
 @forward_rules_router.get('/api/forward-rules')
 async def get_forward_rules():
-    """获取所有转发规则，按 priority 降序排列"""
     async with session_scope() as session:
         stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
         result = await session.execute(stmt)
@@ -30,7 +24,6 @@ async def get_forward_rules():
 
 @forward_rules_router.post('/api/forward-rules')
 async def create_forward_rule(payload: dict | None = None):
-    """创建转发规则"""
     payload = payload or {}
     name = payload.get('name', '')
     if isinstance(name, str):
@@ -72,7 +65,6 @@ async def create_forward_rule(payload: dict | None = None):
 @forward_rules_router.put('/api/forward-rules/{rule_id}')
 async def update_forward_rule(rule_id: int, payload: dict | None = None):
     payload = payload or {}
-    """更新转发规则"""
     async with session_scope() as session:
         stmt = select(ForwardRule).filter_by(id=rule_id)
         result = await session.execute(stmt)
@@ -92,7 +84,6 @@ async def update_forward_rule(rule_id: int, payload: dict | None = None):
 
 @forward_rules_router.delete('/api/forward-rules/{rule_id}')
 async def delete_forward_rule(rule_id: int):
-    """删除转发规则"""
     async with session_scope() as session:
         stmt = select(ForwardRule).filter_by(id=rule_id)
         result = await session.execute(stmt)
@@ -104,8 +95,7 @@ async def delete_forward_rule(rule_id: int):
 
 
 @forward_rules_router.post('/api/forward-rules/{rule_id}/test')
-def test_forward_rule(rule_id: int):
-    """测试转发规则（发送测试消息到目标）"""
+async def test_forward_rule(rule_id: int):
     async with session_scope() as session:
         stmt = select(ForwardRule).filter_by(id=rule_id)
         result = await session.execute(stmt)
