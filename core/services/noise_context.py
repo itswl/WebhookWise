@@ -7,8 +7,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from core.models import WebhookEvent, session_scope
 from core.services.alert_noise_reduction import AlertContext, analyze_noise_reduction
+
+from core.models import WebhookEvent, session_scope
 
 logger = logging.getLogger(__name__)
 

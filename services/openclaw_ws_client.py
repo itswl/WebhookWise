@@ -76,7 +76,7 @@ def _build_connect_frame(token: str, device_auth: dict = None) -> dict:
     return frame
 
 
-def _build_device_auth(nonce: str) -> Optional[dict]:
+def _build_device_auth(nonce: str) -> dict | None:
     """构造 OpenClaw 设备认证参数（Ed25519 签名）
     
     认证流程：
@@ -145,7 +145,7 @@ def _build_device_auth(nonce: str) -> Optional[dict]:
         return None
 
 
-def _try_recv_challenge(ws, timeout: Optional[float] = None) -> Optional[str]:
+def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
     if timeout is None:
         timeout = Config.OPENCLAW_NONCE_TIMEOUT
     """尝试接收 connect.challenge 帧并提取 nonce
@@ -201,14 +201,14 @@ class OpenClawWSClient:
         self.connect_timeout = connect_timeout or CONNECT_TIMEOUT  # TCP + WS 握手超时
         
         # 结果存储
-        self._result: Optional[dict] = None
+        self._result: dict | None = None
         self._text_fragments: list[str] = []
         self._lock = threading.Lock()
         self._done = threading.Event()
         
         # WebSocket 连接
-        self._ws: Optional[websocket.WebSocket] = None
-        self._connection_error: Optional[str] = None  # 记录连接错误类型
+        self._ws: websocket.WebSocket | None = None
+        self._connection_error: str | None = None  # 记录连接错误类型
     
     def _send_connect(self) -> bool:
         """发送握手请求并验证响应
@@ -378,10 +378,9 @@ class OpenClawWSClient:
                     frame_type = frame.get('type')
                     
                     # 只处理事件帧
-                    if frame_type == 'event':
-                        if self._process_event(frame):
-                            self._done.set()
-                            return
+                    if frame_type == 'event' and self._process_event(frame):
+                        self._done.set()
+                        return
                     
                 except websocket.WebSocketTimeoutException:
                     # recv 超时，继续循环检查 _done

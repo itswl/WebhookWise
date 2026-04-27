@@ -13,9 +13,9 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.database import session_scope
 from sqlalchemy import text
 
-from core.database import session_scope
 from core.logger import logger
 from core.models import init_db
 
