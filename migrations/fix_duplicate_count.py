@@ -71,8 +71,8 @@ def fix_duplicate_count():
             logger.info(f"✅ 成功修复 {len(rows)} 条重复告警记录")
             return len(rows)
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"❌ 修复失败: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"❌ 修复失败: {e!s}", exc_info=True)
         raise
 
 

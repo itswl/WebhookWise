@@ -37,11 +37,11 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
     """发送深度分析完成的飞书通知"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
-    
+
     webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
         return
-    
+
     try:
         analysis_data = {
             'analysis_result': record.analysis_result,
@@ -54,7 +54,7 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
             source=source,
             webhook_event_id=record.webhook_event_id
         ))
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
 
@@ -62,17 +62,17 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
     """发送深度分析失败的飞书通知"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
-    
+
     webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
         return
-    
+
     try:
         # 构建失败结果
         failed_result = record.analysis_result.copy() if record.analysis_result else {}
         failed_result['analysis_failed'] = True
         failed_result['failure_reason'] = reason
-        
+
         analysis_data = {
             'analysis_result': failed_result,
             'engine': record.engine,
@@ -85,7 +85,7 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
             webhook_event_id=record.webhook_event_id
         ))
         logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
 
@@ -95,15 +95,15 @@ def poll_pending_analyses():
     redis_client = core.redis_client.get_redis()
     # Redis 全局分布式锁（防止多个 worker 同时查表和调接口）
     lock_key = "openclaw:poller:global_lock"
-    
+
     # 尝试获取锁，有效时间 60 秒
     if not redis_client.set(lock_key, "locked", nx=True, ex=60):
         logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
         return
-        
+
     try:
         _poll_pending_analyses_inner()
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
         redis_client.delete(lock_key)
@@ -112,77 +112,77 @@ def poll_pending_analyses():
 def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     """
     通过 HTTP API /final 接口获取分析结果（带重试）
-    
+
     Returns:
         - 成功: {"status": "completed", "text": "...", "msg_count": N}
         - 暂无结果: {"status": "pending"}
         - 错误: {"status": "error", "error": "..."}
     """
     import requests as req
-    
+
     base_url = Config.OPENCLAW_HTTP_API_URL.rstrip('/')
     last_error = None
-    
+
     # 使用 hooks token 认证
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     headers = {
         "Authorization": f"Bearer {hooks_token}"
     }
-    
+
     for attempt in range(retry_count):
         try:
             # 使用 /final 接口直接获取最终结果
             url = f"{base_url}/sessions/{session_key}/final"
             logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
-            
+
             response = req.get(url, headers=headers, timeout=30)
-            
+
             if response.status_code == 404:
                 last_error = "Session not found"
                 logger.warning(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
                 continue
-            
+
             if response.status_code == 204 or response.status_code == 202:
                 # 204 No Content / 202 Accepted - 分析仍在进行中
                 last_error = "分析进行中"
                 logger.debug(f"分析进行中 (尝试 {attempt + 1}/{retry_count})")
                 continue
-            
+
             if response.status_code != 200:
                 last_error = f"HTTP {response.status_code}"
                 continue
-            
+
             data = response.json()
-            
+
             # 根据 /final 接口返回的字段判断状态
             is_final = data.get('isFinal', False)
             is_processing = data.get('isProcessing', False)
             text = data.get('text', '')
             msg_count = data.get('messageCount', 0)
-            
+
             # 判断是否完成
             if is_processing and not text:
                 last_error = "分析进行中"
                 continue
-            
+
             if text:
                 return {
                     "status": "completed",
                     "text": text,
                     "msg_count": msg_count
                 }
-            
+
             if not is_final:
                 last_error = "分析进行中"
                 continue
-            
+
             last_error = "No text content"
             continue
-            
-        except Exception as e: # noqa: PERF203
+
+        except Exception as e:
             last_error = str(e)
             logger.warning(f"HTTP 轮询异常: {e}")
-    
+
     if last_error == "分析进行中":
         return {"status": "pending"}
     return {"status": "error", "error": last_error}
@@ -257,7 +257,7 @@ def _poll_pending_analyses_inner():
                             if json_text:
                                 try:
                                     parsed_result = json.loads(json_text)
-                                except Exception: # noqa: PERF203
+                                except Exception:
                                     parsed_result = None
 
                             if parsed_result and isinstance(parsed_result, dict):
@@ -272,13 +272,13 @@ def _poll_pending_analyses_inner():
 
                             record.status = 'completed'
                             record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                            
+
                             try:
                                 from models import WebhookEvent
                                 event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)
-                            except Exception as e: # noqa: PERF203
+                            except Exception as e:
                                 logger.debug(f"飞书深度分析通知失败: {e}")
                         else:
                             _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
@@ -295,7 +295,7 @@ def _poll_pending_analyses_inner():
                                 if json_text:
                                     try:
                                         parsed_result = json.loads(json_text)
-                                    except Exception: # noqa: PERF203
+                                    except Exception:
                                         parsed_result = None
 
                                 record.analysis_result = parsed_result or {'root_cause': text}
@@ -303,10 +303,10 @@ def _poll_pending_analyses_inner():
                                 continue
                         _clear_poll_stability(record.id)
 
-                except Exception as e: # noqa: PERF203
+                except Exception as e:
                     logger.error(f"轮询记录 id={record.id} 失败: {e}")
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"轮询任务异常: {e}")
 
 
@@ -317,10 +317,10 @@ def start_poller(interval: int = 30):
         while True:
             try:
                 poll_pending_analyses()
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 logger.error(f"轮询循环异常: {e}")
             time.sleep(interval)
-    
+
     t = threading.Thread(target=_loop, daemon=True, name='openclaw-poller')
     t.start()
     return t
@@ -329,13 +329,16 @@ def _extract_robust_json(text: str) -> str | None:
     """从文本中寻找并提取第一个完整的 JSON 对象（处理嵌套大括号）"""
     try:
         start_idx = text.find('{')
-        if start_idx == -1: return None
+        if start_idx == -1:
+            return None
         stack = 0
         for i in range(start_idx, len(text)):
-            if text[i] == '{': stack += 1
+            if text[i] == '{':
+                stack += 1
             elif text[i] == '}':
                 stack -= 1
-                if stack == 0: return text[start_idx:i+1]
-    except Exception: # noqa: PERF203
+                if stack == 0:
+                    return text[start_idx:i+1]
+    except Exception:
         return None
     return None

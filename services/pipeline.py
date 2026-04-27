@@ -84,7 +84,7 @@ def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> li
                 .limit(100)
             )
             events = query.all()
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"加载降噪候选告警失败: {e}")
         return []
 
@@ -368,7 +368,7 @@ def _refresh_original_event(original_id: int | None, fallback_event: WebhookEven
         with get_session() as session:
             latest = session.get(WebhookEvent, original_id)
             return latest or fallback_event
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"重新查询原始告警失败: {e}")
         return fallback_event
 
@@ -461,7 +461,7 @@ def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: boo
                     break
 
             return matched
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"加载转发规则失败: {e}")
         return []
 
@@ -528,7 +528,7 @@ def _update_last_notified(event_id: int) -> None:
             )
             session.commit()
             logger.info(f"已更新原始告警 {event_id} 的 last_notified_at")
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.warning(f"更新 last_notified_at 失败: {e}")
 
 
@@ -539,7 +539,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     try:
         import hashlib
         raw_hash = hashlib.sha256(raw_body).hexdigest() if raw_body else None
-    except Exception: # noqa: PERF203
+    except Exception:
         raw_hash = None
     logger.debug(f"[Webhook] 原始载荷: size={len(raw_body) if raw_body else 0}, sha256={raw_hash}")
 
@@ -549,7 +549,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         import json
         try:
             payload = json.loads(raw_body)
-        except Exception: # noqa: PERF203
+        except Exception:
             raise InvalidJsonError() from None
 
     data = payload
@@ -613,10 +613,10 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
     try:
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
-        except InvalidSignatureError: # noqa: PERF203
+        except InvalidSignatureError:
             logger.warning(f"认证失败 (Token/Signature 不匹配或缺失): IP={client_ip}, Source={source or 'unknown'}")
             return
-        except InvalidJsonError: # noqa: PERF203
+        except InvalidJsonError:
             return
 
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
@@ -692,7 +692,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
                                         session.add(deep_record)
                                         session.flush()
                                         logger.info(f"转发分析记录已创建: id={deep_record.id}, run_id={result.get('run_id')}")
-                                except Exception as e: # noqa: PERF203
+                                except Exception as e:
                                     logger.error(f"创建转发分析记录失败: {e}")
                         else:
                             result = await forward_to_remote(
@@ -729,6 +729,6 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
             is_duplicate
         )
 
-    except Exception as e: # noqa: PERF203
-        logger.error(f"处理 Webhook 时发生错误: {str(e)}", exc_info=True)
+    except Exception as e:
+        logger.error(f"处理 Webhook 时发生错误: {e!s}", exc_info=True)
         return

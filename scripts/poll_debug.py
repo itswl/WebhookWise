@@ -33,27 +33,27 @@ try:
     if frame.get('type') == 'event' and frame.get('event') == 'connect.challenge':
         nonce = frame.get('payload', {}).get('nonce', '')
         print(f"Received connect.challenge, nonce={nonce[:32]}...")
-        
+
         device_id = os.getenv('OPENCLAW_DEVICE_ID', '')
         private_key_b64 = os.getenv('OPENCLAW_DEVICE_PRIVATE_KEY_PEM', '')
         device_token_val = os.getenv('OPENCLAW_DEVICE_TOKEN', '')
-        
+
         if device_id and private_key_b64 and nonce:
             try:
                 from cryptography.hazmat.primitives import serialization
                 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-                
+
                 pem = f"-----BEGIN PRIVATE KEY-----\n{private_key_b64}\n-----END PRIVATE KEY-----\n"
                 private_key = serialization.load_pem_private_key(pem.encode(), password=None)
                 pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
                 pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip('=')
-                
+
                 signed_at = int(time.time() * 1000)
                 scopes_str = 'operator.read'
                 payload_str = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
                 signature = private_key.sign(payload_str.encode())
                 sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip('=')
-                
+
                 device_auth = {
                     'role': 'operator',
                     'scopes': ['operator.read'],
@@ -67,13 +67,13 @@ try:
                     }
                 }
                 print("Device auth constructed successfully")
-            except ImportError: # noqa: PERF203
+            except ImportError:
                 print("WARNING: cryptography not installed, skipping device auth")
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 print(f"WARNING: Failed to build device auth: {e}")
     else:
         print(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
-except Exception: # noqa: PERF203
+except Exception:
     print("No connect.challenge received (likely OpenClaw, not OpenClaw)")
 
 # Connect (v3 protocol)
@@ -109,7 +109,7 @@ max_frames = 100
 for frame_num in range(max_frames):
     resp = ws.recv()
     data = json.loads(resp)
-    
+
     # 检查是否是chat.history的响应
     if data.get('type') == 'res' and data.get('id') == request_id:
         result = data.get('result') or data.get('payload', {})
@@ -119,7 +119,7 @@ for frame_num in range(max_frames):
             messages = result
         else:
             messages = []
-        
+
         if messages:
             print(f"\n=== MESSAGES: {len(messages)} ===")
             for i, m in enumerate(messages):
@@ -134,7 +134,7 @@ for frame_num in range(max_frames):
                     types = ['str']
                     tlen = len(str(content))
                 print(f"  [{i}] role={role}, types={types}, text_len={tlen}, durationMs={dur}")
-                
+
                 # Print text preview for assistant messages
                 if role == 'assistant' and isinstance(content, list):
                     for c in content:

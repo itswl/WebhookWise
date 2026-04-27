@@ -54,7 +54,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
     try:
         with open(prompt_path, encoding='utf-8') as f:
             system_prompt = f.read()
-    except FileNotFoundError: # noqa: PERF203
+    except FileNotFoundError:
         system_prompt = """你是一个专业的 SRE 分析专家。请对以下告警进行深度分析，包括：
 1. 根因分析
 2. 影响范围评估
@@ -97,7 +97,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
     try:
         json_match = re.search(r'```json\s*([\s\S]*?)```', ai_response)
         report = json.loads(json_match.group(1)) if json_match else json.loads(ai_response)
-    except (json.JSONDecodeError, TypeError): # noqa: PERF203
+    except (json.JSONDecodeError, TypeError):
         report = {
             'root_cause': ai_response,
             'impact': '请查看上方分析',
@@ -111,7 +111,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
-async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
+async def deep_analyze_webhook(webhook_id: int, payload: dict | None = None):
     """
     触发深度分析（支持多引擎）
 
@@ -132,7 +132,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
             if not alert_data and event.raw_payload:
                 try:
                     alert_data = json.loads(event.raw_payload)
-                except (json.JSONDecodeError, TypeError): # noqa: PERF203
+                except (json.JSONDecodeError, TypeError):
                     alert_data = {"raw": event.raw_payload}
 
             user_question = payload.get('user_question', '')
@@ -152,8 +152,8 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                     try:
                         report, duration = await _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
-                    except Exception as e: # noqa: PERF203
-                        return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {str(e)}"})
+                    except Exception as e:
+                        return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
                 elif result.get('_pending'):
                     run_id = result.get('_openclaw_run_id', '')
                     session_key = result.get('_openclaw_session_key', '')
@@ -202,9 +202,9 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                                 source=event.source,
                                 webhook_event_id=webhook_id
                             )
-                    except Exception as notify_err: # noqa: PERF203
+                    except Exception as notify_err:
                         logger.warning(f"飞书深度分析通知失败: {notify_err}")
-            except Exception as e: # noqa: PERF203
+            except Exception as e:
                 logger.error(f"保存深度分析结果失败: {e}")
 
             return {
@@ -217,7 +217,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 }
             }
 
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"深度分析失败: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -306,7 +306,7 @@ def get_deep_analyses(webhook_id: int):
 
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/forward')
-async def forward_deep_analysis(analysis_id: int, payload: dict = None):
+async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
     """转发深度分析结果到指定目标"""
     payload = payload or {}
     try:
@@ -361,7 +361,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict = None):
                 resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
                 resp.raise_for_status()
                 return {'success': True, 'message': f'已转发 (HTTP {resp.status_code})'}
-    except Exception as e: # noqa: PERF203
+    except Exception as e:
         logger.error(f"转发深度分析失败: {e}")
         return JSONResponse(status_code=500, content={'success': False, 'message': str(e)})
 
@@ -370,7 +370,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict = None):
 async def retry_deep_analysis(analysis_id: int):
     """
     重新拉取深度分析结果
-    
+
     策略：
     - 配置了 OPENCLAW_HTTP_API_URL → 直接通过 HTTP API 获取
     - 未配置 → 重置为 pending，由轮询器通过 WebSocket 获取
@@ -395,22 +395,22 @@ async def retry_deep_analysis(analysis_id: int):
                 from services.openclaw_poller import _poll_via_http
                 logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
                 result = await run_in_threadpool(_poll_via_http, record.openclaw_session_key, retry_count=3)
-                
+
                 if result.get('status') == 'error':
                     return JSONResponse(status_code=400, content={'error': result.get('error', '获取失败')})
-                
+
                 if result.get('status') != 'completed':
                     return JSONResponse(status_code=400, content={'error': f'获取未完成: {result.get("status")}'})
-                
+
                 text = result.get('text', '')
-                
+
                 # 尝试解析 JSON
                 parsed_result = None
                 json_match = re.search(r'\{[\s\S]*\}', text)
                 if json_match:
                     with contextlib.suppress(json.JSONDecodeError):
                         parsed_result = json.loads(json_match.group())
-                
+
                 if parsed_result and isinstance(parsed_result, dict):
                     parsed_result['_openclaw_run_id'] = record.openclaw_run_id
                     parsed_result['_openclaw_text'] = text
@@ -426,13 +426,13 @@ async def retry_deep_analysis(analysis_id: int):
                         '_openclaw_text': text,
                         '_fetched_via': 'http-retry'
                     }
-                
+
                 record.status = 'completed'
                 record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
                 session.commit()
-                
+
                 logger.info(f"HTTP API 获取成功: id={analysis_id}, text_len={len(text)}")
-                
+
                 # 发送飞书通知
                 try:
                     from adapters.ecosystem_adapters import send_feishu_deep_analysis
@@ -450,11 +450,11 @@ async def retry_deep_analysis(analysis_id: int):
                             source=source,
                             webhook_event_id=record.webhook_event_id
                         )
-                except Exception as notify_err: # noqa: PERF203
+                except Exception as notify_err:
                     logger.warning(f"飞书深度分析通知失败: {notify_err}")
-                
+
                 return {
-                    'success': True, 
+                    'success': True,
                     'message': f'获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果'
                 }
             else:
@@ -466,7 +466,7 @@ async def retry_deep_analysis(analysis_id: int):
 
                 logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
                 return {'success': True, 'message': '已重新开始拉取，请等待结果'}
-                
-    except Exception as e: # noqa: PERF203
+
+    except Exception as e:
         logger.error(f"重试深度分析失败: {e}")
         return JSONResponse(status_code=500, content={'error': str(e)})
