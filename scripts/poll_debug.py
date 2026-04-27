@@ -143,7 +143,7 @@ for frame_num in range(max_frames):
                             if i == len(messages) - 1:
                                 print(f"      === FULL TEXT ({len(text)} chars) ===")
                                 print(text)
-                                print(f"      === END ===")
+                                print("      === END ===")
                             else:
                                 preview = text[:300] + '...' if len(text) > 300 else text
                                 print(f"      TEXT: {preview}")

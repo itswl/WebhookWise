@@ -85,7 +85,7 @@ def query_stats():
         low = session.query(WebhookEvent).filter_by(importance='low').count()
         dup = session.query(WebhookEvent).filter_by(is_duplicate=1).count()
 
-        print(f"\n=== 统计概览 ===")
+        print("\n=== 统计概览 ===")
         print(f"  总告警数: {total}")
         print(f"  high:     {high}")
         print(f"  medium:   {medium}")

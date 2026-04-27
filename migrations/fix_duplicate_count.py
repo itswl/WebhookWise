@@ -6,7 +6,6 @@
 解决：将重复告警的 duplicate_count 更新为原始告警的 duplicate_count
 """
 
-import os
 import sys
 from pathlib import Path
 

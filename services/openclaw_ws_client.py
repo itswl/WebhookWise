@@ -7,12 +7,10 @@ OpenClaw WebSocket 客户端模块
 
 import base64
 import json
-import os
 import platform
 import threading
 import time
 import uuid
-from typing import Optional
 
 import websocket
 
@@ -450,7 +448,7 @@ class OpenClawWSClient:
                     'partial_text': partial_text
                 }
         
-        except websocket.WebSocketTimeoutException as e:
+        except websocket.WebSocketTimeoutException:
             self._connection_error = 'connect_timeout'
             logger.error(f"WebSocket connection timeout ({self.connect_timeout}s) - TCP or WS handshake failed")
             return {
@@ -660,7 +658,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 # - 提取 text 内容，如果有实质内容则返回 completed
                 
                 if not messages:
-                    logger.debug(f"Poll: no messages found, analysis pending")
+                    logger.debug("Poll: no messages found, analysis pending")
                     return {"status": "pending"}
                 
                 # 获取最后一条 entry
@@ -707,7 +705,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 
                 # 如果包含工具调用，说明还在等待工具结果
                 if has_tool_use:
-                    logger.debug(f"Poll: message contains tool_use, analysis pending")
+                    logger.debug("Poll: message contains tool_use, analysis pending")
                     return {"status": "pending"}
                 
                 # 提取最终文本
@@ -715,7 +713,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 
                 # 如果没有文本内容，可能还在处理
                 if not final_text:
-                    logger.debug(f"Poll: no text content found, analysis pending")
+                    logger.debug("Poll: no text content found, analysis pending")
                     return {"status": "pending"}
                 
                 # 会话完成

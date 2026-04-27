@@ -135,10 +135,10 @@ def test_multi_node_alerts():
     hash1 = generate_alert_hash(alert_node1, 'volcengine')
     hash2 = generate_alert_hash(alert_node2, 'volcengine')
 
-    print(f"节点1 (server-redis-shzlgorbuxosmn6xz-000-0-0):")
+    print("节点1 (server-redis-shzlgorbuxosmn6xz-000-0-0):")
     print(f"  哈希: {hash1}")
 
-    print(f"\n节点2 (server-redis-shzlgorbuxosmn6xz-001-0-0):")
+    print("\n节点2 (server-redis-shzlgorbuxosmn6xz-001-0-0):")
     print(f"  哈希: {hash2}")
 
     # 验证结果
@@ -147,8 +147,8 @@ def test_multi_node_alerts():
 
     assert hash1 != hash2
     print("✅ 测试通过！两个不同节点生成了不同的哈希值")
-    print(f"   节点1和节点2的告警将被正确区分")
-    print(f"\n   关键差异字段:")
+    print("   节点1和节点2的告警将被正确区分")
+    print("\n   关键差异字段:")
     print(f"   - dim_node: '{fields1.get('dim_node')}' vs '{fields2.get('dim_node')}'")
 
     print("\n5️⃣  额外测试: 相同节点的重复告警（应该被去重）")
