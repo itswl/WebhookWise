@@ -1,4 +1,5 @@
-from sqlalchemy import select, func
+from sqlalchemy import select
+
 """
 api/deep_analysis.py
 ============================
@@ -20,7 +21,6 @@ from core.http_client import get_http_client
 from core.logger import logger
 from db.session import session_scope
 from models import DeepAnalysis, WebhookEvent
-from services.ai_analyzer import analyze_with_openclaw
 
 deep_analysis_router = APIRouter()
 
@@ -112,21 +112,15 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
-async def deep_analyze_webhook(webhook_id: int, payload: dict | None = None):
+async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
     """
     触发深度分析（支持多引擎）
-
-    请求体（可选）:
-    {
-        "user_question": "用户问题",
-        "engine": "auto"  // local | openclaw | auto
-    }
     """
     payload = payload or {}
     try:
         async with session_scope() as session:
             result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
-        event = result.scalars().first()
+            event = result.scalars().first()
             if not event:
                 return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
@@ -138,86 +132,70 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict | None = None):
                     alert_data = {"raw": event.raw_payload}
 
             user_question = payload.get('user_question', '')
-            requested_engine = payload.get('engine', 'auto')
+            engine_pref = payload.get('engine', 'auto')
 
-            engine = _determine_engine(requested_engine)
-            logger.info(f"开始深度分析 webhook ID: {webhook_id}, engine: {engine}")
+            # ===== 多引擎路由逻辑 =====
+            if engine_pref == 'openclaw' or (engine_pref == 'auto' and Config.OPENCLAW_ENABLED):
+                webhook_data = {
+                    "source": event.source or 'unknown',
+                    "headers": event.headers or {},
+                    "payload": alert_data
+                }
+                from services.ai_analyzer import analyze_webhook_with_ai, analyze_with_openclaw
 
-            if engine == 'openclaw':
-                start_time = time.time()
-                webhook_data = {'source': event.source, 'parsed_data': alert_data}
                 result = await analyze_with_openclaw(webhook_data, user_question)
-                duration = time.time() - start_time
+                engine = 'openclaw'
+                run_id = ''
 
+                # 如果返回了 _degraded，说明 OpenClaw 调用失败降级到了本地规则
                 if result.get('_degraded'):
-                    logger.warning(f"OpenClaw 分析失败，降级到本地 AI: {result.get('_degraded_reason')}")
                     try:
-                        report, duration = await _local_ai_analysis(alert_data, user_question)
+                        result = analyze_webhook_with_ai(alert_data, event.source or 'unknown')
                         engine = 'local (fallback)'
                     except Exception as e:
                         return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
                 elif result.get('_pending'):
                     run_id = result.get('_openclaw_run_id', '')
-                    session_key = result.get('_openclaw_session_key', '')
-                    report = {
-                        'status': 'pending',
-                        'root_cause': 'OpenClaw Agent 正在分析中，结果将自动更新...',
-                        'impact': '分析已触发，预计几分钟内完成',
-                        'recommendations': ['请稍后刷新页面查看分析结果'],
-                        'confidence': 0
-                    }
-                    logger.info(f"OpenClaw 分析已触发: run_id={run_id}, session_key={session_key}")
-                else:
-                    report = result
-            else:
-                report, duration = await _local_ai_analysis(alert_data, user_question)
-                result = {}  # Initialize result to prevent UnboundLocalError
 
-            record_id = None
-            try:
+                # 保存分析记录
+                from models import DeepAnalysis
                 deep_record = DeepAnalysis(
                     webhook_event_id=webhook_id,
                     engine=engine,
-                    user_question=user_question or '',
-                    analysis_result=report,
-                    duration_seconds=duration,
-                    openclaw_run_id=result.get('_openclaw_run_id', '') if isinstance(result, dict) else '',
-                    openclaw_session_key=result.get('_openclaw_session_key', '') if isinstance(result, dict) else '',
-                    status='pending' if isinstance(result, dict) and result.get('_pending') else 'completed'
+                    user_question=user_question,
+                    analysis_result=result,
+                    status='pending' if result.get('_pending') else 'completed',
+                    openclaw_run_id=run_id
                 )
                 session.add(deep_record)
-                session.flush()
-                record_id = deep_record.id
-                logger.info(f"深度分析结果已保存: id={record_id}, webhook_id={webhook_id}")
+                await session.commit()
 
-                if deep_record.status == 'completed':
-                    try:
-                        from adapters.ecosystem_adapters import send_feishu_deep_analysis
-                        if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                            await send_feishu_deep_analysis(
-                                webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
-                                analysis_record={
-                                    'analysis_result': report,
-                                    'engine': engine,
-                                    'duration_seconds': duration,
-                                },
-                                source=event.source,
-                                webhook_event_id=webhook_id
-                            )
-                    except Exception as notify_err:
-                        logger.warning(f"飞书深度分析通知失败: {notify_err}")
-            except Exception as e:
-                logger.error(f"保存深度分析结果失败: {e}")
+            else:
+                from models import DeepAnalysis
+                from services.ai_analyzer import analyze_webhook_with_ai
+                # 默认走原有的本地 AI 分析
+                result = analyze_webhook_with_ai(alert_data, event.source or 'unknown')
+                engine = 'local'
 
-            return {
+                deep_record = DeepAnalysis(
+                    webhook_event_id=webhook_id,
+                    engine=engine,
+                    user_question=user_question,
+                    analysis_result=result,
+                    status='completed'
+                )
+                session.add(deep_record)
+                await session.commit()
+
+            return JSONResponse(status_code=200, content={
                 "success": True,
                 "data": {
-                    'analysis': report,
-                    'duration_seconds': round(duration, 2),
-                    'engine': engine,
-                    'record_id': record_id
+                    "id": deep_record.id,
+                    "engine": engine,
+                    "status": deep_record.status,
+                    "result": result
                 }
-            }
+            })
 
     except Exception as e:
         logger.error(f"深度分析失败: {e}", exc_info=True)
