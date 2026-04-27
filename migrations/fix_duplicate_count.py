@@ -12,11 +12,10 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.database import session_scope
 from sqlalchemy import text
 
 from core.logger import logger
-from db.session import init_db
+from db.session import init_db, session_scope
 
 
 def fix_duplicate_count():

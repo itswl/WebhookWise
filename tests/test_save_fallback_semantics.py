@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from crud.webhook import _build_event
-from crud.webhook import SaveWebhookResult
+from crud.webhook import SaveWebhookResult, _build_event
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():
