@@ -14,13 +14,13 @@ ai_usage_router = APIRouter()
 
 
 @ai_usage_router.get('/api/ai-usage')
-def get_ai_usage(period: str = Query('day')):
+async def get_ai_usage(period: str = Query('day')):
     try:
         cache_bucket = int(time.time() // 60)
         cache_key = f"ai_usage:{period}:{cache_bucket}"
         try:
             redis = get_redis()
-            cached = redis.get(cache_key)
+            cached = await redis.get(cache_key)
             if cached:
                 return _ok(json.loads(cached), 200)
         except Exception as e:
@@ -135,7 +135,7 @@ def get_ai_usage(period: str = Query('day')):
 
             try:
                 redis = get_redis()
-                redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
+                await redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
             except Exception as e:
                 logger.debug(f"AI usage 缓存写入失败: {e}")
 

@@ -9,6 +9,7 @@ python-dotenv>=1.2.2
 gunicorn>=22.0.0
 openai==1.14.0
 psycopg2-binary==2.9.10
+asyncpg==0.30.0
 SQLAlchemy==2.0.36
 json5==0.9.14
 python-json-logger==2.0.7

@@ -282,7 +282,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
 
     try:
         # 尝试获取锁
-        lock_acquired = bool(redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS))
+        lock_acquired = bool(await redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS))
         if lock_acquired:
             logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
         else:
@@ -302,7 +302,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
                     return 0
                 end
                 """
-                redis_client.eval(release_lua, 1, lock_key, lock_value)
+                await redis_client.eval(release_lua, 1, lock_key, lock_value)
                 logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
             except Exception as e:
                 logger.error(f"释放锁失败: {e}")
