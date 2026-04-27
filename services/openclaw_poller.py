@@ -288,21 +288,20 @@ def _poll_pending_analyses_inner():
                         prev_snapshot = _get_poll_stability(record.id)
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
-                            if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS:
-                                if Config.OPENCLAW_ENABLE_DEGRADATION:
-                                    text = prev_snapshot['first_result']['text']
-                                    _clear_poll_stability(record.id)
-                                    parsed_result = None
-                                    json_text = _extract_robust_json(text)
-                                    if json_text:
-                                        try:
-                                            parsed_result = json.loads(json_text)
-                                        except Exception:
-                                            parsed_result = None
-                                    
-                                    record.analysis_result = parsed_result or {'root_cause': text}
-                                    record.status = 'completed'
-                                    continue
+                            if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS and Config.OPENCLAW_ENABLE_DEGRADATION:
+                                text = prev_snapshot['first_result']['text']
+                                _clear_poll_stability(record.id)
+                                parsed_result = None
+                                json_text = _extract_robust_json(text)
+                                if json_text:
+                                    try:
+                                        parsed_result = json.loads(json_text)
+                                    except Exception:
+                                        parsed_result = None
+
+                                record.analysis_result = parsed_result or {'root_cause': text}
+                                record.status = 'completed'
+                                continue
                         _clear_poll_stability(record.id)
 
                 except Exception as e:
@@ -327,7 +326,7 @@ def start_poller(interval: int = 30):
     t.start()
     return t
 
-def _extract_robust_json(text: str) -> Optional[str]:
+def _extract_robust_json(text: str) -> str | None:
     """从文本中寻找并提取第一个完整的 JSON 对象（处理嵌套大括号）"""
     try:
         start_idx = text.find('{')

@@ -218,7 +218,7 @@ def get_config():
 
 
 @admin_router.post('/api/config')
-def update_config(payload: dict = Body(default_factory=dict)):
+def update_config(payload: dict = None):
     try:
         if not payload:
             return _fail('请求体为空', 400)

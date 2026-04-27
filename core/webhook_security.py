@@ -35,7 +35,7 @@ def ensure_webhook_auth(headers: dict, raw_body: bytes) -> None:
             raise InvalidSignatureError()
 
 
-def enforce_webhook_rate_limit(request: Request) -> Optional[str]:
+def enforce_webhook_rate_limit(request: Request) -> str | None:
     if not Config.WEBHOOK_RATE_LIMIT_PER_MINUTE or Config.WEBHOOK_RATE_LIMIT_PER_MINUTE <= 0:
         return None
 

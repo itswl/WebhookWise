@@ -25,7 +25,7 @@ def _renew_leader(redis, token: str) -> None:
         time.sleep(_RENEW_INTERVAL_SECONDS)
 
 
-def start_background_pollers(worker_id: Optional[str] = None) -> bool:
+def start_background_pollers(worker_id: str | None = None) -> bool:
     if not getattr(Config, "ENABLE_POLLERS", True):
         logger.info("[Pollers] disabled by config")
         return False

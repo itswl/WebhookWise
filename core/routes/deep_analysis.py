@@ -3,6 +3,7 @@ core/routes/deep_analysis.py
 ============================
 深度分析相关路由：触发分析、列表查询、转发、重试。
 """
+import contextlib
 import json
 import re
 import time
@@ -111,7 +112,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
-async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=None)):
+async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
     """
     触发深度分析（支持多引擎）
 
@@ -226,7 +227,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = Body(default=Non
 def list_all_deep_analyses(
     page: int = Query(1),
     per_page: int = Query(20),
-    cursor: Optional[int] = Query(None),
+    cursor: int | None = Query(None),
     status_filter: str = Query('', alias='status'),
     engine_filter: str = Query('', alias='engine')
 ):
@@ -306,7 +307,7 @@ def get_deep_analyses(webhook_id: int):
 
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/forward')
-async def forward_deep_analysis(analysis_id: int, payload: dict = Body(default=None)):
+async def forward_deep_analysis(analysis_id: int, payload: dict = None):
     """转发深度分析结果到指定目标"""
     payload = payload or {}
     try:
@@ -408,10 +409,8 @@ async def retry_deep_analysis(analysis_id: int):
                 parsed_result = None
                 json_match = re.search(r'\{[\s\S]*\}', text)
                 if json_match:
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         parsed_result = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        pass
                 
                 if parsed_result and isinstance(parsed_result, dict):
                     parsed_result['_openclaw_run_id'] = record.openclaw_run_id
