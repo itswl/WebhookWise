@@ -1,5 +1,4 @@
 """OpenClaw 分析结果后台轮询"""
-import asyncio
 import json
 import logging
 import threading
