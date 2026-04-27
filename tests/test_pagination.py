@@ -5,8 +5,6 @@ import contextlib
 from datetime import datetime
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from crud.webhook import get_all_webhooks
 from db.session import Base
@@ -18,7 +16,7 @@ async def setup_test_db(monkeypatch):
     """
     配置独立的内存 SQLite 数据库供分页测试使用。
     """
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

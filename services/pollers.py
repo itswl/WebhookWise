@@ -1,11 +1,12 @@
+import asyncio
 import os
 import threading
-
-_stop_event = threading.Event()
 
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
+
+_stop_event = threading.Event()
 
 _LEADER_KEY = "pollers:leader"
 _LEADER_TTL_SECONDS = 90
@@ -27,7 +28,8 @@ async def _renew_leader(redis, token: str) -> None:
 
 
 
-import asyncio
+
+
 
 
 def _run_renew(redis, token):

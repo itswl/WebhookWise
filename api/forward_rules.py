@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 """
 api/forward_rules.py
 ============================
@@ -17,15 +19,17 @@ forward_rules_router = APIRouter()
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 @forward_rules_router.get('/api/forward-rules')
-def get_forward_rules():
+async def get_forward_rules():
     """获取所有转发规则，按 priority 降序排列"""
-    with session_scope() as session:
-        rules = session.query(ForwardRule).order_by(ForwardRule.priority.desc()).all()
+    async with session_scope() as session:
+        stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
+        result = await session.execute(stmt)
+        rules = result.scalars().all()
         return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
 @forward_rules_router.post('/api/forward-rules')
-def create_forward_rule(payload: dict | None = None):
+async def create_forward_rule(payload: dict | None = None):
     """创建转发规则"""
     payload = payload or {}
     name = payload.get('name', '')
@@ -47,7 +51,7 @@ def create_forward_rule(payload: dict | None = None):
         if not target_url:
             return JSONResponse(status_code=400, content={"success": False, "error": '目标地址不能为空'})
 
-    with session_scope() as session:
+    async with session_scope() as session:
         rule = ForwardRule(
             name=name,
             enabled=payload.get('enabled', True),
@@ -66,11 +70,13 @@ def create_forward_rule(payload: dict | None = None):
 
 
 @forward_rules_router.put('/api/forward-rules/{rule_id}')
-def update_forward_rule(rule_id: int, payload: dict | None = None):
+async def update_forward_rule(rule_id: int, payload: dict | None = None):
     payload = payload or {}
     """更新转发规则"""
-    with session_scope() as session:
-        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+    async with session_scope() as session:
+        stmt = select(ForwardRule).filter_by(id=rule_id)
+        result = await session.execute(stmt)
+        rule = result.scalars().first()
         if not rule:
             return JSONResponse(status_code=404, content={"success": False, "error": '规则不存在'})
 
@@ -85,10 +91,12 @@ def update_forward_rule(rule_id: int, payload: dict | None = None):
 
 
 @forward_rules_router.delete('/api/forward-rules/{rule_id}')
-def delete_forward_rule(rule_id: int):
+async def delete_forward_rule(rule_id: int):
     """删除转发规则"""
-    with session_scope() as session:
-        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+    async with session_scope() as session:
+        stmt = select(ForwardRule).filter_by(id=rule_id)
+        result = await session.execute(stmt)
+        rule = result.scalars().first()
         if not rule:
             return JSONResponse(status_code=404, content={"success": False, "error": '规则不存在'})
         session.delete(rule)
@@ -98,8 +106,10 @@ def delete_forward_rule(rule_id: int):
 @forward_rules_router.post('/api/forward-rules/{rule_id}/test')
 def test_forward_rule(rule_id: int):
     """测试转发规则（发送测试消息到目标）"""
-    with session_scope() as session:
-        rule = session.query(ForwardRule).filter_by(id=rule_id).first()
+    async with session_scope() as session:
+        stmt = select(ForwardRule).filter_by(id=rule_id)
+        result = await session.execute(stmt)
+        rule = result.scalars().first()
         if not rule:
             return JSONResponse(status_code=404, content={"success": False, "error": '规则不存在'})
 
