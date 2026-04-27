@@ -196,7 +196,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             payload = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
-    from core.app import handle_webhook_process
+    from services.pipeline import handle_webhook_process
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
 
@@ -228,7 +228,7 @@ async def receive_webhook_with_source(source: str, request: Request, background_
             payload = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
-    from core.app import handle_webhook_process
+    from services.pipeline import handle_webhook_process
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
 
