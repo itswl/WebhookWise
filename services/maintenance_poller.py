@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 
 from services.data_maintenance import archive_old_data
+from services.pollers import _stop_event
 
 logger = logging.getLogger('webhook_service.maintenance')
 
@@ -32,7 +33,6 @@ def run_daily_maintenance():
         # 每 10 分钟检查一次时间
         time.sleep(600)
 
-from services.pollers import _stop_event
 
 
 def start_maintenance_poller():

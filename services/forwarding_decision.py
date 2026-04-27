@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 """
 services/forwarding_decision.py
 ====================================
@@ -63,13 +65,13 @@ def _refresh_original_event(
 ) -> WebhookEvent | None:
     """重新查询原始事件，避免 ORM 对象失效"""
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             return session.query(WebhookEvent).filter_by(id=original_id).first()
     except Exception:
         return fallback_event
 
 
-def _resolve_analysis_with_lock(
+async def _resolve_analysis_with_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> tuple[dict, bool, bool, WebhookEvent | None]:
@@ -86,7 +88,7 @@ def _resolve_analysis_with_lock(
 
     from models import WebhookEvent
 
-    with session_scope() as session:
+    async with session_scope() as session:
         current_time = datetime.now()
         # 查询同 hash 最近一条记录
         original_event = session.query(WebhookEvent).filter(
@@ -119,7 +121,7 @@ def _resolve_analysis_with_lock(
         return analysis_result, reanalyzed, is_duplicate, original_event
 
 
-def _resolve_analysis_without_lock(
+async def _resolve_analysis_without_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> tuple[dict, bool, bool, WebhookEvent | None]:
@@ -148,7 +150,7 @@ def _resolve_analysis_without_lock(
 
 # ── 转发决策 helpers ────────────────────────────────────────────────────────────
 
-def _recently_notified(
+async def _recently_notified(
     original_event: WebhookEvent | None,
     original_id: int | None,
     alert_type: str
@@ -162,7 +164,7 @@ def _recently_notified(
     return False
 
 
-def _resolve_alert_type_label(
+async def _resolve_alert_type_label(
     is_duplicate: bool,
     beyond_window: bool,
     is_periodic_reminder: bool
@@ -211,7 +213,7 @@ def _match_forward_rules(
     source: str
 ) -> list[ForwardRule]:
     """加载并匹配当前告警适用的转发规则"""
-    with session_scope() as session:
+    async with session_scope() as session:
         rules = session.query(ForwardRule).filter_by(enabled=True).order_by(
             ForwardRule.priority.desc()
         ).all()
@@ -248,7 +250,7 @@ def _match_forward_rules(
         return matched
 
 
-def _decide_forwarding(
+async def _decide_forwarding(
     noise_context,
     importance: str,
     is_duplicate: bool,
@@ -292,11 +294,12 @@ def _decide_forwarding(
     return True, None, is_periodic_reminder, matched_rules
 
 
-def _update_last_notified(event_id: int) -> None:
+async def _update_last_notified(event_id: int) -> None:
     """更新告警的最后通知时间"""
     try:
-        with session_scope() as session:
-            event = session.query(WebhookEvent).filter_by(id=event_id).first()
+        async with session_scope() as session:
+            result = await session.execute(select(WebhookEvent).filter_by(id=event_id))
+            event = result.scalars().first()
             if event:
                 event.last_notified_at = datetime.now()
                 session.commit()

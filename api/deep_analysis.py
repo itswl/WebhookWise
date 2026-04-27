@@ -123,7 +123,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict | None = None):
     """
     payload = payload or {}
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
             if not event:
                 return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
@@ -233,7 +233,7 @@ def list_all_deep_analyses(
     """获取所有深度分析记录（分页 + 筛选）"""
     per_page = max(1, min(per_page, 100))
 
-    with session_scope() as session:
+    async with session_scope() as session:
         # 总数（始终计算）
         count_query = session.query(DeepAnalysis)
         if status_filter:
@@ -293,9 +293,9 @@ def list_all_deep_analyses(
 
 
 @deep_analysis_router.get('/api/deep-analyses/{webhook_id}')
-def get_deep_analyses(webhook_id: int):
+async def get_deep_analyses(webhook_id: int):
     """获取某告警的所有深度分析记录"""
-    with session_scope() as session:
+    async with session_scope() as session:
         records = session.query(DeepAnalysis).filter_by(
             webhook_event_id=webhook_id
         ).order_by(DeepAnalysis.created_at.desc()).all()
@@ -316,7 +316,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
         if not target_url.startswith(('http://', 'https://')):
             return JSONResponse(status_code=400, content={'success': False, 'message': 'URL 格式无效'})
 
-        with session_scope() as session:
+        async with session_scope() as session:
             analysis = session.query(DeepAnalysis).get(analysis_id)
             if not analysis:
                 return JSONResponse(status_code=404, content={'success': False, 'message': '分析记录不存在'})
@@ -376,7 +376,7 @@ async def retry_deep_analysis(analysis_id: int):
     - 未配置 → 重置为 pending，由轮询器通过 WebSocket 获取
     """
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             record = session.query(DeepAnalysis).get(analysis_id)
             if not record:
                 return JSONResponse(status_code=404, content={'error': '分析记录不存在'})

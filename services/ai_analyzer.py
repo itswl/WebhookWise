@@ -91,7 +91,7 @@ def get_cached_analysis(alert_hash: str) -> dict | None:
         return None
 
 
-def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
+async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
     """
     将分析结果保存到缓存
 
@@ -109,7 +109,7 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         from db.session import session_scope
         from models import AnalysisCache
 
-        with session_scope() as session:
+        async with session_scope() as session:
             cache_key = get_cache_key(alert_hash)
             expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
 
@@ -142,7 +142,7 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         return False
 
 
-def log_ai_usage(
+async def log_ai_usage(
     route_type: str,
     alert_hash: str,
     source: str,
@@ -175,7 +175,7 @@ def log_ai_usage(
                 (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
             )
 
-        with session_scope() as session:
+        async with session_scope() as session:
             usage_log = AIUsageLog(
                 model=model or Config.OPENAI_MODEL,
                 tokens_in=tokens_in,
@@ -1666,7 +1666,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             from db.session import session_scope
             from models import WebhookEvent
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                with session_scope() as session:
+                async with session_scope() as session:
                     event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()
                     source = event.source if event else 'unknown'
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
