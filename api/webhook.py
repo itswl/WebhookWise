@@ -20,7 +20,7 @@ webhook_router = APIRouter()
 
 @webhook_router.get('/health')
 def health_check():
-    from core.models import test_db_connection
+    from models import test_db_connection
     db_ok = test_db_connection()
     status = 'healthy' if db_ok else 'unhealthy'
     code = 200 if db_ok else 503
@@ -47,7 +47,8 @@ def list_webhooks(
     source: str = Query(''),
     cursor_id: int | None = Query(None)
 ):
-    from core.models import WebhookEvent, session_scope
+    from db.session import session_scope
+    from models import WebhookEvent
 
     offset = (page - 1) * page_size
     if cursor_id is not None:
@@ -116,7 +117,8 @@ def list_webhooks_cursor(
     source: str = Query(''),
     cursor_id: int | None = Query(None),
 ):
-    from core.models import WebhookEvent, session_scope
+    from db.session import session_scope
+    from models import WebhookEvent
 
     try:
         with session_scope() as session:
@@ -170,7 +172,8 @@ def list_webhooks_cursor(
 
 @webhook_router.get('/api/webhooks/{webhook_id}', dependencies=[Depends(verify_api_key)])
 def get_webhook_detail(webhook_id: int):
-    from core.models import WebhookEvent, session_scope
+    from db.session import session_scope
+    from models import WebhookEvent
 
     with session_scope() as session:
         event = session.query(WebhookEvent).filter_by(id=webhook_id).first()

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from core.config import Config
-from core.pipeline import _decide_forwarding
+from services.pipeline import _decide_forwarding
 
 
 class _Event:

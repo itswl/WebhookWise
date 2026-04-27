@@ -191,7 +191,8 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
 def _poll_pending_analyses_inner():
     """轮询逻辑主体"""
     from core.config import Config
-    from core.models import DeepAnalysis, session_scope
+    from db.session import session_scope
+    from models import DeepAnalysis
     from services.openclaw_ws_client import poll_session_result
 
     try:
@@ -273,7 +274,7 @@ def _poll_pending_analyses_inner():
                             record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
                             
                             try:
-                                from core.models import WebhookEvent
+                                from models import WebhookEvent
                                 event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)

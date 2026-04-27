@@ -4,10 +4,11 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query
 
+from api import _fail, _ok
 from core.logger import logger
-from core.models import AIUsageLog, AnalysisCache, session_scope
 from core.redis_client import get_redis
-from core.routes import _fail, _ok
+from db.session import session_scope
+from models import AIUsageLog, AnalysisCache
 
 ai_usage_router = APIRouter()
 
