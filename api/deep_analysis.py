@@ -1,3 +1,4 @@
+from sqlalchemy import select, func
 """
 api/deep_analysis.py
 ============================
@@ -124,7 +125,8 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict | None = None):
     payload = payload or {}
     try:
         async with session_scope() as session:
-            event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
+            result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
+        event = result.scalars().first()
             if not event:
                 return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 

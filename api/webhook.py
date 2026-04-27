@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 """
 api/webhook.py
 =====================
@@ -19,7 +21,7 @@ webhook_router = APIRouter()
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
 
 @webhook_router.get('/health')
-def health_check():
+async def health_check():
     from models import test_db_connection
     db_ok = test_db_connection()
     status = 'healthy' if db_ok else 'unhealthy'
@@ -31,7 +33,7 @@ def health_check():
 
 
 @webhook_router.get('/')
-def dashboard():
+async def dashboard():
     return FileResponse('templates/dashboard.html')
 
 
@@ -69,7 +71,8 @@ async def list_webhooks(
             return_full = normalized_fields in {'full', 'all'}
 
             total = query.count() if include_total else None
-            events = query.offset(offset).limit(page_size).all()
+            result = await session.execute(query.offset(offset).limit(page_size))
+            events = result.scalars().all()
 
             # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
             prev_ids_seen = {}
@@ -110,7 +113,7 @@ async def list_webhooks(
 
 
 @webhook_router.get('/api/webhooks/cursor', dependencies=[Depends(verify_api_key)])
-def list_webhooks_cursor(
+async def list_webhooks_cursor(
     limit: int = Query(200, ge=1, le=500),
     fields: str = Query('summary'),
     importance: str = Query(''),
@@ -134,7 +137,8 @@ def list_webhooks_cursor(
             normalized_fields = (fields or 'summary').lower().strip()
             return_full = normalized_fields in {'full', 'all'}
 
-            events = query.limit(limit).all()
+            result = await session.execute(query.limit(limit))
+            events = result.scalars().all()
 
             prev_ids_seen = {}
             prev_map = {}
@@ -171,12 +175,13 @@ def list_webhooks_cursor(
 
 
 @webhook_router.get('/api/webhooks/{webhook_id}', dependencies=[Depends(verify_api_key)])
-def get_webhook_detail(webhook_id: int):
+async def get_webhook_detail(webhook_id: int):
     from db.session import session_scope
     from models import WebhookEvent
 
     async with session_scope() as session:
-        event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
+        result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
+        event = result.scalars().first()
         if not event:
             return JSONResponse({'success': False, 'error': 'Webhook not found'}, status_code=404)
         return {'success': True, 'data': event.to_dict()}
