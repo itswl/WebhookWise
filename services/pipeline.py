@@ -21,10 +21,9 @@ from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
 from core.utils import (
     generate_alert_hash,
     processing_lock,
-    
 )
 from core.webhook_security import ensure_webhook_auth
-from crud.webhook import check_duplicate_alert
+from crud.webhook import check_duplicate_alert, save_webhook_data
 from db.session import session_scope
 from models import DeepAnalysis, WebhookEvent, get_session
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote, log_ai_usage
