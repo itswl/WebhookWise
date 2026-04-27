@@ -73,7 +73,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
         model=Config.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_question}
         ],
         temperature=Config.OPENAI_TEMPERATURE,
         max_tokens=Config.OPENAI_MAX_TOKENS * 2
@@ -199,7 +199,7 @@ async def list_all_deep_analyses(
 
     async with session_scope() as session:
         # 总数（始终计算）
-        total_query = select(func.count()).select_from(DeepAnalysis)
+        total_query = select(func.count).select_from(DeepAnalysis)
         if status_filter:
             total_query = total_query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
@@ -209,7 +209,7 @@ async def list_all_deep_analyses(
 
         # 记录查询
         query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())
-        
+
         if cursor:
             query = query.filter(DeepAnalysis.id < cursor)
         if status_filter:
