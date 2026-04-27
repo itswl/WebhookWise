@@ -1,5 +1,3 @@
-from sqlalchemy import select
-
 """
 api/webhook.py
 =====================
@@ -8,6 +6,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import select
 
 from core.auth import verify_api_key
 from core.config import Config
