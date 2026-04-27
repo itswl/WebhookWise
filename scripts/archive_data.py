@@ -11,9 +11,7 @@ if __name__ == "__main__":
     # 获取归档天数参数
     archive_days = 30
     if len(sys.argv) > 1:
-        try:
+        with contextlib.suppress(ValueError):
             archive_days = int(sys.argv[1])
-        except ValueError:
-            pass
             
     archive_old_data(archive_days)

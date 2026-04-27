@@ -6,7 +6,6 @@ API 性能测试脚本
 """
 
 import time
-from typing import Dict
 
 import pytest
 import requests
@@ -16,7 +15,7 @@ BASE_URL = "http://localhost:8000"
 pytest.skip("performance/integration script, run manually", allow_module_level=True)
 
 
-def test_api_performance(params: Dict[str, str], name: str):
+def test_api_performance(params: dict[str, str], name: str):
     """测试 API 性能"""
     print(f"\n{'='*60}")
     print(f"测试: {name}")

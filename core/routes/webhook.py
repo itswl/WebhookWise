@@ -46,7 +46,7 @@ def list_webhooks(
     include_total: bool = Query(False),
     importance: str = Query(''),
     source: str = Query(''),
-    cursor_id: Optional[int] = Query(None)
+    cursor_id: int | None = Query(None)
 ):
     from core.models import WebhookEvent, session_scope
 
@@ -115,7 +115,7 @@ def list_webhooks_cursor(
     fields: str = Query('summary'),
     importance: str = Query(''),
     source: str = Query(''),
-    cursor_id: Optional[int] = Query(None),
+    cursor_id: int | None = Query(None),
 ):
     from core.models import WebhookEvent, session_scope
 

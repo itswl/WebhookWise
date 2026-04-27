@@ -46,13 +46,13 @@ def _default_noise_context() -> NoiseReductionContext:
 
 
 def _build_alert_context(
-    event_id: Optional[int],
+    event_id: int | None,
     source: str,
     parsed_data: dict,
     analysis: dict,
     timestamp: datetime,
-    alert_hash: Optional[str] = None,
-    importance: Optional[str] = None,
+    alert_hash: str | None = None,
+    importance: str | None = None,
 ) -> AlertContext:
     derived_importance = str(importance or analysis.get('importance') or '').lower().strip()
     if derived_importance not in {'high', 'medium', 'low'}:
@@ -200,7 +200,7 @@ async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, boo
 
 async def _resolve_duplicate_analysis(
     original_event: WebhookEvent,
-    last_beyond_window_event: Optional[WebhookEvent],
+    last_beyond_window_event: WebhookEvent | None,
     webhook_full_data: dict
 ) -> tuple[dict, bool]:
     if last_beyond_window_event and last_beyond_window_event.ai_analysis:
@@ -225,8 +225,8 @@ async def _resolve_duplicate_analysis(
 
 
 async def _resolve_beyond_window_analysis(
-    original_event: Optional[WebhookEvent],
-    last_beyond_window_event: Optional[WebhookEvent],
+    original_event: WebhookEvent | None,
+    last_beyond_window_event: WebhookEvent | None,
     webhook_full_data: dict,
     allow_reanalyze: bool,
     prefer_recent_beyond_window: bool
@@ -361,7 +361,7 @@ async def _resolve_analysis_without_lock(
     return AnalysisResolution(analysis_result, reanalyzed, is_duplicate, original_event, beyond_window)
 
 
-def _refresh_original_event(original_id: Optional[int], fallback_event: Optional[WebhookEvent]) -> Optional[WebhookEvent]:
+def _refresh_original_event(original_id: int | None, fallback_event: WebhookEvent | None) -> WebhookEvent | None:
     if not original_id:
         return fallback_event
 
@@ -374,7 +374,7 @@ def _refresh_original_event(original_id: Optional[int], fallback_event: Optional
         return fallback_event
 
 
-def _recently_notified(original_event: Optional[WebhookEvent], original_id: Optional[int], alert_type: str) -> bool:
+def _recently_notified(original_event: WebhookEvent | None, original_id: int | None, alert_type: str) -> bool:
     if not original_event or not original_event.last_notified_at:
         return False
 
@@ -397,8 +397,8 @@ def _resolve_alert_type_label(is_duplicate: bool, beyond_window: bool, is_period
 
 
 def _decide_duplicate_forwarding(
-    original_event: Optional[WebhookEvent],
-    original_id: Optional[int]
+    original_event: WebhookEvent | None,
+    original_id: int | None
 ) -> ForwardDecision:
     if _recently_notified(original_event, original_id, '窗口内重复告警'):
         return ForwardDecision(False, f'窗口内重复告警（原始 ID={original_id}），刚刚已转发', False)
@@ -471,9 +471,9 @@ def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
-    noise_context: Optional[NoiseReductionContext],
-    original_event: Optional[WebhookEvent],
-    original_id: Optional[int],
+    noise_context: NoiseReductionContext | None,
+    original_event: WebhookEvent | None,
+    original_id: int | None,
     source: str = ''
 ) -> ForwardDecision:
     if noise_context and noise_context.suppress_forward:
@@ -533,7 +533,7 @@ def _update_last_notified(event_id: int) -> None:
         logger.warning(f"更新 last_notified_at 失败: {e}")
 
 
-def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str]) -> WebhookRequestContext:
+def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: str | None) -> WebhookRequestContext:
     requested_source = source or headers.get('x-webhook-source', 'unknown')
 
     logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
@@ -551,7 +551,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
         try:
             payload = json.loads(raw_body)
         except Exception:
-            raise InvalidJsonError()
+            raise InvalidJsonError() from None
 
     data = payload
 
@@ -577,11 +577,11 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
 
 
 def _build_webhook_response(
-    webhook_id: Union[int, str],
+    webhook_id: int | str,
     analysis_result: dict,
     forward_result: dict,
     is_dup: bool,
-    original_id: Optional[int],
+    original_id: int | None,
     beyond_window: bool,
     is_within_window: bool
 ) -> JSONResponse:
@@ -605,7 +605,7 @@ def _build_webhook_response(
     )
 
 
-async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: Optional[str] = None):
+async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: str | None = None):
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}")
     WEBHOOK_RECEIVED_TOTAL.labels(source=source or 'unknown', status='received').inc()
     analysis_result = {}

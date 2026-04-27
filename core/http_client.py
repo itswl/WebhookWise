@@ -5,7 +5,7 @@ import httpx
 from core.config import Config
 from core.logger import logger
 
-_async_client: Optional[httpx.AsyncClient] = None
+_async_client: httpx.AsyncClient | None = None
 
 def get_http_client() -> httpx.AsyncClient:
     """获取全局共享的异步 HTTP 客户端（协程安全，自动管理连接池）"""

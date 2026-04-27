@@ -112,9 +112,8 @@ def extract_generic_fields(data):
                         dim_name = dim.get('Name', '')
                         dim_value = dim.get('Value')
 
-                        if dim_name and dim_value:
-                            if dim_name in ['Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container']:
-                                key_fields[f'dim_{dim_name.lower()}'] = dim_value
+                        if dim_name and dim_value and dim_name in ['Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container']:
+                            key_fields[f'dim_{dim_name.lower()}'] = dim_value
 
     return key_fields
 

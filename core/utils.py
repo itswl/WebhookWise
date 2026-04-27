@@ -4,12 +4,13 @@ import json
 import os
 import threading
 import time
+from collections.abc import AsyncGenerator, Callable, Generator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Generator, Optional, Union
+from typing import Any, Optional, Union
 
 import httpx
 from fastapi import Request
@@ -52,18 +53,18 @@ class CircuitBreaker:
 
         self._lock = threading.RLock()
         self._failure_count = 0
-        self._last_failure_time: Optional[float] = None
+        self._last_failure_time: float | None = None
         self._state = CircuitState.CLOSED
 
     @property
     def state(self) -> CircuitState:
         with self._lock:
-            if self._state == CircuitState.OPEN:
-                if (
-                    self._last_failure_time is not None
-                    and time.time() - self._last_failure_time >= self.recovery_timeout
-                ):
-                    self._state = CircuitState.HALF_OPEN
+            if (
+                self._state == CircuitState.OPEN
+                and self._last_failure_time is not None
+                and time.time() - self._last_failure_time >= self.recovery_timeout
+            ):
+                self._state = CircuitState.HALF_OPEN
             return self._state
 
     def call(self, func: Callable, *args, **kwargs):
@@ -140,16 +141,16 @@ AnalysisResult = dict[str, Any]
 @dataclass(frozen=True)
 class DuplicateCheckResult:
     is_duplicate: bool
-    original_event: Optional[WebhookEvent]
+    original_event: WebhookEvent | None
     beyond_window: bool
-    last_beyond_window_event: Optional[WebhookEvent]
+    last_beyond_window_event: WebhookEvent | None
 
 
 @dataclass(frozen=True)
 class SaveWebhookResult:
-    webhook_id: Union[int, str]
+    webhook_id: int | str
     is_duplicate: bool
-    original_id: Optional[int]
+    original_id: int | None
     beyond_window: bool
 
 
@@ -157,7 +158,7 @@ MAX_SAVE_RETRIES = Config.SAVE_MAX_RETRIES
 RETRY_DELAY_SECONDS = Config.SAVE_RETRY_DELAY_SECONDS
 
 
-def verify_signature(payload: bytes, signature: str, secret: Optional[str] = None) -> bool:
+def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:
     """验证 webhook 签名"""
     if secret is None:
         secret = Config.WEBHOOK_SECRET
@@ -288,7 +289,7 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     return hash_value
 
 
-def _query_last_beyond_window_event(session: Session, alert_hash: str) -> Optional[WebhookEvent]:
+def _query_last_beyond_window_event(session: Session, alert_hash: str) -> WebhookEvent | None:
     return (
         session.query(WebhookEvent)
         .filter(
@@ -300,7 +301,7 @@ def _query_last_beyond_window_event(session: Session, alert_hash: str) -> Option
     )
 
 
-def _query_latest_original_event(session: Session, alert_hash: str) -> Optional[WebhookEvent]:
+def _query_latest_original_event(session: Session, alert_hash: str) -> WebhookEvent | None:
     return (
         session.query(WebhookEvent)
         .filter(
@@ -316,7 +317,7 @@ def _find_recent_window_event(
     session: Session,
     alert_hash: str,
     time_threshold: datetime
-) -> Optional[WebhookEvent]:
+) -> WebhookEvent | None:
     return (
         session.query(WebhookEvent)
         .filter(
@@ -330,7 +331,7 @@ def _find_recent_window_event(
 
 def _resolve_window_start(
     original_ref: WebhookEvent,
-    last_beyond_window: Optional[WebhookEvent]
+    last_beyond_window: WebhookEvent | None
 ) -> tuple[datetime, int]:
     if last_beyond_window:
         logger.debug(f"找到窗口外记录作为起点: ID={last_beyond_window.id}, 时间={last_beyond_window.timestamp}")
@@ -349,8 +350,8 @@ def _resolve_original_reference(session: Session, any_event: WebhookEvent) -> We
 
 def check_duplicate_alert(
     alert_hash: str,
-    time_window_hours: Optional[int] = None,
-    session: Optional[Session] = None,
+    time_window_hours: int | None = None,
+    session: Session | None = None,
     check_beyond_window: bool = False
 ) -> DuplicateCheckResult:
     """
@@ -436,19 +437,19 @@ def check_duplicate_alert(
 
 
 
-def _decode_raw_payload(raw_payload: Optional[bytes]) -> Optional[str]:
+def _decode_raw_payload(raw_payload: bytes | None) -> str | None:
     return raw_payload.decode('utf-8') if raw_payload else None
 
 
-def _normalize_headers(headers: Optional[HeadersDict]) -> HeadersDict:
+def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:
     return dict(headers) if headers else {}
 
 
 def _resolve_analysis_for_duplicate(
-    ai_analysis: Optional[AnalysisResult],
+    ai_analysis: AnalysisResult | None,
     original: WebhookEvent,
     reanalyzed: bool
-) -> tuple[AnalysisResult, Optional[str]]:
+) -> tuple[AnalysisResult, str | None]:
     if ai_analysis:
         final_analysis = ai_analysis
         final_importance = ai_analysis.get('importance')
@@ -470,19 +471,19 @@ def _resolve_analysis_for_duplicate(
 def _build_event(
     *,
     source: str,
-    client_ip: Optional[str],
-    raw_payload: Optional[bytes],
-    headers: Optional[HeadersDict],
+    client_ip: str | None,
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
     data: WebhookData,
     alert_hash: str,
-    ai_analysis: Optional[AnalysisResult],
-    importance: Optional[str],
+    ai_analysis: AnalysisResult | None,
+    importance: str | None,
     forward_status: str,
     is_duplicate: int,
-    duplicate_of: Optional[int],
+    duplicate_of: int | None,
     duplicate_count: int,
     beyond_window: int,
-    last_notified_at: Optional[datetime] = None
+    last_notified_at: datetime | None = None
 ) -> WebhookEvent:
     return WebhookEvent(
         source=source,
@@ -507,17 +508,17 @@ def _save_duplicate_event(
     session: Session,
     *,
     source: str,
-    client_ip: Optional[str],
-    raw_payload: Optional[bytes],
-    headers: Optional[HeadersDict],
+    client_ip: str | None,
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
     data: WebhookData,
     alert_hash: str,
-    ai_analysis: Optional[AnalysisResult],
+    ai_analysis: AnalysisResult | None,
     forward_status: str,
     original_event: WebhookEvent,
     beyond_window: bool,
     reanalyzed: bool
-) -> Optional[SaveWebhookResult]:
+) -> SaveWebhookResult | None:
     original = session.get(WebhookEvent, original_event.id)
     if not original:
         return None
@@ -566,12 +567,12 @@ def _save_new_event(
     session: Session,
     *,
     source: str,
-    client_ip: Optional[str],
-    raw_payload: Optional[bytes],
-    headers: Optional[HeadersDict],
+    client_ip: str | None,
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
     data: WebhookData,
     alert_hash: str,
-    ai_analysis: Optional[AnalysisResult],
+    ai_analysis: AnalysisResult | None,
     forward_status: str
 ) -> SaveWebhookResult:
     webhook_event = _build_event(
@@ -604,10 +605,10 @@ def _save_new_event(
 def _save_to_file_fallback(
     data: WebhookData,
     source: str,
-    raw_payload: Optional[bytes],
-    headers: Optional[HeadersDict],
-    client_ip: Optional[str],
-    ai_analysis: Optional[AnalysisResult]
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
+    client_ip: str | None,
+    ai_analysis: AnalysisResult | None
 ) -> SaveWebhookResult:
     file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
     return SaveWebhookResult(file_id, False, None, False)
@@ -616,14 +617,14 @@ def _save_to_file_fallback(
 def save_webhook_data(
     data: WebhookData,
     source: str = 'unknown',
-    raw_payload: Optional[bytes] = None,
-    headers: Optional[HeadersDict] = None,
-    client_ip: Optional[str] = None,
-    ai_analysis: Optional[AnalysisResult] = None,
+    raw_payload: bytes | None = None,
+    headers: HeadersDict | None = None,
+    client_ip: str | None = None,
+    ai_analysis: AnalysisResult | None = None,
     forward_status: str = 'pending',
-    alert_hash: Optional[str] = None,
-    is_duplicate: Optional[bool] = None,
-    original_event: Optional[WebhookEvent] = None,
+    alert_hash: str | None = None,
+    is_duplicate: bool | None = None,
+    original_event: WebhookEvent | None = None,
     beyond_window: bool = False,
     reanalyzed: bool = False
 ) -> SaveWebhookResult:
@@ -730,10 +731,10 @@ def save_webhook_data(
 def save_webhook_to_file(
     data: WebhookData,
     source: str = 'unknown',
-    raw_payload: Optional[bytes] = None,
-    headers: Optional[HeadersDict] = None,
-    client_ip: Optional[str] = None,
-    ai_analysis: Optional[AnalysisResult] = None
+    raw_payload: bytes | None = None,
+    headers: HeadersDict | None = None,
+    client_ip: str | None = None,
+    ai_analysis: AnalysisResult | None = None
 ) -> str:
     """保存 webhook 数据到文件(备份方式)"""
     # 创建数据目录
@@ -781,9 +782,9 @@ def get_client_ip(request: Request) -> str:
 def get_all_webhooks(
     page: int = 1,
     page_size: int = 20,
-    cursor_id: Optional[int] = None,
+    cursor_id: int | None = None,
     fields: str = 'summary'
-) -> tuple[list[dict], int, Optional[int]]:
+) -> tuple[list[dict], int, int | None]:
     """
     从数据库获取 webhook 数据（支持游标分页和字段选择）
 
