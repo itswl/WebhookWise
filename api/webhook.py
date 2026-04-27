@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
-from core.utils import get_client_ip
 from core.webhook_security import enforce_webhook_rate_limit, ensure_webhook_auth
+from crud.webhook import get_client_ip
 
 webhook_router = APIRouter()
 
