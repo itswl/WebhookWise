@@ -2,6 +2,8 @@ import os
 import threading
 import time
 
+_stop_event = threading.Event()
+
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
@@ -12,7 +14,7 @@ _RENEW_INTERVAL_SECONDS = 30
 
 
 def _renew_leader(redis, token: str) -> None:
-    while True:
+    while not _stop_event.is_set():
         try:
             current = redis.get(_LEADER_KEY)
             if current is None or (isinstance(current, bytes) and current.decode('utf-8') != token) or (isinstance(current, str) and current != token):
@@ -21,8 +23,11 @@ def _renew_leader(redis, token: str) -> None:
         except Exception as e:
             logger.warning(f"[Pollers] leader renew failed: {e}")
             return
-        time.sleep(_RENEW_INTERVAL_SECONDS)
+        _stop_event.wait(_RENEW_INTERVAL_SECONDS)
 
+
+def stop_background_pollers():
+    _stop_event.set()
 
 def start_background_pollers(worker_id: str | None = None) -> bool:
     if not getattr(Config, "ENABLE_POLLERS", True):
