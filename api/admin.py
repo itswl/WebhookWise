@@ -208,7 +208,7 @@ def _run_add_unique_constraint_migration() -> bool:
 
 
 @admin_router.get('/api/config')
-def get_config():
+async def get_config():
     try:
         env_values = _load_env_values('.env')
         return _ok(_build_config_response(env_values), 200)
@@ -218,7 +218,7 @@ def get_config():
 
 
 @admin_router.post('/api/config')
-def update_config(payload: dict | None = None):
+async def update_config(payload: dict | None = None):
     try:
         if not payload:
             return _fail('请求体为空', 400)
