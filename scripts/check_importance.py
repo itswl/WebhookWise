@@ -83,7 +83,7 @@ def check_importance_distribution():
 if __name__ == '__main__':
     try:
         check_importance_distribution()
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"错误: {e}")
         print("\n提示: 请确保数据库连接正常")
         print("运行: python -c \"from models import test_db_connection; test_db_connection()\"")

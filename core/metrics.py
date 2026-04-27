@@ -65,7 +65,7 @@ def setup_metrics(app):
         try:
             prometheus_client.start_http_server(port=Config.METRICS_PORT, addr=Config.HOST)
             logger.info(f"[Metrics] 成功启动独立的 Prometheus 监控端口: {Config.METRICS_PORT}")
-        except OSError as e:
+        except OSError as e: # noqa: PERF203
             if "Address already in use" in str(e):
                 logger.debug(f"[Metrics] 独立监控端口 {Config.METRICS_PORT} 已被其他 Worker 绑定，复用该指标服务。")
             else:

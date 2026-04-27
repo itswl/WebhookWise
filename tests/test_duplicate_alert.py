@@ -116,8 +116,8 @@ def test_duplicate_detection():
 if __name__ == '__main__':
     try:
         test_duplicate_detection()
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError: # noqa: PERF203
         print("错误: 无法连接到 webhook 服务，请确保服务已启动")
         print("运行: python app.py")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"错误: {str(e)}")

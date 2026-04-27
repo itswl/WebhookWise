@@ -54,7 +54,7 @@ def _notify_feishu_deep_analysis(record, source: str = ''):
             source=source,
             webhook_event_id=record.webhook_event_id
         ))
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"飞书深度分析通知失败: {e}")
 
 
@@ -85,7 +85,7 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
             webhook_event_id=record.webhook_event_id
         ))
         logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
 
@@ -103,7 +103,7 @@ def poll_pending_analyses():
         
     try:
         _poll_pending_analyses_inner()
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
         redis_client.delete(lock_key)
@@ -179,7 +179,7 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
             last_error = "No text content"
             continue
             
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             last_error = str(e)
             logger.warning(f"HTTP 轮询异常: {e}")
     
@@ -257,7 +257,7 @@ def _poll_pending_analyses_inner():
                             if json_text:
                                 try:
                                     parsed_result = json.loads(json_text)
-                                except Exception:
+                                except Exception: # noqa: PERF203
                                     parsed_result = None
 
                             if parsed_result and isinstance(parsed_result, dict):
@@ -278,7 +278,7 @@ def _poll_pending_analyses_inner():
                                 event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)
-                            except Exception as e:
+                            except Exception as e: # noqa: PERF203
                                 logger.debug(f"飞书深度分析通知失败: {e}")
                         else:
                             _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
@@ -295,7 +295,7 @@ def _poll_pending_analyses_inner():
                                 if json_text:
                                     try:
                                         parsed_result = json.loads(json_text)
-                                    except Exception:
+                                    except Exception: # noqa: PERF203
                                         parsed_result = None
 
                                 record.analysis_result = parsed_result or {'root_cause': text}
@@ -303,10 +303,10 @@ def _poll_pending_analyses_inner():
                                 continue
                         _clear_poll_stability(record.id)
 
-                except Exception as e:
+                except Exception as e: # noqa: PERF203
                     logger.error(f"轮询记录 id={record.id} 失败: {e}")
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"轮询任务异常: {e}")
 
 
@@ -317,7 +317,7 @@ def start_poller(interval: int = 30):
         while True:
             try:
                 poll_pending_analyses()
-            except Exception as e:
+            except Exception as e: # noqa: PERF203
                 logger.error(f"轮询循环异常: {e}")
             time.sleep(interval)
     
@@ -336,6 +336,6 @@ def _extract_robust_json(text: str) -> str | None:
             elif text[i] == '}':
                 stack -= 1
                 if stack == 0: return text[start_idx:i+1]
-    except Exception:
+    except Exception: # noqa: PERF203
         return None
     return None
