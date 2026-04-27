@@ -36,6 +36,10 @@ COPY .env.example .env
 COPY main.py .
 COPY entrypoint.sh .
 COPY core/ ./core/
+COPY api/ ./api/
+COPY models/ ./models/
+COPY db/ ./db/
+COPY crud/ ./crud/
 COPY services/ ./services/
 COPY adapters/ ./adapters/
 COPY templates/ ./templates/
@@ -66,4 +70,4 @@ ENTRYPOINT ["./entrypoint.sh"]
 
 # 使用 gunicorn 运行应用(生产环境)
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "core.app:app"]
