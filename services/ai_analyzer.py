@@ -33,7 +33,7 @@ ForwardResult = dict[str, Any]
 _user_prompt_template: str | None = None
 
 
-def get_cache_key(alert_hash: str) -> str:
+async def get_cache_key(alert_hash: str) -> str:
     """生成缓存 key"""
     return f"analysis_{alert_hash}"
 
@@ -677,7 +677,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
             logger.info(f"[Cache] 命中历史分析缓存: source={source}, hash={alert_hash[:16]}...")
             cached_result['_route_type'] = 'cache'
             # 记录缓存命中
-            log_ai_usage(
+            await log_ai_usage(
                 route_type='cache',
                 alert_hash=alert_hash,
                 source=source,
@@ -695,7 +695,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         result['_degraded'] = True
         result['_degraded_reason'] = 'AI 分析功能已禁用'
         result['_route_type'] = 'rule'
-        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
         # 返回结果
         return result
 
@@ -708,7 +708,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         result['_route_type'] = 'rule'
         # 发送降级通知
         await _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
-        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
         # 返回结果
         return result
 
@@ -729,10 +729,10 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
             analysis['_route_type'] = 'ai'
 
             # 保存到缓存
-            save_to_cache(alert_hash, analysis)
+            await save_to_cache(alert_hash, analysis)
 
             # 记录 AI 使用
-            log_ai_usage(
+            await log_ai_usage(
                 route_type='ai',
                 alert_hash=alert_hash,
                 source=source,
@@ -759,7 +759,7 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         result['_degraded_reason'] = f'AI 分析失败: {last_error!s}'
         result['_route_type'] = 'rule'
         await _send_degradation_alert(webhook_data, str(last_error))
-        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
         return result
     else:
         # 不降级，直接返回错误
