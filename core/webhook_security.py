@@ -35,7 +35,7 @@ def ensure_webhook_auth(headers: dict, raw_body: bytes) -> None:
             raise InvalidSignatureError()
 
 
-def enforce_webhook_rate_limit(request: Request) -> str | None:
+async def enforce_webhook_rate_limit(request: Request) -> str | None:
     if not Config.WEBHOOK_RATE_LIMIT_PER_MINUTE or Config.WEBHOOK_RATE_LIMIT_PER_MINUTE <= 0:
         return None
 
@@ -43,9 +43,9 @@ def enforce_webhook_rate_limit(request: Request) -> str | None:
     redis = get_redis()
     window = int(time.time() // 60)
     key = f"rl:webhook:{client_ip}:{window}"
-    current = redis.incr(key)
+    current = await redis.incr(key)
     if current == 1:
-        redis.expire(key, 70)
+        await redis.expire(key, 70)
     if current > Config.WEBHOOK_RATE_LIMIT_PER_MINUTE:
         return client_ip
     return None
