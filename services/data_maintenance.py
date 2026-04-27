@@ -44,30 +44,27 @@ def archive_old_data(days: int = 30):
                 
                 events = session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).all()
                 
-                archived_records = []
-                for e in events:
-                    archived_records.append({
-                        'id': e.id,
-                        'source': e.source,
-                        'client_ip': e.client_ip,
-                        'timestamp': e.timestamp,
-                        'raw_payload': e.raw_payload,
-                        'headers': e.headers,
-                        'parsed_data': e.parsed_data,
-                        'alert_hash': e.alert_hash,
-                        'ai_analysis': e.ai_analysis,
-                        'importance': e.importance,
-                        'forward_status': e.forward_status,
-                        'is_duplicate': e.is_duplicate,
-                        'duplicate_of': e.duplicate_of,
-                        'duplicate_count': e.duplicate_count,
-                        'beyond_window': e.beyond_window,
-                        'last_notified_at': e.last_notified_at,
-                        'created_at': e.created_at,
-                        'updated_at': e.updated_at,
-                        'archived_at': datetime.now()
-                    })
-                
+                archived_records = [{
+                    'id': e.id,
+                    'source': e.source,
+                    'client_ip': e.client_ip,
+                    'timestamp': e.timestamp,
+                    'raw_payload': e.raw_payload,
+                    'headers': e.headers,
+                    'parsed_data': e.parsed_data,
+                    'alert_hash': e.alert_hash,
+                    'ai_analysis': e.ai_analysis,
+                    'importance': e.importance,
+                    'forward_status': e.forward_status,
+                    'is_duplicate': e.is_duplicate,
+                    'duplicate_of': e.duplicate_of,
+                    'duplicate_count': e.duplicate_count,
+                    'beyond_window': e.beyond_window,
+                    'last_notified_at': e.last_notified_at,
+                    'created_at': e.created_at,
+                    'updated_at': e.updated_at,
+                    'archived_at': datetime.now()
+                } for e in events]                
                 if archived_records:
                     session.execute(insert(ArchivedWebhookEvent), archived_records)
                     
@@ -79,6 +76,6 @@ def archive_old_data(days: int = 30):
             logger.info(f"[Maintenance] 归档任务完成！共处理 {total_moved} 条记录。")
             return total_moved
             
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"[Maintenance] 归档任务失败: {e}", exc_info=True)
         return total_moved

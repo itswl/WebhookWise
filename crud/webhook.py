@@ -177,7 +177,7 @@ def check_duplicate_alert(
 
         return DuplicateCheckResult(False, None, False, None)
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"检查重复告警失败: {str(e)}")
         return DuplicateCheckResult(False, None, False, None)
     finally:
@@ -425,7 +425,7 @@ def save_webhook_data(
                     forward_status=forward_status
                 )
 
-        except IntegrityError as e:
+        except IntegrityError as e: # noqa: PERF203
             logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {str(e)}")
 
             if attempt < MAX_SAVE_RETRIES - 1:
@@ -470,7 +470,7 @@ def save_webhook_data(
                 fallback_session.flush()
                 return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
 
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
             return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
 
@@ -598,7 +598,7 @@ def get_all_webhooks(
                         current_timestamp = datetime.fromisoformat(webhook['timestamp'])
                         key = (webhook['alert_hash'], current_timestamp)
                         lookup_map[key] = webhook
-                    except Exception as e:
+                    except Exception as e: # noqa: PERF203
                         logger.warning(f"解析时间戳失败 (webhook={webhook.get('id')}): {e}")
                         webhook['prev_alert_id'] = None
 
@@ -634,7 +634,7 @@ def get_all_webhooks(
                                 break
                         webhook['prev_alert_id'] = prev_id
                         webhook['prev_alert_timestamp'] = prev_timestamp.isoformat() if prev_timestamp else None
-                except Exception as e:
+                except Exception as e: # noqa: PERF203
                     logger.warning(f"批量计算 prev_alert_id 失败: {e}")
                     # 失败时设置为 None
                     for webhook in lookup_map.values():
@@ -652,7 +652,7 @@ def get_all_webhooks(
 
             return webhooks, total, next_cursor
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
         webhooks = get_webhooks_from_files(limit=page_size)
         return webhooks, len(webhooks), None
@@ -674,7 +674,7 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
                 webhook_data = json.load(f)
                 webhook_data['filename'] = filename
                 webhooks.append(webhook_data)
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.error(f"读取文件失败 {filename}: {str(e)}")
     
     # 按 timestamp 字段倒序排序（最新的在前面）

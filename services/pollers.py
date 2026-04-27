@@ -18,7 +18,7 @@ def _renew_leader(redis, token: str) -> None:
             if current is None or (isinstance(current, bytes) and current.decode('utf-8') != token) or (isinstance(current, str) and current != token):
                 return
             redis.expire(_LEADER_KEY, _LEADER_TTL_SECONDS)
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.warning(f"[Pollers] leader renew failed: {e}")
             return
         time.sleep(_RENEW_INTERVAL_SECONDS)
@@ -33,13 +33,13 @@ def start_background_pollers(worker_id: str | None = None) -> bool:
 
     try:
         redis = get_redis()
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"[Pollers] redis unavailable, skip starting pollers: {e}")
         return False
 
     try:
         acquired = redis.set(_LEADER_KEY, worker_id, nx=True, ex=_LEADER_TTL_SECONDS)
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"[Pollers] failed to acquire leader lock: {e}")
         return False
 
@@ -52,13 +52,13 @@ def start_background_pollers(worker_id: str | None = None) -> bool:
     try:
         from services.maintenance_poller import start_maintenance_poller
         start_maintenance_poller()
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"[Pollers] maintenance poller start failed: {e}")
 
     try:
         from services.openclaw_poller import start_poller
         start_poller(interval=30)
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"[Pollers] openclaw poller start failed: {e}")
 
     logger.info("[Pollers] started")

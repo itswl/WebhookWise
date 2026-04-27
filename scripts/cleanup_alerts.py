@@ -238,10 +238,10 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: # noqa: PERF203
         print("\n\n❌ 操作已取消")
         sys.exit(1)
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"\n\n❌ 错误：{e}")
         import traceback
         traceback.print_exc()

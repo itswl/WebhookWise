@@ -100,7 +100,7 @@ def _build_device_auth(nonce: str) -> dict | None:
     try:
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-    except ImportError:
+    except ImportError: # noqa: PERF203
         logger.warning("cryptography package not installed, skipping device auth. "
                        "Install with: pip install cryptography>=42.0.0")
         return None
@@ -138,7 +138,7 @@ def _build_device_auth(nonce: str) -> dict | None:
                 'nonce': nonce
             }
         }
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.warning(f"Failed to build device auth: {e}")
         return None
 
@@ -173,9 +173,9 @@ def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
                 logger.warning("connect.challenge frame has no nonce")
         else:
             logger.debug(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
-    except websocket.WebSocketTimeoutException:
+    except websocket.WebSocketTimeoutException: # noqa: PERF203
         logger.debug("No connect.challenge received (timeout) — likely OpenClaw, not OpenClaw")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.debug(f"Error receiving challenge: {e}")
     finally:
         ws.settimeout(old_timeout)
@@ -270,15 +270,15 @@ class OpenClawWSClient:
             logger.info(f"Connected to OpenClaw Gateway, connId={payload.get('server', {}).get('connId', 'unknown')}")
             return True
             
-        except websocket.WebSocketTimeoutException:
+        except websocket.WebSocketTimeoutException: # noqa: PERF203
             self._connection_error = 'handshake_timeout'
             logger.error(f"OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s) - server may be overloaded")
             return False
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as e: # noqa: PERF203
             self._connection_error = 'invalid_response'
             logger.error(f"Failed to parse connect response: {e}")
             return False
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             self._connection_error = 'handshake_error'
             logger.error(f"Connect handshake failed: {e}")
             return False
@@ -325,10 +325,7 @@ class OpenClawWSClient:
                 content = message.get('content', [])
                 if isinstance(content, list):
                     # 提取 type=="text" 的内容，排除 type=="thinking"
-                    text_parts = []
-                    for item in content:
-                        if isinstance(item, dict) and item.get('type') == 'text':
-                            text_parts.append(item.get('text', ''))
+                    text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
                     final_text = '\n'.join(text_parts)
                 elif isinstance(content, str):
                     final_text = content
@@ -383,13 +380,13 @@ class OpenClawWSClient:
                 except websocket.WebSocketTimeoutException:
                     # recv 超时，继续循环检查 _done
                     continue
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError as e: # noqa: PERF203
                     logger.warning(f"Failed to parse WebSocket message: {e}")
                     continue
                     
-        except websocket.WebSocketConnectionClosedException:
+        except websocket.WebSocketConnectionClosedException: # noqa: PERF203
             logger.warning("WebSocket connection closed unexpectedly")
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.error(f"Error in listen loop: {e}")
     
     def wait_for_result(self) -> dict:
@@ -448,7 +445,7 @@ class OpenClawWSClient:
                     'partial_text': partial_text
                 }
         
-        except websocket.WebSocketTimeoutException:
+        except websocket.WebSocketTimeoutException: # noqa: PERF203
             self._connection_error = 'connect_timeout'
             logger.error(f"WebSocket connection timeout ({self.connect_timeout}s) - TCP or WS handshake failed")
             return {
@@ -457,7 +454,7 @@ class OpenClawWSClient:
                 'error': f'Connection timeout ({self.connect_timeout}s): Unable to establish WebSocket connection. Check network/firewall.',
                 'error_type': 'connect_timeout'
             }
-        except ConnectionRefusedError as e:
+        except ConnectionRefusedError as e: # noqa: PERF203
             self._connection_error = 'connection_refused'
             logger.error(f"Connection refused: {e}")
             return {
@@ -476,7 +473,7 @@ class OpenClawWSClient:
                 'error': f'Network error: {e}',
                 'error_type': 'network_error'
             }
-        except websocket.WebSocketException as e:
+        except websocket.WebSocketException as e: # noqa: PERF203
             self._connection_error = 'websocket_error'
             logger.error(f"WebSocket error: {e}")
             return {
@@ -485,7 +482,7 @@ class OpenClawWSClient:
                 'error': f'WebSocket connection failed: {e}',
                 'error_type': 'websocket_error'
             }
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             self._connection_error = 'unexpected_error'
             logger.error(f"Unexpected error: {e}")
             return {
@@ -500,7 +497,7 @@ class OpenClawWSClient:
             if self._ws:
                 try:
                     self._ws.close()
-                except Exception as e:
+                except Exception as e: # noqa: PERF203
                     logger.debug(f"WebSocket close failed: {e}")
     
     def _get_connection_error_message(self) -> str:
@@ -728,16 +725,16 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         # 超过最大帧数仍未收到响应
         return {"status": "error", "error": "No response received for chat.history request"}
     
-    except websocket.WebSocketTimeoutException:
+    except websocket.WebSocketTimeoutException: # noqa: PERF203
         logger.warning(f"Poll timeout for session_key={session_key}")
         return {"status": "error", "error": f"Timeout ({timeout}s)"}
-    except ConnectionRefusedError:
+    except ConnectionRefusedError: # noqa: PERF203
         return {"status": "error", "error": f"Connection refused: {ws_url}"}
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError as e: # noqa: PERF203
         return {"status": "error", "error": f"Invalid JSON response: {e}"}
-    except websocket.WebSocketException as e:
+    except websocket.WebSocketException as e: # noqa: PERF203
         return {"status": "error", "error": f"WebSocket error: {e}"}
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"Poll error: {e}")
         return {"status": "error", "error": str(e)}
     finally:
@@ -745,7 +742,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         if ws:
             try:
                 ws.close()
-            except Exception as e:
+            except Exception as e: # noqa: PERF203
                 logger.debug(f"WebSocket close failed: {e}")
 
 
