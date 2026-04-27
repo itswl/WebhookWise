@@ -17,7 +17,8 @@ from core.logger import logger
 # We will import the purely utility functions back from core.utils
 from core.utils import generate_alert_hash
 from db.session import session_scope
-from models import WebhookEvent, get_session
+from models import WebhookEvent
+from db.session import get_session
 
 WebhookData = dict[str, Any]
 HeadersDict = dict[str, str]
