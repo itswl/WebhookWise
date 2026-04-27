@@ -29,7 +29,7 @@ class AnalysisResolution:
     analysis_result: dict
     reanalyzed: bool
     is_duplicate: bool
-    original_event: Optional[object]  # WebhookEvent
+    original_event: object | None  # WebhookEvent
     beyond_window: bool
 
 
@@ -46,7 +46,7 @@ class WebhookRequestContext:
 @dataclass
 class ForwardDecision:
     should_forward: bool
-    skip_reason: Optional[str]
+    skip_reason: str | None
     is_periodic_reminder: bool
     matched_rules: list = field(default_factory=list)
 
@@ -54,7 +54,7 @@ class ForwardDecision:
 @dataclass(frozen=True)
 class NoiseReductionContext:
     relation: str
-    root_cause_event_id: Optional[int]
+    root_cause_event_id: int | None
     confidence: float
     suppress_forward: bool
     reason: str

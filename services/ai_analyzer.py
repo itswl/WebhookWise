@@ -30,7 +30,7 @@ AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
 
 # 缓存 prompt 模板
-_user_prompt_template: Optional[str] = None
+_user_prompt_template: str | None = None
 
 
 def get_cache_key(alert_hash: str) -> str:
@@ -38,7 +38,7 @@ def get_cache_key(alert_hash: str) -> str:
     return f"analysis_{alert_hash}"
 
 
-def get_cached_analysis(alert_hash: str) -> Optional[dict]:
+def get_cached_analysis(alert_hash: str) -> dict | None:
     """
     从缓存获取分析结果
     
@@ -145,7 +145,7 @@ def log_ai_usage(
     route_type: str,
     alert_hash: str,
     source: str,
-    model: Optional[str] = None,
+    model: str | None = None,
     tokens_in: int = 0,
     tokens_out: int = 0,
     cache_hit: bool = False
@@ -351,7 +351,7 @@ def _extract_json_payload(text: str) -> str:
     return text
 
 
-def _extract_first_json_object(text: str) -> Optional[str]:
+def _extract_first_json_object(text: str) -> str | None:
     """提取第一个 JSON 对象（允许末尾不完整）。"""
     start = text.find('{')
     if start < 0:
@@ -439,7 +439,7 @@ def _safe_json_string(raw: str) -> str:
         return raw.replace('\\n', ' ').replace('\\"', '"').strip()
 
 
-def _extract_json_string_field(text: str, key: str) -> Optional[str]:
+def _extract_json_string_field(text: str, key: str) -> str | None:
     strict = re.search(rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', text, re.DOTALL)
     if strict:
         return _safe_json_string(strict.group(1)).strip()
@@ -544,7 +544,7 @@ def _normalize_analysis_result(result: AnalysisResult, source: str) -> AnalysisR
     return normalized
 
 
-def _try_parse_json_analysis(candidate: str) -> Optional[AnalysisResult]:
+def _try_parse_json_analysis(candidate: str) -> AnalysisResult | None:
     attempts = [
         candidate,
         fix_json_format(candidate),
@@ -645,7 +645,7 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
     return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
 
 
-async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: Optional[str] = None, skip_cache: bool = False) -> AnalysisResult:
+async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False) -> AnalysisResult:
     """
     使用 AI 分析 webhook 数据
     
@@ -1230,7 +1230,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
-    target_url: Optional[str] = None,
+    target_url: str | None = None,
     is_periodic_reminder: bool = False
 ) -> ForwardResult:
     """将分析后的数据转发到远程服务器

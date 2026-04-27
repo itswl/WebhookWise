@@ -17,7 +17,7 @@ reanalysis_router = APIRouter()
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
-def _get_webhook_event_by_id(session, webhook_id: int) -> Optional[WebhookEvent]:
+def _get_webhook_event_by_id(session, webhook_id: int) -> WebhookEvent | None:
     return session.query(WebhookEvent).filter_by(id=webhook_id).first()
 
 
@@ -30,7 +30,7 @@ def _build_webhook_context(event: WebhookEvent) -> dict:
     }
 
 
-def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result: dict, new_importance: Optional[str]) -> int:
+def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result: dict, new_importance: str | None) -> int:
     duplicate_events = session.query(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id).all()
     for dup in duplicate_events:
         dup.ai_analysis = analysis_result
@@ -38,7 +38,7 @@ def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_result:
     return len(duplicate_events)
 
 
-async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: int) -> tuple[dict, Optional[str], Optional[str], int]:
+async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: int) -> tuple[dict, str | None, str | None, int]:
     webhook_data = _build_webhook_context(webhook_event)
 
     logger.info(f"重新分析 webhook ID: {webhook_id}")
@@ -102,11 +102,12 @@ async def reanalyze_webhook(webhook_id: int):
         raise
     except Exception as e:
         logger.error(f"重新分析失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @reanalysis_router.post('/api/forward/{webhook_id}')
-async def manual_forward_webhook(webhook_id: int, data: dict = Body(default={})):
+async def manual_forward_webhook(webhook_id: int, data: dict = None):
+    data = data or {}
     """手动转发 webhook"""
     try:
         custom_url = data.get('target_url')
@@ -127,4 +128,4 @@ async def manual_forward_webhook(webhook_id: int, data: dict = Body(default={}))
         raise
     except Exception as e:
         logger.error(f"手动转发失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
