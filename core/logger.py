@@ -9,7 +9,7 @@ from core.config import Config
 try:
     from pythonjsonlogger import jsonlogger
     HAS_JSON_LOGGER = True
-except ImportError:
+except ImportError: # noqa: PERF203
     HAS_JSON_LOGGER = False
 
 

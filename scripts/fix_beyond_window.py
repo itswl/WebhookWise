@@ -81,7 +81,7 @@ def fix_beyond_window(time_window_hours=24):
             now = datetime.now()
             time_threshold = timedelta(hours=time_window_hours)
 
-            for _alert_hash, events in hash_groups.items():
+            for events in hash_groups.values():
                 # 第一个事件（最早的原始告警）
                 if len(events) == 1:
                     continue  # 只有一条记录，不需要修复
@@ -145,7 +145,7 @@ def fix_beyond_window(time_window_hours=24):
             print(f"✅ 成功修复 {len(updates)} 条记录")
             return len(updates)
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"❌ 修复失败: {e}")
         import traceback
         traceback.print_exc()

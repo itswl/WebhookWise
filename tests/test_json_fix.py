@@ -75,12 +75,12 @@ def test_json_fix():
             passed += 1
             print("✓ 测试通过")
                 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as e: # noqa: PERF203
             print(f"✗ 解析失败: {str(e)}")
             assert not test['should_pass']
             passed += 1
             print("✓ 测试通过（预期失败）")
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             print(f"✗ 异常: {str(e)}")
             failed += 1
     

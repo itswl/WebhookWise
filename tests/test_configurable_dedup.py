@@ -207,10 +207,10 @@ def main():
         print("所有测试完成！")
         print("=" * 60)
         
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError: # noqa: PERF203
         print("错误: 无法连接到 webhook 服务，请确保服务已启动")
         print("运行: python app.py")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"错误: {str(e)}")
         import traceback
         traceback.print_exc()

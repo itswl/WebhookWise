@@ -67,13 +67,13 @@ try:
                     }
                 }
                 print("Device auth constructed successfully")
-            except ImportError:
+            except ImportError: # noqa: PERF203
                 print("WARNING: cryptography not installed, skipping device auth")
-            except Exception as e:
+            except Exception as e: # noqa: PERF203
                 print(f"WARNING: Failed to build device auth: {e}")
     else:
         print(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
-except Exception:
+except Exception: # noqa: PERF203
     print("No connect.challenge received (likely OpenClaw, not OpenClaw)")
 
 # Connect (v3 protocol)

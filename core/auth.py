@@ -40,7 +40,7 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
         
         try:
             body_bytes = await request.body()
-        except Exception:
+        except Exception: # noqa: PERF203
             body_bytes = b""
             
         logger.warning(
