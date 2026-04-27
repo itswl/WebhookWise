@@ -23,7 +23,7 @@ async def _renew_leader(redis, token: str) -> None:
         except Exception as e:
             logger.warning(f"[Pollers] leader renew failed: {e}")
             return
-        _stop_event.wait(_RENEW_INTERVAL_SECONDS)
+        await asyncio.sleep(_RENEW_INTERVAL_SECONDS)
 
 
 
@@ -33,7 +33,14 @@ async def _renew_leader(redis, token: str) -> None:
 
 
 def _run_renew(redis, token):
-    asyncio.run(_renew_leader(redis, token))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_renew_leader(redis, token))
+    except Exception as e:
+        logger.error(f"[Pollers] _run_renew error: {e}")
+    finally:
+        loop.close()
 
 def stop_background_pollers():
     _stop_event.set()
