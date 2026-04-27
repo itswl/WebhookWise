@@ -199,7 +199,7 @@ async def list_all_deep_analyses(
 
     async with session_scope() as session:
         # 总数（始终计算）
-        total_query = select(func.count).select_from(DeepAnalysis)
+        total_query = select(func.count()).select_from(DeepAnalysis)
         if status_filter:
             total_query = total_query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
