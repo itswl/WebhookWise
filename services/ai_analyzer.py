@@ -711,58 +711,68 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         return result
 
     # Step 4: 调用 AI 分析
-    try:
-        start_time = time.time()
-        analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
+    import asyncio
+    max_retries = 3
+    last_error = None
 
-        duration = time.time() - start_time
-        AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='openai').observe(duration)
-        logger.info(f"AI 分析完成: {source}")
-        analysis['_degraded'] = False
-        analysis['_route_type'] = 'ai'
-        
-        # 保存到缓存
-        save_to_cache(alert_hash, analysis)
-        
-        # 记录 AI 使用
-        log_ai_usage(
-            route_type='ai',
-            alert_hash=alert_hash,
-            source=source,
-            model=Config.OPENAI_MODEL,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out
-    )
-        
-        return analysis
+    for attempt in range(1, max_retries + 1):
+        try:
+            start_time = time.time()
+            analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
 
-    except Exception as e:
-        logger.error(f"AI 分析失败: {str(e)}", exc_info=True)
-        # 根据配置决定是否降级
-        if Config.ENABLE_AI_DEGRADATION:
-            logger.warning("启用 AI 降级策略，使用本地规则分析")
-            result = analyze_with_rules(parsed_data, source)
-            result['_degraded'] = True
-            result['_degraded_reason'] = f'AI 分析失败: {str(e)}'
-            result['_route_type'] = 'rule'
-            await _send_degradation_alert(webhook_data, str(e))
-            log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
-            return result
-        else:
-            # 不降级，直接返回错误
-            logger.error("AI 分析失败且未启用降级策略，返回错误")
-            await _send_degradation_alert(webhook_data, str(e))
-            return {
-                'summary': f'AI 分析失败: {str(e)}',
-                'root_cause': '分析失败，请检查 AI 服务配置',
-                'impact': '未知',
-                'recommendations': ['检查 AI 服务连接', '查看日志获取详细信息'],
-                'severity': 'critical',
-                '_degraded': True,
-                '_degraded_reason': f'AI 分析失败: {str(e)}',
-                '_route_type': 'error'
-            }
+            duration = time.time() - start_time
+            AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='openai').observe(duration)
+            logger.info(f"AI 分析完成: {source} (尝试 {attempt}/{max_retries})")
+            analysis['_degraded'] = False
+            analysis['_route_type'] = 'ai'
 
+            # 保存到缓存
+            save_to_cache(alert_hash, analysis)
+
+            # 记录 AI 使用
+            log_ai_usage(
+                route_type='ai',
+                alert_hash=alert_hash,
+                source=source,
+                model=Config.OPENAI_MODEL,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out
+            )
+
+            return analysis
+
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                logger.warning(f"AI 分析失败 (尝试 {attempt}/{max_retries}): {str(e)}，等待重试...")
+                await asyncio.sleep(2 * attempt)
+            else:
+                logger.error(f"AI 分析在全部 {max_retries} 次重试后依然失败: {str(e)}", exc_info=True)
+
+    # 根据配置决定是否降级
+    if Config.ENABLE_AI_DEGRADATION:
+        logger.warning("启用 AI 降级策略，使用本地规则分析")
+        result = analyze_with_rules(parsed_data, source)
+        result['_degraded'] = True
+        result['_degraded_reason'] = f'AI 分析失败: {str(last_error)}'
+        result['_route_type'] = 'rule'
+        await _send_degradation_alert(webhook_data, str(last_error))
+        log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        return result
+    else:
+        # 不降级，直接返回错误
+        logger.error("AI 分析失败且未启用降级策略，返回错误")
+        await _send_degradation_alert(webhook_data, str(last_error))
+        return {
+            'summary': f'AI 分析失败: {str(last_error)}',
+            'root_cause': '分析失败，请检查 AI 服务配置',
+            'impact': '未知',
+            'recommendations': ['检查 AI 服务连接', '查看日志获取详细信息'],
+            'severity': 'critical',
+            '_degraded': True,
+            '_degraded_reason': f'AI 分析失败: {str(last_error)}',
+            '_route_type': 'error'
+        }
 
 async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
     """
