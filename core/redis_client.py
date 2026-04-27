@@ -1,4 +1,4 @@
-import redis
+import redis.asyncio as redis
 
 from core.config import Config
 from core.logger import logger
