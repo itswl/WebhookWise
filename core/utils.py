@@ -65,7 +65,7 @@ class CircuitBreaker:
         if self.failure_threshold == 0:
             try:
                 return func(*args, **kwargs)
-            except self.expected_exceptions as e:
+            except self.expected_exceptions as e: # noqa: PERF203
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
         
@@ -77,7 +77,7 @@ class CircuitBreaker:
             result = func(*args, **kwargs)
             self._on_success()
             return result
-        except self.expected_exceptions as e:
+        except self.expected_exceptions as e: # noqa: PERF203
             self._on_failure()
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
@@ -87,7 +87,7 @@ class CircuitBreaker:
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
-            except self.expected_exceptions as e:
+            except self.expected_exceptions as e: # noqa: PERF203
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
         
@@ -99,7 +99,7 @@ class CircuitBreaker:
             result = await func(*args, **kwargs)
             self._on_success()
             return result
-        except self.expected_exceptions as e:
+        except self.expected_exceptions as e: # noqa: PERF203
             self._on_failure()
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             raise
@@ -287,7 +287,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
             logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
         else:
             logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"获取处理锁失败: {e}")
 
     try:
@@ -304,5 +304,5 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
                 """
                 redis_client.eval(release_lua, 1, lock_key, lock_value)
                 logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
-            except Exception as e:
+            except Exception as e: # noqa: PERF203
                 logger.error(f"释放锁失败: {e}")

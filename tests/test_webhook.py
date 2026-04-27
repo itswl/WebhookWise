@@ -54,7 +54,7 @@ def test_webhook():
         response = requests.post(url, data=payload, headers=headers)
         print(f"\n响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"请求失败: {str(e)}")
 
 
@@ -78,7 +78,7 @@ def test_webhook_without_signature():
         response = requests.post(url, json=test_data, headers=headers)
         print(f"响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"请求失败: {str(e)}")
 
 
@@ -92,7 +92,7 @@ def test_health():
         response = requests.get(url)
         print(f"响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"请求失败: {str(e)}")
 
 

@@ -26,7 +26,7 @@ def run_daily_maintenance():
                 
                 last_run_date = now.date()
                 
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.error(f"[Maintenance] 维护任务异常: {e}")
             
         # 每 10 分钟检查一次时间

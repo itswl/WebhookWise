@@ -109,7 +109,7 @@ def check_and_add_unique_constraint():
             print("   ✅ 唯一约束添加成功")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -158,7 +158,7 @@ def fix_duplicate_count():
             print(f"   ✅ 成功修复 {need_fix_count} 条记录")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  修复警告: {e}")
         # 不阻止服务启动
         return False
@@ -228,7 +228,7 @@ def add_beyond_window_field():
             time_window = timedelta(hours=24)
             update_count = 0
 
-            for _alert_hash, events in hash_groups.items():
+            for events in hash_groups.values():
                 for i, event in enumerate(events):
                     if i == 0:
                         # 第一条记录：beyond_window = 0（原始告警）
@@ -251,7 +251,7 @@ def add_beyond_window_field():
             print(f"   ✅ 已初始化 {update_count} 条记录的 beyond_window 值")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
         traceback.print_exc()
@@ -310,7 +310,7 @@ def add_last_notified_at_field():
             print(f"   ✅ 已初始化 {updated_count} 条记录的 last_notified_at 值")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
         traceback.print_exc()
@@ -366,7 +366,7 @@ def add_forward_rules_table():
             print("   ✅ forward_rules 表创建成功")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -417,7 +417,7 @@ def add_deep_analyses_table():
             print("   ✅ deep_analyses 表创建成功")
             return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         # 不阻止服务启动
         return False
@@ -458,7 +458,7 @@ def add_polling_fields():
             print("   ✅ deep_analyses 轮询字段添加成功")
             return True
     
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  迁移警告: {e}")
         return False
 
@@ -499,7 +499,7 @@ def add_archive_and_indexes():
             print("   ✅ 数据库性能优化脚本执行成功")
             return True
             
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"   ⚠️  性能优化迁移警告: {e}")
         return False
 

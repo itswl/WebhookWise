@@ -86,7 +86,7 @@ def retry_record(record_id: int) -> tuple[bool, str]:
                 record.status = 'completed'
                 logger.info(f"深度分析 #{record_id} 重试成功")
                 return True, "成功"
-            except json.JSONDecodeError:
+            except json.JSONDecodeError: # noqa: PERF203
                 record.result = {'text': text}
                 record.error_message = None
                 record.status = 'completed'

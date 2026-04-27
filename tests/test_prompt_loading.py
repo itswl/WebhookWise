@@ -31,7 +31,7 @@ def test_prompt_loading():
         print(f"   ✅ 成功加载，长度: {len(template)} 字符")
         print("   预览 (前200字符):")
         print(f"   {template[:200]}...")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         raise AssertionError(f"加载失败: {e}") from e
 
     # 测试 3: 检查模板变量
@@ -59,9 +59,9 @@ def test_prompt_loading():
         )
         print("   ✅ 格式化成功")
         print(f"   格式化后长度: {len(formatted)} 字符")
-    except KeyError as e:
+    except KeyError as e: # noqa: PERF203
         raise AssertionError(f"格式化失败，缺少变量: {e}") from e
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         raise AssertionError(f"格式化失败: {e}") from e
 
     # 测试 5: 重载功能
@@ -72,7 +72,7 @@ def test_prompt_loading():
             print("   ✅ 重载成功，内容一致")
         else:
             print("   ⚠️  重载后内容发生变化")
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         raise AssertionError(f"重载失败: {e}") from e
 
     # 测试 6: 检查 prompt 文件

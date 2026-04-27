@@ -162,7 +162,7 @@ def add_unique_constraint(verbose=True):
         logger.info("🎉 数据库迁移完成！")
         return True
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"❌ 迁移失败: {e}")
         import traceback
         traceback.print_exc()

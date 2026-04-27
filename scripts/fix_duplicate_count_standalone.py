@@ -109,7 +109,7 @@ def fix_duplicate_count():
 
         return need_fix
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"❌ 修复失败: {e}")
         import traceback
         traceback.print_exc()

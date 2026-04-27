@@ -84,7 +84,7 @@ def analyze_alert(alert_json_str, source="unknown"):
         
         return hash_value, key_fields
         
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError as e: # noqa: PERF203
         print(f"❌ JSON解析错误: {e}")
         return None, None
 

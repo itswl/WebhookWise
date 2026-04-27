@@ -62,7 +62,7 @@ def test_api_performance(params: dict[str, str], name: str):
             print(f"❌ 失败: HTTP {response.status_code}")
             print(f"响应: {response.text[:200]}")
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         print(f"❌ 错误: {str(e)}")
 
 

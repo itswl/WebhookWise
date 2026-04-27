@@ -24,7 +24,7 @@ def get_redis() -> redis.Redis:
             
             # 创建单例客户端
             _redis_client = redis.Redis(connection_pool=_redis_pool)
-        except Exception as e:
+        except Exception as e: # noqa: PERF203
             logger.error(f"[Redis] 初始化失败: {e}")
             raise
             
