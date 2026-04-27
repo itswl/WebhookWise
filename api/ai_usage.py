@@ -14,7 +14,7 @@ ai_usage_router = APIRouter()
 
 
 @ai_usage_router.get('/api/ai-usage')
-async def get_ai_usage(period: str = Query('day')):
+async async def get_ai_usage(period: str = Query('day')):
     try:
         cache_bucket = int(time.time() // 60)
         cache_key = f"ai_usage:{period}:{cache_bucket}"
