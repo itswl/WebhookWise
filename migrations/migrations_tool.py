@@ -11,7 +11,7 @@ import sys
 from sqlalchemy import text
 
 from core.logger import logger
-from core.models import get_engine, session_scope
+from db.session import get_engine, session_scope
 
 
 def add_unique_constraint(verbose=True):

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.config import Config
 from core.logger import logger
-from core.models import test_db_connection
+from models import test_db_connection
 
 if __name__ == '__main__':
     # 启动前验证

@@ -17,7 +17,8 @@ from openai import AsyncOpenAI
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
-from core.models import DeepAnalysis, WebhookEvent, session_scope
+from db.session import session_scope
+from models import DeepAnalysis, WebhookEvent
 from services.ai_analyzer import analyze_with_openclaw
 
 deep_analysis_router = APIRouter()

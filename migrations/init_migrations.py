@@ -8,7 +8,7 @@ import sys
 
 from sqlalchemy import text
 
-from core.models import get_engine
+from db.session import get_engine
 
 
 def check_and_add_unique_constraint():

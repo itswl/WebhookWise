@@ -6,11 +6,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text, create_engine, func, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from core.config import Config
-
-Base = declarative_base()
+from db.session import Base
 
 # 模块 logger
 _logger = logging.getLogger(__name__)

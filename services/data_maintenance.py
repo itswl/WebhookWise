@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import insert
 
-from core.models import ArchivedWebhookEvent, WebhookEvent, session_scope
+from db.session import session_scope
+from models import ArchivedWebhookEvent, WebhookEvent
 
 logger = logging.getLogger("webhook_service.maintenance")
 

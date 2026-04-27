@@ -1,6 +1,7 @@
 import logging
 
-from core.models import ArchivedWebhookEvent, get_engine
+from db.session import get_engine
+from models import ArchivedWebhookEvent
 
 logger = logging.getLogger(__name__)
 

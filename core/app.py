@@ -6,18 +6,18 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from api.admin import admin_router
+from api.ai_usage import ai_usage_router
+from api.deep_analysis import deep_analysis_router
+from api.forward_rules import forward_rules_router
+from api.reanalysis import reanalysis_router
+from api.webhook import webhook_router
 from core.auth import verify_api_key
 from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger
 from core.metrics import setup_metrics
-from core.pollers import start_background_pollers
-from core.routes.admin import admin_router
-from core.routes.ai_usage import ai_usage_router
-from core.routes.deep_analysis import deep_analysis_router
-from core.routes.forward_rules import forward_rules_router
-from core.routes.reanalysis import reanalysis_router
-from core.routes.webhook import webhook_router
+from services.pollers import start_background_pollers
 
 
 @asynccontextmanager
