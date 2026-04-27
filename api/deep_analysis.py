@@ -188,7 +188,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
 
 
 @deep_analysis_router.get('/api/deep-analyses')
-def list_all_deep_analyses(
+async def list_all_deep_analyses(
     page: int = Query(1),
     per_page: int = Query(20),
     cursor: int | None = Query(None),
@@ -199,59 +199,41 @@ def list_all_deep_analyses(
 
     async with session_scope() as session:
         # 总数（始终计算）
-        count_query = session.query(DeepAnalysis)
+        total_query = select(func.count()).select_from(DeepAnalysis)
         if status_filter:
-            count_query = count_query.filter(DeepAnalysis.status == status_filter)
+            total_query = total_query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
-            count_query = count_query.filter(DeepAnalysis.engine == engine_filter)
-        total = count_query.count()
+            total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
+        total_res = await session.execute(total_query)
+        total = total_res.scalar()
 
-        # 主查询
-        query = session.query(DeepAnalysis).order_by(DeepAnalysis.id.desc())
-
+        # 记录查询
+        query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())
+        
+        if cursor:
+            query = query.filter(DeepAnalysis.id < cursor)
         if status_filter:
             query = query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
             query = query.filter(DeepAnalysis.engine == engine_filter)
 
-        if cursor is not None:
-            query = query.filter(DeepAnalysis.id < cursor)
-        else:
+        if not cursor:
             offset = (page - 1) * per_page
             query = query.offset(offset)
 
-        records = query.limit(per_page).all()
+        result = await session.execute(query.limit(per_page))
+        records = result.scalars().all()
 
-        webhook_ids = [r.webhook_event_id for r in records]
-        webhook_map = {}
-        if webhook_ids:
-            events = session.query(
-                WebhookEvent.id, WebhookEvent.source,
-                WebhookEvent.is_duplicate, WebhookEvent.beyond_window
-            ).filter(
-                WebhookEvent.id.in_(webhook_ids)
-            ).all()
-            webhook_map = {e.id: e for e in events}
+        next_cursor = records[-1].id if records else None
 
-        data = []
-        for r in records:
-            d = r.to_dict()
-            webhook = webhook_map.get(r.webhook_event_id)
-            d['source'] = webhook.source if webhook else 'unknown'
-            d['is_duplicate'] = bool(webhook and webhook.is_duplicate) if webhook else False
-            d['beyond_window'] = bool(webhook and webhook.beyond_window) if webhook else False
-            data.append(d)
-
-        next_cursor = records[-1].id if len(records) == per_page else None
         return {
             "success": True,
             "data": {
-                'items': data,
-                'total': total,
-                'next_cursor': next_cursor,
-                'page': page,
-                'per_page': per_page,
-                'total_pages': (total + per_page - 1) // per_page if total > 0 else 0,
+                "total": total,
+                "page": page if not cursor else None,
+                "per_page": per_page,
+                "next_cursor": next_cursor,
+                "items": [r.to_dict() for r in records]
             }
         }
 
@@ -259,9 +241,8 @@ def list_all_deep_analyses(
 @deep_analysis_router.get('/api/deep-analyses/{webhook_id}')
 async def get_deep_analyses(webhook_id: int):
     async with session_scope() as session:
-        records = session.query(DeepAnalysis).filter_by(
-            webhook_event_id=webhook_id
-        ).order_by(DeepAnalysis.created_at.desc()).all()
+        result = await session.execute(select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc()))
+        records = result.scalars().all()
         return {
             "success": True,
             "data": [r.to_dict() for r in records]
@@ -279,7 +260,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
             return JSONResponse(status_code=400, content={'success': False, 'message': 'URL 格式无效'})
 
         async with session_scope() as session:
-            analysis = session.query(DeepAnalysis).get(analysis_id)
+            analysis = await session.get(DeepAnalysis, analysis_id)
             if not analysis:
                 return JSONResponse(status_code=404, content={'success': False, 'message': '分析记录不存在'})
             if analysis.status != 'completed':
@@ -337,7 +318,7 @@ async def retry_deep_analysis(analysis_id: int):
         # - 未配置
     try:
         async with session_scope() as session:
-            record = session.query(DeepAnalysis).get(analysis_id)
+            record = await session.get(DeepAnalysis, analysis_id)
             if not record:
                 return JSONResponse(status_code=404, content={'error': '分析记录不存在'})
 
@@ -389,7 +370,7 @@ async def retry_deep_analysis(analysis_id: int):
 
                 record.status = 'completed'
                 record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
-                session.commit()
+                await session.commit()
 
                 logger.info(f"HTTP API 获取成功: id={analysis_id}, text_len={len(text)}")
 
@@ -422,7 +403,7 @@ async def retry_deep_analysis(analysis_id: int):
                 record.status = 'pending'
                 record.created_at = datetime.now()
                 record.analysis_result = None
-                session.commit()
+                await session.commit()
 
                 logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
                 return {'success': True, 'message': '已重新开始拉取，请等待结果'}
