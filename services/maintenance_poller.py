@@ -34,6 +34,7 @@ def run_daily_maintenance():
 
 from services.pollers import _stop_event
 
+
 def start_maintenance_poller():
     """启动维护线程"""
     t = threading.Thread(target=run_daily_maintenance, daemon=True, name='maintenance-poller')
