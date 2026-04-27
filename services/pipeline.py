@@ -129,7 +129,7 @@ async def _compute_noise_reduction(
     )
 
     recent_contexts = await _load_recent_alert_contexts(alert_hash, now)
-    decision = analyze_noise_reduction(
+    decision = await analyze_noise_reduction(
         current_ctx,
         recent_contexts,
         window_minutes=max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES),
