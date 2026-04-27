@@ -198,7 +198,7 @@ python3 -m migrations.init_migrations # 添加唯一约束
 # 5. 启动服务
 python3 main.py
 # 或使用 gunicorn
-gunicorn --bind 0.0.0.0:8000 --workers 4 main:app
+gunicorn --bind 0.0.0.0:8000 --workers 4 core.app:app
 ```
 
 **注意**: 手动部署时，即使不执行步骤4，服务启动时也会自动检查和执行必要的迁移（如果使用entrypoint.sh）。
