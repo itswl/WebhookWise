@@ -29,12 +29,12 @@ alert_data = {
     "AlarmTime": "2025-11-07T12:00:00Z"
 }
 
-def get_config():
+async def get_config():
     """获取当前配置"""
     response = requests.get(CONFIG_URL)
     return response.json()
 
-def update_config(config_data):
+async def update_config(config_data):
     """更新配置"""
     response = requests.post(CONFIG_URL, json=config_data)
     return response.json()
@@ -49,7 +49,7 @@ def send_webhook(data, source="cloud-monitor"):
     response = requests.post(WEBHOOK_URL, json=data, headers=headers)
     return response.json()
 
-def test_time_window_config():
+async def test_time_window_config():
     """测试时间窗口配置"""
     print("=" * 60)
     print("测试1: 时间窗口配置")
@@ -57,21 +57,21 @@ def test_time_window_config():
 
     # 获取当前配置
     print("\n1. 获取当前配置...")
-    config = get_config()
+    config = await get_config()
     if config.get('success'):
         current_window = config['data'].get('duplicate_alert_time_window', 24)
         print(f"   当前时间窗口: {current_window} 小时")
 
     # 修改时间窗口为1小时
     print("\n2. 修改时间窗口为1小时...")
-    update_result = update_config({
+    update_result = await update_config({
         'duplicate_alert_time_window': 1
     })
     print(f"   更新结果: {json.dumps(update_result, ensure_ascii=False)}")
 
     # 验证配置已更新
     print("\n3. 验证配置已更新...")
-    config = get_config()
+    config = await get_config()
     if config.get('success'):
         new_window = config['data'].get('duplicate_alert_time_window')
         print(f"   新的时间窗口: {new_window} 小时")
@@ -82,10 +82,10 @@ def test_time_window_config():
 
     # 恢复默认配置
     print("\n4. 恢复默认配置...")
-    update_config({'duplicate_alert_time_window': 24})
+    await update_config({'duplicate_alert_time_window': 24})
     print("   ✓ 已恢复为24小时")
 
-def test_forward_duplicate_config():
+async def test_forward_duplicate_config():
     """测试重复告警转发配置"""
     print("\n" + "=" * 60)
     print("测试2: 重复告警转发配置")
@@ -93,14 +93,14 @@ def test_forward_duplicate_config():
 
     # 获取当前配置
     print("\n1. 获取当前配置...")
-    config = get_config()
+    config = await get_config()
     if config.get('success'):
         forward_dup = config['data'].get('forward_duplicate_alerts', False)
         print(f"   是否转发重复告警: {forward_dup}")
 
     # 关闭重复告警转发
     print("\n2. 关闭重复告警转发...")
-    update_result = update_config({
+    update_result = await update_config({
         'forward_duplicate_alerts': False
     })
     print(f"   更新结果: {json.dumps(update_result, ensure_ascii=False)}")
@@ -126,7 +126,7 @@ def test_forward_duplicate_config():
 
     # 开启重复告警转发
     print("\n5. 开启重复告警转发...")
-    update_config({'forward_duplicate_alerts': True})
+    await update_config({'forward_duplicate_alerts': True})
 
     time.sleep(1)
 
@@ -144,10 +144,10 @@ def test_forward_duplicate_config():
 
     # 恢复默认配置
     print("\n7. 恢复默认配置（关闭重复告警转发）...")
-    update_config({'forward_duplicate_alerts': False})
+    await update_config({'forward_duplicate_alerts': False})
     print("   ✓ 已恢复默认配置")
 
-def test_custom_time_window():
+async def test_custom_time_window():
     """测试自定义时间窗口"""
     print("\n" + "=" * 60)
     print("测试3: 自定义短时间窗口")
@@ -156,7 +156,7 @@ def test_custom_time_window():
     # 设置时间窗口为非常短（例如0.001小时，即几秒）
     # 注意：这只是演示，实际使用中不建议设置这么短
     print("\n1. 设置极短时间窗口用于测试...")
-    update_config({'duplicate_alert_time_window': 0.001})
+    await update_config({'duplicate_alert_time_window': 0.001})
 
     # 发送告警
     print("\n2. 发送告警...")
@@ -182,7 +182,7 @@ def test_custom_time_window():
 
     # 恢复默认配置
     print("\n5. 恢复默认时间窗口...")
-    update_config({'duplicate_alert_time_window': 24})
+    await update_config({'duplicate_alert_time_window': 24})
     print("   ✓ 已恢复为24小时")
 
 def main():
