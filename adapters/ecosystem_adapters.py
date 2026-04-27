@@ -8,7 +8,6 @@ from typing import Any
 import requests
 
 from core.config import Config
-from core.http_client import get_http_client
 from core.utils import feishu_cb
 
 logger = logging.getLogger('webhook_service.ecosystem_adapters')

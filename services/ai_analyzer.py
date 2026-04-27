@@ -3,7 +3,7 @@ import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -1111,9 +1111,9 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             )
 
             if response is not None and 200 <= response.status_code < 300:
-                logger.info(f"AI 降级通知已发送到飞书")
+                logger.info("AI 降级通知已发送到飞书")
             else:
-                logger.warning(f"AI 降级通知发送失败或被熔断拦截")
+                logger.warning("AI 降级通知发送失败或被熔断拦截")
 
     except Exception as e:
         # 降级通知失败不应影响主流程

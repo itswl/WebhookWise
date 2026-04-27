@@ -36,7 +36,7 @@ def test_api_performance(params: dict[str, str], name: str):
             # 检查是否压缩
             is_compressed = response.headers.get('Content-Encoding') == 'gzip'
 
-            print(f"✅ 成功")
+            print("✅ 成功")
             print(f"响应时间: {elapsed_ms:.2f} ms")
             print(f"响应大小: {content_length:,} 字节 ({content_length/1024:.2f} KB)")
             print(f"gzip 压缩: {'是' if is_compressed else '否'}")
@@ -54,7 +54,7 @@ def test_api_performance(params: dict[str, str], name: str):
                 has_full_ai_analysis = 'ai_analysis' in first_record
                 has_summary = 'summary' in first_record
 
-                print(f"\n字段分析:")
+                print("\n字段分析:")
                 print(f"  - 包含 raw_payload: {'是' if has_raw_payload else '否'}")
                 print(f"  - 包含 ai_analysis: {'是' if has_full_ai_analysis else '否'}")
                 print(f"  - 包含 summary: {'是' if has_summary else '否'}")

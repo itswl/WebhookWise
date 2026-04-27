@@ -5,7 +5,6 @@ core/services/noise_context.py
 """
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
 
 from core.services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 
