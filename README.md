@@ -47,7 +47,7 @@ docker-compose up -d --build
 系统在 Docker 启动时会自动执行迁移。如需手动执行：
 ```bash
 # 执行数据库表初始化
-python3 -c "from core.models import init_db; init_db()"
+python3 -c "from db.session import init_db; init_db()"
 # 执行结构迁移（索引优化、归档表创建）
 python3 -m migrations.init_migrations
 ```
@@ -72,12 +72,16 @@ python3 -m migrations.init_migrations
 ## 📁 目录结构
 ```text
 /
-├── core/               # 核心基座（数据库、单例连接池、鉴权、监控指标）
-├── services/           # 业务逻辑层（AI 分析引擎、降噪算法、自动化维护、轮询器）
-├── adapters/           # 生态适配器（Prometheus, Grafana, 飞书等格式转换）
+├── api/                # API 路由定义 (Webhook, 深度分析, 管理端等)
+├── core/               # 核心基础设施 (配置, Logger, HTTP连接池, 监控指标)
+├── models/             # SQLAlchemy 数据库模型定义
+├── crud/               # 数据库操作隔离层
+├── db/                 # 数据库连接池与 session 管理
+├── services/           # 核心业务逻辑 (AI 分析引擎, 降噪算法, 主处理管道, 轮询器)
+├── adapters/           # 生态适配器 (Prometheus, 华为云等格式转换)
 ├── migrations/         # 数据库迁移脚本与 SQL 优化文件
-├── prompts/            # AI 提示词模板目录（含 deep_analysis.txt）
-├── scripts/            # 运维工具脚本（手动归档、权限诊断等）
+├── prompts/            # AI 提示词模板目录
+├── scripts/            # 运维工具脚本 (手动归档, 权限诊断等)
 └── templates/          # 前端 Dashboard 静态文件
 ```
 
