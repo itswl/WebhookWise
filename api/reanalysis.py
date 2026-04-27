@@ -1,5 +1,5 @@
 """
-core/routes/reanalysis.py
+api/reanalysis.py
 =========================
 重新分析 + 手动转发路由。
 """

@@ -1,5 +1,5 @@
 """
-core/services/forwarding_decision.py
+services/forwarding_decision.py
 ====================================
 分析决策 + 转发决策相关辅助函数。
 """

@@ -1,5 +1,5 @@
 """
-core/routes/deep_analysis.py
+api/deep_analysis.py
 ============================
 深度分析相关路由：触发分析、列表查询、转发、重试。
 """
