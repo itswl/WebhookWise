@@ -68,7 +68,7 @@ def _load_recent_alert_contexts(
     recent: list[AlertContext] = []
     window_start = current_time - timedelta(minutes=window_minutes)
 
-    with session_scope() as session:
+    async with session_scope() as session:
         # 查找时间窗口内的其他告警（排除自身）
         events = session.query(WebhookEvent).filter(
             WebhookEvent.timestamp >= window_start,
@@ -125,7 +125,7 @@ def _compute_noise_reduction(
         return _default_noise_context(), False
 
 
-def _apply_noise_metadata(
+async def _apply_noise_metadata(
     analysis_result: dict,
     noise_context: AlertContext
 ) -> dict:

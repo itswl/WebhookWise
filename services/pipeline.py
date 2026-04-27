@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from adapters.ecosystem_adapters import normalize_webhook_event
 from api import (
@@ -68,12 +69,12 @@ def _build_alert_context(
     )
 
 
-def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> list[AlertContext]:
+async def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> list[AlertContext]:
     window_minutes = max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES)
     time_threshold = current_time - timedelta(minutes=window_minutes)
 
     try:
-        with get_session() as session:
+        async with session_scope() as session:
             query = (
                 session.query(WebhookEvent)
                 .filter(
@@ -83,7 +84,7 @@ def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> li
                 .order_by(WebhookEvent.timestamp.desc())
                 .limit(100)
             )
-            events = query.all()
+            
     except Exception as e:
         logger.warning(f"加载降噪候选告警失败: {e}")
         return []
@@ -107,7 +108,7 @@ def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> li
     return contexts
 
 
-def _compute_noise_reduction(
+async def _compute_noise_reduction(
     *,
     alert_hash: str,
     source: str,
@@ -127,7 +128,7 @@ def _compute_noise_reduction(
         alert_hash=alert_hash,
     )
 
-    recent_contexts = _load_recent_alert_contexts(alert_hash, now)
+    recent_contexts = await _load_recent_alert_contexts(alert_hash, now)
     decision = analyze_noise_reduction(
         current_ctx,
         recent_contexts,
@@ -147,7 +148,7 @@ def _compute_noise_reduction(
     )
 
 
-def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionContext) -> dict:
+async def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionContext) -> dict:
     merged = dict(analysis_result)
     merged['noise_reduction'] = {
         'relation': noise_context.relation,
@@ -161,21 +162,21 @@ def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionCo
     return merged
 
 
-def _persist_webhook_with_noise_context(
+async def _persist_webhook_with_noise_context(
     *,
     request_context: WebhookRequestContext,
     analysis_resolution: AnalysisResolution,
     alert_hash: str,
 ) -> PersistedEventContext:
-    noise_context = _compute_noise_reduction(
+    noise_context = await _compute_noise_reduction(
         alert_hash=alert_hash,
         source=request_context.source,
         parsed_data=request_context.parsed_data,
         analysis_result=analysis_resolution.analysis_result,
     )
 
-    analysis_with_noise = _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
-    save_result = save_webhook_data(
+    analysis_with_noise = await _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
+    save_result = await save_webhook_data(
         data=request_context.parsed_data,
         source=request_context.source,
         raw_payload=request_context.payload,
@@ -360,13 +361,13 @@ async def _resolve_analysis_without_lock(
     return AnalysisResolution(analysis_result, reanalyzed, is_duplicate, original_event, beyond_window)
 
 
-def _refresh_original_event(original_id: int | None, fallback_event: WebhookEvent | None) -> WebhookEvent | None:
+async def _refresh_original_event(original_id: int | None, fallback_event: WebhookEvent | None) -> WebhookEvent | None:
     if not original_id:
         return fallback_event
 
     try:
-        with get_session() as session:
-            latest = session.get(WebhookEvent, original_id)
+        async with session_scope() as session:
+            latest = await session.get(WebhookEvent, original_id)
             return latest or fallback_event
     except Exception as e:
         logger.warning(f"重新查询原始告警失败: {e}")
@@ -385,7 +386,7 @@ def _recently_notified(original_event: WebhookEvent | None, original_id: int | N
     return False
 
 
-def _resolve_alert_type_label(is_duplicate: bool, beyond_window: bool, is_periodic_reminder: bool) -> str:
+async def _resolve_alert_type_label(is_duplicate: bool, beyond_window: bool, is_periodic_reminder: bool) -> str:
     if is_periodic_reminder:
         return '周期性提醒'
     if is_duplicate:
@@ -425,12 +426,13 @@ async def _resolve_analysis(alert_hash: str, webhook_full_data: dict, got_lock: 
     return await _resolve_analysis_without_lock(alert_hash, webhook_full_data)
 
 
-def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: bool, source: str) -> list:
+async def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: bool, source: str) -> list:
     from models import ForwardRule
 
     try:
-        with session_scope() as session:
-            rules = session.query(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc()).all()
+        async with session_scope() as session:
+            result = await session.execute(select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc()))
+            rules = result.scalars().all()
 
             if not rules:
                 return []
@@ -466,7 +468,7 @@ def _match_forward_rules(importance: str, is_duplicate: bool, beyond_window: boo
         return []
 
 
-def _decide_forwarding(
+async def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
@@ -482,7 +484,7 @@ def _decide_forwarding(
             False,
         )
 
-    matched_rules = _match_forward_rules(importance, is_duplicate, beyond_window, source)
+    matched_rules = await _match_forward_rules(importance, is_duplicate, beyond_window, source)
 
     if matched_rules:
         if is_duplicate:
@@ -516,17 +518,17 @@ def _decide_forwarding(
     return ForwardDecision(True, None, False)
 
 
-def _update_last_notified(event_id: int) -> None:
+async def _update_last_notified(event_id: int) -> None:
     try:
         from sqlalchemy import update
 
-        with get_session() as session:
-            session.execute(
+        async with session_scope() as session:
+            await session.execute(
                 update(WebhookEvent)
                 .where(WebhookEvent.id == event_id)
                 .values(last_notified_at=datetime.now())
             )
-            session.commit()
+            await session.commit()
             logger.info(f"已更新原始告警 {event_id} 的 last_notified_at")
     except Exception as e:
         logger.warning(f"更新 last_notified_at 失败: {e}")
@@ -575,7 +577,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     )
 
 
-def _build_webhook_response(
+async def _build_webhook_response(
     webhook_id: int | str,
     analysis_result: dict,
     forward_result: dict,
@@ -673,7 +675,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
                             result = await forward_to_openclaw(request_context.webhook_full_data, analysis_result)
                             if result.get('_pending') and result.get('run_id'):
                                 try:
-                                    with session_scope() as session:
+                                    async with session_scope() as session:
                                         deep_record = DeepAnalysis(
                                             webhook_event_id=save_result.webhook_id,
                                             engine='openclaw',
