@@ -6,7 +6,8 @@ from fastapi import Request
 from api import InvalidSignatureError
 from core.config import Config
 from core.redis_client import get_redis
-from core.utils import get_client_ip, verify_signature
+from core.utils import verify_signature
+from crud.webhook import get_client_ip
 
 
 def extract_token(headers: dict) -> str:
