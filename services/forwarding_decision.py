@@ -1,11 +1,7 @@
-from sqlalchemy import select
-
-"""
-services/forwarding_decision.py
-====================================
-分析决策 + 转发决策相关辅助函数。
-"""
+"""分析决策 + 转发决策相关辅助函数。"""
 from datetime import datetime
+
+from sqlalchemy import select
 
 from core.config import Config
 from core.logger import logger
@@ -15,10 +11,6 @@ from models import ForwardRule, WebhookEvent
 # ── 分析决策 helpers ────────────────────────────────────────────────────────────
 
 def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
-    """
-    立即触发 AI 分析（不走缓存）。
-    Returns: (analysis_result, reanalyzed)
-    """
     from services.ai_analyzer import analyze_webhook_with_ai
     result = analyze_webhook_with_ai(webhook_full_data, skip_cache=True)
     return result, True
@@ -28,10 +20,6 @@ def _resolve_duplicate_analysis(
     original_event: WebhookEvent,
     webhook_full_data: dict
 ) -> tuple[dict, bool]:
-    """
-    复用原始告警的分析结果给重复告警。
-    Returns: (analysis_result, reanalyzed=False)
-    """
     if original_event.ai_analysis:
         return original_event.ai_analysis, False
     # 兜底：复用原始告警的 importance 作为摘要
@@ -46,9 +34,6 @@ def _resolve_beyond_window_analysis(
     webhook_full_data: dict,
     reanalyze: bool = True
 ) -> tuple[dict, bool]:
-    """
-    窗口外重复告警：如果超过时间窗口，需要判断是否重新分析。
-    """
     if reanalyze and Config.REANALYZE_AFTER_TIME_WINDOW:
         return _analyze_now(webhook_full_data, '窗口外重复告警重新分析')
     if original_event and original_event.ai_analysis:
@@ -59,14 +44,14 @@ def _resolve_beyond_window_analysis(
     }, False
 
 
-def _refresh_original_event(
+async def _refresh_original_event(
     original_id: int,
     fallback_event: WebhookEvent | None
 ) -> WebhookEvent | None:
-    """重新查询原始事件，避免 ORM 对象失效"""
     try:
         async with session_scope() as session:
-            return session.query(WebhookEvent).filter_by(id=original_id).first()
+            result = await session.execute(select(WebhookEvent).filter_by(id=original_id))
+            return result.scalars().first()
     except Exception:
         return fallback_event
 
@@ -75,15 +60,7 @@ async def _resolve_analysis_with_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> tuple[dict, bool, bool, WebhookEvent | None]:
-    """
-    获取锁后的分析决策：
-    - 首次告警 → AI 分析
-    - 窗口内重复 → 复用原始分析
-    - 窗口外重复 → 按配置决定
 
-    Returns:
-        (analysis_result, reanalyzed, is_duplicate, original_event)
-    """
     from datetime import datetime
 
     from models import WebhookEvent
@@ -91,9 +68,8 @@ async def _resolve_analysis_with_lock(
     async with session_scope() as session:
         current_time = datetime.now()
         # 查询同 hash 最近一条记录
-        original_event = session.query(WebhookEvent).filter(
-            WebhookEvent.alert_hash == alert_hash
-        ).order_by(WebhookEvent.id.desc()).first()
+        original_event = result = await session.execute(select(WebhookEvent).filter(WebhookEvent.alert_hash == alert_hash).order_by(WebhookEvent.id.desc()))
+        original_event = result.scalars().first()
 
         is_duplicate = original_event is not None
         _original_id = original_event.id if original_event else None
@@ -125,10 +101,6 @@ async def _resolve_analysis_without_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> tuple[dict, bool, bool, WebhookEvent | None]:
-    """
-    未获取锁（其他 worker 正在处理）时的分析决策：
-    等待锁释放后复用结果，或直接返回空结果让请求失败。
-    """
     import time
 
 
@@ -155,7 +127,6 @@ async def _recently_notified(
     original_id: int | None,
     alert_type: str
 ) -> bool:
-    """检查是否刚刚通知过（NOTIFICATION_COOLDOWN_SECONDS 内）"""
     if original_event and original_event.last_notified_at:
         elapsed = (datetime.now() - original_event.last_notified_at).total_seconds()
         if elapsed < Config.NOTIFICATION_COOLDOWN_SECONDS:
@@ -169,7 +140,6 @@ async def _resolve_alert_type_label(
     beyond_window: bool,
     is_periodic_reminder: bool
 ) -> str:
-    """生成人类可读的告警类型标签"""
     if is_periodic_reminder:
         return '周期性重复提醒'
     if is_duplicate and beyond_window:
@@ -185,12 +155,7 @@ def _decide_duplicate_forwarding(
     noise_context,
     importance: str
 ) -> tuple[bool, str | None]:
-    """
-    决定是否转发重复告警。
 
-    Returns:
-        (should_forward, skip_reason)
-    """
     # 衍生告警默认不转发（除非单独配置）
     if noise_context and noise_context.suppress_forward and Config.SUPPRESS_DERIVED_ALERT_FORWARD:
         return False, f'抑制衍生告警（参考 #{noise_context.root_cause_event_id}）'
@@ -206,17 +171,15 @@ def _decide_duplicate_forwarding(
     return True, None
 
 
-def _match_forward_rules(
+async def _match_forward_rules(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
     source: str
 ) -> list[ForwardRule]:
-    """加载并匹配当前告警适用的转发规则"""
     async with session_scope() as session:
-        rules = session.query(ForwardRule).filter_by(enabled=True).order_by(
-            ForwardRule.priority.desc()
-        ).all()
+        result = await session.execute(select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc()))
+        rules = result.scalars().all()
 
         matched = []
         for rule in rules:
@@ -260,12 +223,7 @@ async def _decide_forwarding(
     matched_rules: list[ForwardRule],
     is_periodic_reminder: bool = False
 ) -> tuple[bool, str | None, bool, list[ForwardRule]]:
-    """
-    综合决策是否转发告警。
 
-    Returns:
-        (should_forward, skip_reason, is_periodic_reminder, matched_rules)
-    """
     # 噪音降噪抑制
     if noise_context and noise_context.suppress_forward and Config.SUPPRESS_DERIVED_ALERT_FORWARD:
         return False, f'抑制衍生告警（根因 #{noise_context.root_cause_event_id}）', False, []
@@ -295,13 +253,12 @@ async def _decide_forwarding(
 
 
 async def _update_last_notified(event_id: int) -> None:
-    """更新告警的最后通知时间"""
     try:
         async with session_scope() as session:
             result = await session.execute(select(WebhookEvent).filter_by(id=event_id))
             event = result.scalars().first()
             if event:
                 event.last_notified_at = datetime.now()
-                session.commit()
+                await session.commit()
     except Exception as e:
         logger.warning(f"更新 last_notified_at 失败: {e}")

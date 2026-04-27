@@ -1,10 +1,4 @@
-from sqlalchemy import select
-
-"""
-api/deep_analysis.py
-============================
-深度分析相关路由：触发分析、列表查询、转发、重试。
-"""
+"""深度分析相关路由：触发分析、列表查询、转发、重试。"""
 import contextlib
 import json
 import re
@@ -15,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
+from sqlalchemy import select
 
 from core.config import Config
 from core.http_client import get_http_client
@@ -28,7 +23,6 @@ deep_analysis_router = APIRouter()
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 def _determine_engine(requested_engine: str) -> str:
-    """根据请求和配置决定使用哪个引擎"""
     if requested_engine == 'local':
         return 'local'
     elif requested_engine == 'openclaw':
@@ -45,7 +39,6 @@ def _determine_engine(requested_engine: str) -> str:
 
 
 async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
-    """本地 AI 深度分析"""
     start_time = time.time()
 
     if not Config.OPENAI_API_KEY:
@@ -56,30 +49,24 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
         with open(prompt_path, encoding='utf-8') as f:
             system_prompt = f.read()
     except FileNotFoundError:
-        system_prompt = """你是一个专业的 SRE 分析专家。请对以下告警进行深度分析，包括：
-1. 根因分析
-2. 影响范围评估
-3. 修复建议
-请用 JSON 格式返回分析结果。"""
+        # 1. 根因分析
+        # 2. 影响范围评估
+        # 3. 修复建议
 
-    alert_json = json.dumps(alert_data, ensure_ascii=False, indent=2)
-    user_prompt = f"""请对以下告警进行深度分析：
+        pass
 
-## 告警数据
-```json
-{alert_json}
-```
-"""
+        # ## 告警数据
+        # ```json
+        # {alert_json}
+        # ```
     if user_question:
-        user_prompt += f"\n## 用户问题\n{user_question}\n"
+        pass
 
-    user_prompt += """
-请返回 JSON 格式的分析报告，包含以下字段：
-- root_cause: 根因分析
-- impact: 影响范围
-- recommendations: 修复建议列表
-- confidence: 置信度 (0-1)
-"""
+        # 请返回 JSON 格式的分析报告
+        # - root_cause:
+        # - impact:
+        # - recommendations:
+        # - confidence:
 
     client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
     response = await client.chat.completions.create(
@@ -113,9 +100,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 
 @deep_analysis_router.post('/api/deep-analyze/{webhook_id}')
 async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
-    """
-    触发深度分析（支持多引擎）
-    """
+    """触发深度分析（支持多引擎）"""
     payload = payload or {}
     try:
         async with session_scope() as session:
@@ -210,7 +195,6 @@ def list_all_deep_analyses(
     status_filter: str = Query('', alias='status'),
     engine_filter: str = Query('', alias='engine')
 ):
-    """获取所有深度分析记录（分页 + 筛选）"""
     per_page = max(1, min(per_page, 100))
 
     async with session_scope() as session:
@@ -274,7 +258,6 @@ def list_all_deep_analyses(
 
 @deep_analysis_router.get('/api/deep-analyses/{webhook_id}')
 async def get_deep_analyses(webhook_id: int):
-    """获取某告警的所有深度分析记录"""
     async with session_scope() as session:
         records = session.query(DeepAnalysis).filter_by(
             webhook_event_id=webhook_id
@@ -287,7 +270,6 @@ async def get_deep_analyses(webhook_id: int):
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/forward')
 async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
-    """转发深度分析结果到指定目标"""
     payload = payload or {}
     try:
         target_url = (payload.get('target_url') or '').strip()
@@ -348,13 +330,11 @@ async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
 
 @deep_analysis_router.post('/api/deep-analyses/{analysis_id}/retry')
 async def retry_deep_analysis(analysis_id: int):
-    """
-    重新拉取深度分析结果
+    """重新拉取深度分析结果"""
 
-    策略：
-    - 配置了 OPENCLAW_HTTP_API_URL → 直接通过 HTTP API 获取
-    - 未配置 → 重置为 pending，由轮询器通过 WebSocket 获取
-    """
+        # 策略：
+        # - 配置了
+        # - 未配置
     try:
         async with session_scope() as session:
             record = session.query(DeepAnalysis).get(analysis_id)
