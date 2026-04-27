@@ -2,9 +2,10 @@ import os
 import socket
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
@@ -17,6 +18,8 @@ from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger
 from core.metrics import setup_metrics
+from core.redis_client import dispose_redis
+from db.session import dispose_engine
 from services.pollers import start_background_pollers, stop_background_pollers
 
 
@@ -29,6 +32,8 @@ async def lifespan(app: FastAPI):
     await start_background_pollers()
     yield
     stop_background_pollers()
+    await dispose_engine()
+    await dispose_redis()
     await close_http_client()
 
 
@@ -40,13 +45,38 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
 
-@app.middleware("http")
-async def _security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "no-referrer")
-    return response
+class SecurityHeadersMiddleware:
+    """Pure ASGI middleware – avoids BaseHTTPMiddleware's TaskGroup isolation
+    that breaks asyncpg connections across tasks."""
+
+    _EXTRA_HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"x-frame-options", b"DENY"),
+        (b"referrer-policy", b"no-referrer"),
+    ]
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                existing_names = {h[0] for h in headers}
+                for name, value in self._EXTRA_HEADERS:
+                    if name not in existing_names:
+                        headers.append((name, value))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"

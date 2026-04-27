@@ -6,7 +6,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from core.auth import verify_api_key
 from core.config import Config
@@ -69,7 +69,17 @@ async def list_webhooks(
             normalized_fields = (fields or 'summary').lower().strip()
             return_full = normalized_fields in {'full', 'all'}
 
-            total = query.count() if include_total else None
+            total = None
+            if include_total:
+                count_query = select(func.count()).select_from(WebhookEvent)
+                if importance:
+                    count_query = count_query.filter(WebhookEvent.importance == importance)
+                if source:
+                    count_query = count_query.filter(WebhookEvent.source == source)
+                if cursor_id is not None:
+                    count_query = count_query.filter(WebhookEvent.id < cursor_id)
+                total_result = await session.execute(count_query)
+                total = total_result.scalar()
             result = await session.execute(query.offset(offset).limit(page_size))
             events = result.scalars().all()
 
