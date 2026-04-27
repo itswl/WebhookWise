@@ -187,7 +187,7 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     return {"status": "error", "error": last_error}
 
 
-async def await _poll_pending_analyses_inner():
+async def _poll_pending_analyses_inner():
     """轮询逻辑主体"""
     from core.config import Config
     from db.session import session_scope
