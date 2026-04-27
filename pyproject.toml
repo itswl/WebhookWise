@@ -2,8 +2,8 @@
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
-ignore = ["E501", "RUF001", "RUF002", "RUF003", "RUF059"]
+select = ["I", "B", "UP", "SIM", "F", "C4", "PIE", "PERF", "E", "W", "RUF"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
