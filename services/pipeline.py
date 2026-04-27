@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
@@ -267,7 +266,7 @@ async def _resolve_analysis_with_lock(
     alert_hash: str,
     webhook_full_data: dict
 ) -> AnalysisResolution:
-    duplicate_check = await run_in_threadpool(check_duplicate_alert,
+    duplicate_check = await check_duplicate_alert(
         alert_hash,
         check_beyond_window=True
     )
@@ -303,7 +302,7 @@ async def _resolve_analysis_without_lock(
     logger.info(f"[Lock] 告警正在由其他节点处理，等待中: hash={alert_hash[:16]}")
     await asyncio.sleep(_LOCK_WAIT_SECONDS)
 
-    duplicate_check = await run_in_threadpool(check_duplicate_alert,
+    duplicate_check = await check_duplicate_alert(
         alert_hash,
         check_beyond_window=True
     )
@@ -330,7 +329,7 @@ async def _resolve_analysis_without_lock(
         if not last_beyond_window_event:
             logger.info(f"窗口外历史告警，等待其他worker完成处理: 历史 ID={original_event.id}")
             await asyncio.sleep(_LOCK_WAIT_SECONDS)
-            duplicate_check = await run_in_threadpool(check_duplicate_alert,
+            duplicate_check = await check_duplicate_alert(
                 alert_hash,
                 check_beyond_window=True
             )
@@ -627,7 +626,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
             analysis_result = analysis_resolution.analysis_result
             original_event = analysis_resolution.original_event
             logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
-            persisted = await run_in_threadpool(_persist_webhook_with_noise_context,
+            persisted = await _persist_webhook_with_noise_context(
                 request_context=request_context,
                 analysis_resolution=analysis_resolution,
                 alert_hash=alert_hash)
@@ -647,9 +646,9 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
         is_duplicate = is_dup and not beyond_window
         importance = str(analysis_result.get('importance', '')).lower()
 
-        original_event = await run_in_threadpool(_refresh_original_event, original_id, original_event)
+        original_event = await _refresh_original_event(original_id, original_event)
         logger.debug("[Pipeline] 进入转发决策阶段")
-        forward_decision = await run_in_threadpool(_decide_forwarding,
+        forward_decision = await _decide_forwarding(
             importance,
             is_duplicate,
             beyond_window,
@@ -660,7 +659,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
 
         forward_result = {'status': 'skipped', 'reason': forward_decision.skip_reason}
         if forward_decision.should_forward:
-            alert_type = await run_in_threadpool(_resolve_alert_type_label, is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
+            alert_type = await _resolve_alert_type_label(is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
 
             if forward_decision.matched_rules:
                 from services.ai_analyzer import forward_to_openclaw
@@ -708,12 +707,12 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
 
                 forward_result = {'status': 'success', 'results': forward_results}
                 if any(r.get('status') == 'success' for r in forward_results) and original_event:
-                    await run_in_threadpool(_update_last_notified, original_event.id)
+                    await _update_last_notified(original_event.id)
             else:
                 logger.info(f"开始自动转发高风险{alert_type}告警...")
                 forward_result = await forward_to_remote(request_context.webhook_full_data, analysis_result, is_periodic_reminder=forward_decision.is_periodic_reminder)
                 if forward_result.get('status') == 'success' and original_event:
-                    await run_in_threadpool(_update_last_notified, original_event.id)
+                    await _update_last_notified(original_event.id)
         else:
             logger.info(f"跳过自动转发: {forward_decision.skip_reason}")
 
