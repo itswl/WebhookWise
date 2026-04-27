@@ -122,7 +122,7 @@ async def _resolve_analysis_without_lock(
 
 # ── 转发决策 helpers ────────────────────────────────────────────────────────────
 
-async def _recently_notified(
+async def await _recently_notified(
     original_event: WebhookEvent | None,
     original_id: int | None,
     alert_type: str
@@ -161,7 +161,7 @@ def _decide_duplicate_forwarding(
         return False, f'抑制衍生告警（参考 #{noise_context.root_cause_event_id}）'
 
     # 检查是否在冷却期内
-    if _recently_notified(original_event, original_id, '重复告警'):
+    if await _recently_notified(original_event, original_id, '重复告警'):
         return False, '重复告警，冷却期内'
 
     # 重要性过滤
@@ -235,7 +235,7 @@ async def _decide_forwarding(
         if beyond_window:
             if not Config.FORWARD_AFTER_TIME_WINDOW:
                 return False, f'窗口外重复告警（原始 ID={original_id}），配置跳过转发', False, []
-            if _recently_notified(original_event, original_id, '窗口外重复告警'):
+            if await _recently_notified(original_event, original_id, '窗口外重复告警'):
                 return False, f'窗口外重复告警（原始 ID={original_id}），刚刚已转发', False, []
             return True, None, False
         if is_duplicate:
@@ -246,7 +246,7 @@ async def _decide_forwarding(
         return True, None, False, []
 
     # 有匹配规则 → 检查是否触发 periodic reminder
-    if matched_rules and is_duplicate and not beyond_window and _recently_notified(original_event, original_id, '重复告警'):
+    if matched_rules and is_duplicate and not beyond_window and await _recently_notified(original_event, original_id, '重复告警'):
         return False, '重复告警，冷却期内', False, matched_rules
 
     return True, None, is_periodic_reminder, matched_rules

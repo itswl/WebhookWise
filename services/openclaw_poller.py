@@ -25,7 +25,7 @@ async def _get_poll_stability(record_id: int) -> dict:
 async def _set_poll_stability(record_id: int, data: dict):
     redis_client = core.redis_client.get_redis()
     # 缓存保留 1 小时
-    redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
+    await redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
 
 async def _clear_poll_stability(record_id: int):
     redis_client = core.redis_client.get_redis()
@@ -274,7 +274,9 @@ async def _poll_pending_analyses_inner():
 
                             try:
                                 from models import WebhookEvent
-                                event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                                stmt = select(WebhookEvent).filter_by(id=record.webhook_event_id)
+                                result = await session.execute(stmt)
+                                event = result.scalars().first()
                                 source = event.source if event else ''
                                 _notify_feishu_deep_analysis(record, source)
                             except Exception as e:
