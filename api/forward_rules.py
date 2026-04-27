@@ -58,7 +58,7 @@ async def create_forward_rule(payload: dict | None = None):
             stop_on_match=payload.get('stop_on_match', False)
         )
         session.add(rule)
-        session.flush()
+        await session.flush()
         return {"success": True, "data": rule.to_dict(), "message": '规则创建成功'}
 
 
@@ -78,7 +78,7 @@ async def update_forward_rule(rule_id: int, payload: dict | None = None):
                 setattr(rule, field, payload[field])
 
         rule.updated_at = datetime.now()
-        session.flush()
+        await session.flush()
         return {"success": True, "data": rule.to_dict(), "message": '规则更新成功'}
 
 

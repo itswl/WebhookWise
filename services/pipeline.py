@@ -202,7 +202,7 @@ async def _resolve_duplicate_analysis(
 ) -> tuple[dict, bool]:
     if last_beyond_window_event and last_beyond_window_event.ai_analysis:
         logger.info(f"检测到窗口内重复，复用本窗口内最新分析结果 (ID={last_beyond_window_event.id})")
-        log_ai_usage(
+        await log_ai_usage(
             route_type='reuse',
             alert_hash=last_beyond_window_event.alert_hash or '',
             source=last_beyond_window_event.source or ''
@@ -211,7 +211,7 @@ async def _resolve_duplicate_analysis(
 
     if original_event.ai_analysis:
         logger.info(f"复用原始告警 ID={original_event.id} 的分析结果")
-        log_ai_usage(
+        await log_ai_usage(
             route_type='reuse',
             alert_hash=original_event.alert_hash or '',
             source=original_event.source or ''
@@ -237,7 +237,7 @@ async def _resolve_beyond_window_analysis(
 
         if is_recent:
             logger.info(f"窗口外历史告警，发现其他worker刚完成分析(ID={last_beyond_window_event.id})，复用结果")
-            log_ai_usage(
+            await log_ai_usage(
                 route_type='reuse',
                 alert_hash=last_beyond_window_event.alert_hash or '',
                 source=last_beyond_window_event.source or ''
@@ -250,7 +250,7 @@ async def _resolve_beyond_window_analysis(
 
     if original_event and not allow_reanalyze:
         logger.info(f"窗口外历史告警(ID={original_event.id})，复用历史分析结果")
-        log_ai_usage(
+        await log_ai_usage(
             route_type='reuse',
             alert_hash=original_event.alert_hash or '',
             source=original_event.source or ''
@@ -318,7 +318,7 @@ async def _resolve_analysis_without_lock(
             logger.info(
                 f"检测到其他 worker 刚处理完窗口外重复(ID={last_beyond_window_event.id}, {seconds_since_created:.1f}秒前)，复用结果"
             )
-            log_ai_usage(
+            await log_ai_usage(
                 route_type='reuse',
                 alert_hash=last_beyond_window_event.alert_hash or '',
                 source=last_beyond_window_event.source or ''
@@ -689,7 +689,7 @@ async def handle_webhook_process(client_ip: str, headers: dict, payload: dict, r
                                             status='pending'
                                         )
                                         session.add(deep_record)
-                                        session.flush()
+                                        await session.flush()
                                         logger.info(f"转发分析记录已创建: id={deep_record.id}, run_id={result.get('run_id')}")
                                 except Exception as e:
                                     logger.error(f"创建转发分析记录失败: {e}")
