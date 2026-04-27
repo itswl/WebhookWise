@@ -47,11 +47,9 @@ def get_redis() -> redis.Redis:
             _redis_client = None
             _redis_pool = None
             _redis_loop = None
-            if old_pool is not None:
-                try:
-                    old_pool.disconnect()
-                except Exception as e:
-                    logger.debug(f"[Redis] 关闭旧连接池时出错（可忽略）: {e}")
+            # 不手动调用 old_pool.disconnect()，因为它是 async 协程，
+            # 无法在同步函数中 await。让 GC 自动清理旧连接即可。
+            del old_pool
 
         if _redis_client is None:
             try:
