@@ -28,6 +28,8 @@ async def _renew_leader(redis, token: str) -> None:
 
 
 import asyncio
+
+
 def _run_renew(redis, token):
     asyncio.run(_renew_leader(redis, token))
 
