@@ -4,7 +4,6 @@ core/routes/__init__.py
 共享 dataclass 和响应工具，所有 route 模块共用。
 """
 from dataclasses import dataclass, field
-from typing import Optional
 
 from fastapi.responses import JSONResponse
 

@@ -1,6 +1,5 @@
 import hmac
 import time
-from typing import Optional
 
 from fastapi import Request
 

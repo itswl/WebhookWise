@@ -3,9 +3,8 @@ core/routes/webhook.py
 =====================
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
-from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from core.auth import verify_api_key
