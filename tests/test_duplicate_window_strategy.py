@@ -1,7 +1,8 @@
 """Unit tests for duplicate-window helper logic in utils.py."""
 from datetime import datetime
 
-from core.utils import DuplicateCheckResult, SaveWebhookResult, _resolve_window_start
+from crud.webhook import _resolve_window_start
+from crud.webhook import DuplicateCheckResult, SaveWebhookResult
 
 
 class _FakeEvent:

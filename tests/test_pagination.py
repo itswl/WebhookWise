@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from core.utils import get_all_webhooks
+from crud.webhook import get_all_webhooks
 from db.session import Base
 from models import WebhookEvent
 
@@ -35,7 +35,7 @@ def setup_test_db(monkeypatch):
             session.close()
 
     # 替换数据库连接
-    monkeypatch.setattr('core.utils.session_scope', mock_session_scope)
+    monkeypatch.setattr('crud.webhook.session_scope', mock_session_scope)
 
     # 插入一些测试数据
     with mock_session_scope() as session:
