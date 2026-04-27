@@ -1,5 +1,3 @@
-from sqlalchemy import select
-
 """
 api/reanalysis.py
 =========================
@@ -7,6 +5,7 @@ api/reanalysis.py
 """
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
 
 from core.config import Config
 from core.logger import logger
