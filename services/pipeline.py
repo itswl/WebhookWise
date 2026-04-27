@@ -371,7 +371,7 @@ async def _refresh_original_event(original_id: int | None, fallback_event: Webho
         return fallback_event
 
 
-def _recently_notified(original_event: WebhookEvent | None, original_id: int | None, alert_type: str) -> bool:
+async def _recently_notified(original_event: WebhookEvent | None, original_id: int | None, alert_type: str) -> bool:
     if not original_event or not original_event.last_notified_at:
         return False
 
@@ -393,11 +393,11 @@ async def _resolve_alert_type_label(is_duplicate: bool, beyond_window: bool, is_
     return '新'
 
 
-def _decide_duplicate_forwarding(
+async def _decide_duplicate_forwarding(
     original_event: WebhookEvent | None,
     original_id: int | None
 ) -> ForwardDecision:
-    if _recently_notified(original_event, original_id, '窗口内重复告警'):
+    if await _recently_notified(original_event, original_id, '窗口内重复告警'):
         return ForwardDecision(False, f'窗口内重复告警（原始 ID={original_id}），刚刚已转发', False)
 
     if Config.ENABLE_PERIODIC_REMINDER and original_event:
@@ -485,7 +485,7 @@ async def _decide_forwarding(
 
     if matched_rules:
         if is_duplicate:
-            dup_decision = _decide_duplicate_forwarding(original_event, original_id)
+            dup_decision = await _decide_duplicate_forwarding(original_event, original_id)
             if not dup_decision.should_forward:
                 return ForwardDecision(False, dup_decision.skip_reason, False)
             return ForwardDecision(True, None, dup_decision.is_periodic_reminder, matched_rules)
@@ -493,7 +493,7 @@ async def _decide_forwarding(
         if beyond_window:
             if not Config.FORWARD_AFTER_TIME_WINDOW:
                 return ForwardDecision(False, '窗口外重复告警，配置不转发', False)
-            if _recently_notified(original_event, original_id, '窗口外重复告警'):
+            if await _recently_notified(original_event, original_id, '窗口外重复告警'):
                 return ForwardDecision(False, '近期已通知', False)
             return ForwardDecision(True, None, False, matched_rules)
 
@@ -505,12 +505,12 @@ async def _decide_forwarding(
     if beyond_window:
         if not Config.FORWARD_AFTER_TIME_WINDOW:
             return ForwardDecision(False, f'窗口外重复告警（原始 ID={original_id}），配置跳过转发', False)
-        if _recently_notified(original_event, original_id, '窗口外重复告警'):
+        if await _recently_notified(original_event, original_id, '窗口外重复告警'):
             return ForwardDecision(False, f'窗口外重复告警（原始 ID={original_id}），刚刚已转发', False)
         return ForwardDecision(True, None, False)
 
     if is_duplicate:
-        return _decide_duplicate_forwarding(original_event, original_id)
+        return await _decide_duplicate_forwarding(original_event, original_id)
 
     return ForwardDecision(True, None, False)
 
