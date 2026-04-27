@@ -43,7 +43,7 @@ async def _propagate_analysis_to_duplicates(session, webhook_id: int, analysis_r
 
 
 async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook_id: int) -> tuple[dict, str | None, str | None, int]:
-    webhook_data = _build_webhook_context(webhook_event)
+    webhook_data = await _build_webhook_context(webhook_event)
 
     logger.info(f"重新分析 webhook ID: {webhook_id}")
     analysis_result = await analyze_webhook_with_ai(webhook_data, skip_cache=True)
@@ -66,7 +66,7 @@ async def _reanalyze_webhook_event(session, webhook_event: WebhookEvent, webhook
 
 
 async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int, custom_url) -> dict:
-    webhook_data = _build_webhook_context(webhook_event)
+    webhook_data = await _build_webhook_context(webhook_event)
     analysis_result = webhook_event.ai_analysis or {}
 
     logger.info(f"手动转发 webhook ID: {webhook_id} 到 {custom_url or Config.FORWARD_URL}")
