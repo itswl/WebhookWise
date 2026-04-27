@@ -316,12 +316,23 @@ def start_poller(interval: int = 30):
     def _loop():
         logger.info(f"[Poller] 任务已启动: interval={interval}s")
         import asyncio
-        while not _stop_event.is_set():
-            try:
-                asyncio.run(poll_pending_analyses())
-            except Exception as e:
-                logger.error(f"轮询循环异常: {e}")
-            _stop_event.wait(interval)
+        
+        async def _run_poller():
+            while not _stop_event.is_set():
+                try:
+                    await poll_pending_analyses()
+                except Exception as e:
+                    logger.error(f"轮询循环异常: {e}")
+                # Wait for the next interval or until stop event is set
+                await asyncio.sleep(interval)
+                
+        # Create a new event loop for this thread to keep connections stable
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_run_poller())
+        finally:
+            loop.close()
 
     t = threading.Thread(target=_loop, daemon=True, name='openclaw-poller')
     t.start()
