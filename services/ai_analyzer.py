@@ -52,7 +52,7 @@ def get_cached_analysis(alert_hash: str) -> dict | None:
         return None
     
     try:
-        from core.models import AnalysisCache, get_session
+        from models import AnalysisCache, get_session
         
         session = get_session()
         try:
@@ -106,7 +106,8 @@ def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         return False
     
     try:
-        from core.models import AnalysisCache, session_scope
+        from db.session import session_scope
+        from models import AnalysisCache
         
         with session_scope() as session:
             cache_key = get_cache_key(alert_hash)
@@ -163,7 +164,8 @@ def log_ai_usage(
         cache_hit: 是否命中缓存
     """
     try:
-        from core.models import AIUsageLog, session_scope
+        from db.session import session_scope
+        from models import AIUsageLog
         
         # 计算估算成本
         cost_estimate = 0.0
@@ -1661,7 +1663,8 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     else:
         logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
         try:
-            from core.models import WebhookEvent, session_scope
+            from db.session import session_scope
+            from models import WebhookEvent
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 with session_scope() as session:
                     event = session.query(WebhookEvent).filter_by(id=webhook_data.get('id')).first()

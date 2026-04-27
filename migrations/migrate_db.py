@@ -5,7 +5,7 @@
 from sqlalchemy import text
 
 from core.logger import logger
-from core.models import get_engine
+from db.session import get_engine
 
 
 def migrate_database():

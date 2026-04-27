@@ -7,7 +7,8 @@ from datetime import datetime
 
 from core.config import Config
 from core.logger import logger
-from core.models import ForwardRule, WebhookEvent, session_scope
+from db.session import session_scope
+from models import ForwardRule, WebhookEvent
 
 # ── 分析决策 helpers ────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ def _resolve_analysis_with_lock(
     """
     from datetime import datetime
 
-    from core.models import WebhookEvent
+    from models import WebhookEvent
 
     with session_scope() as session:
         current_time = datetime.now()

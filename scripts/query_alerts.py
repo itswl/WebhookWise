@@ -19,7 +19,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.models import WebhookEvent, session_scope
+from db.session import session_scope
+from models import WebhookEvent
 
 
 def print_json(data):

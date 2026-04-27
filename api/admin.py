@@ -4,9 +4,9 @@ from pathlib import Path
 from dotenv import dotenv_values
 from fastapi import APIRouter
 
+from api import _fail, _ok
 from core.config import Config
 from core.logger import logger
-from core.routes import _fail, _ok
 
 admin_router = APIRouter()
 

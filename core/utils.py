@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from core.config import Config
 from core.logger import logger
-from core.models import WebhookEvent, get_session, session_scope
+from db.session import session_scope
+from models import WebhookEvent, get_session
 
 WebhookData = dict[str, Any]
 
