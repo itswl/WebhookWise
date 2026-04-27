@@ -268,7 +268,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
 
             source = 'unknown'
             if analysis.webhook_event_id:
-                event = session.query(WebhookEvent).get(analysis.webhook_event_id)
+                event = await session.get(WebhookEvent, analysis.webhook_event_id)
                 if event:
                     source = event.source or 'unknown'
 
@@ -378,7 +378,8 @@ async def retry_deep_analysis(analysis_id: int):
                 try:
                     from adapters.ecosystem_adapters import send_feishu_deep_analysis
                     if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-                        event = session.query(WebhookEvent).filter_by(id=record.webhook_event_id).first()
+                        result = await session.execute(select(WebhookEvent).filter_by(id=record.webhook_event_id))
+                        event = result.scalars().first()
                         source = event.source if event else ''
                         analysis_data = {
                             'analysis_result': record.analysis_result,
