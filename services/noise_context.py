@@ -1,5 +1,5 @@
 """
-core/services/noise_context.py
+services/noise_context.py
 ===============================
 告警智能降噪相关辅助函数。
 """

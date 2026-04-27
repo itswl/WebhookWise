@@ -64,7 +64,7 @@ python3 -m migrations.init_migrations
 exec gunicorn ...
 ```
 
-### 2. core/models.py
+### 2. models/__init__.py
 
 **函数**: `init_db()`
 
