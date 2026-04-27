@@ -385,7 +385,7 @@ def _normalize_datadog(data: WebhookData) -> WebhookData:
     return normalized
 
 
-ADAPTERS: dict[str, tuple[set[str], Callable[[WebhookData], bool], Callable[[WebhookData], WebhookData]]] = {
+ADAPTERS: dict[str, tuple[set[str], Callable[[WebhookData], bool], Callable[[WebhookData]]]] = {
     'prometheus': ({'prometheus', 'alertmanager'}, _is_prometheus, _normalize_prometheus),
     'grafana': ({'grafana'}, _is_grafana, _normalize_grafana),
     'pagerduty': ({'pagerduty'}, _is_pagerduty, _normalize_pagerduty),
