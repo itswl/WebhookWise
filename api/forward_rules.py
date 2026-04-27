@@ -90,7 +90,7 @@ async def delete_forward_rule(rule_id: int):
         rule = result.scalars().first()
         if not rule:
             return JSONResponse(status_code=404, content={"success": False, "error": '规则不存在'})
-        session.delete(rule)
+        await session.delete(rule)
         return {"success": True, "message": '规则已删除'}
 
 
