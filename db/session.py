@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -44,10 +45,8 @@ def get_engine():
     global _engine, _session_factory, _engine_loop
 
     current_loop = None
-    try:
+    with contextlib.suppress(RuntimeError):
         current_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        pass
 
     # 如果事件循环发生变化，需要重建引擎和 session 工厂
     if _engine is not None and current_loop is not None and _engine_loop is not current_loop:

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import threading
 
 import redis.asyncio as redis
@@ -34,26 +35,23 @@ def get_redis() -> redis.Redis:
     global _redis_pool, _redis_client, _redis_loop
 
     current_loop = None
-    try:
+    with contextlib.suppress(RuntimeError):
         current_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        pass
 
     with _redis_lock:
         # 如果事件循环发生变化，需要重建客户端和连接池
-        if _redis_client is not None and current_loop is not None and _redis_loop is not None:
-            if current_loop is not _redis_loop:
-                logger.warning("[Redis] 检测到事件循环变更，正在重建 Redis 客户端和连接池")
-                # 尝试关闭旧连接池（同步安全方式）
-                old_pool = _redis_pool
-                _redis_client = None
-                _redis_pool = None
-                _redis_loop = None
-                if old_pool is not None:
-                    try:
-                        old_pool.disconnect()
-                    except Exception as e:
-                        logger.debug(f"[Redis] 关闭旧连接池时出错（可忽略）: {e}")
+        if _redis_client is not None and current_loop is not None and _redis_loop is not None and current_loop is not _redis_loop:
+            logger.warning("[Redis] 检测到事件循环变更，正在重建 Redis 客户端和连接池")
+            # 尝试关闭旧连接池（同步安全方式）
+            old_pool = _redis_pool
+            _redis_client = None
+            _redis_pool = None
+            _redis_loop = None
+            if old_pool is not None:
+                try:
+                    old_pool.disconnect()
+                except Exception as e:
+                    logger.debug(f"[Redis] 关闭旧连接池时出错（可忽略）: {e}")
 
         if _redis_client is None:
             try:
