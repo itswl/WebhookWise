@@ -1,14 +1,17 @@
 """
 测试分页查询功能
 """
-import pytest
+import contextlib
 from datetime import datetime
 
-from core.models import Base, WebhookEvent, get_engine
-from core.utils import get_all_webhooks
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import contextlib
+
+from core.utils import get_all_webhooks
+from db.session import Base
+from models import WebhookEvent
+
 
 @pytest.fixture(autouse=True)
 def setup_test_db(monkeypatch):

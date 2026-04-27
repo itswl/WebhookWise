@@ -2,7 +2,8 @@
 """
 检查数据库中告警的 importance 字段分布
 """
-from core.models import WebhookEvent, session_scope
+from db.session import session_scope
+from models import WebhookEvent
 
 
 def check_importance_distribution():
@@ -85,4 +86,4 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"错误: {e}")
         print("\n提示: 请确保数据库连接正常")
-        print("运行: python -c \"from core.models import test_db_connection; test_db_connection()\"")
+        print("运行: python -c \"from models import test_db_connection; test_db_connection()\"")

@@ -3,9 +3,9 @@ import time
 
 from fastapi import Request
 
+from api import InvalidSignatureError
 from core.config import Config
 from core.redis_client import get_redis
-from core.routes import InvalidSignatureError
 from core.utils import get_client_ip, verify_signature
 
 

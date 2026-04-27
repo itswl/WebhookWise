@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.config import Config
 from core.logger import logger
-from core.models import DeepAnalysis, session_scope
+from db.session import session_scope
+from models import DeepAnalysis
 from services.openclaw_poller import _poll_via_http
 
 

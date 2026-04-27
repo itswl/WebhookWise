@@ -16,7 +16,7 @@ from core.database import session_scope
 from sqlalchemy import text
 
 from core.logger import logger
-from core.models import init_db
+from db.session import init_db
 
 
 def fix_duplicate_count():
