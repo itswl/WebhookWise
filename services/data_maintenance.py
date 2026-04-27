@@ -1,51 +1,44 @@
-from sqlalchemy import select
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import insert
-
+from core.config import Config
 from db.session import session_scope
-from models import ArchivedWebhookEvent, WebhookEvent
 
-logger = logging.getLogger("webhook_service.maintenance")
+logger = logging.getLogger('webhook_service.maintenance')
 
-async def archive_old_data(days: int = 30):
+
+async def archive_old_data(archive_days: int = 30) -> int:
     """
-    归档旧数据：
-    1. 将 30 天前、状态为已完成且非高风险的告警搬迁到归档表
-    2. 删除活跃表中的对应记录
+    归档清理过期 webhook 记录到归档表，保持主表轻量
     """
-    threshold = datetime.now() - timedelta(days=days)
-    logger.info(f"[Maintenance] 开始执行归档任务，清理 {threshold.strftime('%Y-%m-%d %H:%M:%S')} 之前的记录...")
-
-    total_moved = 0
+    if not getattr(Config, "ENABLE_ARCHIVE_CLEANUP", True):
+        logger.info("[Maintenance] 数据归档已禁用，跳过。")
+        return 0
 
     try:
-        async with session_scope() as session:
-            # 1. 查找符合条件的记录 IDs
-            target_ids_query = session.query(WebhookEvent.id).filter(
-                WebhookEvent.timestamp < threshold
-            ).filter(
-                (WebhookEvent.importance != 'high') | (WebhookEvent.is_duplicate == 1)
-            ).filter(
-                WebhookEvent.forward_status != 'failed'
-            ).limit(5000)
+        from sqlalchemy import delete, insert, select
 
-            target_ids = [r[0] for r in target_ids_query.all()]
+        from models import ArchivedWebhookEvent, WebhookEvent
+
+        threshold_date = datetime.now() - timedelta(days=archive_days)
+        logger.info(f"[Maintenance] 准备归档 {threshold_date.date()} 之前的数据...")
+
+        total_moved = 0
+        async with session_scope() as session:
+            # 1. 查找需要归档的 ID (每次最多 5000 条，避免内存过大)
+            result = await session.execute(select(WebhookEvent.id).filter(WebhookEvent.timestamp < threshold_date).limit(5000))
+            target_ids = result.scalars().all()
 
             if not target_ids:
-                logger.info("[Maintenance] 没有发现符合归档条件的记录。")
+                logger.info("[Maintenance] 没有需要归档的数据。")
                 return 0
 
-            logger.info(f"[Maintenance] 发现 {len(target_ids)} 条记录待归档...")
-
-            # 2. 批量搬迁数据
+            # 2. 分批处理
             for chunk_start in range(0, len(target_ids), 1000):
                 chunk_ids = target_ids[chunk_start : chunk_start + 1000]
 
-                result = await session.execute(select(WebhookEvent).filter(WebhookEvent.timestamp < threshold_date).limit(5000))
-        events = result.scalars().all()
-        # events = session.query(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)).all()
+                result = await session.execute(select(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
+                events = result.scalars().all()
 
                 archived_records = [{
                     'id': e.id,
@@ -68,10 +61,10 @@ async def archive_old_data(days: int = 30):
                     'updated_at': e.updated_at,
                     'archived_at': datetime.now()
                 } for e in events]
+
                 if archived_records:
                     await session.execute(insert(ArchivedWebhookEvent), archived_records)
 
-                from sqlalchemy import delete
                 await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
                 total_moved += len(chunk_ids)
