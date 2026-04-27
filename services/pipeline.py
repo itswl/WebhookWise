@@ -125,7 +125,7 @@ async def _compute_noise_reduction(
     )
 
     recent_contexts = await _load_recent_alert_contexts(alert_hash, now)
-    decision = await analyze_noise_reduction(
+    decision = analyze_noise_reduction(
         current_ctx,
         recent_contexts,
         window_minutes=max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES),
@@ -144,7 +144,7 @@ async def _compute_noise_reduction(
     )
 
 
-async def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionContext) -> dict:
+def _apply_noise_metadata(analysis_result: dict, noise_context: NoiseReductionContext) -> dict:
     merged = dict(analysis_result)
     merged['noise_reduction'] = {
         'relation': noise_context.relation,
@@ -171,7 +171,7 @@ async def _persist_webhook_with_noise_context(
         analysis_result=analysis_resolution.analysis_result,
     )
 
-    analysis_with_noise = await _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
+    analysis_with_noise = _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
     save_result = await save_webhook_data(
         data=request_context.parsed_data,
         source=request_context.source,
@@ -573,7 +573,7 @@ def _parse_webhook_request(client_ip: str, headers: dict, payload: dict, raw_bod
     )
 
 
-async def _build_webhook_response(
+def _build_webhook_response(
     webhook_id: int | str,
     analysis_result: dict,
     forward_result: dict,

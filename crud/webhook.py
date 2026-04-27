@@ -1,6 +1,6 @@
+import asyncio
 import json
 import os
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,7 +16,7 @@ from core.logger import logger
 
 # We will import the purely utility functions back from core.utils
 from core.utils import generate_alert_hash
-from db.session import get_session, session_scope
+from db.session import session_scope
 from models import WebhookEvent
 
 WebhookData = dict[str, Any]
@@ -115,16 +115,28 @@ async def check_duplicate_alert(
     if time_window_hours is None:
         time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
 
-    should_close = session is None
-    if should_close:
-        session = get_session()
+    if session is not None:
+        # 使用调用方提供的 session，不管理其生命周期
+        return await _do_check_duplicate(session, alert_hash, time_window_hours, check_beyond_window)
 
+    # 无外部 session 时，通过 session_scope 管理生命周期（保证异常时回滚+关闭）
+    async with session_scope() as scoped_session:
+        return await _do_check_duplicate(scoped_session, alert_hash, time_window_hours, check_beyond_window)
+
+
+async def _do_check_duplicate(
+    session: AsyncSession,
+    alert_hash: str,
+    time_window_hours: int,
+    check_beyond_window: bool
+) -> DuplicateCheckResult:
+    """内部实现：在给定 session 上执行重复检查逻辑。"""
     now = datetime.now()
 
     try:
         time_threshold = now - timedelta(hours=time_window_hours)
 
-        # 先查窗口内最新记录，保证同一时间窗口内只产生一条“原始上下文”。
+        # 先查窗口内最新记录，保证同一时间窗口内只产生一条"原始上下文"。
         # 这样在并发写入时，后续请求可以稳定复用同一条分析结果。
         any_event = await _find_recent_window_event(session, alert_hash, time_threshold)
 
@@ -165,7 +177,7 @@ async def check_duplicate_alert(
                     f"窗口外发现历史告警: hash={alert_hash}, "
                     f"原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时"
                 )
-                # 返回历史原始事件与 recent beyond_window，交给上层做“复用或重算”决策。
+                # 返回历史原始事件与 recent beyond_window，交给上层做"复用或重算"决策。
                 return DuplicateCheckResult(False, history_event, True, last_beyond_window)
 
         return DuplicateCheckResult(False, None, False, None)
@@ -173,9 +185,6 @@ async def check_duplicate_alert(
     except Exception as e:
         logger.error(f"检查重复告警失败: {e!s}")
         return DuplicateCheckResult(False, None, False, None)
-    finally:
-        if should_close:
-            await session.close()
 
 
 
@@ -423,7 +432,7 @@ async def save_webhook_data(
 
             if attempt < MAX_SAVE_RETRIES - 1:
                 # 指数退避让并发写入先完成，再次判重时更容易命中已落库记录。
-                time.sleep(RETRY_DELAY_SECONDS * (2 ** attempt))
+                await asyncio.sleep(RETRY_DELAY_SECONDS * (2 ** attempt))
                 is_duplicate = None
                 original_event = None
                 logger.info(f"正在重试... (attempt {attempt + 2}/{MAX_SAVE_RETRIES})")
@@ -439,7 +448,7 @@ async def save_webhook_data(
                     raise
 
                 logger.info(f"最终找到原始告警 ID={existing.id}，标记为重复")
-                existing.duplicate_count += 1
+                existing.duplicate_count = (existing.duplicate_count or 1) + 1
 
                 final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
                 final_importance = ai_analysis.get('importance') if ai_analysis else existing.importance

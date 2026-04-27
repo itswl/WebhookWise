@@ -64,6 +64,9 @@ async def get_ai_usage(period: str = Query('day')):
             res_route = await session.execute(stmt_route)
             route_stats = res_route.all()
             route_breakdown = {r.route_type: r.count for r in route_stats}
+            # Normalize 'reused' → 'reuse' for frontend consistency
+            if 'reused' in route_breakdown:
+                route_breakdown['reuse'] = route_breakdown.pop('reused')
 
             # 3. Token & Cost Stats
             stmt_stats = select(
@@ -71,8 +74,7 @@ async def get_ai_usage(period: str = Query('day')):
                 func.sum(AIUsageLog.tokens_out).label('total_tokens_out'),
                 func.sum(AIUsageLog.cost_estimate).label('total_cost')
             ).filter(
-                AIUsageLog.timestamp >= start_time,
-                AIUsageLog.route_type == 'ai'
+                AIUsageLog.timestamp >= start_time
             )
             res_stats = await session.execute(stmt_stats)
             ai_stats = res_stats.first()
@@ -90,7 +92,7 @@ async def get_ai_usage(period: str = Query('day')):
 
             cache_calls = route_breakdown.get('cache', 0)
             rule_calls = route_breakdown.get('rule', 0)
-            reuse_calls = route_breakdown.get('reused', 0)
+            reuse_calls = route_breakdown.get('reuse', 0)
             cost_saved = (cache_calls + rule_calls + reuse_calls) * avg_ai_cost
 
             # active_caches
@@ -129,14 +131,47 @@ async def get_ai_usage(period: str = Query('day')):
 
             trend_data = sorted(trend_map.values(), key=lambda x: x['time'])
 
+            # 计算百分比
+            if total_calls > 0:
+                percentages = {
+                    'ai': round(route_breakdown.get('ai', 0) / total_calls * 100, 1),
+                    'rule': round(route_breakdown.get('rule', 0) / total_calls * 100, 1),
+                    'cache': round(route_breakdown.get('cache', 0) / total_calls * 100, 1),
+                    'reuse': round(route_breakdown.get('reuse', 0) / total_calls * 100, 1)
+                }
+            else:
+                percentages = {'ai': 0, 'rule': 0, 'cache': 0, 'reuse': 0}
+
+            # 缓存统计
+            active_cache_count = active_caches[0] if active_caches else 0
+            total_cache_hits = active_caches[1] if active_caches else 0
+            avg_hits = round(total_cache_hits / active_cache_count, 1) if active_cache_count > 0 else 0
+            cache_saved = route_breakdown.get('cache', 0) + route_breakdown.get('rule', 0) + route_breakdown.get('reuse', 0)
+            cache_hit_rate = round(total_cache_hits / (total_cache_hits + route_breakdown.get('ai', 0)) * 100, 1) if (total_cache_hits + route_breakdown.get('ai', 0)) > 0 else 0
+
+            tokens_in = (ai_stats.total_tokens_in or 0) if ai_stats else 0
+            tokens_out = (ai_stats.total_tokens_out or 0) if ai_stats else 0
+
             usage_data = {
                 'total_calls': total_calls,
                 'route_breakdown': route_breakdown,
-                'total_tokens': (ai_stats.total_tokens_in or 0) + (ai_stats.total_tokens_out or 0) if ai_stats else 0,
-                'total_cost': float(ai_stats.total_cost or 0) if ai_stats else 0.0,
-                'cost_saved': cost_saved,
-                'active_caches': active_caches[0] if active_caches else 0,
-                'cache_hits_total': active_caches[1] if active_caches else 0,
+                'percentages': percentages,
+                'tokens': {
+                    'total': tokens_in + tokens_out,
+                    'input': tokens_in,
+                    'output': tokens_out,
+                },
+                'cost': {
+                    'total': float(ai_stats.total_cost or 0) if ai_stats else 0.0,
+                    'saved_estimate': cost_saved,
+                },
+                'cache_statistics': {
+                    'total_cache_entries': active_cache_count,
+                    'total_hits': total_cache_hits,
+                    'avg_hits_per_entry': avg_hits,
+                    'cache_hit_rate': cache_hit_rate,
+                    'saved_calls': cache_saved,
+                },
                 'trend': trend_data
             }
 

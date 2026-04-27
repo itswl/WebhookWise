@@ -1,6 +1,7 @@
 """深度分析相关路由：触发分析、列表查询、转发、重试。"""
 import contextlib
 import json
+import math
 import re
 import time
 from datetime import datetime
@@ -124,7 +125,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 webhook_data = {
                     "source": event.source or 'unknown',
                     "headers": event.headers or {},
-                    "payload": alert_data
+                    "parsed_data": alert_data
                 }
                 from services.ai_analyzer import analyze_webhook_with_ai, analyze_with_openclaw
 
@@ -135,7 +136,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 # 如果返回了 _degraded，说明 OpenClaw 调用失败降级到了本地规则
                 if result.get('_degraded'):
                     try:
-                        result = await analyze_webhook_with_ai(alert_data, event.source or 'unknown')
+                        result = await analyze_webhook_with_ai(webhook_data)
                         engine = 'local (fallback)'
                     except Exception as e:
                         return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
@@ -150,7 +151,8 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                     user_question=user_question,
                     analysis_result=result,
                     status='pending' if result.get('_pending') else 'completed',
-                    openclaw_run_id=run_id
+                    openclaw_run_id=run_id,
+                    openclaw_session_key=result.get('_openclaw_session_key', '')
                 )
                 session.add(deep_record)
                 await session.commit()
@@ -226,10 +228,13 @@ async def list_all_deep_analyses(
 
         next_cursor = records[-1].id if records else None
 
+        total_pages = math.ceil(total / per_page) if total > 0 else 1
+
         return {
             "success": True,
             "data": {
                 "total": total,
+                "total_pages": total_pages,
                 "page": page if not cursor else None,
                 "per_page": per_page,
                 "next_cursor": next_cursor,
@@ -326,7 +331,48 @@ async def retry_deep_analysis(analysis_id: int):
                 return JSONResponse(status_code=400, content={'error': f'只能在失败或已完成状态下重新拉取，当前状态: {record.status}'})
 
             if not record.openclaw_session_key:
-                return JSONResponse(status_code=400, content={'error': '缺少 session key，无法重新拉取'})
+                # 没有 session key，重新调用 OpenClaw 获取新的 session_key
+                webhook_result = await session.execute(select(WebhookEvent).filter_by(id=record.webhook_event_id))
+                webhook_event = webhook_result.scalars().first()
+
+                if not webhook_event:
+                    return JSONResponse(status_code=404, content={'error': '关联的 webhook 事件不存在'})
+
+                # 重新构造 webhook_data
+                alert_data = webhook_event.parsed_data or {}
+                if not alert_data and webhook_event.raw_payload:
+                    try:
+                        alert_data = json.loads(webhook_event.raw_payload)
+                    except Exception:
+                        alert_data = {}
+
+                webhook_data = {
+                    "source": webhook_event.source or 'unknown',
+                    "headers": webhook_event.headers or {},
+                    "parsed_data": alert_data
+                }
+
+                # 重新调用 OpenClaw
+                from services.ai_analyzer import analyze_with_openclaw
+                new_result = await analyze_with_openclaw(webhook_data, user_question=record.user_question or '')
+
+                if new_result.get('_pending'):
+                    record.status = 'pending'
+                    record.created_at = datetime.now()
+                    record.analysis_result = new_result
+                    record.openclaw_run_id = new_result.get('_openclaw_run_id', '')
+                    record.openclaw_session_key = new_result.get('_openclaw_session_key', '')
+                    record.duration_seconds = 0
+                    await session.commit()
+                    logger.info(f"深度分析 #{analysis_id} 已重新触发 OpenClaw 分析")
+                    return {'success': True, 'message': '已重新发起分析任务，请等待结果'}
+                else:
+                    # 直接完成或降级
+                    record.status = 'completed'
+                    record.analysis_result = new_result
+                    record.duration_seconds = 0
+                    await session.commit()
+                    return {'success': True, 'message': '分析已完成'}
 
             # 检查是否配置了 HTTP API URL
             if Config.OPENCLAW_HTTP_API_URL:
