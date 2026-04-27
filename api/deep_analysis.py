@@ -54,7 +54,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
     try:
         with open(prompt_path, encoding='utf-8') as f:
             system_prompt = f.read()
-    except FileNotFoundError:
+    except FileNotFoundError: # noqa: PERF203
         system_prompt = """你是一个专业的 SRE 分析专家。请对以下告警进行深度分析，包括：
 1. 根因分析
 2. 影响范围评估
@@ -97,7 +97,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
     try:
         json_match = re.search(r'```json\s*([\s\S]*?)```', ai_response)
         report = json.loads(json_match.group(1)) if json_match else json.loads(ai_response)
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError): # noqa: PERF203
         report = {
             'root_cause': ai_response,
             'impact': '请查看上方分析',
@@ -132,7 +132,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
             if not alert_data and event.raw_payload:
                 try:
                     alert_data = json.loads(event.raw_payload)
-                except (json.JSONDecodeError, TypeError):
+                except (json.JSONDecodeError, TypeError): # noqa: PERF203
                     alert_data = {"raw": event.raw_payload}
 
             user_question = payload.get('user_question', '')
@@ -152,7 +152,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                     try:
                         report, duration = await _local_ai_analysis(alert_data, user_question)
                         engine = 'local (fallback)'
-                    except Exception as e:
+                    except Exception as e: # noqa: PERF203
                         return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {str(e)}"})
                 elif result.get('_pending'):
                     run_id = result.get('_openclaw_run_id', '')
@@ -202,9 +202,9 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                                 source=event.source,
                                 webhook_event_id=webhook_id
                             )
-                    except Exception as notify_err:
+                    except Exception as notify_err: # noqa: PERF203
                         logger.warning(f"飞书深度分析通知失败: {notify_err}")
-            except Exception as e:
+            except Exception as e: # noqa: PERF203
                 logger.error(f"保存深度分析结果失败: {e}")
 
             return {
@@ -217,7 +217,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None):
                 }
             }
 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"深度分析失败: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
@@ -361,7 +361,7 @@ async def forward_deep_analysis(analysis_id: int, payload: dict = None):
                 resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
                 resp.raise_for_status()
                 return {'success': True, 'message': f'已转发 (HTTP {resp.status_code})'}
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"转发深度分析失败: {e}")
         return JSONResponse(status_code=500, content={'success': False, 'message': str(e)})
 
@@ -450,7 +450,7 @@ async def retry_deep_analysis(analysis_id: int):
                             source=source,
                             webhook_event_id=record.webhook_event_id
                         )
-                except Exception as notify_err:
+                except Exception as notify_err: # noqa: PERF203
                     logger.warning(f"飞书深度分析通知失败: {notify_err}")
                 
                 return {
@@ -467,6 +467,6 @@ async def retry_deep_analysis(analysis_id: int):
                 logger.info(f"深度分析 #{analysis_id} 已重置为 pending，等待轮询重新拉取")
                 return {'success': True, 'message': '已重新开始拉取，请等待结果'}
                 
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"重试深度分析失败: {e}")
         return JSONResponse(status_code=500, content={'error': str(e)})

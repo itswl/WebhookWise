@@ -576,6 +576,6 @@ async def send_feishu_deep_analysis(
         else:
             logger.warning(f"飞书深度分析通知发送失败: status={resp.status_code}, response={resp.text[:200]}")
             return False
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"飞书深度分析通知异常: {e}")
         return False

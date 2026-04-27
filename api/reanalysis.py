@@ -98,9 +98,9 @@ async def reanalyze_webhook(webhook_id: int):
                            (f'，同时更新了 {updated_duplicates} 条重复告警' if updated_duplicates > 0 else '')
             }
 
-    except HTTPException:
+    except HTTPException: # noqa: PERF203
         raise
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"重新分析失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -124,8 +124,8 @@ async def manual_forward_webhook(webhook_id: int, data: dict = None):
                 "data": forward_result,
                 "message": f"已转发至 {custom_url or Config.FORWARD_URL}"
             }
-    except HTTPException:
+    except HTTPException: # noqa: PERF203
         raise
-    except Exception as e:
+    except Exception as e: # noqa: PERF203
         logger.error(f"手动转发失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
