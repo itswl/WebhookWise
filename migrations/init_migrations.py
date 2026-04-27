@@ -228,7 +228,7 @@ def add_beyond_window_field():
             time_window = timedelta(hours=24)
             update_count = 0
 
-            for alert_hash, events in hash_groups.items():
+            for _alert_hash, events in hash_groups.items():
                 for i, event in enumerate(events):
                     if i == 0:
                         # 第一条记录：beyond_window = 0（原始告警）

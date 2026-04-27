@@ -81,7 +81,7 @@ def fix_beyond_window(time_window_hours=24):
             now = datetime.now()
             time_threshold = timedelta(hours=time_window_hours)
 
-            for alert_hash, events in hash_groups.items():
+            for _alert_hash, events in hash_groups.items():
                 # 第一个事件（最早的原始告警）
                 if len(events) == 1:
                     continue  # 只有一条记录，不需要修复

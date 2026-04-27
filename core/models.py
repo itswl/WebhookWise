@@ -70,10 +70,8 @@ class WebhookEvent(Base):
 
         # 提取关键告警信息
         alert_info = {}
-        if self.parsed_data:
-            # 根据不同来源提取关键字段
-            if self.source == 'mongodb':
-                alert_info = {
+        if self.parsed_data and self.source == 'mongodb':
+            alert_info = {
                     'host': self.parsed_data.get('监控项', {}).get('主机', '') if isinstance(self.parsed_data.get('监控项'), dict) else '',
                     'metric': self.parsed_data.get('监控项', {}).get('监控项', '') if isinstance(self.parsed_data.get('监控项'), dict) else '',
                     'value': self.parsed_data.get('当前值', '')

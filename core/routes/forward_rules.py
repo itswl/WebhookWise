@@ -25,8 +25,9 @@ def get_forward_rules():
 
 
 @forward_rules_router.post('/api/forward-rules')
-def create_forward_rule(payload: dict = Body(default={})):
+def create_forward_rule(payload: dict = None):
     """创建转发规则"""
+    payload = payload or {}
     name = payload.get('name', '')
     if isinstance(name, str):
         name = name.strip()
@@ -65,7 +66,8 @@ def create_forward_rule(payload: dict = Body(default={})):
 
 
 @forward_rules_router.put('/api/forward-rules/{rule_id}')
-def update_forward_rule(rule_id: int, payload: dict = Body(default={})):
+def update_forward_rule(rule_id: int, payload: dict = None):
+    payload = payload or {}
     """更新转发规则"""
     with session_scope() as session:
         rule = session.query(ForwardRule).filter_by(id=rule_id).first()

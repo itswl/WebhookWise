@@ -44,7 +44,7 @@ def _resolve_duplicate_analysis(
 
 
 def _resolve_beyond_window_analysis(
-    original_event: Optional[WebhookEvent],
+    original_event: WebhookEvent | None,
     webhook_full_data: dict,
     reanalyze: bool = True
 ) -> tuple[dict, bool]:
@@ -63,8 +63,8 @@ def _resolve_beyond_window_analysis(
 
 def _refresh_original_event(
     original_id: int,
-    fallback_event: Optional[WebhookEvent]
-) -> Optional[WebhookEvent]:
+    fallback_event: WebhookEvent | None
+) -> WebhookEvent | None:
     """重新查询原始事件，避免 ORM 对象失效"""
     try:
         with session_scope() as session:
@@ -76,7 +76,7 @@ def _refresh_original_event(
 def _resolve_analysis_with_lock(
     alert_hash: str,
     webhook_full_data: dict
-) -> tuple[dict, bool, bool, Optional[WebhookEvent]]:
+) -> tuple[dict, bool, bool, WebhookEvent | None]:
     """
     获取锁后的分析决策：
     - 首次告警 → AI 分析
@@ -127,7 +127,7 @@ def _resolve_analysis_with_lock(
 def _resolve_analysis_without_lock(
     alert_hash: str,
     webhook_full_data: dict
-) -> tuple[dict, bool, bool, Optional[WebhookEvent]]:
+) -> tuple[dict, bool, bool, WebhookEvent | None]:
     """
     未获取锁（其他 worker 正在处理）时的分析决策：
     等待锁释放后复用结果，或直接返回空结果让请求失败。
@@ -155,8 +155,8 @@ def _resolve_analysis_without_lock(
 # ── 转发决策 helpers ────────────────────────────────────────────────────────────
 
 def _recently_notified(
-    original_event: Optional[WebhookEvent],
-    original_id: Optional[int],
+    original_event: WebhookEvent | None,
+    original_id: int | None,
     alert_type: str
 ) -> bool:
     """检查是否刚刚通知过（NOTIFICATION_COOLDOWN_SECONDS 内）"""
@@ -184,11 +184,11 @@ def _resolve_alert_type_label(
 
 
 def _decide_duplicate_forwarding(
-    original_event: Optional[WebhookEvent],
-    original_id: Optional[int],
+    original_event: WebhookEvent | None,
+    original_id: int | None,
     noise_context,
     importance: str
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     决定是否转发重复告警。
 
@@ -259,11 +259,11 @@ def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
     beyond_window: bool,
-    original_event: Optional[WebhookEvent],
-    original_id: Optional[int],
+    original_event: WebhookEvent | None,
+    original_id: int | None,
     matched_rules: list[ForwardRule],
     is_periodic_reminder: bool = False
-) -> tuple[bool, Optional[str], bool, list[ForwardRule]]:
+) -> tuple[bool, str | None, bool, list[ForwardRule]]:
     """
     综合决策是否转发告警。
 
@@ -292,9 +292,8 @@ def _decide_forwarding(
         return True, None, False, []
 
     # 有匹配规则 → 检查是否触发 periodic reminder
-    if matched_rules and is_duplicate and not beyond_window:
-        if _recently_notified(original_event, original_id, '重复告警'):
-            return False, '重复告警，冷却期内', False, matched_rules
+    if matched_rules and is_duplicate and not beyond_window and _recently_notified(original_event, original_id, '重复告警'):
+        return False, '重复告警，冷却期内', False, matched_rules
 
     return True, None, is_periodic_reminder, matched_rules
 

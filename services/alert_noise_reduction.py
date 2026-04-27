@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +16,19 @@ AnalysisResult = dict[str, Any]
 
 @dataclass(frozen=True)
 class AlertContext:
-    event_id: Optional[int]
+    event_id: int | None
     source: str
     importance: str
     parsed_data: AlertPayload
     analysis: AnalysisResult
     timestamp: datetime
-    alert_hash: Optional[str] = None
+    alert_hash: str | None = None
 
 
 @dataclass(frozen=True)
 class NoiseReductionDecision:
     relation: str
-    root_cause_event_id: Optional[int]
+    root_cause_event_id: int | None
     confidence: float
     suppress_forward: bool
     reason: str
@@ -77,7 +78,7 @@ def _tokenize_text(*values: Any) -> set[str]:
     return tokens
 
 
-def _pick_first(*values: Any) -> Optional[str]:
+def _pick_first(*values: Any) -> str | None:
     for value in values:
         if value is None:
             continue

@@ -128,7 +128,7 @@ def main():
     print(f"\n开始重试 {len(records)} 条记录...\n")
     success, failed = 0, []
 
-    for record_id, webhook_event_id, session_key, _ in records:
+    for record_id, webhook_event_id, _session_key, _ in records:
         ok, msg = retry_record(record_id)
         status = "✓" if ok else "✗"
         print(f"  [{status}] #{record_id} (webhook #{webhook_event_id}): {msg}")

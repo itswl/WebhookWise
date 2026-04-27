@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -102,7 +102,7 @@ class _AppConfig(BaseSettings):
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
 
     # 飞书通知重要性配置
-    IMPORTANCE_CONFIG: Dict[str, Any] = Field(default={
+    IMPORTANCE_CONFIG: dict[str, Any] = Field(default={
         'high': {'color': 'red', 'emoji': '🔴', 'text': '高'},
         'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
         'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
@@ -158,7 +158,7 @@ class _AppConfig(BaseSettings):
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         warnings = []
         if not self.WEBHOOK_SECRET:
             warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
