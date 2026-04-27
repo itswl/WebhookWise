@@ -5,7 +5,6 @@
     python test_prompt_loading.py
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -30,7 +29,7 @@ def test_prompt_loading():
     try:
         template = load_user_prompt_template()
         print(f"   ✅ 成功加载，长度: {len(template)} 字符")
-        print(f"   预览 (前200字符):")
+        print("   预览 (前200字符):")
         print(f"   {template[:200]}...")
     except Exception as e:
         raise AssertionError(f"加载失败: {e}") from e
@@ -92,7 +91,7 @@ def test_prompt_loading():
             print(f"   修改时间: {stat.st_mtime}")
         else:
             print(f"   ⚠️  文件不存在: {file_path}")
-            print(f"   将使用默认硬编码模板")
+            print("   将使用默认硬编码模板")
     else:
         print("   ℹ️  未配置 AI_USER_PROMPT_FILE")
 

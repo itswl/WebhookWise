@@ -3,9 +3,8 @@ core/routes/reanalysis.py
 =========================
 重新分析 + 手动转发路由。
 """
-from typing import Optional
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from core.config import Config
 from core.logger import logger

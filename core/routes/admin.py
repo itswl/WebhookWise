@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import dotenv_values
-from fastapi import APIRouter, Body
+from fastapi import APIRouter
 
 from core.config import Config
 from core.logger import logger

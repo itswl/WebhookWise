@@ -1,13 +1,11 @@
 import asyncio
-import re
-from typing import Optional
 
 """OpenClaw 分析结果后台轮询"""
 import json
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from core.config import Config
 

@@ -1,7 +1,6 @@
 import os
 import threading
 import time
-from typing import Optional
 
 from core.config import Config
 from core.logger import logger

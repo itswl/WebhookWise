@@ -152,7 +152,7 @@ print(f"\n生成的 Hash: {hash2}")
 
 print("\n" + "=" * 80)
 print(f"\n✅ Hash 是否相同: {hash1 == hash2}")
-print(f"理论上应该: 被识别为重复告警")
+print("理论上应该: 被识别为重复告警")
 
 # 分析可能导致不去重的原因
 print("\n" + "=" * 80)

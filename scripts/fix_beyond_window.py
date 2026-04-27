@@ -128,7 +128,7 @@ def fix_beyond_window(time_window_hours=24):
                 print(f"... 还有 {len(updates) - 20} 条")
 
             # 4. 批量更新
-            print(f"\n🔧 开始批量更新...")
+            print("\n🔧 开始批量更新...")
 
             for update in updates:
                 conn.execute(text("""

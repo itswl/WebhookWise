@@ -5,10 +5,9 @@ core/routes/forward_rules.py
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from core.logger import logger
 from core.models import ForwardRule, session_scope
 
 forward_rules_router = APIRouter()

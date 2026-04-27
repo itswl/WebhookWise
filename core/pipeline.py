@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Union
 
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
