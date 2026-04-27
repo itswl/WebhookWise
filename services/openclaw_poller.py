@@ -316,7 +316,7 @@ def start_poller(interval: int = 30):
     def _loop():
         logger.info(f"[Poller] 任务已启动: interval={interval}s")
         import asyncio
-        
+
         async def _run_poller():
             while not _stop_event.is_set():
                 try:
@@ -325,7 +325,7 @@ def start_poller(interval: int = 30):
                     logger.error(f"轮询循环异常: {e}")
                 # Wait for the next interval or until stop event is set
                 await asyncio.sleep(interval)
-                
+
         # Create a new event loop for this thread to keep connections stable
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
