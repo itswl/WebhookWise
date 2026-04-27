@@ -196,9 +196,9 @@ def _poll_pending_analyses_inner():
 
     try:
         async with session_scope() as session:
-            pending = session.query(DeepAnalysis).filter_by(
-                status='pending'
-            ).order_by(DeepAnalysis.created_at.asc()).limit(10).all()
+            from sqlalchemy import select
+            result = await session.execute(select(DeepAnalysis).filter_by(status='pending').order_by(DeepAnalysis.created_at.asc()).limit(10))
+            pending = result.scalars().all()
 
             if not pending:
                 return
