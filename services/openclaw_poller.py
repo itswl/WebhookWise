@@ -17,19 +17,19 @@ logger = logging.getLogger('webhook_service.openclaw_poller')
 # 移除原有的内存锁和缓存字典
 
 
-def _get_poll_stability(record_id: int) -> dict:
+async def await _get_poll_stability(record_id: int) -> dict:
     redis_client = core.redis_client.get_redis()
-    val = redis_client.get(f"openclaw:poller:stability:{record_id}")
+    val = await redis_client.get(f"openclaw:poller:stability:{record_id}")
     return json.loads(val) if val else None
 
-def _set_poll_stability(record_id: int, data: dict):
+async def await _set_poll_stability(record_id: int, data: dict):
     redis_client = core.redis_client.get_redis()
     # 缓存保留 1 小时
     redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
 
-def _clear_poll_stability(record_id: int):
+async def await _clear_poll_stability(record_id: int):
     redis_client = core.redis_client.get_redis()
-    redis_client.delete(f"openclaw:poller:stability:{record_id}")
+    await redis_client.delete(f"openclaw:poller:stability:{record_id}")
 
 
 def _notify_feishu_deep_analysis(record, source: str = ''):
@@ -88,7 +88,7 @@ def _notify_feishu_deep_analysis_failed(record, reason: str = ''):
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
 
-def poll_pending_analyses():
+async def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
     import core.redis_client
     redis_client = core.redis_client.get_redis()
@@ -96,7 +96,7 @@ def poll_pending_analyses():
     lock_key = "openclaw:poller:global_lock"
 
     # 尝试获取锁，有效时间 60 秒
-    if not redis_client.set(lock_key, "locked", nx=True, ex=60):
+    if not await redis_client.set(lock_key, "locked", nx=True, ex=60):
         logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
         return
 
@@ -105,7 +105,7 @@ def poll_pending_analyses():
     except Exception as e:
         logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
-        redis_client.delete(lock_key)
+        await redis_client.delete(lock_key)
 
 
 def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
@@ -211,13 +211,13 @@ def _poll_pending_analyses_inner():
                     if record.created_at and (datetime.now() - record.created_at).total_seconds() > timeout_seconds:
                         record.status = 'failed'
                         record.analysis_result = {'root_cause': 'OpenClaw 分析超时'}
-                        _clear_poll_stability(record.id)
+                        await _clear_poll_stability(record.id)
                         _notify_feishu_deep_analysis_failed(record, '超时失败')
                         continue
 
                     if not record.openclaw_session_key:
                         record.status = 'failed'
-                        _clear_poll_stability(record.id)
+                        await _clear_poll_stability(record.id)
                         continue
 
                     # 最小等待时间
@@ -240,17 +240,17 @@ def _poll_pending_analyses_inner():
                         msg_count = result.get('msg_count', 0)
 
                         current_snapshot = {'msg_count': msg_count, 'text_len': len(text)}
-                        prev_snapshot = _get_poll_stability(record.id)
+                        prev_snapshot = await _get_poll_stability(record.id)
 
                         if prev_snapshot and prev_snapshot['msg_count'] == current_snapshot['msg_count'] and prev_snapshot['text_len'] == current_snapshot['text_len']:
                             hit_count = prev_snapshot.get('hit_count', 1) + 1
                             if hit_count >= Config.OPENCLAW_STABILITY_REQUIRED_HITS:
                                 logger.debug(f"[Poller] 分析稳定确认: id={record.id}")
                             else:
-                                _set_poll_stability(record.id, {**current_snapshot, 'hit_count': hit_count})
+                                await _set_poll_stability(record.id, {**current_snapshot, 'hit_count': hit_count})
                                 continue
 
-                            _clear_poll_stability(record.id)
+                            await _clear_poll_stability(record.id)
                             parsed_result = None
                             json_text = _extract_robust_json(text)
                             if json_text:
@@ -280,15 +280,15 @@ def _poll_pending_analyses_inner():
                             except Exception as e:
                                 logger.debug(f"飞书深度分析通知失败: {e}")
                         else:
-                            _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
+                            await _set_poll_stability(record.id, {**current_snapshot, 'hit_count': 1, 'first_result': {'text': text}})
 
                     elif result.get('status') == 'error':
-                        prev_snapshot = _get_poll_stability(record.id)
+                        prev_snapshot = await _get_poll_stability(record.id)
                         if prev_snapshot and 'first_result' in prev_snapshot:
                             error_count = prev_snapshot.get('error_count', 0) + 1
                             if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS and Config.OPENCLAW_ENABLE_DEGRADATION:
                                 text = prev_snapshot['first_result']['text']
-                                _clear_poll_stability(record.id)
+                                await _clear_poll_stability(record.id)
                                 parsed_result = None
                                 json_text = _extract_robust_json(text)
                                 if json_text:
@@ -300,7 +300,7 @@ def _poll_pending_analyses_inner():
                                 record.analysis_result = parsed_result or {'root_cause': text}
                                 record.status = 'completed'
                                 continue
-                        _clear_poll_stability(record.id)
+                        await _clear_poll_stability(record.id)
 
                 except Exception as e:
                     logger.error(f"轮询记录 id={record.id} 失败: {e}")
@@ -314,9 +314,10 @@ def start_poller(interval: int = 30):
     """启动后台轮询线程"""
     def _loop():
         logger.info(f"[Poller] 任务已启动: interval={interval}s")
+        import asyncio
         while not _stop_event.is_set():
             try:
-                poll_pending_analyses()
+                asyncio.run(poll_pending_analyses())
             except Exception as e:
                 logger.error(f"轮询循环异常: {e}")
             _stop_event.wait(interval)

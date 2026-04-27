@@ -201,7 +201,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     headers = dict(request.headers)
 
     try:
-        limited_ip = enforce_webhook_rate_limit(request)
+        limited_ip = await enforce_webhook_rate_limit(request)
         if limited_ip:
             return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
     except Exception as e:
@@ -233,7 +233,7 @@ async def receive_webhook_with_source(source: str, request: Request, background_
     headers = dict(request.headers)
 
     try:
-        limited_ip = enforce_webhook_rate_limit(request)
+        limited_ip = await enforce_webhook_rate_limit(request)
         if limited_ip:
             return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
     except Exception as e:

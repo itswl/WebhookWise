@@ -41,7 +41,7 @@ class _AppConfig(BaseSettings):
     REDIS_URL: str = Field(default='redis://localhost:6379/0')
 
     # 数据库配置
-    DATABASE_URL: str = Field(default='postgresql://postgres:postgres@localhost:5432/webhooks')
+    DATABASE_URL: str = Field(default='postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks')
     DB_POOL_SIZE: int = Field(default=5)
     DB_MAX_OVERFLOW: int = Field(default=10)
     DB_POOL_RECYCLE: int = Field(default=3600)
@@ -176,3 +176,8 @@ class _AppConfig(BaseSettings):
         return warnings
 
 Config = _AppConfig()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.DATABASE_URL.startswith("postgresql://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
