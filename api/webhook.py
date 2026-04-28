@@ -253,6 +253,7 @@ async def receive_webhook(
         raw_headers=headers,
         raw_body=raw_body_str,
     )
+    # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
 
     # 异步处理：传递 event_id 用于状态更新
@@ -295,6 +296,7 @@ async def receive_webhook_with_source(
         raw_headers=headers,
         raw_body=raw_body_str,
     )
+    # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
 
     # 异步处理：传递 event_id 用于状态更新

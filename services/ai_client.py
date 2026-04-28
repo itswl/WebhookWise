@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 from core.config import Config
 from core.http_client import get_http_client
 from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL
+from core.redis_client import get_redis
 from core.utils import feishu_cb
 from services.ai_parser import _parse_ai_analysis_response
 
@@ -22,6 +23,21 @@ logger = logging.getLogger("webhook_service.ai_client")
 # 类型别名
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
+
+# AsyncOpenAI 模块级单例，避免每次调用都新建客户端导致连接池泄漏
+_openai_client: AsyncOpenAI | None = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    """获取 AsyncOpenAI 客户端单例（懒加载）"""
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            base_url=Config.OPENAI_API_URL,
+        )
+        logger.info("[AI] 已初始化 AsyncOpenAI 客户端单例")
+    return _openai_client
 
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
@@ -35,7 +51,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
     from services.ai_prompts import load_user_prompt_template
 
     try:
-        client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
+        client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
@@ -103,7 +119,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
     from services.ai_prompts import load_user_prompt_template
 
     try:
-        client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
+        client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
@@ -204,44 +220,23 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
 
 
 async def _should_send_degradation_alert() -> bool:
-    """
-    检查是否应该发送降级通知（24小时限流）
+    """检查是否应发送降级告警（24小时内最多一次）
 
-    使用文件记录上次通知时间，避免频繁通知
+    使用 Redis SET NX EX 原子操作实现分布式限流，
+    多 worker / 多 Pod 下均可正确限流。
 
     Returns:
         bool: True - 应该发送，False - 跳过（24小时内已通知过）
     """
-    from datetime import datetime, timedelta
-    from pathlib import Path
-
-    # 使用数据目录记录上次通知时间
-    marker_file = Path(Config.DATA_DIR) / ".ai_degradation_last_alert"
-
     try:
-        # 读取上次通知时间
-        if marker_file.exists():
-            with open(marker_file) as f:
-                last_alert_time_str = f.read().strip()
-                last_alert_time = datetime.fromisoformat(last_alert_time_str)
-
-            # 检查是否在24小时内
-            time_since_last = datetime.now() - last_alert_time
-            if time_since_last < timedelta(hours=24):
-                hours_remaining = 24 - (time_since_last.total_seconds() / 3600)
-                logger.info(
-                    f"跳过降级通知：距离上次通知仅 {time_since_last.total_seconds() / 3600:.1f} 小时，还需等待 {hours_remaining:.1f} 小时"
-                )
-                return False
-
-        # 记录本次通知时间
-        with open(marker_file, "w") as f:
-            f.write(datetime.now().isoformat())
-
-        return True
-
+        r = get_redis()
+        # NX: key 不存在才设置成功; EX: 24小时过期
+        success = await r.set("ai_degradation_alert_lock", "1", nx=True, ex=86400)
+        if not success:
+            logger.info("跳过降级通知：Redis 限流锁仍有效（24小时内已通知过）")
+        return bool(success)
     except Exception as e:
-        logger.error(f"检查降级通知限流失败: {e}，默认允许发送")
+        logger.warning(f"Redis 限流检查失败，允许发送: {e}")
         return True
 
 
