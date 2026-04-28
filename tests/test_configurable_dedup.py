@@ -2,6 +2,7 @@
 """
 测试可配置的重复告警去重功能
 """
+
 import json
 import time
 
@@ -20,34 +21,30 @@ alert_data = {
     "MetricName": "MemoryUtilization",
     "CurrentValue": 92.5,
     "Threshold": 85.0,
-    "Resources": [
-        {
-            "InstanceId": "i-test-001",
-            "Region": "cn-beijing"
-        }
-    ],
-    "AlarmTime": "2025-11-07T12:00:00Z"
+    "Resources": [{"InstanceId": "i-test-001", "Region": "cn-beijing"}],
+    "AlarmTime": "2025-11-07T12:00:00Z",
 }
+
 
 async def get_config():
     """获取当前配置"""
     response = requests.get(CONFIG_URL)
     return response.json()
 
+
 async def update_config(config_data):
     """更新配置"""
     response = requests.post(CONFIG_URL, json=config_data)
     return response.json()
 
+
 def send_webhook(data, source="cloud-monitor"):
     """发送 webhook 请求"""
-    headers = {
-        "Content-Type": "application/json",
-        "X-Webhook-Source": source
-    }
+    headers = {"Content-Type": "application/json", "X-Webhook-Source": source}
 
     response = requests.post(WEBHOOK_URL, json=data, headers=headers)
     return response.json()
+
 
 async def test_time_window_config():
     """测试时间窗口配置"""
@@ -58,22 +55,20 @@ async def test_time_window_config():
     # 获取当前配置
     print("\n1. 获取当前配置...")
     config = await get_config()
-    if config.get('success'):
-        current_window = config['data'].get('duplicate_alert_time_window', 24)
+    if config.get("success"):
+        current_window = config["data"].get("duplicate_alert_time_window", 24)
         print(f"   当前时间窗口: {current_window} 小时")
 
     # 修改时间窗口为1小时
     print("\n2. 修改时间窗口为1小时...")
-    update_result = await update_config({
-        'duplicate_alert_time_window': 1
-    })
+    update_result = await update_config({"duplicate_alert_time_window": 1})
     print(f"   更新结果: {json.dumps(update_result, ensure_ascii=False)}")
 
     # 验证配置已更新
     print("\n3. 验证配置已更新...")
     config = await get_config()
-    if config.get('success'):
-        new_window = config['data'].get('duplicate_alert_time_window')
+    if config.get("success"):
+        new_window = config["data"].get("duplicate_alert_time_window")
         print(f"   新的时间窗口: {new_window} 小时")
         if new_window == 1:
             print("   ✓ 时间窗口配置更新成功")
@@ -82,8 +77,9 @@ async def test_time_window_config():
 
     # 恢复默认配置
     print("\n4. 恢复默认配置...")
-    await update_config({'duplicate_alert_time_window': 24})
+    await update_config({"duplicate_alert_time_window": 24})
     print("   ✓ 已恢复为24小时")
+
 
 async def test_forward_duplicate_config():
     """测试重复告警转发配置"""
@@ -94,15 +90,13 @@ async def test_forward_duplicate_config():
     # 获取当前配置
     print("\n1. 获取当前配置...")
     config = await get_config()
-    if config.get('success'):
-        forward_dup = config['data'].get('forward_duplicate_alerts', False)
+    if config.get("success"):
+        forward_dup = config["data"].get("forward_duplicate_alerts", False)
         print(f"   是否转发重复告警: {forward_dup}")
 
     # 关闭重复告警转发
     print("\n2. 关闭重复告警转发...")
-    update_result = await update_config({
-        'forward_duplicate_alerts': False
-    })
+    update_result = await update_config({"forward_duplicate_alerts": False})
     print(f"   更新结果: {json.dumps(update_result, ensure_ascii=False)}")
 
     # 发送高风险告警
@@ -119,14 +113,14 @@ async def test_forward_duplicate_config():
     print(f"   是否重复: {result2.get('is_duplicate', False)}")
     print(f"   转发状态: {result2.get('forward_status', 'unknown')}")
 
-    if result2.get('is_duplicate') and result2.get('forward_status') == 'skipped':
+    if result2.get("is_duplicate") and result2.get("forward_status") == "skipped":
         print("   ✓ 重复告警正确跳过转发")
     else:
         print("   ✗ 重复告警应该跳过转发")
 
     # 开启重复告警转发
     print("\n5. 开启重复告警转发...")
-    await update_config({'forward_duplicate_alerts': True})
+    await update_config({"forward_duplicate_alerts": True})
 
     time.sleep(1)
 
@@ -136,16 +130,17 @@ async def test_forward_duplicate_config():
     print(f"   是否重复: {result3.get('is_duplicate', False)}")
     print(f"   转发状态: {result3.get('forward_status', 'unknown')}")
 
-    if result3.get('is_duplicate'):
-        if result3.get('forward_status') in ['success', 'failed', 'timeout']:
+    if result3.get("is_duplicate"):
+        if result3.get("forward_status") in ["success", "failed", "timeout"]:
             print("   ✓ 重复告警正确执行转发")
         else:
             print(f"   ! 重复告警转发状态: {result3.get('forward_status')}")
 
     # 恢复默认配置
     print("\n7. 恢复默认配置（关闭重复告警转发）...")
-    await update_config({'forward_duplicate_alerts': False})
+    await update_config({"forward_duplicate_alerts": False})
     print("   ✓ 已恢复默认配置")
+
 
 async def test_custom_time_window():
     """测试自定义时间窗口"""
@@ -156,7 +151,7 @@ async def test_custom_time_window():
     # 设置时间窗口为非常短（例如0.001小时，即几秒）
     # 注意：这只是演示，实际使用中不建议设置这么短
     print("\n1. 设置极短时间窗口用于测试...")
-    await update_config({'duplicate_alert_time_window': 0.001})
+    await update_config({"duplicate_alert_time_window": 0.001})
 
     # 发送告警
     print("\n2. 发送告警...")
@@ -175,15 +170,16 @@ async def test_custom_time_window():
     print(f"   是否重复: {result2.get('is_duplicate', False)}")
     print(f"   Webhook ID: {result2.get('webhook_id')}")
 
-    if not result2.get('is_duplicate'):
+    if not result2.get("is_duplicate"):
         print("   ✓ 超过时间窗口后，正确识别为新告警")
     else:
         print("   ✗ 应该识别为新告警")
 
     # 恢复默认配置
     print("\n5. 恢复默认时间窗口...")
-    await update_config({'duplicate_alert_time_window': 24})
+    await update_config({"duplicate_alert_time_window": 24})
     print("   ✓ 已恢复为24小时")
+
 
 def main():
     """主测试函数"""
@@ -213,7 +209,9 @@ def main():
     except Exception as e:
         print(f"错误: {e!s}")
         import traceback
+
         traceback.print_exc()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

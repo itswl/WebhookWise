@@ -2,6 +2,7 @@
 """
 测试重复告警去重功能
 """
+
 import json
 import time
 
@@ -18,24 +19,18 @@ alert_data = {
     "MetricName": "CPUUtilization",
     "CurrentValue": 95.5,
     "Threshold": 80.0,
-    "Resources": [
-        {
-            "InstanceId": "i-abc123",
-            "Region": "cn-hangzhou"
-        }
-    ],
-    "AlarmTime": "2025-11-07T11:00:00Z"
+    "Resources": [{"InstanceId": "i-abc123", "Region": "cn-hangzhou"}],
+    "AlarmTime": "2025-11-07T11:00:00Z",
 }
+
 
 def send_webhook(data, source="cloud-monitor"):
     """发送 webhook 请求"""
-    headers = {
-        "Content-Type": "application/json",
-        "X-Webhook-Source": source
-    }
+    headers = {"Content-Type": "application/json", "X-Webhook-Source": source}
 
     response = requests.post(WEBHOOK_URL, json=data, headers=headers)
     return response.json()
+
 
 def test_duplicate_detection():
     """测试重复告警检测"""
@@ -78,7 +73,7 @@ def test_duplicate_detection():
     different_alert["Resources"] = [
         {
             "InstanceId": "i-xyz789",  # 不同的实例ID
-            "Region": "cn-hangzhou"
+            "Region": "cn-hangzhou",
         }
     ]
     result4 = send_webhook(different_alert)
@@ -92,28 +87,28 @@ def test_duplicate_detection():
 
     # 验证结果
     print("\n验证结果:")
-    if not result1.get('is_duplicate'):
+    if not result1.get("is_duplicate"):
         print("✓ 第一次告警正确识别为新告警")
     else:
         print("✗ 第一次告警应该是新告警")
 
-    if result2.get('is_duplicate'):
+    if result2.get("is_duplicate"):
         print("✓ 第二次告警正确识别为重复告警")
     else:
         print("✗ 第二次告警应该是重复告警")
 
-    if result3.get('is_duplicate'):
+    if result3.get("is_duplicate"):
         print("✓ 第三次告警正确识别为重复告警")
     else:
         print("✗ 第三次告警应该是重复告警")
 
-    if not result4.get('is_duplicate'):
+    if not result4.get("is_duplicate"):
         print("✓ 不同的告警正确识别为新告警")
     else:
         print("✗ 不同的告警应该是新告警")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         test_duplicate_detection()
     except requests.exceptions.ConnectionError:

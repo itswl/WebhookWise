@@ -19,6 +19,7 @@ class AdapterRegistry:
 
     def register(self, source_name: str, *, aliases: set[str] | None = None):
         """装饰器：注册一个生态适配器，可选提供别名集合。"""
+
         def wrapper(func: Callable[[WebhookData], WebhookData]):
             self._normalizers[source_name] = func
             # 注册别名映射
@@ -29,14 +30,17 @@ class AdapterRegistry:
                     self._aliases[alias.lower().replace(" ", "")] = source_name
             logger.debug(f"[Adapter Registry] Registered normalizer for: {source_name}")
             return func
+
         return wrapper
 
     def register_detector(self, source_name: str):
         """装饰器：注册一个生态适配器探测器。"""
+
         def wrapper(func: Callable[[WebhookData], bool]):
             self._detectors.append((source_name, func))
             logger.debug(f"[Adapter Registry] Registered detector for: {source_name}")
             return func
+
         return wrapper
 
     def find_adapter_by_payload(self, data: WebhookData) -> str | None:

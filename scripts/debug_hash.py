@@ -3,6 +3,7 @@
 调试告警哈希生成工具
 用于查看两个告警的哈希生成过程，帮助理解为什么被判定为重复
 """
+
 import hashlib
 import json
 
@@ -12,52 +13,52 @@ def generate_alert_hash_debug(data, source):
     生成告警哈希（带调试信息）
     """
     key_fields = {
-        'source': source,
+        "source": source,
     }
 
     # 云监控告警特定字段
     if isinstance(data, dict):
         # 告警类型和规则名称
-        if 'Type' in data:
-            key_fields['type'] = data.get('Type')
-        if 'RuleName' in data:
-            key_fields['rule_name'] = data.get('RuleName')
-        if 'event' in data:
-            key_fields['event'] = data.get('event')
-        if 'event_type' in data:
-            key_fields['event_type'] = data.get('event_type')
+        if "Type" in data:
+            key_fields["type"] = data.get("Type")
+        if "RuleName" in data:
+            key_fields["rule_name"] = data.get("RuleName")
+        if "event" in data:
+            key_fields["event"] = data.get("event")
+        if "event_type" in data:
+            key_fields["event_type"] = data.get("event_type")
 
         # 资源标识
-        if 'Resources' in data:
-            resources = data.get('Resources', [])
+        if "Resources" in data:
+            resources = data.get("Resources", [])
             if isinstance(resources, list) and len(resources) > 0:
                 first_resource = resources[0]
                 if isinstance(first_resource, dict):
-                    key_fields['resource_id'] = first_resource.get('InstanceId') or first_resource.get('id')
+                    key_fields["resource_id"] = first_resource.get("InstanceId") or first_resource.get("id")
 
         # 指标名称
-        if 'MetricName' in data:
-            key_fields['metric_name'] = data.get('MetricName')
+        if "MetricName" in data:
+            key_fields["metric_name"] = data.get("MetricName")
 
         # 告警级别
-        if 'Level' in data:
-            key_fields['level'] = data.get('Level')
+        if "Level" in data:
+            key_fields["level"] = data.get("Level")
 
         # 通用字段
-        if 'alert_id' in data:
-            key_fields['alert_id'] = data.get('alert_id')
-        if 'alert_name' in data:
-            key_fields['alert_name'] = data.get('alert_name')
-        if 'resource_id' in data:
-            key_fields['resource_id'] = data.get('resource_id')
-        if 'service' in data:
-            key_fields['service'] = data.get('service')
+        if "alert_id" in data:
+            key_fields["alert_id"] = data.get("alert_id")
+        if "alert_name" in data:
+            key_fields["alert_name"] = data.get("alert_name")
+        if "resource_id" in data:
+            key_fields["resource_id"] = data.get("resource_id")
+        if "service" in data:
+            key_fields["service"] = data.get("service")
 
     # 生成稳定的JSON字符串
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
 
     # 计算SHA256哈希
-    hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     return hash_value, key_fields, key_string
 
@@ -161,6 +162,7 @@ if __name__ == "__main__":
     # 交互式输入
     print("\n请粘贴告警JSON数据（输入完成后按Ctrl+D）:")
     import sys
+
     alert_data = sys.stdin.read()
     if alert_data.strip():
         analyze_alert(alert_data, "unknown")

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
 
 # 必须从环境变量获取数据库连接
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
@@ -37,30 +37,30 @@ def preview_cleanup(engine, **filters):
     params = {}
 
     # 重要性过滤
-    if 'importance' in filters:
-        if isinstance(filters['importance'], list):
-            placeholders = ','.join([f":imp_{i}" for i in range(len(filters['importance']))])
+    if "importance" in filters:
+        if isinstance(filters["importance"], list):
+            placeholders = ",".join([f":imp_{i}" for i in range(len(filters["importance"]))])
             conditions.append(f"importance IN ({placeholders})")
-            for i, imp in enumerate(filters['importance']):
-                params[f'imp_{i}'] = imp
+            for i, imp in enumerate(filters["importance"]):
+                params[f"imp_{i}"] = imp
         else:
             conditions.append("importance = :importance")
-            params['importance'] = filters['importance']
+            params["importance"] = filters["importance"]
 
     # 来源过滤
-    if 'source' in filters:
+    if "source" in filters:
         conditions.append("source = :source")
-        params['source'] = filters['source']
+        params["source"] = filters["source"]
 
     # 时间过滤
-    if 'before_date' in filters:
+    if "before_date" in filters:
         conditions.append("timestamp < :before_date")
-        params['before_date'] = filters['before_date']
+        params["before_date"] = filters["before_date"]
 
-    if 'keep_recent_days' in filters:
-        cutoff_date = datetime.now() - timedelta(days=filters['keep_recent_days'])
+    if "keep_recent_days" in filters:
+        cutoff_date = datetime.now() - timedelta(days=filters["keep_recent_days"])
         conditions.append("timestamp < :cutoff_date")
-        params['cutoff_date'] = cutoff_date
+        params["cutoff_date"] = cutoff_date
 
     # 构建查询
     where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -96,8 +96,8 @@ def preview_cleanup(engine, **filters):
         for row in rows:
             importance, source, count, earliest, latest = row
             total += count
-            earliest_str = earliest.strftime('%Y-%m-%d %H:%M') if earliest else '-'
-            latest_str = latest.strftime('%Y-%m-%d %H:%M') if latest else '-'
+            earliest_str = earliest.strftime("%Y-%m-%d %H:%M") if earliest else "-"
+            latest_str = latest.strftime("%Y-%m-%d %H:%M") if latest else "-"
             print(f"{importance:<12} {source:<15} {count:<10} {earliest_str:<20} {latest_str:<20}")
 
         print("-" * 80)
@@ -117,30 +117,30 @@ def delete_alerts(engine, **filters):
     params = {}
 
     # 重要性过滤
-    if 'importance' in filters:
-        if isinstance(filters['importance'], list):
-            placeholders = ','.join([f":imp_{i}" for i in range(len(filters['importance']))])
+    if "importance" in filters:
+        if isinstance(filters["importance"], list):
+            placeholders = ",".join([f":imp_{i}" for i in range(len(filters["importance"]))])
             conditions.append(f"importance IN ({placeholders})")
-            for i, imp in enumerate(filters['importance']):
-                params[f'imp_{i}'] = imp
+            for i, imp in enumerate(filters["importance"]):
+                params[f"imp_{i}"] = imp
         else:
             conditions.append("importance = :importance")
-            params['importance'] = filters['importance']
+            params["importance"] = filters["importance"]
 
     # 来源过滤
-    if 'source' in filters:
+    if "source" in filters:
         conditions.append("source = :source")
-        params['source'] = filters['source']
+        params["source"] = filters["source"]
 
     # 时间过滤
-    if 'before_date' in filters:
+    if "before_date" in filters:
         conditions.append("timestamp < :before_date")
-        params['before_date'] = filters['before_date']
+        params["before_date"] = filters["before_date"]
 
-    if 'keep_recent_days' in filters:
-        cutoff_date = datetime.now() - timedelta(days=filters['keep_recent_days'])
+    if "keep_recent_days" in filters:
+        cutoff_date = datetime.now() - timedelta(days=filters["keep_recent_days"])
         conditions.append("timestamp < :cutoff_date")
-        params['cutoff_date'] = cutoff_date
+        params["cutoff_date"] = cutoff_date
 
     # 构建删除语句
     where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -188,10 +188,7 @@ def main():
     # }
 
     # 默认配置：删除来源为 unknown 且重要性为 medium 或 low 的告警
-    filters = {
-        'source': 'unknown',
-        'importance': ['medium', 'low']
-    }
+    filters = {"source": "unknown", "importance": ["medium", "low"]}
 
     print("当前清理规则：")
     for key, value in filters.items():
@@ -219,7 +216,7 @@ def main():
 
     confirm = input(f"确认删除以上 {total_count} 条记录？(输入 'yes' 确认，其他取消): ")
 
-    if confirm.lower() != 'yes':
+    if confirm.lower() != "yes":
         print("❌ 操作已取消")
         return
 
@@ -235,7 +232,7 @@ def main():
     print("=" * 80)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
@@ -244,5 +241,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n\n❌ 错误：{e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

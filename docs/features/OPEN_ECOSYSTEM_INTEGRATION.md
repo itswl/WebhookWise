@@ -146,4 +146,3 @@ curl -X POST http://localhost:8000/webhook/datadog \
 ```bash
 PYTHONPATH=. pytest -q tests/test_ecosystem_adapters.py
 ```
-

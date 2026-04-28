@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """添加 forward_rules 转发规则表"""
+
 import os
 import sys
 
@@ -16,12 +17,13 @@ def migrate():
     inspector = inspect(engine)
 
     # 检查表是否已存在
-    if 'forward_rules' in inspector.get_table_names():
+    if "forward_rules" in inspector.get_table_names():
         print("forward_rules 表已存在，跳过")
         return True
 
     with engine.connect() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE forward_rules (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
@@ -37,12 +39,13 @@ def migrate():
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )
-        """))
+        """)
+        )
         conn.commit()
         print("forward_rules 表创建成功")
 
     return True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     migrate()

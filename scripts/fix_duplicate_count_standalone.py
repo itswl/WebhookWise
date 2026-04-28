@@ -10,9 +10,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # 必须从环境变量获取数据库连接
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
+
 
 def fix_duplicate_count():
     """修复所有重复告警的 duplicate_count"""
@@ -35,7 +36,7 @@ def fix_duplicate_count():
             WHERE duplicate_events.is_duplicate = 1
               AND duplicate_events.duplicate_count != original_events.duplicate_count
         """)
-        need_fix = cur.fetchone()['count']
+        need_fix = cur.fetchone()["count"]
 
         if need_fix == 0:
             print("✅ 所有记录已是正确的，无需修复！")
@@ -63,8 +64,10 @@ def fix_duplicate_count():
         """)
 
         for row in cur.fetchall():
-            print(f"  ID={row['id']}, duplicate_of={row['duplicate_of']}, "
-                  f"当前值={row['current_count']}, 正确值={row['correct_count']}")
+            print(
+                f"  ID={row['id']}, duplicate_of={row['duplicate_of']}, "
+                f"当前值={row['current_count']}, 正确值={row['correct_count']}"
+            )
 
         # 3. 执行修复
         print(f"\n🔧 开始修复 {need_fix} 条记录...")
@@ -96,9 +99,10 @@ def fix_duplicate_count():
         """)
 
         for row in cur.fetchall():
-            status = "✅" if row['duplicate_count'] == row['original_count'] else "❌"
-            print(f"  {status} ID={row['id']}, count={row['duplicate_count']}, "
-                  f"original_count={row['original_count']}")
+            status = "✅" if row["duplicate_count"] == row["original_count"] else "❌"
+            print(
+                f"  {status} ID={row['id']}, count={row['duplicate_count']}, " f"original_count={row['original_count']}"
+            )
 
         cur.close()
         conn.close()
@@ -112,11 +116,13 @@ def fix_duplicate_count():
     except Exception as e:
         print(f"❌ 修复失败: {e}")
         import traceback
+
         traceback.print_exc()
         return -1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     fixed = fix_duplicate_count()
     sys.exit(0 if fixed >= 0 else 1)

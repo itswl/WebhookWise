@@ -47,7 +47,7 @@ var DeepAnalysesModule = (function() {
         };
         const engine = engineMap[record.engine] || engineMap['local'];
         const engineLabel = `<span class="badge" style="background: ${engine.bg}; color: ${engine.color}; border: none; font-size: 0.7rem;">${engine.icon} ${engine.label}</span>`;
-        
+
         const statusMap = {
             'pending': { label: '分析中', class: 'badge-warning', icon: '<div class="spinner" style="width: 10px; height: 10px; border-width: 2px; margin-right: 4px; display: inline-block;"></div>' },
             'completed': { label: '已完成', class: 'badge-success', icon: '✅' },
@@ -105,7 +105,7 @@ var DeepAnalysesModule = (function() {
         const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : (record.engine === 'hermes' ? 'Hermes' : 'Local AI');
 
         let detailsHtml = '';
-        
+
         if (record.user_question) {
             detailsHtml += `
                 <div style="background: #f8fafc; padding: 1rem 1.25rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary); margin-bottom: 1.5rem;">
@@ -147,7 +147,7 @@ var DeepAnalysesModule = (function() {
             } else {
                 // Structured output (Local Engine)
                 detailsHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; background: #ffffff; padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border);">`;
-                
+
                 if (analysis.root_cause) {
                     detailsHtml += `
                         <div>
@@ -156,7 +156,7 @@ var DeepAnalysesModule = (function() {
                         </div>
                     `;
                 }
-                
+
                 if (analysis.impact) {
                     detailsHtml += `
                         <div>
@@ -165,7 +165,7 @@ var DeepAnalysesModule = (function() {
                         </div>
                     `;
                 }
-                
+
                 if (analysis.recommendations && analysis.recommendations.length > 0) {
                     detailsHtml += `
                         <div style="grid-column: 1 / -1;">
@@ -182,7 +182,7 @@ var DeepAnalysesModule = (function() {
 
         // Action Buttons Row
         detailsHtml += `<div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; gap: 1rem; flex-wrap: wrap;">`;
-        
+
         if (record.status === 'completed') {
             detailsHtml += `<button class="btn" style="background: #f1f5f9; border-color: #cbd5e1;" onclick="DeepAnalysesModule.forwardResult(${record.id})">📨 推送结果</button>`;
         }
@@ -190,11 +190,11 @@ var DeepAnalysesModule = (function() {
             detailsHtml += `<button class="btn btn-primary" onclick="DeepAnalysesModule.retryAnalysis(${record.id})">🔄 重新拉取结果</button>`;
         }
         detailsHtml += `<button class="btn" style="border-color: var(--success); color: var(--success); background: var(--success-bg);" onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(${record.webhook_event_id})">🔬 发起全新深研</button>`;
-        
+
         // Raw Data Toggle
         const rawJsonId = `raw-da-${record.id}`;
         detailsHtml += `<button class="btn" onclick="document.getElementById('${rawJsonId}').style.display = document.getElementById('${rawJsonId}').style.display === 'none' ? 'block' : 'none'">💻 Debug 报文</button>`;
-        
+
         detailsHtml += `</div>`;
 
         // Raw JSON container
@@ -225,14 +225,14 @@ var DeepAnalysesModule = (function() {
             if (record.status === 'pending') hasPending = true;
             var isExpanded = expandedIds.has(record.id);
             var cardClass = isExpanded ? 'da-card da-card-expanded' : 'da-card';
-            
+
             html += '<div id="da-record-' + record.id + '" class="' + cardClass + '">';
             html += buildSummaryHtml(record);
-            
+
             html += '<div id="da-details-' + record.id + '" class="da-details" style="' + (isExpanded ? 'display: block;' : 'display: none;') + '">';
             html += buildDetailsHtml(record);
             html += '</div>';
-            
+
             html += '</div>';
         });
 
@@ -296,11 +296,11 @@ var DeepAnalysesModule = (function() {
 
     function load(page) {
         if (page !== undefined) currentPage = page;
-        
+
         var statusFilter = document.getElementById('daStatusFilter');
         var engineFilter = document.getElementById('daEngineFilter');
         var perPageSelect = document.getElementById('daPerPage');
-        
+
         var status = statusFilter ? statusFilter.value : '';
         var engine = engineFilter ? engineFilter.value : '';
         perPage = perPageSelect ? parseInt(perPageSelect.value, 10) : 20;
@@ -340,9 +340,9 @@ var DeepAnalysesModule = (function() {
 
     async function forwardResult(analysisId) {
         var url = prompt('请输入转发目标 URL（留空将尝试使用系统默认规则）：\n\n飞书机器人: https://open.feishu.cn/open-apis/bot/v2/hook/xxx\n企业微信/钉钉/其他 Webhook: https://your-server.com/hook', '');
-        
+
         if (url === null) return; // User clicked Cancel
-        
+
         url = url.trim();
         // Since backend requires it, or we could pass an empty string if backend falls back to Config.FORWARD_URL?
         // Wait, the backend says "转发 URL 不能为空", so we must provide one.

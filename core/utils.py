@@ -17,8 +17,8 @@ WebhookData = dict[str, Any]
 
 
 class CircuitState(Enum):
-    CLOSED = "closed"      # 正常，允许请求通过
-    OPEN = "open"          # 熔断，拒绝所有请求
+    CLOSED = "closed"  # 正常，允许请求通过
+    OPEN = "open"  # 熔断，拒绝所有请求
     HALF_OPEN = "half_open"  # 半开，允许试探请求
 
 
@@ -121,14 +121,25 @@ class CircuitBreaker:
 
 # 预置熔断器实例（通过 Config）
 
-feishu_cb = CircuitBreaker(name="feishu", failure_threshold=Config.CIRCUIT_BREAKER_FEISHU_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_FEISHU_TIMEOUT)
-openclaw_cb = CircuitBreaker(name="openclaw", failure_threshold=Config.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT)
-forward_cb = CircuitBreaker(name="forward", failure_threshold=Config.CIRCUIT_BREAKER_FORWARD_THRESHOLD, recovery_timeout=Config.CIRCUIT_BREAKER_FORWARD_TIMEOUT)
+feishu_cb = CircuitBreaker(
+    name="feishu",
+    failure_threshold=Config.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
+    recovery_timeout=Config.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
+)
+openclaw_cb = CircuitBreaker(
+    name="openclaw",
+    failure_threshold=Config.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
+    recovery_timeout=Config.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
+)
+forward_cb = CircuitBreaker(
+    name="forward",
+    failure_threshold=Config.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
+    recovery_timeout=Config.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
+)
 
 
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
-
 
 
 MAX_SAVE_RETRIES = Config.SAVE_MAX_RETRIES
@@ -143,11 +154,7 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
     if not secret:
         return False
 
-    expected_signature = hmac.new(
-        secret.encode('utf-8'),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
+    expected_signature = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
     result = hmac.compare_digest(expected_signature, signature)
     if not result:
@@ -159,19 +166,33 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
 
 # ====== 告警哈希字段配置 ======
 # Prometheus Alertmanager 格式的字段提取配置
-PROMETHEUS_ROOT_FIELDS = ['alertingRuleName']
+PROMETHEUS_ROOT_FIELDS = ["alertingRuleName"]
 PROMETHEUS_LABEL_FIELDS = [
-    'alertname', 'internal_label_alert_level',
-    'host', 'instance', 'pod', 'namespace', 'service', 'path', 'method'
+    "alertname",
+    "internal_label_alert_level",
+    "host",
+    "instance",
+    "pod",
+    "namespace",
+    "service",
+    "path",
+    "method",
 ]
-PROMETHEUS_ALERT_FIELDS = ['fingerprint']
+PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
 
 # 华为云/通用告警格式的字段提取配置
 GENERIC_FIELDS = [
-    'Type', 'RuleName', 'event', 'event_type',
-    'MetricName', 'Level', 'alert_id', 'alert_name', 'resource_id', 'service'
+    "Type",
+    "RuleName",
+    "event",
+    "event_type",
+    "MetricName",
+    "Level",
+    "alert_id",
+    "alert_name",
+    "resource_id",
+    "service",
 ]
-
 
 
 def _extract_fields(data: dict[str, Any], fields: list[str], lower_keys: bool = True) -> dict[str, Any]:
@@ -188,12 +209,12 @@ def _extract_prometheus_fields(data: dict[str, Any]) -> dict[str, Any]:
     """提取 Prometheus Alertmanager 格式的关键字段。"""
     key_fields = _extract_fields(data, PROMETHEUS_ROOT_FIELDS)
 
-    alerts = data.get('alerts', [])
+    alerts = data.get("alerts", [])
     first_alert = alerts[0] if alerts and isinstance(alerts[0], dict) else None
     if not first_alert:
         return key_fields
 
-    labels = first_alert.get('labels', {})
+    labels = first_alert.get("labels", {})
     if isinstance(labels, dict):
         key_fields.update(_extract_fields(labels, PROMETHEUS_LABEL_FIELDS, lower_keys=False))
 
@@ -205,31 +226,29 @@ def _extract_generic_fields(data: dict[str, Any]) -> dict[str, Any]:
     """提取华为云/通用告警格式的关键字段。"""
     key_fields = _extract_fields(data, GENERIC_FIELDS)
 
-    resources = data.get('Resources', [])
+    resources = data.get("Resources", [])
     first_resource = (
-        resources[0]
-        if isinstance(resources, list) and resources and isinstance(resources[0], dict)
-        else None
+        resources[0] if isinstance(resources, list) and resources and isinstance(resources[0], dict) else None
     )
     if not first_resource:
         return key_fields
 
-    resource_id = first_resource.get('InstanceId') or first_resource.get('Id') or first_resource.get('id')
+    resource_id = first_resource.get("InstanceId") or first_resource.get("Id") or first_resource.get("id")
     if resource_id:
-        key_fields['resource_id'] = resource_id
+        key_fields["resource_id"] = resource_id
 
-    dimensions = first_resource.get('Dimensions', [])
+    dimensions = first_resource.get("Dimensions", [])
     if not isinstance(dimensions, list):
         return key_fields
 
-    important_dims = {'Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container'}
+    important_dims = {"Node", "ResourceID", "Instance", "InstanceId", "Host", "Pod", "Container"}
     for dim in dimensions:
         if not isinstance(dim, dict):
             continue
-        dim_name = dim.get('Name', '')
-        dim_value = dim.get('Value')
+        dim_name = dim.get("Name", "")
+        dim_value = dim.get("Value")
         if dim_name in important_dims and dim_value:
-            key_fields[f'dim_{dim_name.lower()}'] = dim_value
+            key_fields[f"dim_{dim_name.lower()}"] = dim_value
 
     return key_fields
 
@@ -245,14 +264,10 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     Returns:
         str: SHA256 哈希值
     """
-    key_fields = {'source': source}
+    key_fields = {"source": source}
 
     if isinstance(data, dict):
-        is_prometheus = (
-            'alerts' in data and
-            isinstance(data.get('alerts'), list) and
-            len(data['alerts']) > 0
-        )
+        is_prometheus = "alerts" in data and isinstance(data.get("alerts"), list) and len(data["alerts"]) > 0
 
         if is_prometheus:
             key_fields.update(_extract_prometheus_fields(data))
@@ -260,7 +275,7 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
             key_fields.update(_extract_generic_fields(data))
 
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
-    hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     logger.debug(f"[Hash] 生成告警哈希: hash={hash_value[:16]}..., input_keys={list(key_fields.keys())}")
     return hash_value
@@ -274,6 +289,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
     """
     import core.redis_client
+
     redis_client = core.redis_client.get_redis()
     lock_key = f"lock:webhook:{alert_hash}"
     lock_value = Config.WORKER_ID
@@ -282,7 +298,9 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
 
     try:
         # 尝试获取锁
-        lock_acquired = bool(await redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS))
+        lock_acquired = bool(
+            await redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS)
+        )
         if lock_acquired:
             logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
         else:

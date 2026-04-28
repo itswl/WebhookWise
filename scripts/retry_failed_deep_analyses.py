@@ -18,6 +18,7 @@
     # 重试最近 N 条失败记录
     python scripts/retry_failed_deep_analyses.py --limit 50
 """
+
 import argparse
 import os
 import sys
@@ -35,9 +36,7 @@ from services.openclaw_poller import _poll_via_http
 def find_failed_records(webhook_id=None, limit=None):
     """查询待重试的失败记录"""
     with session_scope() as session:
-        query = session.query(DeepAnalysis).filter(
-            DeepAnalysis.status == 'failed'
-        )
+        query = session.query(DeepAnalysis).filter(DeepAnalysis.status == "failed")
         if webhook_id is not None:
             query = query.filter(DeepAnalysis.webhook_event_id == webhook_id)
 
@@ -56,7 +55,7 @@ def retry_record(record_id: int) -> tuple[bool, str]:
         if not record:
             return False, "记录不存在"
 
-        if record.status not in ('failed', 'completed'):
+        if record.status not in ("failed", "completed"):
             return False, f"状态非 failed/completed: {record.status}"
 
         if not record.openclaw_session_key:
@@ -67,43 +66,45 @@ def retry_record(record_id: int) -> tuple[bool, str]:
 
         result = _poll_via_http(record.openclaw_session_key, retry_count=3)
 
-        if result.get('status') == 'error':
+        if result.get("status") == "error":
             return False, f"API 错误: {result.get('error')}"
 
-        if result.get('status') != 'completed':
+        if result.get("status") != "completed":
             return False, f"未完成: {result.get('status')}"
 
-        text = result.get('text', '')
+        text = result.get("text", "")
         import re
-        json_match = re.search(r'\{[\s\S]*\}', text)
+
+        json_match = re.search(r"\{[\s\S]*\}", text)
 
         if json_match:
             import json
+
             try:
                 parsed = json.loads(json_match.group())
                 record.result = parsed
                 record.error_message = None
-                record.status = 'completed'
+                record.status = "completed"
                 logger.info(f"深度分析 #{record_id} 重试成功")
                 return True, "成功"
             except json.JSONDecodeError:
-                record.result = {'text': text}
+                record.result = {"text": text}
                 record.error_message = None
-                record.status = 'completed'
+                record.status = "completed"
                 return True, "成功（JSON解析失败，已存原文）"
         else:
-            record.result = {'text': text}
+            record.result = {"text": text}
             record.error_message = None
-            record.status = 'completed'
+            record.status = "completed"
             return True, "成功（无 JSON）"
 
 
 def main():
-    parser = argparse.ArgumentParser(description='批量重试失败的深度分析记录')
-    parser.add_argument('--list', action='store_true', help='只列出记录，不执行重试')
-    parser.add_argument('--webhook-id', type=int, metavar='ID', help='限定 webhook_event_id')
-    parser.add_argument('--limit', type=int, metavar='N', help='最多处理 N 条')
-    parser.add_argument('--dry-run', action='store_true', help='模拟执行（仅 --list 时有效）')
+    parser = argparse.ArgumentParser(description="批量重试失败的深度分析记录")
+    parser.add_argument("--list", action="store_true", help="只列出记录，不执行重试")
+    parser.add_argument("--webhook-id", type=int, metavar="ID", help="限定 webhook_event_id")
+    parser.add_argument("--limit", type=int, metavar="N", help="最多处理 N 条")
+    parser.add_argument("--dry-run", action="store_true", help="模拟执行（仅 --list 时有效）")
     args = parser.parse_args()
 
     records = find_failed_records(webhook_id=args.webhook_id, limit=args.limit)
@@ -146,5 +147,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
