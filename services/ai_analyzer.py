@@ -1,7 +1,6 @@
 import json
 import re
 import time
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,102 +39,60 @@ def get_cache_key(alert_hash: str) -> str:
 
 
 async def get_cached_analysis(alert_hash: str) -> dict | None:
-    """
-    从缓存获取分析结果
-
-    Args:
-        alert_hash: 告警哈希值
-
-    Returns:
-        dict or None: 缓存的分析结果，未命中返回 None
-    """
+    """从 Redis 获取缓存的分析结果"""
     if not Config.CACHE_ENABLED:
         return None
-
     try:
-        from sqlalchemy import select
+        from core.redis_client import get_redis
 
-        from db.session import session_scope
-        from models import AnalysisCache
+        redis_client = get_redis()
+        cache_key = get_cache_key(alert_hash)
 
-        async with session_scope() as session:
-            cache_key = get_cache_key(alert_hash)
-            stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
-            result = await session.execute(stmt)
-            cache_entry = result.scalars().first()
+        cached_json = await redis_client.get(cache_key)
+        if not cached_json:
+            logger.debug(f"缓存未命中: {cache_key[:20]}...")
+            return None
 
-            if not cache_entry:
-                logger.debug(f"缓存未命中: {cache_key[:20]}...")
-                return None
+        cached_result = json.loads(cached_json)
 
-            # 检查是否过期
-            if cache_entry.is_expired():
-                logger.info(f"缓存已过期: {cache_key[:20]}...")
-                await session.delete(cache_entry)
-                return None
+        # 增加命中计数
+        counter_key = f"{cache_key}:hits"
+        hit_count = await redis_client.incr(counter_key)
+        # 同步 counter TTL
+        await redis_client.expire(counter_key, Config.ANALYSIS_CACHE_TTL)
 
-            # 命中缓存，增加计数
-            cache_entry.hit_count += 1
+        cached_result["_cache_hit"] = True
+        cached_result["_cache_hit_count"] = hit_count
 
-            cached_result = json.loads(cache_entry.analysis_result)
-            cached_result["_cache_hit"] = True
-            cached_result["_cache_hit_count"] = cache_entry.hit_count
-
-            logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {cache_entry.hit_count} 次")
-            return cached_result
-
+        logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {hit_count} 次")
+        return cached_result
     except Exception as e:
         logger.warning(f"读取缓存失败: {e}")
         return None
 
 
 async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
-    """
-    将分析结果保存到缓存
-
-    Args:
-        alert_hash: 告警哈希值
-        analysis_result: 分析结果
-
-    Returns:
-        bool: 是否保存成功
-    """
+    """将分析结果保存到 Redis（SETEX 自动过期）"""
     if not Config.CACHE_ENABLED:
         return False
-
     try:
-        from sqlalchemy import select
+        from core.redis_client import get_redis
 
-        from db.session import session_scope
-        from models import AnalysisCache
+        redis_client = get_redis()
+        cache_key = get_cache_key(alert_hash)
 
-        async with session_scope() as session:
-            cache_key = get_cache_key(alert_hash)
-            expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
+        # 清理内部字段（以 _ 开头的）
+        result_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
 
-            # 清理内部字段
-            result_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
+        json_str = json.dumps(result_to_cache, ensure_ascii=False)
+        await redis_client.setex(cache_key, Config.ANALYSIS_CACHE_TTL, json_str)
 
-            # 检查是否已存在
-            stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
-            result = await session.execute(stmt)
-            existing = result.scalars().first()
+        # 初始化命中计数器
+        counter_key = f"{cache_key}:hits"
+        await redis_client.setex(counter_key, Config.ANALYSIS_CACHE_TTL, "0")
 
-            if existing:
-                existing.analysis_result = json.dumps(result_to_cache, ensure_ascii=False)
-                existing.expires_at = expires_at
-                existing.created_at = datetime.now()
-            else:
-                cache_entry = AnalysisCache(
-                    cache_key=cache_key,
-                    analysis_result=json.dumps(result_to_cache, ensure_ascii=False),
-                    expires_at=expires_at,
-                )
-                session.add(cache_entry)
-
-            logger.info(f"分析结果已缓存: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}秒")
-            return True
-
+        logger.info(f"分析结果已缓存到 Redis: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}s")
+        return True
     except Exception as e:
         logger.warning(f"保存缓存失败: {e}")
         return False
@@ -1030,6 +987,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         else:
             try:
                 from crud.webhook import record_failed_forward
+
                 await record_failed_forward(
                     webhook_event_id=event_id if isinstance(event_id, int) else 0,
                     forward_rule_id=None,

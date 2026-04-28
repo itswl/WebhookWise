@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,26 @@ from db.session import session_scope
 from models import FailedForward, SystemConfig, WebhookEvent
 
 WebhookData = dict[str, Any]
+
+
+async def quick_receive_webhook(
+    session: AsyncSession,
+    source: str,
+    raw_headers: dict,
+    raw_body: str | bytes,
+) -> WebhookEvent:
+    """同步最小化写入：仅持久化原始数据，不做任何分析/转发"""
+    event = WebhookEvent(
+        source=source,
+        headers=raw_headers if isinstance(raw_headers, dict) else json.loads(raw_headers),
+        raw_payload=raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace"),
+        processing_status="received",
+    )
+    session.add(event)
+    await session.flush()  # 获取 ID 但不 commit（让调用方控制事务）
+    return event
+
+
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
@@ -534,10 +554,23 @@ async def get_all_webhooks(
     """
     try:
         async with session_scope() as session:
-            # 查询总数
-            total_stmt = select(func.count()).select_from(WebhookEvent)
-            total_result = await session.execute(total_stmt)
-            total = total_result.scalar()
+            # 查询总数（智能估算策略）
+            try:
+                estimate_result = await session.execute(
+                    text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'webhook_events'")
+                )
+                estimate = estimate_result.scalar()
+                if estimate is not None and estimate > 100000:
+                    total = int(estimate)
+                else:
+                    total_stmt = select(func.count()).select_from(WebhookEvent)
+                    total_result = await session.execute(total_stmt)
+                    total = total_result.scalar()
+            except Exception:
+                # pg_class 不可用（如 SQLite），回退精确 COUNT
+                total_stmt = select(func.count()).select_from(WebhookEvent)
+                total_result = await session.execute(total_stmt)
+                total = total_result.scalar()
 
             # 构建查询
             query = select(WebhookEvent)
@@ -879,27 +912,21 @@ async def get_all_runtime_configs():
 async def get_runtime_config(key: str):
     """读取单个配置"""
     async with session_scope() as session:
-        result = await session.execute(
-            select(SystemConfig).where(SystemConfig.key == key)
-        )
+        result = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
         return result.scalar_one_or_none()
 
 
 async def upsert_runtime_config(key: str, value: str, value_type: str = "str", updated_by: str = "api"):
     """写入或更新配置（upsert）"""
     async with session_scope() as session:
-        existing = await session.execute(
-            select(SystemConfig).where(SystemConfig.key == key)
-        )
+        existing = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
         config = existing.scalar_one_or_none()
         if config:
             config.value = value
             config.value_type = value_type
             config.updated_by = updated_by
         else:
-            config = SystemConfig(
-                key=key, value=value, value_type=value_type, updated_by=updated_by
-            )
+            config = SystemConfig(key=key, value=value, value_type=value_type, updated_by=updated_by)
             session.add(config)
         await session.commit()
         return config
@@ -914,9 +941,7 @@ async def cleanup_old_success_records(
 
     async def _cleanup(sess: AsyncSession) -> int:
         stmt = (
-            sa_delete(FailedForward)
-            .where(FailedForward.status == "success")
-            .where(FailedForward.updated_at < cutoff)
+            sa_delete(FailedForward).where(FailedForward.status == "success").where(FailedForward.updated_at < cutoff)
         )
         result = await sess.execute(stmt)
         count = result.rowcount
