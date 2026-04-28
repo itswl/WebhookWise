@@ -1,8 +1,8 @@
-import contextlib
 import logging
 import threading
 from datetime import datetime
 
+from db.session import create_poller_engine, set_local_factory
 from services.data_maintenance import archive_old_data
 from services.pollers import _stop_event
 
@@ -35,26 +35,25 @@ async def run_daily_maintenance():
         await __import__("asyncio").sleep(600)
 
 
-async def _dispose_poller_resources():
-    """显式清理当前事件循环的数据库引擎和 Redis 连接"""
-    from core.redis_client import dispose_redis
-    from db.session import dispose_engine
-
-    await dispose_engine()
-    await dispose_redis()
-
-
 def _run_poller():
     import asyncio
+
+    from core.redis_client import dispose_redis
+
+    async def _setup_and_run():
+        engine, factory = create_poller_engine()
+        set_local_factory(factory)
+        try:
+            await run_daily_maintenance()
+        finally:
+            await engine.dispose()
+            await dispose_redis()
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(run_daily_maintenance())
+        loop.run_until_complete(_setup_and_run())
     finally:
-        # 显式清理当前循环的连接资源
-        with contextlib.suppress(Exception):
-            loop.run_until_complete(_dispose_poller_resources())
         loop.close()
 
 
