@@ -22,7 +22,7 @@ webhook_router = APIRouter()
 
 @webhook_router.get("/health")
 async def health_check():
-    from models import test_db_connection
+    from db.session import test_db_connection
 
     db_ok = test_db_connection()
     status = "healthy" if db_ok else "unhealthy"
