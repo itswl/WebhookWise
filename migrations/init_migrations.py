@@ -512,6 +512,61 @@ def add_polling_fields():
         return False
 
 
+def add_processing_status_field():
+    """
+    为 webhook_events 表添加 processing_status 字段和组合索引（静默模式）
+
+    - 已有记录默认值 'completed'（它们都已处理完成）
+    - 新记录由 ORM 默认值 'received' 控制
+    - 组合索引 idx_status_created 优化后台轮询查询性能
+
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_sync_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查 processing_status 字段是否已存在
+            result = conn.execute(
+                text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'webhook_events' AND column_name = 'processing_status'
+                )
+            """)
+            )
+            field_exists = result.scalar()
+
+            if field_exists:
+                return True
+
+            print("⚙️  正在为 webhook_events 表添加 processing_status 字段...")
+
+            # 添加 processing_status 列（已有数据默认 'completed'）
+            conn.execute(
+                text(
+                    "ALTER TABLE webhook_events "
+                    "ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) NOT NULL DEFAULT 'completed'"
+                )
+            )
+
+            # 添加组合索引：优化 processing_status + created_at 查询
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_status_created " "ON webhook_events (processing_status, created_at)"
+                )
+            )
+            conn.commit()
+
+            print("   ✅ webhook_events processing_status 字段和索引添加成功")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        return False
+
+
 def add_archive_and_indexes():
     """
     执行归档表创建和复合索引优化
@@ -734,6 +789,7 @@ if __name__ == "__main__":
     success8 = add_archive_and_indexes()
     success9 = add_failed_forwards_table()
     success10 = add_system_configs_table()
+    success11 = add_processing_status_field()
     sys.exit(
         0
         if (
@@ -747,6 +803,7 @@ if __name__ == "__main__":
             and success8
             and success9
             and success10
+            and success11
         )
         else 1
     )
