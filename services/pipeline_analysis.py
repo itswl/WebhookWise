@@ -1,6 +1,7 @@
 """分析决策模块，从 pipeline.py 提取。"""
 
 import asyncio
+import time as _time
 from datetime import datetime
 
 from api import AnalysisResolution
@@ -9,8 +10,6 @@ from core.logger import logger
 from crud.webhook import check_duplicate_alert
 from models import WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
-
-_LOCK_WAIT_SECONDS = Config.PROCESSING_LOCK_WAIT_SECONDS
 
 
 async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
@@ -106,8 +105,44 @@ async def _resolve_analysis_with_lock(alert_hash: str, webhook_full_data: dict) 
 
 
 async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dict) -> AnalysisResolution:
-    logger.info(f"[Lock] 告警正在由其他节点处理，等待中: hash={alert_hash[:16]}")
-    await asyncio.sleep(_LOCK_WAIT_SECONDS)
+    """未获得处理锁时，轮询等待其他 Worker 完成分析后复用结果。"""
+    logger.info(f"[Lock] 告警正在由其他节点处理，轮询等待中: hash={alert_hash[:16]}")
+
+    deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS
+    poll_interval = Config.PROCESSING_LOCK_POLL_INTERVAL_MS / 1000.0
+
+    while _time.monotonic() < deadline:
+        await asyncio.sleep(poll_interval)
+
+        duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
+        original_event = duplicate_check.original_event
+        last_beyond_window_event = duplicate_check.last_beyond_window_event
+
+        # 窗口内重复：原始事件的 ai_analysis 已填充 → 分析完成
+        if duplicate_check.is_duplicate and original_event and original_event.ai_analysis:
+            logger.info(f"[Lock] 其他 Worker 已完成分析，复用结果: original_id={original_event.id}")
+            analysis_result, reanalyzed = await _resolve_duplicate_analysis(
+                original_event, last_beyond_window_event, webhook_full_data
+            )
+            return AnalysisResolution(analysis_result, reanalyzed, True, original_event, False)
+
+        # 窗口外重复：last_beyond_window_event 已有分析结果 → 复用
+        if last_beyond_window_event and last_beyond_window_event.ai_analysis and last_beyond_window_event.created_at:
+            seconds_since = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
+            if seconds_since < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
+                logger.info(
+                    f"[Lock] 其他 worker 刚完成窗口外分析"
+                    f"(ID={last_beyond_window_event.id}, {seconds_since:.1f}s前)，复用结果"
+                )
+                await log_ai_usage(
+                    route_type="reuse",
+                    alert_hash=last_beyond_window_event.alert_hash or "",
+                    source=last_beyond_window_event.source or "",
+                )
+                return AnalysisResolution(last_beyond_window_event.ai_analysis, False, True, original_event, False)
+
+    # ── 轮询超时 fallback：与原逻辑一致 ──
+    logger.warning(f"[Lock] 轮询等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
 
     duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
     is_duplicate = duplicate_check.is_duplicate
@@ -130,15 +165,6 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
             return AnalysisResolution(analysis_result, False, True, original_event, False)
 
     if beyond_window and original_event:
-        if not last_beyond_window_event:
-            logger.info(f"窗口外历史告警，等待其他worker完成处理: 历史 ID={original_event.id}")
-            await asyncio.sleep(_LOCK_WAIT_SECONDS)
-            duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
-            is_duplicate = duplicate_check.is_duplicate
-            original_event = duplicate_check.original_event
-            beyond_window = duplicate_check.beyond_window
-            last_beyond_window_event = duplicate_check.last_beyond_window_event
-
         analysis_result, reanalyzed = await _resolve_beyond_window_analysis(
             original_event,
             last_beyond_window_event,

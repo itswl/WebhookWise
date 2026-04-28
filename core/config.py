@@ -81,7 +81,8 @@ class _AppConfig(BaseSettings):
 
     # 并发与通知窗口配置（秒）
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
-    PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=3)
+    PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
+    PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=200)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
 
