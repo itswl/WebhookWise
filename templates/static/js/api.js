@@ -33,7 +33,7 @@ const API = {
         }
 
         const response = await fetch(url, { ...options, headers });
-        
+
         if (response.status === 401) {
             // 在弹窗前再次检查是否已经被其他并发请求处理过了
             const currentToken = this.getToken();
@@ -63,7 +63,7 @@ const API = {
                 return this.authenticatedFetch(url, options);
             }
         }
-        
+
         return response;
     },
 
@@ -237,9 +237,9 @@ const API = {
         const response = await this.authenticatedFetch('/api/deep-analyze/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 user_question: question,
-                engine: engine 
+                engine: engine
             })
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);

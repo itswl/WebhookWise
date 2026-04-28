@@ -12,7 +12,7 @@ import sys
 from sqlalchemy import create_engine, text
 
 # 必须从环境变量获取数据库连接
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
@@ -109,7 +109,7 @@ def preview_general_events(engine):
             print("-" * 80)
             for id, source, importance, summary, ts, is_dup in samples:
                 dup_mark = "[重复]" if is_dup else "[原始]"
-                summary_short = (summary[:50] + '...') if summary and len(summary) > 50 else (summary or '无摘要')
+                summary_short = (summary[:50] + "...") if summary and len(summary) > 50 else (summary or "无摘要")
                 print(f"ID {id} {dup_mark} {ts.strftime('%Y-%m-%d %H:%M')}")
                 print(f"  来源: {source or '未知'} | 重要性: {importance or '未设置'}")
                 print(f"  摘要: {summary_short}")
@@ -167,7 +167,7 @@ def main():
 
     confirm = input(f"确认删除以上 {total_count} 条'一般事件'记录？(输入 'DELETE' 确认): ")
 
-    if confirm != 'DELETE':
+    if confirm != "DELETE":
         print("❌ 操作已取消")
         return
 
@@ -187,7 +187,7 @@ def main():
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
@@ -196,5 +196,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n\n❌ 错误：{e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

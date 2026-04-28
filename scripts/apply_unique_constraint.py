@@ -18,24 +18,24 @@ from urllib.parse import urlparse
 import psycopg2
 
 # 从环境变量读取数据库连接 URL
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if not DATABASE_URL:
     print("❌ 错误：未设置 DATABASE_URL 环境变量")
     print("使用方法：")
     print('  export DATABASE_URL="postgresql://user:pass@host:port/dbname"')
-    print('  python apply_unique_constraint.py')
+    print("  python apply_unique_constraint.py")
     sys.exit(1)
 
 # 解析数据库 URL
 try:
     parsed = urlparse(DATABASE_URL)
     DB_CONFIG = {
-        'host': parsed.hostname,
-        'port': parsed.port or 5432,
-        'user': parsed.username,
-        'password': parsed.password,
-        'database': parsed.path.lstrip('/')
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "user": parsed.username,
+        "password": parsed.password,
+        "database": parsed.path.lstrip("/"),
     }
 except Exception as e:
     print(f"❌ 错误：无法解析 DATABASE_URL: {e}")
@@ -96,19 +96,25 @@ def apply_migration():
 
                 print(f"   保留 ID={original_id}，将 {duplicate_ids} 标记为重复")
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE webhook_events
                     SET is_duplicate = 1,
                         duplicate_of = %s
                     WHERE id = ANY(%s)
-                """, (original_id, duplicate_ids))
+                """,
+                    (original_id, duplicate_ids),
+                )
 
                 # 更新原始告警的 duplicate_count
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE webhook_events
                     SET duplicate_count = %s
                     WHERE id = %s
-                """, (count, original_id))
+                """,
+                    (count, original_id),
+                )
 
             print("✅ 已处理所有重复告警")
         else:
@@ -166,10 +172,11 @@ def apply_migration():
     except Exception as e:
         print(f"\n❌ 迁移失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = apply_migration()
     sys.exit(0 if success else 1)

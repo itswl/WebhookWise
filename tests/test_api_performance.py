@@ -34,7 +34,7 @@ def test_api_performance(params: dict[str, str], name: str):
             content_length = len(response.content)
 
             # 检查是否压缩
-            is_compressed = response.headers.get('Content-Encoding') == 'gzip'
+            is_compressed = response.headers.get("Content-Encoding") == "gzip"
 
             print("✅ 成功")
             print(f"响应时间: {elapsed_ms:.2f} ms")
@@ -44,15 +44,15 @@ def test_api_performance(params: dict[str, str], name: str):
             print(f"总记录数: {data.get('pagination', {}).get('total', 0)}")
 
             # 分析第一条记录的字段
-            if data.get('data'):
-                first_record = data['data'][0]
+            if data.get("data"):
+                first_record = data["data"][0]
                 print(f"字段数量: {len(first_record)}")
                 print(f"字段列表: {', '.join(first_record.keys())}")
 
                 # 检查是否包含大字段
-                has_raw_payload = 'raw_payload' in first_record
-                has_full_ai_analysis = 'ai_analysis' in first_record
-                has_summary = 'summary' in first_record
+                has_raw_payload = "raw_payload" in first_record
+                has_full_ai_analysis = "ai_analysis" in first_record
+                has_summary = "summary" in first_record
 
                 print("\n字段分析:")
                 print(f"  - 包含 raw_payload: {'是' if has_raw_payload else '否'}")
@@ -69,47 +69,31 @@ def test_api_performance(params: dict[str, str], name: str):
 def main():
     """主函数"""
     print("API 性能测试")
-    print("="*60)
+    print("=" * 60)
 
     # 测试1: 默认参数（20条，摘要模式）
-    test_api_performance(
-        {'page': '1', 'page_size': '20'},
-        "默认参数 (20条，默认摘要模式)"
-    )
+    test_api_performance({"page": "1", "page_size": "20"}, "默认参数 (20条，默认摘要模式)")
 
     # 测试2: 100条摘要数据
-    test_api_performance(
-        {'page': '1', 'page_size': '100', 'fields': 'summary'},
-        "100条记录 + 摘要模式"
-    )
+    test_api_performance({"page": "1", "page_size": "100", "fields": "summary"}, "100条记录 + 摘要模式")
 
     # 测试3: 100条完整数据
-    test_api_performance(
-        {'page': '1', 'page_size': '100', 'fields': 'full'},
-        "100条记录 + 完整模式"
-    )
+    test_api_performance({"page": "1", "page_size": "100", "fields": "full"}, "100条记录 + 完整模式")
 
     # 测试4: 200条摘要数据
-    test_api_performance(
-        {'page': '1', 'page_size': '200', 'fields': 'summary'},
-        "200条记录 + 摘要模式"
-    )
+    test_api_performance({"page": "1", "page_size": "200", "fields": "summary"}, "200条记录 + 摘要模式")
 
     # 测试5: 尝试5000条（会被限制）
     test_api_performance(
-        {'page': '1', 'page_size': '5000', 'fields': 'summary'},
-        "请求5000条 (会被限制到200条) + 摘要模式"
+        {"page": "1", "page_size": "5000", "fields": "summary"}, "请求5000条 (会被限制到200条) + 摘要模式"
     )
 
     # 测试6: 尝试5000条完整数据（会被限制）
-    test_api_performance(
-        {'page': '1', 'page_size': '5000', 'fields': 'full'},
-        "请求5000条 (会被限制到50条) + 完整模式"
-    )
+    test_api_performance({"page": "1", "page_size": "5000", "fields": "full"}, "请求5000条 (会被限制到50条) + 完整模式")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("测试完成")
-    print("="*60)
+    print("=" * 60)
     print("\n性能优化建议:")
     print("1. 列表页使用 fields=summary（默认）")
     print("2. 详情页使用单独 API 或 fields=full")

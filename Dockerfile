@@ -14,7 +14,7 @@ FROM python:3.12-slim
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo $TZ > /etc/timezone 
+    echo $TZ > /etc/timezone
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 appuser

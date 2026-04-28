@@ -28,7 +28,7 @@ def add_unique_constraint(verbose=True):
     """
     engine = get_engine()
 
-    def log(msg, level='info'):
+    def log(msg, level="info"):
         """根据verbose参数决定是否输出日志"""
         if verbose:
             getattr(logger, level)(msg)
@@ -39,32 +39,38 @@ def add_unique_constraint(verbose=True):
 
             # 步骤 1: 检查并修复空的 alert_hash
             log("📋 步骤 1: 检查空的 alert_hash...")
-            result = session.execute(text("""
+            result = session.execute(
+                text("""
                 SELECT COUNT(*) FROM webhook_events
                 WHERE alert_hash IS NULL AND is_duplicate = 0
-            """))
+            """)
+            )
             null_count = result.scalar()
 
             if null_count > 0:
-                log(f"发现 {null_count} 条 alert_hash 为空的原始告警，正在修复...", 'warning')
-                session.execute(text("""
+                log(f"发现 {null_count} 条 alert_hash 为空的原始告警，正在修复...", "warning")
+                session.execute(
+                    text("""
                     UPDATE webhook_events
                     SET alert_hash = md5(id::text || timestamp::text)
                     WHERE alert_hash IS NULL AND is_duplicate = 0
-                """))
+                """)
+                )
                 log(f"✅ 已修复 {null_count} 条记录")
             else:
                 log("✅ 无需修复，所有原始告警都有 alert_hash")
 
             # 步骤 2: 检查并处理重复的原始告警
             log("📋 步骤 2: 检查重复的原始告警...")
-            result = session.execute(text("""
+            result = session.execute(
+                text("""
                 SELECT alert_hash, COUNT(*) as cnt, array_agg(id ORDER BY timestamp) as ids
                 FROM webhook_events
                 WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
                 GROUP BY alert_hash
                 HAVING COUNT(*) > 1
-            """))
+            """)
+            )
 
             duplicates = result.fetchall()
 
@@ -79,7 +85,7 @@ def add_unique_constraint(verbose=True):
                         ids = ids_data
                     elif isinstance(ids_data, str):
                         # 字符串格式 "{1,2,3}"
-                        ids = [int(x) for x in ids_data.strip('{}').split(',')]
+                        ids = [int(x) for x in ids_data.strip("{}").split(",")]
                     else:
                         logger.warning(f"  未知的数组格式: {type(ids_data)}, 跳过")
                         continue
@@ -94,18 +100,24 @@ def add_unique_constraint(verbose=True):
 
                     # 更新重复记录
                     for dup_id in duplicate_ids:
-                        session.execute(text("""
+                        session.execute(
+                            text("""
                             UPDATE webhook_events
                             SET is_duplicate = 1, duplicate_of = :original_id
                             WHERE id = :dup_id
-                        """), {'original_id': original_id, 'dup_id': dup_id})
+                        """),
+                            {"original_id": original_id, "dup_id": dup_id},
+                        )
 
                     # 更新原始告警的 duplicate_count
-                    session.execute(text("""
+                    session.execute(
+                        text("""
                         UPDATE webhook_events
                         SET duplicate_count = :count
                         WHERE id = :original_id
-                    """), {'count': count, 'original_id': original_id})
+                    """),
+                        {"count": count, "original_id": original_id},
+                    )
 
                 logger.info("✅ 已处理所有重复告警")
             else:
@@ -119,20 +131,24 @@ def add_unique_constraint(verbose=True):
 
         # 使用独立连接创建索引
         with engine.connect() as conn:
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original
                 ON webhook_events(alert_hash)
                 WHERE is_duplicate = 0
-            """))
+            """)
+            )
             conn.commit()
 
             logger.info("✅ 唯一索引创建成功")
 
             # 添加注释
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 COMMENT ON INDEX idx_unique_alert_hash_original IS
                 '确保相同 alert_hash 只有一个原始告警（is_duplicate=0），防止并发插入导致的重复'
-            """))
+            """)
+            )
             conn.commit()
 
             logger.info("✅ 注释添加成功")
@@ -140,15 +156,19 @@ def add_unique_constraint(verbose=True):
         # 步骤 4: 最终验证
         logger.info("📋 步骤 4: 最终验证...")
         with session_scope() as session:
-            result = session.execute(text("""
+            result = session.execute(
+                text("""
                 SELECT COUNT(*) FROM webhook_events WHERE is_duplicate = 0
-            """))
+            """)
+            )
             original_count = result.scalar()
 
-            result = session.execute(text("""
+            result = session.execute(
+                text("""
                 SELECT COUNT(DISTINCT alert_hash) FROM webhook_events
                 WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
-            """))
+            """)
+            )
             unique_hash_count = result.scalar()
 
             logger.info(f"  原始告警总数: {original_count}")
@@ -165,6 +185,7 @@ def add_unique_constraint(verbose=True):
     except Exception as e:
         logger.error(f"❌ 迁移失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -179,7 +200,7 @@ def main():
 
     migration_name = sys.argv[1]
 
-    if migration_name == 'add_unique_constraint':
+    if migration_name == "add_unique_constraint":
         success = add_unique_constraint()
         sys.exit(0 if success else 1)
     else:
@@ -187,5 +208,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
