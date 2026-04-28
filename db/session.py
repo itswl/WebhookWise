@@ -3,7 +3,12 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import declarative_base
 
 from core.config import Config
@@ -18,9 +23,6 @@ _session_factory: async_sessionmaker | None = None
 
 # ── ContextVar: Depends 注入的 session 向下传播 ──
 _request_session: ContextVar[AsyncSession | None] = ContextVar("_request_session", default=None)
-
-# ── 同步引擎（独立，不受事件循环影响） ──
-_sync_engine = None
 
 
 def _build_engine_kwargs():
@@ -103,31 +105,33 @@ async def session_scope():
 
 
 # ────────────────────────────────────────
-# 同步引擎 & 初始化（保持不变）
+# 同步引擎（仅供 migrations 脚本使用）
 # ────────────────────────────────────────
 
 
 def get_sync_engine():
-    """获取同步数据库引擎，主要用于脚本或 DDL 初始化"""
-    global _sync_engine
-    if _sync_engine is None:
-        sync_url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
-        _sync_engine = create_engine(sync_url, echo=False)
-    return _sync_engine
+    """获取同步数据库引擎，仅供 migrations/ 脚本使用"""
+    sync_url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
+    return create_engine(sync_url, echo=False)
 
 
-def init_db():
-    """使用同步引擎初始化数据库表"""
-    engine = get_sync_engine()
-    Base.metadata.create_all(engine)
+# ────────────────────────────────────────
+# 异步初始化 & 连接测试
+# ────────────────────────────────────────
+
+
+async def init_db():
+    """初始化数据库表（异步版本）"""
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     _logger.info("数据库表初始化完成")
 
 
-def test_db_connection() -> bool:
-    """使用同步引擎测试数据库连接（因为这个在系统启动的最早期调用，保持简单同步）"""
+async def test_db_connection() -> bool:
+    """测试数据库连接（异步版本）"""
     try:
-        with get_sync_engine().connect() as conn:
-            conn.execute(text("SELECT 1"))
+        async with _engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
         _logger.info("数据库连接测试成功")
         return True
     except Exception as e:

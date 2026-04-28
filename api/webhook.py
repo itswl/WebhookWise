@@ -26,7 +26,7 @@ webhook_router = APIRouter()
 
 @webhook_router.get("/health")
 async def health_check():
-    db_ok = test_db_connection()
+    db_ok = await test_db_connection()
     status = "healthy" if db_ok else "unhealthy"
     code = 200 if db_ok else 503
     return JSONResponse(
