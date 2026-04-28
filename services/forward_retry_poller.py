@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import contextlib
 import logging
 import threading
 from datetime import datetime, timedelta
@@ -78,13 +79,12 @@ async def poll_pending_retries():
                 try:
                     await _retry_forward(session, record)
                 except Exception as e:  # noqa: PERF203
-                    logger.error(
-                        f"[ForwardRetry] 重试记录 ID={record.id} 异常: {e}"
-                    )
+                    logger.error(f"[ForwardRetry] 重试记录 ID={record.id} 异常: {e}")
 
     finally:
         # 释放锁
         import contextlib
+
         with contextlib.suppress(Exception):
             await redis.delete(lock_key)
 
@@ -97,8 +97,7 @@ async def _retry_forward(session, record: FailedForward):
     event = await session.get(WebhookEvent, record.webhook_event_id)
     if not event:
         logger.warning(
-            f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, "
-            f"标记为 exhausted"
+            f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, " f"标记为 exhausted"
         )
         record.status = "exhausted"
         record.updated_at = datetime.now()
@@ -129,14 +128,9 @@ async def _retry_forward(session, record: FailedForward):
             record.status = "success"
             record.last_retry_at = now
             record.updated_at = now
-            logger.info(
-                f"[ForwardRetry] 重试成功: ID={record.id}, "
-                f"webhook_event_id={record.webhook_event_id}"
-            )
+            logger.info(f"[ForwardRetry] 重试成功: ID={record.id}, " f"webhook_event_id={record.webhook_event_id}")
         else:
-            _handle_retry_failure(
-                record, now, f"forward status={status}: {result.get('message', '')}"
-            )
+            _handle_retry_failure(record, now, f"forward status={status}: {result.get('message', '')}")
 
     except Exception as e:
         _handle_retry_failure(record, now, str(e))
@@ -154,15 +148,13 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
     if record.retry_count >= record.max_retries:
         record.status = "exhausted"
         logger.warning(
-            f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, "
-            f"retry_count={record.retry_count}/{record.max_retries}"
+            f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, " f"retry_count={record.retry_count}/{record.max_retries}"
         )
     else:
         record.status = "retrying"
         # 指数退避：min(initial_delay * multiplier^(retry_count-1), max_delay)
         delay = min(
-            Config.FORWARD_RETRY_INITIAL_DELAY
-            * Config.FORWARD_RETRY_BACKOFF_MULTIPLIER ** (record.retry_count - 1),
+            Config.FORWARD_RETRY_INITIAL_DELAY * Config.FORWARD_RETRY_BACKOFF_MULTIPLIER ** (record.retry_count - 1),
             Config.FORWARD_RETRY_MAX_DELAY,
         )
         record.next_retry_at = now + timedelta(seconds=delay)
@@ -175,20 +167,30 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
 # ── 线程启动 ──
 
 
+async def _dispose_poller_resources():
+    """显式清理当前事件循环的数据库引擎和 Redis 连接"""
+    from core.redis_client import dispose_redis
+    from db.session import dispose_engine
+
+    await dispose_engine()
+    await dispose_redis()
+
+
 def _run_poller():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_forward_retry_poller())
     finally:
+        # 显式清理当前循环的连接资源
+        with contextlib.suppress(Exception):
+            loop.run_until_complete(_dispose_poller_resources())
         loop.close()
 
 
 def start_forward_retry_poller():
     """启动转发重试 Poller 线程"""
-    t = threading.Thread(
-        target=_run_poller, daemon=True, name="forward-retry-poller"
-    )
+    t = threading.Thread(target=_run_poller, daemon=True, name="forward-retry-poller")
     t.start()
     logger.info("[ForwardRetry] 转发重试 Poller 线程已启动")
     return t

@@ -1,5 +1,6 @@
 """OpenClaw 分析结果后台轮询"""
 
+import contextlib
 import json
 import logging
 import threading
@@ -383,6 +384,15 @@ async def _poll_pending_analyses_inner():
         logger.error(f"轮询任务异常: {e}")
 
 
+async def _dispose_poller_resources():
+    """显式清理当前事件循环的数据库引擎和 Redis 连接"""
+    from core.redis_client import dispose_redis
+    from db.session import dispose_engine
+
+    await dispose_engine()
+    await dispose_redis()
+
+
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
 
@@ -405,6 +415,9 @@ def start_poller(interval: int = 30):
         try:
             loop.run_until_complete(_run_poller())
         finally:
+            # 显式清理当前循环的连接资源
+            with contextlib.suppress(Exception):
+                loop.run_until_complete(_dispose_poller_resources())
             loop.close()
 
     t = threading.Thread(target=_loop, daemon=True, name="openclaw-poller")
