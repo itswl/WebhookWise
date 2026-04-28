@@ -232,6 +232,47 @@ def _resolve_analysis_for_duplicate(
     return final_analysis, final_importance
 
 
+def _fill_event_fields(
+    event: WebhookEvent,
+    *,
+    source: str,
+    client_ip: str | None,
+    data: WebhookData,
+    alert_hash: str,
+    ai_analysis: AnalysisResult | None,
+    importance: str | None,
+    forward_status: str,
+    is_duplicate: int,
+    duplicate_of: int | None,
+    duplicate_count: int,
+    beyond_window: int,
+    processing_status: str = "completed",
+    last_notified_at: datetime | None = None,
+    headers: HeadersDict | None = None,
+    raw_payload: bytes | None = None,
+) -> None:
+    """统一将字段映射到 ORM 对象，集中维护字段赋值逻辑。"""
+    event.source = source
+    event.client_ip = client_ip
+    event.timestamp = datetime.now()
+    event.parsed_data = data
+    event.alert_hash = alert_hash
+    event.ai_analysis = ai_analysis
+    event.importance = importance
+    event.forward_status = forward_status
+    event.is_duplicate = is_duplicate
+    event.duplicate_of = duplicate_of
+    event.duplicate_count = duplicate_count
+    event.beyond_window = beyond_window
+    event.processing_status = processing_status
+    if last_notified_at is not None:
+        event.last_notified_at = last_notified_at
+    if headers is not None:
+        event.headers = _normalize_headers(headers)
+    if raw_payload is not None:
+        event.raw_payload = _decode_raw_payload(raw_payload)
+
+
 def _build_event(
     *,
     source: str,
@@ -249,13 +290,12 @@ def _build_event(
     beyond_window: int,
     last_notified_at: datetime | None = None,
 ) -> WebhookEvent:
-    return WebhookEvent(
+    event = WebhookEvent()
+    _fill_event_fields(
+        event,
         source=source,
         client_ip=client_ip,
-        timestamp=datetime.now(),
-        raw_payload=_decode_raw_payload(raw_payload),
-        headers=_normalize_headers(headers),
-        parsed_data=data,
+        data=data,
         alert_hash=alert_hash,
         ai_analysis=ai_analysis,
         importance=importance,
@@ -265,7 +305,10 @@ def _build_event(
         duplicate_count=duplicate_count,
         beyond_window=beyond_window,
         last_notified_at=last_notified_at,
+        headers=headers,
+        raw_payload=raw_payload,
     )
+    return event
 
 
 async def _update_existing_event(
@@ -298,26 +341,24 @@ async def _update_existing_event(
             forward_status=forward_status,
         )
 
-    # 补全字段
-    event.source = source
-    event.client_ip = client_ip
-    event.parsed_data = data
-    event.alert_hash = alert_hash
-    event.ai_analysis = ai_analysis
-    event.importance = ai_analysis.get("importance") if ai_analysis else None
-    event.forward_status = forward_status
-    event.is_duplicate = 0
-    event.duplicate_of = None
-    event.duplicate_count = 1
-    event.beyond_window = 0
-    event.last_notified_at = datetime.now()
-    event.processing_status = "completed"
-    event.timestamp = datetime.now()
-    # raw_payload / headers 已在 quick_receive_webhook 写入，仅在需要时覆盖
-    if headers is not None:
-        event.headers = _normalize_headers(headers)
-    if raw_payload is not None:
-        event.raw_payload = _decode_raw_payload(raw_payload)
+    # 补全字段（raw_payload / headers 已在 quick_receive_webhook 写入，仅在需要时覆盖）
+    _fill_event_fields(
+        event,
+        source=source,
+        client_ip=client_ip,
+        data=data,
+        alert_hash=alert_hash,
+        ai_analysis=ai_analysis,
+        importance=ai_analysis.get("importance") if ai_analysis else None,
+        forward_status=forward_status,
+        is_duplicate=0,
+        duplicate_of=None,
+        duplicate_count=1,
+        beyond_window=0,
+        last_notified_at=datetime.now(),
+        headers=headers,
+        raw_payload=raw_payload,
+    )
 
     await session.flush()
     logger.info(f"[save] UPDATE 已有记录: ID={event.id}, alert_hash={alert_hash}")
@@ -358,23 +399,22 @@ async def _save_duplicate_event(
     if event_id is not None:
         dup_event = await session.get(WebhookEvent, event_id)
         if dup_event:
-            dup_event.source = source
-            dup_event.client_ip = client_ip
-            dup_event.timestamp = datetime.now()
-            dup_event.parsed_data = data
-            dup_event.alert_hash = alert_hash
-            dup_event.ai_analysis = final_ai_analysis
-            dup_event.importance = final_importance
-            dup_event.forward_status = forward_status
-            dup_event.is_duplicate = 1
-            dup_event.duplicate_of = original.id
-            dup_event.duplicate_count = original.duplicate_count
-            dup_event.beyond_window = 1 if beyond_window else 0
-            dup_event.processing_status = "completed"
-            if headers is not None:
-                dup_event.headers = _normalize_headers(headers)
-            if raw_payload is not None:
-                dup_event.raw_payload = _decode_raw_payload(raw_payload)
+            _fill_event_fields(
+                dup_event,
+                source=source,
+                client_ip=client_ip,
+                data=data,
+                alert_hash=alert_hash,
+                ai_analysis=final_ai_analysis,
+                importance=final_importance,
+                forward_status=forward_status,
+                is_duplicate=1,
+                duplicate_of=original.id,
+                duplicate_count=original.duplicate_count,
+                beyond_window=1 if beyond_window else 0,
+                headers=headers,
+                raw_payload=raw_payload,
+            )
             await session.flush()
             logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
             if Config.ENABLE_FILE_BACKUP:

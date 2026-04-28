@@ -212,14 +212,20 @@ async def list_all_deep_analyses(
             total_res = await session.execute(total_query)
             total = total_res.scalar()
     else:
-        # 有条件：用精确 COUNT（索引加速）
+        # 有条件：用精确 COUNT（索引加速），添加超时兜底
         total_query = select(func.count()).select_from(DeepAnalysis)
         if status_filter:
             total_query = total_query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
             total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
-        total_res = await session.execute(total_query)
-        total = total_res.scalar()
+        try:
+            await session.execute(text("SET LOCAL statement_timeout = '2000'"))
+            total_res = await session.execute(total_query)
+            total = total_res.scalar()
+        except Exception:
+            total = None
+        finally:
+            await session.execute(text("RESET statement_timeout"))
 
     # 记录查询
     query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())
@@ -240,7 +246,7 @@ async def list_all_deep_analyses(
 
     next_cursor = records[-1].id if records else None
 
-    total_pages = math.ceil(total / per_page) if total > 0 else 1
+    total_pages = math.ceil(total / per_page) if total is not None and total > 0 else (1 if total is not None else None)
 
     return {
         "success": True,
