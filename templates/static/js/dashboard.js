@@ -243,6 +243,10 @@ async function openConfigModal() {
             document.getElementById('configSuppressDerivedForward').checked = c.suppress_derived_alert_forward;
             document.getElementById('configNoiseWindow').value = c.noise_reduction_window_minutes || 5;
             document.getElementById('configRootCauseConfidence').value = c.root_cause_min_confidence ?? 0.65;
+            document.getElementById('configReanalyzeAfterWindow').checked = c.reanalyze_after_time_window || false;
+            document.getElementById('configForwardAfterWindow').checked = c.forward_after_time_window || false;
+            document.getElementById('configLogLevel').value = c.log_level || 'INFO';
+            document.getElementById('configAiSystemPrompt').value = c.ai_system_prompt || '';
 
             document.getElementById('configModal').classList.add('active');
         }
@@ -278,7 +282,11 @@ async function saveConfig() {
             enable_alert_noise_reduction: document.getElementById('configEnableNoiseReduction').checked,
             suppress_derived_alert_forward: document.getElementById('configSuppressDerivedForward').checked,
             noise_reduction_window_minutes: parseInt(document.getElementById('configNoiseWindow').value) || 5,
-            root_cause_min_confidence: parseFloat(document.getElementById('configRootCauseConfidence').value) || 0.65
+            root_cause_min_confidence: parseFloat(document.getElementById('configRootCauseConfidence').value) || 0.65,
+            reanalyze_after_time_window: document.getElementById('configReanalyzeAfterWindow').checked,
+            forward_after_time_window: document.getElementById('configForwardAfterWindow').checked,
+            log_level: document.getElementById('configLogLevel').value,
+            ai_system_prompt: document.getElementById('configAiSystemPrompt').value.trim()
         };
 
         // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
