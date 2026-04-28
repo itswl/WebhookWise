@@ -1,7 +1,7 @@
 import pytest
 
 from core.config import Config
-from services import ai_analyzer
+from services import ai_analyzer, ai_client
 
 
 def test_parse_truncated_json_fallback_extracts_clean_lists():
@@ -75,8 +75,8 @@ async def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypa
             return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"a"}', "length")
         return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"b"}', "stop")
 
-    monkeypatch.setattr(ai_analyzer, "_request_openai_completion", fake_request)
-    monkeypatch.setattr(ai_analyzer, "AsyncOpenAI", lambda **_kwargs: object())
+    monkeypatch.setattr(ai_client, "_request_openai_completion", fake_request)
+    monkeypatch.setattr(ai_client, "AsyncOpenAI", lambda **_kwargs: object())
 
     old_max = Config.OPENAI_MAX_TOKENS
     old_retry_max = Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS

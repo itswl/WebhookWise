@@ -9,7 +9,7 @@ from core.config import Config
 from core.logger import logger
 from crud.webhook import check_duplicate_alert
 from models import WebhookEvent
-from services.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
+from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 
 
 async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
@@ -105,8 +105,8 @@ async def _resolve_analysis_with_lock(alert_hash: str, webhook_full_data: dict) 
 
 
 async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dict) -> AnalysisResolution:
-    """未获得处理锁时，轮询等待其他 Worker 完成分析后复用结果。"""
-    logger.info(f"[Lock] 告警正在由其他节点处理，轮询等待中: hash={alert_hash[:16]}")
+    """未获得处理锁时，轮询 Redis 缓存等待其他 Worker 完成分析后复用结果。"""
+    logger.info(f"[Lock] 告警正在由其他节点处理，轮询 Redis 缓存等待中: hash={alert_hash[:16]}")
 
     deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS
     poll_interval = Config.PROCESSING_LOCK_POLL_INTERVAL_MS / 1000.0
@@ -114,32 +114,16 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
     while _time.monotonic() < deadline:
         await asyncio.sleep(poll_interval)
 
-        duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
-        original_event = duplicate_check.original_event
-        last_beyond_window_event = duplicate_check.last_beyond_window_event
-
-        # 窗口内重复：原始事件的 ai_analysis 已填充 → 分析完成
-        if duplicate_check.is_duplicate and original_event and original_event.ai_analysis:
-            logger.info(f"[Lock] 其他 Worker 已完成分析，复用结果: original_id={original_event.id}")
-            analysis_result, reanalyzed = await _resolve_duplicate_analysis(
-                original_event, last_beyond_window_event, webhook_full_data
+        # 查 Redis 缓存而非 DB，消除惊群效应下的数据库读风暴
+        cached = await get_cached_analysis(alert_hash)
+        if cached:
+            logger.info(f"[Lock] Redis 缓存命中，复用其他 Worker 的分析结果: hash={alert_hash[:16]}")
+            await log_ai_usage(
+                route_type="reuse",
+                alert_hash=alert_hash,
+                source=webhook_full_data.get("source", ""),
             )
-            return AnalysisResolution(analysis_result, reanalyzed, True, original_event, False)
-
-        # 窗口外重复：last_beyond_window_event 已有分析结果 → 复用
-        if last_beyond_window_event and last_beyond_window_event.ai_analysis and last_beyond_window_event.created_at:
-            seconds_since = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
-            if seconds_since < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
-                logger.info(
-                    f"[Lock] 其他 worker 刚完成窗口外分析"
-                    f"(ID={last_beyond_window_event.id}, {seconds_since:.1f}s前)，复用结果"
-                )
-                await log_ai_usage(
-                    route_type="reuse",
-                    alert_hash=last_beyond_window_event.alert_hash or "",
-                    source=last_beyond_window_event.source or "",
-                )
-                return AnalysisResolution(last_beyond_window_event.ai_analysis, False, True, original_event, False)
+            return AnalysisResolution(cached, False, True, None, False)
 
     # ── 轮询超时 fallback：与原逻辑一致 ──
     logger.warning(f"[Lock] 轮询等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
