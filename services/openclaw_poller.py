@@ -1,6 +1,5 @@
 """OpenClaw 分析结果后台轮询"""
 
-import contextlib
 import json
 import logging
 import threading
@@ -10,6 +9,7 @@ import httpx
 
 import core.redis_client
 from core.config import Config
+from db.session import create_poller_engine, set_local_factory
 from services.pollers import _stop_event
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
@@ -384,21 +384,14 @@ async def _poll_pending_analyses_inner():
         logger.error(f"轮询任务异常: {e}")
 
 
-async def _dispose_poller_resources():
-    """显式清理当前事件循环的数据库引擎和 Redis 连接"""
-    from core.redis_client import dispose_redis
-    from db.session import dispose_engine
-
-    await dispose_engine()
-    await dispose_redis()
-
-
 def start_poller(interval: int = 30):
     """启动后台轮询线程"""
 
     def _loop():
         logger.info(f"[Poller] 任务已启动: interval={interval}s")
         import asyncio
+
+        from core.redis_client import dispose_redis
 
         async def _run_poller():
             while not _stop_event.is_set():
@@ -409,15 +402,21 @@ def start_poller(interval: int = 30):
                 # Wait for the next interval or until stop event is set
                 await asyncio.sleep(interval)
 
+        async def _setup_and_run():
+            engine, factory = create_poller_engine()
+            set_local_factory(factory)
+            try:
+                await _run_poller()
+            finally:
+                await engine.dispose()
+                await dispose_redis()
+
         # Create a new event loop for this thread to keep connections stable
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(_run_poller())
+            loop.run_until_complete(_setup_and_run())
         finally:
-            # 显式清理当前循环的连接资源
-            with contextlib.suppress(Exception):
-                loop.run_until_complete(_dispose_poller_resources())
             loop.close()
 
     t = threading.Thread(target=_loop, daemon=True, name="openclaw-poller")
