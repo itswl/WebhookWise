@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -43,10 +44,20 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.expected_exceptions = expected_exceptions
 
+        # 同步锁（用于同步方法 call/state/_on_success/_on_failure）
         self._lock = threading.RLock()
+        # 异步锁（惰性初始化，用于 call_async 路径）
+        self._async_lock: asyncio.Lock | None = None
+
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._state = CircuitState.CLOSED
+
+    def _get_async_lock(self) -> asyncio.Lock:
+        """获取或创建异步锁（惰性初始化，绑定到当前事件循环）"""
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
 
     @property
     def state(self) -> CircuitState:
@@ -83,7 +94,7 @@ class CircuitBreaker:
             return None
 
     async def call_async(self, func: Callable, *args, **kwargs):
-        """异步执行函数，失败时触发熔断。"""
+        """异步执行函数，失败时触发熔断（使用 asyncio.Lock 保护状态更新）。"""
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
@@ -97,10 +108,21 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-            self._on_success()
+            async with self._get_async_lock():
+                self._failure_count = 0
+                self._state = CircuitState.CLOSED
             return result
         except self.expected_exceptions as e:
-            self._on_failure()
+            async with self._get_async_lock():
+                self._failure_count += 1
+                self._last_failure_time = time.time()
+                if self.failure_threshold > 0 and self._failure_count >= self.failure_threshold:
+                    self._state = CircuitState.OPEN
+                    logger.error(
+                        f"CircuitBreaker [{self.name}] 触发熔断: "
+                        f"连续失败 {self._failure_count} 次, "
+                        f"将在 {self.recovery_timeout}s 后恢复"
+                    )
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
 

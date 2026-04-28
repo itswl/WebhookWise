@@ -6,15 +6,16 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
-from core.webhook_security import enforce_webhook_rate_limit, ensure_webhook_auth
-from crud.webhook import get_client_ip
-from db.session import get_db_session
+from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
+from crud.webhook import get_client_ip, quick_receive_webhook
+from db.session import get_db_session, test_db_connection
+from models import WebhookEvent
 
 webhook_router = APIRouter()
 
@@ -24,8 +25,6 @@ webhook_router = APIRouter()
 
 @webhook_router.get("/health")
 async def health_check():
-    from db.session import test_db_connection
-
     db_ok = test_db_connection()
     status = "healthy" if db_ok else "unhealthy"
     code = 200 if db_ok else 503
@@ -53,8 +52,6 @@ async def list_webhooks(
     cursor_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    from models import WebhookEvent
-
     offset = (page - 1) * page_size
     if cursor_id is not None:
         offset = 0
@@ -74,15 +71,36 @@ async def list_webhooks(
 
         total = None
         if include_total:
-            count_query = select(func.count()).select_from(WebhookEvent)
-            if importance:
-                count_query = count_query.filter(WebhookEvent.importance == importance)
-            if source:
-                count_query = count_query.filter(WebhookEvent.source == source)
-            if cursor_id is not None:
-                count_query = count_query.filter(WebhookEvent.id < cursor_id)
-            total_result = await session.execute(count_query)
-            total = total_result.scalar()
+            has_filters = bool(importance or source or cursor_id is not None)
+
+            if not has_filters:
+                # 无条件：先尝试 pg_class 估算
+                try:
+                    estimate_result = await session.execute(
+                        text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'webhook_events'")
+                    )
+                    estimate = estimate_result.scalar()
+                    if estimate is not None and estimate > 100000:
+                        total = int(estimate)
+                    else:
+                        count_query = select(func.count()).select_from(WebhookEvent)
+                        total_result = await session.execute(count_query)
+                        total = total_result.scalar()
+                except Exception:
+                    count_query = select(func.count()).select_from(WebhookEvent)
+                    total_result = await session.execute(count_query)
+                    total = total_result.scalar()
+            else:
+                # 有条件：用精确 COUNT（索引加速）
+                count_query = select(func.count()).select_from(WebhookEvent)
+                if importance:
+                    count_query = count_query.filter(WebhookEvent.importance == importance)
+                if source:
+                    count_query = count_query.filter(WebhookEvent.source == source)
+                if cursor_id is not None:
+                    count_query = count_query.filter(WebhookEvent.id < cursor_id)
+                total_result = await session.execute(count_query)
+                total = total_result.scalar()
         result = await session.execute(query.offset(offset).limit(page_size))
         events = result.scalars().all()
 
@@ -135,8 +153,6 @@ async def list_webhooks_cursor(
     cursor_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    from models import WebhookEvent
-
     try:
         query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
@@ -189,8 +205,6 @@ async def list_webhooks_cursor(
 
 @webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)])
 async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
-    from models import WebhookEvent
-
     result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
     event = result.scalars().first()
     if not event:
@@ -201,8 +215,15 @@ async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(ge
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
 
 
-@webhook_router.post("/webhook")
-async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
+@webhook_router.post(
+    "/webhook",
+    dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
+)
+async def receive_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+):
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
@@ -213,31 +234,40 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             payload = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
-    from services.pipeline import handle_webhook_process
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
+    raw_body_str = raw_body.decode("utf-8", errors="replace")
 
-    try:
-        limited_ip = await enforce_webhook_rate_limit(request)
-        if limited_ip:
-            return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-    except Exception as e:
-        logger.warning(f"限流检查失败: {e}")
+    # ★ 同步入库：202 之前持久化原始数据
+    event = await quick_receive_webhook(
+        session=session,
+        source=headers.get("x-webhook-source", "unknown"),
+        raw_headers=headers,
+        raw_body=raw_body_str,
+    )
+    await session.commit()
 
-    try:
-        ensure_webhook_auth(headers, raw_body)
-    except Exception:
-        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
+    from services.pipeline import handle_webhook_process
 
-    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None)
+    # 异步处理：传递 event_id 用于状态更新
+    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None, event.id)
     return JSONResponse(
-        status_code=202, content={"success": True, "message": "Webhook received and queued for processing"}
+        status_code=202,
+        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
     )
 
 
-@webhook_router.post("/webhook/{source}")
-async def receive_webhook_with_source(source: str, request: Request, background_tasks: BackgroundTasks):
+@webhook_router.post(
+    "/webhook/{source}",
+    dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
+)
+async def receive_webhook_with_source(
+    source: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+):
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
@@ -248,24 +278,25 @@ async def receive_webhook_with_source(source: str, request: Request, background_
             payload = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
-    from services.pipeline import handle_webhook_process
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
+    raw_body_str = raw_body.decode("utf-8", errors="replace")
 
-    try:
-        limited_ip = await enforce_webhook_rate_limit(request)
-        if limited_ip:
-            return JSONResponse(status_code=429, content={"success": False, "error": "Rate limit exceeded"})
-    except Exception as e:
-        logger.warning(f"限流检查失败: {e}")
+    # ★ 同步入库：202 之前持久化原始数据
+    event = await quick_receive_webhook(
+        session=session,
+        source=source,
+        raw_headers=headers,
+        raw_body=raw_body_str,
+    )
+    await session.commit()
 
-    try:
-        ensure_webhook_auth(headers, raw_body)
-    except Exception:
-        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
+    from services.pipeline import handle_webhook_process
 
-    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source)
+    # 异步处理：传递 event_id 用于状态更新
+    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source, event.id)
     return JSONResponse(
-        status_code=202, content={"success": True, "message": "Webhook received and queued for processing"}
+        status_code=202,
+        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
     )

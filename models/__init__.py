@@ -35,6 +35,10 @@ class WebhookEvent(Base):
     ai_analysis = Column(JSON)
     importance = Column(String(20), index=True)  # high, medium, low
 
+    # 处理状态
+    processing_status = Column(String(20), default="received", nullable=False, index=True)
+    # 状态流转: received → analyzing → completed → failed
+
     # 转发状态
     forward_status = Column(String(20))  # success, failed, skipped
 
@@ -107,6 +111,7 @@ class WebhookEvent(Base):
             "alert_hash": self.alert_hash,
             "ai_analysis": self.ai_analysis,
             "importance": self.importance,
+            "processing_status": self.processing_status,
             "forward_status": self.forward_status,
             "is_duplicate": self.is_duplicate,
             "duplicate_of": self.duplicate_of,
@@ -144,28 +149,6 @@ class ArchivedWebhookEvent(Base):
     archived_at = Column(DateTime, default=datetime.now, index=True)
 
     __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)
-
-
-class AnalysisCache(Base):
-    """
-    AI 分析结果缓存
-
-    用于存储 AI 分析结果，避免对相同告警重复调用 AI。
-    缓存 key 基于 alert_hash 生成。
-    """
-
-    __tablename__ = "analysis_cache"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    cache_key = Column(String(128), unique=True, nullable=False, index=True)  # 基于 alert_hash
-    analysis_result = Column(Text, nullable=False)  # JSON 格式的分析结果
-    hit_count = Column(Integer, default=0)  # 缓存命中次数
-    created_at = Column(DateTime, default=func.now())
-    expires_at = Column(DateTime, nullable=False)
-
-    def is_expired(self) -> bool:
-        """检查缓存是否已过期"""
-        return datetime.now() > self.expires_at if self.expires_at else True
 
 
 class AIUsageLog(Base):

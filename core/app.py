@@ -22,7 +22,7 @@ from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
 from db.session import dispose_engine, init_engine
-from services.pollers import start_background_pollers, stop_background_pollers
+from services.poller_scheduler import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -38,9 +38,9 @@ async def lifespan(app: FastAPI):
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
-    await start_background_pollers()
+    await start_scheduler()
     yield
-    stop_background_pollers()
+    await stop_scheduler()
     # 停止配置变更监听
     await runtime_config.stop_subscriber()
     await dispose_engine()

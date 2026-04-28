@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
@@ -191,14 +191,35 @@ async def list_all_deep_analyses(
     session: AsyncSession = Depends(get_db_session),
 ):
     per_page = max(1, min(per_page, 100))
-    # 总数（始终计算）
-    total_query = select(func.count()).select_from(DeepAnalysis)
-    if status_filter:
-        total_query = total_query.filter(DeepAnalysis.status == status_filter)
-    if engine_filter:
-        total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
-    total_res = await session.execute(total_query)
-    total = total_res.scalar()
+    # 总数（智能估算策略）
+    has_filters = bool(status_filter or engine_filter)
+
+    if not has_filters:
+        # 无条件：先尝试 pg_class 估算
+        try:
+            estimate_result = await session.execute(
+                text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'deep_analyses'")
+            )
+            estimate = estimate_result.scalar()
+            if estimate is not None and estimate > 100000:
+                total = int(estimate)
+            else:
+                total_query = select(func.count()).select_from(DeepAnalysis)
+                total_res = await session.execute(total_query)
+                total = total_res.scalar()
+        except Exception:
+            total_query = select(func.count()).select_from(DeepAnalysis)
+            total_res = await session.execute(total_query)
+            total = total_res.scalar()
+    else:
+        # 有条件：用精确 COUNT（索引加速）
+        total_query = select(func.count()).select_from(DeepAnalysis)
+        if status_filter:
+            total_query = total_query.filter(DeepAnalysis.status == status_filter)
+        if engine_filter:
+            total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
+        total_res = await session.execute(total_query)
+        total = total_res.scalar()
 
     # 记录查询
     query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())
