@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import hmac
 import json
-import threading
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -44,9 +43,7 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.expected_exceptions = expected_exceptions
 
-        # 同步锁（用于同步方法 call/state/_on_success/_on_failure）
-        self._lock = threading.RLock()
-        # 异步锁（惰性初始化，用于 call_async 路径）
+        # 异步锁（惰性初始化，绑定到当前事件循环）
         self._async_lock: asyncio.Lock | None = None
 
         self._failure_count = 0
@@ -61,7 +58,12 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        with self._lock:
+        """读取当前熔断器状态（仅供外部查询，不持锁）。"""
+        return self._state
+
+    async def _check_state(self) -> CircuitState:
+        """在 asyncio.Lock 保护下检查并转换状态。"""
+        async with self._get_async_lock():
             if (
                 self._state == CircuitState.OPEN
                 and self._last_failure_time is not None
@@ -70,31 +72,8 @@ class CircuitBreaker:
                 self._state = CircuitState.HALF_OPEN
             return self._state
 
-    def call(self, func: Callable, *args, **kwargs):
-        """执行函数，失败时触发熔断。"""
-        # threshold 为 0 表示禁用熔断器，直接执行
-        if self.failure_threshold == 0:
-            try:
-                return func(*args, **kwargs)
-            except self.expected_exceptions as e:
-                logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
-                return None
-
-        if self.state == CircuitState.OPEN:
-            logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
-            return None
-
-        try:
-            result = func(*args, **kwargs)
-            self._on_success()
-            return result
-        except self.expected_exceptions as e:
-            self._on_failure()
-            logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
-            return None
-
     async def call_async(self, func: Callable, *args, **kwargs):
-        """异步执行函数，失败时触发熔断（使用 asyncio.Lock 保护状态更新）。"""
+        """异步执行函数，失败时触发熔断（使用 asyncio.Lock 保护所有状态访问）。"""
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
@@ -102,7 +81,8 @@ class CircuitBreaker:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
 
-        if self.state == CircuitState.OPEN:
+        current_state = await self._check_state()
+        if current_state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
             return None
 
@@ -125,20 +105,6 @@ class CircuitBreaker:
                     )
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
-
-    def _on_success(self):
-        with self._lock:
-            self._failure_count = 0
-            self._state = CircuitState.CLOSED
-
-    def _on_failure(self):
-        with self._lock:
-            self._failure_count += 1
-            self._last_failure_time = time.time()
-            # threshold 为 0 表示禁用熔断器
-            if self.failure_threshold > 0 and self._failure_count >= self.failure_threshold:
-                self._state = CircuitState.OPEN
-                logger.error(f"CircuitBreaker [{self.name}] 转为 OPEN（连续 {self._failure_count} 次失败）")
 
 
 # 预置熔断器实例（通过 Config）
