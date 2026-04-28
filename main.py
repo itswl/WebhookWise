@@ -3,6 +3,7 @@
 Webhook AI分析服务主入口
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -11,12 +12,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.config import Config
 from core.logger import logger
-from db.session import test_db_connection
+from db.session import init_engine, test_db_connection
+
+
+async def _check_db():
+    await init_engine()
+    return await test_db_connection()
+
 
 if __name__ == "__main__":
     # 启动前验证
     Config.validate()
-    if not test_db_connection():
+    if not asyncio.run(_check_db()):
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
 
