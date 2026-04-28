@@ -1,6 +1,5 @@
 import logging
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import (
@@ -20,9 +19,6 @@ Base = declarative_base()
 # ── 全局异步引擎（主事件循环使用） ──
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker | None = None
-
-# ── ContextVar: Depends 注入的 session 向下传播 ──
-_request_session: ContextVar[AsyncSession | None] = ContextVar("_request_session", default=None)
 
 
 def _build_engine_kwargs():
@@ -72,29 +68,21 @@ def get_engine() -> AsyncEngine | None:
 async def get_db_session():
     """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
     async with _session_factory() as session:
-        token = _request_session.set(session)
         try:
             yield session
             await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            _request_session.reset(token)
 
 
 @asynccontextmanager
 async def session_scope():
     """异步数据库会话上下文管理器，自动处理提交和回滚。
 
-    优先复用 Depends 注入的 session；否则用全局 factory 创建新 session。
+    始终创建新 session。供 Poller、BackgroundTasks 等不通过路由的代码路径使用。
+    路由端点应使用 Depends(get_db_session) 显式注入 session。
     """
-    # 1. 优先复用 Depends 注入的 session
-    existing = _request_session.get()
-    if existing:
-        yield existing
-        return
-    # 2. 用全局 factory 创建新 session
     async with _session_factory() as session:
         try:
             yield session
