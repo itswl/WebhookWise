@@ -21,7 +21,7 @@ from core.logger import logger
 from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
-from db.session import dispose_engine
+from db.session import dispose_engine, init_engine
 from services.pollers import start_background_pollers, stop_background_pollers
 
 
@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
         )
     get_http_client()
+    await init_engine()
     # 从数据库加载运行时配置（覆盖 .env 默认值）
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听

@@ -5,6 +5,9 @@ line-length = 120
 select = ["I", "B", "UP", "SIM", "F", "C4", "PIE", "PERF", "E", "W"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"api/*.py" = ["B008"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

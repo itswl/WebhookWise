@@ -4,12 +4,13 @@ api/reanalysis.py
 重新分析 + 手动转发路由。
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
 from core.logger import logger
-from db.session import session_scope
+from db.session import get_db_session
 from models import WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
 
@@ -87,28 +88,27 @@ async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int,
 
 
 @reanalysis_router.post("/api/reanalyze/{webhook_id}")
-async def reanalyze_webhook(webhook_id: int):
+async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
     """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:
-        async with session_scope() as session:
-            webhook_event = await _get_webhook_event_by_id(session, webhook_id)
-            if not webhook_event:
-                raise HTTPException(status_code=404, detail="Webhook not found")
+        webhook_event = await _get_webhook_event_by_id(session, webhook_id)
+        if not webhook_event:
+            raise HTTPException(status_code=404, detail="Webhook not found")
 
-            analysis_result, old_importance, new_importance, updated_duplicates = await _reanalyze_webhook_event(
-                session, webhook_event, webhook_id
-            )
+        analysis_result, old_importance, new_importance, updated_duplicates = await _reanalyze_webhook_event(
+            session, webhook_event, webhook_id
+        )
 
-            return {
-                "success": True,
-                "status": 200,
-                "analysis": analysis_result,
-                "original_importance": old_importance,
-                "new_importance": new_importance,
-                "updated_duplicates": updated_duplicates,
-                "message": f"重新分析完成，importance: {old_importance} → {new_importance}"
-                + (f"，同时更新了 {updated_duplicates} 条重复告警" if updated_duplicates > 0 else ""),
-            }
+        return {
+            "success": True,
+            "status": 200,
+            "analysis": analysis_result,
+            "original_importance": old_importance,
+            "new_importance": new_importance,
+            "updated_duplicates": updated_duplicates,
+            "message": f"重新分析完成，importance: {old_importance} → {new_importance}"
+            + (f"，同时更新了 {updated_duplicates} 条重复告警" if updated_duplicates > 0 else ""),
+        }
 
     except HTTPException:
         raise
@@ -118,20 +118,21 @@ async def reanalyze_webhook(webhook_id: int):
 
 
 @reanalysis_router.post("/api/forward/{webhook_id}")
-async def manual_forward_webhook(webhook_id: int, data: dict | None = None):
+async def manual_forward_webhook(
+    webhook_id: int, data: dict | None = None, session: AsyncSession = Depends(get_db_session)
+):
     data = data or {}
     """手动转发 webhook"""
     try:
         custom_url = data.get("target_url")
 
-        async with session_scope() as session:
-            webhook_event = await _get_webhook_event_by_id(session, webhook_id)
-            if not webhook_event:
-                raise HTTPException(status_code=404, detail="Webhook not found")
+        webhook_event = await _get_webhook_event_by_id(session, webhook_id)
+        if not webhook_event:
+            raise HTTPException(status_code=404, detail="Webhook not found")
 
-            forward_result = await _manual_forward(session, webhook_event, webhook_id, custom_url)
+        forward_result = await _manual_forward(session, webhook_event, webhook_id, custom_url)
 
-            return {"success": True, "data": forward_result, "message": f"已转发至 {custom_url or Config.FORWARD_URL}"}
+        return {"success": True, "data": forward_result, "message": f"已转发至 {custom_url or Config.FORWARD_URL}"}
     except HTTPException:
         raise
     except Exception as e:

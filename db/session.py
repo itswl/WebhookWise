@@ -1,11 +1,9 @@
-import asyncio
 import logging
-import threading
 from contextlib import asynccontextmanager
-from weakref import WeakKeyDictionary
+from contextvars import ContextVar
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
 from core.config import Config
@@ -14,42 +12,116 @@ _logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
-# Per-loop 异步引擎存储：{event_loop: (engine, session_factory)}
-_loop_to_engine: WeakKeyDictionary = WeakKeyDictionary()
-_engine_lock = threading.Lock()
+# ── 全局异步引擎（主事件循环使用） ──
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker | None = None
 
-# 同步引擎（独立，不受事件循环影响）
+# ── ContextVar: Depends 注入的 session 向下传播 ──
+_request_session: ContextVar[AsyncSession | None] = ContextVar("_request_session", default=None)
+
+# ── ContextVar: 轮询线程的本地 session factory ──
+_local_factory: ContextVar[async_sessionmaker | None] = ContextVar("_local_factory", default=None)
+
+# ── 同步引擎（独立，不受事件循环影响） ──
 _sync_engine = None
 
 
-def _create_engine():
-    """内部方法：创建新的异步引擎实例"""
+def _build_engine_kwargs():
+    """返回连接池公共参数"""
+    return {
+        "echo": False,
+        "pool_pre_ping": True,
+        "pool_size": Config.DB_POOL_SIZE,
+        "max_overflow": Config.DB_MAX_OVERFLOW,
+        "pool_recycle": Config.DB_POOL_RECYCLE,
+        "pool_timeout": Config.DB_POOL_TIMEOUT,
+    }
+
+
+def _async_url() -> str:
+    return Config.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+
+# ────────────────────────────────────────
+# 公共 API
+# ────────────────────────────────────────
+
+
+async def init_engine():
+    """创建全局 AsyncEngine 和 async_sessionmaker（应用启动时调用一次）"""
+    global _engine, _session_factory
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
-    return create_async_engine(
-        Config.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=Config.DB_POOL_SIZE,
-        max_overflow=Config.DB_MAX_OVERFLOW,
-        pool_recycle=Config.DB_POOL_RECYCLE,
-        pool_timeout=Config.DB_POOL_TIMEOUT,
-    )
+    _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
+    _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
 
 
-def _get_or_create(current_loop):
-    """获取或创建当前事件循环对应的 (engine, session_factory) 元组（需在 _engine_lock 内调用）"""
-    if current_loop not in _loop_to_engine:
-        engine = _create_engine()
-        factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-        _loop_to_engine[current_loop] = (engine, factory)
-    return _loop_to_engine[current_loop]
+async def dispose_engine():
+    """关闭全局异步引擎（应用关闭时调用）"""
+    global _engine, _session_factory
+    if _engine:
+        await _engine.dispose()
+        _engine = None
+        _session_factory = None
+    _logger.info("[DB] 当前数据库引擎已关闭")
 
 
-def get_engine():
-    """获取当前事件循环对应的异步引擎（per-loop 隔离，线程安全）"""
-    current_loop = asyncio.get_running_loop()
-    with _engine_lock:
-        return _get_or_create(current_loop)[0]
+def get_engine() -> AsyncEngine | None:
+    """返回全局异步引擎（向后兼容）"""
+    return _engine
+
+
+async def get_db_session():
+    """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
+    factory = _local_factory.get() or _session_factory
+    async with factory() as session:
+        token = _request_session.set(session)
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            _request_session.reset(token)
+
+
+@asynccontextmanager
+async def session_scope():
+    """异步数据库会话上下文管理器，自动处理提交和回滚。
+
+    优先复用 Depends 注入的 session；否则用 local factory（轮询线程）或全局 factory 创建新 session。
+    """
+    # 1. 优先复用 Depends 注入的 session
+    existing = _request_session.get()
+    if existing:
+        yield existing
+        return
+    # 2. 用 local factory（轮询线程）或全局 factory 创建新 session
+    factory = _local_factory.get() or _session_factory
+    async with factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def create_poller_engine() -> tuple[AsyncEngine, async_sessionmaker]:
+    """为轮询线程创建隔离引擎和 session factory（连接池参数与主引擎相同）"""
+    engine = create_async_engine(_async_url(), **_build_engine_kwargs())
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    return engine, factory
+
+
+def set_local_factory(factory: async_sessionmaker):
+    """设置当前 ContextVar 中的本地 session factory（供轮询线程使用）"""
+    _local_factory.set(factory)
+
+
+# ────────────────────────────────────────
+# 同步引擎 & 初始化（保持不变）
+# ────────────────────────────────────────
 
 
 def get_sync_engine():
@@ -61,28 +133,6 @@ def get_sync_engine():
     return _sync_engine
 
 
-def get_session() -> AsyncSession:
-    """获取异步数据库会话"""
-    current_loop = asyncio.get_running_loop()
-    with _engine_lock:
-        _, factory = _get_or_create(current_loop)
-    return factory()
-
-
-@asynccontextmanager
-async def session_scope():
-    """异步数据库会话上下文管理器，自动处理提交和回滚"""
-    session = get_session()
-    try:
-        yield session
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
-    finally:
-        await session.close()
-
-
 def init_db():
     """使用同步引擎初始化数据库表"""
     engine = get_sync_engine()
@@ -90,21 +140,8 @@ def init_db():
     _logger.info("数据库表初始化完成")
 
 
-async def dispose_engine():
-    """关闭当前事件循环的数据库引擎（应用关闭时调用）"""
-    current_loop = asyncio.get_running_loop()
-    with _engine_lock:
-        entry = _loop_to_engine.pop(current_loop, None)
-    if entry:
-        engine, _ = entry
-        await engine.dispose()
-    _logger.info("[DB] 当前数据库引擎已关闭")
-
-
 def test_db_connection() -> bool:
-    """
-    使用同步引擎测试数据库连接（因为这个在系统启动的最早期调用，保持简单同步）
-    """
+    """使用同步引擎测试数据库连接（因为这个在系统启动的最早期调用，保持简单同步）"""
     try:
         with get_sync_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
