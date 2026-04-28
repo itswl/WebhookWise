@@ -4,14 +4,34 @@ from api import InvalidJsonError, InvalidSignatureError
 from core.logger import logger
 from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
 from core.utils import generate_alert_hash, processing_lock
+from db.session import session_scope
+from models import WebhookEvent
 from services.pipeline_analysis import resolve_analysis
 from services.pipeline_forward import _refresh_original_event, decide_forwarding, execute_forwarding
 from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
 from services.pipeline_request import _build_webhook_response, _parse_webhook_request
 
 
+async def _update_processing_status(event_id: int | None, status: str) -> None:
+    """更新 webhook 事件的处理状态"""
+    if event_id is None:
+        return
+    try:
+        async with session_scope() as session:
+            event = await session.get(WebhookEvent, event_id)
+            if event:
+                event.processing_status = status
+    except Exception as e:
+        logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
+
+
 async def handle_webhook_process(
-    client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: str | None = None
+    client_ip: str,
+    headers: dict,
+    payload: dict,
+    raw_body: bytes,
+    source: str | None = None,
+    event_id: int | None = None,
 ):
     """处理 webhook 的主流程入口。"""
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}")
@@ -20,6 +40,8 @@ async def handle_webhook_process(
     original_event = None
 
     try:
+        await _update_processing_status(event_id, "analyzing")
+
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
         except InvalidSignatureError:
@@ -78,10 +100,14 @@ async def handle_webhook_process(
         logger.info(
             f"[Pipeline] 处理流程结束: id={save_result.webhook_id}, forwarded={forward_decision.should_forward}"
         )
+
+        await _update_processing_status(event_id, "completed")
+
         return _build_webhook_response(
             save_result.webhook_id, analysis_result, forward_result, is_dup, original_id, beyond_window, is_duplicate
         )
 
     except Exception as e:
         logger.error(f"处理 Webhook 时发生错误: {e!s}", exc_info=True)
+        await _update_processing_status(event_id, "failed")
         return
