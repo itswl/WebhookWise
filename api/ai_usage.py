@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,20 +11,16 @@ from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
 from db.session import get_db_session
-from models import AIUsageLog, AnalysisCache
+from models import AIUsageLog
 
 ai_usage_router = APIRouter()
 
 
 def _ok(data: dict, status_code: int = 200):
-    from fastapi.responses import JSONResponse
-
     return JSONResponse(content={"success": True, "data": data}, status_code=status_code)
 
 
 def _fail(msg: str, status_code: int = 500):
-    from fastapi.responses import JSONResponse
-
     return JSONResponse(content={"success": False, "error": msg}, status_code=status_code)
 
 
@@ -104,14 +101,25 @@ async def get_ai_usage(period: str = Query("day"), session: AsyncSession = Depen
         reuse_calls = route_breakdown.get("reuse", 0)
         cost_saved = (cache_calls + rule_calls + reuse_calls) * avg_ai_cost
 
-        # active_caches
-        stmt_active_caches = (
-            select(func.count(AnalysisCache.id), func.coalesce(func.sum(AnalysisCache.hit_count), 0))
-            .select_from(AnalysisCache)
-            .filter(AnalysisCache.expires_at > now)
-        )
-        res_active_caches = await session.execute(stmt_active_caches)
-        active_caches = res_active_caches.first()
+        # active_caches (from Redis)
+        try:
+            redis_client = get_redis()
+            # 获取所有活跃缓存 keys
+            cache_keys = await redis_client.keys("analysis_*")
+            # 过滤掉 :hits 后缀的计数器 keys
+            active_keys = [k for k in cache_keys if not k.endswith(":hits")]
+            active_cache_count = len(active_keys)
+
+            # 统计总命中数
+            total_hits = 0
+            for key in active_keys:
+                hits_val = await redis_client.get(f"{key}:hits")
+                if hits_val:
+                    total_hits += int(hits_val)
+
+            active_caches = (active_cache_count, total_hits)
+        except Exception:
+            active_caches = (0, 0)
 
         format_str = "%Y-%m-%d" if period in ("week", "month", "year") else "%H:00"
         stmt_all_logs = select(

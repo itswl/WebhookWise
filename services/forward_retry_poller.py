@@ -5,38 +5,16 @@
 使用指数退避策略逐条调用 forward_to_remote() 进行重试。
 """
 
-import asyncio
 import logging
-import threading
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
 from core.config import Config
-from db.session import create_poller_engine, session_scope, set_local_factory
+from db.session import session_scope
 from models import FailedForward, WebhookEvent
-from services.pollers import _stop_event
 
 logger = logging.getLogger("webhook_service.forward_retry")
-
-
-async def run_forward_retry_poller():
-    """主循环：每 FORWARD_RETRY_POLL_INTERVAL 秒执行一次 poll_pending_retries()"""
-    logger.info("[ForwardRetry] 转发重试 Poller 已启动")
-
-    while not _stop_event.is_set():
-        try:
-            await poll_pending_retries()
-        except Exception as e:
-            logger.error(f"[ForwardRetry] poll_pending_retries 异常: {e}")
-
-        # 使用 _stop_event.wait() 替代 asyncio.sleep，以便优雅停机时快速退出
-        for _ in range(Config.FORWARD_RETRY_POLL_INTERVAL):
-            if _stop_event.is_set():
-                break
-            await asyncio.sleep(1)
-
-    logger.info("[ForwardRetry] 转发重试 Poller 已停止")
 
 
 async def poll_pending_retries():
@@ -161,34 +139,3 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
             f"[ForwardRetry] 记录 ID={record.id} 将在 {delay:.0f}s 后重试 "
             f"(retry_count={record.retry_count}/{record.max_retries})"
         )
-
-
-# ── 线程启动 ──
-
-
-def _run_poller():
-    from core.redis_client import dispose_redis
-
-    async def _setup_and_run():
-        engine, factory = create_poller_engine()
-        set_local_factory(factory)
-        try:
-            await run_forward_retry_poller()
-        finally:
-            await engine.dispose()
-            await dispose_redis()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_setup_and_run())
-    finally:
-        loop.close()
-
-
-def start_forward_retry_poller():
-    """启动转发重试 Poller 线程"""
-    t = threading.Thread(target=_run_poller, daemon=True, name="forward-retry-poller")
-    t.start()
-    logger.info("[ForwardRetry] 转发重试 Poller 线程已启动")
-    return t
