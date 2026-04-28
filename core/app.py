@@ -22,6 +22,7 @@ from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
 from db.session import dispose_engine, init_engine
+from services.ai_client import reset_openai_client
 from services.poller_scheduler import start_scheduler, stop_scheduler
 
 
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     await runtime_config.stop_subscriber()
     await dispose_engine()
     await dispose_redis()
+    reset_openai_client()  # 释放 OpenAI 单例引用（其底层连接随 close_http_client 一并关闭）
     await close_http_client()
 
 
