@@ -384,12 +384,10 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
         # 检查是否配置了 HTTP API URL
         if Config.OPENCLAW_HTTP_API_URL:
             # 直接通过 HTTP API 获取（复用轮询器的重试逻辑）
-            from fastapi.concurrency import run_in_threadpool
-
             from services.openclaw_poller import _poll_via_http
 
             logger.info(f"通过 HTTP API 重新获取分析结果: id={analysis_id}")
-            result = await run_in_threadpool(_poll_via_http, record.openclaw_session_key, retry_count=3)
+            result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
 
             if result.get("status") == "error":
                 return JSONResponse(status_code=400, content={"error": result.get("error", "获取失败")})
