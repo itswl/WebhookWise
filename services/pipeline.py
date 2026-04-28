@@ -61,7 +61,10 @@ async def handle_webhook_process(
 
             logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
             persisted = await persist_webhook_with_noise_context(
-                request_context=request_context, analysis_resolution=analysis_resolution, alert_hash=alert_hash
+                request_context=request_context,
+                analysis_resolution=analysis_resolution,
+                alert_hash=alert_hash,
+                event_id=event_id,
             )
 
             save_result = persisted.save_result
@@ -101,7 +104,10 @@ async def handle_webhook_process(
             f"[Pipeline] 处理流程结束: id={save_result.webhook_id}, forwarded={forward_decision.should_forward}"
         )
 
-        await _update_processing_status(event_id, "completed")
+        # processing_status 已在 save_webhook_data 事务中统一设为 "completed"，
+        # 仅当无 event_id（向后兼容旧路径）时才单独更新。
+        if event_id is None:
+            await _update_processing_status(event_id, "completed")
 
         return _build_webhook_response(
             save_result.webhook_id, analysis_result, forward_result, is_dup, original_id, beyond_window, is_duplicate
