@@ -16,6 +16,7 @@ from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from crud.webhook import get_client_ip, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
+from services.pipeline import handle_webhook_process
 
 webhook_router = APIRouter()
 
@@ -248,8 +249,6 @@ async def receive_webhook(
     )
     await session.commit()
 
-    from services.pipeline import handle_webhook_process
-
     # 异步处理：传递 event_id 用于状态更新
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None, event.id)
     return JSONResponse(
@@ -291,8 +290,6 @@ async def receive_webhook_with_source(
         raw_body=raw_body_str,
     )
     await session.commit()
-
-    from services.pipeline import handle_webhook_process
 
     # 异步处理：传递 event_id 用于状态更新
     background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source, event.id)
