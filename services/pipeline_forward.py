@@ -1,5 +1,6 @@
 """转发决策与执行模块，从 pipeline.py 提取。"""
 
+import asyncio
 from datetime import datetime
 
 from sqlalchemy import select, update
@@ -198,60 +199,33 @@ async def execute_forwarding(
     alert_type = await _resolve_alert_type_label(is_duplicate, beyond_window, forward_decision.is_periodic_reminder)
 
     if forward_decision.matched_rules:
-        forward_results = []
+        # ── 阶段 1：构建并发 HTTP 任务列表 ──
+        tasks: list[tuple[dict, asyncio.coroutines]] = []
         for rule in forward_decision.matched_rules:
-            try:
-                logger.info(f"执行规则转发: {rule['name']} -> {rule['target_type']}")
-                if rule["target_type"] == "openclaw":
-                    result = await forward_to_openclaw(request_context.webhook_full_data, analysis_result)
-                    if result.get("_pending") and result.get("run_id"):
-                        try:
-                            async with session_scope() as session:
-                                deep_record = DeepAnalysis(
-                                    webhook_event_id=save_result.webhook_id,
-                                    engine="openclaw",
-                                    user_question="",
-                                    analysis_result={
-                                        "status": "pending",
-                                        "root_cause": "OpenClaw Agent 正在分析中，结果将自动更新...",
-                                        "impact": "分析已触发，预计几分钟内完成",
-                                        "recommendations": ["结果将自动更新，请稍后刷新页面"],
-                                        "confidence": 0,
-                                    },
-                                    openclaw_run_id=result.get("run_id", ""),
-                                    openclaw_session_key=result.get("session_key", ""),
-                                    status="pending",
-                                )
-                                session.add(deep_record)
-                                await session.flush()
-                                logger.info(f"转发分析记录已创建: id={deep_record.id}, run_id={result.get('run_id')}")
-                        except Exception as e:
-                            logger.error(f"创建转发分析记录失败: {e}")
-                else:
-                    result = await forward_to_remote(
-                        request_context.webhook_full_data,
-                        analysis_result,
-                        target_url=rule["target_url"],
-                        is_periodic_reminder=forward_decision.is_periodic_reminder,
-                    )
-                result["rule_name"] = rule["name"]
-                forward_results.append(result)
-                if result.get("status") != "success":
-                    try:
-                        await record_failed_forward(
-                            webhook_event_id=save_result.webhook_id,
-                            forward_rule_id=rule.get("id"),
-                            target_url=rule.get("target_url", ""),
-                            target_type=rule.get("target_type", "webhook"),
-                            failure_reason=result.get("status", "unknown"),
-                            error_message=result.get("message") or result.get("response", ""),
-                            forward_data=request_context.webhook_full_data,
-                        )
-                    except Exception as rec_err:
-                        logger.warning(f"记录失败转发异常（不影响主流程）: {rec_err}")
-            except Exception as e:  # noqa: PERF203
-                logger.error(f"规则 {rule['name']} 转发失败: {e}")
-                err_result = {"status": "error", "rule_name": rule["name"], "message": str(e)}
+            logger.info(f"准备规则转发: {rule['name']} -> {rule['target_type']}")
+            if rule["target_type"] == "openclaw":
+                coro = forward_to_openclaw(request_context.webhook_full_data, analysis_result)
+            else:
+                coro = forward_to_remote(
+                    request_context.webhook_full_data,
+                    analysis_result,
+                    target_url=rule["target_url"],
+                    is_periodic_reminder=forward_decision.is_periodic_reminder,
+                )
+            tasks.append((rule, coro))
+
+        logger.info(f"并发转发 {len(tasks)} 个目标...")
+        http_results = await asyncio.gather(
+            *[coro for _, coro in tasks],
+            return_exceptions=True,
+        )
+
+        # ── 阶段 2：串行处理结果（DB 操作） ──
+        forward_results = []
+        for (rule, _), http_result in zip(tasks, http_results, strict=True):
+            if isinstance(http_result, BaseException):
+                logger.error(f"规则 {rule['name']} 转发失败: {http_result}")
+                err_result = {"status": "error", "rule_name": rule["name"], "message": str(http_result)}
                 forward_results.append(err_result)
                 try:
                     await record_failed_forward(
@@ -260,7 +234,52 @@ async def execute_forwarding(
                         target_url=rule.get("target_url", ""),
                         target_type=rule.get("target_type", "webhook"),
                         failure_reason="exception",
-                        error_message=str(e),
+                        error_message=str(http_result),
+                        forward_data=request_context.webhook_full_data,
+                    )
+                except Exception as rec_err:
+                    logger.warning(f"记录失败转发异常（不影响主流程）: {rec_err}")
+                continue
+
+            result = http_result
+            result["rule_name"] = rule["name"]
+            forward_results.append(result)
+
+            # openclaw 类型：创建 DeepAnalysis 记录
+            if rule["target_type"] == "openclaw" and result.get("_pending") and result.get("run_id"):
+                try:
+                    async with session_scope() as session:
+                        deep_record = DeepAnalysis(
+                            webhook_event_id=save_result.webhook_id,
+                            engine="openclaw",
+                            user_question="",
+                            analysis_result={
+                                "status": "pending",
+                                "root_cause": "OpenClaw Agent 正在分析中，结果将自动更新...",
+                                "impact": "分析已触发，预计几分钟内完成",
+                                "recommendations": ["结果将自动更新，请稍后刷新页面"],
+                                "confidence": 0,
+                            },
+                            openclaw_run_id=result.get("run_id", ""),
+                            openclaw_session_key=result.get("session_key", ""),
+                            status="pending",
+                        )
+                        session.add(deep_record)
+                        await session.flush()
+                        logger.info(f"转发分析记录已创建: id={deep_record.id}, run_id={result.get('run_id')}")
+                except Exception as e:
+                    logger.error(f"创建转发分析记录失败: {e}")
+
+            # 非 openclaw 类型：失败时记录
+            if result.get("status") != "success" and rule["target_type"] != "openclaw":
+                try:
+                    await record_failed_forward(
+                        webhook_event_id=save_result.webhook_id,
+                        forward_rule_id=rule.get("id"),
+                        target_url=rule.get("target_url", ""),
+                        target_type=rule.get("target_type", "webhook"),
+                        failure_reason=result.get("status", "unknown"),
+                        error_message=result.get("message") or result.get("response", ""),
                         forward_data=request_context.webhook_full_data,
                     )
                 except Exception as rec_err:
