@@ -10,6 +10,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
+from api.forward_retry import forward_retry_router
 from api.forward_rules import forward_rules_router
 from api.reanalysis import reanalysis_router
 from api.webhook import webhook_router
@@ -86,6 +87,7 @@ logger.debug(f"worker_id={_WORKER_ID}")
 
 
 app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(forward_retry_router, dependencies=[Depends(verify_api_key)])
 app.include_router(forward_rules_router, dependencies=[Depends(verify_api_key)])
 app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
 app.include_router(ai_usage_router, dependencies=[Depends(verify_api_key)])

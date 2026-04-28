@@ -554,6 +554,79 @@ def add_archive_and_indexes():
         return False
 
 
+def add_failed_forwards_table():
+    """
+    添加 failed_forwards 转发失败记录表（静默模式）
+
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_sync_engine()
+
+    try:
+        with engine.connect() as conn:
+            # 检查表是否已存在
+            result = conn.execute(
+                text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'failed_forwards'
+                )
+            """)
+            )
+            table_exists = result.scalar()
+
+            if table_exists:
+                # 表已存在，无需操作
+                return True
+
+            # 表不存在，需要创建
+            print("⚙️  首次启动：正在创建 failed_forwards 表...")
+
+            conn.execute(
+                text("""
+                CREATE TABLE failed_forwards (
+                    id SERIAL PRIMARY KEY,
+                    webhook_event_id INTEGER NOT NULL,
+                    forward_rule_id INTEGER,
+                    target_url VARCHAR(500) NOT NULL,
+                    target_type VARCHAR(20) NOT NULL,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    failure_reason VARCHAR(500),
+                    error_message TEXT,
+                    retry_count INTEGER DEFAULT 0,
+                    max_retries INTEGER DEFAULT 3,
+                    next_retry_at TIMESTAMP,
+                    last_retry_at TIMESTAMP,
+                    forward_data JSON,
+                    forward_headers JSON,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            )
+
+            # 创建索引
+            conn.execute(
+                text("""
+                CREATE INDEX idx_failed_status_retry ON failed_forwards(status, next_retry_at)
+            """)
+            )
+            conn.execute(
+                text("""
+                CREATE INDEX idx_failed_webhook_event ON failed_forwards(webhook_event_id)
+            """)
+            )
+            conn.commit()
+            print("   ✅ failed_forwards 表创建成功")
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == "__main__":
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
@@ -563,8 +636,19 @@ if __name__ == "__main__":
     success6 = add_deep_analyses_table()
     success7 = add_polling_fields()
     success8 = add_archive_and_indexes()
+    success9 = add_failed_forwards_table()
     sys.exit(
         0
-        if (success1 and success2 and success3 and success4 and success5 and success6 and success7 and success8)
+        if (
+            success1
+            and success2
+            and success3
+            and success4
+            and success5
+            and success6
+            and success7
+            and success8
+            and success9
+        )
         else 1
     )

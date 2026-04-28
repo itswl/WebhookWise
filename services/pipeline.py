@@ -688,9 +688,37 @@ async def handle_webhook_process(
                             )
                         result["rule_name"] = rule["name"]
                         forward_results.append(result)
+                        if result.get("status") != "success":
+                            try:
+                                from crud.webhook import record_failed_forward
+                                await record_failed_forward(
+                                    webhook_event_id=save_result.webhook_id,
+                                    forward_rule_id=rule.get("id"),
+                                    target_url=rule.get("target_url", ""),
+                                    target_type=rule.get("target_type", "webhook"),
+                                    failure_reason=result.get("status", "unknown"),
+                                    error_message=result.get("message") or result.get("response", ""),
+                                    forward_data=request_context.webhook_full_data,
+                                )
+                            except Exception as rec_err:
+                                logger.warning(f"记录失败转发异常（不影响主流程）: {rec_err}")
                     except Exception as e:  # noqa: PERF203
                         logger.error(f"规则 {rule['name']} 转发失败: {e}")
-                        forward_results.append({"status": "error", "rule_name": rule["name"], "message": str(e)})
+                        err_result = {"status": "error", "rule_name": rule["name"], "message": str(e)}
+                        forward_results.append(err_result)
+                        try:
+                            from crud.webhook import record_failed_forward
+                            await record_failed_forward(
+                                webhook_event_id=save_result.webhook_id,
+                                forward_rule_id=rule.get("id"),
+                                target_url=rule.get("target_url", ""),
+                                target_type=rule.get("target_type", "webhook"),
+                                failure_reason="exception",
+                                error_message=str(e),
+                                forward_data=request_context.webhook_full_data,
+                            )
+                        except Exception as rec_err:
+                            logger.warning(f"记录失败转发异常（不影响主流程）: {rec_err}")
 
                 forward_result = {"status": "success", "results": forward_results}
                 if any(r.get("status") == "success" for r in forward_results) and original_event:
@@ -704,6 +732,20 @@ async def handle_webhook_process(
                 )
                 if forward_result.get("status") == "success" and original_event:
                     await _update_last_notified(original_event.id)
+                elif forward_result.get("status") != "success":
+                    try:
+                        from crud.webhook import record_failed_forward
+                        await record_failed_forward(
+                            webhook_event_id=save_result.webhook_id,
+                            forward_rule_id=None,
+                            target_url=Config.FEISHU_WEBHOOK_URL or "",
+                            target_type="webhook",
+                            failure_reason=forward_result.get("status", "unknown"),
+                            error_message=forward_result.get("message") or forward_result.get("response", ""),
+                            forward_data=request_context.webhook_full_data,
+                        )
+                    except Exception as rec_err:
+                        logger.warning(f"记录默认转发失败异常（不影响主流程）: {rec_err}")
         else:
             logger.info(f"跳过自动转发: {forward_decision.skip_reason}")
 

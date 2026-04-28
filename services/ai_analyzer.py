@@ -1024,8 +1024,23 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         }
 
         event_id = webhook_data.get("id", "unknown")
-        await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
-        logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
+        success = await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
+        if success:
+            logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
+        else:
+            try:
+                from crud.webhook import record_failed_forward
+                await record_failed_forward(
+                    webhook_event_id=event_id if isinstance(event_id, int) else 0,
+                    forward_rule_id=None,
+                    target_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                    target_type="feishu",
+                    failure_reason="openclaw_failure_notification_failed",
+                    error_message=f"OpenClaw 深度分析失败飞书通知发送失败: {error}",
+                    forward_data={"event_id": event_id, "analysis_type": "openclaw_failure"},
+                )
+            except Exception as rec_err:
+                logger.warning(f"记录飞书通知失败异常: {rec_err}")
     except Exception as e:
         logger.error(f"发送 OpenClaw 失败通知失败: {e}")
 

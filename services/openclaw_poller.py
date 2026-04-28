@@ -49,12 +49,26 @@ async def _notify_feishu_deep_analysis(record, source: str = ""):
             "engine": record.engine,
             "duration_seconds": record.duration_seconds or 0,
         }
-        await send_feishu_deep_analysis(
+        success = await send_feishu_deep_analysis(
             webhook_url=webhook_url,
             analysis_record=analysis_data,
             source=source,
             webhook_event_id=record.webhook_event_id,
         )
+        if not success:
+            try:
+                from crud.webhook import record_failed_forward
+                await record_failed_forward(
+                    webhook_event_id=record.webhook_event_id,
+                    forward_rule_id=None,
+                    target_url=webhook_url,
+                    target_type="feishu",
+                    failure_reason="feishu_notification_failed",
+                    error_message="深度分析飞书通知发送失败",
+                    forward_data={"webhook_event_id": record.webhook_event_id, "analysis_type": "deep_analysis"},
+                )
+            except Exception as rec_err:
+                logger.warning(f"记录飞书通知失败异常: {rec_err}")
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
@@ -79,10 +93,25 @@ async def _notify_feishu_deep_analysis_failed(record, reason: str = ""):
             "engine": record.engine,
             "duration_seconds": record.duration_seconds or 0,
         }
-        await send_feishu_deep_analysis(
+        success = await send_feishu_deep_analysis(
             webhook_url=webhook_url, analysis_record=analysis_data, source="", webhook_event_id=record.webhook_event_id
         )
-        logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
+        if success:
+            logger.info(f"深度分析失败通知已发送: id={record.id}, reason={reason}")
+        else:
+            try:
+                from crud.webhook import record_failed_forward
+                await record_failed_forward(
+                    webhook_event_id=record.webhook_event_id,
+                    forward_rule_id=None,
+                    target_url=webhook_url,
+                    target_type="feishu",
+                    failure_reason="feishu_failure_notification_failed",
+                    error_message=f"深度分析失败飞书通知发送失败: {reason}",
+                    forward_data={"webhook_event_id": record.webhook_event_id, "analysis_type": "deep_analysis_failed"},
+                )
+            except Exception as rec_err:
+                logger.warning(f"记录飞书通知失败异常: {rec_err}")
     except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
