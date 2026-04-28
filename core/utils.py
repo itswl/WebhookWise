@@ -58,7 +58,12 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        """读取当前熔断器状态（仅供外部查询，不持锁）。"""
+        """读取当前熔断器状态 — 仅供监控指标拉取和 Debug 日志使用。
+
+        注意：此属性为无锁脏读，不应用于业务流控制决策。
+        内部的熔断状态流转（CLOSED → OPEN → HALF_OPEN → CLOSED）
+        完全由 call_async() 方法内的 asyncio.Lock 状态机保证原子性。
+        """
         return self._state
 
     async def _check_state(self) -> CircuitState:

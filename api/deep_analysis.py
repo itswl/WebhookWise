@@ -322,6 +322,7 @@ async def forward_deep_analysis(
                     failure_reason="feishu_send_failed",
                     error_message="深度分析结果飞书发送失败",
                     forward_data={"analysis_id": analysis_id, "webhook_event_id": analysis.webhook_event_id},
+                    session=session,
                 )
             except Exception as rec_err:
                 logger.warning(f"记录飞书发送失败异常: {rec_err}")
@@ -484,6 +485,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                                 failure_reason="feishu_send_failed",
                                 error_message="HTTP重试后飞书通知发送失败",
                                 forward_data={"analysis_id": analysis_id, "webhook_event_id": record.webhook_event_id},
+                                session=session,
                             )
                         except Exception as rec_err:
                             logger.warning(f"记录飞书发送失败异常: {rec_err}")
