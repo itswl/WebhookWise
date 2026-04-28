@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -90,17 +90,6 @@ async def session_scope():
         except Exception:
             await session.rollback()
             raise
-
-
-# ────────────────────────────────────────
-# 同步引擎（仅供 migrations 脚本使用）
-# ────────────────────────────────────────
-
-
-def get_sync_engine():
-    """获取同步数据库引擎，仅供 migrations/ 脚本使用"""
-    sync_url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
-    return create_engine(sync_url, echo=False)
 
 
 # ────────────────────────────────────────
