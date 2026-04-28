@@ -92,7 +92,7 @@ async def list_webhooks(
                     total_result = await session.execute(count_query)
                     total = total_result.scalar()
             else:
-                # 有条件：用精确 COUNT（索引加速）
+                # 有条件：用精确 COUNT（索引加速），添加超时兜底
                 count_query = select(func.count()).select_from(WebhookEvent)
                 if importance:
                     count_query = count_query.filter(WebhookEvent.importance == importance)
@@ -100,8 +100,14 @@ async def list_webhooks(
                     count_query = count_query.filter(WebhookEvent.source == source)
                 if cursor_id is not None:
                     count_query = count_query.filter(WebhookEvent.id < cursor_id)
-                total_result = await session.execute(count_query)
-                total = total_result.scalar()
+                try:
+                    await session.execute(text("SET LOCAL statement_timeout = '2000'"))
+                    total_result = await session.execute(count_query)
+                    total = total_result.scalar()
+                except Exception:
+                    total = None
+                finally:
+                    await session.execute(text("RESET statement_timeout"))
         result = await session.execute(query.offset(offset).limit(page_size))
         events = result.scalars().all()
 
