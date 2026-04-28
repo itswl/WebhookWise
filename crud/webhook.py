@@ -555,10 +555,12 @@ async def _upsert_new_event(
     existing = await _query_latest_original_event(session, alert_hash)
 
     if not existing:
-        # 极端情况：冲突但查不到原始记录（可能被删除），回退普通插入
-        logger.warning(f"UPSERT 冲突但无法找到原始告警: hash={alert_hash}，回退普通插入")
-        return await _save_new_event(
-            session,
+        # 极端情况：冲突但查不到原始记录（可能被并发删除）。
+        # 不能递归调用 _save_new_event 做普通 INSERT，否则在极端并发下
+        # 可能再次触发 IntegrityError。冲突本身已证明同 hash 原始记录曾存在，
+        # 降级为重复告警写入（duplicate_of=None 表示原始记录已不可达）。
+        logger.warning(f"UPSERT 冲突但无法找到原始告警: hash={alert_hash}，降级为重复告警处理")
+        dup_event = _build_event(
             source=source,
             client_ip=client_ip,
             raw_payload=raw_payload,
@@ -566,8 +568,19 @@ async def _upsert_new_event(
             data=data,
             alert_hash=alert_hash,
             ai_analysis=ai_analysis,
+            importance=importance,
             forward_status=forward_status,
+            is_duplicate=1,
+            duplicate_of=None,
+            duplicate_count=1,
+            beyond_window=1 if beyond_window else 0,
         )
+        session.add(dup_event)
+        await session.flush()
+        logger.info(f"UPSERT 冲突降级：重复告警已保存 ID={dup_event.id}, " f"original=None (不可达), hash={alert_hash}")
+        if Config.ENABLE_FILE_BACKUP:
+            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        return SaveWebhookResult(dup_event.id, True, None, beyond_window)
 
     # 写入为重复告警
     existing.duplicate_count = (existing.duplicate_count or 1) + 1

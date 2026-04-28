@@ -6,9 +6,15 @@
 
 import sys
 
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 
-from db.session import get_sync_engine
+from core.config import Config
+
+
+def _get_sync_engine():
+    """创建临时同步引擎，仅供 migration 脚本使用"""
+    url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
+    return create_engine(url, echo=False)
 
 
 def check_and_add_unique_constraint():
@@ -18,7 +24,7 @@ def check_and_add_unique_constraint():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -136,7 +142,7 @@ def fix_duplicate_count():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -189,7 +195,7 @@ def add_beyond_window_field():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -290,7 +296,7 @@ def add_last_notified_at_field():
     Returns:
         bool: 成功返回True，失败返回False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -358,7 +364,7 @@ def add_forward_rules_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -416,7 +422,7 @@ def add_deep_analyses_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -473,7 +479,7 @@ def add_polling_fields():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -523,7 +529,7 @@ def add_processing_status_field():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -571,7 +577,7 @@ def add_archive_and_indexes():
     """
     执行归档表创建和复合索引优化
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
     from pathlib import Path
 
     sql_path = Path(__file__).parent / "sql" / "archive_and_index.sql"
@@ -616,7 +622,7 @@ def add_failed_forwards_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     try:
         with engine.connect() as conn:
@@ -689,7 +695,7 @@ def add_system_configs_table():
     Returns:
         bool: 成功返回 True，失败返回 False
     """
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     # 需要从 Config 读取当前值作为 seed
     from core.config import Config
