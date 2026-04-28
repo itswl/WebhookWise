@@ -210,6 +210,9 @@
                 <button class="nav-tab" data-tab="forward-rules">
                     <span>⚙️</span> 转发规则
                 </button>
+                <button class="nav-tab" data-tab="failed-forwards">
+                    <span>🔄</span> 转发重试
+                </button>
             </div>
             <div class="nav-actions">
                 <div class="nav-status">
@@ -375,6 +378,87 @@
                     <div style="text-align: center; padding: 40px; color: #888;">点击「深度分析」标签加载数据...</div>
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- 转发重试 Tab -->
+        <div id="failedForwardsTab" class="tab-content" style="display: none;">
+            <div class="failed-forwards-section">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div class="section-title">转发重试管理</div>
+                    <button class="btn" onclick="loadFailedForwards(); loadRetryStats();">🔄 刷新</button>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">待重试</div>
+                        <div class="stat-value" id="ffStatPending">0</div>
+                        <div class="stat-trend">等待下次重试</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">重试中</div>
+                        <div class="stat-value" id="ffStatRetrying">0</div>
+                        <div class="stat-trend">正在重试</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">已成功</div>
+                        <div class="stat-value" id="ffStatSuccess">0</div>
+                        <div class="stat-trend">重试成功</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">已耗尽</div>
+                        <div class="stat-value" id="ffStatExhausted">0</div>
+                        <div class="stat-trend">达到最大重试次数</div>
+                    </div>
+                </div>
+
+                <!-- 筛选栏 -->
+                <div class="filter-section" style="margin-bottom: 20px;">
+                    <div class="filter-grid">
+                        <div class="filter-item">
+                            <label class="filter-label">状态</label>
+                            <select class="filter-input" id="ffStatusFilter" onchange="filterFailedForwards()">
+                                <option value="">全部</option>
+                                <option value="pending">待重试</option>
+                                <option value="retrying">重试中</option>
+                                <option value="success">已成功</option>
+                                <option value="exhausted">已耗尽</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label class="filter-label">转发类型</label>
+                            <select class="filter-input" id="ffTargetTypeFilter" onchange="filterFailedForwards()">
+                                <option value="">全部</option>
+                                <option value="feishu">飞书</option>
+                                <option value="openclaw">OpenClaw</option>
+                                <option value="webhook">Webhook</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据表格 -->
+                <div style="overflow-x: auto;">
+                    <table class="data-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Webhook Event</th>
+                                <th>转发类型</th>
+                                <th>目标URL</th>
+                                <th>状态</th>
+                                <th>重试次数</th>
+                                <th>下次重试</th>
+                                <th>失败原因</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="failedForwardsTableBody">
+                            <tr><td colspan="9" style="text-align: center; padding: 40px; color: #888;">点击「转发重试」标签加载数据...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -565,6 +649,7 @@
     <script src="/static/js/ai-cost.js"></script>
     <script src="/static/js/forward-rules.js"></script>
     <script src="/static/js/deep-analyses.js"></script>
+    <script src="/static/js/failed-forwards.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

@@ -290,6 +290,19 @@ async def forward_deep_analysis(analysis_id: int, payload: dict | None = None):
                 )
                 if success:
                     return {"success": True, "message": "已发送到飞书"}
+                try:
+                    from crud.webhook import record_failed_forward
+                    await record_failed_forward(
+                        webhook_event_id=analysis.webhook_event_id or 0,
+                        forward_rule_id=None,
+                        target_url=target_url,
+                        target_type="feishu",
+                        failure_reason="feishu_send_failed",
+                        error_message="深度分析结果飞书发送失败",
+                        forward_data={"analysis_id": analysis_id, "webhook_event_id": analysis.webhook_event_id},
+                    )
+                except Exception as rec_err:
+                    logger.warning(f"记录飞书发送失败异常: {rec_err}")
                 return JSONResponse(status_code=500, content={"success": False, "message": "飞书发送失败"})
             else:
                 fwd_payload = {
@@ -436,12 +449,26 @@ async def retry_deep_analysis(analysis_id: int):
                             "engine": record.engine,
                             "duration_seconds": record.duration_seconds,
                         }
-                        await send_feishu_deep_analysis(
+                        success = await send_feishu_deep_analysis(
                             webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                             analysis_record=analysis_data,
                             source=source,
                             webhook_event_id=record.webhook_event_id,
                         )
+                        if not success:
+                            try:
+                                from crud.webhook import record_failed_forward
+                                await record_failed_forward(
+                                    webhook_event_id=record.webhook_event_id,
+                                    forward_rule_id=None,
+                                    target_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                                    target_type="feishu",
+                                    failure_reason="feishu_send_failed",
+                                    error_message="HTTP重试后飞书通知发送失败",
+                                    forward_data={"analysis_id": analysis_id, "webhook_event_id": record.webhook_event_id},
+                                )
+                            except Exception as rec_err:
+                                logger.warning(f"记录飞书发送失败异常: {rec_err}")
                 except Exception as notify_err:
                     logger.warning(f"飞书深度分析通知失败: {notify_err}")
 
