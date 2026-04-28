@@ -7,12 +7,14 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
 from core.webhook_security import enforce_webhook_rate_limit, ensure_webhook_auth
 from crud.webhook import get_client_ip
+from db.session import get_db_session
 
 webhook_router = APIRouter()
 
@@ -49,8 +51,8 @@ async def list_webhooks(
     importance: str = Query(""),
     source: str = Query(""),
     cursor_id: int | None = Query(None),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    from db.session import session_scope
     from models import WebhookEvent
 
     offset = (page - 1) * page_size
@@ -58,68 +60,67 @@ async def list_webhooks(
         offset = 0
 
     try:
-        async with session_scope() as session:
-            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+        query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
+        if importance:
+            query = query.filter(WebhookEvent.importance == importance)
+        if source:
+            query = query.filter(WebhookEvent.source == source)
+        if cursor_id is not None:
+            query = query.filter(WebhookEvent.id < cursor_id)
+
+        normalized_fields = (fields or "summary").lower().strip()
+        return_full = normalized_fields in {"full", "all"}
+
+        total = None
+        if include_total:
+            count_query = select(func.count()).select_from(WebhookEvent)
             if importance:
-                query = query.filter(WebhookEvent.importance == importance)
+                count_query = count_query.filter(WebhookEvent.importance == importance)
             if source:
-                query = query.filter(WebhookEvent.source == source)
+                count_query = count_query.filter(WebhookEvent.source == source)
             if cursor_id is not None:
-                query = query.filter(WebhookEvent.id < cursor_id)
+                count_query = count_query.filter(WebhookEvent.id < cursor_id)
+            total_result = await session.execute(count_query)
+            total = total_result.scalar()
+        result = await session.execute(query.offset(offset).limit(page_size))
+        events = result.scalars().all()
 
-            normalized_fields = (fields or "summary").lower().strip()
-            return_full = normalized_fields in {"full", "all"}
+        # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
+        prev_ids_seen = {}
+        prev_map = {}  # event.id -> prev_alert_id
+        for event in reversed(events):
+            h = getattr(event, "alert_hash", "") or ""
+            prev_map[event.id] = prev_ids_seen.get(h)
+            prev_ids_seen[h] = event.id
 
-            total = None
-            if include_total:
-                count_query = select(func.count()).select_from(WebhookEvent)
-                if importance:
-                    count_query = count_query.filter(WebhookEvent.importance == importance)
-                if source:
-                    count_query = count_query.filter(WebhookEvent.source == source)
-                if cursor_id is not None:
-                    count_query = count_query.filter(WebhookEvent.id < cursor_id)
-                total_result = await session.execute(count_query)
-                total = total_result.scalar()
-            result = await session.execute(query.offset(offset).limit(page_size))
-            events = result.scalars().all()
+        items = []
+        for event in events:
+            d = event.to_dict() if return_full else event.to_summary_dict()
+            d["prev_alert_id"] = prev_map.get(event.id)
+            beyond_window = bool(event.beyond_window)
+            d["beyond_time_window"] = beyond_window
+            d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
+            items.append(d)
 
-            # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
-            prev_ids_seen = {}
-            prev_map = {}  # event.id -> prev_alert_id
-            for event in reversed(events):
-                h = getattr(event, "alert_hash", "") or ""
-                prev_map[event.id] = prev_ids_seen.get(h)
-                prev_ids_seen[h] = event.id
+        has_more = len(events) == page_size
+        next_cursor = events[-1].id if has_more else None
 
-            items = []
-            for event in events:
-                d = event.to_dict() if return_full else event.to_summary_dict()
-                d["prev_alert_id"] = prev_map.get(event.id)
-                beyond_window = bool(event.beyond_window)
-                d["beyond_time_window"] = beyond_window
-                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-                items.append(d)
-
-            has_more = len(events) == page_size
-            next_cursor = events[-1].id if has_more else None
-
-            return {
-                "success": True,
-                "data": items,
-                "status": 200,
-                "pagination": {
-                    "page": page,
-                    "page_size": page_size,
-                    "total": total,
-                    "total_pages": (total + page_size - 1) // page_size
-                    if (total is not None and total > 0)
-                    else (0 if total is not None else None),
-                    "next_cursor": next_cursor,
-                    "has_more": has_more,
-                },
-            }
+        return {
+            "success": True,
+            "data": items,
+            "status": 200,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size
+                if (total is not None and total > 0)
+                else (0 if total is not None else None),
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+            },
+        }
     except Exception as e:
         logger.error(f"获取 webhook 列表失败: {e!s}", exc_info=True)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
@@ -132,72 +133,69 @@ async def list_webhooks_cursor(
     importance: str = Query(""),
     source: str = Query(""),
     cursor_id: int | None = Query(None),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    from db.session import session_scope
     from models import WebhookEvent
 
     try:
-        async with session_scope() as session:
-            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+        query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
 
-            if importance:
-                query = query.filter(WebhookEvent.importance == importance)
-            if source:
-                query = query.filter(WebhookEvent.source == source)
-            if cursor_id is not None:
-                query = query.filter(WebhookEvent.id < cursor_id)
+        if importance:
+            query = query.filter(WebhookEvent.importance == importance)
+        if source:
+            query = query.filter(WebhookEvent.source == source)
+        if cursor_id is not None:
+            query = query.filter(WebhookEvent.id < cursor_id)
 
-            normalized_fields = (fields or "summary").lower().strip()
-            return_full = normalized_fields in {"full", "all"}
+        normalized_fields = (fields or "summary").lower().strip()
+        return_full = normalized_fields in {"full", "all"}
 
-            result = await session.execute(query.limit(limit))
-            events = result.scalars().all()
+        result = await session.execute(query.limit(limit))
+        events = result.scalars().all()
 
-            prev_ids_seen = {}
-            prev_map = {}
-            for event in reversed(events):
-                h = getattr(event, "alert_hash", "") or ""
-                prev_map[event.id] = prev_ids_seen.get(h)
-                prev_ids_seen[h] = event.id
+        prev_ids_seen = {}
+        prev_map = {}
+        for event in reversed(events):
+            h = getattr(event, "alert_hash", "") or ""
+            prev_map[event.id] = prev_ids_seen.get(h)
+            prev_ids_seen[h] = event.id
 
-            items = []
-            for event in events:
-                d = event.to_dict() if return_full else event.to_summary_dict()
-                d["prev_alert_id"] = prev_map.get(event.id)
-                beyond_window = bool(event.beyond_window)
-                d["beyond_time_window"] = beyond_window
-                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-                items.append(d)
+        items = []
+        for event in events:
+            d = event.to_dict() if return_full else event.to_summary_dict()
+            d["prev_alert_id"] = prev_map.get(event.id)
+            beyond_window = bool(event.beyond_window)
+            d["beyond_time_window"] = beyond_window
+            d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
+            items.append(d)
 
-            has_more = len(events) == limit
-            next_cursor = events[-1].id if has_more else None
+        has_more = len(events) == limit
+        next_cursor = events[-1].id if has_more else None
 
-            return {
-                "success": True,
-                "data": items,
-                "status": 200,
-                "cursor": {
-                    "limit": limit,
-                    "next_cursor": next_cursor,
-                    "has_more": has_more,
-                },
-            }
+        return {
+            "success": True,
+            "data": items,
+            "status": 200,
+            "cursor": {
+                "limit": limit,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+            },
+        }
     except Exception as e:
         logger.error(f"获取 webhook 游标列表失败: {e!s}", exc_info=True)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
 @webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)])
-async def get_webhook_detail(webhook_id: int):
-    from db.session import session_scope
+async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
     from models import WebhookEvent
 
-    async with session_scope() as session:
-        result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
-        event = result.scalars().first()
-        if not event:
-            return JSONResponse({"success": False, "error": "Webhook not found"}, status_code=404)
-        return {"success": True, "data": event.to_dict()}
+    result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
+    event = result.scalars().first()
+    if not event:
+        return JSONResponse({"success": False, "error": "Webhook not found"}, status_code=404)
+    return {"success": True, "data": event.to_dict()}
 
 
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
