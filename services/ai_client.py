@@ -35,9 +35,16 @@ def _get_openai_client() -> AsyncOpenAI:
         _openai_client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL,
+            http_client=get_http_client(),  # 复用应用统一的连接池
         )
         logger.info("[AI] 已初始化 AsyncOpenAI 客户端单例")
     return _openai_client
+
+
+def reset_openai_client():
+    """释放 OpenAI 单例引用，供 lifespan shutdown 调用"""
+    global _openai_client
+    _openai_client = None
 
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
