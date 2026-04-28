@@ -10,6 +10,7 @@
     python query_alerts.py --duplicate     # 查询重复告警
     python query_alerts.py --limit 50      # 自定义数量
 """
+
 import argparse
 import json
 
@@ -53,37 +54,40 @@ def query_list(limit: int = 20, source: str | None = None, importance: str | Non
         print(f"\n=== 最近 {len(events)} 条告警 ===")
         for e in events:
             d = e.to_dict()
-            ts = d.get('timestamp', '')[:19]
-            imp = d.get('importance', '-')
-            src = d.get('source', '-')
-            dup = '🔁' if d.get('is_duplicate') else '🆕'
-            summary = d.get('ai_analysis', {}).get('summary', '-') or '-'
+            ts = d.get("timestamp", "")[:19]
+            imp = d.get("importance", "-")
+            src = d.get("source", "-")
+            dup = "🔁" if d.get("is_duplicate") else "🆕"
+            summary = d.get("ai_analysis", {}).get("summary", "-") or "-"
             if len(summary) > 60:
-                summary = summary[:60] + '...'
+                summary = summary[:60] + "..."
             print(f"  [{dup}] #{d['id']} | {ts} | {imp:5} | {src:15} | {summary}")
 
 
 def query_by_hash(alert_hash: str):
     with session_scope() as session:
-        events = session.query(WebhookEvent).filter(
-            WebhookEvent.alert_hash == alert_hash
-        ).order_by(WebhookEvent.id.asc()).all()
+        events = (
+            session.query(WebhookEvent)
+            .filter(WebhookEvent.alert_hash == alert_hash)
+            .order_by(WebhookEvent.id.asc())
+            .all()
+        )
 
         print(f"\n=== Hash={alert_hash[:16]}... 的 {len(events)} 条告警 ===")
         for e in events:
             d = e.to_dict()
-            ts = d.get('timestamp', '')[:19]
-            imp = d.get('importance', '-')
-            dup = '🔁' if d.get('is_duplicate') else '🆕'
+            ts = d.get("timestamp", "")[:19]
+            imp = d.get("importance", "-")
+            dup = "🔁" if d.get("is_duplicate") else "🆕"
             print(f"  [{dup}] #{d['id']} | {ts} | {imp} | beyond_window={d.get('beyond_window')}")
 
 
 def query_stats():
     with session_scope() as session:
         total = session.query(WebhookEvent).count()
-        high = session.query(WebhookEvent).filter_by(importance='high').count()
-        medium = session.query(WebhookEvent).filter_by(importance='medium').count()
-        low = session.query(WebhookEvent).filter_by(importance='low').count()
+        high = session.query(WebhookEvent).filter_by(importance="high").count()
+        medium = session.query(WebhookEvent).filter_by(importance="medium").count()
+        low = session.query(WebhookEvent).filter_by(importance="low").count()
         dup = session.query(WebhookEvent).filter_by(is_duplicate=1).count()
 
         print("\n=== 统计概览 ===")
@@ -95,16 +99,16 @@ def query_stats():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='告警数据查询')
-    parser.add_argument('--id', type=int, help='按 ID 查询')
-    parser.add_argument('--list', action='store_true', help='列出最近告警')
-    parser.add_argument('--hash', type=str, help='按 alert_hash 查询')
-    parser.add_argument('--source', type=str, help='按来源筛选')
-    parser.add_argument('--importance', type=str, choices=['high', 'medium', 'low'], help='按重要性筛选')
-    parser.add_argument('--duplicate', action='store_true', help='仅显示重复告警')
-    parser.add_argument('--stats', action='store_true', help='显示统计信息')
-    parser.add_argument('--limit', type=int, default=20, help='列出数量 (默认20)')
-    parser.add_argument('--json', action='store_true', help='输出完整 JSON (仅限 --id)')
+    parser = argparse.ArgumentParser(description="告警数据查询")
+    parser.add_argument("--id", type=int, help="按 ID 查询")
+    parser.add_argument("--list", action="store_true", help="列出最近告警")
+    parser.add_argument("--hash", type=str, help="按 alert_hash 查询")
+    parser.add_argument("--source", type=str, help="按来源筛选")
+    parser.add_argument("--importance", type=str, choices=["high", "medium", "low"], help="按重要性筛选")
+    parser.add_argument("--duplicate", action="store_true", help="仅显示重复告警")
+    parser.add_argument("--stats", action="store_true", help="显示统计信息")
+    parser.add_argument("--limit", type=int, default=20, help="列出数量 (默认20)")
+    parser.add_argument("--json", action="store_true", help="输出完整 JSON (仅限 --id)")
 
     args = parser.parse_args()
 
@@ -115,15 +119,10 @@ def main():
     elif args.stats:
         query_stats()
     elif args.list or any([args.source, args.importance, args.duplicate]):
-        query_list(
-            limit=args.limit,
-            source=args.source,
-            importance=args.importance,
-            duplicate_only=args.duplicate
-        )
+        query_list(limit=args.limit, source=args.source, importance=args.importance, duplicate_only=args.duplicate)
     else:
         query_list(limit=args.limit)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

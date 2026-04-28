@@ -5,7 +5,8 @@ from datetime import datetime
 from services.data_maintenance import archive_old_data
 from services.pollers import _stop_event
 
-logger = logging.getLogger('webhook_service.maintenance')
+logger = logging.getLogger("webhook_service.maintenance")
+
 
 async def run_daily_maintenance():
     """每日维护任务：归档旧数据"""
@@ -33,9 +34,9 @@ async def run_daily_maintenance():
         await __import__("asyncio").sleep(600)
 
 
-
 def _run_poller():
     import asyncio
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -43,8 +44,9 @@ def _run_poller():
     finally:
         loop.close()
 
+
 def start_maintenance_poller():
     """启动维护线程"""
-    t = threading.Thread(target=_run_poller, daemon=True, name='maintenance-poller')
+    t = threading.Thread(target=_run_poller, daemon=True, name="maintenance-poller")
     t.start()
     return t

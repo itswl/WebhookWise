@@ -36,27 +36,22 @@ def test_prompt_loading():
 
     # 测试 3: 检查模板变量
     print("\n3️⃣  检查模板变量")
-    if '{source}' in template and '{data_json}' in template:
+    if "{source}" in template and "{data_json}" in template:
         print("   ✅ 模板包含必需变量: {source}, {data_json}")
     else:
         print("   ⚠️  模板缺少变量:")
-        if '{source}' not in template:
+        if "{source}" not in template:
             print("      - 缺少 {source}")
-        if '{data_json}' not in template:
+        if "{data_json}" not in template:
             print("      - 缺少 {data_json}")
 
     # 测试 4: 格式化测试
     print("\n4️⃣  测试模板格式化")
     try:
         import json
-        test_data = {
-            "event": "test_event",
-            "level": "warning"
-        }
-        formatted = template.format(
-            source="test_source",
-            data_json=json.dumps(test_data, ensure_ascii=False, indent=2)
-        )
+
+        test_data = {"event": "test_event", "level": "warning"}
+        formatted = template.format(source="test_source", data_json=json.dumps(test_data, ensure_ascii=False, indent=2))
         print("   ✅ 格式化成功")
         print(f"   格式化后长度: {len(formatted)} 字符")
     except KeyError as e:
@@ -115,7 +110,7 @@ def test_api_endpoints():
     print("=" * 60)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = test_prompt_loading()
     test_api_endpoints()
 

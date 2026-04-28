@@ -38,13 +38,13 @@ class NoiseReductionDecision:
 
 def default_decision() -> NoiseReductionDecision:
     return NoiseReductionDecision(
-        relation='standalone',
+        relation="standalone",
         root_cause_event_id=None,
         confidence=0.0,
         suppress_forward=False,
-        reason='未发现可关联的告警关系',
+        reason="未发现可关联的告警关系",
         related_alert_count=0,
-        related_alert_ids=[]
+        related_alert_ids=[],
     )
 
 
@@ -66,11 +66,11 @@ def _tokenize_text(*values: Any) -> set[str]:
             continue
 
         # 英文/数字 token
-        for token in re.findall(r'[a-z0-9_.-]{3,}', text):
+        for token in re.findall(r"[a-z0-9_.-]{3,}", text):
             tokens.add(token)
 
         # 简单中文片段 token
-        for token in re.findall(r'[\u4e00-\u9fff]{2,}', text):
+        for token in re.findall(r"[\u4e00-\u9fff]{2,}", text):
             tokens.add(token)
 
     if tokens:
@@ -91,25 +91,25 @@ def _pick_first(*values: Any) -> str | None:
 def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
     ids: set[str] = set()
 
-    direct_keys = ['resource_id', 'ResourceID', 'InstanceId', 'instance', 'host', 'pod']
+    direct_keys = ["resource_id", "ResourceID", "InstanceId", "instance", "host", "pod"]
     for key in direct_keys:
         value = parsed_data.get(key)
         if value:
             ids.add(str(value).strip().lower())
 
-    resources = _safe_list(parsed_data.get('Resources'))
+    resources = _safe_list(parsed_data.get("Resources"))
     for item in resources:
         if not isinstance(item, dict):
             continue
-        candidate = _pick_first(item.get('InstanceId'), item.get('Id'), item.get('id'))
+        candidate = _pick_first(item.get("InstanceId"), item.get("Id"), item.get("id"))
         if candidate:
             ids.add(candidate.lower())
 
-    alerts = _safe_list(parsed_data.get('alerts'))
+    alerts = _safe_list(parsed_data.get("alerts"))
     if alerts:
         first_alert = alerts[0] if isinstance(alerts[0], dict) else {}
-        labels = _safe_dict(first_alert.get('labels'))
-        for key in ('instance', 'pod', 'host', 'service', 'namespace'):
+        labels = _safe_dict(first_alert.get("labels"))
+        for key in ("instance", "pod", "host", "service", "namespace"):
             value = labels.get(key)
             if value:
                 ids.add(str(value).strip().lower())
@@ -124,31 +124,33 @@ def _extract_features(ctx: AlertContext) -> tuple[set[str], set[str]]:
     resource_ids = _extract_resource_ids(parsed)
 
     primary_fields = [
-        parsed.get('RuleName'),
-        parsed.get('alert_name'),
-        parsed.get('event_type'),
-        parsed.get('event'),
-        parsed.get('MetricName'),
-        parsed.get('Type'),
-        parsed.get('service'),
-        analysis.get('event_type'),
-        analysis.get('summary'),
-        analysis.get('root_cause'),
-        analysis.get('impact_scope')
+        parsed.get("RuleName"),
+        parsed.get("alert_name"),
+        parsed.get("event_type"),
+        parsed.get("event"),
+        parsed.get("MetricName"),
+        parsed.get("Type"),
+        parsed.get("service"),
+        analysis.get("event_type"),
+        analysis.get("summary"),
+        analysis.get("root_cause"),
+        analysis.get("impact_scope"),
     ]
 
-    alerts = _safe_list(parsed.get('alerts'))
+    alerts = _safe_list(parsed.get("alerts"))
     if alerts:
         first_alert = alerts[0] if isinstance(alerts[0], dict) else {}
-        labels = _safe_dict(first_alert.get('labels'))
-        annotations = _safe_dict(first_alert.get('annotations'))
-        primary_fields.extend([
-            labels.get('alertname'),
-            labels.get('severity'),
-            labels.get('service'),
-            annotations.get('summary'),
-            annotations.get('description')
-        ])
+        labels = _safe_dict(first_alert.get("labels"))
+        annotations = _safe_dict(first_alert.get("annotations"))
+        primary_fields.extend(
+            [
+                labels.get("alertname"),
+                labels.get("severity"),
+                labels.get("service"),
+                annotations.get("summary"),
+                annotations.get("description"),
+            ]
+        )
 
     tokens = _tokenize_text(*primary_fields)
     return resource_ids, tokens
@@ -164,7 +166,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 
 def _importance_score(value: str) -> float:
-    mapping = {'high': 1.0, 'medium': 0.6, 'low': 0.2}
+    mapping = {"high": 1.0, "medium": 0.6, "low": 0.2}
     return mapping.get(str(value).lower(), 0.6)
 
 
@@ -257,11 +259,11 @@ def analyze_noise_reduction(
 
     # 根因判定
     if best_alert.event_id is not None and best_score >= effective_threshold:
-        reason = f'与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）'
+        reason = f"与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）"
 
         logger.info(f"[Noise] 降噪决策: relation=derived, confidence={best_score:.2f}, suppress={suppress_derived}")
         return NoiseReductionDecision(
-            relation='derived',
+            relation="derived",
             root_cause_event_id=best_alert.event_id,
             confidence=round(best_score, 4),
             suppress_forward=suppress_derived,
@@ -271,12 +273,12 @@ def analyze_noise_reduction(
         )
 
     # 告警风暴检测
-    if current.importance == 'high' and len(related_ids) >= 2:
-        reason = f'检测到告警风暴，已关联 {len(related_ids)} 条近邻告警'
+    if current.importance == "high" and len(related_ids) >= 2:
+        reason = f"检测到告警风暴，已关联 {len(related_ids)} 条近邻告警"
 
         logger.info(f"[Noise] 降噪决策: relation=root_cause, count={len(related_ids)}")
         return NoiseReductionDecision(
-            relation='root_cause',
+            relation="root_cause",
             root_cause_event_id=current.event_id,
             confidence=round(best_score, 4),
             suppress_forward=False,
@@ -286,12 +288,11 @@ def analyze_noise_reduction(
         )
 
     return NoiseReductionDecision(
-        relation='standalone',
+        relation="standalone",
         root_cause_event_id=None,
         confidence=round(best_score, 4),
         suppress_forward=False,
-        reason='存在弱关联告警，但未达到根因判定阈值',
+        reason="存在弱关联告警，但未达到根因判定阈值",
         related_alert_count=len(related_ids),
         related_alert_ids=related_ids,
     )
-

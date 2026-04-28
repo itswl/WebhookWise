@@ -152,7 +152,7 @@ const AICostModule = {
             <!-- 分析路由分布 -->
             <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">处理路由漏斗 (Traffic Routing)</div>
             <div style="background: var(--bg-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 2.5rem;">
-                
+
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
                         <span style="font-weight: 500; color: var(--primary);">🤖 原生大模型分析 (AI Engine)</span>

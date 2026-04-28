@@ -23,6 +23,7 @@ WebhookData = dict[str, Any]
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
+
 @dataclass(frozen=True)
 class DuplicateCheckResult:
     is_duplicate: bool
@@ -39,42 +40,39 @@ class SaveWebhookResult:
     beyond_window: bool
 
 
-
 async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
-    stmt = select(WebhookEvent).filter(
-        WebhookEvent.alert_hash == alert_hash,
-        WebhookEvent.beyond_window == 1
-    ).order_by(WebhookEvent.timestamp.desc())
+    stmt = (
+        select(WebhookEvent)
+        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.beyond_window == 1)
+        .order_by(WebhookEvent.timestamp.desc())
+    )
     result = await session.execute(stmt)
     return result.scalars().first()
 
 
 async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
-    stmt = select(WebhookEvent).filter(
-        WebhookEvent.alert_hash == alert_hash,
-        WebhookEvent.is_duplicate == 0
-    ).order_by(WebhookEvent.timestamp.desc())
+    stmt = (
+        select(WebhookEvent)
+        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0)
+        .order_by(WebhookEvent.timestamp.desc())
+    )
     result = await session.execute(stmt)
     return result.scalars().first()
 
 
 async def _find_recent_window_event(
-    session: AsyncSession,
-    alert_hash: str,
-    time_threshold: datetime
+    session: AsyncSession, alert_hash: str, time_threshold: datetime
 ) -> WebhookEvent | None:
-    stmt = select(WebhookEvent).filter(
-        WebhookEvent.alert_hash == alert_hash,
-        WebhookEvent.timestamp >= time_threshold
-    ).order_by(WebhookEvent.timestamp.desc())
+    stmt = (
+        select(WebhookEvent)
+        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.timestamp >= time_threshold)
+        .order_by(WebhookEvent.timestamp.desc())
+    )
     result = await session.execute(stmt)
     return result.scalars().first()
 
 
-def _resolve_window_start(
-    original_ref: WebhookEvent,
-    last_beyond_window: WebhookEvent | None
-) -> tuple[datetime, int]:
+def _resolve_window_start(original_ref: WebhookEvent, last_beyond_window: WebhookEvent | None) -> tuple[datetime, int]:
     if last_beyond_window:
         logger.debug(f"找到窗口外记录作为起点: ID={last_beyond_window.id}, 时间={last_beyond_window.timestamp}")
         return last_beyond_window.timestamp, last_beyond_window.id
@@ -95,7 +93,7 @@ async def check_duplicate_alert(
     alert_hash: str,
     time_window_hours: int | None = None,
     session: AsyncSession | None = None,
-    check_beyond_window: bool = False
+    check_beyond_window: bool = False,
 ) -> DuplicateCheckResult:
     """
     检查是否存在重复告警
@@ -125,10 +123,7 @@ async def check_duplicate_alert(
 
 
 async def _do_check_duplicate(
-    session: AsyncSession,
-    alert_hash: str,
-    time_window_hours: int,
-    check_beyond_window: bool
+    session: AsyncSession, alert_hash: str, time_window_hours: int, check_beyond_window: bool
 ) -> DuplicateCheckResult:
     """内部实现：在给定 session 上执行重复检查逻辑。"""
     now = datetime.now()
@@ -187,10 +182,8 @@ async def _do_check_duplicate(
         return DuplicateCheckResult(False, None, False, None)
 
 
-
-
 def _decode_raw_payload(raw_payload: bytes | None) -> str | None:
-    return raw_payload.decode('utf-8') if raw_payload else None
+    return raw_payload.decode("utf-8") if raw_payload else None
 
 
 def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:
@@ -198,13 +191,11 @@ def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:
 
 
 def _resolve_analysis_for_duplicate(
-    ai_analysis: AnalysisResult | None,
-    original: WebhookEvent,
-    reanalyzed: bool
+    ai_analysis: AnalysisResult | None, original: WebhookEvent, reanalyzed: bool
 ) -> tuple[AnalysisResult, str | None]:
     if ai_analysis:
         final_analysis = ai_analysis
-        final_importance = ai_analysis.get('importance')
+        final_importance = ai_analysis.get("importance")
     elif original.ai_analysis:
         final_analysis = original.ai_analysis
         final_importance = original.importance
@@ -212,10 +203,10 @@ def _resolve_analysis_for_duplicate(
         final_analysis = {}
         final_importance = None
 
-    if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get('summary')):
+    if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
         logger.info(f"更新原始告警 ID={original.id} 的AI分析结果（之前缺失）")
         original.ai_analysis = ai_analysis
-        original.importance = ai_analysis.get('importance')
+        original.importance = ai_analysis.get("importance")
 
     return final_analysis, final_importance
 
@@ -235,7 +226,7 @@ def _build_event(
     duplicate_of: int | None,
     duplicate_count: int,
     beyond_window: int,
-    last_notified_at: datetime | None = None
+    last_notified_at: datetime | None = None,
 ) -> WebhookEvent:
     return WebhookEvent(
         source=source,
@@ -252,7 +243,7 @@ def _build_event(
         duplicate_of=duplicate_of,
         duplicate_count=duplicate_count,
         beyond_window=beyond_window,
-        last_notified_at=last_notified_at
+        last_notified_at=last_notified_at,
     )
 
 
@@ -269,7 +260,7 @@ async def _save_duplicate_event(
     forward_status: str,
     original_event: WebhookEvent,
     beyond_window: bool,
-    reanalyzed: bool
+    reanalyzed: bool,
 ) -> SaveWebhookResult | None:
     original = await session.get(WebhookEvent, original_event.id)
     if not original:
@@ -293,7 +284,7 @@ async def _save_duplicate_event(
         is_duplicate=1,
         duplicate_of=original.id,
         duplicate_count=original.duplicate_count,
-        beyond_window=1 if beyond_window else 0
+        beyond_window=1 if beyond_window else 0,
     )
 
     session.add(duplicate_event)
@@ -302,10 +293,7 @@ async def _save_duplicate_event(
     if ai_analysis:
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 使用传入的AI分析结果")
     elif original.ai_analysis:
-        logger.info(
-            f"重复告警已保存: ID={duplicate_event.id}, "
-            f"复用原始告警 {original.id} 的AI分析结果"
-        )
+        logger.info(f"重复告警已保存: ID={duplicate_event.id}, " f"复用原始告警 {original.id} 的AI分析结果")
     else:
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 无AI分析结果")
 
@@ -325,7 +313,7 @@ async def _save_new_event(
     data: WebhookData,
     alert_hash: str,
     ai_analysis: AnalysisResult | None,
-    forward_status: str
+    forward_status: str,
 ) -> SaveWebhookResult:
     webhook_event = _build_event(
         source=source,
@@ -335,13 +323,13 @@ async def _save_new_event(
         data=data,
         alert_hash=alert_hash,
         ai_analysis=ai_analysis,
-        importance=ai_analysis.get('importance') if ai_analysis else None,
+        importance=ai_analysis.get("importance") if ai_analysis else None,
         forward_status=forward_status,
         is_duplicate=0,
         duplicate_of=None,
         duplicate_count=1,
         beyond_window=0,
-        last_notified_at=datetime.now()
+        last_notified_at=datetime.now(),
     )
 
     session.add(webhook_event)
@@ -360,7 +348,7 @@ def _save_to_file_fallback(
     raw_payload: bytes | None,
     headers: HeadersDict | None,
     client_ip: str | None,
-    ai_analysis: AnalysisResult | None
+    ai_analysis: AnalysisResult | None,
 ) -> SaveWebhookResult:
     file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
     return SaveWebhookResult(file_id, False, None, False)
@@ -368,17 +356,17 @@ def _save_to_file_fallback(
 
 async def save_webhook_data(
     data: WebhookData,
-    source: str = 'unknown',
+    source: str = "unknown",
     raw_payload: bytes | None = None,
     headers: HeadersDict | None = None,
     client_ip: str | None = None,
     ai_analysis: AnalysisResult | None = None,
-    forward_status: str = 'pending',
+    forward_status: str = "pending",
     alert_hash: str | None = None,
     is_duplicate: bool | None = None,
     original_event: WebhookEvent | None = None,
     beyond_window: bool = False,
-    reanalyzed: bool = False
+    reanalyzed: bool = False,
 ) -> SaveWebhookResult:
     """保存 webhook 数据到数据库（带重试机制防止并发竞态）。"""
     if alert_hash is None:
@@ -389,10 +377,7 @@ async def save_webhook_data(
             async with session_scope() as session:
                 # 在同一事务内重新判重，避免外层结果在高并发下过期。
                 if is_duplicate is None:
-                    duplicate_check = await check_duplicate_alert(
-                        alert_hash,
-                        session=session
-                    )
+                    duplicate_check = await check_duplicate_alert(alert_hash, session=session)
                     is_duplicate = duplicate_check.is_duplicate
                     original_event = duplicate_check.original_event
                     beyond_window = duplicate_check.beyond_window
@@ -410,7 +395,7 @@ async def save_webhook_data(
                         forward_status=forward_status,
                         original_event=original_event,
                         beyond_window=beyond_window,
-                        reanalyzed=reanalyzed
+                        reanalyzed=reanalyzed,
                     )
                     if saved:
                         return saved
@@ -424,15 +409,15 @@ async def save_webhook_data(
                     data=data,
                     alert_hash=alert_hash,
                     ai_analysis=ai_analysis,
-                    forward_status=forward_status
+                    forward_status=forward_status,
                 )
 
-        except IntegrityError as e: # noqa: PERF203
+        except IntegrityError as e:  # noqa: PERF203
             logger.warning(f"检测到并发插入冲突 (attempt {attempt + 1}/{MAX_SAVE_RETRIES}): {e!s}")
 
             if attempt < MAX_SAVE_RETRIES - 1:
                 # 指数退避让并发写入先完成，再次判重时更容易命中已落库记录。
-                await asyncio.sleep(RETRY_DELAY_SECONDS * (2 ** attempt))
+                await asyncio.sleep(RETRY_DELAY_SECONDS * (2**attempt))
                 is_duplicate = None
                 original_event = None
                 logger.info(f"正在重试... (attempt {attempt + 2}/{MAX_SAVE_RETRIES})")
@@ -451,7 +436,7 @@ async def save_webhook_data(
                 existing.duplicate_count = (existing.duplicate_count or 1) + 1
 
                 final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
-                final_importance = ai_analysis.get('importance') if ai_analysis else existing.importance
+                final_importance = ai_analysis.get("importance") if ai_analysis else existing.importance
 
                 dup_event = _build_event(
                     source=source,
@@ -466,7 +451,7 @@ async def save_webhook_data(
                     is_duplicate=1,
                     duplicate_of=existing.id,
                     duplicate_count=existing.duplicate_count,
-                    beyond_window=1 if beyond_window else 0
+                    beyond_window=1 if beyond_window else 0,
                 )
                 fallback_session.add(dup_event)
                 await fallback_session.flush()
@@ -482,37 +467,37 @@ async def save_webhook_data(
 
 def save_webhook_to_file(
     data: WebhookData,
-    source: str = 'unknown',
+    source: str = "unknown",
     raw_payload: bytes | None = None,
     headers: HeadersDict | None = None,
     client_ip: str | None = None,
-    ai_analysis: AnalysisResult | None = None
+    ai_analysis: AnalysisResult | None = None,
 ) -> str:
     """保存 webhook 数据到文件(备份方式)"""
     # 创建数据目录
     os.makedirs(Config.DATA_DIR, exist_ok=True)
 
     # 生成文件名(基于时间戳)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{source}_{timestamp}.json"
     filepath = str(Path(Config.DATA_DIR) / filename)
 
     # 准备保存的完整数据
     full_data = {
-        'timestamp': datetime.now().isoformat(),
-        'source': source,
-        'client_ip': client_ip,
-        'headers': dict(headers) if headers else {},
-        'raw_payload': raw_payload.decode('utf-8') if raw_payload else None,
-        'parsed_data': data
+        "timestamp": datetime.now().isoformat(),
+        "source": source,
+        "client_ip": client_ip,
+        "headers": dict(headers) if headers else {},
+        "raw_payload": raw_payload.decode("utf-8") if raw_payload else None,
+        "parsed_data": data,
     }
 
     # 添加 AI 分析结果
     if ai_analysis:
-        full_data['ai_analysis'] = ai_analysis
+        full_data["ai_analysis"] = ai_analysis
 
     # 保存数据
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(full_data, f, indent=2, ensure_ascii=False)
 
     return filepath
@@ -520,22 +505,19 @@ def save_webhook_to_file(
 
 def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址"""
-    forwarded_for = request.headers.get('x-forwarded-for')
+    forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
-        return forwarded_for.split(',')[0].strip()
+        return forwarded_for.split(",")[0].strip()
 
-    real_ip = request.headers.get('x-real-ip')
+    real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip
 
-    return request.client.host if request.client else 'unknown'
+    return request.client.host if request.client else "unknown"
 
 
 async def get_all_webhooks(
-    page: int = 1,
-    page_size: int = 20,
-    cursor_id: int | None = None,
-    fields: str = 'summary'
+    page: int = 1, page_size: int = 20, cursor_id: int | None = None, fields: str = "summary"
 ) -> tuple[list[dict], int, int | None]:
     """
     从数据库获取 webhook 数据（支持游标分页和字段选择）
@@ -580,7 +562,7 @@ async def get_all_webhooks(
             events = result.scalars().all()
 
             # 根据 fields 参数决定返回哪些字段
-            if fields == 'summary':
+            if fields == "summary":
                 # 摘要模式：只返回列表必需的字段，减少数据传输量
                 webhooks = [event.to_summary_dict() for event in events]
             else:
@@ -591,22 +573,22 @@ async def get_all_webhooks(
             # 直接从数据库字段读取，无需动态计算
             for webhook in webhooks:
                 # beyond_window 已经在数据库中固化，直接使用
-                beyond_window = bool(webhook.get('beyond_window', 0))
-                webhook['beyond_time_window'] = beyond_window
-                webhook['is_within_window'] = not beyond_window if webhook.get('is_duplicate') else False
+                beyond_window = bool(webhook.get("beyond_window", 0))
+                webhook["beyond_time_window"] = beyond_window
+                webhook["is_within_window"] = not beyond_window if webhook.get("is_duplicate") else False
 
             # 批量计算上次告警 ID（优化性能）
             # 收集所有需要查询的 (hash, timestamp)
             lookup_map = {}
             for webhook in webhooks:
-                if webhook.get('alert_hash'):
+                if webhook.get("alert_hash"):
                     try:
-                        current_timestamp = datetime.fromisoformat(webhook['timestamp'])
-                        key = (webhook['alert_hash'], current_timestamp)
+                        current_timestamp = datetime.fromisoformat(webhook["timestamp"])
+                        key = (webhook["alert_hash"], current_timestamp)
                         lookup_map[key] = webhook
                     except Exception as e:
                         logger.warning(f"解析时间戳失败 (webhook={webhook.get('id')}): {e}")
-                        webhook['prev_alert_id'] = None
+                        webhook["prev_alert_id"] = None
 
             # 批量查询所有的上一条记录（一次查询）
             if lookup_map:
@@ -615,9 +597,11 @@ async def get_all_webhooks(
                     all_hashes = list({k[0] for k in lookup_map})
 
                     # 查询这些 hash 的所有记录（去重需要）
-                    all_alerts_stmt = select(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)\
-                        .filter(WebhookEvent.alert_hash.in_(all_hashes))\
+                    all_alerts_stmt = (
+                        select(WebhookEvent.id, WebhookEvent.alert_hash, WebhookEvent.timestamp)
+                        .filter(WebhookEvent.alert_hash.in_(all_hashes))
                         .order_by(WebhookEvent.alert_hash, WebhookEvent.timestamp.desc())
+                    )
                     result = await session.execute(all_alerts_stmt)
                     all_alerts = result.all()
 
@@ -639,20 +623,20 @@ async def get_all_webhooks(
                                 prev_id = aid
                                 prev_timestamp = ats
                                 break
-                        webhook['prev_alert_id'] = prev_id
-                        webhook['prev_alert_timestamp'] = prev_timestamp.isoformat() if prev_timestamp else None
+                        webhook["prev_alert_id"] = prev_id
+                        webhook["prev_alert_timestamp"] = prev_timestamp.isoformat() if prev_timestamp else None
                 except Exception as e:
                     logger.warning(f"批量计算 prev_alert_id 失败: {e}")
                     # 失败时设置为 None
                     for webhook in lookup_map.values():
-                        webhook['prev_alert_id'] = None
-                        webhook['prev_alert_timestamp'] = None
+                        webhook["prev_alert_id"] = None
+                        webhook["prev_alert_timestamp"] = None
 
             # 没有 alert_hash 的设为 None
             for webhook in webhooks:
-                if not webhook.get('alert_hash'):
-                    webhook['prev_alert_id'] = None
-                    webhook['prev_alert_timestamp'] = None
+                if not webhook.get("alert_hash"):
+                    webhook["prev_alert_id"] = None
+                    webhook["prev_alert_timestamp"] = None
 
             # 计算下一页游标
             next_cursor = events[-1].id if events else None
@@ -671,26 +655,24 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
         return []
 
     webhooks = []
-    files = [f for f in os.listdir(Config.DATA_DIR) if f.endswith('.json')]
+    files = [f for f in os.listdir(Config.DATA_DIR) if f.endswith(".json")]
 
     # 读取所有文件
     for filename in files:
         filepath = str(Path(Config.DATA_DIR) / filename)
         try:
-            with open(filepath, encoding='utf-8') as f:
+            with open(filepath, encoding="utf-8") as f:
                 webhook_data = json.load(f)
-                webhook_data['filename'] = filename
+                webhook_data["filename"] = filename
                 webhooks.append(webhook_data)
         except Exception as e:
             logger.error(f"读取文件失败 {filename}: {e!s}")
 
     # 按 timestamp 字段倒序排序（最新的在前面）
-    webhooks.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    webhooks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
     # 返回限制数量的结果
     return webhooks[:limit]
-
-
 
 
 MAX_SAVE_RETRIES = Config.SAVE_MAX_RETRIES

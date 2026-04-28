@@ -5,6 +5,7 @@ from models import ArchivedWebhookEvent
 
 logger = logging.getLogger(__name__)
 
+
 def migrate():
     """创建归档表"""
     engine = get_engine()
@@ -15,6 +16,7 @@ def migrate():
     except Exception as e:
         logger.error(f"❌ 创建归档表失败: {e}")
         raise
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

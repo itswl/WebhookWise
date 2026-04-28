@@ -2,6 +2,7 @@
 """
 数据库迁移脚本：添加告警去重相关字段
 """
+
 from sqlalchemy import text
 
 from core.logger import logger
@@ -15,46 +16,46 @@ def migrate_database():
     migrations = [
         # 添加 alert_hash 字段
         {
-            'name': '添加 alert_hash 字段',
-            'check': "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='alert_hash'",
-            'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS alert_hash VARCHAR(64)"
+            "name": "添加 alert_hash 字段",
+            "check": "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='alert_hash'",
+            "sql": "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS alert_hash VARCHAR(64)",
         },
         # 添加 is_duplicate 字段
         {
-            'name': '添加 is_duplicate 字段',
-            'check': "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='is_duplicate'",
-            'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS is_duplicate INTEGER DEFAULT 0"
+            "name": "添加 is_duplicate 字段",
+            "check": "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='is_duplicate'",
+            "sql": "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS is_duplicate INTEGER DEFAULT 0",
         },
         # 添加 duplicate_of 字段
         {
-            'name': '添加 duplicate_of 字段',
-            'check': "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='duplicate_of'",
-            'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS duplicate_of INTEGER"
+            "name": "添加 duplicate_of 字段",
+            "check": "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='duplicate_of'",
+            "sql": "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS duplicate_of INTEGER",
         },
         # 添加 duplicate_count 字段
         {
-            'name': '添加 duplicate_count 字段',
-            'check': "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='duplicate_count'",
-            'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS duplicate_count INTEGER DEFAULT 1"
-        }
+            "name": "添加 duplicate_count 字段",
+            "check": "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='webhook_events' AND column_name='duplicate_count'",
+            "sql": "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS duplicate_count INTEGER DEFAULT 1",
+        },
     ]
 
     with engine.connect() as conn:
         for migration in migrations:
             try:
                 # 检查字段是否已存在
-                result = conn.execute(text(migration['check']))
+                result = conn.execute(text(migration["check"]))
                 count = result.scalar()
 
                 if count == 0:
                     logger.info(f"执行迁移: {migration['name']}")
-                    conn.execute(text(migration['sql']))
+                    conn.execute(text(migration["sql"]))
                     conn.commit()
                     logger.info(f"迁移完成: {migration['name']}")
                 else:
                     logger.info(f"跳过迁移(字段已存在): {migration['name']}")
 
-            except Exception as e: # noqa: PERF203
+            except Exception as e:  # noqa: PERF203
                 logger.error(f"迁移失败: {migration['name']}, 错误: {e!s}")
                 conn.rollback()
                 raise
@@ -71,13 +72,15 @@ def migrate_database():
         # 创建分布式锁表（用于多 worker 并发控制）
         try:
             logger.info("创建 processing_locks 表")
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE TABLE IF NOT EXISTS processing_locks (
                     alert_hash VARCHAR(64) PRIMARY KEY,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     worker_id VARCHAR(100)
                 )
-            """))
+            """)
+            )
             conn.commit()
             logger.info("processing_locks 表创建完成")
         except Exception as e:
@@ -86,6 +89,6 @@ def migrate_database():
     logger.info("数据库迁移全部完成！")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logger.info("开始数据库迁移...")
     migrate_database()

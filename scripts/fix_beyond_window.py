@@ -22,7 +22,7 @@ from sqlalchemy import create_engine, text
 def get_engine():
     """获取数据库引擎"""
     # 必须使用环境变量 DATABASE_URL
-    db_url = os.getenv('DATABASE_URL')
+    db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise ValueError("DATABASE_URL environment variable is required")
     return create_engine(db_url)
@@ -45,7 +45,8 @@ def fix_beyond_window(time_window_hours=24):
             # 1. 查询所有需要检查的重复告警（按 alert_hash 和时间排序）
             print("📊 分析需要修复的告警...")
 
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT
                     id,
                     alert_hash,
@@ -56,7 +57,8 @@ def fix_beyond_window(time_window_hours=24):
                 FROM webhook_events
                 WHERE alert_hash IS NOT NULL
                 ORDER BY alert_hash, timestamp ASC
-            """))
+            """)
+            )
 
             all_events = result.fetchall()
 
@@ -66,13 +68,15 @@ def fix_beyond_window(time_window_hours=24):
                 event_id, alert_hash, is_dup, dup_of, current_beyond, ts = event
                 if alert_hash not in hash_groups:
                     hash_groups[alert_hash] = []
-                hash_groups[alert_hash].append({
-                    'id': event_id,
-                    'is_duplicate': is_dup,
-                    'duplicate_of': dup_of,
-                    'current_beyond_window': current_beyond,
-                    'timestamp': ts
-                })
+                hash_groups[alert_hash].append(
+                    {
+                        "id": event_id,
+                        "is_duplicate": is_dup,
+                        "duplicate_of": dup_of,
+                        "current_beyond_window": current_beyond,
+                        "timestamp": ts,
+                    }
+                )
 
             print(f"   找到 {len(hash_groups)} 个不同的告警链")
 
@@ -90,25 +94,27 @@ def fix_beyond_window(time_window_hours=24):
                     if i == 0:
                         # 第一个告警（原始告警）
                         # beyond_window 应该基于当前时间判断
-                        time_diff = now - event['timestamp']
+                        time_diff = now - event["timestamp"]
                         new_beyond_window = time_diff > time_threshold
                     else:
                         # 后续重复告警
                         # 链式判断：看上一个告警是否在窗口内（相对于当前记录的时间）
                         prev_event = events[i - 1]
-                        time_diff = event['timestamp'] - prev_event['timestamp']
+                        time_diff = event["timestamp"] - prev_event["timestamp"]
 
                         # 如果距离上一个告警超过窗口，则为窗口外
                         new_beyond_window = time_diff > time_threshold
 
                     # 检查是否需要更新
-                    if event['current_beyond_window'] != new_beyond_window:
-                        updates.append({
-                            'id': event['id'],
-                            'old_value': event['current_beyond_window'],
-                            'new_value': new_beyond_window,
-                            'timestamp': event['timestamp']
-                        })
+                    if event["current_beyond_window"] != new_beyond_window:
+                        updates.append(
+                            {
+                                "id": event["id"],
+                                "old_value": event["current_beyond_window"],
+                                "new_value": new_beyond_window,
+                                "timestamp": event["timestamp"],
+                            }
+                        )
 
             if not updates:
                 print("✅ 所有记录的 beyond_window 字段都正确，无需修复")
@@ -120,8 +126,8 @@ def fix_beyond_window(time_window_hours=24):
             print("=" * 80)
 
             for update in updates[:20]:  # 只显示前20条
-                old = '窗口外' if update['old_value'] else '窗口内'
-                new = '窗口外' if update['new_value'] else '窗口内'
+                old = "窗口外" if update["old_value"] else "窗口内"
+                new = "窗口外" if update["new_value"] else "窗口内"
                 print(f"{update['id']:<8} {old:<12} {new:<12} {update['timestamp']}")
 
             if len(updates) > 20:
@@ -131,14 +137,14 @@ def fix_beyond_window(time_window_hours=24):
             print("\n🔧 开始批量更新...")
 
             for update in updates:
-                conn.execute(text("""
+                conn.execute(
+                    text("""
                     UPDATE webhook_events
                     SET beyond_window = :new_value
                     WHERE id = :event_id
-                """), {
-                    'new_value': update['new_value'],
-                    'event_id': update['id']
-                })
+                """),
+                    {"new_value": update["new_value"], "event_id": update["id"]},
+                )
 
             conn.commit()
 
@@ -148,11 +154,12 @@ def fix_beyond_window(time_window_hours=24):
     except Exception as e:
         print(f"❌ 修复失败: {e}")
         import traceback
+
         traceback.print_exc()
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 80)
     print("修复 beyond_window 字段 - 使用链式判断逻辑")
     print("=" * 80)

@@ -17,19 +17,19 @@ import websocket
 from core.config import Config
 from core.logger import get_logger
 
-logger = get_logger('openclaw_ws')
+logger = get_logger("openclaw_ws")
 
 
 def _http_to_ws_url(http_url: str) -> str:
     """将 HTTP URL 转换为 WebSocket URL"""
-    url = http_url.rstrip('/')
-    if url.startswith('https://'):
-        return url.replace('https://', 'wss://') + '/ws'
-    elif url.startswith('http://'):
-        return url.replace('http://', 'ws://') + '/ws'
+    url = http_url.rstrip("/")
+    if url.startswith("https://"):
+        return url.replace("https://", "wss://") + "/ws"
+    elif url.startswith("http://"):
+        return url.replace("http://", "ws://") + "/ws"
     else:
         # 假设是无协议的地址
-        return f'ws://{url}/ws'
+        return f"ws://{url}/ws"
 
 
 def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
@@ -40,8 +40,8 @@ def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
         device_auth: OpenClaw 设备认证参数（可选），由 _build_device_auth 返回
     """
     # 如果有设备认证，platform 必须为 linux、mode 为 cli（匹配已配对设备）
-    client_platform = 'linux' if device_auth else platform.system().lower()
-    client_mode = 'cli' if device_auth else 'backend'
+    client_platform = "linux" if device_auth else platform.system().lower()
+    client_mode = "cli" if device_auth else "backend"
 
     frame = {
         "type": "req",
@@ -50,25 +50,18 @@ def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
         "params": {
             "minProtocol": 3,
             "maxProtocol": 3,
-            "client": {
-                "id": "gateway-client",
-                "version": "1.0.0",
-                "platform": client_platform,
-                "mode": client_mode
-            },
-            "auth": {
-                "token": token
-            }
-        }
+            "client": {"id": "gateway-client", "version": "1.0.0", "platform": client_platform, "mode": client_mode},
+            "auth": {"token": token},
+        },
     }
 
     # 添加 OpenClaw 设备认证字段
     if device_auth:
-        params = frame['params']
-        params['role'] = device_auth['role']
-        params['scopes'] = device_auth['scopes']
-        params['auth']['deviceToken'] = device_auth['device_token']
-        params['device'] = device_auth['device']
+        params = frame["params"]
+        params["role"] = device_auth["role"]
+        params["scopes"] = device_auth["scopes"]
+        params["auth"]["deviceToken"] = device_auth["device_token"]
+        params["device"] = device_auth["device"]
         logger.debug(f"Device auth attached: deviceId={device_auth['device']['id'][:16]}...")
 
     return frame
@@ -101,8 +94,10 @@ def _build_device_auth(nonce: str) -> dict | None:
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     except ImportError:
-        logger.warning("cryptography package not installed, skipping device auth. "
-                       "Install with: pip install cryptography>=42.0.0")
+        logger.warning(
+            "cryptography package not installed, skipping device auth. "
+            "Install with: pip install cryptography>=42.0.0"
+        )
         return None
 
     try:
@@ -112,31 +107,31 @@ def _build_device_auth(nonce: str) -> dict | None:
 
         # 获取 raw public key 并 base64url 编码（无 padding）
         pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-        pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip('=')
+        pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip("=")
 
         # 构造 v2 签名 payload
         signed_at = int(time.time() * 1000)
         gateway_token = Config.OPENCLAW_GATEWAY_TOKEN
-        scopes_str = 'operator.read'
+        scopes_str = "operator.read"
         payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
 
         # Ed25519 签名，base64url 编码（无 padding）
         signature = private_key.sign(payload.encode())
-        sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip('=')
+        sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
 
         logger.debug(f"Device auth built: signedAt={signed_at}, nonce={nonce[:16]}...")
 
         return {
-            'role': 'operator',
-            'scopes': ['operator.read'],
-            'device_token': device_token,
-            'device': {
-                'id': device_id,
-                'publicKey': pub_b64url,
-                'signature': sig_b64url,
-                'signedAt': signed_at,
-                'nonce': nonce
-            }
+            "role": "operator",
+            "scopes": ["operator.read"],
+            "device_token": device_token,
+            "device": {
+                "id": device_id,
+                "publicKey": pub_b64url,
+                "signature": sig_b64url,
+                "signedAt": signed_at,
+                "nonce": nonce,
+            },
         }
     except Exception as e:
         logger.warning(f"Failed to build device auth: {e}")
@@ -164,15 +159,17 @@ def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
         frame = json.loads(raw)
 
         # connect.challenge 帧格式: {"type": "event", "event": "connect.challenge", "payload": {"nonce": "..."}}
-        if frame.get('type') == 'event' and frame.get('event') == 'connect.challenge':
-            nonce = frame.get('payload', {}).get('nonce', '')
+        if frame.get("type") == "event" and frame.get("event") == "connect.challenge":
+            nonce = frame.get("payload", {}).get("nonce", "")
             if nonce:
                 logger.info(f"Received connect.challenge, nonce={nonce[:16]}...")
                 return nonce
             else:
                 logger.warning("connect.challenge frame has no nonce")
         else:
-            logger.debug(f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}")
+            logger.debug(
+                f"First frame is not connect.challenge: type={frame.get('type')}, event={frame.get('event', '')}"
+            )
     except websocket.WebSocketTimeoutException:
         logger.debug("No connect.challenge received (timeout) — likely OpenClaw, not OpenClaw")
     except Exception as e:
@@ -183,7 +180,7 @@ def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
 
 
 # 连接相关常量（从 Config 读取，保留模块级默认值作为后备）
-CONNECT_TIMEOUT = Config.OPENCLAW_CONNECT_TIMEOUT   # TCP + WebSocket 握手超时（秒）
+CONNECT_TIMEOUT = Config.OPENCLAW_CONNECT_TIMEOUT  # TCP + WebSocket 握手超时（秒）
 HANDSHAKE_TIMEOUT = Config.OPENCLAW_HANDSHAKE_TIMEOUT  # OpenClaw 协议握手超时（秒）
 RECV_TIMEOUT = Config.OPENCLAW_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
 
@@ -191,7 +188,9 @@ RECV_TIMEOUT = Config.OPENCLAW_RECV_TIMEOUT  # recv 超时，用于检查 _done 
 class OpenClawWSClient:
     """OpenClaw WebSocket 客户端（线程安全，每次调用独立连接）"""
 
-    def __init__(self, gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None):
+    def __init__(
+        self, gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None
+    ):
         self.ws_url = _http_to_ws_url(gateway_url)
         self.gateway_token = gateway_token
         self.run_id = run_id
@@ -246,24 +245,26 @@ class OpenClawWSClient:
             for _ in range(5):
                 response_raw = self._ws.recv()
                 response = json.loads(response_raw)
-                if response.get('type') == 'res':
+                if response.get("type") == "res":
                     break
-                logger.debug(f"Skipping non-res frame during handshake: type={response.get('type')}, event={response.get('event', '')}")
+                logger.debug(
+                    f"Skipping non-res frame during handshake: type={response.get('type')}, event={response.get('event', '')}"
+                )
 
-            if not response or response.get('type') != 'res':
-                self._connection_error = 'auth_protocol_error'
+            if not response or response.get("type") != "res":
+                self._connection_error = "auth_protocol_error"
                 logger.error(f"Unexpected response type after retries: {response.get('type') if response else 'none'}")
                 return False
 
-            if not response.get('ok'):
-                error = response.get('error', {})
-                self._connection_error = 'auth_failed'
+            if not response.get("ok"):
+                error = response.get("error", {})
+                self._connection_error = "auth_failed"
                 logger.error(f"Connect failed: {error.get('message', 'Unknown error')}")
                 return False
 
-            payload = response.get('payload', {})
-            if payload.get('type') != 'hello-ok':
-                self._connection_error = 'auth_protocol_error'
+            payload = response.get("payload", {})
+            if payload.get("type") != "hello-ok":
+                self._connection_error = "auth_protocol_error"
                 logger.error(f"Unexpected payload type: {payload.get('type')}")
                 return False
 
@@ -271,15 +272,15 @@ class OpenClawWSClient:
             return True
 
         except websocket.WebSocketTimeoutException:
-            self._connection_error = 'handshake_timeout'
+            self._connection_error = "handshake_timeout"
             logger.error(f"OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s) - server may be overloaded")
             return False
         except json.JSONDecodeError as e:
-            self._connection_error = 'invalid_response'
+            self._connection_error = "invalid_response"
             logger.error(f"Failed to parse connect response: {e}")
             return False
         except Exception as e:
-            self._connection_error = 'handshake_error'
+            self._connection_error = "handshake_error"
             logger.error(f"Connect handshake failed: {e}")
             return False
 
@@ -287,46 +288,50 @@ class OpenClawWSClient:
         """
         处理事件帧，返回是否完成（True=已获得最终结果或错误）
         """
-        event_type = frame.get('event')
-        payload = frame.get('payload', {})
-        frame_run_id = payload.get('runId')
+        event_type = frame.get("event")
+        payload = frame.get("payload", {})
+        frame_run_id = payload.get("runId")
 
         # 检查 runId 是否匹配
         if frame_run_id != self.run_id:
             return False
 
-        if event_type == 'agent':
+        if event_type == "agent":
             # 流式文本片段
-            stream = payload.get('stream')
-            if stream == 'assistant':
-                data = payload.get('data')
+            stream = payload.get("stream")
+            if stream == "assistant":
+                data = payload.get("data")
                 # 兼容处理：data 可能是 dict 或 str
                 if isinstance(data, dict):
-                    text = data.get('text', '') or data.get('delta', '')
+                    text = data.get("text", "") or data.get("delta", "")
                 elif isinstance(data, str):
                     text = data
                 else:
-                    text = ''
+                    text = ""
                 if text:
                     with self._lock:
                         self._text_fragments.append(text)
                     logger.debug(f"Received text fragment, length={len(text)}")
             return False
 
-        elif event_type == 'chat':
-            state = payload.get('state')
+        elif event_type == "chat":
+            state = payload.get("state")
 
-            if state == 'final':
+            if state == "final":
                 # 分析完成
-                message = payload.get('message', {})
+                message = payload.get("message", {})
 
                 # 优先从 message.content 中提取最终文本（避免流式碎片重复问题）
-                final_text = ''
-                content = message.get('content', [])
+                final_text = ""
+                content = message.get("content", [])
                 if isinstance(content, list):
                     # 提取 type=="text" 的内容，排除 type=="thinking"
-                    text_parts = [item.get('text', '') for item in content if isinstance(item, dict) and item.get('type') == 'text']
-                    final_text = '\n'.join(text_parts)
+                    text_parts = [
+                        item.get("text", "")
+                        for item in content
+                        if isinstance(item, dict) and item.get("type") == "text"
+                    ]
+                    final_text = "\n".join(text_parts)
                 elif isinstance(content, str):
                     final_text = content
 
@@ -334,27 +339,23 @@ class OpenClawWSClient:
                 if not final_text:
                     with self._lock:
                         fragments = [f for f in self._text_fragments if isinstance(f, str)]
-                        final_text = ''.join(fragments)
+                        final_text = "".join(fragments)
 
                 with self._lock:
                     self._result = {
-                        'status': 'success',
-                        'run_id': self.run_id,
-                        'message': message,
-                        'text': final_text,
+                        "status": "success",
+                        "run_id": self.run_id,
+                        "message": message,
+                        "text": final_text,
                     }
                 logger.info(f"Analysis completed for runId={self.run_id}")
                 return True
 
-            elif state == 'error':
+            elif state == "error":
                 # 分析失败
-                error_msg = payload.get('errorMessage', 'Unknown error')
+                error_msg = payload.get("errorMessage", "Unknown error")
                 with self._lock:
-                    self._result = {
-                        'status': 'error',
-                        'run_id': self.run_id,
-                        'error': error_msg
-                    }
+                    self._result = {"status": "error", "run_id": self.run_id, "error": error_msg}
                 logger.error(f"Analysis failed for runId={self.run_id}: {error_msg}")
                 return True
 
@@ -370,10 +371,10 @@ class OpenClawWSClient:
                         continue
 
                     frame = json.loads(raw_message)
-                    frame_type = frame.get('type')
+                    frame_type = frame.get("type")
 
                     # 只处理事件帧
-                    if frame_type == 'event' and self._process_event(frame):
+                    if frame_type == "event" and self._process_event(frame):
                         self._done.set()
                         return
 
@@ -398,7 +399,9 @@ class OpenClawWSClient:
         - 失败: {"status": "error", "run_id": "...", "error": "错误信息"}
         - 超时: {"status": "timeout", "run_id": "...", "partial_text": "已收集的部分文本"}
         """
-        logger.info(f"Connecting to {self.ws_url} for runId={self.run_id}, connect_timeout={self.connect_timeout}s, result_timeout={self.timeout}s")
+        logger.info(
+            f"Connecting to {self.ws_url} for runId={self.run_id}, connect_timeout={self.connect_timeout}s, result_timeout={self.timeout}s"
+        )
 
         try:
             # 创建 WebSocket 连接（使用较短的连接超时快速失败）
@@ -406,7 +409,7 @@ class OpenClawWSClient:
             self._ws = websocket.create_connection(
                 self.ws_url,
                 timeout=self.connect_timeout,  # 连接超时，不是等待结果超时
-                skip_utf8_validation=True
+                skip_utf8_validation=True,
             )
             logger.debug("WebSocket connection established, starting OpenClaw handshake...")
 
@@ -414,10 +417,10 @@ class OpenClawWSClient:
             if not self._send_connect():
                 error_msg = self._get_connection_error_message()
                 return {
-                    'status': 'error',
-                    'run_id': self.run_id,
-                    'error': error_msg,
-                    'error_type': self._connection_error or 'handshake_failed'
+                    "status": "error",
+                    "run_id": self.run_id,
+                    "error": error_msg,
+                    "error_type": self._connection_error or "handshake_failed",
                 }
 
             # 握手成功后，设置较短的 recv 超时用于监听循环
@@ -437,60 +440,51 @@ class OpenClawWSClient:
                 with self._lock:
                     # 类型安全检查：确保只 join 字符串类型
                     fragments = [f for f in self._text_fragments if isinstance(f, str)]
-                    partial_text = ''.join(fragments)
+                    partial_text = "".join(fragments)
                 logger.warning(f"Timeout waiting for runId={self.run_id}, collected {len(partial_text)} chars")
-                return {
-                    'status': 'timeout',
-                    'run_id': self.run_id,
-                    'partial_text': partial_text
-                }
+                return {"status": "timeout", "run_id": self.run_id, "partial_text": partial_text}
 
         except websocket.WebSocketTimeoutException:
-            self._connection_error = 'connect_timeout'
+            self._connection_error = "connect_timeout"
             logger.error(f"WebSocket connection timeout ({self.connect_timeout}s) - TCP or WS handshake failed")
             return {
-                'status': 'error',
-                'run_id': self.run_id,
-                'error': f'Connection timeout ({self.connect_timeout}s): Unable to establish WebSocket connection. Check network/firewall.',
-                'error_type': 'connect_timeout'
+                "status": "error",
+                "run_id": self.run_id,
+                "error": f"Connection timeout ({self.connect_timeout}s): Unable to establish WebSocket connection. Check network/firewall.",
+                "error_type": "connect_timeout",
             }
         except ConnectionRefusedError as e:
-            self._connection_error = 'connection_refused'
+            self._connection_error = "connection_refused"
             logger.error(f"Connection refused: {e}")
             return {
-                'status': 'error',
-                'run_id': self.run_id,
-                'error': f'Connection refused: Server at {self.ws_url} is not accepting connections.',
-                'error_type': 'connection_refused'
+                "status": "error",
+                "run_id": self.run_id,
+                "error": f"Connection refused: Server at {self.ws_url} is not accepting connections.",
+                "error_type": "connection_refused",
             }
         except OSError as e:
             # 网络层错误（DNS、路由等）
-            self._connection_error = 'network_error'
+            self._connection_error = "network_error"
             logger.error(f"Network error: {e}")
             return {
-                'status': 'error',
-                'run_id': self.run_id,
-                'error': f'Network error: {e}',
-                'error_type': 'network_error'
+                "status": "error",
+                "run_id": self.run_id,
+                "error": f"Network error: {e}",
+                "error_type": "network_error",
             }
         except websocket.WebSocketException as e:
-            self._connection_error = 'websocket_error'
+            self._connection_error = "websocket_error"
             logger.error(f"WebSocket error: {e}")
             return {
-                'status': 'error',
-                'run_id': self.run_id,
-                'error': f'WebSocket connection failed: {e}',
-                'error_type': 'websocket_error'
+                "status": "error",
+                "run_id": self.run_id,
+                "error": f"WebSocket connection failed: {e}",
+                "error_type": "websocket_error",
             }
         except Exception as e:
-            self._connection_error = 'unexpected_error'
+            self._connection_error = "unexpected_error"
             logger.error(f"Unexpected error: {e}")
-            return {
-                'status': 'error',
-                'run_id': self.run_id,
-                'error': str(e),
-                'error_type': 'unexpected_error'
-            }
+            return {"status": "error", "run_id": self.run_id, "error": str(e), "error_type": "unexpected_error"}
         finally:
             # 确保清理
             self._done.set()
@@ -503,14 +497,14 @@ class OpenClawWSClient:
     def _get_connection_error_message(self) -> str:
         """根据连接错误类型返回清晰的错误信息"""
         error_messages = {
-            'connect_timeout': f'Connection timeout ({self.connect_timeout}s): Unable to reach server.',
-            'handshake_timeout': f'OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s): Server may be overloaded.',
-            'auth_failed': 'Authentication failed: Invalid gateway token.',
-            'auth_protocol_error': 'Protocol error: Unexpected response from server.',
-            'invalid_response': 'Invalid response: Failed to parse server response.',
-            'handshake_error': 'Handshake error: Failed to complete OpenClaw handshake.',
+            "connect_timeout": f"Connection timeout ({self.connect_timeout}s): Unable to reach server.",
+            "handshake_timeout": f"OpenClaw handshake timeout ({HANDSHAKE_TIMEOUT}s): Server may be overloaded.",
+            "auth_failed": "Authentication failed: Invalid gateway token.",
+            "auth_protocol_error": "Protocol error: Unexpected response from server.",
+            "invalid_response": "Invalid response: Failed to parse server response.",
+            "handshake_error": "Handshake error: Failed to complete OpenClaw handshake.",
         }
-        return error_messages.get(self._connection_error, 'WebSocket connection failed')
+        return error_messages.get(self._connection_error, "WebSocket connection failed")
 
 
 def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, timeout: int = 30) -> dict:
@@ -538,11 +532,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         connect_timeout = min(5, timeout // 3)
         logger.info(f"Polling session result: connecting to {ws_url}, session_key={session_key}")
 
-        ws = websocket.create_connection(
-            ws_url,
-            timeout=connect_timeout,
-            skip_utf8_validation=True
-        )
+        ws = websocket.create_connection(ws_url, timeout=connect_timeout, skip_utf8_validation=True)
 
         # 2. 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
         nonce = _try_recv_challenge(ws)
@@ -567,19 +557,24 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
         for _ in range(5):
             response_raw = ws.recv()
             response = json.loads(response_raw)
-            if response.get('type') == 'res':
+            if response.get("type") == "res":
                 break
-            logger.debug(f"Skipping non-res frame during poll handshake: type={response.get('type')}, event={response.get('event', '')}")
+            logger.debug(
+                f"Skipping non-res frame during poll handshake: type={response.get('type')}, event={response.get('event', '')}"
+            )
 
-        if not response or response.get('type') != 'res':
-            return {"status": "error", "error": f"Unexpected response type: {response.get('type') if response else 'none'}"}
+        if not response or response.get("type") != "res":
+            return {
+                "status": "error",
+                "error": f"Unexpected response type: {response.get('type') if response else 'none'}",
+            }
 
-        if not response.get('ok'):
-            error = response.get('error', {})
+        if not response.get("ok"):
+            error = response.get("error", {})
             return {"status": "error", "error": f"Connect failed: {error.get('message', 'Unknown error')}"}
 
-        payload = response.get('payload', {})
-        if payload.get('type') != 'hello-ok':
+        payload = response.get("payload", {})
+        if payload.get("type") != "hello-ok":
             return {"status": "error", "error": f"Unexpected payload type: {payload.get('type')}"}
 
         elapsed_hs = time.time() - start_time
@@ -591,9 +586,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
             "type": "req",
             "id": request_id,
             "method": "chat.history",
-            "params": {
-                "sessionKey": session_key
-            }
+            "params": {"sessionKey": session_key},
         }
         ws.send(json.dumps(history_request))
 
@@ -613,22 +606,24 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
 
             frame_count += 1
             frame = json.loads(frame_raw)
-            frame_type = frame.get('type', '')
-            frame_id = frame.get('id', '')
+            frame_type = frame.get("type", "")
+            frame_id = frame.get("id", "")
 
             # 记录每个收到的帧（诊断用）
-            if frame_type != 'res' or frame_id != request_id:
-                event_name = frame.get('event', '')
-                logger.info(f"chat.history wait: skip frame #{frame_count} type={frame_type}, event={event_name}, id={frame_id[:8] if frame_id else ''}")
+            if frame_type != "res" or frame_id != request_id:
+                event_name = frame.get("event", "")
+                logger.info(
+                    f"chat.history wait: skip frame #{frame_count} type={frame_type}, event={event_name}, id={frame_id[:8] if frame_id else ''}"
+                )
 
             # 只处理 type=="res" 且 id 匹配的响应
-            if frame_type == 'res' and frame_id == request_id:
-                if not frame.get('ok'):
-                    error = frame.get('error', {})
+            if frame_type == "res" and frame_id == request_id:
+                if not frame.get("ok"):
+                    error = frame.get("error", {})
                     return {"status": "error", "error": f"chat.history failed: {error.get('message', 'Unknown error')}"}
 
-                result_payload = frame.get('payload', {})
-                messages = result_payload.get('messages', [])
+                result_payload = frame.get("payload", {})
+                messages = result_payload.get("messages", [])
 
                 # 6. 解析结果：判断会话是否完成
                 #
@@ -662,21 +657,23 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 last_entry = messages[-1]
 
                 # 兼容两种格式：嵌套格式 {message: {...}} 或扁平格式 {role, content, ...}
-                msg = last_entry.get('message', last_entry)
+                msg = last_entry.get("message", last_entry)
 
                 # 检查最后一条消息的角色
-                role = msg.get('role', '')
-                content = msg.get('content', [])
-                has_duration = bool(msg.get('durationMs'))
+                role = msg.get("role", "")
+                content = msg.get("content", [])
+                has_duration = bool(msg.get("durationMs"))
 
                 # 提取 content 类型列表用于日志
                 content_types = []
                 if isinstance(content, list):
-                    content_types = [c.get('type') for c in content if isinstance(c, dict)]
+                    content_types = [c.get("type") for c in content if isinstance(c, dict)]
 
-                logger.info(f"Poll: last message role={role}, content_types={content_types}, has_duration={has_duration}")
+                logger.info(
+                    f"Poll: last message role={role}, content_types={content_types}, has_duration={has_duration}"
+                )
 
-                if role != 'assistant':
+                if role != "assistant":
                     # 最后一条是 user/toolResult 等，agent 还在处理
                     logger.debug(f"Poll: last message role is '{role}', analysis pending")
                     return {"status": "pending"}
@@ -688,13 +685,13 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 if isinstance(content, list):
                     for item in content:
                         if isinstance(item, dict):
-                            item_type = item.get('type', '')
+                            item_type = item.get("type", "")
                             # 检测工具调用块：tool_use, toolUse, toolCall, tool_call
-                            if item_type in ('tool_use', 'toolUse', 'toolCall', 'tool_call'):
+                            if item_type in ("tool_use", "toolUse", "toolCall", "tool_call"):
                                 has_tool_use = True
                             # 提取 text 类型内容（排除 thinking）
-                            elif item_type == 'text':
-                                text = item.get('text', '')
+                            elif item_type == "text":
+                                text = item.get("text", "")
                                 if text:
                                     text_parts.append(text)
                 elif isinstance(content, str):
@@ -706,7 +703,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                     return {"status": "pending"}
 
                 # 提取最终文本
-                final_text = '\n'.join(text_parts)
+                final_text = "\n".join(text_parts)
 
                 # 如果没有文本内容，可能还在处理
                 if not final_text:
@@ -714,12 +711,14 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                     return {"status": "pending"}
 
                 # 会话完成
-                logger.info(f"Poll completed: found final assistant message, text length={len(final_text)}, msg_count={len(messages)}")
+                logger.info(
+                    f"Poll completed: found final assistant message, text length={len(final_text)}, msg_count={len(messages)}"
+                )
                 return {
                     "status": "completed",
                     "text": final_text,
                     "message": msg,
-                    "msg_count": len(messages)  # 消息总数，用于稳定性检测
+                    "msg_count": len(messages),  # 消息总数，用于稳定性检测
                 }
 
         # 超过最大帧数仍未收到响应
@@ -746,7 +745,9 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
                 logger.debug(f"WebSocket close failed: {e}")
 
 
-def wait_for_result(gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None) -> dict:
+def wait_for_result(
+    gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None
+) -> dict:
     """
     连接 OpenClaw WebSocket，等待指定 runId 的分析结果。
 

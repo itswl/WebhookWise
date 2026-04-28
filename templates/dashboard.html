@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webhook 监控中心</title>
-    
+
     <!-- 外部样式表 -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/components.css">
-    
+
     <!-- Markdown 渲染库 -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
@@ -23,13 +23,13 @@
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); /* 加深常态阴影 */
     }
-    .da-card:hover { 
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); 
+    .da-card:hover {
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
         border-color: #94a3b8;
         transform: translateY(-2px);
     }
-    .da-card-expanded { 
-        border-color: var(--primary); 
+    .da-card-expanded {
+        border-color: var(--primary);
         box-shadow: 0 0 0 1px var(--primary), 0 10px 15px -3px rgba(79, 70, 229, 0.1); /* 展开时使用主题色高光边框 */
     }
 
@@ -45,15 +45,15 @@
         transition: background 0.2s;
     }
     .da-summary:hover { background: #f3f4f6; }
-    .da-card-expanded .da-summary { 
+    .da-card-expanded .da-summary {
         border-bottom-color: var(--border);
         background: var(--bg-surface);
     }
 
-    .da-id { 
-        font-weight: 600; 
-        color: var(--text-muted); 
-        width: 60px; 
+    .da-id {
+        font-weight: 600;
+        color: var(--text-muted);
+        width: 60px;
         font-size: 0.875rem;
     }
     .da-engine {
@@ -70,16 +70,16 @@
     .da-engine-local { background: #f3f4f6; color: #4b5563; }
     .da-engine-hermes { background: #fae8ff; color: #4c1d95; }
 
-    .da-question { 
-        flex-grow: 1; 
-        color: var(--text-main); 
+    .da-question {
+        flex-grow: 1;
+        color: var(--text-main);
         font-weight: 500;
-        white-space: nowrap; 
-        overflow: hidden; 
-        text-overflow: ellipsis; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         font-size: 0.95rem;
     }
-    
+
     .da-status {
         padding: 0.25rem 0.75rem;
         border-radius: 9999px;
@@ -90,10 +90,10 @@
     .da-status-completed { background: var(--success-bg); color: var(--success); }
     .da-status-pending { background: var(--warning-bg); color: var(--warning); animation: pulse 2s infinite;}
     .da-status-failed { background: var(--danger-bg); color: var(--danger); }
-    
+
     .da-time { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; }
     .da-duration { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; font-family: monospace;}
-    
+
     /* 详细信息行 */
     .da-summary-details {
         margin-top: 1rem;
@@ -120,8 +120,8 @@
         border-top: 1px solid var(--border);
         background: var(--bg-surface);
     }
-    .da-card-expanded .da-details { 
-        display: block; 
+    .da-card-expanded .da-details {
+        display: block;
         animation: slideDown 0.3s ease-out forwards;
     }
 
@@ -136,49 +136,49 @@
     .da-section p { margin: 0.5rem 0; white-space: pre-wrap; color: var(--text-main); font-size: 0.95rem; }
     .da-section ul { margin: 0.5rem 0; padding-left: 1.5rem; color: var(--text-main); font-size: 0.95rem;}
     .da-section li { margin: 0.25rem 0; }
-    
-    .da-analysis-content { 
-        background: #1f2937; 
+
+    .da-analysis-content {
+        background: #1f2937;
         color: #e5e7eb;
-        padding: 1.25rem; 
-        border-radius: var(--radius-md); 
-        font-size: 0.875rem; 
+        padding: 1.25rem;
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
         font-family: 'Fira Code', 'Consolas', monospace;
-        max-height: 500px; 
-        overflow-y: auto; 
-        white-space: pre-wrap; 
+        max-height: 500px;
+        overflow-y: auto;
+        white-space: pre-wrap;
         box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
     }
-    
+
     .da-analysis-content::-webkit-scrollbar { height: 8px; width: 8px; }
     .da-analysis-content::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
 
     .da-confidence { color: var(--text-muted); font-size: 0.85em; margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem;}
 
     /* 按钮 */
-    .da-btn-row { 
-        margin-top: 1.5rem; 
-        padding-top: 1.25rem; 
-        border-top: 1px dashed var(--border); 
-        display: flex; 
-        gap: 0.75rem; 
-        flex-wrap: wrap; 
+    .da-btn-row {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px dashed var(--border);
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
     }
 
     /* 分页 */
     .da-pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 2rem; padding: 1rem;}
-    .da-page-btn { 
-        border: 1px solid var(--border); 
-        background: var(--bg-surface); 
-        border-radius: var(--radius-md); 
+    .da-page-btn {
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        border-radius: var(--radius-md);
         min-width: 36px;
         height: 36px;
         display: flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer; 
-        font-size: 0.875rem; 
-        color: var(--text-main); 
+        cursor: pointer;
+        font-size: 0.875rem;
+        color: var(--text-main);
         font-weight: 500;
         transition: all 0.2s;
     }

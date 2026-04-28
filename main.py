@@ -2,6 +2,7 @@
 """
 Webhook AI分析服务主入口
 """
+
 import sys
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from core.config import Config
 from core.logger import logger
 from db.session import test_db_connection
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 启动前验证
     Config.validate()
     if not test_db_connection():
@@ -21,9 +22,5 @@ if __name__ == '__main__':
 
     logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
     import uvicorn
-    uvicorn.run(
-        "core.app:app",
-        host=Config.HOST,
-        port=Config.PORT,
-        log_level="debug" if Config.DEBUG else "info"
-    )
+
+    uvicorn.run("core.app:app", host=Config.HOST, port=Config.PORT, log_level="debug" if Config.DEBUG else "info")

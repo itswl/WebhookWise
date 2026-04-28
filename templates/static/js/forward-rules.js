@@ -12,7 +12,7 @@ let forwardRules = [];
 async function loadForwardRules() {
     console.log('📋 加载转发规则...');
     const container = document.getElementById('forwardRulesList');
-    
+
     try {
         container.innerHTML = `
             <div class="loading">
@@ -20,9 +20,9 @@ async function loadForwardRules() {
                 <p>加载中...</p>
             </div>
         `;
-        
+
         const result = await API.getForwardRules();
-        
+
         if (result.success) {
             forwardRules = result.data || [];
             renderForwardRules(forwardRules);
@@ -52,7 +52,7 @@ async function loadForwardRules() {
  */
 function renderForwardRules(rules) {
     const container = document.getElementById('forwardRulesList');
-    
+
     if (!rules || rules.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">
@@ -63,16 +63,16 @@ function renderForwardRules(rules) {
         `;
         return;
     }
-    
+
     // 按优先级排序（高优先级在前）
     const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
-    
+
     let html = '<div class="rules-list" style="display: flex; flex-direction: column; gap: 15px;">';
-    
+
     sortedRules.forEach(rule => {
         html += renderRuleCard(rule);
     });
-    
+
     html += '</div>';
     container.innerHTML = html;
 }
@@ -86,12 +86,12 @@ function renderRuleCard(rule) {
     const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
     const sourceText = escapeHtml(rule.match_source || '全部');
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
-    
+
     const isEnabled = rule.enabled;
     const cardBorder = isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;';
     const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
-    
+
     return `
         <div class="rule-card" style="
             background: #ffffff;
@@ -144,7 +144,7 @@ function renderRuleCard(rule) {
                     border: 1px solid #cbd5e1;
                 ">⬆️ 优先级: ${rule.priority || 0}</span>
             </div>
-            
+
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                 <!-- 匹配条件区 -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
@@ -153,7 +153,7 @@ function renderRuleCard(rule) {
                     <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
                     <div><strong>事件来源:</strong> ${sourceText}</div>
                 </div>
-                
+
                 <!-- 转发目标区 -->
                 <div class="rule-target" style="font-size: 0.95rem; color: #334155; background: #f0fdf4; padding: 1.25rem; border-radius: 8px; border: 1px dashed #86efac;">
                     <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 动作执行</div>
@@ -167,7 +167,7 @@ function renderRuleCard(rule) {
                     ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> 命中此规则后，停止匹配后续规则</div>' : ''}
                 </div>
             </div>
-            
+
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
                     🧪 测试通道
@@ -233,7 +233,7 @@ function escapeHtml(text) {
 function showRuleForm(ruleId) {
     const modal = document.getElementById('ruleFormModal');
     const title = document.getElementById('ruleFormTitle');
-    
+
     // 重置表单
     document.getElementById('ruleFormId').value = '';
     document.getElementById('ruleFormName').value = '';
@@ -248,10 +248,10 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormTargetName').value = '';
     document.getElementById('ruleFormStopOnMatch').checked = false;
     document.getElementById('ruleFormEnabled').checked = true;
-    
+
     // 显示目标地址输入框
     document.getElementById('ruleFormTargetUrlGroup').style.display = 'block';
-    
+
     if (ruleId) {
         // 编辑模式
         title.textContent = '编辑转发规则';
@@ -260,7 +260,7 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormId').value = rule.id;
             document.getElementById('ruleFormName').value = rule.name || '';
             document.getElementById('ruleFormPriority').value = rule.priority || 10;
-            
+
             // 设置重要性复选框
             if (rule.match_importance) {
                 const importances = rule.match_importance.split(',').map(s => s.trim());
@@ -268,7 +268,7 @@ function showRuleForm(ruleId) {
                 document.getElementById('ruleFormImportanceMedium').checked = importances.includes('medium');
                 document.getElementById('ruleFormImportanceLow').checked = importances.includes('low');
             }
-            
+
             document.getElementById('ruleFormDuplicate').value = rule.match_duplicate || 'all';
             document.getElementById('ruleFormSource').value = rule.match_source || '';
             document.getElementById('ruleFormTargetType').value = rule.target_type || 'feishu';
@@ -276,7 +276,7 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormTargetName').value = rule.target_name || '';
             document.getElementById('ruleFormStopOnMatch').checked = rule.stop_on_match || false;
             document.getElementById('ruleFormEnabled').checked = rule.enabled !== false;
-            
+
             // 根据目标类型显示/隐藏地址输入框
             onTargetTypeChange();
         }
@@ -284,7 +284,7 @@ function showRuleForm(ruleId) {
         // 新增模式
         title.textContent = '新增转发规则';
     }
-    
+
     modal.classList.add('active');
 }
 
@@ -301,7 +301,7 @@ function closeRuleForm() {
 function onTargetTypeChange() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
-    
+
     // OpenClaw 类型不需要填写地址
     if (targetType === 'openclaw') {
         urlGroup.style.display = 'none';
@@ -321,24 +321,24 @@ async function saveRule() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const targetUrl = document.getElementById('ruleFormTargetUrl').value.trim();
     const targetName = document.getElementById('ruleFormTargetName').value.trim();
-    
+
     // 验证必填字段
     if (!name) {
         alert('请输入规则名称');
         return;
     }
-    
+
     if (targetType !== 'openclaw' && !targetUrl) {
         alert('请输入目标地址');
         return;
     }
-    
+
     // 收集重要性选项
     const importances = [];
     if (document.getElementById('ruleFormImportanceHigh').checked) importances.push('high');
     if (document.getElementById('ruleFormImportanceMedium').checked) importances.push('medium');
     if (document.getElementById('ruleFormImportanceLow').checked) importances.push('low');
-    
+
     // 构建规则数据
     const ruleData = {
         name: name,
@@ -352,7 +352,7 @@ async function saveRule() {
         target_name: targetName,
         stop_on_match: document.getElementById('ruleFormStopOnMatch').checked
     };
-    
+
     try {
         let result;
         if (ruleId) {
@@ -364,7 +364,7 @@ async function saveRule() {
             console.log('➕ 创建规则:', ruleData);
             result = await API.createForwardRule(ruleData);
         }
-        
+
         if (result.success) {
             alert(ruleId ? '✅ 规则更新成功' : '✅ 规则创建成功');
             closeRuleForm();
@@ -387,7 +387,7 @@ async function toggleRule(id, enabled) {
     try {
         console.log(enabled ? '✅ 启用规则:' : '⏸️ 禁用规则:', id);
         const result = await API.updateForwardRule(id, { enabled: enabled });
-        
+
         if (result.success) {
             // 更新本地数据
             const rule = forwardRules.find(r => r.id === id);
@@ -414,15 +414,15 @@ async function toggleRule(id, enabled) {
 async function deleteRule(id) {
     const rule = forwardRules.find(r => r.id === id);
     const ruleName = rule ? rule.name : '该规则';
-    
+
     if (!confirm(`确定要删除规则"${ruleName}"吗？\n\n此操作不可撤销。`)) {
         return;
     }
-    
+
     try {
         console.log('🗑️ 删除规则:', id);
         const result = await API.deleteForwardRule(id);
-        
+
         if (result.success) {
             alert('✅ 规则已删除');
             loadForwardRules();
@@ -442,15 +442,15 @@ async function deleteRule(id) {
 async function testRule(id) {
     const rule = forwardRules.find(r => r.id === id);
     const ruleName = rule ? rule.name : '该规则';
-    
+
     if (!confirm(`确定要测试规则"${ruleName}"吗？\n\n将发送测试消息到目标地址。`)) {
         return;
     }
-    
+
     try {
         console.log('🧪 测试规则:', id);
         const result = await API.testForwardRule(id);
-        
+
         if (result.success) {
             alert('✅ 测试成功！\n\n' + (result.message || '测试消息已发送'));
         } else {

@@ -12,6 +12,7 @@ from core.metrics import AI_ANALYSIS_DURATION_SECONDS, AI_COST_USD_TOTAL, AI_TOK
 
 try:
     import json5
+
     HAS_JSON5 = True
 except ImportError:
     HAS_JSON5 = False
@@ -77,8 +78,8 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
             cache_entry.hit_count += 1
 
             cached_result = json.loads(cache_entry.analysis_result)
-            cached_result['_cache_hit'] = True
-            cached_result['_cache_hit_count'] = cache_entry.hit_count
+            cached_result["_cache_hit"] = True
+            cached_result["_cache_hit_count"] = cache_entry.hit_count
 
             logger.info(f"缓存命中: {cache_key[:20]}..., 已命中 {cache_entry.hit_count} 次")
             return cached_result
@@ -113,8 +114,7 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
             expires_at = datetime.now() + timedelta(seconds=Config.ANALYSIS_CACHE_TTL)
 
             # 清理内部字段
-            result_to_cache = {k: v for k, v in analysis_result.items()
-                             if not k.startswith('_')}
+            result_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
 
             # 检查是否已存在
             stmt = select(AnalysisCache).filter(AnalysisCache.cache_key == cache_key)
@@ -129,7 +129,7 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
                 cache_entry = AnalysisCache(
                     cache_key=cache_key,
                     analysis_result=json.dumps(result_to_cache, ensure_ascii=False),
-                    expires_at=expires_at
+                    expires_at=expires_at,
                 )
                 session.add(cache_entry)
 
@@ -148,7 +148,7 @@ async def log_ai_usage(
     model: str | None = None,
     tokens_in: int = 0,
     tokens_out: int = 0,
-    cache_hit: bool = False
+    cache_hit: bool = False,
 ) -> None:
     """
     记录 AI 使用日志
@@ -163,17 +163,15 @@ async def log_ai_usage(
         cache_hit: 是否命中缓存
     """
     try:
-
         from db.session import session_scope
         from models import AIUsageLog
 
         # 计算估算成本
         cost_estimate = 0.0
-        if route_type == 'ai' and tokens_in > 0:
-            cost_estimate = (
-                (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS +
-                (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
-            )
+        if route_type == "ai" and tokens_in > 0:
+            cost_estimate = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS + (
+                tokens_out / 1000
+            ) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
 
         async with session_scope() as session:
             usage_log = AIUsageLog(
@@ -184,7 +182,7 @@ async def log_ai_usage(
                 cache_hit=cache_hit,
                 route_type=route_type,
                 alert_hash=alert_hash,
-                source=source
+                source=source,
             )
             session.add(usage_log)
             logger.debug(f"AI 使用记录: type={route_type}, tokens={tokens_in}+{tokens_out}, cost=${cost_estimate:.6f}")
@@ -228,7 +226,7 @@ def load_user_prompt_template() -> str:
 
         if file_path.exists():
             try:
-                with open(file_path, encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     _user_prompt_template = f.read()
                 logger.info(f"成功从文件加载 prompt 模板: {file_path}")
                 return _user_prompt_template
@@ -315,10 +313,9 @@ def reload_user_prompt_template() -> str:
     return load_user_prompt_template()
 
 
-
 def fix_json_format(json_str: str) -> str:
     """修复常见的 JSON 格式错误"""
-    json_str = json_str.replace('\ufeff', '').strip()
+    json_str = json_str.replace("\ufeff", "").strip()
     if not json_str:
         return json_str
 
@@ -336,18 +333,18 @@ def fix_json_format(json_str: str) -> str:
             logger.debug(f"json5 解析失败: {e}")
 
     fixed = json_str
-    fixed = re.sub(r'//.*?$', '', fixed, flags=re.MULTILINE)
-    fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
-    fixed = re.sub(r',\s*([}\]])', r'\1', fixed)
-    fixed = re.sub(r'([\[{])\s*,', r'\1', fixed)
-    fixed = re.sub(r'(")\s+("([^"\\]|\\.)*"\s*:)', r'\1, \2', fixed)
+    fixed = re.sub(r"//.*?$", "", fixed, flags=re.MULTILINE)
+    fixed = re.sub(r"/\*.*?\*/", "", fixed, flags=re.DOTALL)
+    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+    fixed = re.sub(r"([\[{])\s*,", r"\1", fixed)
+    fixed = re.sub(r'(")\s+("([^"\\]|\\.)*"\s*:)', r"\1, \2", fixed)
     return fixed.strip()
 
 
 def _extract_json_payload(text: str) -> str:
     """从响应文本中提取 JSON 片段。"""
     text = text.strip()
-    fenced = re.search(r'```(?:json)?\s*([\s\S]*?)```', text, re.IGNORECASE)
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
     if fenced:
         return fenced.group(1).strip()
     return text
@@ -355,11 +352,11 @@ def _extract_json_payload(text: str) -> str:
 
 def _extract_first_json_object(text: str) -> str | None:
     """提取第一个 JSON 对象（允许末尾不完整）。"""
-    start = text.find('{')
+    start = text.find("{")
     if start < 0:
         return None
 
-    stack: list[str] = ['}']
+    stack: list[str] = ["}"]
     in_string = False
     escape = False
 
@@ -368,7 +365,7 @@ def _extract_first_json_object(text: str) -> str | None:
         if in_string:
             if escape:
                 escape = False
-            elif ch == '\\':
+            elif ch == "\\":
                 escape = True
             elif ch == '"':
                 in_string = False
@@ -376,16 +373,16 @@ def _extract_first_json_object(text: str) -> str | None:
 
         if ch == '"':
             in_string = True
-        elif ch == '{':
-            stack.append('}')
-        elif ch == '[':
-            stack.append(']')
-        elif ch in '}]':
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]":
             if not stack or ch != stack[-1]:
-                return text[start:i + 1].strip()
+                return text[start : i + 1].strip()
             stack.pop()
             if not stack:
-                return text[start:i + 1].strip()
+                return text[start : i + 1].strip()
 
     return text[start:].strip()
 
@@ -396,7 +393,7 @@ def _close_truncated_json(candidate: str) -> str:
     if not text:
         return text
 
-    start = text.find('{')
+    start = text.find("{")
     if start > 0:
         text = text[start:]
 
@@ -408,7 +405,7 @@ def _close_truncated_json(candidate: str) -> str:
         if in_string:
             if escape:
                 escape = False
-            elif ch == '\\':
+            elif ch == "\\":
                 escape = True
             elif ch == '"':
                 in_string = False
@@ -416,19 +413,19 @@ def _close_truncated_json(candidate: str) -> str:
 
         if ch == '"':
             in_string = True
-        elif ch == '{':
-            stack.append('}')
-        elif ch == '[':
-            stack.append(']')
-        elif ch in '}]' and stack and ch == stack[-1]:
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]" and stack and ch == stack[-1]:
             stack.pop()
 
-    text = re.sub(r',\s*$', '', text)
+    text = re.sub(r",\s*$", "", text)
     if in_string:
         text += '"'
 
     while stack:
-        text = re.sub(r',\s*$', '', text)
+        text = re.sub(r",\s*$", "", text)
         text += stack.pop()
 
     return text
@@ -438,7 +435,7 @@ def _safe_json_string(raw: str) -> str:
     try:
         return json.loads(f'"{raw}"')
     except Exception:
-        return raw.replace('\\n', ' ').replace('\\"', '"').strip()
+        return raw.replace("\\n", " ").replace('\\"', '"').strip()
 
 
 def _extract_json_string_field(text: str, key: str) -> str | None:
@@ -448,7 +445,7 @@ def _extract_json_string_field(text: str, key: str) -> str | None:
 
     truncated = re.search(rf'"{re.escape(key)}"\s*:\s*"([^\n]*)', text)
     if truncated:
-        return truncated.group(1).strip().strip(',').strip()
+        return truncated.group(1).strip().strip(",").strip()
 
     return None
 
@@ -469,7 +466,7 @@ def _extract_json_array_field(text: str, key: str) -> list[str]:
         if in_string:
             if escape:
                 escape = False
-            elif ch == '\\':
+            elif ch == "\\":
                 escape = True
             elif ch == '"':
                 in_string = False
@@ -477,9 +474,9 @@ def _extract_json_array_field(text: str, key: str) -> list[str]:
 
         if ch == '"':
             in_string = True
-        elif ch == '[':
+        elif ch == "[":
             depth += 1
-        elif ch == ']':
+        elif ch == "]":
             depth -= 1
             if depth == 0:
                 end = i + 1
@@ -503,11 +500,11 @@ def _clean_string_list(values: Any) -> list[str]:
     for value in values:
         if not isinstance(value, str):
             continue
-        item = value.strip().strip('"\'`').strip().strip(',').strip()
-        item = item.strip('[]{}').strip()
+        item = value.strip().strip("\"'`").strip().strip(",").strip()
+        item = item.strip("[]{}").strip()
         if not item:
             continue
-        if item in {'[', ']', '{', '}'}:
+        if item in {"[", "]", "{", "}"}:
             continue
         cleaned.append(item)
 
@@ -519,29 +516,29 @@ def _normalize_analysis_result(result: AnalysisResult, source: str) -> AnalysisR
         result = {}
 
     normalized: AnalysisResult = dict(result)
-    normalized['source'] = str(normalized.get('source') or source)
+    normalized["source"] = str(normalized.get("source") or source)
 
-    event_type = str(normalized.get('event_type') or 'unknown').strip()
-    normalized['event_type'] = event_type or 'unknown'
+    event_type = str(normalized.get("event_type") or "unknown").strip()
+    normalized["event_type"] = event_type or "unknown"
 
-    importance = str(normalized.get('importance') or 'medium').lower().strip()
-    if importance not in {'high', 'medium', 'low'}:
-        importance = 'medium'
-    normalized['importance'] = importance
+    importance = str(normalized.get("importance") or "medium").lower().strip()
+    if importance not in {"high", "medium", "low"}:
+        importance = "medium"
+    normalized["importance"] = importance
 
-    summary = str(normalized.get('summary') or '').strip()
-    normalized['summary'] = summary or 'AI分析未生成摘要'
+    summary = str(normalized.get("summary") or "").strip()
+    normalized["summary"] = summary or "AI分析未生成摘要"
 
-    if 'impact_scope' in normalized and normalized['impact_scope'] is not None:
-        normalized['impact_scope'] = str(normalized['impact_scope']).strip()
-        if not normalized['impact_scope']:
-            normalized.pop('impact_scope', None)
+    if "impact_scope" in normalized and normalized["impact_scope"] is not None:
+        normalized["impact_scope"] = str(normalized["impact_scope"]).strip()
+        if not normalized["impact_scope"]:
+            normalized.pop("impact_scope", None)
 
-    normalized['actions'] = _clean_string_list(normalized.get('actions', []))
-    normalized['risks'] = _clean_string_list(normalized.get('risks', []))
+    normalized["actions"] = _clean_string_list(normalized.get("actions", []))
+    normalized["risks"] = _clean_string_list(normalized.get("risks", []))
 
-    if 'monitoring_suggestions' in normalized:
-        normalized['monitoring_suggestions'] = _clean_string_list(normalized.get('monitoring_suggestions', []))
+    if "monitoring_suggestions" in normalized:
+        normalized["monitoring_suggestions"] = _clean_string_list(normalized.get("monitoring_suggestions", []))
 
     return normalized
 
@@ -571,47 +568,47 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
     logger.info("使用文本提取策略解析 AI 响应")
 
     result: AnalysisResult = {
-        'source': source,
-        'event_type': 'unknown',
-        'importance': 'medium',
-        'summary': '',
-        'actions': [],
-        'risks': []
+        "source": source,
+        "event_type": "unknown",
+        "importance": "medium",
+        "summary": "",
+        "actions": [],
+        "risks": [],
     }
 
     try:
-        importance = _extract_json_string_field(text, 'importance')
+        importance = _extract_json_string_field(text, "importance")
         if importance:
             importance = importance.lower()
-            if importance in {'high', 'medium', 'low'}:
-                result['importance'] = importance
+            if importance in {"high", "medium", "low"}:
+                result["importance"] = importance
 
-        summary = _extract_json_string_field(text, 'summary')
+        summary = _extract_json_string_field(text, "summary")
         if summary:
-            result['summary'] = summary
-        elif re.search(r'(告警|错误|异常|故障)', text):
-            result['summary'] = '检测到系统告警或异常，需要关注'
+            result["summary"] = summary
+        elif re.search(r"(告警|错误|异常|故障)", text):
+            result["summary"] = "检测到系统告警或异常，需要关注"
         else:
-            result['summary'] = 'Webhook 事件已接收，AI 分析结果解析不完整'
+            result["summary"] = "Webhook 事件已接收，AI 分析结果解析不完整"
 
-        event_type = _extract_json_string_field(text, 'event_type')
+        event_type = _extract_json_string_field(text, "event_type")
         if event_type:
-            result['event_type'] = event_type
+            result["event_type"] = event_type
 
-        impact_scope = _extract_json_string_field(text, 'impact_scope')
+        impact_scope = _extract_json_string_field(text, "impact_scope")
         if impact_scope:
-            result['impact_scope'] = impact_scope
+            result["impact_scope"] = impact_scope
 
-        actions = _extract_json_array_field(text, 'actions')
-        risks = _extract_json_array_field(text, 'risks')
-        monitoring = _extract_json_array_field(text, 'monitoring_suggestions')
+        actions = _extract_json_array_field(text, "actions")
+        risks = _extract_json_array_field(text, "risks")
+        monitoring = _extract_json_array_field(text, "monitoring_suggestions")
 
         if actions:
-            result['actions'] = actions
+            result["actions"] = actions
         if risks:
-            result['risks'] = risks
+            result["risks"] = risks
         if monitoring:
-            result['monitoring_suggestions'] = monitoring
+            result["monitoring_suggestions"] = monitoring
 
         normalized = _normalize_analysis_result(result, source)
         logger.info(f"文本提取完成: {normalized}")
@@ -619,7 +616,7 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
 
     except Exception as e:
         logger.error(f"文本提取失败: {e!s}")
-        result['summary'] = 'AI 分析响应格式错误，已降级处理'
+        result["summary"] = "AI 分析响应格式错误，已降级处理"
         return _normalize_analysis_result(result, source)
 
 
@@ -647,7 +644,9 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
     return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
 
 
-async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False) -> AnalysisResult:
+async def analyze_webhook_with_ai(
+    webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
+) -> AnalysisResult:
     """
     使用 AI 分析 webhook 数据
 
@@ -662,12 +661,13 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         alert_hash: 告警哈希值（可选，未提供时自动生成）
         skip_cache: 是否跳过缓存，强制重新分析（默认 False）
     """
-    source = webhook_data.get('source', 'unknown')
-    parsed_data = webhook_data.get('parsed_data', {})
+    source = webhook_data.get("source", "unknown")
+    parsed_data = webhook_data.get("parsed_data", {})
 
     # 生成 alert_hash（如果未提供）
     if not alert_hash:
         from core.utils import generate_alert_hash
+
         alert_hash = generate_alert_hash(parsed_data, source)
 
     # Step 1: 检查缓存（skip_cache=True 时跳过）
@@ -675,14 +675,9 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
         cached_result = await get_cached_analysis(alert_hash)
         if cached_result:
             logger.info(f"[Cache] 命中历史分析缓存: source={source}, hash={alert_hash[:16]}...")
-            cached_result['_route_type'] = 'cache'
+            cached_result["_route_type"] = "cache"
             # 记录缓存命中
-            await log_ai_usage(
-                route_type='cache',
-                alert_hash=alert_hash,
-                source=source,
-                cache_hit=True
-            )
+            await log_ai_usage(route_type="cache", alert_hash=alert_hash, source=source, cache_hit=True)
             # 返回缓存结果
             return cached_result
     elif skip_cache:
@@ -692,10 +687,10 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
     if not Config.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
         result = analyze_with_rules(parsed_data, source)
-        result['_degraded'] = True
-        result['_degraded_reason'] = 'AI 分析功能已禁用'
-        result['_route_type'] = 'rule'
-        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        result["_degraded"] = True
+        result["_degraded_reason"] = "AI 分析功能已禁用"
+        result["_route_type"] = "rule"
+        await log_ai_usage(route_type="rule", alert_hash=alert_hash, source=source)
         # 返回结果
         return result
 
@@ -703,17 +698,18 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
     if not Config.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
         result = analyze_with_rules(parsed_data, source)
-        result['_degraded'] = True
-        result['_degraded_reason'] = 'OpenAI API Key 未配置'
-        result['_route_type'] = 'rule'
+        result["_degraded"] = True
+        result["_degraded_reason"] = "OpenAI API Key 未配置"
+        result["_route_type"] = "rule"
         # 发送降级通知
-        await _send_degradation_alert(webhook_data, 'OpenAI API Key 未配置')
-        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        await _send_degradation_alert(webhook_data, "OpenAI API Key 未配置")
+        await log_ai_usage(route_type="rule", alert_hash=alert_hash, source=source)
         # 返回结果
         return result
 
     # Step 4: 调用 AI 分析
     import asyncio
+
     max_retries = 3
     last_error = None
 
@@ -723,27 +719,27 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
             analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
 
             duration = time.time() - start_time
-            AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='openai').observe(duration)
+            AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="openai").observe(duration)
             logger.info(f"AI 分析完成: {source} (尝试 {attempt}/{max_retries})")
-            analysis['_degraded'] = False
-            analysis['_route_type'] = 'ai'
+            analysis["_degraded"] = False
+            analysis["_route_type"] = "ai"
 
             # 保存到缓存
             await save_to_cache(alert_hash, analysis)
 
             # 记录 AI 使用
             await log_ai_usage(
-                route_type='ai',
+                route_type="ai",
                 alert_hash=alert_hash,
                 source=source,
                 model=Config.OPENAI_MODEL,
                 tokens_in=tokens_in,
-                tokens_out=tokens_out
+                tokens_out=tokens_out,
             )
 
             return analysis
 
-        except Exception as e: # noqa: PERF203
+        except Exception as e:  # noqa: PERF203
             last_error = e
             if attempt < max_retries:
                 logger.warning(f"AI 分析失败 (尝试 {attempt}/{max_retries}): {e!s}，等待重试...")
@@ -755,26 +751,27 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
     if Config.ENABLE_AI_DEGRADATION:
         logger.warning("启用 AI 降级策略，使用本地规则分析")
         result = analyze_with_rules(parsed_data, source)
-        result['_degraded'] = True
-        result['_degraded_reason'] = f'AI 分析失败: {last_error!s}'
-        result['_route_type'] = 'rule'
+        result["_degraded"] = True
+        result["_degraded_reason"] = f"AI 分析失败: {last_error!s}"
+        result["_route_type"] = "rule"
         await _send_degradation_alert(webhook_data, str(last_error))
-        await log_ai_usage(route_type='rule', alert_hash=alert_hash, source=source)
+        await log_ai_usage(route_type="rule", alert_hash=alert_hash, source=source)
         return result
     else:
         # 不降级，直接返回错误
         logger.error("AI 分析失败且未启用降级策略，返回错误")
         await _send_degradation_alert(webhook_data, str(last_error))
         return {
-            'summary': f'AI 分析失败: {last_error!s}',
-            'root_cause': '分析失败，请检查 AI 服务配置',
-            'impact': '未知',
-            'recommendations': ['检查 AI 服务连接', '查看日志获取详细信息'],
-            'severity': 'critical',
-            '_degraded': True,
-            '_degraded_reason': f'AI 分析失败: {last_error!s}',
-            '_route_type': 'error'
+            "summary": f"AI 分析失败: {last_error!s}",
+            "root_cause": "分析失败，请检查 AI 服务配置",
+            "impact": "未知",
+            "recommendations": ["检查 AI 服务连接", "查看日志获取详细信息"],
+            "severity": "critical",
+            "_degraded": True,
+            "_degraded_reason": f"AI 分析失败: {last_error!s}",
+            "_route_type": "error",
         }
+
 
 async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
     """
@@ -784,23 +781,18 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         tuple: (分析结果, 输入 tokens, 输出 tokens)
     """
     try:
-        client = AsyncOpenAI(
-            api_key=Config.OPENAI_API_KEY,
-            base_url=Config.OPENAI_API_URL
-    )
+        client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
         user_prompt = prompt_template.format(source=source, data_json=data_json)
-        messages = [
-            {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ]
+        messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
         try:
             import hashlib
-            prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
+
+            prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
         except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
@@ -809,19 +801,19 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         # 提取 token 使用量
         tokens_in = 0
         tokens_out = 0
-        if hasattr(response, 'usage') and response.usage:
-            tokens_in = getattr(response.usage, 'prompt_tokens', 0) or 0
-            tokens_out = getattr(response.usage, 'completion_tokens', 0) or 0
+        if hasattr(response, "usage") and response.usage:
+            tokens_in = getattr(response.usage, "prompt_tokens", 0) or 0
+            tokens_out = getattr(response.usage, "completion_tokens", 0) or 0
 
-        if not hasattr(response, 'choices') or not response.choices:
+        if not hasattr(response, "choices") or not response.choices:
             error_message = f"OpenAI API 返回无效响应: {response}"
             logger.error(error_message)
             raise TypeError(error_message)
 
         choice = response.choices[0]
-        finish_reason = getattr(choice, 'finish_reason', None)
-        raw_content = getattr(choice.message, 'content', None)
-        ai_response = (raw_content or '').strip()
+        finish_reason = getattr(choice, "finish_reason", None)
+        raw_content = getattr(choice.message, "content", None)
+        ai_response = (raw_content or "").strip()
         if not ai_response:
             # 记录详细诊断信息，方便排查原因
             logger.error(
@@ -835,7 +827,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                 choice,
             )
             # finish_reason=content_filter 表示内容被过滤
-            if finish_reason == 'content_filter':
+            if finish_reason == "content_filter":
                 raise ValueError(f"AI 返回空响应（内容被过滤，finish_reason={finish_reason}）")
             # raw_content 为 None 通常是 API 账户/配额/模型名称问题
             if raw_content is None:
@@ -845,45 +837,45 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                 )
             raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
 
-        if finish_reason == 'length':
+        if finish_reason == "length":
             retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
             if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
                 logger.warning(
-                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
-                    retry_max_tokens
+                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
                 )
                 retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
 
                 # 更新 token 使用量
-                if hasattr(retry_response, 'usage') and retry_response.usage:
-                    tokens_in += getattr(retry_response.usage, 'prompt_tokens', 0) or 0
-                    tokens_out += getattr(retry_response.usage, 'completion_tokens', 0) or 0
+                if hasattr(retry_response, "usage") and retry_response.usage:
+                    tokens_in += getattr(retry_response.usage, "prompt_tokens", 0) or 0
+                    tokens_out += getattr(retry_response.usage, "completion_tokens", 0) or 0
 
-                if hasattr(retry_response, 'choices') and retry_response.choices:
+                if hasattr(retry_response, "choices") and retry_response.choices:
                     retry_choice = retry_response.choices[0]
-                    retry_text = (retry_choice.message.content or '').strip()
+                    retry_text = (retry_choice.message.content or "").strip()
                     if retry_text:
                         ai_response = retry_text
-                        finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
+                        finish_reason = getattr(retry_choice, "finish_reason", finish_reason)
 
         try:
             import hashlib
-            resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
+
+            resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
         except Exception:
             resp_hash = None
         logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='input').inc(tokens_in)  # nosec B106
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type='output').inc(tokens_out)  # nosec B106
+        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type="input").inc(tokens_in)  # nosec B106
+        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type="output").inc(tokens_out)  # nosec B106
         AI_COST_USD_TOTAL.labels(model=Config.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
 
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
-        if finish_reason == 'length':
-            analysis_result['_truncated'] = True
+        if finish_reason == "length":
+            analysis_result["_truncated"] = True
             logger.warning("AI 最终响应仍为截断状态，已使用容错解析")
 
         return analysis_result, tokens_in, tokens_out
@@ -895,74 +887,66 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
     return await client.chat.completions.create(
-        model=Config.OPENAI_MODEL,
-        messages=messages,
-        temperature=Config.OPENAI_TEMPERATURE,
-        max_tokens=max_tokens
+        model=Config.OPENAI_MODEL, messages=messages, temperature=Config.OPENAI_TEMPERATURE, max_tokens=max_tokens
     )
 
 
 async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
     """使用 OpenAI API 分析 webhook 数据"""
     try:
-        client = AsyncOpenAI(
-            api_key=Config.OPENAI_API_KEY,
-            base_url=Config.OPENAI_API_URL
-    )
+        client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
 
         prompt_template = load_user_prompt_template()
         data_json = json.dumps(data, ensure_ascii=False, indent=2)
         user_prompt = prompt_template.format(source=source, data_json=data_json)
-        messages = [
-            {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ]
+        messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
         try:
             import hashlib
-            prompt_hash = hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
+
+            prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
         except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
         response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
 
-        if not hasattr(response, 'choices') or not response.choices:
+        if not hasattr(response, "choices") or not response.choices:
             error_message = f"OpenAI API 返回无效响应: {response}"
             logger.error(error_message)
             raise TypeError(error_message)
 
         choice = response.choices[0]
-        finish_reason = getattr(choice, 'finish_reason', None)
-        ai_response = (choice.message.content or '').strip()
+        finish_reason = getattr(choice, "finish_reason", None)
+        ai_response = (choice.message.content or "").strip()
         if not ai_response:
             raise ValueError("AI 返回空响应")
 
-        if finish_reason == 'length':
+        if finish_reason == "length":
             retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
             if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
                 logger.warning(
-                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s",
-                    retry_max_tokens
+                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
                 )
                 retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
-                if hasattr(retry_response, 'choices') and retry_response.choices:
+                if hasattr(retry_response, "choices") and retry_response.choices:
                     retry_choice = retry_response.choices[0]
-                    retry_text = (retry_choice.message.content or '').strip()
+                    retry_text = (retry_choice.message.content or "").strip()
                     if retry_text:
                         ai_response = retry_text
-                        finish_reason = getattr(retry_choice, 'finish_reason', finish_reason)
+                        finish_reason = getattr(retry_choice, "finish_reason", finish_reason)
 
         try:
             import hashlib
-            resp_hash = hashlib.sha256(ai_response.encode('utf-8')).hexdigest()
+
+            resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
         except Exception:
             resp_hash = None
         logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
-        if finish_reason == 'length':
-            analysis_result['_truncated'] = True
+        if finish_reason == "length":
+            analysis_result["_truncated"] = True
             logger.warning("AI 最终响应仍为截断状态，已使用容错解析")
 
         return analysis_result
@@ -985,7 +969,7 @@ async def _should_send_degradation_alert() -> bool:
     from pathlib import Path
 
     # 使用数据目录记录上次通知时间
-    marker_file = Path(Config.DATA_DIR) / '.ai_degradation_last_alert'
+    marker_file = Path(Config.DATA_DIR) / ".ai_degradation_last_alert"
 
     try:
         # 读取上次通知时间
@@ -998,11 +982,13 @@ async def _should_send_degradation_alert() -> bool:
             time_since_last = datetime.now() - last_alert_time
             if time_since_last < timedelta(hours=24):
                 hours_remaining = 24 - (time_since_last.total_seconds() / 3600)
-                logger.info(f"跳过降级通知：距离上次通知仅 {time_since_last.total_seconds() / 3600:.1f} 小时，还需等待 {hours_remaining:.1f} 小时")
+                logger.info(
+                    f"跳过降级通知：距离上次通知仅 {time_since_last.total_seconds() / 3600:.1f} 小时，还需等待 {hours_remaining:.1f} 小时"
+                )
                 return False
 
         # 记录本次通知时间
-        with open(marker_file, 'w') as f:
+        with open(marker_file, "w") as f:
             f.write(datetime.now().isoformat())
 
         return True
@@ -1023,21 +1009,21 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
 
         # 构造失败通知数据
         analysis_data = {
-            'summary': 'OpenClaw 深度分析触发失败',
-            'root_cause': f'连续 3 次重试后仍失败: {error}',
-            'impact': '无法获取深度根因分析结果',
-            'recommendations': [
-                '检查 OpenClaw 服务是否正常运行',
-                f'检查网络连接: {Config.OPENCLAW_GATEWAY_URL}',
-                '查看服务端日志获取详细错误信息',
-                '稍后手动重试深度分析'
+            "summary": "OpenClaw 深度分析触发失败",
+            "root_cause": f"连续 3 次重试后仍失败: {error}",
+            "impact": "无法获取深度根因分析结果",
+            "recommendations": [
+                "检查 OpenClaw 服务是否正常运行",
+                f"检查网络连接: {Config.OPENCLAW_GATEWAY_URL}",
+                "查看服务端日志获取详细错误信息",
+                "稍后手动重试深度分析",
             ],
-            'confidence': 0,
-            'status': 'failed',
-            'error': error
+            "confidence": 0,
+            "status": "failed",
+            "error": error,
         }
 
-        event_id = webhook_data.get('id', 'unknown')
+        event_id = webhook_data.get("id", "unknown")
         await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
         logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
     except Exception as e:
@@ -1057,60 +1043,48 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             return
 
         # 检查是否是飞书 webhook
-        is_feishu = 'feishu.cn' in Config.FORWARD_URL or 'lark' in Config.FORWARD_URL
+        is_feishu = "feishu.cn" in Config.FORWARD_URL or "lark" in Config.FORWARD_URL
 
         if is_feishu:
             # 构建飞书告警消息
-            timestamp = webhook_data.get('timestamp', '')
-            source = webhook_data.get('source', 'unknown')
+            timestamp = webhook_data.get("timestamp", "")
+            source = webhook_data.get("source", "unknown")
 
             card_content = {
                 "config": {"wide_screen_mode": True},
                 "header": {
-                    "title": {
-                        "tag": "plain_text",
-                        "content": "⚠️ AI 分析降级通知"
-                    },
-                    "template": "orange"  # 橙色警告
+                    "title": {"tag": "plain_text", "content": "⚠️ AI 分析降级通知"},
+                    "template": "orange",  # 橙色警告
                 },
                 "elements": [
                     {
                         "tag": "div",
                         "text": {
                             "tag": "lark_md",
-                            "content": f"**告警来源**: {source}\n**时间**: {timestamp[:19] if timestamp else '-'}"
-                        }
+                            "content": f"**告警来源**: {source}\n**时间**: {timestamp[:19] if timestamp else '-'}",
+                        },
                     },
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**⚠️ 降级原因**\n{error_reason}"}},
                     {
                         "tag": "div",
                         "text": {
                             "tag": "lark_md",
-                            "content": f"**⚠️ 降级原因**\n{error_reason}"
-                        }
-                    },
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": "**处理方式**\n已自动降级为基于规则的分析，告警仍会正常处理，但分析结果可能不够准确。请检查 AI 服务配置。"
-                        }
+                            "content": "**处理方式**\n已自动降级为基于规则的分析，告警仍会正常处理，但分析结果可能不够准确。请检查 AI 服务配置。",
+                        },
                     },
                     {
                         "tag": "note",
                         "elements": [
                             {
                                 "tag": "plain_text",
-                                "content": "💡 此通知24小时内仅发送一次，避免频繁打扰。请尽快修复 AI 服务以恢复智能分析功能。"
+                                "content": "💡 此通知24小时内仅发送一次，避免频繁打扰。请尽快修复 AI 服务以恢复智能分析功能。",
                             }
-                        ]
-                    }
-                ]
+                        ],
+                    },
+                ],
             }
 
-            forward_data = {
-                "msg_type": "interactive",
-                "card": card_content
-            }
+            forward_data = {"msg_type": "interactive", "card": card_content}
 
             # 发送通知（熔断保护）
             client = get_http_client()
@@ -1118,8 +1092,8 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
                 client.post,
                 Config.FORWARD_URL,
                 json=forward_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=Config.FEISHU_WEBHOOK_TIMEOUT
+                headers={"Content-Type": "application/json"},
+                timeout=Config.FEISHU_WEBHOOK_TIMEOUT,
             )
 
             if response is not None and 200 <= response.status_code < 300:
@@ -1137,105 +1111,105 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     """基于规则的简单分析（AI 降级方案）"""
     # 基础分析结果
     analysis = {
-        'source': source,
-        'event_type': 'unknown',
-        'importance': 'medium',
-        'summary': '规则分析（AI 降级）',
-        'actions': ['查看告警详情', '检查 AI 服务状态'],
-        'risks': ['使用规则分析，可能不够准确']
+        "source": source,
+        "event_type": "unknown",
+        "importance": "medium",
+        "summary": "规则分析（AI 降级）",
+        "actions": ["查看告警详情", "检查 AI 服务状态"],
+        "risks": ["使用规则分析，可能不够准确"],
     }
 
     # 检测告警格式
-    is_prometheus = 'alerts' in data and isinstance(data.get('alerts'), list) and len(data.get('alerts', [])) > 0
+    is_prometheus = "alerts" in data and isinstance(data.get("alerts"), list) and len(data.get("alerts", [])) > 0
 
     if is_prometheus:
         # Prometheus Alertmanager 格式
-        first_alert = data['alerts'][0]
-        labels = first_alert.get('labels', {})
+        first_alert = data["alerts"][0]
+        labels = first_alert.get("labels", {})
 
         # 获取告警名称
-        alert_name = labels.get('alertname', labels.get('alertingRuleName', 'unknown'))
-        analysis['event_type'] = alert_name
+        alert_name = labels.get("alertname", labels.get("alertingRuleName", "unknown"))
+        analysis["event_type"] = alert_name
 
         # 获取告警级别
-        alert_level = labels.get('internal_label_alert_level', labels.get('severity', '')).lower()
+        alert_level = labels.get("internal_label_alert_level", labels.get("severity", "")).lower()
 
         # 判断重要性
-        if alert_level in ['critical', 'p0', '严重', 'error']:
-            analysis['importance'] = 'high'
-            analysis['summary'] = f'🔴 严重告警: {alert_name}'
-            analysis['actions'] = ['立即处理', '检查服务状态', '查看日志']
-        elif alert_level in ['warning', 'warn', 'p1']:
-            analysis['importance'] = 'medium'
-            analysis['summary'] = f'🟡 警告告警: {alert_name}'
-            analysis['actions'] = ['关注趋势', '准备应对措施']
+        if alert_level in ["critical", "p0", "严重", "error"]:
+            analysis["importance"] = "high"
+            analysis["summary"] = f"🔴 严重告警: {alert_name}"
+            analysis["actions"] = ["立即处理", "检查服务状态", "查看日志"]
+        elif alert_level in ["warning", "warn", "p1"]:
+            analysis["importance"] = "medium"
+            analysis["summary"] = f"🟡 警告告警: {alert_name}"
+            analysis["actions"] = ["关注趋势", "准备应对措施"]
         else:
-            analysis['summary'] = f'📊 告警: {alert_name}'
+            analysis["summary"] = f"📊 告警: {alert_name}"
 
     else:
         # 华为云/通用格式
         # 获取告警名称
-        rule_name = data.get('RuleName') or data.get('alert_name') or data.get('MetricName', 'unknown')
-        analysis['event_type'] = rule_name
+        rule_name = data.get("RuleName") or data.get("alert_name") or data.get("MetricName", "unknown")
+        analysis["event_type"] = rule_name
 
         # 获取告警级别
-        level = str(data.get('Level', '')).lower()
+        level = str(data.get("Level", "")).lower()
 
         # 判断重要性
-        if level in ['critical', 'error', '严重', 'p0']:
-            analysis['importance'] = 'high'
-            analysis['summary'] = f'🔴 严重告警: {rule_name}'
-            analysis['actions'] = ['立即处理', '检查资源状态', '查看监控指标']
-        elif level in ['warn', 'warning', 'p1']:
-            analysis['importance'] = 'medium'
-            analysis['summary'] = f'🟡 警告告警: {rule_name}'
-            analysis['actions'] = ['关注趋势', '评估影响范围']
+        if level in ["critical", "error", "严重", "p0"]:
+            analysis["importance"] = "high"
+            analysis["summary"] = f"🔴 严重告警: {rule_name}"
+            analysis["actions"] = ["立即处理", "检查资源状态", "查看监控指标"]
+        elif level in ["warn", "warning", "p1"]:
+            analysis["importance"] = "medium"
+            analysis["summary"] = f"🟡 警告告警: {rule_name}"
+            analysis["actions"] = ["关注趋势", "评估影响范围"]
         else:
             # 检查指标名称中的关键词
-            metric_name = str(data.get('MetricName', '')).lower()
-            if any(keyword in metric_name for keyword in ['4xxqps', '5xxqps', 'error', 'cpu', 'memory', 'disk']):
-                analysis['importance'] = 'medium'
-                analysis['summary'] = f'📊 监控告警: {rule_name}'
+            metric_name = str(data.get("MetricName", "")).lower()
+            if any(keyword in metric_name for keyword in ["4xxqps", "5xxqps", "error", "cpu", "memory", "disk"]):
+                analysis["importance"] = "medium"
+                analysis["summary"] = f"📊 监控告警: {rule_name}"
             else:
-                analysis['summary'] = f'ℹ️ 通知: {rule_name}'
+                analysis["summary"] = f"ℹ️ 通知: {rule_name}"
 
         # 检查阈值超标情况
-        current_value = data.get('CurrentValue')
-        threshold = data.get('Threshold')
+        current_value = data.get("CurrentValue")
+        threshold = data.get("Threshold")
         if current_value is not None and threshold is not None:
             try:
                 current_num = float(current_value)
                 threshold_num = float(threshold)
                 if current_num > threshold_num * 4:
                     # 超过4倍阈值，提升重要性
-                    analysis['importance'] = 'high'
-                    analysis['summary'] = f'🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})'
+                    analysis["importance"] = "high"
+                    analysis["summary"] = f"🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})"
             except (ValueError, TypeError):
                 pass
 
         # 检查资源信息
-        resources = data.get('Resources', [])
+        resources = data.get("Resources", [])
         if resources and isinstance(resources, list):
             resource_count = len(resources)
             if resource_count > 1:
-                analysis['impact_scope'] = f'影响 {resource_count} 个资源'
+                analysis["impact_scope"] = f"影响 {resource_count} 个资源"
 
     # 通用事件类型检查（兜底）
-    if analysis['event_type'] == 'unknown':
-        event = str(data.get('event', data.get('event_type', ''))).lower()
+    if analysis["event_type"] == "unknown":
+        event = str(data.get("event", data.get("event_type", ""))).lower()
         if event:
-            analysis['event_type'] = event
+            analysis["event_type"] = event
 
             # 基于关键词判断
-            if any(keyword in event for keyword in ['error', 'failure', 'critical', 'alert', '错误', '失败', '故障']):
-                analysis['importance'] = 'high'
-                analysis['summary'] = f'🔴 严重事件: {event}'
-            elif any(keyword in event for keyword in ['warning', 'warn', '警告']):
-                analysis['importance'] = 'medium'
-                analysis['summary'] = f'🟡 警告事件: {event}'
+            if any(keyword in event for keyword in ["error", "failure", "critical", "alert", "错误", "失败", "故障"]):
+                analysis["importance"] = "high"
+                analysis["summary"] = f"🔴 严重事件: {event}"
+            elif any(keyword in event for keyword in ["warning", "warn", "警告"]):
+                analysis["importance"] = "medium"
+                analysis["summary"] = f"🟡 警告事件: {event}"
 
     duration = time.time() - start_time
-    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine='rule').observe(duration)
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="rule").observe(duration)
     return analysis
 
 
@@ -1243,7 +1217,7 @@ async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
     target_url: str | None = None,
-    is_periodic_reminder: bool = False
+    is_periodic_reminder: bool = False,
 ) -> ForwardResult:
     """将分析后的数据转发到远程服务器
 
@@ -1256,90 +1230,72 @@ async def forward_to_remote(
     # 检查是否启用转发
     if not Config.ENABLE_FORWARD:
         logger.info("转发功能已禁用")
-        return {
-            'status': 'disabled',
-            'message': '转发功能已禁用'
-        }
+        return {"status": "disabled", "message": "转发功能已禁用"}
 
     if target_url is None:
         target_url = Config.FORWARD_URL
 
     try:
         # 检查是否是飞书 webhook
-        is_feishu = 'feishu.cn' in target_url or 'lark' in target_url
+        is_feishu = "feishu.cn" in target_url or "lark" in target_url
 
         if is_feishu:
             # 构建飞书消息格式
-            forward_data = build_feishu_message(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
+            forward_data = build_feishu_message(
+                webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder
+            )
         else:
             # 构建普通转发数据
             forward_data = {
-                'original_data': webhook_data.get('parsed_data', {}),
-                'original_source': webhook_data.get('source', 'unknown'),
-                'original_timestamp': webhook_data.get('timestamp'),
-                'ai_analysis': analysis_result,
-                'processed_by': 'webhook-analyzer',
-                'client_ip': webhook_data.get('client_ip')
+                "original_data": webhook_data.get("parsed_data", {}),
+                "original_source": webhook_data.get("source", "unknown"),
+                "original_timestamp": webhook_data.get("timestamp"),
+                "ai_analysis": analysis_result,
+                "processed_by": "webhook-analyzer",
+                "client_ip": webhook_data.get("client_ip"),
             }
 
         # 发送到远程服务器
-        headers = {
-            'Content-Type': 'application/json'
-        }
+        headers = {"Content-Type": "application/json"}
 
         if not is_feishu:
-            headers['X-Webhook-Source'] = f"analyzed-{webhook_data.get('source', 'unknown')}"
-            headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
+            headers["X-Webhook-Source"] = f"analyzed-{webhook_data.get('source', 'unknown')}"
+            headers["X-Analysis-Importance"] = analysis_result.get("importance", "unknown")
 
         logger.info(f"转发数据到 {target_url}")
         client = get_http_client()
         response = await forward_cb.call_async(
-        client.post,
-        target_url,
-            json=forward_data,
-        headers=headers,
-            timeout=Config.FORWARD_TIMEOUT
-    )
+            client.post, target_url, json=forward_data, headers=headers, timeout=Config.FORWARD_TIMEOUT
+        )
 
         if response is None:
-            return {'status': 'failed', 'message': '转发请求被熔断拦截'}
+            return {"status": "failed", "message": "转发请求被熔断拦截"}
 
         if 200 <= response.status_code < 300:
             logger.info(f"成功转发到远程服务器: {target_url} (状态码: {response.status_code})")
             return {
-                'status': 'success',
-                'response': response.json() if response.content else {},
-                'status_code': response.status_code
+                "status": "success",
+                "response": response.json() if response.content else {},
+                "status_code": response.status_code,
             }
         else:
             logger.warning(f"转发失败,状态码: {response.status_code}")
-            return {
-                'status': 'failed',
-                'status_code': response.status_code,
-                'response': response.text
-            }
+            return {"status": "failed", "status_code": response.status_code, "response": response.text}
 
     except httpx.TimeoutException:
         logger.error(f"转发超时: {target_url}")
-        return {
-            'status': 'timeout',
-            'message': '请求超时'
-        }
+        return {"status": "timeout", "message": "请求超时"}
     except httpx.ConnectError:
         logger.error(f"无法连接到远程服务器: {target_url}")
-        return {
-            'status': 'connection_error',
-            'message': '无法连接到远程服务器'
-        }
+        return {"status": "connection_error", "message": "无法连接到远程服务器"}
     except Exception as e:
         logger.error(f"转发失败: {e!s}", exc_info=True)
-        return {
-            'status': 'error',
-            'message': str(e)
-        }
+        return {"status": "error", "message": str(e)}
 
 
-def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisResult, is_periodic_reminder: bool = False) -> dict:
+def build_feishu_message(
+    webhook_data: WebhookData, analysis_result: AnalysisResult, is_periodic_reminder: bool = False
+) -> dict:
     """构建飞书机器人消息格式
 
     Args:
@@ -1348,15 +1304,15 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
         is_periodic_reminder: 是否为周期性提醒
     """
     # 获取基本信息
-    source = webhook_data.get('source', 'unknown')
-    timestamp = webhook_data.get('timestamp', '')
-    importance = analysis_result.get('importance', 'medium')
-    summary = analysis_result.get('summary', '无摘要')
-    event_type = analysis_result.get('event_type', '未知事件')
-    duplicate_count = webhook_data.get('duplicate_count', 1)
+    source = webhook_data.get("source", "unknown")
+    timestamp = webhook_data.get("timestamp", "")
+    importance = analysis_result.get("importance", "medium")
+    summary = analysis_result.get("summary", "无摘要")
+    event_type = analysis_result.get("event_type", "未知事件")
+    duplicate_count = webhook_data.get("duplicate_count", 1)
 
     # 使用配置中的重要性配置
-    imp_info = Config.IMPORTANCE_CONFIG.get(importance, Config.IMPORTANCE_CONFIG['medium'])
+    imp_info = Config.IMPORTANCE_CONFIG.get(importance, Config.IMPORTANCE_CONFIG["medium"])
 
     # 标题：如果是周期性提醒，添加特殊标识
     if is_periodic_reminder:
@@ -1366,85 +1322,45 @@ def build_feishu_message(webhook_data: WebhookData, analysis_result: AnalysisRes
 
     # 构建卡片消息
     card_content = {
-        "config": {
-            "wide_screen_mode": True
-        },
-        "header": {
-            "title": {
-                "tag": "plain_text",
-                "content": title
-            },
-            "template": imp_info['color']
-        },
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": title}, "template": imp_info["color"]},
         "elements": [
             {
                 "tag": "div",
                 "fields": [
+                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source}"}},
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**来源**\n{source}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**重要性**\n{imp_info['emoji']} {imp_info['text']}"},
                     },
+                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**事件类型**\n{event_type}"}},
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**重要性**\n{imp_info['emoji']} {imp_info['text']}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**时间**\n{timestamp[:19] if timestamp else '-'}"},
                     },
-                    {
-                        "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**事件类型**\n{event_type}"
-                        }
-                    },
-                    {
-                        "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**时间**\n{timestamp[:19] if timestamp else '-'}"
-                        }
-                    }
-                ]
+                ],
             },
-            {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": f"**📝 事件摘要**\n{summary}"
-                }
-            }
-        ]
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 事件摘要**\n{summary}"}},
+        ],
     }
 
     # 添加影响范围
-    if analysis_result.get('impact_scope'):
-        card_content['elements'].append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": f"**🎯 影响范围**\n{analysis_result.get('impact_scope')}"
+    if analysis_result.get("impact_scope"):
+        card_content["elements"].append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{analysis_result.get('impact_scope')}"},
             }
-        })
+        )
 
     # 添加建议操作
-    if analysis_result.get('actions'):
-        actions_text = '\n'.join([f"{i+1}. {action}" for i, action in enumerate(analysis_result.get('actions', []))])
-        card_content['elements'].append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": f"**✅ 建议操作**\n{actions_text}"
-            }
-        })
+    if analysis_result.get("actions"):
+        actions_text = "\n".join([f"{i+1}. {action}" for i, action in enumerate(analysis_result.get("actions", []))])
+        card_content["elements"].append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 建议操作**\n{actions_text}"}}
+        )
 
-    return {
-        "msg_type": "interactive",
-        "card": card_content
-    }
+    return {"msg_type": "interactive", "card": card_content}
 
 
 async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict:
@@ -1452,11 +1368,11 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     from core.config import Config
 
     if not Config.OPENCLAW_ENABLED:
-        return {'status': 'disabled', 'message': 'OpenClaw 未启用'}
+        return {"status": "disabled", "message": "OpenClaw 未启用"}
 
-    alert_data = webhook_data.get('parsed_data', {})
-    source = webhook_data.get('source', 'unknown')
-    importance = analysis_result.get('importance', 'medium') if analysis_result else 'medium'
+    alert_data = webhook_data.get("parsed_data", {})
+    source = webhook_data.get("source", "unknown")
+    importance = analysis_result.get("importance", "medium") if analysis_result else "medium"
 
     message = f"""收到新告警，请自主排查分析：
 
@@ -1479,6 +1395,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
 - 分析完成后，提供根因分析和可执行的修复建议"""
 
     import uuid
+
     session_key = f"hook:alert:{source}:{uuid.uuid4()}"
     payload = {
         "message": message,
@@ -1487,94 +1404,82 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         "wakeMode": "now",
         "deliver": False,
         "thinking": "high",
-        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
+        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS,
     }
 
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
-    platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
+    platform = getattr(Config, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
 
-    if platform == 'hermes':
+    if platform == "hermes":
         import hashlib
         import hmac
+
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
-        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-        signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
-        headers = {
-            "Content-Type": "application/json",
-            "X-Webhook-Signature": signature
-        }
-        kwargs = {'content': payload_bytes}
+        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+        headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
+        kwargs = {"content": payload_bytes}
     else:
         # Default OpenClaw
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
-        headers = {
-            "Authorization": f"Bearer {hooks_token}",
-            "Content-Type": "application/json"
-        }
-        kwargs = {'json': payload}
+        headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
+        kwargs = {"json": payload}
 
     try:
         import hashlib
-        payload_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-        payload_hash = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
+
+        payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
         payload_size = len(payload_json)
     except Exception:
         payload_hash = None
         payload_size = len(str(payload))
-    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, size={payload_size}, sha256={payload_hash}")
+    logger.info(
+        f"[{platform.upper()}] 正在发起分析请求: target={target_url}, size={payload_size}, sha256={payload_hash}"
+    )
     # 超时配置：(连接超时, 读取超时)
     client = get_http_client()
     response = await openclaw_cb.call_async(
-        client.post,
-        target_url,
-        headers=headers,
-        timeout=httpx.Timeout(60.0, connect=10.0),
-        **kwargs
+        client.post, target_url, headers=headers, timeout=httpx.Timeout(60.0, connect=10.0), **kwargs
     )
 
     if response is None:
-        return {'status': 'error', 'message': f'{platform.capitalize()} 请求被熔断拦截'}
+        return {"status": "error", "message": f"{platform.capitalize()} 请求被熔断拦截"}
 
     try:
         # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
 
         # 兼容两种协议的返回 ID
-        if platform == 'hermes':
-            run_id = result.get('delivery_id') or result.get('runId')
+        if platform == "hermes":
+            run_id = result.get("delivery_id") or result.get("runId")
             session_key = run_id if run_id else session_key
         else:
-            run_id = result.get('runId')
+            run_id = result.get("runId")
 
         logger.info(f"[{platform.upper()}] 转发成功: run_id={run_id}")
 
-        return {
-            'status': 'success',
-            'run_id': run_id,
-            'session_key': session_key,
-            '_pending': True
-        }
+        return {"status": "success", "run_id": run_id, "session_key": session_key, "_pending": True}
     except Exception as e:
         logger.error(f"OpenClaw 转发失败: {e}")
-        return {'status': 'error', 'message': str(e)}
+        return {"status": "error", "message": str(e)}
 
 
-async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thinking_level: str = 'high') -> dict:
-
+async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thinking_level: str = "high") -> dict:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
 
     if not Config.OPENCLAW_ENABLED:
         logger.warning("OpenClaw 未启用")
-        return {'_degraded': True, '_degraded_reason': 'OpenClaw 未启用'}
+        return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
 
-    alert_data = webhook_data.get('parsed_data', {})
-    source = webhook_data.get('source', 'unknown')
+    alert_data = webhook_data.get("parsed_data", {})
+    source = webhook_data.get("source", "unknown")
 
-    prompt_path = Path(Config.DATA_DIR).parent / 'prompts' / 'deep_analysis.txt'
+    prompt_path = Path(Config.DATA_DIR).parent / "prompts" / "deep_analysis.txt"
     try:
-        with open(prompt_path, encoding='utf-8') as f:
+        with open(prompt_path, encoding="utf-8") as f:
             template = f.read()
     except FileNotFoundError:
         template = """请对以下告警进行深度根因分析：
@@ -1587,11 +1492,11 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
     # 将告警数据注入到提示词中
     message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}\n```"
 
-
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
 
     import uuid
+
     session_key = f"hook:deep-analysis:{source}:{uuid.uuid4()}"
     payload = {
         "message": message,
@@ -1600,31 +1505,26 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         "wakeMode": "now",
         "deliver": False,
         "thinking": thinking_level,
-        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS
+        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS,
     }
 
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
-    platform = getattr(Config, 'DEEP_ANALYSIS_PLATFORM', 'openclaw').lower()
+    platform = getattr(Config, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
 
-    if platform == 'hermes':
+    if platform == "hermes":
         import hashlib
         import hmac
+
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
-        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-        signature = hmac.new(hooks_token.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
-        headers = {
-            "Content-Type": "application/json",
-            "X-Webhook-Signature": signature
-        }
-        kwargs = {'content': payload_bytes}
+        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+        headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
+        kwargs = {"content": payload_bytes}
     else:
         target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
-        headers = {
-            "Authorization": f"Bearer {hooks_token}",
-            "Content-Type": "application/json"
-        }
-        kwargs = {'json': payload}
+        headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
+        kwargs = {"json": payload}
 
     logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
     logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")
@@ -1636,11 +1536,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
         try:
             client = get_http_client()
             response = await openclaw_cb.call_async(
-        client.post,
-        target_url,
-        headers=headers,
-        timeout=httpx.Timeout(60.0, connect=10.0),
-        **kwargs
+                client.post, target_url, headers=headers, timeout=httpx.Timeout(60.0, connect=10.0), **kwargs
             )
 
             if response is None:
@@ -1648,6 +1544,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
                 logger.warning(f"{platform.capitalize()} 请求失败 (尝试 {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
                     import asyncio
+
                     await asyncio.sleep(2)
                 continue
 
@@ -1658,6 +1555,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
             logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 import asyncio
+
                 await asyncio.sleep(2)
             continue
     else:
@@ -1667,47 +1565,45 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = '', thi
 
             from db.session import session_scope
             from models import WebhookEvent
+
             if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 async with session_scope() as session:
                     from sqlalchemy import select
-                    stmt = select(WebhookEvent).filter_by(id=webhook_data.get('id'))
+
+                    stmt = select(WebhookEvent).filter_by(id=webhook_data.get("id"))
                     result = await session.execute(stmt)
                     event = result.scalars().first()
-                    source = event.source if event else 'unknown'
+                    source = event.source if event else "unknown"
                 await _send_openclaw_failure_notification(webhook_data, source, last_error)
         except Exception as notify_err:
             logger.warning(f"发送 {platform.capitalize()} 失败通知失败: {notify_err}")
 
         if Config.ENABLE_AI_DEGRADATION:
             logger.warning(f"{platform.capitalize()} 请求失败，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': f'{platform.capitalize()} 请求失败: {last_error}'}
+            return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
         else:
             logger.error(f"{platform.capitalize()} 请求失败，未启用降级策略")
-            raise Exception(f'{platform.capitalize()} 请求失败: {last_error}')
+            raise Exception(f"{platform.capitalize()} 请求失败: {last_error}")
 
     try:
         # response.raise_for_status() was already called inside the loop, so it's guaranteed to be OK here.
         result = response.json()
 
-        if platform == 'hermes':
-            run_id = result.get('delivery_id') or result.get('runId')
+        if platform == "hermes":
+            run_id = result.get("delivery_id") or result.get("runId")
             session_key = run_id if run_id else session_key
         else:
-            run_id = result.get('runId')
+            run_id = result.get("runId")
 
         logger.info(f"[{platform.upper()}] 成功触发深度分析: ID={run_id}")
 
-        return {
-            '_pending': True,
-            '_openclaw_run_id': run_id,
-            '_openclaw_session_key': session_key
-        }
+        return {"_pending": True, "_openclaw_run_id": run_id, "_openclaw_session_key": session_key}
     except httpx.RequestError as e:
         logger.error(f"OpenClaw 请求失败: {e}")
         # 根据配置决定是否降级
         if Config.ENABLE_AI_DEGRADATION:
             logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
-            return {'_degraded': True, '_degraded_reason': f'OpenClaw 不可用: {e!s}'}
+            return {"_degraded": True, "_degraded_reason": f"OpenClaw 不可用: {e!s}"}
         else:
             logger.error("OpenClaw 请求失败，未启用降级策略")
             raise

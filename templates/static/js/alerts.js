@@ -493,11 +493,11 @@ const AlertsModule = {
                         ${escapeHtml(String(analysis._degraded ? '本地规则降级' : (analysis._route_type || '智能路由')))}
                     </span>
                 </div>
-                
+
                 <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
                     ${escapeHtml(String(analysis.summary || '无分析摘要'))}
                 </div>
-                
+
                 <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
         `;
 
@@ -538,7 +538,7 @@ const AlertsModule = {
                 </div>
             `;
         }
-        
+
         if (analysis.risks && analysis.risks.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
@@ -551,13 +551,13 @@ const AlertsModule = {
         }
 
         html += `</div>`; // Close grid
-        
+
         // Metadata footer
         html += `
             <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <span>⚡ 重要性: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || '未知'))}</strong></span>
         `;
-        
+
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
             const relationMap = { root_cause: '根因告警', derived: '衍生告警', standalone: '独立告警' };
@@ -567,23 +567,23 @@ const AlertsModule = {
                 html += `<span>🔗 关联根因: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
-        
+
         html += `<span>🔀 路由通道: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || '未知'))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
             html += `<span title="命中次数: ${escapeHtml(String(hitCount))}" style="color: #10b981; font-weight: 600;">🎯 缓存命中 (${escapeHtml(String(hitCount))}次)</span>`;
         }
-        
+
         html += `
             </div>
         </div>
         `;
-        
+
         // Render Raw JSON analysis below it for debugging
         if (typeof renderJSONBlock === 'function') {
             html += renderJSONBlock(analysis, '原始分析数据');
         }
-        
+
         return html;
     },
 
@@ -802,13 +802,13 @@ const AlertsModule = {
     async loadDeepAnalyses(webhookId) {
         const container = document.getElementById('deep-analysis-container-' + webhookId);
         if (!container) return;
-        
+
         container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>正在加载深度分析历史...</p></div>';
-        
+
         try {
             const result = await API.getDeepAnalyses(webhookId);
             const records = result.data || [];
-            
+
             if (records.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' +
                     '<p>暂无深度分析记录</p>' +
@@ -816,29 +816,29 @@ const AlertsModule = {
                     '</div>';
                 return;
             }
-            
+
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
                 const engineLabel = record.engine === 'openclaw' ? '\ud83d\udc19 OpenClaw' : '\ud83e\udd16 \u672c\u5730 AI';
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
-                            
+
                 html += '<div style="border:1px solid #e0e0e0; border-radius:8px; padding:16px; margin-bottom:12px; background:#fafafa;">';
-                            
+
                 // \u5934\u90e8\uff1a\u5f15\u64ce\u3001\u65f6\u95f4\u3001\u8017\u65f6
                 html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #eee;">';
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
                 html += '<span style="color:#888; font-size:0.85em;">' + time + ' | \u8017\u65f6 ' + duration + '</span>';
                 html += '</div>';
-                            
+
                 // \u7528\u6237\u95ee\u9898\uff08\u5982\u679c\u6709\uff09
                 if (record.user_question) {
                     html += '<div style="margin-bottom:10px; padding:8px 12px; background:#e8f4fd; border-radius:4px; font-size:0.9em;">';
                     html += '<strong>\u7528\u6237\u95ee\u9898\uff1a</strong>' + record.user_question;
                     html += '</div>';
                 }
-                            
+
                 // 检查是否为 pending 状态（OpenClaw 异步等待结果）
                 if (record.status === 'pending') {
                     // 分析中状态卡片
@@ -894,22 +894,22 @@ const AlertsModule = {
                             const pct = (analysis.confidence * 100).toFixed(0);
                             html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
                         }
-                                
+
                         // \u5982\u679c\u6ca1\u6709\u7ed3\u6784\u5316\u5b57\u6bb5\uff0cfallback \u663e\u793a\u539f\u59cb JSON
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
                             html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }
                     }
                 }
-                            
+
                 html += '</div>';
             });
-            
+
             // 底部：再次分析按钮
             html += '<div style="text-align:center; margin-top:12px;">';
             html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c 再次分析</button>';
             html += '</div>';
-            
+
             container.innerHTML = html;
         } catch (e) {
             container.innerHTML = '<div style="color:red; padding:20px;">加载失败: ' + escapeHtml(String(e.message || e)) + '</div>';
@@ -931,13 +931,13 @@ const AlertsModule = {
             const result = await API.deepAnalyze(id, question, engine);
             if (result.success && result.data) {
                 const analysisResult = result.data.analysis || {};
-                
+
                 // 检查是否为 triggered 状态（OpenClaw 异步触发）
                 if (analysisResult.status === 'triggered') {
                     // 显示友好的浮层提示（不用 alert）
                     this.showTriggeredNotification(analysisResult.runId);
                 }
-                
+
                 // 分析完成，切换到深度分析标签页并刷新数据
                 const alertItem = document.querySelector('.alert-item[data-id="' + id + '"]');
                 if (alertItem) {
@@ -945,18 +945,18 @@ const AlertsModule = {
                     if (!alertItem.classList.contains('expanded')) {
                         alertItem.classList.add('expanded');
                     }
-                    
+
                     // 切换到深度分析 tab
                     const tabs = alertItem.querySelectorAll('.tab');
                     const contents = alertItem.querySelectorAll('.tab-content');
                     tabs.forEach(function(t) { t.classList.remove('active'); });
                     contents.forEach(function(c) { c.classList.remove('active'); });
-                    
+
                     const deepTab = alertItem.querySelector('[data-tab="deep-analysis"]');
                     const deepContent = alertItem.querySelector('[data-tab-content="deep-analysis"]');
                     if (deepTab) deepTab.classList.add('active');
                     if (deepContent) deepContent.classList.add('active');
-                    
+
                     // 加载深度分析历史记录
                     this.loadDeepAnalyses(id);
                 } else {
@@ -1000,7 +1000,7 @@ const AlertsModule = {
             </div>
             ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${runId}</div>` : ''}
         `;
-        
+
         // 添加动画样式
         if (!document.getElementById('triggered-notification-style')) {
             const style = document.createElement('style');
@@ -1017,9 +1017,9 @@ const AlertsModule = {
             `;
             document.head.appendChild(style);
         }
-        
+
         document.body.appendChild(notification);
-        
+
         // 4秒后自动消失
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease-in forwards';
