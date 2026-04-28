@@ -18,19 +18,17 @@ async def _renew_leader(token: str) -> None:
         try:
             redis = get_redis()
             current = await redis.get(_LEADER_KEY)
-            if current is None or (isinstance(current, bytes) and current.decode('utf-8') != token) or (isinstance(current, str) and current != token):
+            if (
+                current is None
+                or (isinstance(current, bytes) and current.decode("utf-8") != token)
+                or (isinstance(current, str) and current != token)
+            ):
                 return
             await redis.expire(_LEADER_KEY, _LEADER_TTL_SECONDS)
         except Exception as e:
             logger.warning(f"[Pollers] leader renew failed: {e}")
             return
         await asyncio.sleep(_RENEW_INTERVAL_SECONDS)
-
-
-
-
-
-
 
 
 def _run_renew(token):
@@ -43,8 +41,10 @@ def _run_renew(token):
     finally:
         loop.close()
 
+
 def stop_background_pollers():
     _stop_event.set()
+
 
 async def start_background_pollers(worker_id: str | None = None) -> bool:
     if not getattr(Config, "ENABLE_POLLERS", True):
@@ -73,16 +73,17 @@ async def start_background_pollers(worker_id: str | None = None) -> bool:
 
     try:
         from services.maintenance_poller import start_maintenance_poller
+
         start_maintenance_poller()
     except Exception as e:
         logger.warning(f"[Pollers] maintenance poller start failed: {e}")
 
     try:
         from services.openclaw_poller import start_poller
+
         start_poller(interval=30)
     except Exception as e:
         logger.warning(f"[Pollers] openclaw poller start failed: {e}")
 
     logger.info("[Pollers] started")
     return True
-

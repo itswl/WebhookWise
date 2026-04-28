@@ -9,6 +9,7 @@ from core.logger import logger
 security = HTTPBearer(auto_error=False)
 _AUTH_DEPENDENCY = Security(security)
 
+
 def _redact_headers(headers: dict) -> dict:
     redacted = {}
     for k, v in headers.items():
@@ -36,7 +37,7 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
         return True
 
     if not auth or auth.credentials != Config.API_KEY:
-        client_ip = request.client.host if request.client else 'unknown'
+        client_ip = request.client.host if request.client else "unknown"
 
         try:
             body_bytes = await request.body()

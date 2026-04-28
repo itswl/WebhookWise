@@ -6,48 +6,29 @@ from services.ai_analyzer import fix_json_format
 
 # 测试用例
 test_cases = [
-    {
-        "name": "尾随逗号",
-        "input": '''{"key1": "value1", "key2": "value2",}''',
-        "should_pass": True
-    },
-    {
-        "name": "数组尾随逗号",
-        "input": '''{"actions": ["action1", "action2",]}''',
-        "should_pass": True
-    },
-    {
-        "name": "单引号",
-        "input": '''{'key': 'value'}''',
-        "should_pass": True
-    },
-    {
-        "name": "缺少逗号",
-        "input": '''{"key1": "value1" "key2": "value2"}''',
-        "should_pass": True
-    },
+    {"name": "尾随逗号", "input": """{"key1": "value1", "key2": "value2",}""", "should_pass": True},
+    {"name": "数组尾随逗号", "input": """{"actions": ["action1", "action2",]}""", "should_pass": True},
+    {"name": "单引号", "input": """{'key': 'value'}""", "should_pass": True},
+    {"name": "缺少逗号", "input": """{"key1": "value1" "key2": "value2"}""", "should_pass": True},
     {
         "name": "带注释",
-        "input": '''{"key": "value" // comment
-}''',
-        "should_pass": True
+        "input": """{"key": "value" // comment
+}""",
+        "should_pass": True,
     },
-    {
-        "name": "多余空白",
-        "input": '''  {"key": "value"}  ''',
-        "should_pass": True
-    },
+    {"name": "多余空白", "input": """  {"key": "value"}  """, "should_pass": True},
     {
         "name": "复杂案例",
-        "input": '''{
+        "input": """{
   "source": "aliyun",
   "event_type": "metric_alert",
   "importance": "medium",
   "summary": "4xx错误率略微超出阈值",
-}''',
-        "should_pass": True
-    }
+}""",
+        "should_pass": True,
+    },
 ]
+
 
 def test_json_fix():
     """测试 JSON 修复功能"""
@@ -64,20 +45,20 @@ def test_json_fix():
 
         try:
             # 修复 JSON
-            fixed = fix_json_format(test['input'])
+            fixed = fix_json_format(test["input"])
             print(f"修复后: {fixed[:100]}")
 
             # 尝试解析
             result = json.loads(fixed)
             print(f"✓ 解析成功: {result}")
 
-            assert test['should_pass']
+            assert test["should_pass"]
             passed += 1
             print("✓ 测试通过")
 
         except json.JSONDecodeError as e:
             print(f"✗ 解析失败: {e!s}")
-            assert not test['should_pass']
+            assert not test["should_pass"]
             passed += 1
             print("✓ 测试通过（预期失败）")
         except Exception as e:

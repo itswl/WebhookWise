@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from core.config import Config
 from db.session import session_scope
 
-logger = logging.getLogger('webhook_service.maintenance')
+logger = logging.getLogger("webhook_service.maintenance")
 
 
 async def archive_old_data(archive_days: int = 30) -> int:
@@ -26,7 +26,9 @@ async def archive_old_data(archive_days: int = 30) -> int:
         total_moved = 0
         async with session_scope() as session:
             # 1. 查找需要归档的 ID (每次最多 5000 条，避免内存过大)
-            result = await session.execute(select(WebhookEvent.id).filter(WebhookEvent.timestamp < threshold_date).limit(5000))
+            result = await session.execute(
+                select(WebhookEvent.id).filter(WebhookEvent.timestamp < threshold_date).limit(5000)
+            )
             target_ids = result.scalars().all()
 
             if not target_ids:
@@ -40,27 +42,30 @@ async def archive_old_data(archive_days: int = 30) -> int:
                 result = await session.execute(select(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
                 events = result.scalars().all()
 
-                archived_records = [{
-                    'id': e.id,
-                    'source': e.source,
-                    'client_ip': e.client_ip,
-                    'timestamp': e.timestamp,
-                    'raw_payload': e.raw_payload,
-                    'headers': e.headers,
-                    'parsed_data': e.parsed_data,
-                    'alert_hash': e.alert_hash,
-                    'ai_analysis': e.ai_analysis,
-                    'importance': e.importance,
-                    'forward_status': e.forward_status,
-                    'is_duplicate': e.is_duplicate,
-                    'duplicate_of': e.duplicate_of,
-                    'duplicate_count': e.duplicate_count,
-                    'beyond_window': e.beyond_window,
-                    'last_notified_at': e.last_notified_at,
-                    'created_at': e.created_at,
-                    'updated_at': e.updated_at,
-                    'archived_at': datetime.now()
-                } for e in events]
+                archived_records = [
+                    {
+                        "id": e.id,
+                        "source": e.source,
+                        "client_ip": e.client_ip,
+                        "timestamp": e.timestamp,
+                        "raw_payload": e.raw_payload,
+                        "headers": e.headers,
+                        "parsed_data": e.parsed_data,
+                        "alert_hash": e.alert_hash,
+                        "ai_analysis": e.ai_analysis,
+                        "importance": e.importance,
+                        "forward_status": e.forward_status,
+                        "is_duplicate": e.is_duplicate,
+                        "duplicate_of": e.duplicate_of,
+                        "duplicate_count": e.duplicate_count,
+                        "beyond_window": e.beyond_window,
+                        "last_notified_at": e.last_notified_at,
+                        "created_at": e.created_at,
+                        "updated_at": e.updated_at,
+                        "archived_at": datetime.now(),
+                    }
+                    for e in events
+                ]
 
                 if archived_records:
                     await session.execute(insert(ArchivedWebhookEvent), archived_records)

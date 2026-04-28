@@ -64,4 +64,3 @@ SUPPRESS_DERIVED_ALERT_FORWARD=true
 ```bash
 PYTHONPATH=. pytest -q tests/test_noise_reduction.py
 ```
-

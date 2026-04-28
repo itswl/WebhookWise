@@ -2,6 +2,7 @@
 """
 对比两个实际告警
 """
+
 import hashlib
 import json
 
@@ -9,92 +10,92 @@ import json
 def generate_alert_hash_debug(data, source):
     """生成告警哈希（带调试信息）"""
     key_fields = {
-        'source': source,
+        "source": source,
     }
 
     if isinstance(data, dict):
         # ====== Prometheus Alertmanager 格式 ======
         # 检测是否为 Prometheus Alertmanager 格式（包含 alerts 数组和 alertingRuleName）
-        if 'alerts' in data and isinstance(data.get('alerts'), list) and len(data['alerts']) > 0:
-            first_alert = data['alerts'][0]
+        if "alerts" in data and isinstance(data.get("alerts"), list) and len(data["alerts"]) > 0:
+            first_alert = data["alerts"][0]
 
             # 告警规则名称（最重要的标识）
-            if 'alertingRuleName' in data:
-                key_fields['alerting_rule_name'] = data.get('alertingRuleName')
+            if "alertingRuleName" in data:
+                key_fields["alerting_rule_name"] = data.get("alertingRuleName")
 
             # 告警标签（alertname 是规则ID）
-            if isinstance(first_alert.get('labels'), dict):
-                labels = first_alert['labels']
-                if 'alertname' in labels:
-                    key_fields['alertname'] = labels['alertname']
-                if 'internal_label_alert_id' in labels:
-                    key_fields['alert_id'] = labels['internal_label_alert_id']
-                if 'internal_label_alert_level' in labels:
-                    key_fields['alert_level'] = labels['internal_label_alert_level']
+            if isinstance(first_alert.get("labels"), dict):
+                labels = first_alert["labels"]
+                if "alertname" in labels:
+                    key_fields["alertname"] = labels["alertname"]
+                if "internal_label_alert_id" in labels:
+                    key_fields["alert_id"] = labels["internal_label_alert_id"]
+                if "internal_label_alert_level" in labels:
+                    key_fields["alert_level"] = labels["internal_label_alert_level"]
 
                 # 提取资源相关标签（用于区分同一规则的不同资源）
-                if 'host' in labels:
-                    key_fields['host'] = labels['host']
-                if 'instance' in labels:
-                    key_fields['instance'] = labels['instance']
-                if 'pod' in labels:
-                    key_fields['pod'] = labels['pod']
-                if 'namespace' in labels:
-                    key_fields['namespace'] = labels['namespace']
-                if 'service' in labels:
-                    key_fields['service'] = labels['service']
-                if 'path' in labels:
-                    key_fields['path'] = labels['path']
-                if 'method' in labels:
-                    key_fields['method'] = labels['method']
+                if "host" in labels:
+                    key_fields["host"] = labels["host"]
+                if "instance" in labels:
+                    key_fields["instance"] = labels["instance"]
+                if "pod" in labels:
+                    key_fields["pod"] = labels["pod"]
+                if "namespace" in labels:
+                    key_fields["namespace"] = labels["namespace"]
+                if "service" in labels:
+                    key_fields["service"] = labels["service"]
+                if "path" in labels:
+                    key_fields["path"] = labels["path"]
+                if "method" in labels:
+                    key_fields["method"] = labels["method"]
 
             # 指纹（Prometheus 生成的唯一标识）
-            if 'fingerprint' in first_alert:
-                key_fields['fingerprint'] = first_alert['fingerprint']
+            if "fingerprint" in first_alert:
+                key_fields["fingerprint"] = first_alert["fingerprint"]
 
         # ====== 华为云监控告警格式 ======
         else:
             # 告警类型和规则名称
-            if 'Type' in data:
-                key_fields['type'] = data.get('Type')
-            if 'RuleName' in data:
-                key_fields['rule_name'] = data.get('RuleName')
-            if 'event' in data:
-                key_fields['event'] = data.get('event')
-            if 'event_type' in data:
-                key_fields['event_type'] = data.get('event_type')
+            if "Type" in data:
+                key_fields["type"] = data.get("Type")
+            if "RuleName" in data:
+                key_fields["rule_name"] = data.get("RuleName")
+            if "event" in data:
+                key_fields["event"] = data.get("event")
+            if "event_type" in data:
+                key_fields["event_type"] = data.get("event_type")
 
             # 资源标识
-            if 'Resources' in data:
-                resources = data.get('Resources', [])
+            if "Resources" in data:
+                resources = data.get("Resources", [])
                 if isinstance(resources, list) and len(resources) > 0:
                     first_resource = resources[0]
                     if isinstance(first_resource, dict):
-                        key_fields['resource_id'] = first_resource.get('InstanceId') or first_resource.get('id')
+                        key_fields["resource_id"] = first_resource.get("InstanceId") or first_resource.get("id")
 
             # 指标名称
-            if 'MetricName' in data:
-                key_fields['metric_name'] = data.get('MetricName')
+            if "MetricName" in data:
+                key_fields["metric_name"] = data.get("MetricName")
 
             # 告警级别
-            if 'Level' in data:
-                key_fields['level'] = data.get('Level')
+            if "Level" in data:
+                key_fields["level"] = data.get("Level")
 
             # 通用字段
-            if 'alert_id' in data:
-                key_fields['alert_id'] = data.get('alert_id')
-            if 'alert_name' in data:
-                key_fields['alert_name'] = data.get('alert_name')
-            if 'resource_id' in data:
-                key_fields['resource_id'] = data.get('resource_id')
-            if 'service' in data:
-                key_fields['service'] = data.get('service')
+            if "alert_id" in data:
+                key_fields["alert_id"] = data.get("alert_id")
+            if "alert_name" in data:
+                key_fields["alert_name"] = data.get("alert_name")
+            if "resource_id" in data:
+                key_fields["resource_id"] = data.get("resource_id")
+            if "service" in data:
+                key_fields["service"] = data.get("service")
 
     # 生成稳定的JSON字符串
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
 
     # 计算SHA256哈希
-    hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     return hash_value, key_fields, key_string
 
@@ -108,17 +109,17 @@ alert1 = {
             "labels": {
                 "alertname": "0a3f5b64-e130-40ec-a51f-1ed589f24310",
                 "internal_label_alert_id": "6964b407ca703285636c694f",
-                "internal_label_alert_level": "P0"
+                "internal_label_alert_level": "P0",
             },
             "annotations": {
                 "__alerting_resource_current_value__": "100",
             },
             "alertURL": "https://console.volcengine.com/prometheus/region:prometheus+cn-shanghai/alert/alerting?detail_id=6964b407ca703285636c694f",
             "startsAt": "2026-01-12T16:42:47+08:00",
-            "fingerprint": "d41d8cd98f00b204"
+            "fingerprint": "d41d8cd98f00b204",
         }
     ],
-    "alertingRuleName": "自定义_final_save_slot_memory_success_rate"
+    "alertingRuleName": "自定义_final_save_slot_memory_success_rate",
 }
 
 # 告警2
@@ -133,17 +134,17 @@ alert2 = {
                 "internal_label_alert_id": "6964358733b1ddf9b9cfd813",
                 "internal_label_alert_level": "P1",
                 "method": "POST",
-                "path": "/"
+                "path": "/",
             },
             "annotations": {
                 "__alerting_resource_current_value__": "2.2749999999999995",
             },
             "alertURL": "https://console.volcengine.com/prometheus/region:prometheus+cn-shanghai/alert/alerting?detail_id=6964358733b1ddf9b9cfd813",
             "startsAt": "2026-01-12T07:47:03+08:00",
-            "fingerprint": "b15822399a03bce2"
+            "fingerprint": "b15822399a03bce2",
         }
     ],
-    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高"
+    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高",
 }
 
 print("=" * 100)

@@ -17,11 +17,7 @@ _redis_lock = threading.Lock()
 def _create_redis_client() -> redis.Redis:
     """内部方法：创建新的 Redis 连接池和客户端实例"""
     global _redis_pool
-    _redis_pool = redis.ConnectionPool.from_url(
-        Config.REDIS_URL,
-        decode_responses=True,
-        max_connections=100
-    )
+    _redis_pool = redis.ConnectionPool.from_url(Config.REDIS_URL, decode_responses=True, max_connections=100)
     logger.info(f"[Redis] 成功初始化连接池: {Config.REDIS_URL}")
     return redis.Redis(connection_pool=_redis_pool)
 
@@ -40,7 +36,12 @@ def get_redis() -> redis.Redis:
 
     with _redis_lock:
         # 如果事件循环发生变化，需要重建客户端和连接池
-        if _redis_client is not None and current_loop is not None and _redis_loop is not None and current_loop is not _redis_loop:
+        if (
+            _redis_client is not None
+            and current_loop is not None
+            and _redis_loop is not None
+            and current_loop is not _redis_loop
+        ):
             logger.warning("[Redis] 检测到事件循环变更，正在重建 Redis 客户端和连接池")
             # 尝试关闭旧连接池（同步安全方式）
             old_pool = _redis_pool

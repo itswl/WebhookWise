@@ -26,15 +26,15 @@ CREATE INDEX IF NOT EXISTS idx_archived_hash_timestamp ON archived_webhook_event
 
 -- 2. 优化活跃表索引
 -- 复合索引：优化去重查询 (alert_hash + timestamp)
-CREATE INDEX IF NOT EXISTS idx_webhook_hash_timestamp 
+CREATE INDEX IF NOT EXISTS idx_webhook_hash_timestamp
 ON webhook_events(alert_hash, timestamp);
 
 -- 复合索引：优化降噪上下文扫描 (importance + timestamp)
-CREATE INDEX IF NOT EXISTS idx_webhook_importance_timestamp 
+CREATE INDEX IF NOT EXISTS idx_webhook_importance_timestamp
 ON webhook_events(importance, timestamp);
 
 -- 复合索引：优化重复查找 (alert_hash + is_duplicate + timestamp)
-CREATE INDEX IF NOT EXISTS idx_webhook_duplicate_lookup 
+CREATE INDEX IF NOT EXISTS idx_webhook_duplicate_lookup
 ON webhook_events(alert_hash, is_duplicate, timestamp);
 
 -- 3. 分析表结构

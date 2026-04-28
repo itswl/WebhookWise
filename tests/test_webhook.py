@@ -2,6 +2,7 @@
 """
 测试 webhook 服务的脚本
 """
+
 import hashlib
 import hmac
 import json
@@ -13,11 +14,7 @@ from core.config import Config
 
 def generate_signature(payload, secret):
     """生成 webhook 签名"""
-    return hmac.new(
-        secret.encode('utf-8'),
-        payload.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
+    return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def test_webhook():
@@ -25,11 +22,11 @@ def test_webhook():
 
     # 测试数据
     test_data = {
-        'event': 'user.created',
-        'user_id': 12345,
-        'username': 'test_user',
-        'email': 'test@example.com',
-        'timestamp': '2024-01-01T12:00:00Z'
+        "event": "user.created",
+        "user_id": 12345,
+        "username": "test_user",
+        "email": "test@example.com",
+        "timestamp": "2024-01-01T12:00:00Z",
     }
 
     # 转换为 JSON 字符串
@@ -39,12 +36,8 @@ def test_webhook():
     signature = generate_signature(payload, Config.WEBHOOK_SECRET)
 
     # 发送请求
-    url = f'http://localhost:{Config.PORT}/webhook'
-    headers = {
-        'Content-Type': 'application/json',
-        'X-Webhook-Signature': signature,
-        'X-Webhook-Source': 'test-client'
-    }
+    url = f"http://localhost:{Config.PORT}/webhook"
+    headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature, "X-Webhook-Source": "test-client"}
 
     print(f"发送测试 webhook 到: {url}")
     print(f"数据: {test_data}")
@@ -61,16 +54,10 @@ def test_webhook():
 def test_webhook_without_signature():
     """测试不带签名的 webhook"""
 
-    test_data = {
-        'event': 'test.event',
-        'message': 'This is a test without signature'
-    }
+    test_data = {"event": "test.event", "message": "This is a test without signature"}
 
-    url = f'http://localhost:{Config.PORT}/webhook/github'
-    headers = {
-        'Content-Type': 'application/json',
-        'X-Webhook-Source': 'github'
-    }
+    url = f"http://localhost:{Config.PORT}/webhook/github"
+    headers = {"Content-Type": "application/json", "X-Webhook-Source": "github"}
 
     print(f"\n发送无签名测试 webhook 到: {url}")
 
@@ -84,7 +71,7 @@ def test_webhook_without_signature():
 
 def test_health():
     """测试健康检查接口"""
-    url = f'http://localhost:{Config.PORT}/health'
+    url = f"http://localhost:{Config.PORT}/health"
 
     print(f"\n测试健康检查: {url}")
 
@@ -96,7 +83,7 @@ def test_health():
         print(f"请求失败: {e!s}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 50)
     print("Webhook 服务测试")
     print("=" * 50)

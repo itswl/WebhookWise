@@ -8,6 +8,7 @@
 
 预期：两个节点的告警应该分别处理，不应该被误判为重复告警
 """
+
 import json
 
 from core.utils import _extract_generic_fields, generate_alert_hash
@@ -23,18 +24,13 @@ alert_node1 = {
         {
             "AlertGroupId": "699f9b1acdfd921a8330f781",
             "Dimensions": [
-                {
-                    "Description": "实例ID",
-                    "Name": "ResourceID",
-                    "NameCN": "实例ID",
-                    "Value": "redis-shzlgorbuxosmn6xz"
-                },
+                {"Description": "实例ID", "Name": "ResourceID", "NameCN": "实例ID", "Value": "redis-shzlgorbuxosmn6xz"},
                 {
                     "Description": "节点",
                     "Name": "Node",
                     "NameCN": "节点",
-                    "Value": "server-redis-shzlgorbuxosmn6xz-000-0-0"
-                }
+                    "Value": "server-redis-shzlgorbuxosmn6xz-000-0-0",
+                },
             ],
             "FirstAlertTime": 1772068329,
             "Id": "redis-shzlgorbuxosmn6xz",
@@ -48,19 +44,19 @@ alert_node1 = {
                     "Threshold": 90,
                     "TriggerCondition": "内存使用率 统计在最近1个周期内平均值 > 90%，且10个周期内10次满足条件（1周期=1分钟）",
                     "Unit": "%",
-                    "Warning": True
+                    "Warning": True,
                 }
             ],
             "Name": "cyberclone-cn-prod-redis",
             "ProjectName": "cyberclone-cn",
-            "Region": "cn-shanghai"
+            "Region": "cn-shanghai",
         }
     ],
     "RuleCondition": "[警告] 内存使用率 统计在最近1个周期内平均值 > 90%，且10个周期内10次满足条件（1周期=1分钟）",
     "RuleId": "1995439462307655680",
     "RuleName": "缓存数据库 Redis 版数据节点告警策略",
     "SubNamespace": "server",
-    "Type": "Metric"
+    "Type": "Metric",
 }
 
 # 节点2的告警（只有 Node 不同）
@@ -74,18 +70,13 @@ alert_node2 = {
         {
             "AlertGroupId": "699f9b1acdfd921a8330f782",
             "Dimensions": [
-                {
-                    "Description": "实例ID",
-                    "Name": "ResourceID",
-                    "NameCN": "实例ID",
-                    "Value": "redis-shzlgorbuxosmn6xz"
-                },
+                {"Description": "实例ID", "Name": "ResourceID", "NameCN": "实例ID", "Value": "redis-shzlgorbuxosmn6xz"},
                 {
                     "Description": "节点",
                     "Name": "Node",
                     "NameCN": "节点",
-                    "Value": "server-redis-shzlgorbuxosmn6xz-001-0-0"  # 不同节点
-                }
+                    "Value": "server-redis-shzlgorbuxosmn6xz-001-0-0",  # 不同节点
+                },
             ],
             "FirstAlertTime": 1772068329,
             "Id": "redis-shzlgorbuxosmn6xz",
@@ -99,19 +90,19 @@ alert_node2 = {
                     "Threshold": 90,
                     "TriggerCondition": "内存使用率 统计在最近1个周期内平均值 > 90%，且10个周期内10次满足条件（1周期=1分钟）",
                     "Unit": "%",
-                    "Warning": True
+                    "Warning": True,
                 }
             ],
             "Name": "cyberclone-cn-prod-redis",
             "ProjectName": "cyberclone-cn",
-            "Region": "cn-shanghai"
+            "Region": "cn-shanghai",
         }
     ],
     "RuleCondition": "[警告] 内存使用率 统计在最近1个周期内平均值 > 90%，且10个周期内10次满足条件（1周期=1分钟）",
     "RuleId": "1995439462307655680",
     "RuleName": "缓存数据库 Redis 版数据节点告警策略",
     "SubNamespace": "server",
-    "Type": "Metric"
+    "Type": "Metric",
 }
 
 
@@ -132,8 +123,8 @@ def test_multi_node_alerts():
 
     # 生成哈希
     print("\n3️⃣  生成告警哈希:")
-    hash1 = generate_alert_hash(alert_node1, 'volcengine')
-    hash2 = generate_alert_hash(alert_node2, 'volcengine')
+    hash1 = generate_alert_hash(alert_node1, "volcengine")
+    hash2 = generate_alert_hash(alert_node2, "volcengine")
 
     print("节点1 (server-redis-shzlgorbuxosmn6xz-000-0-0):")
     print(f"  哈希: {hash1}")
@@ -154,7 +145,7 @@ def test_multi_node_alerts():
     print("\n5️⃣  额外测试: 相同节点的重复告警（应该被去重）")
     print("=" * 80)
 
-    hash1_duplicate = generate_alert_hash(alert_node1, 'volcengine')
+    hash1_duplicate = generate_alert_hash(alert_node1, "volcengine")
     assert hash1 == hash1_duplicate
     print("✅ 正确！相同节点的重复告警生成了相同的哈希")
     print("   这些告警将被正确去重")

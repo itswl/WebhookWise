@@ -3,11 +3,13 @@ api/__init__.py
 =======================
 共享 dataclass 和响应工具，所有 route 模块共用。
 """
+
 from dataclasses import dataclass, field
 
 from fastapi.responses import JSONResponse
 
 # ── 异常类 ──────────────────────────────────────────────────────────────────
+
 
 class WebhookRequestError(Exception):
     """基类：Webhook 请求解析错误。"""
@@ -22,6 +24,7 @@ class InvalidJsonError(WebhookRequestError):
 
 
 # ── Dataclass ────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class AnalysisResolution:
@@ -63,21 +66,22 @@ class NoiseReductionContext:
 
 @dataclass(frozen=True)
 class PersistedEventContext:
-    save_result: object   # SaveWebhookResult
+    save_result: object  # SaveWebhookResult
     noise_context: NoiseReductionContext
 
 
 # ── 响应工具 ─────────────────────────────────────────────────────────────────
 
+
 def _ok(data=None, http_status: int = 200, **extra) -> JSONResponse:
     """Build success JSON response."""
-    payload = {'success': True, **(extra if extra else {'data': data})}
-    if data is not None and 'data' not in extra:
-        payload['data'] = data
+    payload = {"success": True, **(extra if extra else {"data": data})}
+    if data is not None and "data" not in extra:
+        payload["data"] = data
     return JSONResponse(content=payload, status_code=http_status)
 
 
 def _fail(error: str, http_status: int = 400, **extra) -> JSONResponse:
     """Build error JSON response."""
-    payload = {'success': False, 'error': error, **extra}
+    payload = {"success": False, "error": error, **extra}
     return JSONResponse(content=payload, status_code=http_status)

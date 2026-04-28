@@ -11,14 +11,14 @@ from crud.webhook import get_client_ip
 
 
 def extract_token(headers: dict) -> str:
-    token = headers.get('token', '')
-    if not token and headers.get('authorization', '').startswith('Token '):
-        token = headers.get('authorization', '')[6:].strip()
+    token = headers.get("token", "")
+    if not token and headers.get("authorization", "").startswith("Token "):
+        token = headers.get("authorization", "")[6:].strip()
     return token
 
 
 def ensure_webhook_auth(headers: dict, raw_body: bytes) -> None:
-    signature = headers.get('x-webhook-signature', '')
+    signature = headers.get("x-webhook-signature", "")
     token = extract_token(headers)
 
     if signature:
@@ -49,4 +49,3 @@ async def enforce_webhook_rate_limit(request: Request) -> str | None:
     if current > Config.WEBHOOK_RATE_LIMIT_PER_MINUTE:
         return client_ip
     return None
-

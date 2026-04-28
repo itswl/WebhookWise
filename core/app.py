@@ -27,7 +27,9 @@ from services.pollers import start_background_pollers, stop_background_pollers
 async def lifespan(app: FastAPI):
     Config.validate()
     if not Config.API_KEY and not (Config.DEBUG or Config.ALLOW_UNAUTHENTICATED_ADMIN):
-        raise RuntimeError("API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true")
+        raise RuntimeError(
+            "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
+        )
     get_http_client()
     await start_background_pollers()
     yield

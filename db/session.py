@@ -23,6 +23,7 @@ _engine_loop = None  # 记录引擎绑定的事件循环
 
 _sync_engine = None
 
+
 def _create_engine():
     """内部方法：创建新的异步引擎实例"""
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
@@ -33,8 +34,9 @@ def _create_engine():
         pool_size=Config.DB_POOL_SIZE,
         max_overflow=Config.DB_MAX_OVERFLOW,
         pool_recycle=Config.DB_POOL_RECYCLE,
-        pool_timeout=Config.DB_POOL_TIMEOUT
+        pool_timeout=Config.DB_POOL_TIMEOUT,
     )
+
 
 def get_engine():
     """获取异步数据库引擎（单例，自动跟踪事件循环）
@@ -60,6 +62,7 @@ def get_engine():
         _engine_loop = current_loop
     return _engine
 
+
 def get_sync_engine():
     """获取同步数据库引擎，主要用于脚本或 DDL 初始化"""
     global _sync_engine
@@ -68,17 +71,15 @@ def get_sync_engine():
         _sync_engine = create_engine(sync_url, echo=False)
     return _sync_engine
 
+
 def get_session() -> AsyncSession:
     """获取异步数据库会话"""
     global _session_factory
     engine = get_engine()  # 先调用 get_engine 触发事件循环检查
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            bind=engine,
-            class_=AsyncSession,
-            expire_on_commit=False
-        )
+        _session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     return _session_factory()
+
 
 @asynccontextmanager
 async def session_scope():
@@ -93,11 +94,13 @@ async def session_scope():
     finally:
         await session.close()
 
+
 def init_db():
     """使用同步引擎初始化数据库表"""
     engine = get_sync_engine()
     Base.metadata.create_all(engine)
     _logger.info("数据库表初始化完成")
+
 
 async def dispose_engine():
     """关闭并清理异步引擎连接池（用于应用关闭时调用）"""
@@ -108,6 +111,7 @@ async def dispose_engine():
         _engine = None
         _session_factory = None
         _engine_loop = None
+
 
 def test_db_connection() -> bool:
     """

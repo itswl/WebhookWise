@@ -1,13 +1,16 @@
-with open('crud/webhook.py') as f:
+with open("crud/webhook.py") as f:
     content = f.read()
 
 # Update types and imports
-content = content.replace('from sqlalchemy.orm import Session', 'from sqlalchemy.ext.asyncio import AsyncSession')
-content = content.replace('Session', 'AsyncSession')
-content = content.replace('from models import WebhookEvent, get_session', 'from models import WebhookEvent, get_session\nfrom sqlalchemy import select, func, distinct')
+content = content.replace("from sqlalchemy.orm import Session", "from sqlalchemy.ext.asyncio import AsyncSession")
+content = content.replace("Session", "AsyncSession")
+content = content.replace(
+    "from models import WebhookEvent, get_session",
+    "from models import WebhookEvent, get_session\nfrom sqlalchemy import select, func, distinct",
+)
 
 # Update helper functions
-content = content.replace('session.query(WebhookEvent)', 'await session.execute(select(WebhookEvent))')
+content = content.replace("session.query(WebhookEvent)", "await session.execute(select(WebhookEvent))")
 
 # We need a robust regex or AST approach.
 # Since python string replacement is tricky for complex queries like `.filter().order_by().first()`,

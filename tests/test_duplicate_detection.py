@@ -19,20 +19,10 @@ alert_data = {
                     "Description": "实例ID",
                     "Name": "ResourceID",
                     "NameCN": "实例ID",
-                    "Value": "mongo-replica-c3518fe9c50f"
+                    "Value": "mongo-replica-c3518fe9c50f",
                 },
-                {
-                    "Description": "节点",
-                    "Name": "Node",
-                    "NameCN": "节点",
-                    "Value": "mongo-replica-c3518fe9c50f-0"
-                },
-                {
-                    "Description": "实例类型",
-                    "Name": "InstanceType",
-                    "NameCN": "实例类型",
-                    "Value": "ReplicaSet"
-                }
+                {"Description": "节点", "Name": "Node", "NameCN": "节点", "Value": "mongo-replica-c3518fe9c50f-0"},
+                {"Description": "实例类型", "Name": "InstanceType", "NameCN": "实例类型", "Value": "ReplicaSet"},
             ],
             "FirstAlertTime": 1772090773,
             "Id": "mongo-replica-c3518fe9c50f",
@@ -46,7 +36,7 @@ alert_data = {
                     "Threshold": 80,
                     "TriggerCondition": "CPU使用率 统计在最近1个周期内最大值 > 80%，且3个周期内3次满足条件（1周期=1分钟）",
                     "Unit": "%",
-                    "Warning": True
+                    "Warning": True,
                 },
                 {
                     "CurrentValue": 7.9454,
@@ -55,7 +45,7 @@ alert_data = {
                     "Name": "TotalDiskUtil",
                     "Threshold": 85,
                     "TriggerCondition": "磁盘总使用率 统计在最近1个周期内最大值 > 85%，且3个周期内3次满足条件（1周期=1分钟）",
-                    "Unit": "%"
+                    "Unit": "%",
                 },
                 {
                     "CurrentValue": 48.6463,
@@ -64,26 +54,35 @@ alert_data = {
                     "Name": "MemUtil",
                     "Threshold": 90,
                     "TriggerCondition": "内存使用率 统计在最近1个周期内最大值 > 90%，且3个周期内3次满足条件（1周期=1分钟）",
-                    "Unit": "%"
-                }
+                    "Unit": "%",
+                },
             ],
             "Name": "cyberclone-cn-prod-mongo",
             "ProjectName": "cyberclone-cn",
-            "Region": "cn-shanghai"
+            "Region": "cn-shanghai",
         }
     ],
     "RuleCondition": "[警告] CPU使用率 统计在最近1个周期内最大值 > 80%，且3个周期内3次满足条件（1周期=1分钟）\n磁盘总使用率 统计在最近1个周期内最大值 > 85%，且3个周期内3次满足条件（1周期=1分钟）\n内存使用率 统计在最近1个周期内最大值 > 90%，且3个周期内3次满足条件（1周期=1分钟）",
     "RuleId": "1995439701473234944",
     "RuleName": "文档数据库 MongoDB 版-副本集副本集告警策略",
     "SubNamespace": "replica",
-    "Type": "Metric"
+    "Type": "Metric",
 }
 
 # 模拟系统的字段提取逻辑
 GENERIC_FIELDS = [
-    'Type', 'RuleName', 'event', 'event_type',
-    'MetricName', 'Level', 'alert_id', 'alert_name', 'resource_id', 'service'
+    "Type",
+    "RuleName",
+    "event",
+    "event_type",
+    "MetricName",
+    "Level",
+    "alert_id",
+    "alert_name",
+    "resource_id",
+    "service",
 ]
+
 
 def extract_generic_fields(data):
     """提取关键字段（模拟系统逻辑）"""
@@ -95,48 +94,54 @@ def extract_generic_fields(data):
             key_fields[field.lower()] = data[field]
 
     # 提取 Resources
-    resources = data.get('Resources', [])
+    resources = data.get("Resources", [])
     if isinstance(resources, list) and resources:
         first_resource = resources[0]
         if isinstance(first_resource, dict):
             # 提取资源 ID
-            resource_id = first_resource.get('InstanceId') or first_resource.get('Id') or first_resource.get('id')
+            resource_id = first_resource.get("InstanceId") or first_resource.get("Id") or first_resource.get("id")
             if resource_id:
-                key_fields['resource_id'] = resource_id
+                key_fields["resource_id"] = resource_id
 
             # 提取 Dimensions
-            dimensions = first_resource.get('Dimensions', [])
+            dimensions = first_resource.get("Dimensions", [])
             if isinstance(dimensions, list):
                 for dim in dimensions:
                     if isinstance(dim, dict):
-                        dim_name = dim.get('Name', '')
-                        dim_value = dim.get('Value')
+                        dim_name = dim.get("Name", "")
+                        dim_value = dim.get("Value")
 
-                        if dim_name and dim_value and dim_name in ['Node', 'ResourceID', 'Instance', 'InstanceId', 'Host', 'Pod', 'Container']:
-                            key_fields[f'dim_{dim_name.lower()}'] = dim_value
+                        if (
+                            dim_name
+                            and dim_value
+                            and dim_name in ["Node", "ResourceID", "Instance", "InstanceId", "Host", "Pod", "Container"]
+                        ):
+                            key_fields[f"dim_{dim_name.lower()}"] = dim_value
 
     return key_fields
 
-def generate_alert_hash(data, source='huaweicloud'):
+
+def generate_alert_hash(data, source="huaweicloud"):
     """生成告警 hash"""
-    key_fields = {'source': source}
+    key_fields = {"source": source}
     key_fields.update(extract_generic_fields(data))
 
     # 生成稳定的 JSON 字符串
     key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
 
     # 计算 SHA256 hash
-    hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     return hash_value, key_fields, key_string
+
 
 # 测试
 print("=" * 80)
 print("重复告警检测分析")
 print("=" * 80)
 
-hash1, fields1, str1 = generate_alert_hash(alert_data, 'huaweicloud')
-hash2, fields2, str2 = generate_alert_hash(alert_data, 'huaweicloud')
+hash1, fields1, str1 = generate_alert_hash(alert_data, "huaweicloud")
+hash2, fields2, str2 = generate_alert_hash(alert_data, "huaweicloud")
 
 print("\n【告警数据1】")
 print(f"提取的关键字段: {json.dumps(fields1, indent=2, ensure_ascii=False)}")
@@ -162,25 +167,25 @@ print("=" * 80)
 reasons = []
 
 # 1. 检查是否有时间戳相关字段
-if 'HappenedAt' in alert_data:
+if "HappenedAt" in alert_data:
     reasons.append("❌ HappenedAt 字段未包含在 hash 中（正确，不应包含时间戳）")
 
-if 'FirstAlertTime' in alert_data.get('Resources', [{}])[0]:
+if "FirstAlertTime" in alert_data.get("Resources", [{}])[0]:
     reasons.append("❌ FirstAlertTime/LastAlertTime 未包含在 hash 中（正确）")
 
 # 2. 检查关键字段是否都提取了
-if 'dim_node' in fields1:
-    reasons.append("✅ Node 字段已提取: " + fields1['dim_node'])
+if "dim_node" in fields1:
+    reasons.append("✅ Node 字段已提取: " + fields1["dim_node"])
 else:
     reasons.append("⚠️  Node 字段未提取（可能导致不同节点无法区分）")
 
-if 'dim_resourceid' in fields1:
-    reasons.append("✅ ResourceID 字段已提取: " + fields1['dim_resourceid'])
+if "dim_resourceid" in fields1:
+    reasons.append("✅ ResourceID 字段已提取: " + fields1["dim_resourceid"])
 else:
     reasons.append("⚠️  ResourceID 字段未提取")
 
-if 'rulename' in fields1:
-    reasons.append("✅ RuleName 字段已提取: " + fields1['rulename'])
+if "rulename" in fields1:
+    reasons.append("✅ RuleName 字段已提取: " + fields1["rulename"])
 else:
     reasons.append("⚠️  RuleName 字段未提取")
 

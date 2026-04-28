@@ -23,12 +23,14 @@ def check_and_add_unique_constraint():
     try:
         with engine.connect() as conn:
             # 检查索引是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_indexes
                     WHERE indexname = 'idx_unique_alert_hash_original'
                 )
-            """))
+            """)
+            )
             index_exists = result.scalar()
 
             if index_exists:
@@ -39,7 +41,8 @@ def check_and_add_unique_constraint():
             print("⚙️  首次启动：正在添加数据库唯一约束...")
 
             # 检查是否有重复的原始告警需要修复
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT COUNT(*) FROM (
                     SELECT alert_hash
                     FROM webhook_events
@@ -47,20 +50,23 @@ def check_and_add_unique_constraint():
                     GROUP BY alert_hash
                     HAVING COUNT(*) > 1
                 ) AS duplicates
-            """))
+            """)
+            )
             duplicate_count = result.scalar()
 
             if duplicate_count > 0:
                 print(f"   检测到 {duplicate_count} 组重复告警，正在修复...")
 
                 # 获取重复数据并修复
-                result = conn.execute(text("""
+                result = conn.execute(
+                    text("""
                     SELECT alert_hash, array_agg(id ORDER BY timestamp) as ids
                     FROM webhook_events
                     WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
                     GROUP BY alert_hash
                     HAVING COUNT(*) > 1
-                """))
+                """)
+                )
 
                 duplicates = result.fetchall()
                 for row in duplicates:
@@ -72,7 +78,7 @@ def check_and_add_unique_constraint():
                         ids = ids_data
                     elif isinstance(ids_data, str):
                         # 字符串格式 "{1,2,3}"
-                        ids = [int(x) for x in ids_data.strip('{}').split(',')]
+                        ids = [int(x) for x in ids_data.strip("{}").split(",")]
                     else:
                         print(f"   ⚠️  未知的数组格式: {type(ids_data)}")
                         continue
@@ -82,28 +88,36 @@ def check_and_add_unique_constraint():
                     duplicate_ids = ids[1:]
 
                     for dup_id in duplicate_ids:
-                        conn.execute(text("""
+                        conn.execute(
+                            text("""
                             UPDATE webhook_events
                             SET is_duplicate = 1, duplicate_of = :original_id
                             WHERE id = :dup_id
-                        """), {'original_id': original_id, 'dup_id': dup_id})
+                        """),
+                            {"original_id": original_id, "dup_id": dup_id},
+                        )
 
                     # 更新 duplicate_count
-                    conn.execute(text("""
+                    conn.execute(
+                        text("""
                         UPDATE webhook_events
                         SET duplicate_count = :count
                         WHERE id = :original_id
-                    """), {'count': len(ids), 'original_id': original_id})
+                    """),
+                        {"count": len(ids), "original_id": original_id},
+                    )
 
                 conn.commit()
                 print(f"   ✅ 已修复 {duplicate_count} 组重复数据")
 
             # 创建唯一索引
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE UNIQUE INDEX idx_unique_alert_hash_original
                 ON webhook_events(alert_hash)
                 WHERE is_duplicate = 0
-            """))
+            """)
+            )
             conn.commit()
 
             print("   ✅ 唯一约束添加成功")
@@ -127,14 +141,16 @@ def fix_duplicate_count():
     try:
         with engine.connect() as conn:
             # 检查是否有需要修复的记录
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT COUNT(*)
                 FROM webhook_events AS duplicate_events
                 JOIN webhook_events AS original_events
                     ON duplicate_events.duplicate_of = original_events.id
                 WHERE duplicate_events.is_duplicate = 1
                   AND duplicate_events.duplicate_count != original_events.duplicate_count
-            """))
+            """)
+            )
             need_fix_count = result.scalar()
 
             if need_fix_count == 0:
@@ -145,14 +161,16 @@ def fix_duplicate_count():
             print(f"⚙️  检测到 {need_fix_count} 条重复告警的 duplicate_count 需要修复...")
 
             # 执行批量更新
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 UPDATE webhook_events AS duplicate_events
                 SET duplicate_count = original_events.duplicate_count
                 FROM webhook_events AS original_events
                 WHERE duplicate_events.is_duplicate = 1
                   AND duplicate_events.duplicate_of = original_events.id
                   AND duplicate_events.duplicate_count != original_events.duplicate_count
-            """))
+            """)
+            )
             conn.commit()
 
             print(f"   ✅ 成功修复 {need_fix_count} 条记录")
@@ -176,12 +194,14 @@ def add_beyond_window_field():
     try:
         with engine.connect() as conn:
             # 检查字段是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'webhook_events' AND column_name = 'beyond_window'
                 )
-            """))
+            """)
+            )
             field_exists = result.scalar()
 
             if field_exists:
@@ -192,10 +212,12 @@ def add_beyond_window_field():
             print("⚙️  首次启动：正在添加 beyond_window 字段...")
 
             # 1. 添加字段
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 ALTER TABLE webhook_events
                 ADD COLUMN beyond_window INTEGER DEFAULT 0
-            """))
+            """)
+            )
             conn.commit()
             print("   ✅ beyond_window 字段添加成功")
 
@@ -203,12 +225,14 @@ def add_beyond_window_field():
             print("   🔄 正在初始化历史数据的 beyond_window 值...")
 
             # 查询所有告警并按 hash 分组
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT id, alert_hash, timestamp, is_duplicate
                 FROM webhook_events
                 WHERE alert_hash IS NOT NULL
                 ORDER BY alert_hash, timestamp ASC
-            """))
+            """)
+            )
 
             all_events = result.fetchall()
 
@@ -218,11 +242,7 @@ def add_beyond_window_field():
 
             hash_groups = defaultdict(list)
             for event_id, alert_hash, ts, is_dup in all_events:
-                hash_groups[alert_hash].append({
-                    'id': event_id,
-                    'timestamp': ts,
-                    'is_duplicate': is_dup
-                })
+                hash_groups[alert_hash].append({"id": event_id, "timestamp": ts, "is_duplicate": is_dup})
 
             # 链式判断：基于前一条记录的时间
             time_window = timedelta(hours=24)
@@ -236,15 +256,18 @@ def add_beyond_window_field():
                     else:
                         # 后续记录：对比前一条的时间差
                         prev_event = events[i - 1]
-                        time_diff = event['timestamp'] - prev_event['timestamp']
+                        time_diff = event["timestamp"] - prev_event["timestamp"]
                         beyond_value = 1 if time_diff > time_window else 0
 
                     # 更新数据库
-                    conn.execute(text("""
+                    conn.execute(
+                        text("""
                         UPDATE webhook_events
                         SET beyond_window = :beyond_value
                         WHERE id = :event_id
-                    """), {'beyond_value': beyond_value, 'event_id': event['id']})
+                    """),
+                        {"beyond_value": beyond_value, "event_id": event["id"]},
+                    )
                     update_count += 1
 
             conn.commit()
@@ -254,6 +277,7 @@ def add_beyond_window_field():
     except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
+
         traceback.print_exc()
         # 不阻止服务启动
         return False
@@ -271,12 +295,14 @@ def add_last_notified_at_field():
     try:
         with engine.connect() as conn:
             # 检查字段是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'webhook_events' AND column_name = 'last_notified_at'
                 )
-            """))
+            """)
+            )
             field_exists = result.scalar()
 
             if field_exists:
@@ -287,25 +313,31 @@ def add_last_notified_at_field():
             print("⚙️  首次启动：正在添加 last_notified_at 字段...")
 
             # 添加字段
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 ALTER TABLE webhook_events
                 ADD COLUMN last_notified_at TIMESTAMP
-            """))
+            """)
+            )
             conn.commit()
             print("   ✅ last_notified_at 字段添加成功")
 
             # 初始化历史数据：新告警的 last_notified_at 设置为创建时间
             print("   🔄 正在初始化历史数据的 last_notified_at 值...")
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 UPDATE webhook_events
                 SET last_notified_at = created_at
                 WHERE is_duplicate = 0 AND last_notified_at IS NULL
-            """))
+            """)
+            )
             conn.commit()
 
-            updated_count = conn.execute(text("""
+            updated_count = conn.execute(
+                text("""
                 SELECT COUNT(*) FROM webhook_events WHERE last_notified_at IS NOT NULL
-            """)).scalar()
+            """)
+            ).scalar()
 
             print(f"   ✅ 已初始化 {updated_count} 条记录的 last_notified_at 值")
             return True
@@ -313,6 +345,7 @@ def add_last_notified_at_field():
     except Exception as e:
         print(f"   ⚠️  迁移警告: {e}")
         import traceback
+
         traceback.print_exc()
         # 不阻止服务启动
         return False
@@ -330,12 +363,14 @@ def add_forward_rules_table():
     try:
         with engine.connect() as conn:
             # 检查表是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables
                     WHERE table_name = 'forward_rules'
                 )
-            """))
+            """)
+            )
             table_exists = result.scalar()
 
             if table_exists:
@@ -345,7 +380,8 @@ def add_forward_rules_table():
             # 表不存在，需要创建
             print("⚙️  首次启动：正在创建 forward_rules 表...")
 
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE TABLE forward_rules (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(100) NOT NULL,
@@ -361,7 +397,8 @@ def add_forward_rules_table():
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
-            """))
+            """)
+            )
             conn.commit()
             print("   ✅ forward_rules 表创建成功")
             return True
@@ -384,12 +421,14 @@ def add_deep_analyses_table():
     try:
         with engine.connect() as conn:
             # 检查表是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables
                     WHERE table_name = 'deep_analyses'
                 )
-            """))
+            """)
+            )
             table_exists = result.scalar()
 
             if table_exists:
@@ -399,7 +438,8 @@ def add_deep_analyses_table():
             # 表不存在，需要创建
             print("⚙️  首次启动：正在创建 deep_analyses 表...")
 
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 CREATE TABLE deep_analyses (
                     id SERIAL PRIMARY KEY,
                     webhook_event_id INTEGER NOT NULL,
@@ -409,10 +449,13 @@ def add_deep_analyses_table():
                     duration_seconds FLOAT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
-            """))
-            conn.execute(text("""
+            """)
+            )
+            conn.execute(
+                text("""
                 CREATE INDEX idx_deep_analyses_webhook_event_id ON deep_analyses(webhook_event_id)
-            """))
+            """)
+            )
             conn.commit()
             print("   ✅ deep_analyses 表创建成功")
             return True
@@ -435,12 +478,14 @@ def add_polling_fields():
     try:
         with engine.connect() as conn:
             # 检查 openclaw_run_id 字段是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'deep_analyses' AND column_name = 'openclaw_run_id'
                 )
-            """))
+            """)
+            )
             field_exists = result.scalar()
 
             if field_exists:
@@ -450,8 +495,12 @@ def add_polling_fields():
 
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_run_id VARCHAR(64)"))
             conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS openclaw_session_key VARCHAR(200)"))
-            conn.execute(text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)"))
+            conn.execute(
+                text("ALTER TABLE deep_analyses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'completed'")
+            )
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_openclaw_run_id ON deep_analyses(openclaw_run_id)")
+            )
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status ON deep_analyses(status)"))
             conn.commit()
 
@@ -463,7 +512,6 @@ def add_polling_fields():
         return False
 
 
-
 def add_archive_and_indexes():
     """
     执行归档表创建和复合索引优化
@@ -471,19 +519,21 @@ def add_archive_and_indexes():
     engine = get_sync_engine()
     from pathlib import Path
 
-    sql_path = Path(__file__).parent / 'sql' / 'archive_and_index.sql'
+    sql_path = Path(__file__).parent / "sql" / "archive_and_index.sql"
     if not sql_path.exists():
         return True
 
     try:
         with engine.connect() as conn:
             # 检查其中一个新索引是否已存在
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_indexes
                     WHERE indexname = 'idx_webhook_hash_timestamp'
                 )
-            """))
+            """)
+            )
             if result.scalar():
                 return True
 
@@ -504,7 +554,7 @@ def add_archive_and_indexes():
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
     success3 = add_beyond_window_field()
@@ -513,4 +563,8 @@ if __name__ == '__main__':
     success6 = add_deep_analyses_table()
     success7 = add_polling_fields()
     success8 = add_archive_and_indexes()
-    sys.exit(0 if (success1 and success2 and success3 and success4 and success5 and success6 and success7 and success8) else 1)
+    sys.exit(
+        0
+        if (success1 and success2 and success3 and success4 and success5 and success6 and success7 and success8)
+        else 1
+    )

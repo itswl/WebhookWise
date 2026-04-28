@@ -2,9 +2,10 @@
 """
 测试同一规则的不同告警实例
 """
+
 import sys
 
-sys.path.insert(0, '/Users/imwl/webhooks')
+sys.path.insert(0, "/Users/imwl/webhooks")
 
 from core.utils import generate_alert_hash
 
@@ -20,17 +21,17 @@ alert1 = {
                 "internal_label_alert_id": "69655cd8446159ccbb14307a",
                 "internal_label_alert_level": "P1",
                 "method": "POST",
-                "path": "/"
+                "path": "/",
             },
             "annotations": {
                 "__alerting_resource_current_value__": "3.392857142857144",
             },
             "alertURL": "https://console.volcengine.com/prometheus/region:prometheus+cn-shanghai/alert/alerting?detail_id=69655cd8446159ccbb14307a",
             "startsAt": "2026-01-13T04:47:04+08:00",
-            "fingerprint": "b15822399a03bce2"
+            "fingerprint": "b15822399a03bce2",
         }
     ],
-    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高"
+    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高",
 }
 
 # 告警2 - 07:42:04 触发，当前值 5.21
@@ -45,17 +46,17 @@ alert2 = {
                 "internal_label_alert_id": "696585dc33b1ddf9b92dd93e",
                 "internal_label_alert_level": "P1",
                 "method": "POST",
-                "path": "/"
+                "path": "/",
             },
             "annotations": {
                 "__alerting_resource_current_value__": "5.214285714285714",
             },
             "alertURL": "https://console.volcengine.com/prometheus/region:prometheus+cn-shanghai/alert/alerting?detail_id=696585dc33b1ddf9b92dd93e",
             "startsAt": "2026-01-13T07:42:04+08:00",
-            "fingerprint": "b15822399a03bce2"
+            "fingerprint": "b15822399a03bce2",
         }
     ],
-    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高"
+    "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高",
 }
 
 hash1 = generate_alert_hash(alert1, "volcengine-prometheus")
