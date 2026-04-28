@@ -20,38 +20,42 @@
 """
 
 import argparse
+import asyncio
 import os
 import sys
 
 # 添加项目根目录到 path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import select
+
 from core.config import Config
 from core.logger import logger
-from db.session import session_scope
+from db.session import init_engine, session_scope
 from models import DeepAnalysis
 from services.openclaw_poller import _poll_via_http
 
 
-def find_failed_records(webhook_id=None, limit=None):
+async def find_failed_records(webhook_id=None, limit=None):
     """查询待重试的失败记录"""
-    with session_scope() as session:
-        query = session.query(DeepAnalysis).filter(DeepAnalysis.status == "failed")
+    async with session_scope() as session:
+        stmt = select(DeepAnalysis).where(DeepAnalysis.status == "failed")
         if webhook_id is not None:
-            query = query.filter(DeepAnalysis.webhook_event_id == webhook_id)
+            stmt = stmt.where(DeepAnalysis.webhook_event_id == webhook_id)
 
-        query = query.order_by(DeepAnalysis.id.desc())
+        stmt = stmt.order_by(DeepAnalysis.id.desc())
         if limit:
-            query = query.limit(limit)
+            stmt = stmt.limit(limit)
 
-        records = query.all()
+        result = await session.execute(stmt)
+        records = result.scalars().all()
         return [(r.id, r.webhook_event_id, r.openclaw_session_key, r.status) for r in records]
 
 
-def retry_record(record_id: int) -> tuple[bool, str]:
+async def retry_record(record_id: int) -> tuple[bool, str]:
     """重试单条记录"""
-    with session_scope() as session:
-        record = session.query(DeepAnalysis).get(record_id)
+    async with session_scope() as session:
+        record = await session.get(DeepAnalysis, record_id)
         if not record:
             return False, "记录不存在"
 
@@ -64,7 +68,7 @@ def retry_record(record_id: int) -> tuple[bool, str]:
         if not Config.OPENCLAW_HTTP_API_URL:
             return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
 
-        result = _poll_via_http(record.openclaw_session_key, retry_count=3)
+        result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
 
         if result.get("status") == "error":
             return False, f"API 错误: {result.get('error')}"
@@ -99,7 +103,7 @@ def retry_record(record_id: int) -> tuple[bool, str]:
             return True, "成功（无 JSON）"
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="批量重试失败的深度分析记录")
     parser.add_argument("--list", action="store_true", help="只列出记录，不执行重试")
     parser.add_argument("--webhook-id", type=int, metavar="ID", help="限定 webhook_event_id")
@@ -107,7 +111,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="模拟执行（仅 --list 时有效）")
     args = parser.parse_args()
 
-    records = find_failed_records(webhook_id=args.webhook_id, limit=args.limit)
+    await init_engine()
+
+    records = await find_failed_records(webhook_id=args.webhook_id, limit=args.limit)
 
     if not records:
         print("没有找到待重试的失败记录")
@@ -131,7 +137,7 @@ def main():
     success, failed = 0, []
 
     for record_id, webhook_event_id, _session_key, _ in records:
-        ok, msg = retry_record(record_id)
+        ok, msg = await retry_record(record_id)
         status = "✓" if ok else "✗"
         print(f"  [{status}] #{record_id} (webhook #{webhook_event_id}): {msg}")
         if ok:
@@ -148,4 +154,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
