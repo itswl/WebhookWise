@@ -5,6 +5,8 @@ import logging
 import threading
 from datetime import datetime
 
+import httpx
+
 import core.redis_client
 from core.config import Config
 from services.pollers import _stop_event
@@ -58,6 +60,7 @@ async def _notify_feishu_deep_analysis(record, source: str = ""):
         if not success:
             try:
                 from crud.webhook import record_failed_forward
+
                 await record_failed_forward(
                     webhook_event_id=record.webhook_event_id,
                     forward_rule_id=None,
@@ -101,6 +104,7 @@ async def _notify_feishu_deep_analysis_failed(record, reason: str = ""):
         else:
             try:
                 from crud.webhook import record_failed_forward
+
                 await record_failed_forward(
                     webhook_event_id=record.webhook_event_id,
                     forward_rule_id=None,
@@ -137,17 +141,18 @@ async def poll_pending_analyses():
         await redis_client.delete(lock_key)
 
 
-def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
+async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     """
     通过 HTTP API /final 接口获取分析结果（带重试）
+
+    注意：该函数运行在独立线程的事件循环中，不能使用全局 httpx.AsyncClient 单例，
+    因此每次调用创建临时客户端。轮询间隔 30s，开销可忽略。
 
     Returns:
         - 成功: {"status": "completed", "text": "...", "msg_count": N}
         - 暂无结果: {"status": "pending"}
         - 错误: {"status": "error", "error": "..."}
     """
-    import requests as req
-
     base_url = Config.OPENCLAW_HTTP_API_URL.rstrip("/")
     last_error = None
 
@@ -155,55 +160,56 @@ def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
     headers = {"Authorization": f"Bearer {hooks_token}"}
 
-    for attempt in range(retry_count):
-        try:
-            # 使用 /final 接口直接获取最终结果
-            url = f"{base_url}/sessions/{session_key}/final"
-            logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+        for attempt in range(retry_count):
+            try:
+                # 使用 /final 接口直接获取最终结果
+                url = f"{base_url}/sessions/{session_key}/final"
+                logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
 
-            response = req.get(url, headers=headers, timeout=30)
+                response = await client.get(url, headers=headers)
 
-            if response.status_code == 404:
-                last_error = "Session not found"
-                logger.warning(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
+                if response.status_code == 404:
+                    last_error = "Session not found"
+                    logger.warning(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
+                    continue
+
+                if response.status_code == 204 or response.status_code == 202:
+                    # 204 No Content / 202 Accepted - 分析仍在进行中
+                    last_error = "分析进行中"
+                    logger.debug(f"分析进行中 (尝试 {attempt + 1}/{retry_count})")
+                    continue
+
+                if response.status_code != 200:
+                    last_error = f"HTTP {response.status_code}"
+                    continue
+
+                data = response.json()
+
+                # 根据 /final 接口返回的字段判断状态
+                is_final = data.get("isFinal", False)
+                is_processing = data.get("isProcessing", False)
+                text = data.get("text", "")
+                msg_count = data.get("messageCount", 0)
+
+                # 判断是否完成
+                if is_processing and not text:
+                    last_error = "分析进行中"
+                    continue
+
+                if text:
+                    return {"status": "completed", "text": text, "msg_count": msg_count}
+
+                if not is_final:
+                    last_error = "分析进行中"
+                    continue
+
+                last_error = "No text content"
                 continue
 
-            if response.status_code == 204 or response.status_code == 202:
-                # 204 No Content / 202 Accepted - 分析仍在进行中
-                last_error = "分析进行中"
-                logger.debug(f"分析进行中 (尝试 {attempt + 1}/{retry_count})")
-                continue
-
-            if response.status_code != 200:
-                last_error = f"HTTP {response.status_code}"
-                continue
-
-            data = response.json()
-
-            # 根据 /final 接口返回的字段判断状态
-            is_final = data.get("isFinal", False)
-            is_processing = data.get("isProcessing", False)
-            text = data.get("text", "")
-            msg_count = data.get("messageCount", 0)
-
-            # 判断是否完成
-            if is_processing and not text:
-                last_error = "分析进行中"
-                continue
-
-            if text:
-                return {"status": "completed", "text": text, "msg_count": msg_count}
-
-            if not is_final:
-                last_error = "分析进行中"
-                continue
-
-            last_error = "No text content"
-            continue
-
-        except Exception as e:
-            last_error = str(e)
-            logger.warning(f"HTTP 轮询异常: {e}")
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"HTTP 轮询异常: {e}")
 
     if last_error == "分析进行中":
         return {"status": "pending"}
@@ -263,7 +269,7 @@ async def _poll_pending_analyses_inner():
                         continue
 
                     if Config.OPENCLAW_HTTP_API_URL:
-                        result = _poll_via_http(record.openclaw_session_key)
+                        result = await _poll_via_http(record.openclaw_session_key)
                     else:
                         result = poll_session_result(
                             gateway_url=Config.OPENCLAW_GATEWAY_URL,

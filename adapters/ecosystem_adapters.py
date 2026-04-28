@@ -5,9 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import requests
-
 from core.config import Config
+from core.http_client import get_http_client
 from core.utils import feishu_cb
 
 logger = logging.getLogger("webhook_service.ecosystem_adapters")
@@ -258,7 +257,8 @@ async def send_feishu_deep_analysis(
         },
     }
 
-    resp = feishu_cb.call(requests.post, webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
+    client = get_http_client()
+    resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
 
     if resp is None:
         logger.warning(f"飞书深度分析通知被熔断拦截: webhook_event_id={webhook_event_id}")

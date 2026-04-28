@@ -102,7 +102,7 @@ class CircuitBreaker:
         except self.expected_exceptions as e:
             self._on_failure()
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
-            raise
+            return None
 
     def _on_success(self):
         with self._lock:
