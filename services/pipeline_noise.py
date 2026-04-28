@@ -151,6 +151,7 @@ async def persist_webhook_with_noise_context(
     request_context: WebhookRequestContext,
     analysis_resolution: AnalysisResolution,
     alert_hash: str,
+    event_id: int | None = None,
 ) -> PersistedEventContext:
     """对外入口：计算降噪并持久化 webhook 数据。"""
     noise_context = await _compute_noise_reduction(
@@ -173,6 +174,7 @@ async def persist_webhook_with_noise_context(
         original_event=analysis_resolution.original_event,
         beyond_window=analysis_resolution.beyond_window,
         reanalyzed=analysis_resolution.reanalyzed,
+        event_id=event_id,
     )
 
     return PersistedEventContext(save_result=save_result, noise_context=noise_context)
