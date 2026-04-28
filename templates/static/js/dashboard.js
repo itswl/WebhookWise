@@ -138,7 +138,8 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
-        'forward-rules': 'forwardRulesTab'
+        'forward-rules': 'forwardRulesTab',
+        'failed-forwards': 'failedForwardsTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -175,6 +176,14 @@ function switchMainTab(tabId) {
             }
             if (typeof loadForwardRules === 'function') {
                 loadForwardRules();
+            }
+            break;
+        case 'failed-forwards':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof FailedForwardsModule !== 'undefined') {
+                FailedForwardsModule.load();
             }
             break;
     }

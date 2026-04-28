@@ -85,5 +85,14 @@ async def start_background_pollers(worker_id: str | None = None) -> bool:
     except Exception as e:
         logger.warning(f"[Pollers] openclaw poller start failed: {e}")
 
+    # 转发重试 Poller
+    if Config.ENABLE_FORWARD_RETRY:
+        try:
+            from services.forward_retry_poller import start_forward_retry_poller
+
+            start_forward_retry_poller()
+        except Exception as e:
+            logger.warning(f"[Pollers] forward retry poller start failed: {e}")
+
     logger.info("[Pollers] started")
     return True

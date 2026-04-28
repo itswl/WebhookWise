@@ -158,6 +158,15 @@ class _AppConfig(BaseSettings):
     CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FORWARD_TIMEOUT: float = Field(default=30.0)
 
+    # ── 转发失败重试补偿配置 ──
+    ENABLE_FORWARD_RETRY: bool = Field(default=True)
+    FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
+    FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
+    FORWARD_RETRY_MAX_DELAY: int = Field(default=3600)
+    FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
+    FORWARD_RETRY_POLL_INTERVAL: int = Field(default=30)
+    FORWARD_RETRY_BATCH_SIZE: int = Field(default=100)
+
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
 
