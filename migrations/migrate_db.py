@@ -3,15 +3,21 @@
 数据库迁移脚本：添加告警去重相关字段
 """
 
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 
+from core.config import Config
 from core.logger import logger
-from db.session import get_sync_engine
+
+
+def _get_sync_engine():
+    """创建临时同步引擎，仅供 migration 脚本使用"""
+    url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
+    return create_engine(url, echo=False)
 
 
 def migrate_database():
     """执行数据库迁移"""
-    engine = get_sync_engine()
+    engine = _get_sync_engine()
 
     migrations = [
         # 添加 alert_hash 字段
