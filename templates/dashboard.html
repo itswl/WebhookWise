@@ -502,8 +502,21 @@
                     <input type="text" class="form-input" id="configOpenaiApiUrl" placeholder="https://openrouter.ai/api/v1">
                 </div>
                 <div class="form-group">
+                    <label class="form-label">日志级别</label>
+                    <select class="form-input" id="configLogLevel">
+                        <option value="DEBUG">DEBUG</option>
+                        <option value="INFO" selected>INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label">AI 模型</label>
                     <input type="text" class="form-input" id="configOpenaiModel" placeholder="anthropic/claude-sonnet-4">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">AI 系统提示词</label>
+                    <textarea class="form-input" id="configAiSystemPrompt" rows="3" placeholder="自定义 AI 系统提示词..."></textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label">重复告警时间窗口（小时）</label>
@@ -520,6 +533,14 @@
                 <div class="form-checkbox">
                     <input type="checkbox" id="configForwardDuplicate">
                     <label for="configForwardDuplicate">转发重复告警</label>
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="configReanalyzeAfterWindow">
+                    <label for="configReanalyzeAfterWindow">超窗口后重新 AI 分析</label>
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="configForwardAfterWindow">
+                    <label for="configForwardAfterWindow">超窗口后转发</label>
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="configEnableNoiseReduction">
