@@ -109,11 +109,13 @@ class RuntimeConfigManager:
         """发布配置变更到 Redis"""
         try:
             r = get_redis()
-            message = json.dumps({
-                "worker_id": Config.WORKER_ID,
-                "keys": keys,
-                "timestamp": time.time(),
-            })
+            message = json.dumps(
+                {
+                    "worker_id": Config.WORKER_ID,
+                    "keys": keys,
+                    "timestamp": time.time(),
+                }
+            )
             await r.publish(RUNTIME_CONFIG_CHANNEL, message)
         except Exception as e:
             logger.warning(f"[RuntimeConfig] Redis 发布失败: {e}")
@@ -158,8 +160,8 @@ class RuntimeConfigManager:
                 try:
                     await pubsub.unsubscribe(RUNTIME_CONFIG_CHANNEL)
                     await pubsub.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"[RuntimeConfig] Pub/Sub 清理时忽略异常: {exc}")
 
     async def _on_config_updated(self, data):
         """收到变更通知，从 DB 重新加载"""
