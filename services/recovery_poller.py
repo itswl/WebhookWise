@@ -20,7 +20,7 @@ _ZOMBIE_THRESHOLD_MINUTES = 5
 
 async def recover_zombie_events() -> None:
     """捞取停滞的 webhook 事件并重新处理"""
-    threshold = datetime.utcnow() - timedelta(minutes=_ZOMBIE_THRESHOLD_MINUTES)
+    threshold = datetime.now() - timedelta(minutes=_ZOMBIE_THRESHOLD_MINUTES)
 
     async with session_scope() as session:
         result = await session.execute(
