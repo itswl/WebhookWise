@@ -19,9 +19,6 @@ _session_factory: async_sessionmaker | None = None
 # ── ContextVar: Depends 注入的 session 向下传播 ──
 _request_session: ContextVar[AsyncSession | None] = ContextVar("_request_session", default=None)
 
-# ── ContextVar: 轮询线程的本地 session factory ──
-_local_factory: ContextVar[async_sessionmaker | None] = ContextVar("_local_factory", default=None)
-
 # ── 同步引擎（独立，不受事件循环影响） ──
 _sync_engine = None
 
@@ -72,8 +69,7 @@ def get_engine() -> AsyncEngine | None:
 
 async def get_db_session():
     """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
-    factory = _local_factory.get() or _session_factory
-    async with factory() as session:
+    async with _session_factory() as session:
         token = _request_session.set(session)
         try:
             yield session
@@ -89,34 +85,21 @@ async def get_db_session():
 async def session_scope():
     """异步数据库会话上下文管理器，自动处理提交和回滚。
 
-    优先复用 Depends 注入的 session；否则用 local factory（轮询线程）或全局 factory 创建新 session。
+    优先复用 Depends 注入的 session；否则用全局 factory 创建新 session。
     """
     # 1. 优先复用 Depends 注入的 session
     existing = _request_session.get()
     if existing:
         yield existing
         return
-    # 2. 用 local factory（轮询线程）或全局 factory 创建新 session
-    factory = _local_factory.get() or _session_factory
-    async with factory() as session:
+    # 2. 用全局 factory 创建新 session
+    async with _session_factory() as session:
         try:
             yield session
             await session.commit()
         except Exception:
             await session.rollback()
             raise
-
-
-def create_poller_engine() -> tuple[AsyncEngine, async_sessionmaker]:
-    """为轮询线程创建隔离引擎和 session factory（连接池参数与主引擎相同）"""
-    engine = create_async_engine(_async_url(), **_build_engine_kwargs())
-    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    return engine, factory
-
-
-def set_local_factory(factory: async_sessionmaker):
-    """设置当前 ContextVar 中的本地 session factory（供轮询线程使用）"""
-    _local_factory.set(factory)
 
 
 # ────────────────────────────────────────

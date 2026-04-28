@@ -268,6 +268,66 @@ def _build_event(
     )
 
 
+async def _update_existing_event(
+    session: AsyncSession,
+    *,
+    event_id: int,
+    source: str,
+    client_ip: str | None,
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
+    data: WebhookData,
+    alert_hash: str,
+    ai_analysis: AnalysisResult | None,
+    forward_status: str,
+) -> SaveWebhookResult:
+    """UPDATE 已由 quick_receive_webhook 创建的记录，补全所有分析字段。"""
+    event = await session.get(WebhookEvent, event_id)
+    if not event:
+        # 极端情况：记录被删，降级为 INSERT
+        logger.warning(f"[save] event_id={event_id} 不存在，降级为新建")
+        return await _save_new_event(
+            session,
+            source=source,
+            client_ip=client_ip,
+            raw_payload=raw_payload,
+            headers=headers,
+            data=data,
+            alert_hash=alert_hash,
+            ai_analysis=ai_analysis,
+            forward_status=forward_status,
+        )
+
+    # 补全字段
+    event.source = source
+    event.client_ip = client_ip
+    event.parsed_data = data
+    event.alert_hash = alert_hash
+    event.ai_analysis = ai_analysis
+    event.importance = ai_analysis.get("importance") if ai_analysis else None
+    event.forward_status = forward_status
+    event.is_duplicate = 0
+    event.duplicate_of = None
+    event.duplicate_count = 1
+    event.beyond_window = 0
+    event.last_notified_at = datetime.now()
+    event.processing_status = "completed"
+    event.timestamp = datetime.now()
+    # raw_payload / headers 已在 quick_receive_webhook 写入，仅在需要时覆盖
+    if headers is not None:
+        event.headers = _normalize_headers(headers)
+    if raw_payload is not None:
+        event.raw_payload = _decode_raw_payload(raw_payload)
+
+    await session.flush()
+    logger.info(f"[save] UPDATE 已有记录: ID={event.id}, alert_hash={alert_hash}")
+
+    if Config.ENABLE_FILE_BACKUP:
+        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+
+    return SaveWebhookResult(event.id, False, None, False)
+
+
 async def _save_duplicate_event(
     session: AsyncSession,
     *,
@@ -282,6 +342,7 @@ async def _save_duplicate_event(
     original_event: WebhookEvent,
     beyond_window: bool,
     reanalyzed: bool,
+    event_id: int | None = None,
 ) -> SaveWebhookResult | None:
     original = await session.get(WebhookEvent, original_event.id)
     if not original:
@@ -292,6 +353,34 @@ async def _save_duplicate_event(
     logger.info(f"发现重复告警，原始告警ID={original.id}, 已重复{original.duplicate_count}次")
 
     final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(ai_analysis, original, reanalyzed)
+
+    # 如果有 event_id，UPDATE 已有记录为重复告警，而非 INSERT 新记录
+    if event_id is not None:
+        dup_event = await session.get(WebhookEvent, event_id)
+        if dup_event:
+            dup_event.source = source
+            dup_event.client_ip = client_ip
+            dup_event.timestamp = datetime.now()
+            dup_event.parsed_data = data
+            dup_event.alert_hash = alert_hash
+            dup_event.ai_analysis = final_ai_analysis
+            dup_event.importance = final_importance
+            dup_event.forward_status = forward_status
+            dup_event.is_duplicate = 1
+            dup_event.duplicate_of = original.id
+            dup_event.duplicate_count = original.duplicate_count
+            dup_event.beyond_window = 1 if beyond_window else 0
+            dup_event.processing_status = "completed"
+            if headers is not None:
+                dup_event.headers = _normalize_headers(headers)
+            if raw_payload is not None:
+                dup_event.raw_payload = _decode_raw_payload(raw_payload)
+            await session.flush()
+            logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
+            if Config.ENABLE_FILE_BACKUP:
+                save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
+            return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
+
     duplicate_event = _build_event(
         source=source,
         client_ip=client_ip,
@@ -388,8 +477,13 @@ async def save_webhook_data(
     original_event: WebhookEvent | None = None,
     beyond_window: bool = False,
     reanalyzed: bool = False,
+    event_id: int | None = None,
 ) -> SaveWebhookResult:
-    """保存 webhook 数据到数据库（带重试机制防止并发竞态）。"""
+    """保存 webhook 数据到数据库（带重试机制防止并发竞态）。
+
+    当 event_id 有值时，UPDATE 已由 quick_receive_webhook 创建的记录，
+    避免重复 INSERT（双写）。同时在同一事务中更新 processing_status。
+    """
     if alert_hash is None:
         alert_hash = generate_alert_hash(data, source)
 
@@ -417,9 +511,25 @@ async def save_webhook_data(
                         original_event=original_event,
                         beyond_window=beyond_window,
                         reanalyzed=reanalyzed,
+                        event_id=event_id,
                     )
                     if saved:
                         return saved
+
+                # event_id 有值：UPDATE 已有记录而非 INSERT 新记录
+                if event_id is not None:
+                    return await _update_existing_event(
+                        session,
+                        event_id=event_id,
+                        source=source,
+                        client_ip=client_ip,
+                        raw_payload=raw_payload,
+                        headers=headers,
+                        data=data,
+                        alert_hash=alert_hash,
+                        ai_analysis=ai_analysis,
+                        forward_status=forward_status,
+                    )
 
                 return await _save_new_event(
                     session,

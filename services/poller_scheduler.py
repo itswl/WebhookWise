@@ -140,7 +140,18 @@ async def start_scheduler(worker_id: str | None = None) -> bool:
     except Exception as e:
         logger.warning(f"[Pollers] openclaw poller start failed: {e}")
 
-    # 5. Forward retry poller（按配置启用）
+    # 5. Recovery poller — 僵尸事件恢复（每 120 秒）
+    try:
+        from services.recovery_poller import recover_zombie_events
+
+        _create_task(
+            _run_periodic("Recovery", recover_zombie_events, 120, _stop_event),
+            "recovery-poller",
+        )
+    except Exception as e:
+        logger.warning(f"[Pollers] recovery poller start failed: {e}")
+
+    # 6. Forward retry poller（按配置启用）
     if Config.ENABLE_FORWARD_RETRY:
         try:
             from services.forward_retry_poller import poll_pending_retries
