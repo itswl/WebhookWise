@@ -18,7 +18,7 @@ from core.logger import logger
 # We will import the purely utility functions back from core.utils
 from core.utils import generate_alert_hash
 from db.session import session_scope
-from models import FailedForward, WebhookEvent
+from models import FailedForward, SystemConfig, WebhookEvent
 
 WebhookData = dict[str, Any]
 HeadersDict = dict[str, str]
@@ -864,6 +864,45 @@ async def delete_failed_forward(
     except Exception as e:
         logger.error(f"删除转发失败记录失败: {e!s}")
         return False
+
+
+# ── 运行时配置 CRUD ──
+
+
+async def get_all_runtime_configs():
+    """批量加载所有运行时配置"""
+    async with session_scope() as session:
+        result = await session.execute(select(SystemConfig))
+        return {row.key: row for row in result.scalars().all()}
+
+
+async def get_runtime_config(key: str):
+    """读取单个配置"""
+    async with session_scope() as session:
+        result = await session.execute(
+            select(SystemConfig).where(SystemConfig.key == key)
+        )
+        return result.scalar_one_or_none()
+
+
+async def upsert_runtime_config(key: str, value: str, value_type: str = "str", updated_by: str = "api"):
+    """写入或更新配置（upsert）"""
+    async with session_scope() as session:
+        existing = await session.execute(
+            select(SystemConfig).where(SystemConfig.key == key)
+        )
+        config = existing.scalar_one_or_none()
+        if config:
+            config.value = value
+            config.value_type = value_type
+            config.updated_by = updated_by
+        else:
+            config = SystemConfig(
+                key=key, value=value, value_type=value_type, updated_by=updated_by
+            )
+            session.add(config)
+        await session.commit()
+        return config
 
 
 async def cleanup_old_success_records(

@@ -627,6 +627,102 @@ def add_failed_forwards_table():
         return False
 
 
+def add_system_configs_table():
+    """
+    添加 system_configs 运行时配置表（静默模式）
+
+    Returns:
+        bool: 成功返回 True，失败返回 False
+    """
+    engine = get_sync_engine()
+
+    # 需要从 Config 读取当前值作为 seed
+    from core.config import Config
+
+    _RUNTIME_CONFIG_SEED = {
+        "FORWARD_URL": {"type": "str", "desc": "告警转发目标 URL"},
+        "ENABLE_FORWARD": {"type": "bool", "desc": "启用告警转发"},
+        "ENABLE_AI_ANALYSIS": {"type": "bool", "desc": "启用 AI 分析"},
+        "OPENAI_API_KEY": {"type": "str", "desc": "OpenAI API 密钥"},
+        "OPENAI_API_URL": {"type": "str", "desc": "OpenAI API 地址"},
+        "OPENAI_MODEL": {"type": "str", "desc": "AI 模型名称"},
+        "AI_SYSTEM_PROMPT": {"type": "str", "desc": "AI 系统提示词"},
+        "LOG_LEVEL": {"type": "str", "desc": "日志级别"},
+        "DUPLICATE_ALERT_TIME_WINDOW": {"type": "int", "desc": "告警去重时间窗口（小时）"},
+        "FORWARD_DUPLICATE_ALERTS": {"type": "bool", "desc": "转发重复告警"},
+        "REANALYZE_AFTER_TIME_WINDOW": {"type": "bool", "desc": "超窗口后重新分析"},
+        "FORWARD_AFTER_TIME_WINDOW": {"type": "bool", "desc": "超窗口后转发"},
+        "ENABLE_ALERT_NOISE_REDUCTION": {"type": "bool", "desc": "启用智能降噪"},
+        "NOISE_REDUCTION_WINDOW_MINUTES": {"type": "int", "desc": "降噪时间窗口（分钟）"},
+        "ROOT_CAUSE_MIN_CONFIDENCE": {"type": "float", "desc": "根因关联最小置信度"},
+        "SUPPRESS_DERIVED_ALERT_FORWARD": {"type": "bool", "desc": "抑制衍生告警转发"},
+    }
+
+    try:
+        with engine.connect() as conn:
+            # 检查表是否已存在
+            result = conn.execute(
+                text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = 'system_configs'
+                )
+            """)
+            )
+            table_exists = result.scalar()
+
+            if not table_exists:
+                # 表不存在，需要创建
+                print("⚙️  首次启动：正在创建 system_configs 表...")
+
+                conn.execute(
+                    text("""
+                    CREATE TABLE system_configs (
+                        key VARCHAR(128) PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        value_type VARCHAR(16) NOT NULL DEFAULT 'str',
+                        description TEXT,
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        updated_by VARCHAR(64) DEFAULT 'system'
+                    )
+                """)
+                )
+                conn.commit()
+                print("   ✅ system_configs 表创建成功")
+
+            # 检查表是否为空，若为空则 seed 初始配置
+            result = conn.execute(text("SELECT COUNT(*) FROM system_configs"))
+            row_count = result.scalar()
+
+            if row_count == 0:
+                print("🔄 正在初始化运行时配置种子数据...")
+                for key, meta in _RUNTIME_CONFIG_SEED.items():
+                    val = getattr(Config, key, "")
+                    # 布尔值特殊处理
+                    str_val = str(val).lower() if meta["type"] == "bool" else str(val) if val is not None else ""
+                    conn.execute(
+                        text("""
+                        INSERT INTO system_configs (key, value, value_type, description, updated_by)
+                        VALUES (:key, :value, :value_type, :description, 'migration')
+                    """),
+                        {
+                            "key": key,
+                            "value": str_val,
+                            "value_type": meta["type"],
+                            "description": meta["desc"],
+                        },
+                    )
+                conn.commit()
+                print(f"   ✅ 已初始化 {len(_RUNTIME_CONFIG_SEED)} 个运行时配置项")
+
+            return True
+
+    except Exception as e:
+        print(f"   ⚠️  迁移警告: {e}")
+        # 不阻止服务启动
+        return False
+
+
 if __name__ == "__main__":
     success1 = check_and_add_unique_constraint()
     success2 = fix_duplicate_count()
@@ -637,6 +733,7 @@ if __name__ == "__main__":
     success7 = add_polling_fields()
     success8 = add_archive_and_indexes()
     success9 = add_failed_forwards_table()
+    success10 = add_system_configs_table()
     sys.exit(
         0
         if (
@@ -649,6 +746,7 @@ if __name__ == "__main__":
             and success7
             and success8
             and success9
+            and success10
         )
         else 1
     )
