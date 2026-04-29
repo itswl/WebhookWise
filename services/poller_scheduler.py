@@ -105,6 +105,17 @@ async def start_scheduler() -> bool:
         except Exception as e:
             logger.warning(f"[Pollers] forward retry poller start failed: {e}")
 
+    # 5. Webhook MQ Consumer（Redis Stream 消费者）
+    try:
+        from services.webhook_mq_consumer import consume_webhook_queue
+
+        _create_task(
+            consume_webhook_queue(_stop_event),
+            "webhook-mq-consumer",
+        )
+    except Exception as e:
+        logger.warning(f"[Pollers] webhook MQ consumer start failed: {e}")
+
     logger.info("[Pollers] started")
     return True
 
