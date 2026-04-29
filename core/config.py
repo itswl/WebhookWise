@@ -51,6 +51,7 @@ class ServerConfig(BaseSettings):
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors", description="Consumer Group 名称")
     WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, description="每次 XREADGROUP 拉取的最大消息数")
     WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, description="XREADGROUP 阻塞超时毫秒数")
+    WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000, description="Stream 最大长度（approximate trim）")
 
 
 class SecurityConfig(BaseSettings):
@@ -76,6 +77,7 @@ class DBConfig(BaseSettings):
     DB_MAX_OVERFLOW: int = Field(default=30)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=5000, description="SQL 语句超时(ms)")
 
 
 class RedisConfig(BaseSettings):
@@ -104,6 +106,9 @@ class AIConfig(BaseSettings):
     OPENAI_TEMPERATURE: float = Field(default=0.2)
     OPENAI_MAX_TOKENS: int = Field(default=1800)
     OPENAI_TRUNCATION_RETRY_MAX_TOKENS: int = Field(default=2600)
+    AI_CONTINUATION_ENABLED: bool = Field(
+        default=True, description="是否启用 AI 响应截断自动续写，告警风暴期间可关闭以节省吞吐"
+    )
 
     # AI 提示词
     AI_SYSTEM_PROMPT: str = Field(
