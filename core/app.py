@@ -17,7 +17,7 @@ from api.webhook import webhook_router
 from core.auth import verify_api_key
 from core.config import Config
 from core.http_client import close_http_client, get_http_client
-from core.logger import logger
+from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
     await dispose_redis()
     reset_openai_client()  # 释放 OpenAI 单例引用（其底层连接随 close_http_client 一并关闭）
     await close_http_client()
+    stop_log_listener()
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)

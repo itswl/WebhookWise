@@ -35,7 +35,11 @@
 │    │   - 创建唯一索引                                    │
 │    ↓ 如果已存在：跳过                                    │
 ├──────────────────────────────────────────────────────────┤
-│ 5. 启动应用服务                                           │
+│ 5. Alembic 增量迁移                                       │
+│    ↓ alembic upgrade head                              │
+│    ↓ 如果迁移失败则 stamp head 标记当前版本              │
+├──────────────────────────────────────────────────────────┤
+│ 6. 启动应用服务                                           │
 │    ↓ gunicorn --bind 0.0.0.0:8000 ...                   │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -60,7 +64,9 @@ python3 -c "from core.models import init_db; init_db()"
 python3 -m migrations.migrate_db
 # 4. 添加唯一约束
 python3 -m migrations.init_migrations
-# 5. 启动服务
+# 5. Alembic 增量迁移
+alembic upgrade head
+# 6. 启动服务
 exec gunicorn ...
 ```
 
@@ -121,6 +127,8 @@ COPY entrypoint.sh .
 COPY main.py .
 COPY core/ ./core/
 COPY migrations/ ./migrations/
+COPY alembic.ini .
+COPY alembic/ ./alembic/
 
 # 设置执行权限
 RUN chmod +x entrypoint.sh
@@ -157,20 +165,22 @@ docker-compose logs -f webhook-service
 ======================================
 Webhook 服务启动中...
 ======================================
-[1/4] 等待数据库就绪...
+[1/5] 等待数据库就绪...
 ✅ 数据库连接成功
-[2/4] 初始化数据库表...
+[2/5] 初始化数据库表...
 数据库表初始化完成
 ✅ 数据库表检查完成
-[3/4] 执行数据库迁移...
+[3/5] 执行数据库迁移（旧系统）...
 跳过迁移(字段已存在): 添加 alert_hash 字段
 ...
 ✅ 数据库迁移完成
-[4/4] 检查唯一约束...
+[4/5] 检查唯一约束...
 ⚙️  首次启动：正在添加数据库唯一约束...
    检测到 0 组重复告警，正在修复...
    ✅ 唯一约束添加成功
 ✅ 数据库约束检查完成
+[5/5] Alembic 迁移...
+✅ Alembic 迁移完成
 ======================================
 数据库准备完成，启动应用服务...
 ======================================
@@ -194,6 +204,7 @@ vim .env
 python3 -c "from core.models import init_db; init_db()"  # 创建表
 python3 -m migrations.migrate_db      # 添加字段
 python3 -m migrations.init_migrations # 添加唯一约束
+alembic upgrade head                   # Alembic 增量迁移
 
 # 5. 启动服务
 python3 main.py
@@ -273,6 +284,7 @@ docker exec -it webhook-receiver bash
 python3 -c "from core.models import init_db; init_db()"  # 创建表
 python3 -m migrations.migrate_db       # 添加字段
 python3 -m migrations.init_migrations  # 添加唯一约束
+alembic upgrade head                    # Alembic 增量迁移
 
 # 或使用迁移工具
 python3 -m migrations.migrations_tool add_unique_constraint
@@ -431,23 +443,21 @@ FORWARD_AFTER_TIME_WINDOW=true
 
 ### 新增表字段（未来可能）
 
-如果未来版本需要添加新字段，只需：
+如果未来版本需要添加新字段，推荐使用 Alembic：
 
-1. 在 `migrations/migrate_db.py` 中添加迁移：
-   ```python
-   {
-       'name': '添加新字段',
-       'check': "SELECT COUNT(*) FROM information_schema.columns WHERE ...",
-       'sql': "ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS ..."
-   }
+1. 生成迁移脚本：
+   ```bash
+   alembic revision --autogenerate -m "添加新字段描述"
    ```
 
-2. 重新构建镜像：
+2. 检查并编辑生成的迁移文件（`alembic/versions/` 下）
+
+3. 重新构建镜像：
    ```bash
    docker-compose up -d --build
    ```
 
-3. 自动迁移会在启动时执行
+4. `entrypoint.sh` 会在启动时自动执行 `alembic upgrade head`
 
 ---
 

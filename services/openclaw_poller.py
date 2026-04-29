@@ -3,13 +3,23 @@
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime
+from functools import partial
 
 import core.redis_client
 from core.config import Config
 from core.http_client import get_http_client
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
+
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
 
 # 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
@@ -137,7 +147,8 @@ async def poll_pending_analyses():
     lock_key = "openclaw:poller:global_lock"
 
     # 尝试获取锁，有效时间 60 秒
-    if not await redis_client.set(lock_key, "locked", nx=True, ex=60):
+    lock_value = str(uuid.uuid4())
+    if not await redis_client.set(lock_key, lock_value, nx=True, ex=60):
         logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
         return
 
@@ -146,7 +157,7 @@ async def poll_pending_analyses():
     except Exception as e:
         logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
     finally:
-        await redis_client.delete(lock_key)
+        await redis_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
 
 
 async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
@@ -277,11 +288,16 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
             if Config.OPENCLAW_HTTP_API_URL:
                 result = await _poll_via_http(rec["openclaw_session_key"])
             else:
-                result = poll_session_result(
-                    gateway_url=Config.OPENCLAW_GATEWAY_URL,
-                    gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
-                    session_key=rec["openclaw_session_key"],
-                    timeout=Config.OPENCLAW_POLL_TIMEOUT,
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    partial(
+                        poll_session_result,
+                        gateway_url=Config.OPENCLAW_GATEWAY_URL,
+                        gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
+                        session_key=rec["openclaw_session_key"],
+                        timeout=Config.OPENCLAW_POLL_TIMEOUT,
+                    ),
                 )
 
             # --- 处理 completed ---
