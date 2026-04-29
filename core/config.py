@@ -33,6 +33,10 @@ class ServerConfig(BaseSettings):
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=50, description="Webhook 后台处理最大并发数")
+    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(
+        default=30, description="Semaphore 获取超时秒数，超时后跳过限流直接处理"
+    )
+    FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
 
 
 class SecurityConfig(BaseSettings):

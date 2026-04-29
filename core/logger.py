@@ -5,6 +5,16 @@ import sys
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 from core.config import Config
+from core.trace import get_trace_id
+
+
+class TraceIdFilter(logging.Filter):
+    """为每条日志记录注入当前协程的 trace_id。"""
+
+    def filter(self, record):
+        record.trace_id = get_trace_id() or "-"
+        return True
+
 
 # 尝试导入结构化日志库
 try:
@@ -43,9 +53,13 @@ def setup_logger():
     if logger.handlers:
         return logger
 
-    # 标准日志格式（控制台）
+    # 添加 TraceIdFilter 到 logger（直接日志）
+    trace_filter = TraceIdFilter()
+    logger.addFilter(trace_filter)
+
+    # 标准日志格式（控制台，含 trace_id）
     console_formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s [%(levelname)s] [%(trace_id)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     # 文件处理器（支持轮转，最大 10MB，保留 5 个备份）
@@ -60,7 +74,7 @@ def setup_logger():
     # 文件使用结构化 JSON 日志（如果可用且配置允许）
     if HAS_JSON_LOGGER:
         json_formatter = jsonlogger.JsonFormatter(
-            "%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            "%(asctime)s %(name)s %(levelname)s %(trace_id)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         file_handler.setFormatter(json_formatter)
     else:
@@ -75,6 +89,7 @@ def setup_logger():
     log_queue: queue.Queue = queue.Queue(-1)  # 无限队列
     queue_handler = QueueHandler(log_queue)
     queue_handler.setLevel(log_level)
+    queue_handler.addFilter(trace_filter)  # 确保子 logger propagation 也注入 trace_id
 
     # QueueListener 在后台线程消费队列，将日志写入 file_handler 和 console_handler
     _log_listener = QueueListener(log_queue, file_handler, console_handler, respect_handler_level=True)
