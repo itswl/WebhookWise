@@ -28,12 +28,14 @@ async def quick_receive_webhook(
     source: str,
     raw_headers: dict,
     raw_body: str | bytes,
+    parsed_data: dict | None = None,
 ) -> WebhookEvent:
     """同步最小化写入：仅持久化原始数据，不做任何分析/转发"""
     event = WebhookEvent(
         source=source,
         headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
         raw_payload=raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace"),
+        parsed_data=parsed_data,
         processing_status="received",
     )
     session.add(event)
