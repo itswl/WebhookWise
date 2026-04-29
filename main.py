@@ -22,12 +22,17 @@ async def _check_db():
 
 if __name__ == "__main__":
     # 启动前验证
-    Config.validate()
+    Config.validate_config()
     if not asyncio.run(_check_db()):
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
 
-    logger.info(f"启动 Webhook 服务: http://{Config.HOST}:{Config.PORT}")
+    logger.info(f"启动 Webhook 服务: http://{Config.server.HOST}:{Config.server.PORT}")
     import uvicorn
 
-    uvicorn.run("core.app:app", host=Config.HOST, port=Config.PORT, log_level="debug" if Config.DEBUG else "info")
+    uvicorn.run(
+        "core.app:app",
+        host=Config.server.HOST,
+        port=Config.server.PORT,
+        log_level="debug" if Config.server.DEBUG else "info",
+    )

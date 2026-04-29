@@ -123,11 +123,11 @@ async def test_forward_rule(rule_id: int, session: AsyncSession = Depends(get_db
     test_analysis = {"importance": "medium", "summary": f"转发规则测试 - {rule.name}", "event_type": "test"}
 
     if rule.target_type == "openclaw":
-        from services.ai_analyzer import forward_to_openclaw
+        from services.forward import forward_to_openclaw
 
         result = await forward_to_openclaw(test_data, test_analysis)
     else:
-        from services.ai_analyzer import forward_to_remote
+        from services.forward import forward_to_remote
 
         result = await forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
 

@@ -34,8 +34,8 @@ def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(
-            api_key=Config.OPENAI_API_KEY,
-            base_url=Config.OPENAI_API_URL,
+            api_key=Config.ai.OPENAI_API_KEY,
+            base_url=Config.ai.OPENAI_API_URL,
             http_client=get_http_client(),  # 复用应用统一的连接池
             timeout=httpx.Timeout(60.0, connect=10.0),  # AI 分析允许更长超时
         )
@@ -51,7 +51,7 @@ def reset_openai_client():
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
     return await client.chat.completions.create(
-        model=Config.OPENAI_MODEL, messages=messages, temperature=Config.OPENAI_TEMPERATURE, max_tokens=max_tokens
+        model=Config.ai.OPENAI_MODEL, messages=messages, temperature=Config.ai.OPENAI_TEMPERATURE, max_tokens=max_tokens
     )
 
 
@@ -65,7 +65,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         prompt_template = load_user_prompt_template()
         data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
-        messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
+        messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
         try:
@@ -73,7 +73,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
-        response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+        response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
 
         if not hasattr(response, "choices") or not response.choices:
             error_message = f"OpenAI API 返回无效响应: {response}"
@@ -87,8 +87,8 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
             raise ValueError("AI 返回空响应")
 
         if finish_reason == "length":
-            retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
-            if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
+            retry_max_tokens = max(Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.ai.OPENAI_MAX_TOKENS)
+            if retry_max_tokens > Config.ai.OPENAI_MAX_TOKENS:
                 logger.warning(
                     "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
                 )
@@ -133,7 +133,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         prompt_template = load_user_prompt_template()
         data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
-        messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
+        messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
         try:
@@ -141,7 +141,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         except Exception:
             prompt_hash = None
         logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
-        response = await _request_openai_completion(client, messages, Config.OPENAI_MAX_TOKENS)
+        response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
 
         # 提取 token 使用量
         tokens_in = 0
@@ -166,7 +166,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                 "tokens_in=%d | tokens_out=%d | choice=%r",
                 finish_reason,
                 raw_content,
-                Config.OPENAI_MODEL,
+                Config.ai.OPENAI_MODEL,
                 tokens_in,
                 tokens_out,
                 choice,
@@ -183,8 +183,8 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
             raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
 
         if finish_reason == "length":
-            retry_max_tokens = max(Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.OPENAI_MAX_TOKENS)
-            if retry_max_tokens > Config.OPENAI_MAX_TOKENS:
+            retry_max_tokens = max(Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.ai.OPENAI_MAX_TOKENS)
+            if retry_max_tokens > Config.ai.OPENAI_MAX_TOKENS:
                 logger.warning(
                     "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
                 )
@@ -207,12 +207,12 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         except Exception:
             resp_hash = None
         logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
-        input_cost = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS
-        output_cost = (tokens_out / 1000) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
+        input_cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS
+        output_cost = (tokens_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type="input").inc(tokens_in)  # nosec B106
-        AI_TOKENS_TOTAL.labels(model=Config.OPENAI_MODEL, token_type="output").inc(tokens_out)  # nosec B106
-        AI_COST_USD_TOTAL.labels(model=Config.OPENAI_MODEL).inc(total_cost)
+        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="input").inc(tokens_in)  # nosec B106
+        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="output").inc(tokens_out)  # nosec B106
+        AI_COST_USD_TOTAL.labels(model=Config.ai.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
 
         analysis_result = _parse_ai_analysis_response(ai_response, source)
@@ -257,12 +257,12 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             return
 
         # 只有启用转发且配置了转发地址才发送
-        if not Config.ENABLE_FORWARD or not Config.FORWARD_URL:
+        if not Config.ai.ENABLE_FORWARD or not Config.ai.FORWARD_URL:
             logger.info("转发未启用，跳过降级通知")
             return
 
         # 检查是否是飞书 webhook
-        is_feishu = "feishu.cn" in Config.FORWARD_URL or "lark" in Config.FORWARD_URL
+        is_feishu = "feishu.cn" in Config.ai.FORWARD_URL or "lark" in Config.ai.FORWARD_URL
 
         if is_feishu:
             # 构建飞书告警消息
@@ -309,10 +309,10 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             client = get_http_client()
             response = await feishu_cb.call_async(
                 client.post,
-                Config.FORWARD_URL,
+                Config.ai.FORWARD_URL,
                 json=forward_data,
                 headers={"Content-Type": "application/json"},
-                timeout=Config.FEISHU_WEBHOOK_TIMEOUT,
+                timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT,
             )
 
             if response is not None and 200 <= response.status_code < 300:

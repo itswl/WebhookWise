@@ -32,22 +32,22 @@ def _determine_engine(requested_engine: str) -> str:
     if requested_engine == "local":
         return "local"
     elif requested_engine == "openclaw":
-        if Config.OPENCLAW_ENABLED:
+        if Config.openclaw.OPENCLAW_ENABLED:
             return "openclaw"
         logger.warning("OpenClaw 未启用，回退到本地 AI")
         return "local"
     else:  # auto
-        if Config.DEEP_ANALYSIS_ENGINE == "openclaw" and Config.OPENCLAW_ENABLED:
+        if Config.ai.DEEP_ANALYSIS_ENGINE == "openclaw" and Config.openclaw.OPENCLAW_ENABLED:
             return "openclaw"
-        elif Config.DEEP_ANALYSIS_ENGINE == "local":
+        elif Config.ai.DEEP_ANALYSIS_ENGINE == "local":
             return "local"
-        return "openclaw" if Config.OPENCLAW_ENABLED else "local"
+        return "openclaw" if Config.openclaw.OPENCLAW_ENABLED else "local"
 
 
 async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
     start_time = time.time()
 
-    if not Config.OPENAI_API_KEY:
+    if not Config.ai.OPENAI_API_KEY:
         raise ValueError("AI 服务未配置")
 
     prompt_path = Path(__file__).parent.parent.parent / "prompts" / "deep_analysis.txt"
@@ -74,12 +74,12 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
         # - recommendations:
         # - confidence:
 
-    client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_URL)
+    client = AsyncOpenAI(api_key=Config.ai.OPENAI_API_KEY, base_url=Config.ai.OPENAI_API_URL)
     response = await client.chat.completions.create(
-        model=Config.OPENAI_MODEL,
+        model=Config.ai.OPENAI_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_question}],
-        temperature=Config.OPENAI_TEMPERATURE,
-        max_tokens=Config.OPENAI_MAX_TOKENS * 2,
+        temperature=Config.ai.OPENAI_TEMPERATURE,
+        max_tokens=Config.ai.OPENAI_MAX_TOKENS * 2,
     )
 
     ai_response = response.choices[0].message.content.strip()
@@ -118,13 +118,14 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         engine_pref = payload.get("engine", "auto")
 
         # ===== 多引擎路由逻辑 =====
-        if engine_pref == "openclaw" or (engine_pref == "auto" and Config.OPENCLAW_ENABLED):
+        if engine_pref == "openclaw" or (engine_pref == "auto" and Config.openclaw.OPENCLAW_ENABLED):
             webhook_data = {
                 "source": event.source or "unknown",
                 "headers": event.headers or {},
                 "parsed_data": alert_data,
             }
-            from services.ai_analyzer import analyze_webhook_with_ai, analyze_with_openclaw
+            from services.ai_analyzer import analyze_webhook_with_ai
+            from services.forward import analyze_with_openclaw
 
             result = await analyze_with_openclaw(webhook_data, user_question)
             engine = "openclaw"
@@ -346,7 +347,7 @@ async def forward_deep_analysis(
                 "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
             }
             client = get_http_client()
-            resp = await client.post(target_url, json=fwd_payload, timeout=Config.FORWARD_TIMEOUT)
+            resp = await client.post(target_url, json=fwd_payload, timeout=Config.ai.FORWARD_TIMEOUT)
             resp.raise_for_status()
             return {"success": True, "message": f"已转发 (HTTP {resp.status_code})"}
     except Exception as e:
@@ -394,7 +395,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             }
 
             # 重新调用 OpenClaw
-            from services.ai_analyzer import analyze_with_openclaw
+            from services.forward import analyze_with_openclaw
 
             new_result = await analyze_with_openclaw(webhook_data, user_question=record.user_question or "")
 
@@ -417,7 +418,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                 return {"success": True, "message": "分析已完成"}
 
         # 检查是否配置了 HTTP API URL
-        if Config.OPENCLAW_HTTP_API_URL:
+        if Config.openclaw.OPENCLAW_HTTP_API_URL:
             # 直接通过 HTTP API 获取（复用轮询器的重试逻辑）
             from services.openclaw_poller import _poll_via_http
 
@@ -465,7 +466,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             try:
                 from adapters.ecosystem_adapters import send_feishu_deep_analysis
 
-                if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                if Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                     result = await session.execute(select(WebhookEvent).filter_by(id=record.webhook_event_id))
                     event = result.scalars().first()
                     source = event.source if event else ""
@@ -475,7 +476,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                         "duration_seconds": record.duration_seconds,
                     }
                     success = await send_feishu_deep_analysis(
-                        webhook_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                        webhook_url=Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                         analysis_record=analysis_data,
                         source=source,
                         webhook_event_id=record.webhook_event_id,
@@ -487,7 +488,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                             await record_failed_forward(
                                 webhook_event_id=record.webhook_event_id,
                                 forward_rule_id=None,
-                                target_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                                target_url=Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                                 target_type="feishu",
                                 failure_reason="feishu_send_failed",
                                 error_message="HTTP重试后飞书通知发送失败",

@@ -17,6 +17,36 @@ logger = get_logger("runtime_config")
 
 RUNTIME_CONFIG_CHANNEL = "webhook:config:updated"
 
+# 运行时 key → 子配置属性名映射
+_KEY_TO_SUBCONFIG: dict[str, str] = {
+    "FORWARD_URL": "ai",
+    "ENABLE_FORWARD": "ai",
+    "ENABLE_AI_ANALYSIS": "ai",
+    "OPENAI_API_KEY": "ai",
+    "OPENAI_API_URL": "ai",
+    "OPENAI_MODEL": "ai",
+    "AI_SYSTEM_PROMPT": "ai",
+    "LOG_LEVEL": "server",
+    "DUPLICATE_ALERT_TIME_WINDOW": "retry",
+    "FORWARD_DUPLICATE_ALERTS": "retry",
+    "REANALYZE_AFTER_TIME_WINDOW": "retry",
+    "FORWARD_AFTER_TIME_WINDOW": "retry",
+    "ENABLE_ALERT_NOISE_REDUCTION": "ai",
+    "NOISE_REDUCTION_WINDOW_MINUTES": "ai",
+    "ROOT_CAUSE_MIN_CONFIDENCE": "ai",
+    "SUPPRESS_DERIVED_ALERT_FORWARD": "ai",
+}
+
+
+def _set_nested(key: str, value) -> None:
+    """根据映射表将值写入正确的子配置对象"""
+    sub = _KEY_TO_SUBCONFIG.get(key)
+    if sub:
+        setattr(getattr(Config, sub), key, value)
+    else:
+        setattr(Config, key, value)
+
+
 # 16 个运行时可变配置定义（从 admin.py _CONFIG_SCHEMA 对齐）
 # key: 环境变量名, type: 值类型, desc: 描述
 RUNTIME_KEYS = {
@@ -72,7 +102,7 @@ class RuntimeConfigManager:
             for key, config_row in configs.items():
                 if key in RUNTIME_KEYS:
                     typed_value = _deserialize_value(config_row.value, config_row.value_type)
-                    setattr(Config, key, typed_value)
+                    _set_nested(key, typed_value)
                     count += 1
             logger.info(f"[RuntimeConfig] 从数据库加载 {count} 个运行时配置")
         except Exception as e:
@@ -86,7 +116,7 @@ class RuntimeConfigManager:
         str_value = _serialize_value(value, value_type)
         await upsert_runtime_config(key, str_value, value_type, updated_by)
         typed_value = _deserialize_value(str_value, value_type)
-        setattr(Config, key, typed_value)
+        _set_nested(key, typed_value)
         await self._publish_change([key])
 
     async def save_batch(self, updates: dict, updated_by: str = "api"):
@@ -99,7 +129,7 @@ class RuntimeConfigManager:
             str_value = _serialize_value(value, value_type)
             await upsert_runtime_config(key, str_value, value_type, updated_by)
             typed_value = _deserialize_value(str_value, value_type)
-            setattr(Config, key, typed_value)
+            _set_nested(key, typed_value)
             changed_keys.append(key)
         if changed_keys:
             await self._publish_change(changed_keys)
@@ -111,7 +141,7 @@ class RuntimeConfigManager:
             r = get_redis()
             message = json.dumps(
                 {
-                    "worker_id": Config.WORKER_ID,
+                    "worker_id": Config.server.WORKER_ID,
                     "keys": keys,
                     "timestamp": time.time(),
                 }
@@ -175,7 +205,7 @@ class RuntimeConfigManager:
                 if key in configs and key in RUNTIME_KEYS:
                     config_row = configs[key]
                     typed_value = _deserialize_value(config_row.value, config_row.value_type)
-                    setattr(Config, key, typed_value)
+                    _set_nested(key, typed_value)
             logger.info(f"[RuntimeConfig] 热更新 {len(keys)} 个配置: {keys}")
 
             # Prompt 模板缓存重载

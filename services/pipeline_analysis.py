@@ -7,9 +7,10 @@ from datetime import datetime
 from api import AnalysisResolution
 from core.config import Config
 from core.logger import logger
-from crud.webhook import check_duplicate_alert
 from models import WebhookEvent
-from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
+from services.ai_analyzer import analyze_webhook_with_ai
+from services.ai_cache import get_cached_analysis, log_ai_usage
+from services.dedup_strategy import check_duplicate_alert
 
 
 async def _analyze_now(webhook_full_data: dict, message: str) -> tuple[dict, bool]:
@@ -50,7 +51,7 @@ async def _resolve_beyond_window_analysis(
         is_recent = False
         if last_beyond_window_event.created_at:
             seconds_since = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
-            if seconds_since < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
+            if seconds_since < Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
                 is_recent = True
 
         if is_recent:
@@ -63,7 +64,7 @@ async def _resolve_beyond_window_analysis(
             return last_beyond_window_event.ai_analysis or {}, False
 
         logger.debug(
-            f"窗口外历史记录 ID={last_beyond_window_event.id} 已超过复用窗口({Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS}s)，将尝试重新分析"
+            f"窗口外历史记录 ID={last_beyond_window_event.id} 已超过复用窗口({Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS}s)，将尝试重新分析"
         )
 
     if original_event and not allow_reanalyze:
@@ -91,7 +92,7 @@ async def _resolve_analysis_with_lock(alert_hash: str, webhook_full_data: dict) 
             original_event,
             last_beyond_window_event,
             webhook_full_data,
-            Config.REANALYZE_AFTER_TIME_WINDOW,
+            Config.retry.REANALYZE_AFTER_TIME_WINDOW,
             prefer_recent_beyond_window=False,
         )
     elif is_duplicate and original_event:
@@ -129,7 +130,7 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
             return AnalysisResolution(cached, False, True, None, False, is_reused=True)
 
         # 等待 Pub/Sub 通知
-        deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS  # 30s
+        deadline = _time.monotonic() + Config.retry.PROCESSING_LOCK_WAIT_SECONDS  # 30s
 
         while _time.monotonic() < deadline:
             remaining = deadline - _time.monotonic()
@@ -178,7 +179,7 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
             pass
 
     # ── Pub/Sub 等待超时 fallback：与原逻辑一致 ──
-    logger.warning(f"[Lock] Pub/Sub 等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
+    logger.warning(f"[Lock] Pub/Sub 等待 {Config.retry.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
 
     duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
     is_duplicate = duplicate_check.is_duplicate
@@ -188,7 +189,7 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
 
     if last_beyond_window_event and last_beyond_window_event.created_at:
         seconds_since_created = (datetime.now() - last_beyond_window_event.created_at).total_seconds()
-        if seconds_since_created < Config.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
+        if seconds_since_created < Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
             logger.info(
                 f"检测到其他 worker 刚处理完窗口外重复(ID={last_beyond_window_event.id}, {seconds_since_created:.1f}秒前)，复用结果"
             )
@@ -205,7 +206,7 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
             original_event,
             last_beyond_window_event,
             webhook_full_data,
-            Config.REANALYZE_AFTER_TIME_WINDOW,
+            Config.retry.REANALYZE_AFTER_TIME_WINDOW,
             prefer_recent_beyond_window=True,
         )
     elif is_duplicate and original_event:

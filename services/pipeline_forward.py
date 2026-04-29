@@ -11,7 +11,7 @@ from core.logger import logger
 from crud.webhook import record_failed_forward
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
-from services.ai_analyzer import forward_to_openclaw, forward_to_remote
+from services.forward import forward_to_openclaw, forward_to_remote
 
 
 async def _refresh_original_event(original_id: int | None, fallback_event: WebhookEvent | None) -> WebhookEvent | None:
@@ -32,7 +32,7 @@ async def _recently_notified(original_event: WebhookEvent | None, original_id: i
         return False
 
     seconds_since_notify = (datetime.now() - original_event.last_notified_at).total_seconds()
-    if seconds_since_notify < Config.NOTIFICATION_COOLDOWN_SECONDS:
+    if seconds_since_notify < Config.retry.NOTIFICATION_COOLDOWN_SECONDS:
         logger.info(f"{alert_type}（原始 ID={original_id}），{seconds_since_notify:.1f}秒前已转发，跳过")
         return True
 
@@ -53,11 +53,11 @@ async def _decide_duplicate_forwarding(original_event: WebhookEvent | None, orig
     if await _recently_notified(original_event, original_id, "窗口内重复告警"):
         return ForwardDecision(False, f"窗口内重复告警（原始 ID={original_id}），刚刚已转发", False)
 
-    if Config.ENABLE_PERIODIC_REMINDER and original_event:
+    if Config.retry.ENABLE_PERIODIC_REMINDER and original_event:
         last_notified = original_event.last_notified_at
         if last_notified:
             hours_since_notification = (datetime.now() - last_notified).total_seconds() / 3600
-            if hours_since_notification >= Config.REMINDER_INTERVAL_HOURS:
+            if hours_since_notification >= Config.retry.REMINDER_INTERVAL_HOURS:
                 logger.info(
                     f"触发周期性提醒: 原始ID={original_id}, 距上次通知{hours_since_notification:.1f}小时, 已重复{original_event.duplicate_count}次"
                 )
@@ -66,7 +66,7 @@ async def _decide_duplicate_forwarding(original_event: WebhookEvent | None, orig
                 False, f"窗口内重复告警（原始 ID={original_id}），距上次通知仅{hours_since_notification:.1f}小时", False
             )
 
-    if not Config.FORWARD_DUPLICATE_ALERTS:
+    if not Config.retry.FORWARD_DUPLICATE_ALERTS:
         return ForwardDecision(False, f"窗口内重复告警（原始 ID={original_id}），配置跳过转发", False)
 
     return ForwardDecision(True, None, False)
@@ -141,7 +141,7 @@ async def decide_forwarding(
             return ForwardDecision(True, None, dup_decision.is_periodic_reminder, matched_rules)
 
         if beyond_window:
-            if not Config.FORWARD_AFTER_TIME_WINDOW:
+            if not Config.retry.FORWARD_AFTER_TIME_WINDOW:
                 return ForwardDecision(False, "窗口外重复告警，配置不转发", False)
             if await _recently_notified(original_event, original_id, "窗口外重复告警"):
                 return ForwardDecision(False, "近期已通知", False)
@@ -153,7 +153,7 @@ async def decide_forwarding(
         return ForwardDecision(False, f"重要性为 {importance}，非高风险事件不自动转发", False)
 
     if beyond_window:
-        if not Config.FORWARD_AFTER_TIME_WINDOW:
+        if not Config.retry.FORWARD_AFTER_TIME_WINDOW:
             return ForwardDecision(False, f"窗口外重复告警（原始 ID={original_id}），配置跳过转发", False)
         if await _recently_notified(original_event, original_id, "窗口外重复告警"):
             return ForwardDecision(False, f"窗口外重复告警（原始 ID={original_id}），刚刚已转发", False)
@@ -302,7 +302,7 @@ async def execute_forwarding(
                 await record_failed_forward(
                     webhook_event_id=save_result.webhook_id,
                     forward_rule_id=None,
-                    target_url=Config.FEISHU_WEBHOOK_URL or "",
+                    target_url=Config.ai.FEISHU_WEBHOOK_URL or "",
                     target_type="webhook",
                     failure_reason=forward_result.get("status", "unknown"),
                     error_message=forward_result.get("message") or forward_result.get("response", ""),

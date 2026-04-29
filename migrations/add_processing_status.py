@@ -13,7 +13,7 @@ from core.config import Config
 
 def migrate():
     """添加 processing_status 字段和 idx_status_created 组合索引（幂等）"""
-    engine = create_engine(Config.DATABASE_URL)
+    engine = create_engine(Config.db.DATABASE_URL)
 
     with engine.connect() as conn:
         # 添加 processing_status 列（已有数据默认 'completed'）

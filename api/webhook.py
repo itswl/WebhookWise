@@ -256,7 +256,7 @@ async def receive_webhook(
     session: AsyncSession = Depends(get_db_session),
 ):
     raw_body = await request.body()
-    if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
+    if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     content_type = request.headers.get("content-type", "").lower()
     parsed_data = None
@@ -300,7 +300,7 @@ async def receive_webhook_with_source(
     session: AsyncSession = Depends(get_db_session),
 ):
     raw_body = await request.body()
-    if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
+    if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     content_type = request.headers.get("content-type", "").lower()
     parsed_data = None

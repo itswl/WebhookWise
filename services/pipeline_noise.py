@@ -12,10 +12,10 @@ from api import (
 )
 from core.config import Config
 from core.logger import logger
-from crud.webhook import save_webhook_data
 from db.session import session_scope
 from models import WebhookEvent
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
+from services.webhook_orchestrator import save_webhook_data
 
 
 def _default_noise_context() -> NoiseReductionContext:
@@ -55,7 +55,7 @@ def _build_alert_context(
 
 
 async def _load_recent_alert_contexts(current_hash: str, current_time: datetime) -> list[AlertContext]:
-    window_minutes = max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES)
+    window_minutes = max(1, Config.ai.NOISE_REDUCTION_WINDOW_MINUTES)
     time_threshold = current_time - timedelta(minutes=window_minutes)
 
     try:
@@ -99,7 +99,7 @@ async def _compute_noise_reduction(
     parsed_data: dict,
     analysis_result: dict,
 ) -> NoiseReductionContext:
-    if not Config.ENABLE_ALERT_NOISE_REDUCTION:
+    if not Config.ai.ENABLE_ALERT_NOISE_REDUCTION:
         return _default_noise_context()
 
     now = datetime.now()
@@ -116,9 +116,9 @@ async def _compute_noise_reduction(
     decision = analyze_noise_reduction(
         current_ctx,
         recent_contexts,
-        window_minutes=max(1, Config.NOISE_REDUCTION_WINDOW_MINUTES),
-        min_confidence=max(0.0, min(1.0, Config.ROOT_CAUSE_MIN_CONFIDENCE)),
-        suppress_derived=Config.SUPPRESS_DERIVED_ALERT_FORWARD,
+        window_minutes=max(1, Config.ai.NOISE_REDUCTION_WINDOW_MINUTES),
+        min_confidence=max(0.0, min(1.0, Config.ai.ROOT_CAUSE_MIN_CONFIDENCE)),
+        suppress_derived=Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD,
     )
 
     return NoiseReductionContext(
