@@ -13,11 +13,11 @@ import platform
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from core.config import Config
 from core.logger import get_logger
-from core.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
+from core.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_RECOVERY_POLLED_TOTAL
 from core.redis_client import get_redis
 from db.session import session_scope
 from models import WebhookEvent
@@ -26,6 +26,9 @@ logger = get_logger("recovery_poller")
 
 # 每次最多处理的僵尸事件数量
 _MAX_RECOVER_BATCH = 50
+
+# 最大重试次数，超过后标记为 dead_letter 不再捕捉
+_MAX_RETRIES = 5
 
 # Redis 分布式锁
 _LOCK_KEY = "recovery:poller:lock"
@@ -152,11 +155,34 @@ class RecoveryPoller:
         async with session_scope() as session:
             result = await session.execute(
                 select(WebhookEvent)
-                .where(WebhookEvent.processing_status.in_(["received", "analyzing"]))
+                .where(WebhookEvent.processing_status.in_(["received", "analyzing", "failed"]))
+                .where(WebhookEvent.retry_count < _MAX_RETRIES)
                 .where(WebhookEvent.created_at < threshold)
                 .limit(_MAX_RECOVER_BATCH)
             )
             zombie_events = result.scalars().all()
+
+        # 将超过最大重试次数的事件标记为 dead_letter
+        async with session_scope() as session:
+            dead_result = await session.execute(
+                select(WebhookEvent.id)
+                .where(WebhookEvent.processing_status.in_(["received", "analyzing", "failed"]))
+                .where(WebhookEvent.retry_count >= _MAX_RETRIES)
+                .where(WebhookEvent.created_at < threshold)
+                .limit(_MAX_RECOVER_BATCH)
+            )
+            dead_ids = [row[0] for row in dead_result.all()]
+            if dead_ids:
+                await session.execute(
+                    update(WebhookEvent).where(WebhookEvent.id.in_(dead_ids)).values(processing_status="dead_letter")
+                )
+                WEBHOOK_DEAD_LETTER_TOTAL.inc(len(dead_ids))
+                logger.warning(
+                    "[Recovery] %d 条事件超过最大重试次数(%d)，标记为 dead_letter: ids=%s",
+                    len(dead_ids),
+                    _MAX_RETRIES,
+                    dead_ids,
+                )
 
         if not zombie_events:
             return

@@ -113,9 +113,9 @@ class SecurityHeadersMiddleware:
         async def send_with_headers(message: dict) -> None:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
-                existing_names = {h[0] for h in headers}
+                existing_names = {h[0].lower() for h in headers}
                 for name, value in self._EXTRA_HEADERS:
-                    if name not in existing_names:
+                    if name.lower() not in existing_names:
                         headers.append((name, value))
                 message["headers"] = headers
             await send(message)
