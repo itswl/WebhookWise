@@ -1,9 +1,10 @@
 import logging
 import os
+import warnings as _warnings
 from typing import Any
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv(override=False)
@@ -259,31 +260,57 @@ class _AppConfig(BaseSettings):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
-    def validate_config(self) -> list[str]:
-        warnings = []
+    @model_validator(mode="after")
+    def _validate_cross_fields(self) -> "_AppConfig":
+        """跨字段校验，启动时自动执行。"""
+        config_warnings: list[str] = []
+
+        # 强制鉴权校验
+        if self.security.REQUIRE_WEBHOOK_AUTH and not self.security.WEBHOOK_SECRET:
+            raise ValueError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空，生产环境必须配置 WEBHOOK_SECRET")
+
+        # 并发数与连接池对齐（警告）
+        max_tasks = self.server.MAX_CONCURRENT_WEBHOOK_TASKS
+        max_db = self.db.DB_POOL_SIZE + self.db.DB_MAX_OVERFLOW
+        if max_tasks > max_db:
+            config_warnings.append(
+                f"MAX_CONCURRENT_WEBHOOK_TASKS({max_tasks}) > "
+                f"DB_POOL_SIZE+DB_MAX_OVERFLOW({max_db})，"
+                "应用并发数超过数据库连接池容量，建议调整"
+            )
+
+        # 非致命警告
         if not self.security.WEBHOOK_SECRET:
-            warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
+            config_warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
         if not self.security.API_KEY:
             if self.server.DEBUG or self.security.ALLOW_UNAUTHENTICATED_ADMIN:
-                warnings.append("API_KEY 未配置，管理接口将处于公开状态 (仅建议本地使用)")
+                config_warnings.append("API_KEY 未配置，管理接口将处于公开状态 (仅建议本地使用)")
             else:
-                warnings.append(
+                config_warnings.append(
                     "API_KEY 未配置，生产环境不建议启用（建议设置 API_KEY 或开启 ALLOW_UNAUTHENTICATED_ADMIN 仅用于本地）"
                 )
         if self.ai.ENABLE_AI_ANALYSIS and not self.ai.OPENAI_API_KEY:
-            warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
+            config_warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
         if self.ai.ENABLE_FORWARD and not self.ai.FORWARD_URL:
-            warnings.append("ENABLE_FORWARD=True 但 FORWARD_URL 未配置")
-        for warning in warnings:
-            _config_logger.warning(warning)
-        return warnings
+            config_warnings.append("ENABLE_FORWARD=True 但 FORWARD_URL 未配置")
 
-    # ── 向后兼容：扁平 key 动态访问 ──
+        if config_warnings:
+            for w in config_warnings:
+                _config_logger.warning("配置警告: %s", w)
+
+        return self
+
+    # ── 向后兼容（已废弃） ──
 
     _SUB_NAMES = ("server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry")
 
     def get_flat(self, key: str, default=None):
-        """通过扁平 key 名查找子配置中的值（向后兼容动态访问）"""
+        """[DEPRECATED] 使用 Config.子配置.字段 替代。"""
+        _warnings.warn(
+            f"get_flat('{key}') 已废弃，请使用层级访问 Config.<子配置>.{key}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         for sub_name in self._SUB_NAMES:
             sub = getattr(self, sub_name)
             if hasattr(sub, key):
@@ -291,7 +318,12 @@ class _AppConfig(BaseSettings):
         return default
 
     def set_flat(self, key: str, value) -> bool:
-        """通过扁平 key 名设置子配置中的值（向后兼容动态访问）"""
+        """[DEPRECATED] 使用 Config.子配置.字段 = value 替代。"""
+        _warnings.warn(
+            f"set_flat('{key}', ...) 已废弃，请使用层级访问 Config.<子配置>.{key} = value",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         for sub_name in self._SUB_NAMES:
             sub = getattr(self, sub_name)
             if hasattr(sub, key):

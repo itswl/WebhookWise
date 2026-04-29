@@ -85,6 +85,11 @@ WEBHOOK_RUNNING_TASKS = Gauge(
     "当前正在运行的 webhook 处理任务数",
 )
 
+WEBHOOK_DEAD_LETTER_TOTAL = Counter(
+    "webhook_dead_letter_total",
+    "不可重试的死信事件总数",
+)
+
 DB_POOL_CHECKED_OUT = Gauge(
     "db_pool_checked_out",
     "当前已借出的数据库连接数",

@@ -21,8 +21,7 @@ async def _check_db():
 
 
 if __name__ == "__main__":
-    # 启动前验证
-    Config.validate_config()
+    # 启动前验证（model_validator 在 Config 实例化时已自动执行）
     if not asyncio.run(_check_db()):
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
