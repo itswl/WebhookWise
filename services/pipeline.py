@@ -12,7 +12,7 @@ try:
 except ImportError:
     _QueryCanceledError = None  # 兼容无 asyncpg 环境
 
-from api import InvalidJsonError, InvalidSignatureError
+from api import InvalidJsonError
 from core.compression import decompress_payload
 from core.logger import logger
 from core.metrics import (
@@ -214,9 +214,6 @@ async def _handle_webhook_process_inner(
     try:
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
-        except InvalidSignatureError:
-            logger.warning(f"认证失败 (Token/Signature 不匹配或缺失): IP={client_ip}, Source={source or 'unknown'}")
-            return
         except InvalidJsonError:
             return
 
