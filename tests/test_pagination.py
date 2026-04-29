@@ -6,10 +6,18 @@ import contextlib
 from datetime import datetime
 
 import pytest
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 
 from crud.webhook import get_all_webhooks
 from db.session import Base
 from models import WebhookEvent
+
+
+# SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
 
 
 @pytest.fixture(autouse=True)
