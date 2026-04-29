@@ -428,9 +428,14 @@ async def _poll_pending_analyses_inner():
         pending_dicts: list[dict] = []
         async with session_scope() as session:
             from sqlalchemy import select
+            from sqlalchemy.orm import defer
 
             result = await session.execute(
-                select(DeepAnalysis).filter_by(status="pending").order_by(DeepAnalysis.created_at.asc()).limit(10)
+                select(DeepAnalysis)
+                .options(defer(DeepAnalysis.analysis_result), defer(DeepAnalysis.user_question))
+                .filter_by(status="pending")
+                .order_by(DeepAnalysis.created_at.asc())
+                .limit(10)
             )
             pending = result.scalars().all()
             if not pending:

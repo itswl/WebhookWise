@@ -77,6 +77,17 @@ async def _ensure_schema() -> None:
             )
             logger.info("[Schema] 已创建 idx_pending_webhooks 索引")
 
+        # ── Poller 复合索引（幂等补建）──
+        await session.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status_created " "ON deep_analyses(status, created_at)")
+        )
+        await session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_failed_forwards_status_next_retry "
+                "ON failed_forwards(status, next_retry_at)"
+            )
+        )
+
         await session.commit()
     logger.info("[Schema] 防御性 schema 检查完成")
 
