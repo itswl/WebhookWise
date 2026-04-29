@@ -3,6 +3,7 @@
 基于 Redis 的分析结果缓存，支持 SETEX 自动过期和命中计数。
 """
 
+import contextlib
 import logging
 
 import orjson
@@ -75,6 +76,12 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         await pipe.execute()
 
         logger.info(f"分析结果已缓存到 Redis: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}s")
+
+        # 发布完成事件，通知等待中的 Worker（Pub/Sub 不保证送达，仅作加速）
+        channel = f"analysis_done:{alert_hash}"
+        with contextlib.suppress(Exception):
+            await redis_client.publish(channel, "1")
+
         return True
     except Exception as e:
         logger.warning(f"保存缓存失败: {e}")

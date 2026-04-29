@@ -1,9 +1,9 @@
 """请求解析与响应构建模块，从 pipeline.py 提取。"""
 
 import hashlib
-import json
 from datetime import datetime
 
+import orjson
 from fastapi.responses import JSONResponse
 
 from adapters.ecosystem_adapters import normalize_webhook_event
@@ -32,7 +32,7 @@ def _parse_webhook_request(
 
     if not payload and raw_body:
         try:
-            payload = json.loads(raw_body)
+            payload = orjson.loads(raw_body)
         except Exception:
             raise InvalidJsonError() from None
 
