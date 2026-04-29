@@ -30,7 +30,7 @@ def _build_engine_kwargs():
         "max_overflow": Config.db.DB_MAX_OVERFLOW,
         "pool_recycle": Config.db.DB_POOL_RECYCLE,
         "pool_timeout": Config.db.DB_POOL_TIMEOUT,
-        "connect_args": {"options": f"-c statement_timeout={Config.db.DB_STATEMENT_TIMEOUT_MS}"},
+        "connect_args": {"server_settings": {"statement_timeout": str(Config.db.DB_STATEMENT_TIMEOUT_MS)}},
     }
 
 
