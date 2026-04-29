@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 import orjson
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from api import InvalidJsonError, InvalidSignatureError
 from core.compression import decompress_payload
@@ -114,14 +114,21 @@ async def _handle_webhook_process_inner(
     event_id: int,
     client_ip: str = "",
 ):
-    # 从 DB 加载事件记录
+    # ── 合并会话：加载事件 + 更新状态为 analyzing（单次 checkout/checkin）──
     async with session_scope() as session:
-        result = await session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
+        stmt = (
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(processing_status="analyzing")
+            .returning(WebhookEvent)
+        )
+        result = await session.execute(stmt)
         event = result.scalar_one_or_none()
         if not event:
             logger.error(f"[Pipeline] Event {event_id} not found in DB")
             return
 
+        # 在 session 关闭前提取所有需要的字段到局部变量
         headers = event.headers or {}
         payload = event.parsed_data or {}
         raw_payload = decompress_payload(event.raw_payload) or ""
@@ -134,8 +141,6 @@ async def _handle_webhook_process_inner(
     original_event = None
 
     try:
-        await _update_processing_status(event_id, "analyzing")
-
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
         except InvalidSignatureError:

@@ -2,9 +2,12 @@
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import orjson
 
 from core.compression import decompress_payload
 from core.config import Config
@@ -53,27 +56,50 @@ def save_webhook_to_file(
     return filepath
 
 
+# 文件名中的时间戳正则：{source}_{YYYYMMDD}_{HHMMSS}_{microseconds}.json
+_TS_RE = re.compile(r"(\d{8}_\d{6}_\d{6})\.json$")
+
+
+def _extract_timestamp_from_filename(filepath: Path) -> str:
+    """从文件名提取时间戳用于排序；提取失败时 fallback 到 mtime。"""
+    m = _TS_RE.search(filepath.name)
+    if m:
+        return m.group(1)
+    # fallback: 用 mtime 生成等价字符串以保持排序一致
+    try:
+        mtime = filepath.stat().st_mtime
+        return datetime.fromtimestamp(mtime).strftime("%Y%m%d_%H%M%S_%f")
+    except OSError:
+        return "00000000_000000_000000"
+
+
 def get_webhooks_from_files(limit: int = 50) -> list[dict]:
-    """从文件获取 webhook 数据(备份方式)"""
-    if not os.path.exists(Config.server.DATA_DIR):
+    """从文件获取 webhook 数据(备份方式)
+
+    惰性加载：先按文件名时间戳排序截取，只解析前 limit 个文件，
+    避免目录积压大量文件时一次性全部解析导致 OOM。
+    """
+    data_dir = Path(Config.server.DATA_DIR)
+    if not data_dir.exists():
         return []
 
-    webhooks = []
-    files = [f for f in os.listdir(Config.server.DATA_DIR) if f.endswith(".json")]
+    # 1. 只读取文件名列表
+    files = [p for p in data_dir.iterdir() if p.suffix == ".json"]
 
-    # 读取所有文件
-    for filename in files:
-        filepath = str(Path(Config.server.DATA_DIR) / filename)
+    # 2. 按文件名中的时间戳降序排序（最新在前）
+    files.sort(key=_extract_timestamp_from_filename, reverse=True)
+
+    # 3. 截取前 limit 个
+    selected = files[:limit]
+
+    # 4. 只对选中的文件执行 JSON 解析
+    webhooks: list[dict] = []
+    for filepath in selected:
         try:
-            with open(filepath, encoding="utf-8") as f:
-                webhook_data = json.load(f)
-                webhook_data["filename"] = filename
-                webhooks.append(webhook_data)
-        except Exception as e:
-            logger.error(f"读取文件失败 {filename}: {e!s}")
+            webhook_data = orjson.loads(filepath.read_bytes())
+            webhook_data["filename"] = filepath.name
+            webhooks.append(webhook_data)
+        except Exception as e:  # noqa: PERF203
+            logger.error(f"读取文件失败 {filepath.name}: {e!s}")
 
-    # 按 timestamp 字段倒序排序（最新的在前面）
-    webhooks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-    # 返回限制数量的结果
-    return webhooks[:limit]
+    return webhooks

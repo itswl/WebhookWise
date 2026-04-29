@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import column
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +17,6 @@ from crud.webhook import (
     _decode_raw_payload,
     _fill_event_fields,
     _normalize_headers,
-    _query_latest_original_event,
     _update_existing_event,
 )
 from db.session import session_scope
@@ -125,11 +125,14 @@ async def _upsert_new_event(
     forward_status: str,
     beyond_window: bool,
 ) -> SaveWebhookResult:
-    """使用 INSERT ON CONFLICT DO NOTHING 原子性插入原始告警。
+    """使用 INSERT ON CONFLICT DO UPDATE 原子性处理原始告警写入。
 
     利用部分唯一索引 idx_unique_alert_hash_original (alert_hash WHERE is_duplicate=0)
-    处理并发冲突：若冲突则说明另一并发请求已成功写入原始告警，
-    本次请求降级为重复告警写入。
+    处理并发冲突：
+    - 无冲突：正常插入新原始告警
+    - 冲突：原子性更新 duplicate_count 和 updated_at，通过 xmax 判断是否为冲突
+
+    相比旧的 DO NOTHING + SELECT + INSERT 三步操作，消除了竞态窗口。
     """
     now = datetime.now()
     importance = ai_analysis.get("importance") if ai_analysis else None
@@ -154,61 +157,44 @@ async def _upsert_new_event(
             beyond_window=0,
             last_notified_at=now,
         )
-        .on_conflict_do_nothing(
+        .on_conflict_do_update(
             index_elements=["alert_hash"],
             index_where=(WebhookEvent.is_duplicate == 0),
+            set_={
+                "duplicate_count": WebhookEvent.duplicate_count + 1,
+                "updated_at": now,
+            },
         )
-        .returning(WebhookEvent.id)
+        .returning(
+            WebhookEvent.id,
+            WebhookEvent.duplicate_count,
+            # xmax == 0 → 新插入行；xmax > 0 → 已有行被更新（冲突）
+            column("xmax"),
+        )
     )
 
     result = await session.execute(stmt)
-    new_id = result.scalar()
+    row = result.one()  # RETURNING 始终返回一行（无论 INSERT 还是 UPDATE）
+    row_id = row[0]
+    dup_count = row[1]
+    xmax = row[2]
+    is_new = xmax == 0
 
-    if new_id is not None:
+    if is_new:
         # 插入成功，无冲突
-        logger.info(f"Webhook 数据已保存到数据库 (UPSERT): ID={new_id}")
+        logger.info(f"Webhook 数据已保存到数据库 (UPSERT): ID={row_id}")
         if Config.server.ENABLE_FILE_BACKUP:
             save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        return SaveWebhookResult(new_id, False, None, False)
+        return SaveWebhookResult(row_id, False, None, False)
 
-    # 冲突：另一并发请求已写入原始告警，降级为重复告警
-    logger.info(f"UPSERT 冲突: alert_hash={alert_hash}，降级为重复告警写入")
-    existing = await _query_latest_original_event(session, alert_hash)
+    # 冲突：已有原始告警，原子性 +1 duplicate_count 已完成
+    logger.warning(
+        f"UPSERT 冲突 (原子更新): alert_hash={alert_hash}, original_id={row_id}, duplicate_count={dup_count}"
+    )
 
-    if not existing:
-        # 极端情况：冲突但查不到原始记录（可能被并发删除）。
-        # 不能递归调用 _save_new_event 做普通 INSERT，否则在极端并发下
-        # 可能再次触发 IntegrityError。冲突本身已证明同 hash 原始记录曾存在，
-        # 降级为重复告警写入（duplicate_of=None 表示原始记录已不可达）。
-        logger.warning(f"UPSERT 冲突但无法找到原始告警: hash={alert_hash}，降级为重复告警处理")
-        dup_event = _build_event(
-            source=source,
-            client_ip=client_ip,
-            raw_payload=raw_payload,
-            headers=headers,
-            data=data,
-            alert_hash=alert_hash,
-            ai_analysis=ai_analysis,
-            importance=importance,
-            forward_status=forward_status,
-            is_duplicate=1,
-            duplicate_of=None,
-            duplicate_count=1,
-            beyond_window=1 if beyond_window else 0,
-        )
-        session.add(dup_event)
-        await session.flush()
-        logger.info(f"UPSERT 冲突降级：重复告警已保存 ID={dup_event.id}, original=None (不可达), hash={alert_hash}")
-        if Config.server.ENABLE_FILE_BACKUP:
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        return SaveWebhookResult(dup_event.id, True, None, beyond_window)
-
-    # 写入为重复告警
-    existing.duplicate_count = (existing.duplicate_count or 1) + 1
-    existing.updated_at = now
-
-    final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
-    final_importance = ai_analysis.get("importance") if ai_analysis else existing.importance
+    # 写入重复告警记录
+    final_ai_analysis = ai_analysis if ai_analysis else None
+    final_importance = importance
 
     dup_event = _build_event(
         source=source,
@@ -221,18 +207,18 @@ async def _upsert_new_event(
         importance=final_importance,
         forward_status=forward_status,
         is_duplicate=1,
-        duplicate_of=existing.id,
-        duplicate_count=existing.duplicate_count,
+        duplicate_of=row_id,
+        duplicate_count=dup_count,
         beyond_window=1 if beyond_window else 0,
     )
     session.add(dup_event)
     await session.flush()
 
-    logger.info(f"并发冲突降级：重复告警已保存 ID={dup_event.id}, original={existing.id}")
+    logger.info(f"并发冲突降级：重复告警已保存 ID={dup_event.id}, original={row_id}")
     if Config.server.ENABLE_FILE_BACKUP:
         save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
 
-    return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
+    return SaveWebhookResult(dup_event.id, True, row_id, beyond_window)
 
 
 def _save_to_file_fallback(

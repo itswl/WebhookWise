@@ -4,7 +4,6 @@ import socket
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -90,7 +89,6 @@ app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
 
 
 setup_metrics(app)
-app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
 

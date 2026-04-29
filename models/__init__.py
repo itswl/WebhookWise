@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
+from adapters.summary_extractors import extract_summary_fields
 from core.compression import decompress_payload
 from db.session import Base
 
@@ -70,19 +71,8 @@ class WebhookEvent(Base):
         if self.ai_analysis:
             summary = self.ai_analysis.get("summary", "")
 
-        # 提取关键告警信息
-        alert_info = {}
-        if self.parsed_data and self.source == "mongodb":
-            alert_info = {
-                "host": self.parsed_data.get("监控项", {}).get("主机", "")
-                if isinstance(self.parsed_data.get("监控项"), dict)
-                else "",
-                "metric": self.parsed_data.get("监控项", {}).get("监控项", "")
-                if isinstance(self.parsed_data.get("监控项"), dict)
-                else "",
-                "value": self.parsed_data.get("当前值", ""),
-            }
-            # 可以添加其他来源的提取逻辑
+        # 提取关键告警信息（委托给 adapter 层的摘要提取器）
+        alert_info = extract_summary_fields(self.source, self.parsed_data)
 
         return {
             "id": self.id,

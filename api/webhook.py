@@ -15,7 +15,7 @@ from core.config import Config
 from core.logger import logger
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from crud.webhook import get_client_ip, quick_receive_webhook
+from crud.webhook import compute_prev_alert_ids, get_client_ip, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from services.pipeline import handle_webhook_process
@@ -103,13 +103,8 @@ async def list_webhooks(
         if has_more:
             events = events[:page_size]
 
-        # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
-        prev_ids_seen = {}
-        prev_map = {}  # event.id -> prev_alert_id
-        for event in reversed(events):
-            h = getattr(event, "alert_hash", "") or ""
-            prev_map[event.id] = prev_ids_seen.get(h)
-            prev_ids_seen[h] = event.id
+        # 使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）
+        prev_map = await compute_prev_alert_ids(session, events)
 
         items = []
         for event in events:
@@ -170,12 +165,8 @@ async def list_webhooks_cursor(
         result = await session.execute(query.limit(limit))
         events = result.scalars().all()
 
-        prev_ids_seen = {}
-        prev_map = {}
-        for event in reversed(events):
-            h = getattr(event, "alert_hash", "") or ""
-            prev_map[event.id] = prev_ids_seen.get(h)
-            prev_ids_seen[h] = event.id
+        # 使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）
+        prev_map = await compute_prev_alert_ids(session, events)
 
         items = []
         for event in events:
