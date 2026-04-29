@@ -13,7 +13,6 @@ from api import (
     _ok,
 )
 from core.logger import logger
-from core.webhook_security import ensure_webhook_auth
 
 
 def _parse_webhook_request(
@@ -27,8 +26,6 @@ def _parse_webhook_request(
     except Exception:
         raw_hash = None
     logger.debug(f"[Webhook] 原始载荷: size={len(raw_body) if raw_body else 0}, sha256={raw_hash}")
-
-    ensure_webhook_auth(headers, raw_body)
 
     if not payload and raw_body:
         try:
