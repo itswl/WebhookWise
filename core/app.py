@@ -24,11 +24,61 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
-from db.session import dispose_engine, init_engine
+from db.session import dispose_engine, init_engine, session_scope
 from services.ai_client import reset_openai_client
 from services.pipeline import get_running_tasks
 from services.poller_scheduler import start_scheduler, stop_scheduler
 from services.recovery_poller import RecoveryPoller
+
+
+async def _ensure_schema() -> None:
+    """启动时确保关键 schema 字段存在（防御性迁移）。
+
+    当 Alembic upgrade 因 stamp head 等原因跳过实际 DDL 时，
+    此函数作为双保险，通过 raw SQL 幂等地补齐缺失字段和索引。
+    """
+    from sqlalchemy import text
+
+    async with session_scope() as session:
+        # ── retry_count 列 ──
+        result = await session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'webhook_events' AND column_name = 'retry_count'"
+            )
+        )
+        if not result.scalar():
+            await session.execute(
+                text("ALTER TABLE webhook_events " "ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            )
+            logger.info("[Schema] 已添加 retry_count 列")
+
+        # ── prev_alert_id 列 ──
+        result = await session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'webhook_events' AND column_name = 'prev_alert_id'"
+            )
+        )
+        if not result.scalar():
+            await session.execute(text("ALTER TABLE webhook_events " "ADD COLUMN prev_alert_id BIGINT"))
+            logger.info("[Schema] 已添加 prev_alert_id 列")
+
+        # ── idx_pending_webhooks 部分索引 ──
+        result = await session.execute(
+            text("SELECT indexname FROM pg_indexes " "WHERE indexname = 'idx_pending_webhooks'")
+        )
+        if not result.scalar():
+            await session.execute(
+                text(
+                    "CREATE INDEX idx_pending_webhooks ON webhook_events (created_at) "
+                    "WHERE processing_status IN ('received', 'analyzing', 'failed')"
+                )
+            )
+            logger.info("[Schema] 已创建 idx_pending_webhooks 索引")
+
+        await session.commit()
+    logger.info("[Schema] 防御性 schema 检查完成")
 
 
 @asynccontextmanager
@@ -42,6 +92,8 @@ async def lifespan(app: FastAPI):
         )
     get_http_client()
     await init_engine()
+    # 防御性 schema 迁移：确保关键列/索引存在
+    await _ensure_schema()
     # 从数据库加载运行时配置（覆盖 .env 默认值）
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听

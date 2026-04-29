@@ -4,7 +4,13 @@ import asyncio
 
 import httpx
 import orjson
+import sqlalchemy.exc
 from sqlalchemy import update
+
+try:
+    from asyncpg.exceptions import QueryCanceledError as _QueryCanceledError
+except ImportError:
+    _QueryCanceledError = None  # 兼容无 asyncpg 环境
 
 from api import InvalidJsonError, InvalidSignatureError
 from core.compression import decompress_payload
@@ -44,6 +50,12 @@ def _is_retryable(exc: Exception) -> bool:
     """判断异常是否可重试。"""
     # 网络相关异常：可重试
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
+        return True
+    # DB statement_timeout 触发时 asyncpg 抛出 QueryCanceledError：可重试
+    if _QueryCanceledError and isinstance(exc, _QueryCanceledError):
+        return True
+    # SQLAlchemy 层面的操作错误（含超时透传）：可重试
+    if isinstance(exc, sqlalchemy.exc.OperationalError):
         return True
     # 明确的数据格式/校验错误：不可重试，其他未知异常：默认可重试（保守策略）
     return not isinstance(exc, _NON_RETRYABLE_ERRORS)
