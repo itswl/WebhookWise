@@ -32,6 +32,9 @@ services:
       API_KEY: ${API_KEY}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
 
     volumes:
       - ./.env:/app/.env # 挂载 .env 文件
@@ -76,6 +79,9 @@ services:
       RUN_MODE: worker
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
     volumes:
       - ./.env:/app/.env
       - ./logs:/app/logs
