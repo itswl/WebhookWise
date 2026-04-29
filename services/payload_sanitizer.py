@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import copy
-
 import orjson
 
 from core.config import Config
@@ -28,8 +26,8 @@ def sanitize_for_ai(parsed_data: dict) -> dict:
     )
     max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
 
-    # Phase 1: 递归移除噪音字段
-    cleaned = _strip_keys_recursive(copy.deepcopy(parsed_data), strip_keys)
+    # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
+    cleaned = _strip_keys_recursive(parsed_data, strip_keys)
 
     # Phase 2: 检查大小，超限则截断
     serialized = orjson.dumps(cleaned)
@@ -44,12 +42,21 @@ def sanitize_for_ai(parsed_data: dict) -> dict:
     return cleaned
 
 
-def _strip_keys_recursive(data, strip_keys: set):
+def _strip_keys_recursive(data, strip_keys: set, max_depth: int = 20, _depth: int = 0):
     """递归移除指定的键。"""
+    if _depth >= max_depth:
+        # 超过最大深度，直接截断返回
+        if isinstance(data, (dict, list)):
+            return {"_truncated": True, "_reason": f"max recursion depth {max_depth}"}
+        return data
     if isinstance(data, dict):
-        return {k: _strip_keys_recursive(v, strip_keys) for k, v in data.items() if k.lower() not in strip_keys}
+        return {
+            k: _strip_keys_recursive(v, strip_keys, max_depth, _depth + 1)
+            for k, v in data.items()
+            if k.lower() not in strip_keys
+        }
     if isinstance(data, list):
-        return [_strip_keys_recursive(item, strip_keys) for item in data]
+        return [_strip_keys_recursive(item, strip_keys, max_depth, _depth + 1) for item in data]
     return data
 
 

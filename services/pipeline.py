@@ -9,6 +9,7 @@ from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
 from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL, sanitize_source
+from core.trace import generate_trace_id, set_trace_id
 from core.utils import generate_alert_hash, processing_lock
 from db.session import session_scope
 from models import WebhookEvent
@@ -48,9 +49,23 @@ async def handle_webhook_process(
 
     仅接收 event_id，从 DB 加载完整事件数据，避免 BackgroundTasks 持有大对象。
     """
+    set_trace_id(generate_trace_id(event_id=event_id))
     semaphore = _get_semaphore()
-    async with semaphore:
+    timeout = Config.server.WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Semaphore 获取超时 (%ds)，跳过限流直接处理 | event_id=%s",
+            timeout,
+            event_id,
+        )
         await _handle_webhook_process_inner(event_id, client_ip)
+        return
+    try:
+        await _handle_webhook_process_inner(event_id, client_ip)
+    finally:
+        semaphore.release()
 
 
 async def _handle_webhook_process_inner(

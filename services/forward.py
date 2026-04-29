@@ -75,7 +75,11 @@ async def forward_to_remote(
         logger.info(f"转发数据到 {target_url}")
         client = get_http_client()
         response = await forward_cb.call_async(
-            client.post, target_url, json=forward_data, headers=headers, timeout=Config.ai.FORWARD_TIMEOUT
+            client.post,
+            target_url,
+            json=forward_data,
+            headers=headers,
+            timeout=Config.server.FORWARD_REQUEST_TIMEOUT_SECONDS,
         )
 
         if response is None:
