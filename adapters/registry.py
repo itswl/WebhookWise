@@ -3,7 +3,10 @@ import logging
 import pkgutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from adapters.engine_protocol import DeepAnalysisEngine
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +108,43 @@ class AdapterRegistry:
 
 
 registry = AdapterRegistry()
+
+
+# ── 深度分析引擎注册表 ────────────────────────────────────────────────────────
+
+_engines: dict[str, "DeepAnalysisEngine"] = {}
+
+
+def register_engine(engine: "DeepAnalysisEngine") -> None:
+    """注册一个深度分析引擎。"""
+    _engines[engine.name] = engine
+    logger.info(f"[Engine Registry] 已注册引擎: {engine.name}")
+
+
+def get_engine(name: str) -> "DeepAnalysisEngine | None":
+    """按名称获取引擎实例。"""
+    return _engines.get(name)
+
+
+def get_available_engines() -> list[str]:
+    """返回当前可用（已启用）的引擎名称列表。"""
+    return [name for name, eng in _engines.items() if eng.is_available()]
+
+
+def get_default_engine() -> "DeepAnalysisEngine | None":
+    """根据优先级返回默认引擎：openclaw > local。"""
+    from core.config import Config
+
+    # 尊重用户在配置中指定的默认引擎
+    configured = getattr(Config.ai, "DEEP_ANALYSIS_ENGINE", "auto")
+    if configured and configured != "auto":
+        eng = _engines.get(configured)
+        if eng and eng.is_available():
+            return eng
+
+    # 自动选择：openclaw 优先
+    for name in ("openclaw", "local"):
+        eng = _engines.get(name)
+        if eng and eng.is_available():
+            return eng
+    return None

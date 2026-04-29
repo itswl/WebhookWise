@@ -22,6 +22,7 @@ from services.pipeline import handle_webhook_process
 webhook_router = APIRouter()
 
 MAX_PAGE = 500
+MAX_OFFSET = 10000  # 超过此 offset 必须使用 cursor_id
 
 
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
@@ -61,6 +62,11 @@ async def list_webhooks(
         raise HTTPException(
             status_code=400,
             detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor_id 游标分页",
+        )
+    if cursor_id is None and offset > MAX_OFFSET:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Offset {offset} exceeds maximum ({MAX_OFFSET}). Please use cursor_id for deep pagination.",
         )
     if cursor_id is not None:
         offset = 0
@@ -160,6 +166,11 @@ async def list_webhooks(
                 else (0 if total is not None else None),
                 "next_cursor": next_cursor,
                 "has_more": has_more,
+                **(
+                    {"hint": "Approaching offset limit. Consider switching to cursor_id pagination."}
+                    if cursor_id is None and offset > MAX_OFFSET * 0.8
+                    else {}
+                ),
             },
         }
     except Exception as e:

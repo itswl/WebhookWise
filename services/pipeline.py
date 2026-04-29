@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 
 from api import InvalidJsonError, InvalidSignatureError
 from core.logger import logger
-from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
+from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.utils import generate_alert_hash, processing_lock
 from db.session import session_scope
 from models import WebhookEvent
@@ -50,7 +50,7 @@ async def handle_webhook_process(
         source = event.source
 
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
-    WEBHOOK_RECEIVED_TOTAL.labels(source=source or "unknown", status="received").inc()
+    WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
     analysis_result = {}
     original_event = None
 
@@ -90,7 +90,7 @@ async def handle_webhook_process(
                 analysis_result = _apply_noise_metadata(analysis_result, noise_context)
 
                 WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-                    source=request_context.source,
+                    source=sanitize_source(request_context.source),
                     relation=noise_context.relation,
                     suppressed=str(noise_context.suppress_forward).lower(),
                 ).inc()
@@ -124,7 +124,7 @@ async def handle_webhook_process(
             analysis_result = _apply_noise_metadata(analysis_result, noise_context)
 
             WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-                source=request_context.source,
+                source=sanitize_source(request_context.source),
                 relation=noise_context.relation,
                 suppressed=str(noise_context.suppress_forward).lower(),
             ).inc()
