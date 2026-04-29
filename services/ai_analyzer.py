@@ -18,7 +18,7 @@ from tenacity import (
 
 from core.config import Config
 from core.logger import logger
-from core.metrics import AI_ANALYSIS_DURATION_SECONDS
+from core.metrics import AI_ANALYSIS_DURATION_SECONDS, sanitize_source
 from services.ai_cache import get_cached_analysis, log_ai_usage, save_to_cache
 from services.ai_client import _send_degradation_alert, analyze_with_openai_tracked
 
@@ -40,7 +40,7 @@ async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple
     start_time = time.time()
     analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
     duration = time.time() - start_time
-    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="openai").observe(duration)
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="openai").observe(duration)
     logger.info(f"AI 分析完成: {source}")
     return analysis, tokens_in, tokens_out
 
@@ -263,7 +263,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
                 analysis["summary"] = f"🟡 警告事件: {event}"
 
     duration = time.time() - start_time
-    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="rule").observe(duration)
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="rule").observe(duration)
     return analysis
 
 

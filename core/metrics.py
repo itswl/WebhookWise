@@ -5,6 +5,40 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from core.config import Config
 from core.logger import logger
 
+# ── Source 白名单：防止 Prometheus label 基数爆炸 ─────────────────────────────
+KNOWN_SOURCES: set[str] = {
+    "github",
+    "gitlab",
+    "bitbucket",
+    "cloud-monitor",
+    "alert-system",
+    "k8s-cluster",
+    "production-server",
+    "payment-system",
+    "openclaw",
+    "feishu-test",
+    "production",
+    "datadog",
+    "grafana",
+    "pagerduty",
+    "prometheus",
+    "sentry",
+}
+
+
+def sanitize_source(source: str) -> str:
+    """将未知 source 归类为 'unknown'，防止 Prometheus 基数爆炸。
+
+    仅用于 Prometheus label，不影响业务逻辑中的 source 值。
+    """
+    if not source:
+        return "unknown"
+    normalized = source.lower().strip()
+    if normalized in KNOWN_SOURCES:
+        return normalized
+    return "unknown"
+
+
 # 1. 业务吞吐与状态指标
 WEBHOOK_RECEIVED_TOTAL = Counter("webhook_received_total", "Total number of webhooks received", ["source", "status"])
 
