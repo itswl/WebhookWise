@@ -32,6 +32,9 @@ from services.poller_scheduler import start_scheduler, stop_scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Config.validate_config()
+    # 生产环境强制鉴权
+    if Config.security.REQUIRE_WEBHOOK_AUTH and not Config.security.WEBHOOK_SECRET:
+        raise RuntimeError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空，生产环境必须配置 WEBHOOK_SECRET")
     # 注册深度分析引擎
     register_engine(LocalAnalysisEngine())
     register_engine(OpenClawAnalysisEngine())

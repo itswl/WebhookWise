@@ -32,6 +32,7 @@ class ServerConfig(BaseSettings):
     ENABLE_FILE_BACKUP: bool = Field(default=False)
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
+    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=50, description="Webhook 后台处理最大并发数")
 
 
 class SecurityConfig(BaseSettings):
@@ -44,6 +45,7 @@ class SecurityConfig(BaseSettings):
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
+    REQUIRE_WEBHOOK_AUTH: bool = Field(default=False, description="生产环境强制鉴权，启动时校验 WEBHOOK_SECRET")
 
 
 class DBConfig(BaseSettings):
@@ -123,6 +125,23 @@ class AIConfig(BaseSettings):
     DEEP_ANALYSIS_ENGINE: str = Field(default="local")
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
+
+    # Payload 清洗
+    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, description="AI 分析输入 payload 最大字节数")
+    AI_PAYLOAD_STRIP_KEYS: str = Field(
+        default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data",
+        description="AI 分析前移除的噪音字段名，逗号分隔",
+    )
+
+    # 规则降级
+    RULE_HIGH_KEYWORDS: str = Field(
+        default="error,failure,critical,alert,错误,失败,故障", description="规则降级：高优先级关键字"
+    )
+    RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告", description="规则降级：警告级别关键字")
+    RULE_METRIC_KEYWORDS: str = Field(
+        default="4xxqps,5xxqps,error,cpu,memory,disk", description="规则降级：指标名称关键字"
+    )
+    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, description="规则降级：超阈值倍数提升为 high")
 
     # 超时
     AI_API_TIMEOUT: int = Field(default=10)

@@ -83,9 +83,7 @@ async def _retry_forward(session, record: FailedForward):
     # 从 DB 获取关联的 WebhookEvent（获取 ai_analysis 等信息）
     event = await session.get(WebhookEvent, record.webhook_event_id)
     if not event:
-        logger.warning(
-            f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, " f"标记为 exhausted"
-        )
+        logger.warning(f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, 标记为 exhausted")
         record.status = "exhausted"
         record.updated_at = datetime.now()
         await session.flush()
@@ -115,7 +113,7 @@ async def _retry_forward(session, record: FailedForward):
             record.status = "success"
             record.last_retry_at = now
             record.updated_at = now
-            logger.info(f"[ForwardRetry] 重试成功: ID={record.id}, " f"webhook_event_id={record.webhook_event_id}")
+            logger.info(f"[ForwardRetry] 重试成功: ID={record.id}, webhook_event_id={record.webhook_event_id}")
         else:
             _handle_retry_failure(record, now, f"forward status={status}: {result.get('message', '')}")
 
@@ -135,7 +133,7 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
     if record.retry_count >= record.max_retries:
         record.status = "exhausted"
         logger.warning(
-            f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, " f"retry_count={record.retry_count}/{record.max_retries}"
+            f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, retry_count={record.retry_count}/{record.max_retries}"
         )
     else:
         record.status = "retrying"

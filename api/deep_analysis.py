@@ -404,7 +404,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                 return JSONResponse(status_code=400, content={"error": result.get("error", "获取失败")})
 
             if result.get("status") != "completed":
-                return JSONResponse(status_code=400, content={"error": f'获取未完成: {result.get("status")}'})
+                return JSONResponse(status_code=400, content={"error": f"获取未完成: {result.get('status')}"})
 
             text = result.get("text", "")
 

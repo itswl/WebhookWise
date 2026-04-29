@@ -18,6 +18,7 @@ from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL
 from core.redis_client import get_redis
 from core.utils import feishu_cb
 from services.ai_parser import _parse_ai_analysis_response
+from services.payload_sanitizer import sanitize_for_ai
 
 logger = logging.getLogger("webhook_service.ai_client")
 
@@ -63,7 +64,8 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
-        data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
+        cleaned_data = sanitize_for_ai(data)
+        data_json = orjson.dumps(cleaned_data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
         messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
@@ -131,7 +133,8 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
-        data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
+        cleaned_data = sanitize_for_ai(data)
+        data_json = orjson.dumps(cleaned_data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
         messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
@@ -162,8 +165,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         if not ai_response:
             # 记录详细诊断信息，方便排查原因
             logger.error(
-                "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | "
-                "tokens_in=%d | tokens_out=%d | choice=%r",
+                "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | tokens_in=%d | tokens_out=%d | choice=%r",
                 finish_reason,
                 raw_content,
                 Config.ai.OPENAI_MODEL,

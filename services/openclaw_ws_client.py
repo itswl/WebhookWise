@@ -95,8 +95,7 @@ def _build_device_auth(nonce: str) -> dict | None:
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     except ImportError:
         logger.warning(
-            "cryptography package not installed, skipping device auth. "
-            "Install with: pip install cryptography>=42.0.0"
+            "cryptography package not installed, skipping device auth. Install with: pip install cryptography>=42.0.0"
         )
         return None
 

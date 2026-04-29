@@ -53,7 +53,7 @@ async def fix_duplicate_count():
             # 显示前10条示例
             logger.info("前10条需要修复的记录：")
             for row in rows[:10]:
-                logger.info(f"  ID={row[0]}, duplicate_of={row[1]}, " f"当前值={row[2]}, 正确值={row[3]}")
+                logger.info(f"  ID={row[0]}, duplicate_of={row[1]}, 当前值={row[2]}, 正确值={row[3]}")
 
             # 执行批量更新
             update_query = text("""
@@ -77,6 +77,6 @@ async def fix_duplicate_count():
 
 if __name__ == "__main__":
     fixed_count = asyncio.run(fix_duplicate_count())
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"修复完成！共修复 {fixed_count} 条记录")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")

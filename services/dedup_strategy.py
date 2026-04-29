@@ -133,8 +133,7 @@ async def _do_check_duplicate(
             if history_event:
                 time_diff = (now - history_event.timestamp).total_seconds() / 3600
                 logger.info(
-                    f"窗口外发现历史告警: hash={alert_hash}, "
-                    f"原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时"
+                    f"窗口外发现历史告警: hash={alert_hash}, 原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时"
                 )
                 # 返回历史原始事件与 recent beyond_window，交给上层做"复用或重算"决策。
                 return DuplicateCheckResult(False, history_event, True, last_beyond_window)

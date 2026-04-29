@@ -102,7 +102,7 @@ async def _save_duplicate_event(
     if ai_analysis:
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 使用传入的AI分析结果")
     elif original.ai_analysis:
-        logger.info(f"重复告警已保存: ID={duplicate_event.id}, " f"复用原始告警 {original.id} 的AI分析结果")
+        logger.info(f"重复告警已保存: ID={duplicate_event.id}, 复用原始告警 {original.id} 的AI分析结果")
     else:
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 无AI分析结果")
 
@@ -198,7 +198,7 @@ async def _upsert_new_event(
         )
         session.add(dup_event)
         await session.flush()
-        logger.info(f"UPSERT 冲突降级：重复告警已保存 ID={dup_event.id}, " f"original=None (不可达), hash={alert_hash}")
+        logger.info(f"UPSERT 冲突降级：重复告警已保存 ID={dup_event.id}, original=None (不可达), hash={alert_hash}")
         if Config.server.ENABLE_FILE_BACKUP:
             save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
         return SaveWebhookResult(dup_event.id, True, None, beyond_window)

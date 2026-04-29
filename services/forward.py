@@ -165,7 +165,7 @@ def build_feishu_message(
 
     # 添加建议操作
     if analysis_result.get("actions"):
-        actions_text = "\n".join([f"{i+1}. {action}" for i, action in enumerate(analysis_result.get("actions", []))])
+        actions_text = "\n".join([f"{i + 1}. {action}" for i, action in enumerate(analysis_result.get("actions", []))])
         card_content["elements"].append(
             {"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 建议操作**\n{actions_text}"}}
         )
@@ -191,11 +191,11 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
 
 ## 告警数据
 ```json
-{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}
+{json.dumps(alert_data, ensure_ascii=False, separators=(",", ":"))}
 ```
 
 ## AI 初步分析
-{json.dumps(analysis_result, ensure_ascii=False, indent=2) if analysis_result else '无'}
+{json.dumps(analysis_result, ensure_ascii=False, indent=2) if analysis_result else "无"}
 
 ## 指令
 你可以自主使用 MCP 工具和 Skills 进行排查：

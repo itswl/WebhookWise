@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
 
@@ -37,7 +38,7 @@ def save_webhook_to_file(
         "source": source,
         "client_ip": client_ip,
         "headers": dict(headers) if headers else {},
-        "raw_payload": raw_payload.decode("utf-8") if raw_payload else None,
+        "raw_payload": decompress_payload(raw_payload) if isinstance(raw_payload, bytes) else raw_payload,
         "parsed_data": data,
     }
 
