@@ -3,15 +3,22 @@
 检查数据库中告警的 importance 字段分布
 """
 
-from db.session import session_scope
+import asyncio
+
+from sqlalchemy import select
+
+from db.session import init_engine, session_scope
 from models import WebhookEvent
 
 
-def check_importance_distribution():
+async def check_importance_distribution():
     """检查 importance 字段分布"""
-    with session_scope() as session:
-        # 查询所有 webhooks
-        webhooks = session.query(WebhookEvent).order_by(WebhookEvent.id.desc()).limit(100).all()
+    await init_engine()
+
+    async with session_scope() as session:
+        # 查询最近 100 条 webhooks
+        result = await session.execute(select(WebhookEvent).order_by(WebhookEvent.id.desc()).limit(100))
+        webhooks = result.scalars().all()
 
         print(f"检查最近 {len(webhooks)} 条告警的 importance 字段分布\n")
 
@@ -77,7 +84,7 @@ def check_importance_distribution():
 
 if __name__ == "__main__":
     try:
-        check_importance_distribution()
+        asyncio.run(check_importance_distribution())
     except Exception as e:
         print(f"错误: {e}")
         print("\n提示: 请确保数据库连接正常")

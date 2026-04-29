@@ -6,6 +6,7 @@
 解决：将重复告警的 duplicate_count 更新为原始告警的 duplicate_count
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -15,16 +16,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import text
 
 from core.logger import logger
-from db.session import init_db, session_scope
+from db.session import init_engine, session_scope
 
 
-def fix_duplicate_count():
+async def fix_duplicate_count():
     """修复所有重复告警的 duplicate_count 字段"""
     try:
-        # 初始化数据库
-        init_db()
+        # 初始化数据库引擎
+        await init_engine()
 
-        with session_scope() as session:
+        async with session_scope() as session:
             # 查询需要修复的记录
             query = text("""
                 SELECT
@@ -40,7 +41,7 @@ def fix_duplicate_count():
                 ORDER BY duplicate_events.id
             """)
 
-            result = session.execute(query)
+            result = await session.execute(query)
             rows = result.fetchall()
 
             if not rows:
@@ -64,8 +65,7 @@ def fix_duplicate_count():
                   AND duplicate_events.duplicate_count != original_events.duplicate_count
             """)
 
-            session.execute(update_query)
-            session.commit()
+            await session.execute(update_query)
 
             logger.info(f"✅ 成功修复 {len(rows)} 条重复告警记录")
             return len(rows)
@@ -76,7 +76,7 @@ def fix_duplicate_count():
 
 
 if __name__ == "__main__":
-    fixed_count = fix_duplicate_count()
+    fixed_count = asyncio.run(fix_duplicate_count())
     print(f"\n{'='*60}")
     print(f"修复完成！共修复 {fixed_count} 条记录")
     print(f"{'='*60}\n")
