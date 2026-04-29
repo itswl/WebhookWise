@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 import httpx
-import orjson
+import yaml
 from openai import AsyncOpenAI
 
 from core.config import Config
@@ -65,8 +65,8 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
 
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
-        data_json = orjson.dumps(cleaned_data, option=orjson.OPT_INDENT_2).decode()
-        user_prompt = prompt_template.format(source=source, data_json=data_json)
+        data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        user_prompt = prompt_template.format(source=source, data_json=data_yaml)
         messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
@@ -88,19 +88,26 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         if not ai_response:
             raise ValueError("AI 返回空响应")
 
-        if finish_reason == "length":
-            retry_max_tokens = max(Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.ai.OPENAI_MAX_TOKENS)
-            if retry_max_tokens > Config.ai.OPENAI_MAX_TOKENS:
-                logger.warning(
-                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
+        if finish_reason == "length" and ai_response:
+            logger.info("AI 响应被截断，使用续写模式继续生成")
+            try:
+                continuation_messages = messages + [
+                    {"role": "assistant", "content": ai_response},
+                    {"role": "user", "content": "请继续完成上面被截断的分析，直接从中断处继续，不要重复已有内容。"},
+                ]
+                continuation_response = await client.chat.completions.create(
+                    model=Config.ai.OPENAI_MODEL,
+                    messages=continuation_messages,
+                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
+                    temperature=0.3,
                 )
-                retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
-                if hasattr(retry_response, "choices") and retry_response.choices:
-                    retry_choice = retry_response.choices[0]
-                    retry_text = (retry_choice.message.content or "").strip()
-                    if retry_text:
-                        ai_response = retry_text
-                        finish_reason = getattr(retry_choice, "finish_reason", finish_reason)
+                if hasattr(continuation_response, "choices") and continuation_response.choices:
+                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
+                    if continuation_content:
+                        ai_response = ai_response + continuation_content
+                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
+            except Exception as cont_err:
+                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
 
         try:
             resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
@@ -134,8 +141,8 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
 
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
-        data_json = orjson.dumps(cleaned_data, option=orjson.OPT_INDENT_2).decode()
-        user_prompt = prompt_template.format(source=source, data_json=data_json)
+        data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        user_prompt = prompt_template.format(source=source, data_json=data_yaml)
         messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
         logger.info(f"调用 OpenAI API 分析 webhook: {source}")
@@ -184,25 +191,32 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                 )
             raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
 
-        if finish_reason == "length":
-            retry_max_tokens = max(Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS, Config.ai.OPENAI_MAX_TOKENS)
-            if retry_max_tokens > Config.ai.OPENAI_MAX_TOKENS:
-                logger.warning(
-                    "AI 响应可能被截断(finish_reason=length)，使用更大 max_tokens 重试: %s", retry_max_tokens
+        if finish_reason == "length" and ai_response:
+            logger.info("AI 响应被截断，使用续写模式继续生成")
+            try:
+                continuation_messages = messages + [
+                    {"role": "assistant", "content": ai_response},
+                    {"role": "user", "content": "请继续完成上面被截断的分析，直接从中断处继续，不要重复已有内容。"},
+                ]
+                continuation_response = await client.chat.completions.create(
+                    model=Config.ai.OPENAI_MODEL,
+                    messages=continuation_messages,
+                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
+                    temperature=0.3,
                 )
-                retry_response = await _request_openai_completion(client, messages, retry_max_tokens)
 
                 # 更新 token 使用量
-                if hasattr(retry_response, "usage") and retry_response.usage:
-                    tokens_in += getattr(retry_response.usage, "prompt_tokens", 0) or 0
-                    tokens_out += getattr(retry_response.usage, "completion_tokens", 0) or 0
+                if hasattr(continuation_response, "usage") and continuation_response.usage:
+                    tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
+                    tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
 
-                if hasattr(retry_response, "choices") and retry_response.choices:
-                    retry_choice = retry_response.choices[0]
-                    retry_text = (retry_choice.message.content or "").strip()
-                    if retry_text:
-                        ai_response = retry_text
-                        finish_reason = getattr(retry_choice, "finish_reason", finish_reason)
+                if hasattr(continuation_response, "choices") and continuation_response.choices:
+                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
+                    if continuation_content:
+                        ai_response = ai_response + continuation_content
+                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
+            except Exception as cont_err:
+                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
 
         try:
             resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()

@@ -3,7 +3,6 @@
 import asyncio
 import signal
 
-from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
 from core.redis_client import dispose_redis, get_redis
@@ -15,8 +14,7 @@ async def main():
     logger = setup_logger()
     logger.info("[Worker] Starting poller worker...")
 
-    # 初始化依赖（与 lifespan 保持一致）
-    Config.validate_config()
+    # 初始化依赖（与 lifespan 保持一致，model_validator 在 Config 实例化时已自动执行）
     get_http_client()  # Poller 需要 HTTP 客户端（如 OpenClaw 轮询）
     await init_engine()
     get_redis()  # 确保 Redis 连接就绪

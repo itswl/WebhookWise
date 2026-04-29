@@ -756,7 +756,11 @@ def add_system_configs_table():
             if row_count == 0:
                 print("🔄 正在初始化运行时配置种子数据...")
                 for key, meta in _RUNTIME_CONFIG_SEED.items():
-                    val = Config.get_flat(key, "")
+                    # 直接层级访问子配置获取值
+                    from core.runtime_config import _KEY_TO_SUBCONFIG
+
+                    _sub = _KEY_TO_SUBCONFIG.get(key)
+                    val = getattr(getattr(Config, _sub), key, "") if _sub else ""
                     # 布尔值特殊处理
                     str_val = str(val).lower() if meta["type"] == "bool" else str(val) if val is not None else ""
                     conn.execute(

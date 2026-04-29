@@ -2,6 +2,8 @@
 
 import asyncio
 
+import httpx
+import orjson
 from sqlalchemy import select, update
 
 from api import InvalidJsonError, InvalidSignatureError
@@ -9,6 +11,7 @@ from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
 from core.metrics import (
+    WEBHOOK_DEAD_LETTER_TOTAL,
     WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
@@ -28,6 +31,24 @@ _webhook_semaphore: asyncio.Semaphore | None = None
 
 # 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
 _running_tasks: set[asyncio.Task] = set()
+
+# 不可重试的异常类型
+_NON_RETRYABLE_ERRORS = (
+    ValueError,
+    KeyError,
+    TypeError,
+    orjson.JSONDecodeError,
+    UnicodeDecodeError,
+)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """判断异常是否可重试。"""
+    # 网络相关异常：可重试
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
+        return True
+    # 明确的数据格式/校验错误：不可重试，其他未知异常：默认可重试（保守策略）
+    return not isinstance(exc, _NON_RETRYABLE_ERRORS)
 
 
 def get_running_tasks() -> set[asyncio.Task]:
@@ -224,6 +245,21 @@ async def _handle_webhook_process_inner(
         )
 
     except Exception as e:
-        logger.error(f"处理 Webhook 时发生错误: {e!s}", exc_info=True)
-        await _update_processing_status(event_id, "failed")
+        if _is_retryable(e):
+            logger.error(
+                "Webhook 处理失败（可重试）| event_id=%s | error=%s",
+                event_id,
+                e,
+                exc_info=True,
+            )
+            await _update_processing_status(event_id, "failed")
+        else:
+            logger.warning(
+                "Webhook 处理失败（不可重试，标记为死信）| event_id=%s | error=%s | type=%s",
+                event_id,
+                e,
+                type(e).__name__,
+            )
+            await _update_processing_status(event_id, "dead_letter")
+            WEBHOOK_DEAD_LETTER_TOTAL.inc()
         return
