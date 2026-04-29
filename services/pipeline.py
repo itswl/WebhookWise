@@ -33,6 +33,9 @@ _NON_RETRYABLE_ERRORS = (
     UnicodeDecodeError,
 )
 
+# 最大重试次数，超过后标记为 dead_letter 不再捕捉
+_MAX_RETRIES = 5
+
 # 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
 _running_tasks: set[asyncio.Task] = set()
 
@@ -51,22 +54,36 @@ def get_running_tasks() -> set[asyncio.Task]:
     return _running_tasks
 
 
-async def _update_processing_status(event_id: int | None, status: str, *, inc_retry: bool = False) -> None:
-    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）
-
-    Args:
-        inc_retry: 若为 True，同时 retry_count += 1（用于可重试异常退回 received）
-    """
+async def _update_processing_status(event_id: int | None, status: str) -> None:
+    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）"""
     if event_id is None:
         return
     try:
         async with session_scope() as session:
-            values: dict = {"processing_status": status}
-            if inc_retry:
-                values["retry_count"] = WebhookEvent.retry_count + 1
-            await session.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(**values))
+            await session.execute(
+                update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status)
+            )
     except Exception as e:
         logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
+
+
+async def _increment_and_get_retry_count(event_id: int | None) -> int:
+    """原子递增 retry_count 并返回递增后的值。"""
+    if event_id is None:
+        return 0
+    try:
+        async with session_scope() as session:
+            result = await session.execute(
+                update(WebhookEvent)
+                .where(WebhookEvent.id == event_id)
+                .values(retry_count=WebhookEvent.retry_count + 1)
+                .returning(WebhookEvent.retry_count)
+            )
+            row = result.scalar_one_or_none()
+            return row if row is not None else 0
+    except Exception as e:
+        logger.warning(f"[Pipeline] 递增 retry_count 失败: event_id={event_id}, error={e!s}")
+        return 0
 
 
 async def handle_webhook_process(
@@ -233,13 +250,27 @@ async def _handle_webhook_process_inner(
 
     except Exception as e:
         if _is_retryable(e):
-            logger.error(
-                "Webhook 处理失败（可重试，退回 received 等待 RecoveryPoller）| event_id=%s | error=%s",
-                event_id,
-                e,
-                exc_info=True,
-            )
-            await _update_processing_status(event_id, "received", inc_retry=True)
+            # 先递增 retry_count 并判断是否超过最大重试次数
+            current_retry = await _increment_and_get_retry_count(event_id)
+            if current_retry >= _MAX_RETRIES:
+                logger.warning(
+                    "Webhook 处理失败（重试次数已耗尽，标记为死信）| event_id=%s | retry_count=%d | error=%s",
+                    event_id,
+                    current_retry,
+                    e,
+                )
+                await _update_processing_status(event_id, "dead_letter")
+                WEBHOOK_DEAD_LETTER_TOTAL.inc()
+            else:
+                logger.error(
+                    "Webhook 处理失败（可重试，退回 received 等待 RecoveryPoller）| event_id=%s | retry=%d/%d | error=%s",
+                    event_id,
+                    current_retry,
+                    _MAX_RETRIES,
+                    e,
+                    exc_info=True,
+                )
+                await _update_processing_status(event_id, "received")
         else:
             logger.warning(
                 "Webhook 处理失败（不可重试，标记为死信）| event_id=%s | error=%s | type=%s",

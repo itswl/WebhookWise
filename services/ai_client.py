@@ -118,32 +118,35 @@ async def _call_openai_completion(
 
     # 截断续写：只保留 system + 截断回复 + 简短续写指令，不重复发送完整 user_prompt
     if finish_reason == "length" and ai_response:
-        logger.info("AI 响应被截断，使用续写模式继续生成")
-        try:
-            continuation_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "assistant", "content": ai_response},
-                {"role": "user", "content": _CONTINUATION_INSTRUCTION},
-            ]
-            continuation_response = await client.chat.completions.create(
-                model=Config.ai.OPENAI_MODEL,
-                messages=continuation_messages,
-                max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
-                temperature=0.3,
-            )
+        if not Config.ai.AI_CONTINUATION_ENABLED:
+            logger.warning("AI 响应被截断，但续写功能已通过配置关闭 (AI_CONTINUATION_ENABLED=False)，直接使用截断内容")
+        else:
+            logger.info("AI 响应被截断，使用续写模式继续生成")
+            try:
+                continuation_messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "assistant", "content": ai_response},
+                    {"role": "user", "content": _CONTINUATION_INSTRUCTION},
+                ]
+                continuation_response = await client.chat.completions.create(
+                    model=Config.ai.OPENAI_MODEL,
+                    messages=continuation_messages,
+                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
+                    temperature=0.3,
+                )
 
-            # 累加续写的 token 使用量
-            if hasattr(continuation_response, "usage") and continuation_response.usage:
-                tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
-                tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
+                # 累加续写的 token 使用量
+                if hasattr(continuation_response, "usage") and continuation_response.usage:
+                    tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
+                    tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
 
-            if hasattr(continuation_response, "choices") and continuation_response.choices:
-                continuation_content = (continuation_response.choices[0].message.content or "").strip()
-                if continuation_content:
-                    ai_response = repair_concatenated_response(ai_response, continuation_content)
-                    finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
-        except Exception as cont_err:
-            logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
+                if hasattr(continuation_response, "choices") and continuation_response.choices:
+                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
+                    if continuation_content:
+                        ai_response = repair_concatenated_response(ai_response, continuation_content)
+                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
+            except Exception as cont_err:
+                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
 
     try:
         resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()

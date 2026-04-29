@@ -4,7 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,22 +54,11 @@ async def list_webhooks(
     cursor_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    # 向后兼容：客户端传了 page>1 但没传 cursor_id 时给出提示
-    if page > 1 and cursor_id is None:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "data": [],
-                "status": 200,
-                "pagination": {
-                    "page_size": page_size,
-                    "next_cursor": None,
-                    "has_more": False,
-                    "hint": "OFFSET pagination is removed. Please use cursor_id for paging. "
-                    "Start without cursor_id to get the first page, then use next_cursor.",
-                },
-            },
+    # page 参数已弃用，强制要求使用 cursor_id 分页
+    if page is not None and page > 1 and cursor_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="page 参数已弃用，请使用 cursor_id 进行游标分页。首页请求无需 cursor_id，后续页面请使用上一页返回的 next_cursor。",
         )
 
     try:
@@ -244,7 +233,14 @@ async def receive_webhook(
 
     # 通过 Redis Stream 投递给 Worker 异步处理
     redis = get_redis()
-    await redis.xadd(Config.server.WEBHOOK_MQ_QUEUE, {"event_id": str(event.id), "client_ip": client_ip or ""})
+    # CRITICAL: xadd 必须在 session.commit() 之后执行，
+    # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
+    await redis.xadd(
+        Config.server.WEBHOOK_MQ_QUEUE,
+        {"event_id": str(event.id), "client_ip": client_ip or ""},
+        maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+        approximate=True,
+    )
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
@@ -295,7 +291,14 @@ async def receive_webhook_with_source(
 
     # 通过 Redis Stream 投递给 Worker 异步处理
     redis = get_redis()
-    await redis.xadd(Config.server.WEBHOOK_MQ_QUEUE, {"event_id": str(event.id), "client_ip": client_ip or ""})
+    # CRITICAL: xadd 必须在 session.commit() 之后执行，
+    # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
+    await redis.xadd(
+        Config.server.WEBHOOK_MQ_QUEUE,
+        {"event_id": str(event.id), "client_ip": client_ip or ""},
+        maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+        approximate=True,
+    )
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
