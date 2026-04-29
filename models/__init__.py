@@ -5,7 +5,8 @@
 import logging
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 
 from db.session import Base
 
@@ -25,14 +26,14 @@ class WebhookEvent(Base):
 
     # 原始数据
     raw_payload = Column(Text)
-    headers = Column(JSON)
-    parsed_data = Column(JSON)
+    headers = Column(JSONB)
+    parsed_data = Column(JSONB)
 
     # 告警去重标识 (基于关键字段的哈希值)
     alert_hash = Column(String(64), index=True)
 
     # AI 分析结果
-    ai_analysis = Column(JSON)
+    ai_analysis = Column(JSONB)
     importance = Column(String(20), index=True)  # high, medium, low
 
     # 处理状态
@@ -135,10 +136,10 @@ class ArchivedWebhookEvent(Base):
     timestamp = Column(DateTime, nullable=False, index=True)
 
     raw_payload = Column(Text)
-    headers = Column(JSON)
-    parsed_data = Column(JSON)
+    headers = Column(JSONB)
+    parsed_data = Column(JSONB)
     alert_hash = Column(String(64), index=True)
-    ai_analysis = Column(JSON)
+    ai_analysis = Column(JSONB)
     importance = Column(String(20), index=True)
     forward_status = Column(String(20))
     is_duplicate = Column(Integer)
@@ -277,7 +278,7 @@ class DeepAnalysis(Base):
     webhook_event_id = Column(Integer, nullable=False, index=True)  # 关联告警 ID
     engine = Column(String(20), default="local")  # local / openclaw
     user_question = Column(Text, default="")  # 用户输入的问题
-    analysis_result = Column(JSON)  # 完整分析结果 JSON
+    analysis_result = Column(JSONB)  # 完整分析结果 JSON
     duration_seconds = Column(Float, default=0)  # 分析耗时（秒）
     created_at = Column(DateTime, default=datetime.now)
     openclaw_run_id = Column(String(64), index=True)  # OpenClaw runId
@@ -316,8 +317,8 @@ class FailedForward(Base):
     max_retries = Column(Integer, default=3)
     next_retry_at = Column(DateTime)
     last_retry_at = Column(DateTime)
-    forward_data = Column(JSON)
-    forward_headers = Column(JSON)
+    forward_data = Column(JSONB)
+    forward_headers = Column(JSONB)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

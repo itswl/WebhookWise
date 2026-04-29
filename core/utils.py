@@ -22,13 +22,68 @@ class CircuitState(Enum):
     HALF_OPEN = "half_open"  # 半开，允许试探请求
 
 
+# ====== Lua 脚本：熔断器原子操作 ======
+
+# 记录失败并判断是否需要熔断
+# KEYS: [failures_key, state_key, open_until_key]
+# ARGV: [failure_window, threshold, open_until_ts, state_expire]
+_CB_RECORD_FAILURE_LUA = """
+local failures = redis.call("incr", KEYS[1])
+if failures == 1 then
+    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
+end
+if failures >= tonumber(ARGV[2]) then
+    redis.call("set", KEYS[2], "open")
+    redis.call("set", KEYS[3], ARGV[3])
+    redis.call("expire", KEYS[2], tonumber(ARGV[4]))
+    redis.call("expire", KEYS[3], tonumber(ARGV[4]))
+    return 1
+end
+return 0
+"""
+
+# 记录成功：仅当 state 为 half_open 时重置为 closed
+# KEYS: [failures_key, state_key, open_until_key]
+_CB_RECORD_SUCCESS_LUA = """
+local state = redis.call("get", KEYS[2])
+if state == "half_open" or state == "open" then
+    redis.call("del", KEYS[1])
+    redis.call("set", KEYS[2], "closed")
+    redis.call("del", KEYS[3])
+end
+return 0
+"""
+
+# 检查状态：如果 open 且超时则原子转为 half_open
+# KEYS: [state_key, open_until_key]
+# ARGV: [current_timestamp]
+_CB_CHECK_STATE_LUA = """
+local state = redis.call("get", KEYS[1])
+if not state or state == false then
+    return "closed"
+end
+if state == "open" then
+    local open_until = redis.call("get", KEYS[2])
+    if open_until and tonumber(ARGV[1]) >= tonumber(open_until) then
+        redis.call("set", KEYS[1], "half_open")
+        return "half_open"
+    end
+end
+return state
+"""
+
+
 class CircuitBreaker:
     """
-    熔断器实现，防止级联故障。
+    Redis 共享状态熔断器，防止级联故障。
 
+    状态存储在 Redis 中，多 Worker/Pod 共享熔断状态：
     - CLOSED（正常）：请求通过，失败计数；达到阈值后转为 OPEN
     - OPEN（熔断）：请求直接拒绝（返回 None），超时后转为 HALF_OPEN
     - HALF_OPEN（半开）：允许一个试探请求；成功则回 CLOSED，失败则回 OPEN
+
+    所有状态转换通过 Lua 脚本保证原子性。
+    Redis 不可用时降级为默认允许请求（fail-open）。
     """
 
     def __init__(
@@ -37,48 +92,100 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
         expected_exceptions: tuple = (httpx.RequestError,),
+        failure_window: int = 60,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.expected_exceptions = expected_exceptions
+        self.failure_window = failure_window  # 失败计数的滑动窗口（秒）
 
-        # 异步锁（惰性初始化，绑定到当前事件循环）
-        self._async_lock: asyncio.Lock | None = None
+        # Redis key 前缀
+        self._prefix = f"circuit_breaker:{name}"
+        self._failures_key = f"{self._prefix}:failures"
+        self._state_key = f"{self._prefix}:state"
+        self._open_until_key = f"{self._prefix}:open_until"
 
-        self._failure_count = 0
-        self._last_failure_time: float | None = None
-        self._state = CircuitState.CLOSED
+    def _get_redis(self):
+        """获取 Redis 客户端，失败返回 None（降级用）"""
+        try:
+            import core.redis_client
 
-    def _get_async_lock(self) -> asyncio.Lock:
-        """获取或创建异步锁（惰性初始化，绑定到当前事件循环）"""
-        if self._async_lock is None:
-            self._async_lock = asyncio.Lock()
-        return self._async_lock
+            return core.redis_client.get_redis()
+        except Exception as e:
+            logger.warning(f"CircuitBreaker [{self.name}] 获取 Redis 失败，降级放行: {e}")
+            return None
 
     @property
     def state(self) -> CircuitState:
         """读取当前熔断器状态 — 仅供监控指标拉取和 Debug 日志使用。
 
-        注意：此属性为无锁脏读，不应用于业务流控制决策。
-        内部的熔断状态流转（CLOSED → OPEN → HALF_OPEN → CLOSED）
-        完全由 call_async() 方法内的 asyncio.Lock 状态机保证原子性。
+        注意：此属性为同步方法，直接返回 CLOSED 作为默认值。
+        实际状态存储在 Redis 中，精确状态请使用 _check_state_async()。
         """
-        return self._state
+        return CircuitState.CLOSED
 
-    async def _check_state(self) -> CircuitState:
-        """在 asyncio.Lock 保护下检查并转换状态。"""
-        async with self._get_async_lock():
-            if (
-                self._state == CircuitState.OPEN
-                and self._last_failure_time is not None
-                and time.time() - self._last_failure_time >= self.recovery_timeout
-            ):
-                self._state = CircuitState.HALF_OPEN
-            return self._state
+    async def _check_state_async(self) -> CircuitState:
+        """通过 Redis Lua 脚本原子检查并转换状态。"""
+        r = self._get_redis()
+        if r is None:
+            return CircuitState.CLOSED
+        try:
+            state_str = await r.eval(
+                _CB_CHECK_STATE_LUA,
+                2,
+                self._state_key,
+                self._open_until_key,
+                str(time.time()),
+            )
+            return CircuitState(state_str) if state_str else CircuitState.CLOSED
+        except Exception as e:
+            logger.warning(f"CircuitBreaker [{self.name}] Redis 检查状态失败，降级放行: {e}")
+            return CircuitState.CLOSED
+
+    async def _record_failure(self) -> bool:
+        """记录一次失败，返回 True 表示触发了熔断。"""
+        r = self._get_redis()
+        if r is None:
+            return False
+        try:
+            open_until_ts = str(time.time() + self.recovery_timeout)
+            # state_expire: recovery_timeout 的 2 倍，确保 key 不会提前过期
+            state_expire = int(self.recovery_timeout * 2) + 1
+            tripped = await r.eval(
+                _CB_RECORD_FAILURE_LUA,
+                3,
+                self._failures_key,
+                self._state_key,
+                self._open_until_key,
+                str(self.failure_window),
+                str(self.failure_threshold),
+                open_until_ts,
+                str(state_expire),
+            )
+            return bool(tripped)
+        except Exception as e:
+            logger.warning(f"CircuitBreaker [{self.name}] Redis 记录失败异常，降级忽略: {e}")
+            return False
+
+    async def _record_success(self):
+        """记录一次成功，如果是 half_open 状态则重置为 closed。"""
+        r = self._get_redis()
+        if r is None:
+            return
+        try:
+            await r.eval(
+                _CB_RECORD_SUCCESS_LUA,
+                3,
+                self._failures_key,
+                self._state_key,
+                self._open_until_key,
+            )
+        except Exception as e:
+            logger.warning(f"CircuitBreaker [{self.name}] Redis 记录成功异常，降级忽略: {e}")
 
     async def call_async(self, func: Callable, *args, **kwargs):
-        """异步执行函数，失败时触发熔断（使用 asyncio.Lock 保护所有状态访问）。"""
+        """异步执行函数，失败时触发熔断（Redis 共享状态 + Lua 原子操作）。"""
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
@@ -86,28 +193,23 @@ class CircuitBreaker:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常（已禁用）: {e}")
                 return None
 
-        current_state = await self._check_state()
+        current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
             return None
 
         try:
             result = await func(*args, **kwargs)
-            async with self._get_async_lock():
-                self._failure_count = 0
-                self._state = CircuitState.CLOSED
+            await self._record_success()
             return result
         except self.expected_exceptions as e:
-            async with self._get_async_lock():
-                self._failure_count += 1
-                self._last_failure_time = time.time()
-                if self.failure_threshold > 0 and self._failure_count >= self.failure_threshold:
-                    self._state = CircuitState.OPEN
-                    logger.error(
-                        f"CircuitBreaker [{self.name}] 触发熔断: "
-                        f"连续失败 {self._failure_count} 次, "
-                        f"将在 {self.recovery_timeout}s 后恢复"
-                    )
+            tripped = await self._record_failure()
+            if tripped:
+                logger.error(
+                    f"CircuitBreaker [{self.name}] 触发熔断: "
+                    f"达到阈值 {self.failure_threshold} 次, "
+                    f"将在 {self.recovery_timeout}s 后恢复"
+                )
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
 

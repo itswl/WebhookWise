@@ -9,6 +9,7 @@ Create Date: 2026-04-29 12:27:32.250687
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -29,10 +30,10 @@ def upgrade() -> None:
         sa.Column("client_ip", sa.String(50), nullable=True),
         sa.Column("timestamp", sa.DateTime(), nullable=False),
         sa.Column("raw_payload", sa.Text(), nullable=True),
-        sa.Column("headers", sa.JSON(), nullable=True),
-        sa.Column("parsed_data", sa.JSON(), nullable=True),
+        sa.Column("headers", postgresql.JSONB(), nullable=True),
+        sa.Column("parsed_data", postgresql.JSONB(), nullable=True),
         sa.Column("alert_hash", sa.String(64), nullable=True),
-        sa.Column("ai_analysis", sa.JSON(), nullable=True),
+        sa.Column("ai_analysis", postgresql.JSONB(), nullable=True),
         sa.Column("importance", sa.String(20), nullable=True),
         sa.Column("processing_status", sa.String(20), nullable=False, server_default="received"),
         sa.Column("forward_status", sa.String(20), nullable=True),
@@ -64,10 +65,10 @@ def upgrade() -> None:
         sa.Column("client_ip", sa.String(50), nullable=True),
         sa.Column("timestamp", sa.DateTime(), nullable=False),
         sa.Column("raw_payload", sa.Text(), nullable=True),
-        sa.Column("headers", sa.JSON(), nullable=True),
-        sa.Column("parsed_data", sa.JSON(), nullable=True),
+        sa.Column("headers", postgresql.JSONB(), nullable=True),
+        sa.Column("parsed_data", postgresql.JSONB(), nullable=True),
         sa.Column("alert_hash", sa.String(64), nullable=True),
-        sa.Column("ai_analysis", sa.JSON(), nullable=True),
+        sa.Column("ai_analysis", postgresql.JSONB(), nullable=True),
         sa.Column("importance", sa.String(20), nullable=True),
         sa.Column("forward_status", sa.String(20), nullable=True),
         sa.Column("is_duplicate", sa.Integer(), nullable=True),
@@ -153,7 +154,7 @@ def upgrade() -> None:
         sa.Column("webhook_event_id", sa.Integer(), nullable=False),
         sa.Column("engine", sa.String(20), nullable=True, server_default="'local'"),
         sa.Column("user_question", sa.Text(), nullable=True, server_default="''"),
-        sa.Column("analysis_result", sa.JSON(), nullable=True),
+        sa.Column("analysis_result", postgresql.JSONB(), nullable=True),
         sa.Column("duration_seconds", sa.Float(), nullable=True, server_default="0"),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("openclaw_run_id", sa.String(64), nullable=True),
@@ -180,8 +181,8 @@ def upgrade() -> None:
         sa.Column("max_retries", sa.Integer(), nullable=True, server_default="3"),
         sa.Column("next_retry_at", sa.DateTime(), nullable=True),
         sa.Column("last_retry_at", sa.DateTime(), nullable=True),
-        sa.Column("forward_data", sa.JSON(), nullable=True),
-        sa.Column("forward_headers", sa.JSON(), nullable=True),
+        sa.Column("forward_data", postgresql.JSONB(), nullable=True),
+        sa.Column("forward_headers", postgresql.JSONB(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
