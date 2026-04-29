@@ -259,9 +259,10 @@ async def receive_webhook(
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     content_type = request.headers.get("content-type", "").lower()
+    parsed_data = None
     if raw_body and "application/json" in content_type:
         try:
-            await request.json()
+            parsed_data = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -275,6 +276,7 @@ async def receive_webhook(
         source=headers.get("x-webhook-source", "unknown"),
         raw_headers=headers,
         raw_body=raw_body_str,
+        parsed_data=parsed_data,
     )
     # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
@@ -301,9 +303,10 @@ async def receive_webhook_with_source(
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     content_type = request.headers.get("content-type", "").lower()
+    parsed_data = None
     if raw_body and "application/json" in content_type:
         try:
-            await request.json()
+            parsed_data = await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -317,6 +320,7 @@ async def receive_webhook_with_source(
         source=source,
         raw_headers=headers,
         raw_body=raw_body_str,
+        parsed_data=parsed_data,
     )
     # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
