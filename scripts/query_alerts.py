@@ -12,6 +12,7 @@
 """
 
 import argparse
+import asyncio
 import json
 
 # 确保项目根目录在 path 中
@@ -20,7 +21,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db.session import session_scope
+from sqlalchemy import func, select
+
+from db.session import init_engine, session_scope
 from models import WebhookEvent
 
 
@@ -28,9 +31,10 @@ def print_json(data):
     print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
-def query_by_id(event_id: int):
-    with session_scope() as session:
-        event = session.query(WebhookEvent).filter_by(id=event_id).first()
+async def query_by_id(event_id: int):
+    async with session_scope() as session:
+        result = await session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
+        event = result.scalar_one_or_none()
         if event:
             print(f"\n=== 告警 ID {event_id} ===")
             print_json(event.to_dict())
@@ -39,18 +43,22 @@ def query_by_id(event_id: int):
         return event
 
 
-def query_list(limit: int = 20, source: str | None = None, importance: str | None = None, duplicate_only: bool = False):
-    with session_scope() as session:
-        query = session.query(WebhookEvent).order_by(WebhookEvent.id.desc())
+async def query_list(
+    limit: int = 20, source: str | None = None, importance: str | None = None, duplicate_only: bool = False
+):
+    async with session_scope() as session:
+        stmt = select(WebhookEvent).order_by(WebhookEvent.id.desc())
 
         if source:
-            query = query.filter(WebhookEvent.source == source)
+            stmt = stmt.where(WebhookEvent.source == source)
         if importance:
-            query = query.filter(WebhookEvent.importance == importance)
+            stmt = stmt.where(WebhookEvent.importance == importance)
         if duplicate_only:
-            query = query.filter(WebhookEvent.is_duplicate == 1)
+            stmt = stmt.where(WebhookEvent.is_duplicate == 1)
 
-        events = query.limit(limit).all()
+        stmt = stmt.limit(limit)
+        result = await session.execute(stmt)
+        events = result.scalars().all()
         print(f"\n=== 最近 {len(events)} 条告警 ===")
         for e in events:
             d = e.to_dict()
@@ -64,14 +72,12 @@ def query_list(limit: int = 20, source: str | None = None, importance: str | Non
             print(f"  [{dup}] #{d['id']} | {ts} | {imp:5} | {src:15} | {summary}")
 
 
-def query_by_hash(alert_hash: str):
-    with session_scope() as session:
-        events = (
-            session.query(WebhookEvent)
-            .filter(WebhookEvent.alert_hash == alert_hash)
-            .order_by(WebhookEvent.id.asc())
-            .all()
+async def query_by_hash(alert_hash: str):
+    async with session_scope() as session:
+        result = await session.execute(
+            select(WebhookEvent).where(WebhookEvent.alert_hash == alert_hash).order_by(WebhookEvent.id.asc())
         )
+        events = result.scalars().all()
 
         print(f"\n=== Hash={alert_hash[:16]}... 的 {len(events)} 条告警 ===")
         for e in events:
@@ -82,13 +88,30 @@ def query_by_hash(alert_hash: str):
             print(f"  [{dup}] #{d['id']} | {ts} | {imp} | beyond_window={d.get('beyond_window')}")
 
 
-def query_stats():
-    with session_scope() as session:
-        total = session.query(WebhookEvent).count()
-        high = session.query(WebhookEvent).filter_by(importance="high").count()
-        medium = session.query(WebhookEvent).filter_by(importance="medium").count()
-        low = session.query(WebhookEvent).filter_by(importance="low").count()
-        dup = session.query(WebhookEvent).filter_by(is_duplicate=1).count()
+async def query_stats():
+    async with session_scope() as session:
+        result = await session.execute(select(func.count()).select_from(WebhookEvent))
+        total = result.scalar()
+
+        result = await session.execute(
+            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.importance == "high")
+        )
+        high = result.scalar()
+
+        result = await session.execute(
+            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.importance == "medium")
+        )
+        medium = result.scalar()
+
+        result = await session.execute(
+            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.importance == "low")
+        )
+        low = result.scalar()
+
+        result = await session.execute(
+            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.is_duplicate == 1)
+        )
+        dup = result.scalar()
 
         print("\n=== 统计概览 ===")
         print(f"  总告警数: {total}")
@@ -98,7 +121,7 @@ def query_stats():
         print(f"  重复告警: {dup}")
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="告警数据查询")
     parser.add_argument("--id", type=int, help="按 ID 查询")
     parser.add_argument("--list", action="store_true", help="列出最近告警")
@@ -112,17 +135,21 @@ def main():
 
     args = parser.parse_args()
 
+    await init_engine()
+
     if args.id:
-        query_by_id(args.id)
+        await query_by_id(args.id)
     elif args.hash:
-        query_by_hash(args.hash)
+        await query_by_hash(args.hash)
     elif args.stats:
-        query_stats()
+        await query_stats()
     elif args.list or any([args.source, args.importance, args.duplicate]):
-        query_list(limit=args.limit, source=args.source, importance=args.importance, duplicate_only=args.duplicate)
+        await query_list(
+            limit=args.limit, source=args.source, importance=args.importance, duplicate_only=args.duplicate
+        )
     else:
-        query_list(limit=args.limit)
+        await query_list(limit=args.limit)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
