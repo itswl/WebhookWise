@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import uuid
 from datetime import datetime
 
 from core.redis_client import get_redis
@@ -12,6 +13,14 @@ _last_run_date = None
 
 _LOCK_KEY = "maintenance:poller:lock"
 _LOCK_TTL_SECONDS = 600  # 与调度间隔匹配
+
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
 
 
 async def check_and_run_maintenance():
@@ -27,7 +36,8 @@ async def check_and_run_maintenance():
         return
 
     redis = get_redis()
-    if not await redis.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL_SECONDS):
+    lock_value = str(uuid.uuid4())
+    if not await redis.set(_LOCK_KEY, lock_value, nx=True, ex=_LOCK_TTL_SECONDS):
         logger.debug("[Maintenance] 另一个 worker 正在执行，跳过本轮")
         return
 
@@ -41,4 +51,4 @@ async def check_and_run_maintenance():
         _last_run_date = now.date()
     finally:
         with contextlib.suppress(Exception):
-            await redis.delete(_LOCK_KEY)
+            await redis.eval(_RELEASE_LOCK_LUA, 1, _LOCK_KEY, lock_value)

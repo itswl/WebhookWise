@@ -1,5 +1,7 @@
 """Webhook 处理主管线 — 纯协调层，业务逻辑委托给子模块。"""
 
+from sqlalchemy import select
+
 from api import InvalidJsonError, InvalidSignatureError
 from core.logger import logger
 from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL
@@ -26,15 +28,28 @@ async def _update_processing_status(event_id: int | None, status: str) -> None:
 
 
 async def handle_webhook_process(
-    client_ip: str,
-    headers: dict,
-    payload: dict,
-    raw_body: bytes,
-    source: str | None = None,
-    event_id: int | None = None,
+    event_id: int,
+    client_ip: str = "",
 ):
-    """处理 webhook 的主流程入口。"""
-    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}")
+    """处理 webhook 的主流程入口。
+
+    仅接收 event_id，从 DB 加载完整事件数据，避免 BackgroundTasks 持有大对象。
+    """
+    # 从 DB 加载事件记录
+    async with session_scope() as session:
+        result = await session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
+        event = result.scalar_one_or_none()
+        if not event:
+            logger.error(f"[Pipeline] Event {event_id} not found in DB")
+            return
+
+        headers = event.headers or {}
+        payload = event.parsed_data or {}
+        raw_payload = event.raw_payload or ""
+        raw_body = raw_payload.encode("utf-8") if isinstance(raw_payload, str) else b""
+        source = event.source
+
+    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
     WEBHOOK_RECEIVED_TOTAL.labels(source=source or "unknown", status="received").inc()
     analysis_result = {}
     original_event = None

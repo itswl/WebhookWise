@@ -1,7 +1,8 @@
 import logging
 import os
+import queue
 import sys
-from logging.handlers import RotatingFileHandler
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 from core.config import Config
 
@@ -13,9 +14,18 @@ try:
 except ImportError:
     HAS_JSON_LOGGER = False
 
+# 全局 QueueListener 引用，供 shutdown 时调用 stop()
+_log_listener: QueueListener | None = None
+
 
 def setup_logger():
-    """设置日志记录器（支持日志轮转和结构化日志）"""
+    """设置日志记录器（支持日志轮转和结构化日志）
+
+    使用 QueueHandler + QueueListener 避免同步磁盘 I/O 阻塞事件循环：
+    - 主 logger 通过 QueueHandler 将日志记录非阻塞地写入内存队列
+    - QueueListener 在后台线程消费队列，将日志写入实际 handler
+    """
+    global _log_listener
 
     # 创建日志目录
     log_dir = os.path.dirname(Config.LOG_FILE)
@@ -61,8 +71,17 @@ def setup_logger():
     console_handler.setLevel(log_level)
     console_handler.setFormatter(console_formatter)
 
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    # 使用 QueueHandler + QueueListener 实现异步日志写入
+    log_queue: queue.Queue = queue.Queue(-1)  # 无限队列
+    queue_handler = QueueHandler(log_queue)
+    queue_handler.setLevel(log_level)
+
+    # QueueListener 在后台线程消费队列，将日志写入 file_handler 和 console_handler
+    _log_listener = QueueListener(log_queue, file_handler, console_handler, respect_handler_level=True)
+    _log_listener.start()
+
+    # 主 logger 仅挂载 QueueHandler（非阻塞）
+    logger.addHandler(queue_handler)
 
     # 设置第三方库的日志级别，防止干扰
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -70,6 +89,17 @@ def setup_logger():
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
     return logger
+
+
+def stop_log_listener() -> None:
+    """停止日志队列监听器，确保所有缓冲日志刷写到磁盘。
+
+    应在应用 shutdown 时调用。
+    """
+    global _log_listener
+    if _log_listener is not None:
+        _log_listener.stop()
+        _log_listener = None
 
 
 def get_logger(name: str = "webhook_service") -> logging.Logger:

@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from core.auth import verify_api_key
 from core.config import Config
@@ -76,6 +77,14 @@ async def list_webhooks(
 
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
+
+        if not return_full:
+            query = query.options(
+                defer(WebhookEvent.raw_payload),
+                defer(WebhookEvent.headers),
+                defer(WebhookEvent.parsed_data),
+                defer(WebhookEvent.ai_analysis),
+            )
 
         total = None
         if include_total:
@@ -180,6 +189,14 @@ async def list_webhooks_cursor(
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
 
+        if not return_full:
+            query = query.options(
+                defer(WebhookEvent.raw_payload),
+                defer(WebhookEvent.headers),
+                defer(WebhookEvent.parsed_data),
+                defer(WebhookEvent.ai_analysis),
+            )
+
         result = await session.execute(query.limit(limit))
         events = result.scalars().all()
 
@@ -241,11 +258,10 @@ async def receive_webhook(
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    payload = {}
     content_type = request.headers.get("content-type", "").lower()
     if raw_body and "application/json" in content_type:
         try:
-            payload = await request.json()
+            await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -264,7 +280,7 @@ async def receive_webhook(
     await session.commit()
 
     # 异步处理：传递 event_id 用于状态更新
-    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, None, event.id)
+    background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
@@ -284,11 +300,10 @@ async def receive_webhook_with_source(
     raw_body = await request.body()
     if Config.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    payload = {}
     content_type = request.headers.get("content-type", "").lower()
     if raw_body and "application/json" in content_type:
         try:
-            payload = await request.json()
+            await request.json()
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -307,7 +322,7 @@ async def receive_webhook_with_source(
     await session.commit()
 
     # 异步处理：传递 event_id 用于状态更新
-    background_tasks.add_task(handle_webhook_process, client_ip, headers, payload, raw_body, source, event.id)
+    background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},

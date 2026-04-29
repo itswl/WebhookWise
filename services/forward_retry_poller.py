@@ -6,6 +6,7 @@
 """
 
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -16,6 +17,14 @@ from models import FailedForward, WebhookEvent
 
 logger = logging.getLogger("webhook_service.forward_retry")
 
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+
 
 async def poll_pending_retries():
     """核心逻辑：获取 Redis 分布式锁，查询待重试记录，逐条重试"""
@@ -25,7 +34,8 @@ async def poll_pending_retries():
     lock_key = "forward:retry:poller:lock"
 
     # 获取分布式锁，有效期 60 秒
-    acquired = await redis.set(lock_key, "1", nx=True, ex=60)
+    lock_value = str(uuid.uuid4())
+    acquired = await redis.set(lock_key, lock_value, nx=True, ex=60)
     if not acquired:
         logger.debug("[ForwardRetry] 未获取到分布式锁，跳过本轮")
         return
@@ -63,7 +73,7 @@ async def poll_pending_retries():
         import contextlib
 
         with contextlib.suppress(Exception):
-            await redis.delete(lock_key)
+            await redis.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
 
 
 async def _retry_forward(session, record: FailedForward):
