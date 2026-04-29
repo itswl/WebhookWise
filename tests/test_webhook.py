@@ -44,7 +44,7 @@ def test_webhook():
     print(f"签名: {signature}")
 
     try:
-        response = requests.post(url, data=payload, headers=headers)
+        response = requests.post(url, data=payload, headers=headers, timeout=10)
         print(f"\n响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
     except Exception as e:
@@ -62,7 +62,7 @@ def test_webhook_without_signature():
     print(f"\n发送无签名测试 webhook 到: {url}")
 
     try:
-        response = requests.post(url, json=test_data, headers=headers)
+        response = requests.post(url, json=test_data, headers=headers, timeout=10)
         print(f"响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
     except Exception as e:
@@ -76,7 +76,7 @@ def test_health():
     print(f"\n测试健康检查: {url}")
 
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         print(f"响应状态码: {response.status_code}")
         print(f"响应内容: {response.json()}")
     except Exception as e:

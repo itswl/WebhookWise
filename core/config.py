@@ -30,6 +30,9 @@ class _AppConfig(BaseSettings):
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     ENABLE_POLLERS: bool = Field(default=True)
 
+    # 运行模式：api=仅HTTP服务 | worker=仅Poller调度器 | all=全部（默认，向后兼容）
+    RUN_MODE: str = Field(default="all")
+
     # 日志配置
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")

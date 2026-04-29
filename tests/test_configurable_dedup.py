@@ -28,13 +28,13 @@ alert_data = {
 
 async def get_config():
     """获取当前配置"""
-    response = requests.get(CONFIG_URL)
+    response = requests.get(CONFIG_URL, timeout=10)
     return response.json()
 
 
 async def update_config(config_data):
     """更新配置"""
-    response = requests.post(CONFIG_URL, json=config_data)
+    response = requests.post(CONFIG_URL, json=config_data, timeout=10)
     return response.json()
 
 
@@ -42,7 +42,7 @@ def send_webhook(data, source="cloud-monitor"):
     """发送 webhook 请求"""
     headers = {"Content-Type": "application/json", "X-Webhook-Source": source}
 
-    response = requests.post(WEBHOOK_URL, json=data, headers=headers)
+    response = requests.post(WEBHOOK_URL, json=data, headers=headers, timeout=10)
     return response.json()
 
 

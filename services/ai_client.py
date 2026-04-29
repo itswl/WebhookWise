@@ -8,6 +8,7 @@ import hashlib
 import logging
 from typing import Any
 
+import httpx
 import orjson
 from openai import AsyncOpenAI
 
@@ -36,6 +37,7 @@ def _get_openai_client() -> AsyncOpenAI:
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_URL,
             http_client=get_http_client(),  # 复用应用统一的连接池
+            timeout=httpx.Timeout(60.0, connect=10.0),  # AI 分析允许更长超时
         )
         logger.info("[AI] 已初始化 AsyncOpenAI 客户端单例")
     return _openai_client

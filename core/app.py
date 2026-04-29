@@ -39,9 +39,11 @@ async def lifespan(app: FastAPI):
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
-    await start_scheduler()
+    if Config.RUN_MODE in ("worker", "all"):
+        await start_scheduler()
     yield
-    await stop_scheduler()
+    if Config.RUN_MODE in ("worker", "all"):
+        await stop_scheduler()
     # 停止配置变更监听
     await runtime_config.stop_subscriber()
     await dispose_engine()
