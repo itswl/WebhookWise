@@ -172,7 +172,7 @@ for frame_num in range(max_frames):
     else:
         # 跳过中间的事件帧
         event_name = data.get("event", "")
-        print(f"[skip frame #{frame_num+1}] type={data.get('type')}, event={event_name}")
+        print(f"[skip frame #{frame_num + 1}] type={data.get('type')}, event={event_name}")
 else:
     print(f"ERROR: No matching response after {max_frames} frames")
 

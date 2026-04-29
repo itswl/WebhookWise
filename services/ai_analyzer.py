@@ -189,11 +189,13 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         alert_level = labels.get("internal_label_alert_level", labels.get("severity", "")).lower()
 
         # 判断重要性
-        if alert_level in ["critical", "p0", "严重", "error"]:
+        high_keywords = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
+        warn_keywords = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+        if alert_level in high_keywords:
             analysis["importance"] = "high"
             analysis["summary"] = f"🔴 严重告警: {alert_name}"
             analysis["actions"] = ["立即处理", "检查服务状态", "查看日志"]
-        elif alert_level in ["warning", "warn", "p1"]:
+        elif alert_level in warn_keywords:
             analysis["importance"] = "medium"
             analysis["summary"] = f"🟡 警告告警: {alert_name}"
             analysis["actions"] = ["关注趋势", "准备应对措施"]
@@ -210,18 +212,21 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         level = str(data.get("Level", "")).lower()
 
         # 判断重要性
-        if level in ["critical", "error", "严重", "p0"]:
+        high_keywords = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
+        warn_keywords = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+        if level in high_keywords:
             analysis["importance"] = "high"
             analysis["summary"] = f"🔴 严重告警: {rule_name}"
             analysis["actions"] = ["立即处理", "检查资源状态", "查看监控指标"]
-        elif level in ["warn", "warning", "p1"]:
+        elif level in warn_keywords:
             analysis["importance"] = "medium"
             analysis["summary"] = f"🟡 警告告警: {rule_name}"
             analysis["actions"] = ["关注趋势", "评估影响范围"]
         else:
             # 检查指标名称中的关键词
             metric_name = str(data.get("MetricName", "")).lower()
-            if any(keyword in metric_name for keyword in ["4xxqps", "5xxqps", "error", "cpu", "memory", "disk"]):
+            metric_keywords = [k.strip().lower() for k in Config.ai.RULE_METRIC_KEYWORDS.split(",")]
+            if any(keyword in metric_name for keyword in metric_keywords):
                 analysis["importance"] = "medium"
                 analysis["summary"] = f"📊 监控告警: {rule_name}"
             else:
@@ -234,7 +239,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
             try:
                 current_num = float(current_value)
                 threshold_num = float(threshold)
-                if current_num > threshold_num * 4:
+                if current_num > threshold_num * Config.ai.RULE_THRESHOLD_MULTIPLIER:
                     # 超过4倍阈值，提升重要性
                     analysis["importance"] = "high"
                     analysis["summary"] = f"🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})"
@@ -255,10 +260,12 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
             analysis["event_type"] = event
 
             # 基于关键词判断
-            if any(keyword in event for keyword in ["error", "failure", "critical", "alert", "错误", "失败", "故障"]):
+            high_kw = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
+            warn_kw = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+            if any(keyword in event for keyword in high_kw):
                 analysis["importance"] = "high"
                 analysis["summary"] = f"🔴 严重事件: {event}"
-            elif any(keyword in event for keyword in ["warning", "warn", "警告"]):
+            elif any(keyword in event for keyword in warn_kw):
                 analysis["importance"] = "medium"
                 analysis["summary"] = f"🟡 警告事件: {event}"
 

@@ -8,6 +8,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.compression import compress_payload
 from core.config import Config
 from core.logger import logger
 
@@ -42,7 +43,9 @@ async def quick_receive_webhook(
     event = WebhookEvent(
         source=source,
         headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
-        raw_payload=raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace"),
+        raw_payload=compress_payload(
+            raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace")
+        ),
         parsed_data=parsed_data,
         processing_status="received",
     )
@@ -71,8 +74,11 @@ async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -
     return result.scalars().first()
 
 
-def _decode_raw_payload(raw_payload: bytes | None) -> str | None:
-    return raw_payload.decode("utf-8") if raw_payload else None
+def _decode_raw_payload(raw_payload: bytes | None) -> bytes | None:
+    """将原始 bytes payload 压缩为 gzip bytes。"""
+    if not raw_payload:
+        return None
+    return compress_payload(raw_payload.decode("utf-8"))
 
 
 def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:

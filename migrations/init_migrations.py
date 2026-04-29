@@ -559,9 +559,7 @@ def add_processing_status_field():
 
             # 添加组合索引：优化 processing_status + created_at 查询
             conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS idx_status_created " "ON webhook_events (processing_status, created_at)"
-                )
+                text("CREATE INDEX IF NOT EXISTS idx_status_created ON webhook_events (processing_status, created_at)")
             )
             conn.commit()
 

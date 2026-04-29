@@ -1,8 +1,12 @@
 """Webhook 处理主管线 — 纯协调层，业务逻辑委托给子模块。"""
 
+import asyncio
+
 from sqlalchemy import select, update
 
 from api import InvalidJsonError, InvalidSignatureError
+from core.compression import decompress_payload
+from core.config import Config
 from core.logger import logger
 from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.utils import generate_alert_hash, processing_lock
@@ -12,6 +16,15 @@ from services.pipeline_analysis import resolve_analysis
 from services.pipeline_forward import _refresh_original_event, decide_forwarding, execute_forwarding
 from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
 from services.pipeline_request import _build_webhook_response, _parse_webhook_request
+
+_webhook_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _webhook_semaphore
+    if _webhook_semaphore is None:
+        _webhook_semaphore = asyncio.Semaphore(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS)
+    return _webhook_semaphore
 
 
 async def _update_processing_status(event_id: int | None, status: str) -> None:
@@ -35,6 +48,15 @@ async def handle_webhook_process(
 
     仅接收 event_id，从 DB 加载完整事件数据，避免 BackgroundTasks 持有大对象。
     """
+    semaphore = _get_semaphore()
+    async with semaphore:
+        await _handle_webhook_process_inner(event_id, client_ip)
+
+
+async def _handle_webhook_process_inner(
+    event_id: int,
+    client_ip: str = "",
+):
     # 从 DB 加载事件记录
     async with session_scope() as session:
         result = await session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
@@ -45,7 +67,7 @@ async def handle_webhook_process(
 
         headers = event.headers or {}
         payload = event.parsed_data or {}
-        raw_payload = event.raw_payload or ""
+        raw_payload = decompress_payload(event.raw_payload) or ""
         raw_body = raw_payload.encode("utf-8") if isinstance(raw_payload, str) else b""
         source = event.source
 
