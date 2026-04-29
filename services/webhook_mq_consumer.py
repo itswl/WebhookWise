@@ -1,8 +1,8 @@
 """Redis Stream 消费者 — 从 webhook:queue 拉取事件并调用 pipeline 处理。
 
 使用 XREADGROUP + Consumer Group 实现可靠消费：
-- 成功处理后 XACK 确认
-- 失败不 ACK，留在 PEL 供 RecoveryPoller 补偿
+- 每批消息通过 Semaphore 受控并发处理
+- 无论成功/失败均 XACK — DB 状态机（retry_count + RecoveryPoller）已接管重试
 """
 
 import asyncio
@@ -39,8 +39,47 @@ async def _init_consumer_group() -> None:
             raise
 
 
+async def _process_one(
+    redis,
+    msg_id: str,
+    fields: dict,
+    semaphore: asyncio.Semaphore,
+    handle_webhook_process,
+) -> None:
+    """处理单条消息，受 Semaphore 控制。无论成功失败均 XACK。"""
+    async with semaphore:
+        try:
+            event_id_str = fields.get("event_id", "")
+            client_ip = fields.get("client_ip", "")
+
+            if not event_id_str:
+                logger.warning(f"[MQ] 消息缺少 event_id，跳过: msg_id={msg_id}")
+                return
+
+            try:
+                event_id = int(event_id_str)
+            except (ValueError, TypeError):
+                logger.warning(f"[MQ] event_id 格式无效: {event_id_str}, msg_id={msg_id}")
+                return
+
+            await handle_webhook_process(event_id=event_id, client_ip=client_ip)
+        except asyncio.CancelledError:
+            raise  # 不吞没取消，优雅停机依赖它
+        except Exception:
+            logger.error(
+                f"[MQ] 消息处理失败: msg_id={msg_id}",
+                exc_info=True,
+            )
+        finally:
+            # 无论成功失败都 XACK — DB 状态机已接管重试
+            try:
+                await redis.xack(_QUEUE, _GROUP, msg_id)
+            except Exception:
+                logger.warning(f"[MQ] XACK 失败: {msg_id}")
+
+
 async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
-    """主消费循环：阻塞式拉取 Redis Stream 消息并处理。
+    """主消费循环：阻塞式拉取 Redis Stream 消息并发处理。
 
     Args:
         stop_event: 优雅停机信号，set() 后退出循环
@@ -52,13 +91,18 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
     block_ms = Config.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS
     consumer_id = _get_consumer_id()
 
+    concurrency = Config.server.MQ_CONSUMER_CONCURRENCY
+    semaphore = asyncio.Semaphore(concurrency)
+
     await _init_consumer_group()
 
     # 延迟导入避免循环引用
     from services.pipeline import handle_webhook_process
 
     redis = get_redis()
-    logger.info(f"[MQ] Consumer 启动: consumer_id={consumer_id}, queue={_QUEUE}, group={_GROUP}")
+    logger.info(
+        f"[MQ] Consumer 启动: consumer_id={consumer_id}, queue={_QUEUE}, " f"group={_GROUP}, concurrency={concurrency}"
+    )
 
     while not stop_event.is_set():
         try:
@@ -76,32 +120,13 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
 
             # messages 格式: [[stream_name, [(msg_id, {field: value}), ...]]]
             for _stream_name, entries in messages:
+                tasks = []
                 for msg_id, fields in entries:
-                    event_id_str = fields.get("event_id", "")
-                    client_ip = fields.get("client_ip", "")
-
-                    if not event_id_str:
-                        logger.warning(f"[MQ] 消息缺少 event_id，跳过: msg_id={msg_id}")
-                        await redis.xack(_QUEUE, _GROUP, msg_id)
-                        continue
-
-                    try:
-                        event_id = int(event_id_str)
-                    except (ValueError, TypeError):
-                        logger.warning(f"[MQ] event_id 格式无效: {event_id_str}, msg_id={msg_id}")
-                        await redis.xack(_QUEUE, _GROUP, msg_id)
-                        continue
-
-                    try:
-                        await handle_webhook_process(event_id=event_id, client_ip=client_ip)
-                        # 处理成功，ACK 确认
-                        await redis.xack(_QUEUE, _GROUP, msg_id)
-                    except Exception:
-                        # 处理失败，不 ACK — 留在 PEL 供 RecoveryPoller 补偿
-                        logger.error(
-                            f"[MQ] 消息处理失败，留在 PEL 待重试: event_id={event_id}, msg_id={msg_id}",
-                            exc_info=True,
-                        )
+                    task = asyncio.create_task(_process_one(redis, msg_id, fields, semaphore, handle_webhook_process))
+                    tasks.append(task)
+                # 等待本批全部完成再拉下一批，避免无限堆积
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
 
         except asyncio.CancelledError:
             logger.info("[MQ] Consumer 收到取消信号，退出")
