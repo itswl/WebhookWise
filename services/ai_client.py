@@ -18,6 +18,7 @@ from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL
 from core.redis_client import get_redis
 from core.utils import feishu_cb
 from services.ai_parser import _parse_ai_analysis_response
+from services.ai_response_repair import repair_concatenated_response
 from services.payload_sanitizer import sanitize_for_ai
 
 logger = logging.getLogger("webhook_service.ai_client")
@@ -104,7 +105,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
                 if hasattr(continuation_response, "choices") and continuation_response.choices:
                     continuation_content = (continuation_response.choices[0].message.content or "").strip()
                     if continuation_content:
-                        ai_response = ai_response + continuation_content
+                        ai_response = repair_concatenated_response(ai_response, continuation_content)
                         finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
             except Exception as cont_err:
                 logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
@@ -213,7 +214,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
                 if hasattr(continuation_response, "choices") and continuation_response.choices:
                     continuation_content = (continuation_response.choices[0].message.content or "").strip()
                     if continuation_content:
-                        ai_response = ai_response + continuation_content
+                        ai_response = repair_concatenated_response(ai_response, continuation_content)
                         finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
             except Exception as cont_err:
                 logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")

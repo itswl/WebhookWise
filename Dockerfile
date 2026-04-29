@@ -3,9 +3,9 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# 复制并安装依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 优先使用锁文件确保可重现构建
+COPY requirements.lock requirements.txt ./
+RUN pip install --no-cache-dir --user -r requirements.lock -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 # ====== 运行阶段 ======
