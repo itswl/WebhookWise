@@ -28,7 +28,7 @@ def send_webhook(data, source="cloud-monitor"):
     """发送 webhook 请求"""
     headers = {"Content-Type": "application/json", "X-Webhook-Source": source}
 
-    response = requests.post(WEBHOOK_URL, json=data, headers=headers)
+    response = requests.post(WEBHOOK_URL, json=data, headers=headers, timeout=10)
     return response.json()
 
 
