@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from core.config import Config
+from core.runtime_config import _KEY_TO_SUBCONFIG
 from services.pipeline_forward import decide_forwarding
 
 
@@ -11,15 +12,23 @@ class _Event:
 
 
 def _set_config(**kwargs):
-    originals = {k: Config.get_flat(k) for k in kwargs}
+    originals = {}
+    for k in kwargs:
+        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        if sub_name:
+            originals[k] = getattr(getattr(Config, sub_name), k)
     for k, v in kwargs.items():
-        Config.set_flat(k, v)
+        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        if sub_name:
+            setattr(getattr(Config, sub_name), k, v)
     return originals
 
 
 def _restore_config(originals):
     for k, v in originals.items():
-        Config.set_flat(k, v)
+        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        if sub_name:
+            setattr(getattr(Config, sub_name), k, v)
 
 
 async def test_non_high_never_forwarded():

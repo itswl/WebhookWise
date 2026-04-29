@@ -69,31 +69,33 @@ async def setup_test_db(monkeypatch):
 
 
 async def test_pagination():
-    """测试分页查询"""
-    # 测试第一页
-    webhooks, total, _next_cursor = await get_all_webhooks(page=1, page_size=5)
+    """测试 Keyset 游标分页"""
+    # 首次请求（无 cursor）：返回最新的 page_size+1 条判断 has_more，取前 page_size 条
+    webhooks, total, next_cursor = await get_all_webhooks(page=1, page_size=5)
     assert len(webhooks) == 5
-    assert total == 15
     assert webhooks[0]["id"] == 15
     assert webhooks[-1]["id"] == 11
+    # total 在 keyset 模式下不再提供精确值
+    assert total == -1
+    # 有更多数据时返回 next_cursor
+    assert next_cursor == 11
 
-    # 测试第二页
-    webhooks, total, _next_cursor = await get_all_webhooks(page=2, page_size=5)
+    # 使用 cursor_id 翻到第二页
+    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=11, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]["id"] == 10
     assert webhooks[-1]["id"] == 6
+    assert next_cursor == 6
 
-    # 测试第三页
-    webhooks, total, _next_cursor = await get_all_webhooks(page=3, page_size=5)
+    # 使用 cursor_id 翻到第三页（最后一页）
+    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=6, page_size=5)
     assert len(webhooks) == 5
     assert webhooks[0]["id"] == 5
     assert webhooks[-1]["id"] == 1
+    # 没有更多数据时 next_cursor 为 None
+    assert next_cursor is None
 
-    # 测试大页码
-    webhooks, total, _next_cursor = await get_all_webhooks(page=100, page_size=5)
+    # 游标指向不存在的范围
+    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=1, page_size=5)
     assert len(webhooks) == 0
-
-    # 测试游标分页
-    webhooks, total, _next_cursor = await get_all_webhooks(cursor_id=10, page_size=5)
-    assert len(webhooks) == 5
-    assert all(w["id"] < 10 for w in webhooks)
+    assert next_cursor is None

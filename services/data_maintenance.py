@@ -11,7 +11,8 @@ async def archive_old_data(archive_days: int = 30) -> int:
     """
     归档清理过期 webhook 记录到归档表，保持主表轻量
     """
-    if not Config.get_flat("ENABLE_ARCHIVE_CLEANUP", True):
+    # NOTE: ENABLE_ARCHIVE_CLEANUP 未在配置类中定义，默认始终启用
+    if not getattr(Config.server, "ENABLE_ARCHIVE_CLEANUP", True):
         logger.info("[Maintenance] 数据归档已禁用，跳过。")
         return 0
 

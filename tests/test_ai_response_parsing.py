@@ -72,11 +72,26 @@ async def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypa
     async def fake_request(_client, _messages, max_tokens):
         calls.append(max_tokens)
         if len(calls) == 1:
-            return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"a"}', "length")
-        return _Response('{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"b"}', "stop")
+            # 第一次返回被截断的 JSON
+            return _Response(
+                '{"source":"cloud-monitor","event_type":"x","importance":"high","summary":"partia', "length"
+            )
+        # 续写补全剩余内容
+        return _Response('l result"}', "stop")
+
+    # 续写逻辑直接调用 client.chat.completions.create，需要提供完整 mock
+    class _FakeCompletions:
+        async def create(self, **kwargs):
+            return await fake_request(None, kwargs.get("messages"), kwargs.get("max_tokens"))
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        chat = _FakeChat()
 
     monkeypatch.setattr(ai_client, "_request_openai_completion", fake_request)
-    monkeypatch.setattr(ai_client, "AsyncOpenAI", lambda **_kwargs: object())
+    monkeypatch.setattr(ai_client, "AsyncOpenAI", lambda **_kwargs: _FakeClient())
 
     old_max = Config.ai.OPENAI_MAX_TOKENS
     old_retry_max = Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS
@@ -92,5 +107,5 @@ async def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypa
         Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = old_retry_max
 
     assert calls == [100, 200]
-    assert result["summary"] == "b"
+    assert result["summary"] == "partial result"
     assert result["importance"] == "high"

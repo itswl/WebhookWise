@@ -4,7 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +21,6 @@ from models import WebhookEvent
 from services.pipeline import handle_webhook_process
 
 webhook_router = APIRouter()
-
-MAX_PAGE = 500
-MAX_OFFSET = 10000  # 超过此 offset 必须使用 cursor_id
 
 
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
@@ -49,7 +46,7 @@ async def dashboard():
 
 @webhook_router.get("/api/webhooks", dependencies=[Depends(verify_api_key)])
 async def list_webhooks(
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, description="Deprecated: 保留向后兼容，实际不影响查询。请使用 cursor_id 分页。"),
     page_size: int = Query(20, ge=1, le=500),
     fields: str = Query("summary"),
     importance: str = Query(""),
@@ -57,28 +54,35 @@ async def list_webhooks(
     cursor_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    offset = (page - 1) * page_size
-    if page > MAX_PAGE and cursor_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor_id 游标分页",
+    # 向后兼容：客户端传了 page>1 但没传 cursor_id 时给出提示
+    if page > 1 and cursor_id is None:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "data": [],
+                "status": 200,
+                "pagination": {
+                    "page_size": page_size,
+                    "next_cursor": None,
+                    "has_more": False,
+                    "hint": "OFFSET pagination is removed. Please use cursor_id for paging. "
+                    "Start without cursor_id to get the first page, then use next_cursor.",
+                },
+            },
         )
-    offset_capped = False
-    if cursor_id is None and offset > MAX_OFFSET:
-        offset = MAX_OFFSET
-        offset_capped = True
-    if cursor_id is not None:
-        offset = 0
 
     try:
-        query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+        query = select(WebhookEvent)
 
+        if cursor_id is not None:
+            query = query.where(WebhookEvent.id < cursor_id)
         if importance:
             query = query.filter(WebhookEvent.importance == importance)
         if source:
             query = query.filter(WebhookEvent.source == source)
-        if cursor_id is not None:
-            query = query.filter(WebhookEvent.id < cursor_id)
+
+        query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
 
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
@@ -91,9 +95,13 @@ async def list_webhooks(
                 defer(WebhookEvent.ai_analysis),
             )
 
-        total = None
-        result = await session.execute(query.offset(offset).limit(page_size))
-        events = result.scalars().all()
+        result = await session.execute(query)
+        events = list(result.scalars().all())
+
+        # page_size+1 策略：多取一条判断 has_more
+        has_more = len(events) > page_size
+        if has_more:
+            events = events[:page_size]
 
         # 先按 ASC 构建 prev 链，再保持原 DESC 顺序返回
         prev_ids_seen = {}
@@ -112,35 +120,16 @@ async def list_webhooks(
             d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
             items.append(d)
 
-        has_more = len(events) == page_size
-        next_cursor = events[-1].id if has_more else None
+        next_cursor = events[-1].id if has_more and events else None
 
         return {
             "success": True,
             "data": items,
             "status": 200,
             "pagination": {
-                "page": page,
                 "page_size": page_size,
-                "total": total,
-                "total_pages": (total + page_size - 1) // page_size
-                if (total is not None and total > 0)
-                else (0 if total is not None else None),
                 "next_cursor": next_cursor,
                 "has_more": has_more,
-                **(
-                    {
-                        "offset_capped": True,
-                        "cursor_hint": next_cursor,
-                        "hint": "Offset exceeds limit. Results capped. Please switch to cursor_id pagination.",
-                    }
-                    if offset_capped
-                    else (
-                        {"hint": "Approaching offset limit. Consider switching to cursor_id pagination."}
-                        if cursor_id is None and offset > MAX_OFFSET * 0.8
-                        else {}
-                    )
-                ),
             },
         }
     except Exception as e:

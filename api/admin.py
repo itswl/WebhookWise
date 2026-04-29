@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from api import _fail, _ok
 from core.config import Config
 from core.logger import logger
-from core.runtime_config import runtime_config
+from core.runtime_config import _KEY_TO_SUBCONFIG, runtime_config
 
 admin_router = APIRouter()
 
@@ -113,7 +113,8 @@ async def get_config():
     try:
         response = {}
         for field_name, (env_var, _value_type, _validator) in _CONFIG_SCHEMA.items():
-            value = Config.get_flat(env_var, "")
+            sub_name = _KEY_TO_SUBCONFIG.get(env_var)
+            value = getattr(getattr(Config, sub_name), env_var, "") if sub_name else ""
             if env_var == "OPENAI_API_KEY" and value:
                 response[field_name] = "已配置"
             else:

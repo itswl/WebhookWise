@@ -5,7 +5,7 @@ from typing import Any
 import orjson
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.compression import compress_payload
@@ -278,59 +278,33 @@ async def get_all_webhooks(
     page: int = 1, page_size: int = 20, cursor_id: int | None = None, fields: str = "summary"
 ) -> tuple[list[dict], int, int | None]:
     """
-    从数据库获取 webhook 数据（支持游标分页和字段选择）
+    从数据库获取 webhook 数据（纯 Keyset 游标分页）
 
     Args:
-        page: 页码（仅用于首次加载或无游标时）
+        page: Deprecated, 保留向后兼容但不影响查询
         page_size: 每页数量
-        cursor_id: 游标 ID，获取此 ID 之后的数据（更高效）
+        cursor_id: 游标 ID，获取此 ID 之前的数据（按 ID 降序）
         fields: 字段选择 - 'summary'(摘要), 'full'(完整)
 
     Returns:
-        tuple: (webhook数据列表, 总数量, 下一页游标ID)
+        tuple: (webhook数据列表, 总数量(始终为-1), 下一页游标ID)
     """
     try:
         async with session_scope() as session:
-            # 查询总数（智能估算策略）
-            try:
-                estimate_result = await session.execute(
-                    text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'webhook_events'")
-                )
-                estimate = estimate_result.scalar()
-                if estimate is not None and estimate > 100000:
-                    total = int(estimate)
-                else:
-                    total_stmt = select(func.count()).select_from(WebhookEvent)
-                    total_result = await session.execute(total_stmt)
-                    total = total_result.scalar()
-            except Exception:
-                # pg_class 不可用（如 SQLite），回退精确 COUNT
-                total_stmt = select(func.count()).select_from(WebhookEvent)
-                total_result = await session.execute(total_stmt)
-                total = total_result.scalar()
-
-            # 构建查询
+            # 构建查询（纯 Keyset，不使用 OFFSET）
             query = select(WebhookEvent)
 
-            # 筛选条件
             if cursor_id is not None:
-                # 游标分页：获取 ID 小于 cursor_id 的记录（因为按 ID 降序）
                 query = query.filter(WebhookEvent.id < cursor_id)
 
-            # 先排序（必须在 offset 和 limit 之前）
-            query = query.order_by(WebhookEvent.id.desc())
-
-            # 再分页
-            if cursor_id is None:
-                # 无游标时使用 offset（仅首次加载）
-                offset = (page - 1) * page_size
-                if offset > 0:
-                    query = query.offset(offset)
-
-            # 最后限制数量
-            query = query.limit(page_size)
+            query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
             result = await session.execute(query)
-            events = result.scalars().all()
+            events = list(result.scalars().all())
+
+            # page_size+1 策略判断 has_more
+            has_more = len(events) > page_size
+            if has_more:
+                events = events[:page_size]
 
             # 根据 fields 参数决定返回哪些字段
             if fields == "summary":
@@ -415,9 +389,9 @@ async def get_all_webhooks(
                     webhook["prev_alert_timestamp"] = None
 
             # 计算下一页游标
-            next_cursor = events[-1].id if events else None
+            next_cursor = events[-1].id if has_more and events else None
 
-            return webhooks, total, next_cursor
+            return webhooks, -1, next_cursor
 
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {e!s}")
