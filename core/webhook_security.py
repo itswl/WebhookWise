@@ -56,7 +56,21 @@ async def enforce_webhook_rate_limit(request: Request) -> str | None:
 
 
 async def verify_webhook_auth_dep(request: Request):
-    """FastAPI Depends：校验 webhook 认证"""
+    """FastAPI Depends：校验 webhook 认证（含 Content-Length 前置 DoS 防御）"""
+    # 1. Content-Length 前置检查（在读取 body 之前拦截超大请求）
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            length = int(content_length)
+            if length > Config.security.MAX_WEBHOOK_BODY_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Request body too large: {length} bytes (max {Config.security.MAX_WEBHOOK_BODY_BYTES})",
+                )
+        except ValueError:
+            pass  # 无效的 Content-Length，让后续逻辑处理
+
+    # 2. 读取 body 并验证签名
     raw_body = await request.body()
     headers = dict(request.headers)
     try:

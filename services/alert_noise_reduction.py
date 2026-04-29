@@ -222,14 +222,9 @@ def analyze_noise_reduction(
     window_minutes: int,
     min_confidence: float,
     suppress_derived: bool,
-    use_dynamic_threshold: bool = True,
-    session: Any = None,
 ) -> NoiseReductionDecision:
     """
     分析噪声降低
-
-    增强功能：
-    - 动态阈值：基于历史数据自动调整判定阈值
 
     Args:
         current: 当前告警上下文
@@ -237,12 +232,8 @@ def analyze_noise_reduction(
         window_minutes: 时间窗口（分钟）
         min_confidence: 最小置信度阈值
         suppress_derived: 是否抑制衍生告警转发
-        use_dynamic_threshold: 是否使用动态阈值
-        session: 数据库会话（可选）
     """
-    # 动态阈值功能已下线（AlertCorrelation 模型已废弃），始终使用固定阈值
-    effective_threshold = min_confidence
-    logger.debug(f"使用固定阈值: {effective_threshold:.4f}")
+    logger.debug(f"使用固定阈值: {min_confidence:.4f}")
 
     # 收集相关告警
     recent_alerts_list = list(recent_alerts)
@@ -258,7 +249,7 @@ def analyze_noise_reduction(
     best_alert, best_score = scored[0]
 
     # 根因判定
-    if best_alert.event_id is not None and best_score >= effective_threshold:
+    if best_alert.event_id is not None and best_score >= min_confidence:
         reason = f"与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）"
 
         logger.info(f"[Noise] 降噪决策: relation=derived, confidence={best_score:.2f}, suppress={suppress_derived}")
