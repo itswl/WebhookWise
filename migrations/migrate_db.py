@@ -11,7 +11,7 @@ from core.logger import logger
 
 def _get_sync_engine():
     """创建临时同步引擎，仅供 migration 脚本使用"""
-    url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
+    url = Config.db.DATABASE_URL.replace("+asyncpg", "", 1)
     return create_engine(url, echo=False)
 
 

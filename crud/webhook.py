@@ -1,26 +1,34 @@
-import json
-import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import orjson
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
 from core.logger import logger
 
 # We will import the purely utility functions back from core.utils
-from core.utils import generate_alert_hash
+from core.utils import generate_alert_hash  # noqa: F401
 from db.session import session_scope
 from models import FailedForward, SystemConfig, WebhookEvent
+from services.file_backup import get_webhooks_from_files, save_webhook_to_file
 
 WebhookData = dict[str, Any]
+
+HeadersDict = dict[str, str]
+AnalysisResult = dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SaveWebhookResult:
+    webhook_id: int | str
+    is_duplicate: bool
+    original_id: int | None
+    beyond_window: bool
 
 
 async def quick_receive_webhook(
@@ -43,26 +51,6 @@ async def quick_receive_webhook(
     return event
 
 
-HeadersDict = dict[str, str]
-AnalysisResult = dict[str, Any]
-
-
-@dataclass(frozen=True)
-class DuplicateCheckResult:
-    is_duplicate: bool
-    original_event: WebhookEvent | None
-    beyond_window: bool
-    last_beyond_window_event: WebhookEvent | None
-
-
-@dataclass(frozen=True)
-class SaveWebhookResult:
-    webhook_id: int | str
-    is_duplicate: bool
-    original_id: int | None
-    beyond_window: bool
-
-
 async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
     stmt = (
         select(WebhookEvent)
@@ -83,155 +71,12 @@ async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -
     return result.scalars().first()
 
 
-async def _find_recent_window_event(
-    session: AsyncSession, alert_hash: str, time_threshold: datetime
-) -> WebhookEvent | None:
-    stmt = (
-        select(WebhookEvent)
-        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.timestamp >= time_threshold)
-        .order_by(WebhookEvent.timestamp.desc())
-    )
-    result = await session.execute(stmt)
-    return result.scalars().first()
-
-
-def _resolve_window_start(original_ref: WebhookEvent, last_beyond_window: WebhookEvent | None) -> tuple[datetime, int]:
-    if last_beyond_window:
-        logger.debug(f"找到窗口外记录作为起点: ID={last_beyond_window.id}, 时间={last_beyond_window.timestamp}")
-        return last_beyond_window.timestamp, last_beyond_window.id
-
-    logger.debug(f"使用原始告警作为起点: ID={original_ref.id}, 时间={original_ref.timestamp}")
-    return original_ref.timestamp, original_ref.id
-
-
-async def _resolve_original_reference(session: AsyncSession, any_event: WebhookEvent) -> WebhookEvent:
-    original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
-    if not original_id:
-        return any_event
-    ref = await session.get(WebhookEvent, original_id)
-    return ref or any_event
-
-
-async def check_duplicate_alert(
-    alert_hash: str,
-    time_window_hours: int | None = None,
-    session: AsyncSession | None = None,
-    check_beyond_window: bool = False,
-) -> DuplicateCheckResult:
-    """
-    检查是否存在重复告警
-
-    Args:
-        alert_hash: 告警哈希值
-        time_window_hours: 时间窗口（小时）
-        session: 数据库会话（如果提供，使用现有事务；否则创建新会话）
-        check_beyond_window: 是否检查时间窗口外的历史告警
-
-    Returns:
-        DuplicateCheckResult
-    """
-    if not alert_hash:
-        return DuplicateCheckResult(False, None, False, None)
-
-    if time_window_hours is None:
-        time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
-
-    if session is not None:
-        # 使用调用方提供的 session，不管理其生命周期
-        return await _do_check_duplicate(session, alert_hash, time_window_hours, check_beyond_window)
-
-    # 无外部 session 时，通过 session_scope 管理生命周期（保证异常时回滚+关闭）
-    async with session_scope() as scoped_session:
-        return await _do_check_duplicate(scoped_session, alert_hash, time_window_hours, check_beyond_window)
-
-
-async def _do_check_duplicate(
-    session: AsyncSession, alert_hash: str, time_window_hours: int, check_beyond_window: bool
-) -> DuplicateCheckResult:
-    """内部实现：在给定 session 上执行重复检查逻辑。"""
-    now = datetime.now()
-
-    try:
-        time_threshold = now - timedelta(hours=time_window_hours)
-
-        # 先查窗口内最新记录，保证同一时间窗口内只产生一条"原始上下文"。
-        # 这样在并发写入时，后续请求可以稳定复用同一条分析结果。
-        any_event = await _find_recent_window_event(session, alert_hash, time_threshold)
-
-        if any_event:
-            original_ref = await _resolve_original_reference(session, any_event)
-            original_id = original_ref.id
-            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
-
-            # 窗口起点策略：优先 recent beyond_window，其次原始告警。
-            window_start, window_start_id = _resolve_window_start(original_ref, last_beyond_window)
-
-            time_diff_hours = (now - window_start).total_seconds() / 3600
-            is_within_window = time_diff_hours <= time_window_hours
-
-            if is_within_window:
-                logger.info(
-                    f"检测到窗口内重复: hash={alert_hash}, 最近记录ID={any_event.id}, "
-                    f"原始告警ID={original_id}, 窗口起点ID={window_start_id}, "
-                    f"距窗口起点={time_diff_hours:.1f}小时"
-                )
-                return DuplicateCheckResult(True, original_ref, False, last_beyond_window)
-
-            logger.info(
-                f"检测到窗口外重复: hash={alert_hash}, 最近记录ID={any_event.id}, "
-                f"原始告警ID={original_id}, 窗口起点ID={window_start_id}, "
-                f"距窗口起点={time_diff_hours:.1f}小时"
-            )
-            return DuplicateCheckResult(True, original_ref, True, last_beyond_window)
-
-        if check_beyond_window:
-            # 并发场景下，recent beyond_window 用于判断是否可直接复用他 worker 的结果。
-            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
-            history_event = await _query_latest_original_event(session, alert_hash)
-
-            if history_event:
-                time_diff = (now - history_event.timestamp).total_seconds() / 3600
-                logger.info(
-                    f"窗口外发现历史告警: hash={alert_hash}, "
-                    f"原始告警ID={history_event.id}, 时间差={time_diff:.1f}小时"
-                )
-                # 返回历史原始事件与 recent beyond_window，交给上层做"复用或重算"决策。
-                return DuplicateCheckResult(False, history_event, True, last_beyond_window)
-
-        return DuplicateCheckResult(False, None, False, None)
-
-    except Exception as e:
-        logger.error(f"检查重复告警失败: {e!s}")
-        return DuplicateCheckResult(False, None, False, None)
-
-
 def _decode_raw_payload(raw_payload: bytes | None) -> str | None:
     return raw_payload.decode("utf-8") if raw_payload else None
 
 
 def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:
     return dict(headers) if headers else {}
-
-
-def _resolve_analysis_for_duplicate(
-    ai_analysis: AnalysisResult | None, original: WebhookEvent, reanalyzed: bool
-) -> tuple[AnalysisResult, str | None]:
-    if ai_analysis:
-        final_analysis = ai_analysis
-        final_importance = ai_analysis.get("importance")
-    elif original.ai_analysis:
-        final_analysis = original.ai_analysis
-        final_importance = original.importance
-    else:
-        final_analysis = {}
-        final_importance = None
-
-    if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
-        logger.info(f"更新原始告警 ID={original.id} 的AI分析结果（之前缺失）")
-        original.ai_analysis = ai_analysis
-        original.importance = ai_analysis.get("importance")
-
-    return final_analysis, final_importance
 
 
 def _fill_event_fields(
@@ -365,94 +210,10 @@ async def _update_existing_event(
     await session.flush()
     logger.info(f"[save] UPDATE 已有记录: ID={event.id}, alert_hash={alert_hash}")
 
-    if Config.ENABLE_FILE_BACKUP:
+    if Config.server.ENABLE_FILE_BACKUP:
         save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
 
     return SaveWebhookResult(event.id, False, None, False)
-
-
-async def _save_duplicate_event(
-    session: AsyncSession,
-    *,
-    source: str,
-    client_ip: str | None,
-    raw_payload: bytes | None,
-    headers: HeadersDict | None,
-    data: WebhookData,
-    alert_hash: str,
-    ai_analysis: AnalysisResult | None,
-    forward_status: str,
-    original_event: WebhookEvent,
-    beyond_window: bool,
-    reanalyzed: bool,
-    event_id: int | None = None,
-) -> SaveWebhookResult | None:
-    original = await session.get(WebhookEvent, original_event.id)
-    if not original:
-        return None
-
-    original.duplicate_count = (original.duplicate_count or 1) + 1
-    original.updated_at = datetime.now()
-    logger.info(f"发现重复告警，原始告警ID={original.id}, 已重复{original.duplicate_count}次")
-
-    final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(ai_analysis, original, reanalyzed)
-
-    # 如果有 event_id，UPDATE 已有记录为重复告警，而非 INSERT 新记录
-    if event_id is not None:
-        dup_event = await session.get(WebhookEvent, event_id)
-        if dup_event:
-            _fill_event_fields(
-                dup_event,
-                source=source,
-                client_ip=client_ip,
-                data=data,
-                alert_hash=alert_hash,
-                ai_analysis=final_ai_analysis,
-                importance=final_importance,
-                forward_status=forward_status,
-                is_duplicate=1,
-                duplicate_of=original.id,
-                duplicate_count=original.duplicate_count,
-                beyond_window=1 if beyond_window else 0,
-                headers=headers,
-                raw_payload=raw_payload,
-            )
-            await session.flush()
-            logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
-            if Config.ENABLE_FILE_BACKUP:
-                save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
-            return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
-
-    duplicate_event = _build_event(
-        source=source,
-        client_ip=client_ip,
-        raw_payload=raw_payload,
-        headers=headers,
-        data=data,
-        alert_hash=alert_hash,
-        ai_analysis=final_ai_analysis,
-        importance=final_importance,
-        forward_status=forward_status,
-        is_duplicate=1,
-        duplicate_of=original.id,
-        duplicate_count=original.duplicate_count,
-        beyond_window=1 if beyond_window else 0,
-    )
-
-    session.add(duplicate_event)
-    await session.flush()
-
-    if ai_analysis:
-        logger.info(f"重复告警已保存: ID={duplicate_event.id}, 使用传入的AI分析结果")
-    elif original.ai_analysis:
-        logger.info(f"重复告警已保存: ID={duplicate_event.id}, " f"复用原始告警 {original.id} 的AI分析结果")
-    else:
-        logger.info(f"重复告警已保存: ID={duplicate_event.id}, 无AI分析结果")
-
-    if Config.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
-
-    return SaveWebhookResult(duplicate_event.id, True, original.id, beyond_window)
 
 
 async def _save_new_event(
@@ -488,271 +249,10 @@ async def _save_new_event(
     await session.flush()
     logger.info(f"Webhook 数据已保存到数据库: ID={webhook_event.id}")
 
-    if Config.ENABLE_FILE_BACKUP:
+    if Config.server.ENABLE_FILE_BACKUP:
         save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
 
     return SaveWebhookResult(webhook_event.id, False, None, False)
-
-
-async def _upsert_new_event(
-    session: AsyncSession,
-    *,
-    source: str,
-    client_ip: str | None,
-    raw_payload: bytes | None,
-    headers: HeadersDict | None,
-    data: WebhookData,
-    alert_hash: str,
-    ai_analysis: AnalysisResult | None,
-    forward_status: str,
-    beyond_window: bool,
-) -> SaveWebhookResult:
-    """使用 INSERT ON CONFLICT DO NOTHING 原子性插入原始告警。
-
-    利用部分唯一索引 idx_unique_alert_hash_original (alert_hash WHERE is_duplicate=0)
-    处理并发冲突：若冲突则说明另一并发请求已成功写入原始告警，
-    本次请求降级为重复告警写入。
-    """
-    now = datetime.now()
-    importance = ai_analysis.get("importance") if ai_analysis else None
-
-    stmt = (
-        pg_insert(WebhookEvent)
-        .values(
-            source=source,
-            client_ip=client_ip,
-            timestamp=now,
-            raw_payload=_decode_raw_payload(raw_payload),
-            headers=_normalize_headers(headers),
-            parsed_data=data,
-            alert_hash=alert_hash,
-            ai_analysis=ai_analysis,
-            importance=importance,
-            processing_status="completed",
-            forward_status=forward_status,
-            is_duplicate=0,
-            duplicate_of=None,
-            duplicate_count=1,
-            beyond_window=0,
-            last_notified_at=now,
-        )
-        .on_conflict_do_nothing(
-            index_elements=["alert_hash"],
-            index_where=(WebhookEvent.is_duplicate == 0),
-        )
-        .returning(WebhookEvent.id)
-    )
-
-    result = await session.execute(stmt)
-    new_id = result.scalar()
-
-    if new_id is not None:
-        # 插入成功，无冲突
-        logger.info(f"Webhook 数据已保存到数据库 (UPSERT): ID={new_id}")
-        if Config.ENABLE_FILE_BACKUP:
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        return SaveWebhookResult(new_id, False, None, False)
-
-    # 冲突：另一并发请求已写入原始告警，降级为重复告警
-    logger.info(f"UPSERT 冲突: alert_hash={alert_hash}，降级为重复告警写入")
-    existing = await _query_latest_original_event(session, alert_hash)
-
-    if not existing:
-        # 极端情况：冲突但查不到原始记录（可能被并发删除）。
-        # 不能递归调用 _save_new_event 做普通 INSERT，否则在极端并发下
-        # 可能再次触发 IntegrityError。冲突本身已证明同 hash 原始记录曾存在，
-        # 降级为重复告警写入（duplicate_of=None 表示原始记录已不可达）。
-        logger.warning(f"UPSERT 冲突但无法找到原始告警: hash={alert_hash}，降级为重复告警处理")
-        dup_event = _build_event(
-            source=source,
-            client_ip=client_ip,
-            raw_payload=raw_payload,
-            headers=headers,
-            data=data,
-            alert_hash=alert_hash,
-            ai_analysis=ai_analysis,
-            importance=importance,
-            forward_status=forward_status,
-            is_duplicate=1,
-            duplicate_of=None,
-            duplicate_count=1,
-            beyond_window=1 if beyond_window else 0,
-        )
-        session.add(dup_event)
-        await session.flush()
-        logger.info(f"UPSERT 冲突降级：重复告警已保存 ID={dup_event.id}, " f"original=None (不可达), hash={alert_hash}")
-        if Config.ENABLE_FILE_BACKUP:
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        return SaveWebhookResult(dup_event.id, True, None, beyond_window)
-
-    # 写入为重复告警
-    existing.duplicate_count = (existing.duplicate_count or 1) + 1
-    existing.updated_at = now
-
-    final_ai_analysis = ai_analysis if ai_analysis else existing.ai_analysis
-    final_importance = ai_analysis.get("importance") if ai_analysis else existing.importance
-
-    dup_event = _build_event(
-        source=source,
-        client_ip=client_ip,
-        raw_payload=raw_payload,
-        headers=headers,
-        data=data,
-        alert_hash=alert_hash,
-        ai_analysis=final_ai_analysis,
-        importance=final_importance,
-        forward_status=forward_status,
-        is_duplicate=1,
-        duplicate_of=existing.id,
-        duplicate_count=existing.duplicate_count,
-        beyond_window=1 if beyond_window else 0,
-    )
-    session.add(dup_event)
-    await session.flush()
-
-    logger.info(f"并发冲突降级：重复告警已保存 ID={dup_event.id}, original={existing.id}")
-    if Config.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
-
-    return SaveWebhookResult(dup_event.id, True, existing.id, beyond_window)
-
-
-def _save_to_file_fallback(
-    data: WebhookData,
-    source: str,
-    raw_payload: bytes | None,
-    headers: HeadersDict | None,
-    client_ip: str | None,
-    ai_analysis: AnalysisResult | None,
-) -> SaveWebhookResult:
-    file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-    return SaveWebhookResult(file_id, False, None, False)
-
-
-async def save_webhook_data(
-    data: WebhookData,
-    source: str = "unknown",
-    raw_payload: bytes | None = None,
-    headers: HeadersDict | None = None,
-    client_ip: str | None = None,
-    ai_analysis: AnalysisResult | None = None,
-    forward_status: str = "pending",
-    alert_hash: str | None = None,
-    is_duplicate: bool | None = None,
-    original_event: WebhookEvent | None = None,
-    beyond_window: bool = False,
-    reanalyzed: bool = False,
-    event_id: int | None = None,
-) -> SaveWebhookResult:
-    """保存 webhook 数据到数据库（使用 UPSERT 处理并发竞态）。
-
-    当 event_id 有值时，UPDATE 已由 quick_receive_webhook 创建的记录，
-    避免重复 INSERT（双写）。同时在同一事务中更新 processing_status。
-
-    并发冲突通过 INSERT ON CONFLICT DO NOTHING 原子性处理，
-    无需重试循环和指数退避。
-    """
-    if alert_hash is None:
-        alert_hash = generate_alert_hash(data, source)
-
-    try:
-        async with session_scope() as session:
-            # 在同一事务内重新判重，避免外层结果在高并发下过期。
-            if is_duplicate is None:
-                duplicate_check = await check_duplicate_alert(alert_hash, session=session)
-                is_duplicate = duplicate_check.is_duplicate
-                original_event = duplicate_check.original_event
-                beyond_window = duplicate_check.beyond_window
-
-            if is_duplicate and original_event:
-                saved = await _save_duplicate_event(
-                    session,
-                    source=source,
-                    client_ip=client_ip,
-                    raw_payload=raw_payload,
-                    headers=headers,
-                    data=data,
-                    alert_hash=alert_hash,
-                    ai_analysis=ai_analysis,
-                    forward_status=forward_status,
-                    original_event=original_event,
-                    beyond_window=beyond_window,
-                    reanalyzed=reanalyzed,
-                    event_id=event_id,
-                )
-                if saved:
-                    return saved
-
-            # event_id 有值：UPDATE 已有记录而非 INSERT 新记录
-            if event_id is not None:
-                return await _update_existing_event(
-                    session,
-                    event_id=event_id,
-                    source=source,
-                    client_ip=client_ip,
-                    raw_payload=raw_payload,
-                    headers=headers,
-                    data=data,
-                    alert_hash=alert_hash,
-                    ai_analysis=ai_analysis,
-                    forward_status=forward_status,
-                )
-
-            # 使用 UPSERT（INSERT ON CONFLICT DO NOTHING）原子性处理并发写入
-            return await _upsert_new_event(
-                session,
-                source=source,
-                client_ip=client_ip,
-                raw_payload=raw_payload,
-                headers=headers,
-                data=data,
-                alert_hash=alert_hash,
-                ai_analysis=ai_analysis,
-                forward_status=forward_status,
-                beyond_window=beyond_window,
-            )
-
-    except Exception as e:
-        logger.error(f"保存 webhook 数据到数据库失败: {e!s}")
-        return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
-
-
-def save_webhook_to_file(
-    data: WebhookData,
-    source: str = "unknown",
-    raw_payload: bytes | None = None,
-    headers: HeadersDict | None = None,
-    client_ip: str | None = None,
-    ai_analysis: AnalysisResult | None = None,
-) -> str:
-    """保存 webhook 数据到文件(备份方式)"""
-    # 创建数据目录
-    os.makedirs(Config.DATA_DIR, exist_ok=True)
-
-    # 生成文件名(基于时间戳)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"{source}_{timestamp}.json"
-    filepath = str(Path(Config.DATA_DIR) / filename)
-
-    # 准备保存的完整数据
-    full_data = {
-        "timestamp": datetime.now().isoformat(),
-        "source": source,
-        "client_ip": client_ip,
-        "headers": dict(headers) if headers else {},
-        "raw_payload": raw_payload.decode("utf-8") if raw_payload else None,
-        "parsed_data": data,
-    }
-
-    # 添加 AI 分析结果
-    if ai_analysis:
-        full_data["ai_analysis"] = ai_analysis
-
-    # 保存数据
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(full_data, f, indent=2, ensure_ascii=False)
-
-    return filepath
 
 
 def get_client_ip(request: Request) -> str:
@@ -919,32 +419,6 @@ async def get_all_webhooks(
         return webhooks, len(webhooks), None
 
 
-def get_webhooks_from_files(limit: int = 50) -> list[dict]:
-    """从文件获取 webhook 数据(备份方式)"""
-    if not os.path.exists(Config.DATA_DIR):
-        return []
-
-    webhooks = []
-    files = [f for f in os.listdir(Config.DATA_DIR) if f.endswith(".json")]
-
-    # 读取所有文件
-    for filename in files:
-        filepath = str(Path(Config.DATA_DIR) / filename)
-        try:
-            with open(filepath, encoding="utf-8") as f:
-                webhook_data = json.load(f)
-                webhook_data["filename"] = filename
-                webhooks.append(webhook_data)
-        except Exception as e:
-            logger.error(f"读取文件失败 {filename}: {e!s}")
-
-    # 按 timestamp 字段倒序排序（最新的在前面）
-    webhooks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-    # 返回限制数量的结果
-    return webhooks[:limit]
-
-
 # ── 转发失败重试补偿 CRUD ──
 
 
@@ -962,10 +436,10 @@ async def record_failed_forward(
 ) -> FailedForward | None:
     """写入转发失败记录，计算首次重试时间"""
     if max_retries is None:
-        max_retries = Config.FORWARD_RETRY_MAX_RETRIES
+        max_retries = Config.retry.FORWARD_RETRY_MAX_RETRIES
 
     now = datetime.now()
-    next_retry_at = now + timedelta(seconds=Config.FORWARD_RETRY_INITIAL_DELAY)
+    next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
 
     record = FailedForward(
         webhook_event_id=webhook_event_id,
@@ -1089,7 +563,7 @@ async def manual_retry_reset(
         now = datetime.now()
         record.status = "pending"
         record.retry_count = 0
-        record.next_retry_at = now + timedelta(seconds=Config.FORWARD_RETRY_INITIAL_DELAY)
+        record.next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         record.updated_at = now
         await sess.flush()
         logger.info(f"转发失败记录已重置为 pending: ID={failed_forward_id}")

@@ -52,7 +52,7 @@ async def poll_pending_retries():
                     FailedForward.next_retry_at <= now,
                 )
                 .order_by(FailedForward.next_retry_at.asc())
-                .limit(Config.FORWARD_RETRY_BATCH_SIZE)
+                .limit(Config.retry.FORWARD_RETRY_BATCH_SIZE)
             )
             result = await session.execute(stmt)
             records = result.scalars().all()
@@ -78,7 +78,7 @@ async def poll_pending_retries():
 
 async def _retry_forward(session, record: FailedForward):
     """重试单条转发失败记录"""
-    from services.ai_analyzer import forward_to_remote
+    from services.forward import forward_to_remote
 
     # 从 DB 获取关联的 WebhookEvent（获取 ai_analysis 等信息）
     event = await session.get(WebhookEvent, record.webhook_event_id)
@@ -141,8 +141,9 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
         record.status = "retrying"
         # 指数退避：min(initial_delay * multiplier^(retry_count-1), max_delay)
         delay = min(
-            Config.FORWARD_RETRY_INITIAL_DELAY * Config.FORWARD_RETRY_BACKOFF_MULTIPLIER ** (record.retry_count - 1),
-            Config.FORWARD_RETRY_MAX_DELAY,
+            Config.retry.FORWARD_RETRY_INITIAL_DELAY
+            * Config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER ** (record.retry_count - 1),
+            Config.retry.FORWARD_RETRY_MAX_DELAY,
         )
         record.next_retry_at = now + timedelta(seconds=delay)
         logger.info(

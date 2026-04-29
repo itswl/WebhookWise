@@ -20,7 +20,7 @@ def get_cache_key(alert_hash: str) -> str:
 
 async def get_cached_analysis(alert_hash: str) -> dict | None:
     """从 Redis 获取缓存的分析结果"""
-    if not Config.CACHE_ENABLED:
+    if not Config.ai.CACHE_ENABLED:
         return None
     try:
         from core.redis_client import get_redis
@@ -39,7 +39,7 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
         counter_key = f"{cache_key}:hits"
         pipe = redis_client.pipeline()
         pipe.incr(counter_key)
-        pipe.expire(counter_key, Config.ANALYSIS_CACHE_TTL)
+        pipe.expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
         results = await pipe.execute()
         hit_count = results[0]
 
@@ -55,7 +55,7 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
 
 async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
     """将分析结果保存到 Redis（SETEX 自动过期）"""
-    if not Config.CACHE_ENABLED:
+    if not Config.ai.CACHE_ENABLED:
         return False
     try:
         from core.redis_client import get_redis
@@ -71,11 +71,11 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         # pipeline 合并两次 SETEX，减少 RTT
         counter_key = f"{cache_key}:hits"
         pipe = redis_client.pipeline()
-        pipe.setex(cache_key, Config.ANALYSIS_CACHE_TTL, cached_bytes)
-        pipe.setex(counter_key, Config.ANALYSIS_CACHE_TTL, "0")
+        pipe.setex(cache_key, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
+        pipe.setex(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
         await pipe.execute()
 
-        logger.info(f"分析结果已缓存到 Redis: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}s")
+        logger.info(f"分析结果已缓存到 Redis: {cache_key[:20]}..., TTL={Config.ai.ANALYSIS_CACHE_TTL}s")
 
         # 发布完成事件，通知等待中的 Worker（Pub/Sub 不保证送达，仅作加速）
         channel = f"analysis_done:{alert_hash}"
@@ -116,13 +116,13 @@ async def log_ai_usage(
         # 计算估算成本
         cost_estimate = 0.0
         if route_type == "ai" and tokens_in > 0:
-            cost_estimate = (tokens_in / 1000) * Config.AI_COST_PER_1K_INPUT_TOKENS + (
+            cost_estimate = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
                 tokens_out / 1000
-            ) * Config.AI_COST_PER_1K_OUTPUT_TOKENS
+            ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
 
         async with session_scope() as session:
             usage_log = AIUsageLog(
-                model=model or Config.OPENAI_MODEL,
+                model=model or Config.ai.OPENAI_MODEL,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_estimate=cost_estimate,

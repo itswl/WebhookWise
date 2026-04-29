@@ -28,8 +28,8 @@ from services.poller_scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Config.validate()
-    if not Config.API_KEY and not (Config.DEBUG or Config.ALLOW_UNAUTHENTICATED_ADMIN):
+    Config.validate_config()
+    if not Config.security.API_KEY and not (Config.server.DEBUG or Config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
         )
@@ -39,10 +39,10 @@ async def lifespan(app: FastAPI):
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
-    if Config.RUN_MODE in ("worker", "all"):
+    if Config.server.RUN_MODE in ("worker", "all"):
         await start_scheduler()
     yield
-    if Config.RUN_MODE in ("worker", "all"):
+    if Config.server.RUN_MODE in ("worker", "all"):
         await stop_scheduler()
     # 停止配置变更监听
     await runtime_config.stop_subscriber()

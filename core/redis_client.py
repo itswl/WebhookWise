@@ -13,12 +13,12 @@ def get_redis() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
         pool = redis.ConnectionPool.from_url(
-            Config.REDIS_URL,
+            Config.redis.REDIS_URL,
             decode_responses=True,
             max_connections=100,
         )
         _redis_client = redis.Redis(connection_pool=pool)
-        logger.info(f"[Redis] 成功初始化连接池: {Config.REDIS_URL}")
+        logger.info(f"[Redis] 成功初始化连接池: {Config.redis.REDIS_URL}")
     return _redis_client
 
 

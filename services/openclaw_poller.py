@@ -49,7 +49,7 @@ async def _notify_feishu_deep_analysis(record_dict: dict, source: str = ""):
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
 
-    webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    webhook_url = Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
         return
 
@@ -92,7 +92,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: dict, reason: str = "
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
 
-    webhook_url = Config.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    webhook_url = Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
         return
 
@@ -171,11 +171,11 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
         - 暂无结果: {"status": "pending"}
         - 错误: {"status": "error", "error": "..."}
     """
-    base_url = Config.OPENCLAW_HTTP_API_URL.rstrip("/")
+    base_url = Config.openclaw.OPENCLAW_HTTP_API_URL.rstrip("/")
     last_error = None
 
     # 使用 hooks token 认证
-    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
+    hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
     headers = {"Authorization": f"Bearer {hooks_token}"}
 
     client = get_http_client()
@@ -250,7 +250,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
     async with semaphore:
         try:
             # --- 超时检查 ---
-            timeout_seconds = getattr(Config, "OPENCLAW_TIMEOUT_SECONDS", 300)
+            timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
             if rec["created_at"] and (datetime.now() - rec["created_at"]).total_seconds() > timeout_seconds:
                 await _clear_poll_stability(record_id)
                 update = {
@@ -264,7 +264,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
             # --- session_key 缺失检查 ---
             if not rec["openclaw_session_key"]:
                 elapsed = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 999
-                if elapsed < Config.OPENCLAW_MIN_WAIT_SECONDS:
+                if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                     return {"id": record_id, "action": "skip"}
                 update = {
                     "status": "failed",
@@ -281,11 +281,11 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
 
             # --- 最小等待时间 ---
             elapsed = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 999
-            if elapsed < Config.OPENCLAW_MIN_WAIT_SECONDS:
+            if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                 return {"id": record_id, "action": "skip"}
 
             # --- HTTP 轮询 ---
-            if Config.OPENCLAW_HTTP_API_URL:
+            if Config.openclaw.OPENCLAW_HTTP_API_URL:
                 result = await _poll_via_http(rec["openclaw_session_key"])
             else:
                 loop = asyncio.get_running_loop()
@@ -293,10 +293,10 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                     None,
                     partial(
                         poll_session_result,
-                        gateway_url=Config.OPENCLAW_GATEWAY_URL,
-                        gateway_token=Config.OPENCLAW_GATEWAY_TOKEN,
+                        gateway_url=Config.openclaw.OPENCLAW_GATEWAY_URL,
+                        gateway_token=Config.openclaw.OPENCLAW_GATEWAY_TOKEN,
                         session_key=rec["openclaw_session_key"],
-                        timeout=Config.OPENCLAW_POLL_TIMEOUT,
+                        timeout=Config.openclaw.OPENCLAW_POLL_TIMEOUT,
                     ),
                 )
 
@@ -314,7 +314,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                     and prev_snapshot["text_len"] == current_snapshot["text_len"]
                 ):
                     hit_count = prev_snapshot.get("hit_count", 1) + 1
-                    if hit_count >= Config.OPENCLAW_STABILITY_REQUIRED_HITS:
+                    if hit_count >= Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS:
                         logger.debug(f"[Poller] 分析稳定确认: id={record_id}")
                     else:
                         await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
@@ -360,7 +360,10 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 prev_snapshot = await _get_poll_stability(record_id)
                 if prev_snapshot and "first_result" in prev_snapshot:
                     error_count = prev_snapshot.get("error_count", 0) + 1
-                    if error_count >= Config.OPENCLAW_MAX_CONSECUTIVE_ERRORS and Config.OPENCLAW_ENABLE_DEGRADATION:
+                    if (
+                        error_count >= Config.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS
+                        and Config.openclaw.OPENCLAW_ENABLE_DEGRADATION
+                    ):
                         text = prev_snapshot["first_result"]["text"]
                         await _clear_poll_stability(record_id)
                         parsed_result = None
