@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 from sqlalchemy import func, select, text
@@ -21,6 +21,8 @@ from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 
 deep_analysis_router = APIRouter()
+
+MAX_PAGE = 500
 
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
@@ -238,6 +240,11 @@ async def list_all_deep_analyses(
         query = query.filter(DeepAnalysis.engine == engine_filter)
 
     if not cursor:
+        if page > MAX_PAGE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor 游标分页",
+            )
         offset = (page - 1) * per_page
         query = query.offset(offset)
 

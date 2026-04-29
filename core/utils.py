@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import hmac
-import json
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -9,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 import httpx
+import orjson
 
 from core.config import Config
 from core.logger import logger
@@ -267,7 +267,7 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
         else:
             key_fields.update(_extract_generic_fields(data))
 
-    key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
+    key_string = orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS).decode()
     hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     logger.debug(f"[Hash] 生成告警哈希: hash={hash_value[:16]}..., input_keys={list(key_fields.keys())}")
