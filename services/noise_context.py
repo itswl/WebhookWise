@@ -97,8 +97,6 @@ async def _compute_noise_reduction(
     current_context: AlertContext,
     recent_contexts: list[AlertContext],
     min_confidence: float = 0.65,
-    use_dynamic_threshold: bool = False,
-    session=None,
 ) -> tuple[AlertContext, bool]:
     """
     计算当前告警的降噪上下文。
@@ -106,16 +104,12 @@ async def _compute_noise_reduction(
     Returns:
         (noise_context, is_root_cause): 降噪上下文和是否为根因告警
     """
-    # 动态阈值功能已下线（AlertCorrelation 模型已废弃），始终使用固定阈值
-    effective_threshold = min_confidence
-    logger.debug(f"使用固定阈值: {effective_threshold:.4f}")
-
     if not recent_contexts:
         return _default_noise_context(), False
 
     try:
         result = analyze_noise_reduction(current_context, recent_contexts)
-        is_root = result.confidence >= effective_threshold and result.relation in ("root_cause", "derived")
+        is_root = result.confidence >= min_confidence and result.relation in ("root_cause", "derived")
         return result, is_root
     except Exception as e:
         logger.warning(f"降噪分析失败: {e}")
