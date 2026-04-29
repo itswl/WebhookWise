@@ -57,64 +57,117 @@ async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[st
     )
 
 
+# 续写指令：不携带完整 user_prompt，节省 Input Token
+_CONTINUATION_INSTRUCTION = "Please continue from where you left off. " "Complete the remaining JSON/YAML content."
+
+
+async def _call_openai_completion(
+    system_prompt: str,
+    user_prompt: str,
+    source: str,
+) -> tuple[str, str | None, int, int]:
+    """底层公共函数：拼装 messages → 调用 OpenAI → 处理截断续写。
+
+    Returns:
+        tuple: (ai_response, finish_reason, tokens_in, tokens_out)
+    """
+    client = _get_openai_client()
+    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+
+    logger.info(f"调用 OpenAI API 分析 webhook: {source}")
+    try:
+        prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
+    except Exception:
+        prompt_hash = None
+    logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
+    response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
+
+    # 提取 token 使用量
+    tokens_in = 0
+    tokens_out = 0
+    if hasattr(response, "usage") and response.usage:
+        tokens_in = getattr(response.usage, "prompt_tokens", 0) or 0
+        tokens_out = getattr(response.usage, "completion_tokens", 0) or 0
+
+    if not hasattr(response, "choices") or not response.choices:
+        error_message = f"OpenAI API 返回无效响应: {response}"
+        logger.error(error_message)
+        raise TypeError(error_message)
+
+    choice = response.choices[0]
+    finish_reason = getattr(choice, "finish_reason", None)
+    raw_content = getattr(choice.message, "content", None)
+    ai_response = (raw_content or "").strip()
+    if not ai_response:
+        logger.error(
+            "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | tokens_in=%d | tokens_out=%d | choice=%r",
+            finish_reason,
+            raw_content,
+            Config.ai.OPENAI_MODEL,
+            tokens_in,
+            tokens_out,
+            choice,
+        )
+        if finish_reason == "content_filter":
+            raise ValueError(f"AI 返回空响应（内容被过滤，finish_reason={finish_reason}）")
+        if raw_content is None:
+            raise ValueError(
+                f"AI 返回 None 内容（finish_reason={finish_reason}），" "请检查 API Key 余额、模型名称及 API 提供商状态"
+            )
+        raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
+
+    # 截断续写：只保留 system + 截断回复 + 简短续写指令，不重复发送完整 user_prompt
+    if finish_reason == "length" and ai_response:
+        logger.info("AI 响应被截断，使用续写模式继续生成")
+        try:
+            continuation_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "assistant", "content": ai_response},
+                {"role": "user", "content": _CONTINUATION_INSTRUCTION},
+            ]
+            continuation_response = await client.chat.completions.create(
+                model=Config.ai.OPENAI_MODEL,
+                messages=continuation_messages,
+                max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
+                temperature=0.3,
+            )
+
+            # 累加续写的 token 使用量
+            if hasattr(continuation_response, "usage") and continuation_response.usage:
+                tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
+                tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
+
+            if hasattr(continuation_response, "choices") and continuation_response.choices:
+                continuation_content = (continuation_response.choices[0].message.content or "").strip()
+                if continuation_content:
+                    ai_response = repair_concatenated_response(ai_response, continuation_content)
+                    finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
+        except Exception as cont_err:
+            logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
+
+    try:
+        resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
+    except Exception:
+        resp_hash = None
+    logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
+
+    return ai_response, finish_reason, tokens_in, tokens_out
+
+
 async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
     """使用 OpenAI API 分析 webhook 数据"""
     from services.ai_prompts import load_user_prompt_template
 
     try:
-        client = _get_openai_client()
-
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
-        messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
-        logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        try:
-            prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
-        except Exception:
-            prompt_hash = None
-        logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
-        response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
+        ai_response, finish_reason, _tokens_in, _tokens_out = await _call_openai_completion(
+            Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
+        )
 
-        if not hasattr(response, "choices") or not response.choices:
-            error_message = f"OpenAI API 返回无效响应: {response}"
-            logger.error(error_message)
-            raise TypeError(error_message)
-
-        choice = response.choices[0]
-        finish_reason = getattr(choice, "finish_reason", None)
-        ai_response = (choice.message.content or "").strip()
-        if not ai_response:
-            raise ValueError("AI 返回空响应")
-
-        if finish_reason == "length" and ai_response:
-            logger.info("AI 响应被截断，使用续写模式继续生成")
-            try:
-                continuation_messages = messages + [
-                    {"role": "assistant", "content": ai_response},
-                    {"role": "user", "content": "请继续完成上面被截断的分析，直接从中断处继续，不要重复已有内容。"},
-                ]
-                continuation_response = await client.chat.completions.create(
-                    model=Config.ai.OPENAI_MODEL,
-                    messages=continuation_messages,
-                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
-                    temperature=0.3,
-                )
-                if hasattr(continuation_response, "choices") and continuation_response.choices:
-                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
-                    if continuation_content:
-                        ai_response = repair_concatenated_response(ai_response, continuation_content)
-                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
-            except Exception as cont_err:
-                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
-
-        try:
-            resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
-        except Exception:
-            resp_hash = None
-        logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
         analysis_result = _parse_ai_analysis_response(ai_response, source)
 
         if finish_reason == "length":
@@ -138,92 +191,16 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
     from services.ai_prompts import load_user_prompt_template
 
     try:
-        client = _get_openai_client()
-
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
-        messages = [{"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
-        logger.info(f"调用 OpenAI API 分析 webhook: {source}")
-        try:
-            prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
-        except Exception:
-            prompt_hash = None
-        logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
-        response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
+        ai_response, finish_reason, tokens_in, tokens_out = await _call_openai_completion(
+            Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
+        )
 
-        # 提取 token 使用量
-        tokens_in = 0
-        tokens_out = 0
-        if hasattr(response, "usage") and response.usage:
-            tokens_in = getattr(response.usage, "prompt_tokens", 0) or 0
-            tokens_out = getattr(response.usage, "completion_tokens", 0) or 0
-
-        if not hasattr(response, "choices") or not response.choices:
-            error_message = f"OpenAI API 返回无效响应: {response}"
-            logger.error(error_message)
-            raise TypeError(error_message)
-
-        choice = response.choices[0]
-        finish_reason = getattr(choice, "finish_reason", None)
-        raw_content = getattr(choice.message, "content", None)
-        ai_response = (raw_content or "").strip()
-        if not ai_response:
-            # 记录详细诊断信息，方便排查原因
-            logger.error(
-                "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | tokens_in=%d | tokens_out=%d | choice=%r",
-                finish_reason,
-                raw_content,
-                Config.ai.OPENAI_MODEL,
-                tokens_in,
-                tokens_out,
-                choice,
-            )
-            # finish_reason=content_filter 表示内容被过滤
-            if finish_reason == "content_filter":
-                raise ValueError(f"AI 返回空响应（内容被过滤，finish_reason={finish_reason}）")
-            # raw_content 为 None 通常是 API 账户/配额/模型名称问题
-            if raw_content is None:
-                raise ValueError(
-                    f"AI 返回 None 内容（finish_reason={finish_reason}），"
-                    "请检查 API Key 余额、模型名称及 API 提供商状态"
-                )
-            raise ValueError(f"AI 返回空响应（finish_reason={finish_reason}）")
-
-        if finish_reason == "length" and ai_response:
-            logger.info("AI 响应被截断，使用续写模式继续生成")
-            try:
-                continuation_messages = messages + [
-                    {"role": "assistant", "content": ai_response},
-                    {"role": "user", "content": "请继续完成上面被截断的分析，直接从中断处继续，不要重复已有内容。"},
-                ]
-                continuation_response = await client.chat.completions.create(
-                    model=Config.ai.OPENAI_MODEL,
-                    messages=continuation_messages,
-                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
-                    temperature=0.3,
-                )
-
-                # 更新 token 使用量
-                if hasattr(continuation_response, "usage") and continuation_response.usage:
-                    tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
-                    tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
-
-                if hasattr(continuation_response, "choices") and continuation_response.choices:
-                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
-                    if continuation_content:
-                        ai_response = repair_concatenated_response(ai_response, continuation_content)
-                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
-            except Exception as cont_err:
-                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
-
-        try:
-            resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
-        except Exception:
-            resp_hash = None
-        logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
+        # Prometheus 打点 & 成本计算
         input_cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost

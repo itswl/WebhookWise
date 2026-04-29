@@ -46,6 +46,12 @@ class ServerConfig(BaseSettings):
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
 
+    # Redis Stream MQ
+    WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue", description="Webhook 消息队列 Redis Stream 名称")
+    WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors", description="Consumer Group 名称")
+    WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, description="每次 XREADGROUP 拉取的最大消息数")
+    WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, description="XREADGROUP 阻塞超时毫秒数")
+
 
 class SecurityConfig(BaseSettings):
     """认证 / 签名 / 限流"""
@@ -66,8 +72,8 @@ class DBConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
-    DB_POOL_SIZE: int = Field(default=10)
-    DB_MAX_OVERFLOW: int = Field(default=20)
+    DB_POOL_SIZE: int = Field(default=20)
+    DB_MAX_OVERFLOW: int = Field(default=30)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
 

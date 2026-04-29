@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import column
+from sqlalchemy import column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +74,18 @@ async def _save_duplicate_event(
                 headers=headers,
                 raw_payload=raw_payload,
             )
+            # 写入时计算 prev_alert_id
+            try:
+                prev_stmt = (
+                    select(WebhookEvent.id)
+                    .where(WebhookEvent.alert_hash == alert_hash, WebhookEvent.id != dup_event.id)
+                    .order_by(WebhookEvent.id.desc())
+                    .limit(1)
+                )
+                prev_result = await session.execute(prev_stmt)
+                dup_event.prev_alert_id = prev_result.scalar_one_or_none()
+            except Exception as e:
+                logger.warning(f"计算重复告警 prev_alert_id 失败: {e}")
             await session.flush()
             logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
             if Config.server.ENABLE_FILE_BACKUP:
@@ -95,6 +107,19 @@ async def _save_duplicate_event(
         duplicate_count=original.duplicate_count,
         beyond_window=1 if beyond_window else 0,
     )
+
+    # 写入时计算 prev_alert_id
+    try:
+        prev_stmt = (
+            select(WebhookEvent.id)
+            .where(WebhookEvent.alert_hash == alert_hash, WebhookEvent.id != duplicate_event.id)
+            .order_by(WebhookEvent.id.desc())
+            .limit(1)
+        )
+        prev_result = await session.execute(prev_stmt)
+        duplicate_event.prev_alert_id = prev_result.scalar_one_or_none()
+    except Exception as e:
+        logger.warning(f"计算重复告警 prev_alert_id 失败: {e}")
 
     session.add(duplicate_event)
     await session.flush()
@@ -181,7 +206,25 @@ async def _upsert_new_event(
     is_new = xmax == 0
 
     if is_new:
-        # 插入成功，无冲突
+        # 插入成功，无冲突 — 计算并持久化 prev_alert_id
+        try:
+            prev_stmt = (
+                select(WebhookEvent.id)
+                .where(WebhookEvent.alert_hash == alert_hash, WebhookEvent.id != row_id)
+                .order_by(WebhookEvent.id.desc())
+                .limit(1)
+            )
+            prev_result = await session.execute(prev_stmt)
+            prev_id = prev_result.scalar_one_or_none()
+            if prev_id is not None:
+                from sqlalchemy import update as sa_update
+
+                await session.execute(
+                    sa_update(WebhookEvent).where(WebhookEvent.id == row_id).values(prev_alert_id=prev_id)
+                )
+        except Exception as e:
+            logger.warning(f"计算 prev_alert_id 失败: {e}")
+
         logger.info(f"Webhook 数据已保存到数据库 (UPSERT): ID={row_id}")
         if Config.server.ENABLE_FILE_BACKUP:
             save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)

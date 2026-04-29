@@ -4,7 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,12 +13,12 @@ from sqlalchemy.orm import defer
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
+from core.redis_client import get_redis
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from crud.webhook import compute_prev_alert_ids, get_client_ip, quick_receive_webhook
+from crud.webhook import get_client_ip, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
-from services.pipeline import handle_webhook_process
 
 webhook_router = APIRouter()
 
@@ -103,13 +103,10 @@ async def list_webhooks(
         if has_more:
             events = events[:page_size]
 
-        # 使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）
-        prev_map = await compute_prev_alert_ids(session, events)
-
         items = []
         for event in events:
             d = event.to_dict() if return_full else event.to_summary_dict()
-            d["prev_alert_id"] = prev_map.get(event.id)
+            d["prev_alert_id"] = event.prev_alert_id
             beyond_window = bool(event.beyond_window)
             d["beyond_time_window"] = beyond_window
             d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
@@ -165,13 +162,10 @@ async def list_webhooks_cursor(
         result = await session.execute(query.limit(limit))
         events = result.scalars().all()
 
-        # 使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）
-        prev_map = await compute_prev_alert_ids(session, events)
-
         items = []
         for event in events:
             d = event.to_dict() if return_full else event.to_summary_dict()
-            d["prev_alert_id"] = prev_map.get(event.id)
+            d["prev_alert_id"] = event.prev_alert_id
             beyond_window = bool(event.beyond_window)
             d["beyond_time_window"] = beyond_window
             d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
@@ -213,7 +207,6 @@ async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(ge
 )
 async def receive_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
     # 入口处设置 trace_id（此时还没有 event_id，用 UUID 短码）
@@ -243,14 +236,15 @@ async def receive_webhook(
         raw_body=raw_body_str,
         parsed_data=parsed_data,
     )
-    # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
+    # 显式提交：Worker 使用独立 session，需要在此确保数据已落盘
     await session.commit()
 
     # 更新为 event_id 格式的 trace_id
     set_trace_id(generate_trace_id(event_id=event.id))
 
-    # 异步处理：传递 event_id 用于状态更新
-    background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
+    # 通过 Redis Stream 投递给 Worker 异步处理
+    redis = get_redis()
+    await redis.xadd(Config.server.WEBHOOK_MQ_QUEUE, {"event_id": str(event.id), "client_ip": client_ip or ""})
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
@@ -264,7 +258,6 @@ async def receive_webhook(
 async def receive_webhook_with_source(
     source: str,
     request: Request,
-    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
     # 入口处设置 trace_id
@@ -294,14 +287,15 @@ async def receive_webhook_with_source(
         raw_body=raw_body_str,
         parsed_data=parsed_data,
     )
-    # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
+    # 显式提交：Worker 使用独立 session，需要在此确保数据已落盘
     await session.commit()
 
     # 更新为 event_id 格式的 trace_id
     set_trace_id(generate_trace_id(event_id=event.id))
 
-    # 异步处理：传递 event_id 用于状态更新
-    background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
+    # 通过 Redis Stream 投递给 Worker 异步处理
+    redis = get_redis()
+    await redis.xadd(Config.server.WEBHOOK_MQ_QUEUE, {"event_id": str(event.id), "client_ip": client_ip or ""})
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},

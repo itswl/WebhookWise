@@ -25,62 +25,6 @@ HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
 
-async def compute_prev_alert_ids(
-    session: AsyncSession,
-    events: list,
-) -> dict[int, int | None]:
-    """使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）。
-
-    Returns:
-        dict: {event_id: prev_alert_id} 映射
-    """
-    if not events:
-        return {}
-
-    event_ids = [e.id for e in events]
-    all_hashes = list({e.alert_hash for e in events if e.alert_hash})
-
-    if not all_hashes:
-        return dict.fromkeys(event_ids)
-
-    try:
-        lag_col = (
-            func.lag(WebhookEvent.id)
-            .over(
-                partition_by=WebhookEvent.alert_hash,
-                order_by=WebhookEvent.id,
-            )
-            .label("prev_alert_id")
-        )
-
-        subq = (
-            select(
-                WebhookEvent.id.label("event_id"),
-                lag_col,
-            )
-            .filter(WebhookEvent.alert_hash.in_(all_hashes))
-            .subquery()
-        )
-
-        stmt = select(
-            subq.c.event_id,
-            subq.c.prev_alert_id,
-        ).filter(subq.c.event_id.in_(event_ids))
-
-        result = await session.execute(stmt)
-        prev_map: dict[int, int | None] = {row.event_id: row.prev_alert_id for row in result.all()}
-
-        # 补齐没有 alert_hash 的事件
-        for eid in event_ids:
-            if eid not in prev_map:
-                prev_map[eid] = None
-
-        return prev_map
-    except Exception as e:
-        logger.warning(f"LAG 窗口函数计算 prev_alert_id 失败: {e}")
-        return dict.fromkeys(event_ids)
-
-
 @dataclass(frozen=True)
 class SaveWebhookResult:
     webhook_id: int | str
@@ -275,6 +219,19 @@ async def _update_existing_event(
         raw_payload=raw_payload,
     )
 
+    # 写入时计算 prev_alert_id
+    try:
+        prev_stmt = (
+            select(WebhookEvent.id)
+            .where(WebhookEvent.alert_hash == alert_hash, WebhookEvent.id != event.id)
+            .order_by(WebhookEvent.id.desc())
+            .limit(1)
+        )
+        prev_result = await session.execute(prev_stmt)
+        event.prev_alert_id = prev_result.scalar_one_or_none()
+    except Exception as e:
+        logger.warning(f"计算 prev_alert_id 失败: {e}")
+
     await session.flush()
     logger.info(f"[save] UPDATE 已有记录: ID={event.id}, alert_hash={alert_hash}")
 
@@ -315,6 +272,23 @@ async def _save_new_event(
 
     session.add(webhook_event)
     await session.flush()
+
+    # 写入时计算 prev_alert_id
+    try:
+        prev_stmt = (
+            select(WebhookEvent.id)
+            .where(WebhookEvent.alert_hash == alert_hash, WebhookEvent.id != webhook_event.id)
+            .order_by(WebhookEvent.id.desc())
+            .limit(1)
+        )
+        prev_result = await session.execute(prev_stmt)
+        prev_id = prev_result.scalar_one_or_none()
+        if prev_id is not None:
+            webhook_event.prev_alert_id = prev_id
+            await session.flush()
+    except Exception as e:
+        logger.warning(f"计算 prev_alert_id 失败: {e}")
+
     logger.info(f"Webhook 数据已保存到数据库: ID={webhook_event.id}")
 
     if Config.server.ENABLE_FILE_BACKUP:
@@ -376,79 +350,12 @@ async def get_all_webhooks(
                 # 完整模式：返回所有字段
                 webhooks = [event.to_dict() for event in events]
 
-            # 为重复告警添加窗口信息和上次告警 ID（批量计算优化）
+            # 为重复告警添加窗口信息
             # 直接从数据库字段读取，无需动态计算
             for webhook in webhooks:
-                # beyond_window 已经在数据库中固化，直接使用
                 beyond_window = bool(webhook.get("beyond_window", 0))
                 webhook["beyond_time_window"] = beyond_window
                 webhook["is_within_window"] = not beyond_window if webhook.get("is_duplicate") else False
-
-            # 批量计算上次告警 ID（使用 LAG 窗口函数优化）
-            event_ids = [e.id for e in events]
-            all_hashes = list({e.alert_hash for e in events if e.alert_hash})
-
-            if all_hashes:
-                try:
-                    # 使用 LAG 窗口函数在数据库中直接计算 prev_alert_id
-                    lag_id = (
-                        func.lag(WebhookEvent.id)
-                        .over(
-                            partition_by=WebhookEvent.alert_hash,
-                            order_by=WebhookEvent.timestamp,
-                        )
-                        .label("prev_alert_id")
-                    )
-                    lag_ts = (
-                        func.lag(WebhookEvent.timestamp)
-                        .over(
-                            partition_by=WebhookEvent.alert_hash,
-                            order_by=WebhookEvent.timestamp,
-                        )
-                        .label("prev_alert_timestamp")
-                    )
-
-                    # 子查询：对涉及的 alert_hash 计算窗口函数
-                    subq = (
-                        select(
-                            WebhookEvent.id.label("event_id"),
-                            lag_id,
-                            lag_ts,
-                        )
-                        .filter(WebhookEvent.alert_hash.in_(all_hashes))
-                        .subquery()
-                    )
-
-                    # 外层只取当前页的事件 ID
-                    prev_query = select(
-                        subq.c.event_id,
-                        subq.c.prev_alert_id,
-                        subq.c.prev_alert_timestamp,
-                    ).filter(subq.c.event_id.in_(event_ids))
-
-                    result = await session.execute(prev_query)
-                    prev_map = {row.event_id: (row.prev_alert_id, row.prev_alert_timestamp) for row in result.all()}
-
-                    # 填充到 webhook 结果中
-                    for webhook in webhooks:
-                        wid = webhook.get("id")
-                        if wid and wid in prev_map:
-                            prev_id, prev_ts = prev_map[wid]
-                            webhook["prev_alert_id"] = prev_id
-                            webhook["prev_alert_timestamp"] = prev_ts.isoformat() if prev_ts else None
-                        else:
-                            webhook["prev_alert_id"] = None
-                            webhook["prev_alert_timestamp"] = None
-                except Exception as e:
-                    logger.warning(f"LAG 窗口函数计算 prev_alert_id 失败: {e}")
-                    for webhook in webhooks:
-                        webhook["prev_alert_id"] = None
-                        webhook["prev_alert_timestamp"] = None
-            else:
-                # 没有 alert_hash 的设为 None
-                for webhook in webhooks:
-                    webhook["prev_alert_id"] = None
-                    webhook["prev_alert_timestamp"] = None
 
             # 计算下一页游标
             next_cursor = events[-1].id if has_more and events else None

@@ -5,7 +5,7 @@
 import logging
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 from adapters.summary_extractors import extract_summary_fields
@@ -40,10 +40,14 @@ class WebhookEvent(Base):
 
     # 处理状态
     processing_status = Column(String(20), default="received", nullable=False, index=True)
-    # 状态流转: received → analyzing → completed → failed
+    # 状态流转: received → analyzing → completed → failed / dead_letter
+    retry_count = Column(Integer, default=0, nullable=False)  # RecoveryPoller 重试计数
 
     # 转发状态
     forward_status = Column(String(20))  # success, failed, skipped
+
+    # 同 alert_hash 链路中的前一条事件 ID（写入时持久化）
+    prev_alert_id = Column(BigInteger, nullable=True)
 
     # 是否为重复告警
     is_duplicate = Column(Integer, default=0)  # 0: 新告警, 1: 重复告警
@@ -88,8 +92,7 @@ class WebhookEvent(Base):
             "summary": summary,  # AI 摘要（而非完整分析）
             "alert_info": alert_info,  # 告警关键信息（而非完整 parsed_data）
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "prev_alert_id": None,  # 占位符，由 get_all_webhooks 填充
-            "prev_alert_timestamp": None,  # 占位符，由 get_all_webhooks 填充
+            "prev_alert_id": self.prev_alert_id,
         }
 
     def to_dict(self):

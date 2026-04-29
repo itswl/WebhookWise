@@ -8,14 +8,12 @@ from sqlalchemy import update
 
 from api import InvalidJsonError, InvalidSignatureError
 from core.compression import decompress_payload
-from core.config import Config
 from core.logger import logger
 from core.metrics import (
     WEBHOOK_DEAD_LETTER_TOTAL,
     WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
-    WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL,
     sanitize_source,
 )
 from core.trace import generate_trace_id, set_trace_id
@@ -27,12 +25,6 @@ from services.pipeline_forward import _refresh_original_event, decide_forwarding
 from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
 from services.pipeline_request import _build_webhook_response, _parse_webhook_request
 
-_webhook_semaphore: asyncio.Semaphore | None = None
-
-# 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
-_running_tasks: set[asyncio.Task] = set()
-
-# 不可重试的异常类型
 _NON_RETRYABLE_ERRORS = (
     ValueError,
     KeyError,
@@ -40,6 +32,9 @@ _NON_RETRYABLE_ERRORS = (
     orjson.JSONDecodeError,
     UnicodeDecodeError,
 )
+
+# 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
+_running_tasks: set[asyncio.Task] = set()
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -56,22 +51,20 @@ def get_running_tasks() -> set[asyncio.Task]:
     return _running_tasks
 
 
-def _get_semaphore() -> asyncio.Semaphore:
-    global _webhook_semaphore
-    if _webhook_semaphore is None:
-        _webhook_semaphore = asyncio.Semaphore(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS)
-    return _webhook_semaphore
+async def _update_processing_status(event_id: int | None, status: str, *, inc_retry: bool = False) -> None:
+    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）
 
-
-async def _update_processing_status(event_id: int | None, status: str) -> None:
-    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）"""
+    Args:
+        inc_retry: 若为 True，同时 retry_count += 1（用于可重试异常退回 received）
+    """
     if event_id is None:
         return
     try:
         async with session_scope() as session:
-            await session.execute(
-                update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status)
-            )
+            values: dict = {"processing_status": status}
+            if inc_retry:
+                values["retry_count"] = WebhookEvent.retry_count + 1
+            await session.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(**values))
     except Exception as e:
         logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
 
@@ -82,21 +75,10 @@ async def handle_webhook_process(
 ):
     """处理 webhook 的主流程入口。
 
-    仅接收 event_id，从 DB 加载完整事件数据，避免 BackgroundTasks 持有大对象。
+    仅接收 event_id，从 DB 加载完整事件数据，避免持有大对象。
+    并发控制由 Redis Stream 的 count 参数自然限流，无需进程内 Semaphore。
     """
     set_trace_id(generate_trace_id(event_id=event_id))
-    semaphore = _get_semaphore()
-    timeout = Config.server.WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS
-    try:
-        await asyncio.wait_for(semaphore.acquire(), timeout=timeout)
-    except asyncio.TimeoutError:
-        WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL.inc()
-        logger.warning(
-            "Semaphore 获取超时 (%ds)，放弃本次处理，等待 RecoveryPoller 补偿 | event_id=%s",
-            timeout,
-            event_id,
-        )
-        return  # Fail-Closed: 数据已在 DB 中（received 状态），由 RecoveryPoller 补偿
     task = asyncio.current_task()
     if task:
         _running_tasks.add(task)
@@ -104,7 +86,6 @@ async def handle_webhook_process(
     try:
         await _handle_webhook_process_inner(event_id, client_ip)
     finally:
-        semaphore.release()
         if task:
             _running_tasks.discard(task)
             WEBHOOK_RUNNING_TASKS.dec()
@@ -213,6 +194,7 @@ async def _handle_webhook_process_inner(
                 suppressed=str(noise_context.suppress_forward).lower(),
             ).inc()
 
+        # ── 锁外：转发阶段（无需持有 processing_lock）──
         beyond_window = save_result.beyond_window
         is_dup = save_result.is_duplicate
         original_id = save_result.original_id
@@ -252,12 +234,12 @@ async def _handle_webhook_process_inner(
     except Exception as e:
         if _is_retryable(e):
             logger.error(
-                "Webhook 处理失败（可重试）| event_id=%s | error=%s",
+                "Webhook 处理失败（可重试，退回 received 等待 RecoveryPoller）| event_id=%s | error=%s",
                 event_id,
                 e,
                 exc_info=True,
             )
-            await _update_processing_status(event_id, "failed")
+            await _update_processing_status(event_id, "received", inc_retry=True)
         else:
             logger.warning(
                 "Webhook 处理失败（不可重试，标记为死信）| event_id=%s | error=%s | type=%s",
