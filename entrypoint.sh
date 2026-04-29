@@ -13,7 +13,11 @@ max_retries=30
 retry_count=0
 
 while [ $retry_count -lt $max_retries ]; do
-    if python3 -c "from db.session import test_db_connection; exit(0 if test_db_connection() else 1)" 2>/dev/null; then
+    if python3 -c "import asyncio; from db.session import init_engine, test_db_connection
+async def _check():
+    await init_engine()
+    return await test_db_connection()
+exit(0 if asyncio.run(_check()) else 1)" 2>/dev/null; then
         echo "✅ 数据库连接成功"
         break
     else
@@ -30,7 +34,11 @@ fi
 
 # 2. 初始化数据库表结构
 echo "[2/4] 初始化数据库表..."
-python3 -c "from db.session import init_db; init_db()" || {
+python3 -c "import asyncio; from db.session import init_engine, init_db
+async def _init():
+    await init_engine()
+    await init_db()
+asyncio.run(_init())" || {
     echo "⚠️  表初始化失败（可能已存在），继续..."
 }
 echo "✅ 数据库表检查完成"

@@ -6,15 +6,16 @@
     python migrations_tool.py add_unique_constraint
 """
 
+import asyncio
 import sys
 
 from sqlalchemy import text
 
 from core.logger import logger
-from db.session import get_engine, session_scope
+from db.session import get_engine, init_engine, session_scope
 
 
-def add_unique_constraint(verbose=True):
+async def add_unique_constraint(verbose=True):
     """
     添加唯一约束防止重复告警
 
@@ -26,6 +27,7 @@ def add_unique_constraint(verbose=True):
     Args:
         verbose: 是否输出详细日志（默认True，启动脚本可设为False）
     """
+    await init_engine()
     engine = get_engine()
 
     def log(msg, level="info"):
@@ -34,12 +36,12 @@ def add_unique_constraint(verbose=True):
             getattr(logger, level)(msg)
 
     try:
-        with session_scope() as session:
+        async with session_scope() as session:
             log("🔧 开始数据库迁移：添加唯一约束...")
 
             # 步骤 1: 检查并修复空的 alert_hash
             log("📋 步骤 1: 检查空的 alert_hash...")
-            result = session.execute(
+            result = await session.execute(
                 text("""
                 SELECT COUNT(*) FROM webhook_events
                 WHERE alert_hash IS NULL AND is_duplicate = 0
@@ -49,7 +51,7 @@ def add_unique_constraint(verbose=True):
 
             if null_count > 0:
                 log(f"发现 {null_count} 条 alert_hash 为空的原始告警，正在修复...", "warning")
-                session.execute(
+                await session.execute(
                     text("""
                     UPDATE webhook_events
                     SET alert_hash = md5(id::text || timestamp::text)
@@ -62,7 +64,7 @@ def add_unique_constraint(verbose=True):
 
             # 步骤 2: 检查并处理重复的原始告警
             log("📋 步骤 2: 检查重复的原始告警...")
-            result = session.execute(
+            result = await session.execute(
                 text("""
                 SELECT alert_hash, COUNT(*) as cnt, array_agg(id ORDER BY timestamp) as ids
                 FROM webhook_events
@@ -100,7 +102,7 @@ def add_unique_constraint(verbose=True):
 
                     # 更新重复记录
                     for dup_id in duplicate_ids:
-                        session.execute(
+                        await session.execute(
                             text("""
                             UPDATE webhook_events
                             SET is_duplicate = 1, duplicate_of = :original_id
@@ -110,7 +112,7 @@ def add_unique_constraint(verbose=True):
                         )
 
                     # 更新原始告警的 duplicate_count
-                    session.execute(
+                    await session.execute(
                         text("""
                         UPDATE webhook_events
                         SET duplicate_count = :count
@@ -123,47 +125,44 @@ def add_unique_constraint(verbose=True):
             else:
                 logger.info("✅ 无重复告警")
 
-            # 先提交更改
-            session.commit()
-
             # 步骤 3: 创建唯一索引（需要在事务外执行）
             logger.info("📋 步骤 3: 创建唯一索引...")
 
         # 使用独立连接创建索引
-        with engine.connect() as conn:
-            conn.execute(
+        async with engine.connect() as conn:
+            await conn.execute(
                 text("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original
                 ON webhook_events(alert_hash)
                 WHERE is_duplicate = 0
             """)
             )
-            conn.commit()
+            await conn.commit()
 
             logger.info("✅ 唯一索引创建成功")
 
             # 添加注释
-            conn.execute(
+            await conn.execute(
                 text("""
                 COMMENT ON INDEX idx_unique_alert_hash_original IS
                 '确保相同 alert_hash 只有一个原始告警（is_duplicate=0），防止并发插入导致的重复'
             """)
             )
-            conn.commit()
+            await conn.commit()
 
             logger.info("✅ 注释添加成功")
 
         # 步骤 4: 最终验证
         logger.info("📋 步骤 4: 最终验证...")
-        with session_scope() as session:
-            result = session.execute(
+        async with session_scope() as session:
+            result = await session.execute(
                 text("""
                 SELECT COUNT(*) FROM webhook_events WHERE is_duplicate = 0
             """)
             )
             original_count = result.scalar()
 
-            result = session.execute(
+            result = await session.execute(
                 text("""
                 SELECT COUNT(DISTINCT alert_hash) FROM webhook_events
                 WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
@@ -190,7 +189,7 @@ def add_unique_constraint(verbose=True):
         return False
 
 
-def main():
+async def main():
     """主函数"""
     if len(sys.argv) < 2:
         print("使用方法: python migrations_tool.py <migration_name>")
@@ -201,7 +200,7 @@ def main():
     migration_name = sys.argv[1]
 
     if migration_name == "add_unique_constraint":
-        success = add_unique_constraint()
+        success = await add_unique_constraint()
         sys.exit(0 if success else 1)
     else:
         print(f"未知的迁移: {migration_name}")
@@ -209,4 +208,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
