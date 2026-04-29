@@ -20,6 +20,14 @@ from services.pipeline_request import _build_webhook_response, _parse_webhook_re
 
 _webhook_semaphore: asyncio.Semaphore | None = None
 
+# 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
+_running_tasks: set[asyncio.Task] = set()
+
+
+def get_running_tasks() -> set[asyncio.Task]:
+    """获取当前正在运行的 webhook 处理任务集合。"""
+    return _running_tasks
+
 
 def _get_semaphore() -> asyncio.Semaphore:
     global _webhook_semaphore
@@ -56,16 +64,20 @@ async def handle_webhook_process(
         await asyncio.wait_for(semaphore.acquire(), timeout=timeout)
     except asyncio.TimeoutError:
         logger.warning(
-            "Semaphore 获取超时 (%ds)，跳过限流直接处理 | event_id=%s",
+            "Semaphore 获取超时 (%ds)，放弃本次处理，等待 RecoveryPoller 补偿 | event_id=%s",
             timeout,
             event_id,
         )
-        await _handle_webhook_process_inner(event_id, client_ip)
-        return
+        return  # Fail-Closed: 数据已在 DB 中（received 状态），由 RecoveryPoller 补偿
+    task = asyncio.current_task()
+    if task:
+        _running_tasks.add(task)
     try:
         await _handle_webhook_process_inner(event_id, client_ip)
     finally:
         semaphore.release()
+        if task:
+            _running_tasks.discard(task)
 
 
 async def _handle_webhook_process_inner(

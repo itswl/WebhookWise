@@ -13,6 +13,7 @@ import httpx
 
 from core.config import Config
 from core.http_client import get_http_client
+from core.trace import get_trace_id
 from core.utils import forward_cb, openclaw_cb
 
 logger = logging.getLogger("webhook_service.forward")
@@ -67,6 +68,9 @@ async def forward_to_remote(
 
         # 发送到远程服务器
         headers = {"Content-Type": "application/json"}
+        trace_id = get_trace_id()
+        if trace_id:
+            headers["X-Trace-Id"] = trace_id
 
         if not is_feishu:
             headers["X-Webhook-Source"] = f"analyzed-{webhook_data.get('source', 'unknown')}"
@@ -240,6 +244,10 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
         kwargs = {"json": payload}
 
+    trace_id = get_trace_id()
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
+
     try:
         import hashlib
 
@@ -339,6 +347,10 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
         kwargs = {"json": payload}
+
+    trace_id = get_trace_id()
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
 
     logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}, len={len(str(payload))}")
     logger.debug(f"[{platform.upper()}] 完整载荷内容: {payload}")

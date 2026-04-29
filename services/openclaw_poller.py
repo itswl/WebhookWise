@@ -10,6 +10,7 @@ from functools import partial
 import core.redis_client
 from core.config import Config
 from core.http_client import get_http_client
+from core.trace import get_trace_id
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
 
@@ -177,6 +178,9 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     # 使用 hooks token 认证
     hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
     headers = {"Authorization": f"Bearer {hooks_token}"}
+    trace_id = get_trace_id()
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
 
     client = get_http_client()
     for attempt in range(retry_count):

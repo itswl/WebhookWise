@@ -90,16 +90,7 @@ async def start_scheduler() -> bool:
     except Exception as e:
         logger.warning(f"[Pollers] openclaw poller start failed: {e}")
 
-    # 3. Recovery poller — 僵尸事件恢复（每 120s）
-    try:
-        from services.recovery_poller import recover_zombie_events
-
-        _create_task(
-            _run_periodic("Recovery", recover_zombie_events, 120, _stop_event),
-            "recovery-poller",
-        )
-    except Exception as e:
-        logger.warning(f"[Pollers] recovery poller start failed: {e}")
+    # 3. Recovery poller — 已迁移到 RecoveryPoller 类，由 core/app.py lifespan 独立管理
 
     # 4. Forward retry poller（按配置启用）
     if Config.retry.ENABLE_FORWARD_RETRY:

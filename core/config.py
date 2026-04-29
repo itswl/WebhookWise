@@ -32,10 +32,17 @@ class ServerConfig(BaseSettings):
     ENABLE_FILE_BACKUP: bool = Field(default=False)
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
-    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=50, description="Webhook 后台处理最大并发数")
-    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(
-        default=30, description="Semaphore 获取超时秒数，超时后跳过限流直接处理"
+    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(
+        default=30, description="Webhook 后台处理最大并发数（对齐 DB_POOL_SIZE + DB_MAX_OVERFLOW）"
     )
+    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(
+        default=30, description="Semaphore 获取超时秒数，超时后 Fail-Closed 放弃处理"
+    )
+    RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60, description="RecoveryPoller 扫描间隔秒数")
+    RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(
+        default=300, description="事件在 received/analyzing 状态超过此秒数视为僵尸"
+    )
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import socket
 from contextlib import asynccontextmanager
@@ -26,7 +27,9 @@ from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
+from services.pipeline import get_running_tasks
 from services.poller_scheduler import start_scheduler, stop_scheduler
+from services.recovery_poller import RecoveryPoller
 
 
 @asynccontextmanager
@@ -48,9 +51,34 @@ async def lifespan(app: FastAPI):
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
+    recovery_poller = None
     if Config.server.RUN_MODE in ("worker", "all"):
         await start_scheduler()
+        recovery_poller = RecoveryPoller()
+        await recovery_poller.start()
     yield
+    # 1. 停止 RecoveryPoller（不再产生新的恢复任务）
+    if recovery_poller:
+        await recovery_poller.stop()
+    # 2. 优雅等待正在运行的 webhook 处理任务
+    running = get_running_tasks()
+    if running:
+        grace_timeout = Config.server.GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+        logger.info(
+            "优雅停机：等待 %d 个正在运行的任务完成 (超时 %ds)",
+            len(running),
+            grace_timeout,
+        )
+        done, pending = await asyncio.wait(
+            running,
+            timeout=grace_timeout,
+        )
+        if pending:
+            logger.warning(
+                "优雅停机超时，%d 个任务未完成，将由下次 RecoveryPoller 补偿",
+                len(pending),
+            )
+    # 3. 停止轮询调度器
     if Config.server.RUN_MODE in ("worker", "all"):
         await stop_scheduler()
     # 停止配置变更监听
