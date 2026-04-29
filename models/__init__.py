@@ -58,6 +58,7 @@ class WebhookEvent(Base):
         Index("idx_importance_timestamp", "importance", "timestamp"),
         Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
         Index("idx_status_created", "processing_status", "created_at"),
+        Index("idx_source_timestamp_id", "source", "timestamp", "id"),
     )
 
     def to_summary_dict(self):
