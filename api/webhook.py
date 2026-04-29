@@ -6,7 +6,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -51,7 +51,6 @@ async def list_webhooks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
     fields: str = Query("summary"),
-    include_total: bool = Query(False),
     importance: str = Query(""),
     source: str = Query(""),
     cursor_id: int | None = Query(None),
@@ -93,43 +92,6 @@ async def list_webhooks(
             )
 
         total = None
-        if include_total:
-            has_filters = bool(importance or source or cursor_id is not None)
-
-            if not has_filters:
-                # 无条件：先尝试 pg_class 估算
-                try:
-                    estimate_result = await session.execute(
-                        text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'webhook_events'")
-                    )
-                    estimate = estimate_result.scalar()
-                    if estimate is not None and estimate > 100000:
-                        total = int(estimate)
-                    else:
-                        count_query = select(func.count()).select_from(WebhookEvent)
-                        total_result = await session.execute(count_query)
-                        total = total_result.scalar()
-                except Exception:
-                    count_query = select(func.count()).select_from(WebhookEvent)
-                    total_result = await session.execute(count_query)
-                    total = total_result.scalar()
-            else:
-                # 有条件：用精确 COUNT（索引加速），添加超时兜底
-                count_query = select(func.count()).select_from(WebhookEvent)
-                if importance:
-                    count_query = count_query.filter(WebhookEvent.importance == importance)
-                if source:
-                    count_query = count_query.filter(WebhookEvent.source == source)
-                if cursor_id is not None:
-                    count_query = count_query.filter(WebhookEvent.id < cursor_id)
-                try:
-                    await session.execute(text("SET LOCAL statement_timeout = '2000'"))
-                    total_result = await session.execute(count_query)
-                    total = total_result.scalar()
-                except Exception:
-                    total = None
-                finally:
-                    await session.execute(text("RESET statement_timeout"))
         result = await session.execute(query.offset(offset).limit(page_size))
         events = result.scalars().all()
 

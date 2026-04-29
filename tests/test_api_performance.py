@@ -17,10 +17,10 @@ pytest.skip("performance/integration script, run manually", allow_module_level=T
 
 def test_api_performance(params: dict[str, str], name: str):
     """测试 API 性能"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"测试: {name}")
     print(f"参数: {params}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     try:
         start_time = time.time()
@@ -38,7 +38,7 @@ def test_api_performance(params: dict[str, str], name: str):
 
             print("✅ 成功")
             print(f"响应时间: {elapsed_ms:.2f} ms")
-            print(f"响应大小: {content_length:,} 字节 ({content_length/1024:.2f} KB)")
+            print(f"响应大小: {content_length:,} 字节 ({content_length / 1024:.2f} KB)")
             print(f"gzip 压缩: {'是' if is_compressed else '否'}")
             print(f"返回记录数: {len(data.get('data', []))}")
             print(f"总记录数: {data.get('pagination', {}).get('total', 0)}")

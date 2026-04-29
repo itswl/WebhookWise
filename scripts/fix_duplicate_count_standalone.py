@@ -100,9 +100,7 @@ def fix_duplicate_count():
 
         for row in cur.fetchall():
             status = "✅" if row["duplicate_count"] == row["original_count"] else "❌"
-            print(
-                f"  {status} ID={row['id']}, count={row['duplicate_count']}, " f"original_count={row['original_count']}"
-            )
+            print(f"  {status} ID={row['id']}, count={row['duplicate_count']}, original_count={row['original_count']}")
 
         cur.close()
         conn.close()

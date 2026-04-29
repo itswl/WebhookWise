@@ -35,6 +35,12 @@ _KEY_TO_SUBCONFIG: dict[str, str] = {
     "NOISE_REDUCTION_WINDOW_MINUTES": "ai",
     "ROOT_CAUSE_MIN_CONFIDENCE": "ai",
     "SUPPRESS_DERIVED_ALERT_FORWARD": "ai",
+    "RULE_HIGH_KEYWORDS": "ai",
+    "RULE_WARN_KEYWORDS": "ai",
+    "RULE_METRIC_KEYWORDS": "ai",
+    "RULE_THRESHOLD_MULTIPLIER": "ai",
+    "AI_PAYLOAD_MAX_BYTES": "ai",
+    "AI_PAYLOAD_STRIP_KEYS": "ai",
 }
 
 
@@ -66,6 +72,12 @@ RUNTIME_KEYS = {
     "NOISE_REDUCTION_WINDOW_MINUTES": {"type": "int", "desc": "降噪时间窗口（分钟）"},
     "ROOT_CAUSE_MIN_CONFIDENCE": {"type": "float", "desc": "根因关联最小置信度"},
     "SUPPRESS_DERIVED_ALERT_FORWARD": {"type": "bool", "desc": "抑制衍生告警转发"},
+    "RULE_HIGH_KEYWORDS": {"type": "str", "desc": "规则降级：高优先级关键字"},
+    "RULE_WARN_KEYWORDS": {"type": "str", "desc": "规则降级：警告级别关键字"},
+    "RULE_METRIC_KEYWORDS": {"type": "str", "desc": "规则降级：指标名称关键字"},
+    "RULE_THRESHOLD_MULTIPLIER": {"type": "float", "desc": "规则降级：超阈值倍数提升为 high"},
+    "AI_PAYLOAD_MAX_BYTES": {"type": "int", "desc": "AI 分析输入 payload 最大字节数"},
+    "AI_PAYLOAD_STRIP_KEYS": {"type": "str", "desc": "AI 分析前移除的噪音字段名"},
 }
 
 

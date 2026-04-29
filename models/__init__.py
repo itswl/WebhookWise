@@ -5,9 +5,10 @@
 import logging
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
+from core.compression import decompress_payload
 from db.session import Base
 
 # 模块 logger
@@ -24,8 +25,8 @@ class WebhookEvent(Base):
     client_ip = Column(String(50))
     timestamp = Column(DateTime, nullable=False, default=datetime.now, index=True)
 
-    # 原始数据
-    raw_payload = Column(Text)
+    # 原始数据（gzip 压缩存储）
+    raw_payload = Column(LargeBinary)
     headers = Column(JSONB)
     parsed_data = Column(JSONB)
 
@@ -108,7 +109,9 @@ class WebhookEvent(Base):
             "source": self.source,
             "client_ip": self.client_ip,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "raw_payload": self.raw_payload,
+            "raw_payload": decompress_payload(self.raw_payload)
+            if isinstance(self.raw_payload, bytes)
+            else self.raw_payload,
             "headers": self.headers,
             "parsed_data": self.parsed_data,
             "alert_hash": self.alert_hash,
@@ -135,7 +138,7 @@ class ArchivedWebhookEvent(Base):
     client_ip = Column(String(50))
     timestamp = Column(DateTime, nullable=False, index=True)
 
-    raw_payload = Column(Text)
+    raw_payload = Column(LargeBinary)
     headers = Column(JSONB)
     parsed_data = Column(JSONB)
     alert_hash = Column(String(64), index=True)
