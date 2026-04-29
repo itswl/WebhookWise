@@ -8,7 +8,13 @@ from api import InvalidJsonError, InvalidSignatureError
 from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
-from core.metrics import WEBHOOK_NOISE_REDUCED_TOTAL, WEBHOOK_RECEIVED_TOTAL, sanitize_source
+from core.metrics import (
+    WEBHOOK_NOISE_REDUCED_TOTAL,
+    WEBHOOK_RECEIVED_TOTAL,
+    WEBHOOK_RUNNING_TASKS,
+    WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL,
+    sanitize_source,
+)
 from core.trace import generate_trace_id, set_trace_id
 from core.utils import generate_alert_hash, processing_lock
 from db.session import session_scope
@@ -63,6 +69,7 @@ async def handle_webhook_process(
     try:
         await asyncio.wait_for(semaphore.acquire(), timeout=timeout)
     except asyncio.TimeoutError:
+        WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL.inc()
         logger.warning(
             "Semaphore 获取超时 (%ds)，放弃本次处理，等待 RecoveryPoller 补偿 | event_id=%s",
             timeout,
@@ -72,12 +79,14 @@ async def handle_webhook_process(
     task = asyncio.current_task()
     if task:
         _running_tasks.add(task)
+        WEBHOOK_RUNNING_TASKS.inc()
     try:
         await _handle_webhook_process_inner(event_id, client_ip)
     finally:
         semaphore.release()
         if task:
             _running_tasks.discard(task)
+            WEBHOOK_RUNNING_TASKS.dec()
 
 
 async def _handle_webhook_process_inner(

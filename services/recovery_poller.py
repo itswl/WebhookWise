@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from core.config import Config
 from core.logger import get_logger
+from core.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
 from core.redis_client import get_redis
 from db.session import session_scope
 from models import WebhookEvent
@@ -130,6 +131,7 @@ class RecoveryPoller:
 
         source = event.source or "unknown"
         logger.info("[Recovery] 重新处理事件 id=%s, source=%s", event.id, source)
+        WEBHOOK_RECOVERY_POLLED_TOTAL.inc()
 
         await handle_webhook_process(
             event_id=event.id,

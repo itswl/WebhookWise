@@ -69,6 +69,64 @@ AI_ANALYSIS_DURATION_SECONDS = Histogram(
 # 5. 系统状态指标
 DATABASE_EVENTS_COUNT = Gauge("database_webhook_events_count", "Current number of webhook events in active table")
 
+# 6. 内部状态水位线指标
+WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL = Counter(
+    "webhook_semaphore_timeout_total",
+    "Semaphore 获取超时触发 Fail-Closed 的总次数",
+)
+
+WEBHOOK_RECOVERY_POLLED_TOTAL = Counter(
+    "webhook_recovery_polled_total",
+    "RecoveryPoller 恢复的僵尸事件总数",
+)
+
+WEBHOOK_RUNNING_TASKS = Gauge(
+    "webhook_running_tasks",
+    "当前正在运行的 webhook 处理任务数",
+)
+
+DB_POOL_CHECKED_OUT = Gauge(
+    "db_pool_checked_out",
+    "当前已借出的数据库连接数",
+)
+
+DB_POOL_SIZE = Gauge(
+    "db_pool_size",
+    "数据库连接池总容量（pool_size + max_overflow）",
+)
+
+
+def update_db_pool_metrics():
+    """更新数据库连接池指标。
+
+    在 Prometheus scrape 时通过自定义 Collector 自动调用，也可手动调用。
+    """
+    try:
+        from db.session import get_engine
+
+        engine = get_engine()
+        if engine is None:
+            return
+        pool = engine.sync_engine.pool
+        DB_POOL_CHECKED_OUT.set(pool.checkedout())
+        DB_POOL_SIZE.set(pool.size() + pool.overflow())
+    except Exception:
+        pass
+
+
+class _DBPoolCollector:
+    """Prometheus 自定义 Collector，在每次 scrape 时触发 DB 连接池指标更新。"""
+
+    def describe(self):
+        return []
+
+    def collect(self):
+        update_db_pool_metrics()
+        return []
+
+
+prometheus_client.REGISTRY.register(_DBPoolCollector())
+
 
 def setup_metrics(app):
     """初始化并挂载 Prometheus 指标"""
