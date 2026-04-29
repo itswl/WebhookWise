@@ -3,6 +3,14 @@
 
 set -e  # 遇到错误立即退出
 
+# Worker 模式：跳过 DB 初始化和迁移（由 api 节点负责），直接启动 Poller
+if [ "$RUN_MODE" = "worker" ]; then
+    echo "Starting in Worker mode..."
+    exec python worker.py
+fi
+
+# 以下是 API / all 模式的启动流程
+
 echo "======================================"
 echo "Webhook 服务启动中..."
 echo "======================================"

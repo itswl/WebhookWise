@@ -24,6 +24,7 @@ services:
       - .env
 
     environment:
+      RUN_MODE: api
       PORT: ${PORT:-8000}
       FLASK_ENV: ${FLASK_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -54,6 +55,33 @@ services:
       retries: 3
       start_period: 40s
 
+    networks:
+      - webhook_net
+
+  worker:
+    build: .
+    container_name: webhook-worker
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    env_file:
+      - .env
+    environment:
+      RUN_MODE: worker
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - webhook_net
 

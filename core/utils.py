@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import time
 from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from enum import Enum
 from typing import Any
 
@@ -274,26 +274,47 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     return hash_value
 
 
+# Lua 脚本：仅当 value 匹配时续期锁（原子操作）
+_RENEW_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+else
+    return 0
+end
+"""
+
+# Lua 脚本：仅当 value 匹配时释放锁（原子操作）
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+
+
 @asynccontextmanager
 async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     """
     告警处理锁上下文管理器（Redis 分布式锁）
 
     利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
+    内置 Watchdog 自动续期机制，每 TTL/3 秒续期一次，
+    防止长耗时 AI 分析期间锁被 TTL 过期释放导致重复处理。
     """
     import core.redis_client
 
     redis_client = core.redis_client.get_redis()
     lock_key = f"lock:webhook:{alert_hash}"
     lock_value = Config.WORKER_ID
+    ttl = Config.PROCESSING_LOCK_TTL_SECONDS
 
     lock_acquired = False
+    watchdog_task = None
 
     try:
         # 尝试获取锁
-        lock_acquired = bool(
-            await redis_client.set(lock_key, lock_value, nx=True, ex=Config.PROCESSING_LOCK_TTL_SECONDS)
-        )
+        lock_acquired = bool(await redis_client.set(lock_key, lock_value, nx=True, ex=ttl))
         if lock_acquired:
             logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
         else:
@@ -301,19 +322,37 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     except Exception as e:
         logger.error(f"获取处理锁失败: {e}")
 
+    # 获取锁成功后启动 Watchdog 自动续期
+    if lock_acquired:
+
+        async def _watchdog():
+            """每 TTL/3 秒自动续期锁，在到期前有 2 次续期机会"""
+            interval = ttl / 3
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    renewed = await redis_client.eval(_RENEW_LOCK_LUA, 1, lock_key, lock_value, str(ttl))
+                    if not renewed:
+                        logger.warning(f"[Lock] Watchdog 续期失败（锁已不属于自己）: hash={alert_hash[:16]}...")
+                        break
+                    logger.debug(f"[Lock] Watchdog 续期成功: hash={alert_hash[:16]}...")
+                except Exception as e:
+                    logger.error(f"[Lock] Watchdog 续期异常: {e}")
+                    break
+
+        watchdog_task = asyncio.create_task(_watchdog())
+
     try:
         yield lock_acquired
     finally:
+        # 先取消 Watchdog → await 取消完成 → 再释放锁
+        if watchdog_task:
+            watchdog_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await watchdog_task
         if lock_acquired:
             try:
-                release_lua = """
-                if redis.call("get", KEYS[1]) == ARGV[1] then
-                    return redis.call("del", KEYS[1])
-                else
-                    return 0
-                end
-                """
-                await redis_client.eval(release_lua, 1, lock_key, lock_value)
+                await redis_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
                 logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
             except Exception as e:
                 logger.error(f"释放锁失败: {e}")
