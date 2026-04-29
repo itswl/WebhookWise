@@ -52,6 +52,7 @@ class ServerConfig(BaseSettings):
     WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, description="每次 XREADGROUP 拉取的最大消息数")
     WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, description="XREADGROUP 阻塞超时毫秒数")
     WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000, description="Stream 最大长度（approximate trim）")
+    MQ_CONSUMER_CONCURRENCY: int = Field(default=10, description="Worker 单进程 MQ 消费最大并发处理数")
 
 
 class SecurityConfig(BaseSettings):
