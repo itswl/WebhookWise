@@ -5,7 +5,20 @@
 import logging
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -276,6 +289,8 @@ class DeepAnalysis(Base):
 
     __tablename__ = "deep_analyses"
 
+    __table_args__ = (Index("idx_deep_analyses_pending", "created_at", postgresql_where=text("status = 'pending'")),)
+
     id = Column(Integer, primary_key=True)
     webhook_event_id = Column(Integer, nullable=False, index=True)  # 关联告警 ID
     engine = Column(String(20), default="local")  # local / openclaw
@@ -326,6 +341,9 @@ class FailedForward(Base):
 
     __table_args__ = (
         Index("idx_failed_status_retry", "status", "next_retry_at"),
+        Index(
+            "idx_failed_forwards_pending", "next_retry_at", postgresql_where=text("status IN ('pending', 'retrying')")
+        ),
         Index("idx_failed_webhook_event", "webhook_event_id"),
     )
 
