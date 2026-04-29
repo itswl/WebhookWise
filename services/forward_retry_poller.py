@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import defer
 
 from core.config import Config
 from db.session import session_scope
@@ -47,6 +48,7 @@ async def poll_pending_retries():
             # 查询待重试记录：status IN ('pending', 'retrying') AND next_retry_at <= now
             stmt = (
                 select(FailedForward)
+                .options(defer(FailedForward.forward_data), defer(FailedForward.forward_headers))
                 .filter(
                     FailedForward.status.in_(["pending", "retrying"]),
                     FailedForward.next_retry_at <= now,
