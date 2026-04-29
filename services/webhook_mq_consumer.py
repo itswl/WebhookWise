@@ -104,6 +104,11 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
         f"[MQ] Consumer 启动: consumer_id={consumer_id}, queue={_QUEUE}, " f"group={_GROUP}, concurrency={concurrency}"
     )
 
+    # Redis 闪断指数退避
+    _backoff = 1.0
+    _MAX_BACKOFF = 60.0
+    _redis_was_down = False
+
     while not stop_event.is_set():
         try:
             # XREADGROUP: 阻塞拉取未消费消息
@@ -118,6 +123,12 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
             if not messages:
                 continue
 
+            # 成功拉取到消息后重置退避
+            _backoff = 1.0
+            if _redis_was_down:
+                logger.info("[MQ] Redis 连接已恢复")
+                _redis_was_down = False
+
             # messages 格式: [[stream_name, [(msg_id, {field: value}), ...]]]
             for _stream_name, entries in messages:
                 tasks = []
@@ -126,18 +137,38 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
                     tasks.append(task)
                 # 等待本批全部完成再拉下一批，避免无限堆积
                 if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                    grace_timeout = getattr(Config.server, "GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS", 30)
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.gather(*tasks, return_exceptions=True),
+                            timeout=grace_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "[MQ] 优雅停机超时，%d 个任务未完成，将由 RecoveryPoller 补偿",
+                            len([t for t in tasks if not t.done()]),
+                        )
 
         except asyncio.CancelledError:
             logger.info("[MQ] Consumer 收到取消信号，退出")
             break
-        except Exception:
-            logger.exception("[MQ] Consumer 循环异常，1s 后重试")
-            # 避免异常风暴
+        except Exception as e:
+            if isinstance(e, (ConnectionError, OSError, TimeoutError)):
+                # Redis 闪断：简短日志 + 指数退避
+                if not _redis_was_down:
+                    logger.error("[MQ] Redis 连接断开: %s（将以指数退避重连）", e)
+                    _redis_was_down = True
+                else:
+                    logger.debug("[MQ] Redis 仍未恢复，%0.1fs 后重试", _backoff)
+            else:
+                logger.exception("[MQ] Consumer 循环异常，%0.1fs 后重试", _backoff)
+
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=1.0)
-                break
+                await asyncio.wait_for(stop_event.wait(), timeout=_backoff)
+                break  # stop_event 被设置
             except asyncio.TimeoutError:
                 pass
+
+            _backoff = min(_backoff * 2, _MAX_BACKOFF)
 
     logger.info("[MQ] Consumer 已停止")
