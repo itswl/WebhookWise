@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import gzip
 
+# 低于此阈值的 payload 不压缩，节省 CPU
+COMPRESS_THRESHOLD_BYTES = 4096
+
 
 def compress_payload(text: str | None) -> bytes | None:
-    """将文本 payload gzip 压缩为 bytes。"""
+    """将文本 payload gzip 压缩为 bytes。小于阈值时直接返回 UTF-8 bytes。"""
     if not text:
         return None
-    return gzip.compress(text.encode("utf-8"), compresslevel=6)
+    raw = text.encode("utf-8")
+    if len(raw) < COMPRESS_THRESHOLD_BYTES:
+        return raw
+    return gzip.compress(raw, compresslevel=6)
 
 
 def decompress_payload(data: bytes | None) -> str | None:

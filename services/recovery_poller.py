@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import platform
 import uuid
 from datetime import datetime, timedelta
 
@@ -29,6 +31,16 @@ _MAX_RECOVER_BATCH = 50
 _LOCK_KEY = "recovery:poller:lock"
 _LOCK_TTL_SECONDS = 120
 
+# Lua 脚本：仅当 value 匹配时续期锁（原子操作）
+_RENEW_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("pexpire", KEYS[1], tonumber(ARGV[2]))
+else
+    return 0
+end
+"""
+
+# Lua 脚本：仅当 value 匹配时释放锁（原子操作）
 _RELEASE_LOCK_LUA = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
     return redis.call("del", KEYS[1])
@@ -36,6 +48,12 @@ else
     return 0
 end
 """
+
+
+def _generate_lock_value() -> str:
+    """生成唯一的锁标识值。"""
+    hostname = platform.node()
+    return f"{hostname}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
 
 class RecoveryPoller:
@@ -81,20 +99,47 @@ class RecoveryPoller:
             except asyncio.TimeoutError:
                 continue  # 超时说明还没停止，继续下一轮
 
+    async def _lock_watchdog(self, lock_key: str, lock_value: str, ttl_seconds: int) -> None:
+        """后台续期 Redis 锁，每 ttl/3 秒续期一次。"""
+        renewal_interval = ttl_seconds / 3
+        redis = get_redis()
+        try:
+            while True:
+                await asyncio.sleep(renewal_interval)
+                renewed = await redis.eval(
+                    _RENEW_LOCK_LUA,
+                    1,
+                    lock_key,
+                    lock_value,
+                    str(ttl_seconds * 1000),
+                )
+                if not renewed:
+                    logger.warning("RecoveryPoller 锁续期失败，锁可能已被其他 Worker 抢占")
+                    break
+                logger.debug("[Recovery] Watchdog 续期成功")
+        except asyncio.CancelledError:
+            pass  # 正常取消
+
     async def _scan_and_recover(self) -> None:
         """扫描僵尸事件并重新分发。
 
         使用 Redis NX 分布式锁确保多 Worker 下仅一个实例执行。
+        内置 Watchdog 自动续期机制，防止长时间扫描导致锁过期。
         """
         redis = get_redis()
-        lock_value = str(uuid.uuid4())
+        lock_value = _generate_lock_value()
         if not await redis.set(_LOCK_KEY, lock_value, nx=True, ex=_LOCK_TTL_SECONDS):
             logger.debug("[Recovery] 另一个 worker 正在执行，跳过本轮")
             return
 
+        watchdog_task = asyncio.create_task(self._lock_watchdog(_LOCK_KEY, lock_value, _LOCK_TTL_SECONDS))
         try:
             await self._do_recover()
         finally:
+            # 先取消 Watchdog → await 取消完成 → 再释放锁
+            watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watchdog_task
             with contextlib.suppress(Exception):
                 await redis.eval(_RELEASE_LOCK_LUA, 1, _LOCK_KEY, lock_value)
 
