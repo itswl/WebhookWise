@@ -8,7 +8,7 @@ echo "Webhook 服务启动中..."
 echo "======================================"
 
 # 1. 等待数据库就绪
-echo "[1/4] 等待数据库就绪..."
+echo "[1/5] 等待数据库就绪..."
 max_retries=30
 retry_count=0
 
@@ -33,7 +33,7 @@ if [ $retry_count -eq $max_retries ]; then
 fi
 
 # 2. 初始化数据库表结构
-echo "[2/4] 初始化数据库表..."
+echo "[2/5] 初始化数据库表..."
 python3 -c "import asyncio; from db.session import init_engine, init_db
 async def _init():
     await init_engine()
@@ -44,22 +44,27 @@ asyncio.run(_init())" || {
 echo "✅ 数据库表检查完成"
 
 # 3. 执行数据库迁移（添加去重字段等）
-echo "[3/4] 执行数据库迁移..."
+echo "[3/5] 执行数据库迁移（旧系统）..."
 python3 -m migrations.migrate_db || {
     echo "⚠️  迁移失败，继续..."
 }
 echo "✅ 数据库迁移完成"
 
 # 4. 添加唯一约束（防止重复告警）
-echo "[4/4] 检查唯一约束..."
+echo "[4/5] 检查唯一约束..."
 python3 -m migrations.init_migrations || {
     echo "⚠️  唯一约束检查失败，继续启动..."
 }
 echo "✅ 数据库约束检查完成"
 
+# 5. Alembic 迁移（增量 schema 变更）
+echo "[5/5] Alembic 迁移..."
+cd /app && alembic upgrade head 2>/dev/null || alembic stamp head
+echo "✅ Alembic 迁移完成"
+
 echo "======================================"
 echo "数据库准备完成，启动应用服务..."
 echo "======================================"
 
-# 5. 启动应用服务
+# 6. 启动应用服务
 exec "$@"

@@ -1,8 +1,8 @@
 """僵尸事件恢复 — 捞取停滞的 webhook 事件并重新处理，实现 At-Least-Once Delivery"""
 
 import contextlib
-import json
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -22,14 +22,23 @@ _ZOMBIE_THRESHOLD_MINUTES = 5
 _LOCK_KEY = "recovery:poller:lock"
 _LOCK_TTL_SECONDS = 120  # 与调度间隔匹配
 
+_RELEASE_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+
 
 async def recover_zombie_events() -> None:
-    """捞取停滞的 webhook 事件并重新处理
+    """捐取停滞的 webhook 事件并重新处理
 
     使用 Redis NX 分布式锁确保多 Worker 下仅一个实例执行。
     """
     redis = get_redis()
-    if not await redis.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL_SECONDS):
+    lock_value = str(uuid.uuid4())
+    if not await redis.set(_LOCK_KEY, lock_value, nx=True, ex=_LOCK_TTL_SECONDS):
         logger.debug("[Recovery] 另一个 worker 正在执行，跳过本轮")
         return
 
@@ -37,7 +46,7 @@ async def recover_zombie_events() -> None:
         await _do_recover()
     finally:
         with contextlib.suppress(Exception):
-            await redis.delete(_LOCK_KEY)
+            await redis.eval(_RELEASE_LOCK_LUA, 1, _LOCK_KEY, lock_value)
 
 
 async def _do_recover() -> None:
@@ -69,23 +78,10 @@ async def _reprocess_event(event: WebhookEvent) -> None:
     """重新处理单条僵尸事件"""
     from services.pipeline import handle_webhook_process
 
-    raw_payload = event.raw_payload or ""
-    raw_body = raw_payload.encode("utf-8")
-    headers = event.headers if isinstance(event.headers, dict) else {}
     source = event.source or "unknown"
-
-    try:
-        payload = json.loads(raw_payload) if raw_payload else {}
-    except (json.JSONDecodeError, TypeError):
-        payload = {}
-
     logger.info(f"[Recovery] 重新处理事件 id={event.id}, source={source}")
 
     await handle_webhook_process(
-        client_ip="recovery",
-        headers=headers,
-        payload=payload,
-        raw_body=raw_body,
-        source=source,
         event_id=event.id,
+        client_ip="recovery",
     )

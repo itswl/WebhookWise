@@ -43,13 +43,20 @@ cp .env.example .env
 docker-compose up -d --build
 ```
 
-### 数据库初始化与手动迁移
-系统在 Docker 启动时会自动执行迁移。如需手动执行：
+### 数据库迁移
+系统在 Docker 启动时会自动执行全部迁移（含 Alembic）。如需手动执行：
 ```bash
 # 执行数据库表初始化
 python3 -c "from db.session import init_db; init_db()"
-# 执行结构迁移（索引优化、归档表创建）
+# 执行旧系统迁移（索引优化、归档表创建）
 python3 -m migrations.init_migrations
+# Alembic 增量 schema 迁移
+alembic upgrade head
+```
+
+创建新迁移：
+```bash
+alembic revision --autogenerate -m "描述变更内容"
 ```
 
 ## 📊 监控指标 (Prometheus)
@@ -79,7 +86,8 @@ python3 -m migrations.init_migrations
 ├── db/                 # 数据库连接池与 session 管理
 ├── services/           # 核心业务逻辑 (AI 分析引擎, 降噪算法, 主处理管道, 轮询器)
 ├── adapters/           # 生态适配器 (Prometheus, 华为云等格式转换)
-├── migrations/         # 数据库迁移脚本与 SQL 优化文件
+├── migrations/         # 旧系统数据库迁移脚本
+├── alembic/            # Alembic 数据库迁移（增量 schema 变更）
 ├── prompts/            # AI 提示词模板目录
 ├── scripts/            # 运维工具脚本 (手动归档, 权限诊断等)
 └── templates/          # 前端 Dashboard 静态文件
