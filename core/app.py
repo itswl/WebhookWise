@@ -7,6 +7,9 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from adapters.plugins.local_engine import LocalAnalysisEngine
+from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
+from adapters.registry import register_engine
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
@@ -29,6 +32,9 @@ from services.poller_scheduler import start_scheduler, stop_scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Config.validate_config()
+    # 注册深度分析引擎
+    register_engine(LocalAnalysisEngine())
+    register_engine(OpenClawAnalysisEngine())
     if not Config.security.API_KEY and not (Config.server.DEBUG or Config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"

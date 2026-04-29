@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.registry import get_default_engine, get_engine
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
@@ -28,20 +29,14 @@ MAX_PAGE = 500
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 
-def _determine_engine(requested_engine: str) -> str:
-    if requested_engine == "local":
-        return "local"
-    elif requested_engine == "openclaw":
-        if Config.openclaw.OPENCLAW_ENABLED:
-            return "openclaw"
-        logger.warning("OpenClaw 未启用，回退到本地 AI")
-        return "local"
-    else:  # auto
-        if Config.ai.DEEP_ANALYSIS_ENGINE == "openclaw" and Config.openclaw.OPENCLAW_ENABLED:
-            return "openclaw"
-        elif Config.ai.DEEP_ANALYSIS_ENGINE == "local":
-            return "local"
-        return "openclaw" if Config.openclaw.OPENCLAW_ENABLED else "local"
+def _resolve_engine(requested: str):
+    """通过注册表解析引擎：优先按名称查找，回退到默认引擎。"""
+    if requested and requested != "auto":
+        engine = get_engine(requested)
+        if engine and engine.is_available():
+            return engine
+        logger.warning(f"请求的引擎 '{requested}' 不可用，回退到默认引擎")
+    return get_default_engine()
 
 
 async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
@@ -117,65 +112,45 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         user_question = payload.get("user_question", "")
         engine_pref = payload.get("engine", "auto")
 
-        # ===== 多引擎路由逻辑 =====
-        if engine_pref == "openclaw" or (engine_pref == "auto" and Config.openclaw.OPENCLAW_ENABLED):
-            webhook_data = {
-                "source": event.source or "unknown",
-                "headers": event.headers or {},
-                "parsed_data": alert_data,
-            }
-            from services.ai_analyzer import analyze_webhook_with_ai
-            from services.forward import analyze_with_openclaw
+        # ===== 策略模式：通过注册表路由引擎 =====
+        engine_impl = _resolve_engine(engine_pref)
+        if engine_impl is None:
+            return JSONResponse(status_code=503, content={"success": False, "error": "没有可用的分析引擎"})
 
-            result = await analyze_with_openclaw(webhook_data, user_question)
-            engine = "openclaw"
-            run_id = ""
-
-            # 如果返回了 _degraded，说明 OpenClaw 调用失败降级到了本地规则
-            if result.get("_degraded"):
-                try:
-                    result = await analyze_webhook_with_ai(webhook_data)
-                    engine = "local (fallback)"
-                except Exception as e:
-                    return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
-            elif result.get("_pending"):
-                run_id = result.get("_openclaw_run_id", "")
-
-            # 保存分析记录
-            deep_record = DeepAnalysis(
-                webhook_event_id=webhook_id,
-                engine=engine,
+        try:
+            result = await engine_impl.analyze(
+                alert_data,
+                source=event.source or "unknown",
+                headers=event.headers or {},
                 user_question=user_question,
-                analysis_result=result,
-                status="pending" if result.get("_pending") else "completed",
-                openclaw_run_id=run_id,
-                openclaw_session_key=result.get("_openclaw_session_key", ""),
             )
-            session.add(deep_record)
-            await session.flush()
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"success": False, "error": f"深度分析失败: {e!s}"})
 
-        else:
-            from services.ai_analyzer import analyze_webhook_with_ai
+        engine_name = engine_impl.name
+        # 降级回退时标记引擎名
+        if result.get("_degraded") and engine_name == "openclaw":
+            engine_name = "local (fallback)"
 
-            # 默认走原有的本地 AI 分析
-            result = await analyze_webhook_with_ai(alert_data, event.source or "unknown")
-            engine = "local"
+        run_id = result.get("_openclaw_run_id", "") if result.get("_pending") else ""
 
-            deep_record = DeepAnalysis(
-                webhook_event_id=webhook_id,
-                engine=engine,
-                user_question=user_question,
-                analysis_result=result,
-                status="completed",
-            )
-            session.add(deep_record)
-            await session.flush()
+        deep_record = DeepAnalysis(
+            webhook_event_id=webhook_id,
+            engine=engine_name,
+            user_question=user_question,
+            analysis_result=result,
+            status="pending" if result.get("_pending") else "completed",
+            openclaw_run_id=run_id,
+            openclaw_session_key=result.get("_openclaw_session_key", ""),
+        )
+        session.add(deep_record)
+        await session.flush()
 
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
-                "data": {"id": deep_record.id, "engine": engine, "status": deep_record.status, "result": result},
+                "data": {"id": deep_record.id, "engine": engine_name, "status": deep_record.status, "result": result},
             },
         )
 
