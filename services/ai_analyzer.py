@@ -4,19 +4,45 @@
 提供 analyze_webhook_with_ai 和 analyze_with_rules 两个核心函数。
 """
 
+import logging
 import time
 from typing import Any
+
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from core.config import Config
 from core.logger import logger
 from core.metrics import AI_ANALYSIS_DURATION_SECONDS
-from services.ai_cache import get_cached_analysis, log_ai_usage, save_to_cache  # noqa: F811
-from services.ai_client import _send_degradation_alert, analyze_with_openai_tracked  # noqa: F811
+from services.ai_cache import get_cached_analysis, log_ai_usage, save_to_cache
+from services.ai_client import _send_degradation_alert, analyze_with_openai_tracked
 
 # 类型别名
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple[dict[str, Any], int, int]:
+    """带指数退避重试的 AI 调用"""
+    start_time = time.time()
+    analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
+    duration = time.time() - start_time
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="openai").observe(duration)
+    logger.info(f"AI 分析完成: {source}")
+    return analysis, tokens_in, tokens_out
 
 
 async def analyze_webhook_with_ai(
@@ -46,7 +72,7 @@ async def analyze_webhook_with_ai(
         alert_hash = generate_alert_hash(parsed_data, source)
 
     # Step 1: 检查缓存（skip_cache=True 时跳过）
-    if Config.CACHE_ENABLED and not skip_cache:
+    if Config.ai.CACHE_ENABLED and not skip_cache:
         cached_result = await get_cached_analysis(alert_hash)
         if cached_result:
             logger.info(f"[Cache] 命中历史分析缓存: source={source}, hash={alert_hash[:16]}...")
@@ -59,7 +85,7 @@ async def analyze_webhook_with_ai(
         logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
 
     # Step 2: 检查是否启用 AI 分析
-    if not Config.ENABLE_AI_ANALYSIS:
+    if not Config.ai.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
         result = analyze_with_rules(parsed_data, source)
         result["_degraded"] = True
@@ -70,7 +96,7 @@ async def analyze_webhook_with_ai(
         return result
 
     # Step 3: 检查 API Key
-    if not Config.OPENAI_API_KEY:
+    if not Config.ai.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
         result = analyze_with_rules(parsed_data, source)
         result["_degraded"] = True
@@ -83,67 +109,53 @@ async def analyze_webhook_with_ai(
         return result
 
     # Step 4: 调用 AI 分析
-    import asyncio
+    try:
+        analysis, tokens_in, tokens_out = await _call_ai_with_retry(parsed_data, source)
 
-    max_retries = 3
-    last_error = None
+        analysis["_degraded"] = False
+        analysis["_route_type"] = "ai"
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            start_time = time.time()
-            analysis, tokens_in, tokens_out = await analyze_with_openai_tracked(parsed_data, source)
+        # 保存到缓存
+        await save_to_cache(alert_hash, analysis)
 
-            duration = time.time() - start_time
-            AI_ANALYSIS_DURATION_SECONDS.labels(source=source, engine="openai").observe(duration)
-            logger.info(f"AI 分析完成: {source} (尝试 {attempt}/{max_retries})")
-            analysis["_degraded"] = False
-            analysis["_route_type"] = "ai"
+        # 记录 AI 使用
+        await log_ai_usage(
+            route_type="ai",
+            alert_hash=alert_hash,
+            source=source,
+            model=Config.ai.OPENAI_MODEL,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
 
-            # 保存到缓存
-            await save_to_cache(alert_hash, analysis)
+        return analysis
 
-            # 记录 AI 使用
-            await log_ai_usage(
-                route_type="ai",
-                alert_hash=alert_hash,
-                source=source,
-                model=Config.OPENAI_MODEL,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-            )
-
-            return analysis
-
-        except Exception as e:  # noqa: PERF203
-            last_error = e
-            if attempt < max_retries:
-                logger.warning(f"AI 分析失败 (尝试 {attempt}/{max_retries}): {e!s}，等待重试...")
-                await asyncio.sleep(2 * attempt)
-            else:
-                logger.error(f"AI 分析在全部 {max_retries} 次重试后依然失败: {e!s}", exc_info=True)
+    except Exception as exc:
+        logger.error(f"AI 分析在全部重试后依然失败: {exc!s}", exc_info=True)
+        ai_error = exc
 
     # 根据配置决定是否降级
-    if Config.ENABLE_AI_DEGRADATION:
+    if Config.ai.ENABLE_AI_DEGRADATION:
         logger.warning("启用 AI 降级策略，使用本地规则分析")
         result = analyze_with_rules(parsed_data, source)
         result["_degraded"] = True
-        result["_degraded_reason"] = f"AI 分析失败: {last_error!s}"
+        result["_degraded_reason"] = f"AI 分析失败: {ai_error!s}"
         result["_route_type"] = "rule"
-        await _send_degradation_alert(webhook_data, str(last_error))
+        await _send_degradation_alert(webhook_data, str(ai_error))
         await log_ai_usage(route_type="rule", alert_hash=alert_hash, source=source)
         return result
     else:
         # 不降级，直接返回错误
         logger.error("AI 分析失败且未启用降级策略，返回错误")
-        await _send_degradation_alert(webhook_data, str(last_error))
+        await _send_degradation_alert(webhook_data, str(ai_error))
         return {
-            "summary": f"AI 分析失败: {last_error!s}",
+            "summary": f"AI 分析失败: {ai_error!s}",
             "root_cause": "分析失败，请检查 AI 服务配置",
             "impact": "未知",
             "recommendations": ["检查 AI 服务连接", "查看日志获取详细信息"],
             "severity": "critical",
             "_degraded": True,
-            "_degraded_reason": f"AI 分析失败: {last_error!s}",
+            "_degraded_reason": f"AI 分析失败: {ai_error!s}",
             "_route_type": "error",
         }
 
@@ -261,7 +273,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
         from core.config import Config
 
-        if not Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+        if not Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
             return
 
         # 构造失败通知数据
@@ -271,7 +283,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
             "impact": "无法获取深度根因分析结果",
             "recommendations": [
                 "检查 OpenClaw 服务是否正常运行",
-                f"检查网络连接: {Config.OPENCLAW_GATEWAY_URL}",
+                f"检查网络连接: {Config.openclaw.OPENCLAW_GATEWAY_URL}",
                 "查看服务端日志获取详细错误信息",
                 "稍后手动重试深度分析",
             ],
@@ -281,7 +293,9 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         }
 
         event_id = webhook_data.get("id", "unknown")
-        success = await send_feishu_deep_analysis(Config.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id)
+        success = await send_feishu_deep_analysis(
+            Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK, analysis_data, source, event_id
+        )
         if success:
             logger.info(f"OpenClaw 失败通知已发送到飞书: event_id={event_id}")
         else:
@@ -291,7 +305,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
                 await record_failed_forward(
                     webhook_event_id=event_id if isinstance(event_id, int) else 0,
                     forward_rule_id=None,
-                    target_url=Config.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                    target_url=Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
                     target_type="feishu",
                     failure_reason="openclaw_failure_notification_failed",
                     error_message=f"OpenClaw 深度分析失败飞书通知发送失败: {error}",
@@ -301,21 +315,3 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
                 logger.warning(f"记录飞书通知失败异常: {rec_err}")
     except Exception as e:
         logger.error(f"发送 OpenClaw 失败通知失败: {e}")
-
-
-# ---- 向后兼容导出 ----
-# 保证外部 `from services.ai_analyzer import xxx` 继续工作
-from services.ai_cache import get_cache_key  # noqa: E402, F401
-from services.ai_client import (  # noqa: E402, F401
-    _request_openai_completion,
-    _should_send_degradation_alert,
-    analyze_with_openai,
-)
-from services.ai_parser import _parse_ai_analysis_response, extract_from_text, fix_json_format  # noqa: E402, F401
-from services.ai_prompts import load_user_prompt_template, reload_user_prompt_template  # noqa: E402, F401
-from services.forward import (  # noqa: E402, F401
-    analyze_with_openclaw,
-    build_feishu_message,
-    forward_to_openclaw,
-    forward_to_remote,
-)

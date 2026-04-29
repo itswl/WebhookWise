@@ -56,7 +56,7 @@ async def start_scheduler() -> bool:
     """
     global _stop_event, _tasks
 
-    if not getattr(Config, "ENABLE_POLLERS", True):
+    if not Config.server.ENABLE_POLLERS:
         logger.info("[Pollers] disabled by config")
         return False
 
@@ -102,11 +102,11 @@ async def start_scheduler() -> bool:
         logger.warning(f"[Pollers] recovery poller start failed: {e}")
 
     # 4. Forward retry poller（按配置启用）
-    if Config.ENABLE_FORWARD_RETRY:
+    if Config.retry.ENABLE_FORWARD_RETRY:
         try:
             from services.forward_retry_poller import poll_pending_retries
 
-            interval = Config.FORWARD_RETRY_POLL_INTERVAL
+            interval = Config.retry.FORWARD_RETRY_POLL_INTERVAL
             _create_task(
                 _run_periodic("ForwardRetry", poll_pending_retries, interval, _stop_event),
                 "forward-retry-poller",

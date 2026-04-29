@@ -2,7 +2,7 @@
 
 import json
 
-from services.ai_analyzer import fix_json_format
+from services.ai_parser import fix_json_format
 
 # 测试用例
 test_cases = [

@@ -218,18 +218,18 @@ class CircuitBreaker:
 
 feishu_cb = CircuitBreaker(
     name="feishu",
-    failure_threshold=Config.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
-    recovery_timeout=Config.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
+    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
+    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
 )
 openclaw_cb = CircuitBreaker(
     name="openclaw",
-    failure_threshold=Config.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
-    recovery_timeout=Config.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
+    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
+    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
 )
 forward_cb = CircuitBreaker(
     name="forward",
-    failure_threshold=Config.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
-    recovery_timeout=Config.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
+    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
+    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
 )
 
 
@@ -237,14 +237,14 @@ HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
 
-MAX_SAVE_RETRIES = Config.SAVE_MAX_RETRIES
-RETRY_DELAY_SECONDS = Config.SAVE_RETRY_DELAY_SECONDS
+MAX_SAVE_RETRIES = Config.retry.SAVE_MAX_RETRIES
+RETRY_DELAY_SECONDS = Config.retry.SAVE_RETRY_DELAY_SECONDS
 
 
 def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:
     """验证 webhook 签名"""
     if secret is None:
-        secret = Config.WEBHOOK_SECRET
+        secret = Config.security.WEBHOOK_SECRET
 
     if not secret:
         return False
@@ -408,8 +408,8 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
 
     redis_client = core.redis_client.get_redis()
     lock_key = f"lock:webhook:{alert_hash}"
-    lock_value = Config.WORKER_ID
-    ttl = Config.PROCESSING_LOCK_TTL_SECONDS
+    lock_value = Config.server.WORKER_ID
+    ttl = Config.retry.PROCESSING_LOCK_TTL_SECONDS
 
     lock_acquired = False
     watchdog_task = None
@@ -418,7 +418,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
         # 尝试获取锁
         lock_acquired = bool(await redis_client.set(lock_key, lock_value, nx=True, ex=ttl))
         if lock_acquired:
-            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.WORKER_ID}")
+            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.server.WORKER_ID}")
         else:
             logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
     except Exception as e:

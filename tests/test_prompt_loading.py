@@ -17,12 +17,12 @@ def test_prompt_loading():
 
     # 导入模块
     from core.config import Config
-    from services.ai_analyzer import load_user_prompt_template, reload_user_prompt_template
+    from services.ai_prompts import load_user_prompt_template, reload_user_prompt_template
 
     # 测试 1: 检查配置
     print("\n1️⃣  检查配置")
-    print(f"   AI_USER_PROMPT_FILE: {Config.AI_USER_PROMPT_FILE}")
-    print(f"   AI_USER_PROMPT (env): {'已设置' if Config.AI_USER_PROMPT else '未设置'}")
+    print(f"   AI_USER_PROMPT_FILE: {Config.ai.AI_USER_PROMPT_FILE}")
+    print(f"   AI_USER_PROMPT (env): {'已设置' if Config.ai.AI_USER_PROMPT else '未设置'}")
 
     # 测试 2: 加载默认 prompt
     print("\n2️⃣  加载 Prompt 模板")
@@ -72,7 +72,7 @@ def test_prompt_loading():
 
     # 测试 6: 检查 prompt 文件
     print("\n6️⃣  检查 Prompt 文件")
-    prompt_file = Config.AI_USER_PROMPT_FILE
+    prompt_file = Config.ai.AI_USER_PROMPT_FILE
     if prompt_file:
         file_path = Path(prompt_file)
         if not file_path.is_absolute():

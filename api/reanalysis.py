@@ -12,7 +12,8 @@ from core.config import Config
 from core.logger import logger
 from db.session import get_db_session
 from models import WebhookEvent
-from services.ai_analyzer import analyze_webhook_with_ai, forward_to_remote
+from services.ai_analyzer import analyze_webhook_with_ai
+from services.forward import forward_to_remote
 
 reanalysis_router = APIRouter()
 
@@ -77,7 +78,7 @@ async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int,
     webhook_data = await _build_webhook_context(webhook_event)
     analysis_result = webhook_event.ai_analysis or {}
 
-    logger.info(f"手动转发 webhook ID: {webhook_id} 到 {custom_url or Config.FORWARD_URL}")
+    logger.info(f"手动转发 webhook ID: {webhook_id} 到 {custom_url or Config.ai.FORWARD_URL}")
     forward_result = await forward_to_remote(webhook_data, analysis_result, custom_url)
 
     webhook_event.forward_status = forward_result.get("status", "unknown")
@@ -132,7 +133,7 @@ async def manual_forward_webhook(
 
         forward_result = await _manual_forward(session, webhook_event, webhook_id, custom_url)
 
-        return {"success": True, "data": forward_result, "message": f"已转发至 {custom_url or Config.FORWARD_URL}"}
+        return {"success": True, "data": forward_result, "message": f"已转发至 {custom_url or Config.ai.FORWARD_URL}"}
     except HTTPException:
         raise
     except Exception as e:

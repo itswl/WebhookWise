@@ -31,12 +31,12 @@ def _body_meta(body: bytes) -> dict:
 async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = _AUTH_DEPENDENCY):
     """
     验证 API Key (Bearer Token)
-    如果 Config.API_KEY 未配置，则跳过验证（兼容模式）
+    如果 Config.security.API_KEY 未配置，则跳过验证（兼容模式）
     """
-    if not Config.API_KEY:
+    if not Config.security.API_KEY:
         return True
 
-    if not auth or auth.credentials != Config.API_KEY:
+    if not auth or auth.credentials != Config.security.API_KEY:
         client_ip = request.client.host if request.client else "unknown"
 
         try:

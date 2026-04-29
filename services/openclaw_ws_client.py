@@ -83,9 +83,9 @@ def _build_device_auth(nonce: str) -> dict | None:
     Returns:
         设备认证参数字典，或 None（未配置/签名失败）
     """
-    device_id = Config.OPENCLAW_DEVICE_ID
-    private_key_b64 = Config.OPENCLAW_DEVICE_PRIVATE_KEY_PEM
-    device_token = Config.OPENCLAW_DEVICE_TOKEN
+    device_id = Config.openclaw.OPENCLAW_DEVICE_ID
+    private_key_b64 = Config.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM
+    device_token = Config.openclaw.OPENCLAW_DEVICE_TOKEN
 
     if not device_id or not private_key_b64:
         return None
@@ -111,7 +111,7 @@ def _build_device_auth(nonce: str) -> dict | None:
 
         # 构造 v2 签名 payload
         signed_at = int(time.time() * 1000)
-        gateway_token = Config.OPENCLAW_GATEWAY_TOKEN
+        gateway_token = Config.openclaw.OPENCLAW_GATEWAY_TOKEN
         scopes_str = "operator.read"
         payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
 
@@ -140,7 +140,7 @@ def _build_device_auth(nonce: str) -> dict | None:
 
 def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
     if timeout is None:
-        timeout = Config.OPENCLAW_NONCE_TIMEOUT
+        timeout = Config.openclaw.OPENCLAW_NONCE_TIMEOUT
     """尝试接收 connect.challenge 帧并提取 nonce
 
     OpenClaw Gateway 在 WebSocket 连接建立后、客户端发送 connect 之前，
@@ -180,9 +180,9 @@ def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
 
 
 # 连接相关常量（从 Config 读取，保留模块级默认值作为后备）
-CONNECT_TIMEOUT = Config.OPENCLAW_CONNECT_TIMEOUT  # TCP + WebSocket 握手超时（秒）
-HANDSHAKE_TIMEOUT = Config.OPENCLAW_HANDSHAKE_TIMEOUT  # OpenClaw 协议握手超时（秒）
-RECV_TIMEOUT = Config.OPENCLAW_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
+CONNECT_TIMEOUT = Config.openclaw.OPENCLAW_CONNECT_TIMEOUT  # TCP + WebSocket 握手超时（秒）
+HANDSHAKE_TIMEOUT = Config.openclaw.OPENCLAW_HANDSHAKE_TIMEOUT  # OpenClaw 协议握手超时（秒）
+RECV_TIMEOUT = Config.openclaw.OPENCLAW_RECV_TIMEOUT  # recv 超时，用于检查 _done 事件
 
 
 class OpenClawWSClient:

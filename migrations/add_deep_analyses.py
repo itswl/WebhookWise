@@ -13,7 +13,7 @@ from core.config import Config
 
 def migrate():
     """创建 deep_analyses 表（幂等）"""
-    engine = create_engine(Config.DATABASE_URL)
+    engine = create_engine(Config.db.DATABASE_URL)
     inspector = inspect(engine)
 
     # 检查表是否已存在

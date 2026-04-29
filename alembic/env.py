@@ -41,7 +41,7 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """获取同步数据库 URL（Alembic 使用同步引擎）"""
-    url = Config.DATABASE_URL
+    url = Config.db.DATABASE_URL
     # 将异步驱动替换为同步驱动
     url = url.replace("postgresql+asyncpg://", "postgresql://")
     return url

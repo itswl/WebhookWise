@@ -28,12 +28,12 @@ def setup_logger():
     global _log_listener
 
     # 创建日志目录
-    log_dir = os.path.dirname(Config.LOG_FILE)
+    log_dir = os.path.dirname(Config.server.LOG_FILE)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # 解析日志级别
-    log_level = getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO)
+    log_level = getattr(logging, Config.server.LOG_LEVEL.upper(), logging.INFO)
 
     # 创建 logger
     logger = logging.getLogger("webhook_service")
@@ -50,7 +50,7 @@ def setup_logger():
 
     # 文件处理器（支持轮转，最大 10MB，保留 5 个备份）
     file_handler = RotatingFileHandler(
-        Config.LOG_FILE,
+        Config.server.LOG_FILE,
         maxBytes=10 * 1024 * 1024,  # 10MB
         backupCount=5,
         encoding="utf-8",

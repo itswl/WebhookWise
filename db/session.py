@@ -26,15 +26,15 @@ def _build_engine_kwargs():
     return {
         "echo": False,
         "pool_pre_ping": True,
-        "pool_size": Config.DB_POOL_SIZE,
-        "max_overflow": Config.DB_MAX_OVERFLOW,
-        "pool_recycle": Config.DB_POOL_RECYCLE,
-        "pool_timeout": Config.DB_POOL_TIMEOUT,
+        "pool_size": Config.db.DB_POOL_SIZE,
+        "max_overflow": Config.db.DB_MAX_OVERFLOW,
+        "pool_recycle": Config.db.DB_POOL_RECYCLE,
+        "pool_timeout": Config.db.DB_POOL_TIMEOUT,
     }
 
 
 def _async_url() -> str:
-    return Config.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    return Config.db.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 
 # ────────────────────────────────────────
@@ -45,7 +45,7 @@ def _async_url() -> str:
 async def init_engine():
     """创建全局 AsyncEngine 和 async_sessionmaker（应用启动时调用一次）"""
     global _engine, _session_factory
-    _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.DATABASE_URL.split('@')[-1]}")
+    _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.db.DATABASE_URL.split('@')[-1]}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
 

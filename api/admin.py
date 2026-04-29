@@ -80,15 +80,15 @@ def _collect_config_updates(payload: dict) -> tuple[dict, list[str]]:
 
 
 def _build_prompt_source() -> str:
-    if Config.AI_USER_PROMPT:
+    if Config.ai.AI_USER_PROMPT:
         return "environment"
-    if Config.AI_USER_PROMPT_FILE:
+    if Config.ai.AI_USER_PROMPT_FILE:
         return "file"
     return "default"
 
 
 def _reload_prompt_template() -> str:
-    from services.ai_analyzer import reload_user_prompt_template
+    from services.ai_prompts import reload_user_prompt_template
 
     new_template = reload_user_prompt_template()
     logger.info("AI Prompt 模板已重新加载")
@@ -96,7 +96,7 @@ def _reload_prompt_template() -> str:
 
 
 def _load_current_prompt_template() -> str:
-    from services.ai_analyzer import load_user_prompt_template
+    from services.ai_prompts import load_user_prompt_template
 
     return load_user_prompt_template()
 
@@ -113,7 +113,7 @@ async def get_config():
     try:
         response = {}
         for field_name, (env_var, _value_type, _validator) in _CONFIG_SCHEMA.items():
-            value = getattr(Config, env_var, "")
+            value = Config.get_flat(env_var, "")
             if env_var == "OPENAI_API_KEY" and value:
                 response[field_name] = "已配置"
             else:

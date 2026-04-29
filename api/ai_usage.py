@@ -93,7 +93,7 @@ async def get_ai_usage(period: str = Query("day"), session: AsyncSession = Depen
         avg_ai_cost = (
             float(ai_stats.total_cost or 0) / ai_calls
             if ai_calls > 0
-            else float(Config.AI_COST_PER_1K_INPUT_TOKENS * 0.5)
+            else float(Config.ai.AI_COST_PER_1K_INPUT_TOKENS * 0.5)
         )
 
         cache_calls = route_breakdown.get("cache", 0)

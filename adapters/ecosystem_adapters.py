@@ -258,7 +258,7 @@ async def send_feishu_deep_analysis(
     }
 
     client = get_http_client()
-    resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.FEISHU_WEBHOOK_TIMEOUT)
+    resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT)
 
     if resp is None:
         logger.warning(f"飞书深度分析通知被熔断拦截: webhook_event_id={webhook_event_id}")

@@ -65,7 +65,14 @@ def temp_config():
     """临时覆盖 Config 属性，测试结束后自动恢复。"""
     from core.config import Config
 
-    original = {k: getattr(Config, k) for k in dir(Config) if not k.startswith("_")}
+    # 备份所有子配置的字段值
+    snapshots: dict[str, dict[str, object]] = {}
+    for sub_name in Config._SUB_NAMES:
+        sub = getattr(Config, sub_name)
+        snapshots[sub_name] = {k: getattr(sub, k) for k in sub.model_fields}
     yield Config
-    for k, v in original.items():
-        setattr(Config, k, v)
+    # 恢复
+    for sub_name, fields in snapshots.items():
+        sub = getattr(Config, sub_name)
+        for k, v in fields.items():
+            setattr(sub, k, v)

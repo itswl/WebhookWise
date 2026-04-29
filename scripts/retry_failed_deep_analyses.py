@@ -65,7 +65,7 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if not record.openclaw_session_key:
             return False, "缺少 session key"
 
-        if not Config.OPENCLAW_HTTP_API_URL:
+        if not Config.openclaw.OPENCLAW_HTTP_API_URL:
             return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
 
         result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
@@ -129,7 +129,7 @@ async def main():
         print(f"\n共 {len(records)} 条，使用 --list 跳过实际执行")
         return
 
-    if not Config.OPENCLAW_HTTP_API_URL:
+    if not Config.openclaw.OPENCLAW_HTTP_API_URL:
         print("\n错误：未配置 OPENCLAW_HTTP_API_URL，无法重试")
         sys.exit(1)
 

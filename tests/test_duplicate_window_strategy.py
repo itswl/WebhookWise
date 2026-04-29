@@ -2,7 +2,8 @@
 
 from datetime import datetime
 
-from crud.webhook import DuplicateCheckResult, SaveWebhookResult, _resolve_window_start
+from crud.webhook import SaveWebhookResult
+from services.dedup_strategy import DuplicateCheckResult, _resolve_window_start
 
 
 class _FakeEvent:

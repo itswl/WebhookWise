@@ -11,15 +11,15 @@ class _Event:
 
 
 def _set_config(**kwargs):
-    originals = {k: getattr(Config, k) for k in kwargs}
+    originals = {k: Config.get_flat(k) for k in kwargs}
     for k, v in kwargs.items():
-        setattr(Config, k, v)
+        Config.set_flat(k, v)
     return originals
 
 
 def _restore_config(originals):
     for k, v in originals.items():
-        setattr(Config, k, v)
+        Config.set_flat(k, v)
 
 
 async def test_non_high_never_forwarded():

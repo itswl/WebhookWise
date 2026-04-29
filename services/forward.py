@@ -38,12 +38,12 @@ async def forward_to_remote(
         is_periodic_reminder: 是否为周期性提醒
     """
     # 检查是否启用转发
-    if not Config.ENABLE_FORWARD:
+    if not Config.ai.ENABLE_FORWARD:
         logger.info("转发功能已禁用")
         return {"status": "disabled", "message": "转发功能已禁用"}
 
     if target_url is None:
-        target_url = Config.FORWARD_URL
+        target_url = Config.ai.FORWARD_URL
 
     try:
         # 检查是否是飞书 webhook
@@ -75,7 +75,7 @@ async def forward_to_remote(
         logger.info(f"转发数据到 {target_url}")
         client = get_http_client()
         response = await forward_cb.call_async(
-            client.post, target_url, json=forward_data, headers=headers, timeout=Config.FORWARD_TIMEOUT
+            client.post, target_url, json=forward_data, headers=headers, timeout=Config.ai.FORWARD_TIMEOUT
         )
 
         if response is None:
@@ -122,7 +122,7 @@ def build_feishu_message(
     duplicate_count = webhook_data.get("duplicate_count", 1)
 
     # 使用配置中的重要性配置
-    imp_info = Config.IMPORTANCE_CONFIG.get(importance, Config.IMPORTANCE_CONFIG["medium"])
+    imp_info = Config.ai.IMPORTANCE_CONFIG.get(importance, Config.ai.IMPORTANCE_CONFIG["medium"])
 
     # 标题：如果是周期性提醒，添加特殊标识
     if is_periodic_reminder:
@@ -177,7 +177,7 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
     """将告警推送到 OpenClaw 触发深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
 
-    if not Config.OPENCLAW_ENABLED:
+    if not Config.openclaw.OPENCLAW_ENABLED:
         return {"status": "disabled", "message": "OpenClaw 未启用"}
 
     alert_data = webhook_data.get("parsed_data", {})
@@ -214,25 +214,25 @@ async def forward_to_openclaw(webhook_data: dict, analysis_result: dict) -> dict
         "wakeMode": "now",
         "deliver": False,
         "thinking": "high",
-        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS,
+        "timeoutSeconds": Config.openclaw.OPENCLAW_TIMEOUT_SECONDS,
     }
 
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
-    platform = getattr(Config, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
-    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
+    platform = getattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
+    hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
 
     if platform == "hermes":
         import hashlib
         import hmac
 
-        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
+        target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
         headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
         kwargs = {"content": payload_bytes}
     else:
         # Default OpenClaw
-        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
+        target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
         kwargs = {"json": payload}
 
@@ -280,14 +280,14 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.config import Config
 
-    if not Config.OPENCLAW_ENABLED:
+    if not Config.openclaw.OPENCLAW_ENABLED:
         logger.warning("OpenClaw 未启用")
         return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
 
     alert_data = webhook_data.get("parsed_data", {})
     source = webhook_data.get("source", "unknown")
 
-    prompt_path = Path(Config.DATA_DIR).parent / "prompts" / "deep_analysis.txt"
+    prompt_path = Path(Config.server.DATA_DIR).parent / "prompts" / "deep_analysis.txt"
     try:
         with open(prompt_path, encoding="utf-8") as f:
             template = f.read()
@@ -315,24 +315,24 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
         "wakeMode": "now",
         "deliver": False,
         "thinking": thinking_level,
-        "timeoutSeconds": Config.OPENCLAW_TIMEOUT_SECONDS,
+        "timeoutSeconds": Config.openclaw.OPENCLAW_TIMEOUT_SECONDS,
     }
 
     # 适配不同的调用平台 (OpenClaw 或 Hermes)
-    platform = getattr(Config, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
-    hooks_token = Config.OPENCLAW_HOOKS_TOKEN or Config.OPENCLAW_GATEWAY_TOKEN
+    platform = getattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
+    hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
 
     if platform == "hermes":
         import hashlib
         import hmac
 
-        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/webhooks/agent"
+        target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
         headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
         kwargs = {"content": payload_bytes}
     else:
-        target_url = f"{Config.OPENCLAW_GATEWAY_URL}/hooks/agent"
+        target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
         kwargs = {"json": payload}
 
@@ -376,7 +376,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
             from db.session import session_scope
             from models import WebhookEvent
 
-            if Config.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+            if Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                 async with session_scope() as session:
                     from sqlalchemy import select
 
@@ -390,7 +390,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
         except Exception as notify_err:
             logger.warning(f"发送 {platform.capitalize()} 失败通知失败: {notify_err}")
 
-        if Config.ENABLE_AI_DEGRADATION:
+        if Config.ai.ENABLE_AI_DEGRADATION:
             logger.warning(f"{platform.capitalize()} 请求失败，降级到本地 AI 分析")
             return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
         else:
@@ -413,7 +413,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
     except httpx.RequestError as e:
         logger.error(f"OpenClaw 请求失败: {e}")
         # 根据配置决定是否降级
-        if Config.ENABLE_AI_DEGRADATION:
+        if Config.ai.ENABLE_AI_DEGRADATION:
             logger.warning("OpenClaw 请求失败，降级到本地 AI 分析")
             return {"_degraded": True, "_degraded_reason": f"OpenClaw 不可用: {e!s}"}
         else:

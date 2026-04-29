@@ -36,13 +36,13 @@ def load_user_prompt_template() -> str:
         return _user_prompt_template
 
     # 1. 优先使用环境变量中的直接内容
-    if Config.AI_USER_PROMPT:
+    if Config.ai.AI_USER_PROMPT:
         logger.info("使用环境变量 AI_USER_PROMPT 中的 prompt 模板")
-        _user_prompt_template = Config.AI_USER_PROMPT
+        _user_prompt_template = Config.ai.AI_USER_PROMPT
         return _user_prompt_template
 
     # 2. 尝试从文件加载
-    prompt_file = Config.AI_USER_PROMPT_FILE
+    prompt_file = Config.ai.AI_USER_PROMPT_FILE
     if prompt_file:
         # 支持相对路径和绝对路径
         file_path = Path(prompt_file)

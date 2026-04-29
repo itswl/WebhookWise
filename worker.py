@@ -16,7 +16,7 @@ async def main():
     logger.info("[Worker] Starting poller worker...")
 
     # 初始化依赖（与 lifespan 保持一致）
-    Config.validate()
+    Config.validate_config()
     get_http_client()  # Poller 需要 HTTP 客户端（如 OpenClaw 轮询）
     await init_engine()
     get_redis()  # 确保 Redis 连接就绪

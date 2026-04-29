@@ -13,7 +13,7 @@ from core.config import Config
 
 def migrate():
     """添加 openclaw_run_id, openclaw_session_key, status 字段（幂等）"""
-    engine = create_engine(Config.DATABASE_URL)
+    engine = create_engine(Config.db.DATABASE_URL)
 
     with engine.connect() as conn:
         # 添加字段

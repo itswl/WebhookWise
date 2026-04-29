@@ -33,10 +33,10 @@ def test_webhook():
     payload = json.dumps(test_data)
 
     # 生成签名
-    signature = generate_signature(payload, Config.WEBHOOK_SECRET)
+    signature = generate_signature(payload, Config.security.WEBHOOK_SECRET)
 
     # 发送请求
-    url = f"http://localhost:{Config.PORT}/webhook"
+    url = f"http://localhost:{Config.server.PORT}/webhook"
     headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature, "X-Webhook-Source": "test-client"}
 
     print(f"发送测试 webhook 到: {url}")
@@ -56,7 +56,7 @@ def test_webhook_without_signature():
 
     test_data = {"event": "test.event", "message": "This is a test without signature"}
 
-    url = f"http://localhost:{Config.PORT}/webhook/github"
+    url = f"http://localhost:{Config.server.PORT}/webhook/github"
     headers = {"Content-Type": "application/json", "X-Webhook-Source": "github"}
 
     print(f"\n发送无签名测试 webhook 到: {url}")
@@ -71,7 +71,7 @@ def test_webhook_without_signature():
 
 def test_health():
     """测试健康检查接口"""
-    url = f"http://localhost:{Config.PORT}/health"
+    url = f"http://localhost:{Config.server.PORT}/health"
 
     print(f"\n测试健康检查: {url}")
 

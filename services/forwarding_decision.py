@@ -67,13 +67,13 @@ async def _resolve_analysis_with_lock(
         _original_id = original_event.id if original_event else None
 
         # 时间窗口判断
-        time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
+        time_window_hours = Config.retry.DUPLICATE_ALERT_TIME_WINDOW
         beyond_window = False
         if original_event and original_event.timestamp:
             hours_elapsed = (current_time - original_event.timestamp).total_seconds() / 3600
             beyond_window = hours_elapsed >= time_window_hours
 
-        reanalyze = Config.REANALYZE_AFTER_TIME_WINDOW
+        reanalyze = Config.retry.REANALYZE_AFTER_TIME_WINDOW
 
         # 分析决策
         if not is_duplicate:
@@ -95,7 +95,7 @@ async def _resolve_analysis_without_lock(
     import asyncio
 
     wait_time = 0
-    while wait_time < Config.PROCESSING_LOCK_WAIT_SECONDS:
+    while wait_time < Config.retry.PROCESSING_LOCK_WAIT_SECONDS:
         await asyncio.sleep(0.5)
         wait_time += 0.5
         refreshed = await _refresh_original_event(None, None)
@@ -113,7 +113,7 @@ async def _resolve_analysis_without_lock(
 async def _recently_notified(original_event: WebhookEvent | None, original_id: int | None, alert_type: str) -> bool:
     if original_event and original_event.last_notified_at:
         elapsed = (datetime.now() - original_event.last_notified_at).total_seconds()
-        if elapsed < Config.NOTIFICATION_COOLDOWN_SECONDS:
+        if elapsed < Config.retry.NOTIFICATION_COOLDOWN_SECONDS:
             logger.debug(f"{alert_type} {original_id} 刚刚已通知（{elapsed:.0f}s 前），跳过")
             return True
     return False
@@ -133,7 +133,7 @@ async def _decide_duplicate_forwarding(
     original_event: WebhookEvent | None, original_id: int | None, noise_context, importance: str
 ) -> tuple[bool, str | None]:
     # 衍生告警默认不转发（除非单独配置）
-    if noise_context and noise_context.suppress_forward and Config.SUPPRESS_DERIVED_ALERT_FORWARD:
+    if noise_context and noise_context.suppress_forward and Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD:
         return False, f"抑制衍生告警（参考 #{noise_context.root_cause_event_id}）"
 
     # 检查是否在冷却期内
@@ -203,7 +203,7 @@ async def _decide_forwarding(
     is_periodic_reminder: bool = False,
 ) -> tuple[bool, str | None, bool, list[ForwardRule]]:
     # 噪音降噪抑制
-    if noise_context and noise_context.suppress_forward and Config.SUPPRESS_DERIVED_ALERT_FORWARD:
+    if noise_context and noise_context.suppress_forward and Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD:
         return False, f"抑制衍生告警（根因 #{noise_context.root_cause_event_id}）", False, []
 
     # 无匹配规则 → 降级到原有逻辑
@@ -211,7 +211,7 @@ async def _decide_forwarding(
         if importance != "high":
             return False, f"重要性为 {importance}，非高风险事件不自动转发", False, []
         if beyond_window:
-            if not Config.FORWARD_AFTER_TIME_WINDOW:
+            if not Config.retry.FORWARD_AFTER_TIME_WINDOW:
                 return False, f"窗口外重复告警（原始 ID={original_id}），配置跳过转发", False, []
             if await _recently_notified(original_event, original_id, "窗口外重复告警"):
                 return False, f"窗口外重复告警（原始 ID={original_id}），刚刚已转发", False, []

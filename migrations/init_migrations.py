@@ -13,7 +13,7 @@ from core.config import Config
 
 def _get_sync_engine():
     """创建临时同步引擎，仅供 migration 脚本使用"""
-    url = Config.DATABASE_URL.replace("+asyncpg", "", 1)
+    url = Config.db.DATABASE_URL.replace("+asyncpg", "", 1)
     return create_engine(url, echo=False)
 
 
@@ -758,7 +758,7 @@ def add_system_configs_table():
             if row_count == 0:
                 print("🔄 正在初始化运行时配置种子数据...")
                 for key, meta in _RUNTIME_CONFIG_SEED.items():
-                    val = getattr(Config, key, "")
+                    val = Config.get_flat(key, "")
                     # 布尔值特殊处理
                     str_val = str(val).lower() if meta["type"] == "bool" else str(val) if val is not None else ""
                     conn.execute(

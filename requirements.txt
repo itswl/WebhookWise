@@ -18,3 +18,4 @@ websocket-client==1.7.0
 cryptography>=42.0.0
 prometheus-fastapi-instrumentator==7.0.0
 alembic==1.18.4
+tenacity>=8.2.0

@@ -1,7 +1,7 @@
 import pytest
 
 from core.config import Config
-from services import ai_analyzer, ai_client
+from services import ai_client, ai_parser
 
 
 def test_parse_truncated_json_fallback_extracts_clean_lists():
@@ -25,7 +25,7 @@ def test_parse_truncated_json_fallback_extracts_clean_lists():
     "建立CPU使用率与业务指标（QPS、并发数）的关联监控，识别异常
 """
 
-    result = ai_analyzer._parse_ai_analysis_response(truncated, "cloud-monitor")
+    result = ai_parser._parse_ai_analysis_response(truncated, "cloud-monitor")
 
     assert result["source"] == "cloud-monitor"
     assert result["importance"] == "high"
@@ -46,7 +46,7 @@ def test_extract_from_text_removes_junk_tokens():
   "risks": ["[", "服务不可用"]
 }"""
 
-    result = ai_analyzer.extract_from_text(text, "cloud-monitor")
+    result = ai_parser.extract_from_text(text, "cloud-monitor")
 
     assert result["actions"] == ["检查进程"]
     assert result["risks"] == ["服务不可用"]
@@ -78,18 +78,18 @@ async def test_analyze_with_openai_retries_when_finish_reason_is_length(monkeypa
     monkeypatch.setattr(ai_client, "_request_openai_completion", fake_request)
     monkeypatch.setattr(ai_client, "AsyncOpenAI", lambda **_kwargs: object())
 
-    old_max = Config.OPENAI_MAX_TOKENS
-    old_retry_max = Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS
-    old_key = Config.OPENAI_API_KEY
+    old_max = Config.ai.OPENAI_MAX_TOKENS
+    old_retry_max = Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS
+    old_key = Config.ai.OPENAI_API_KEY
     try:
-        Config.OPENAI_API_KEY = "test"
-        Config.OPENAI_MAX_TOKENS = 100
-        Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = 200
-        result = await ai_analyzer.analyze_with_openai({"k": "v"}, "cloud-monitor")
+        Config.ai.OPENAI_API_KEY = "test"
+        Config.ai.OPENAI_MAX_TOKENS = 100
+        Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = 200
+        result = await ai_client.analyze_with_openai({"k": "v"}, "cloud-monitor")
     finally:
-        Config.OPENAI_API_KEY = old_key
-        Config.OPENAI_MAX_TOKENS = old_max
-        Config.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = old_retry_max
+        Config.ai.OPENAI_API_KEY = old_key
+        Config.ai.OPENAI_MAX_TOKENS = old_max
+        Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS = old_retry_max
 
     assert calls == [100, 200]
     assert result["summary"] == "b"
