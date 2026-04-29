@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -8,7 +9,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.compression import compress_payload
+from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
 from core.config import Config
 from core.logger import logger
 
@@ -40,12 +41,17 @@ async def quick_receive_webhook(
     parsed_data: dict | None = None,
 ) -> WebhookEvent:
     """同步最小化写入：仅持久化原始数据，不做任何分析/转发"""
+    raw_text = raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace")
+    # 大 payload 在线程中压缩，避免阻塞事件循环
+    body_len = len(raw_body) if isinstance(raw_body, bytes) else len(raw_body.encode("utf-8"))
+    if body_len > COMPRESS_THRESHOLD_BYTES:
+        compressed = await asyncio.to_thread(compress_payload, raw_text)
+    else:
+        compressed = compress_payload(raw_text)
     event = WebhookEvent(
         source=source,
         headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
-        raw_payload=compress_payload(
-            raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace")
-        ),
+        raw_payload=compressed,
         parsed_data=parsed_data,
         processing_status="received",
     )
