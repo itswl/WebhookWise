@@ -1,6 +1,6 @@
 """Webhook 处理主管线 — 纯协调层，业务逻辑委托给子模块。"""
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from api import InvalidJsonError, InvalidSignatureError
 from core.logger import logger
@@ -15,14 +15,14 @@ from services.pipeline_request import _build_webhook_response, _parse_webhook_re
 
 
 async def _update_processing_status(event_id: int | None, status: str) -> None:
-    """更新 webhook 事件的处理状态"""
+    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）"""
     if event_id is None:
         return
     try:
         async with session_scope() as session:
-            event = await session.get(WebhookEvent, event_id)
-            if event:
-                event.processing_status = status
+            await session.execute(
+                update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status)
+            )
     except Exception as e:
         logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
 
