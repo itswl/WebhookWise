@@ -13,6 +13,7 @@ from sqlalchemy.orm import defer
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
+from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from crud.webhook import get_client_ip, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
@@ -62,11 +63,10 @@ async def list_webhooks(
             status_code=400,
             detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor_id 游标分页",
         )
+    offset_capped = False
     if cursor_id is None and offset > MAX_OFFSET:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Offset {offset} exceeds maximum ({MAX_OFFSET}). Please use cursor_id for deep pagination.",
-        )
+        offset = MAX_OFFSET
+        offset_capped = True
     if cursor_id is not None:
         offset = 0
 
@@ -129,9 +129,17 @@ async def list_webhooks(
                 "next_cursor": next_cursor,
                 "has_more": has_more,
                 **(
-                    {"hint": "Approaching offset limit. Consider switching to cursor_id pagination."}
-                    if cursor_id is None and offset > MAX_OFFSET * 0.8
-                    else {}
+                    {
+                        "offset_capped": True,
+                        "cursor_hint": next_cursor,
+                        "hint": "Offset exceeds limit. Results capped. Please switch to cursor_id pagination.",
+                    }
+                    if offset_capped
+                    else (
+                        {"hint": "Approaching offset limit. Consider switching to cursor_id pagination."}
+                        if cursor_id is None and offset > MAX_OFFSET * 0.8
+                        else {}
+                    )
                 ),
             },
         }
@@ -228,6 +236,10 @@ async def receive_webhook(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
+    # 入口处设置 trace_id（此时还没有 event_id，用 UUID 短码）
+    tid = generate_trace_id()
+    set_trace_id(tid)
+
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
@@ -254,6 +266,9 @@ async def receive_webhook(
     # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
 
+    # 更新为 event_id 格式的 trace_id
+    set_trace_id(generate_trace_id(event_id=event.id))
+
     # 异步处理：传递 event_id 用于状态更新
     background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
     return JSONResponse(
@@ -272,6 +287,10 @@ async def receive_webhook_with_source(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
+    # 入口处设置 trace_id
+    tid = generate_trace_id()
+    set_trace_id(tid)
+
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
@@ -297,6 +316,9 @@ async def receive_webhook_with_source(
     )
     # 显式提交：BackgroundTasks 使用独立 session，需要在此确保数据已落盘
     await session.commit()
+
+    # 更新为 event_id 格式的 trace_id
+    set_trace_id(generate_trace_id(event_id=event.id))
 
     # 异步处理：传递 event_id 用于状态更新
     background_tasks.add_task(handle_webhook_process, event_id=event.id, client_ip=client_ip)
