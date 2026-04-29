@@ -105,29 +105,80 @@ async def _resolve_analysis_with_lock(alert_hash: str, webhook_full_data: dict) 
 
 
 async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dict) -> AnalysisResolution:
-    """未获得处理锁时，轮询 Redis 缓存等待其他 Worker 完成分析后复用结果。"""
-    logger.info(f"[Lock] 告警正在由其他节点处理，轮询 Redis 缓存等待中: hash={alert_hash[:16]}")
+    """未获得处理锁时，通过 Redis Pub/Sub 等待其他 Worker 完成分析后复用结果。"""
+    from core.redis_client import get_redis
 
-    deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS
-    poll_interval = 0.1  # 初始 100ms，指数退避
+    logger.info(f"[Lock] 告警正在由其他节点处理，Pub/Sub 等待中: hash={alert_hash[:16]}")
 
-    while _time.monotonic() < deadline:
-        await asyncio.sleep(min(poll_interval, 2.0))  # 上限 2s
+    redis = get_redis()
+    channel = f"analysis_done:{alert_hash}"
+    pubsub = redis.pubsub()
 
-        # 查 Redis 缓存而非 DB，消除惊群效应下的数据库读风暴
+    try:
+        await pubsub.subscribe(channel)
+
+        # 关键：先订阅再检查缓存（避免竞态：结果在订阅前已写入）
         cached = await get_cached_analysis(alert_hash)
         if cached:
-            logger.info(f"[Lock] Redis 缓存命中，复用其他 Worker 的分析结果: hash={alert_hash[:16]}")
+            logger.info(f"[Lock] 订阅前缓存已命中，直接复用: hash={alert_hash[:16]}")
             await log_ai_usage(
                 route_type="reuse",
                 alert_hash=alert_hash,
                 source=webhook_full_data.get("source", ""),
             )
             return AnalysisResolution(cached, False, True, None, False, is_reused=True)
-        poll_interval *= 1.5  # 指数增长
 
-    # ── 轮询超时 fallback：与原逻辑一致 ──
-    logger.warning(f"[Lock] 轮询等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
+        # 等待 Pub/Sub 通知
+        deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS  # 30s
+
+        while _time.monotonic() < deadline:
+            remaining = deadline - _time.monotonic()
+            if remaining <= 0:
+                break
+
+            # get_message timeout 是轮询间隔，配合 wait_for 做真正的超时控制
+            # 每 5 秒最多唤醒一次做 fallback 缓存检查
+            wait_slice = min(remaining, 5.0)
+            try:
+                message = await asyncio.wait_for(
+                    pubsub.get_message(ignore_subscribe_messages=True, timeout=wait_slice),
+                    timeout=wait_slice + 1.0,  # 留 1s 余量防止内层永久阻塞
+                )
+            except asyncio.TimeoutError:
+                message = None
+
+            if message and message.get("type") == "message":
+                cached = await get_cached_analysis(alert_hash)
+                if cached:
+                    logger.info(f"[Lock] Pub/Sub 通知命中，复用分析结果: hash={alert_hash[:16]}")
+                    await log_ai_usage(
+                        route_type="reuse",
+                        alert_hash=alert_hash,
+                        source=webhook_full_data.get("source", ""),
+                    )
+                    return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+
+            # 安全网：即使没收到消息，也定期检查缓存（防止 publish 丢失）
+            cached = await get_cached_analysis(alert_hash)
+            if cached:
+                logger.info(f"[Lock] 定期检查缓存命中，复用分析结果: hash={alert_hash[:16]}")
+                await log_ai_usage(
+                    route_type="reuse",
+                    alert_hash=alert_hash,
+                    source=webhook_full_data.get("source", ""),
+                )
+                return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+
+    finally:
+        # 清理订阅，防止连接泄漏
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except Exception:
+            pass
+
+    # ── Pub/Sub 等待超时 fallback：与原逻辑一致 ──
+    logger.warning(f"[Lock] Pub/Sub 等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
 
     duplicate_check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
     is_duplicate = duplicate_check.is_duplicate

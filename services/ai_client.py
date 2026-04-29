@@ -5,10 +5,10 @@
 """
 
 import hashlib
-import json
 import logging
 from typing import Any
 
+import orjson
 from openai import AsyncOpenAI
 
 from core.config import Config
@@ -61,7 +61,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
-        data_json = json.dumps(data, ensure_ascii=False, indent=2)
+        data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
         messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
@@ -129,7 +129,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         client = _get_openai_client()
 
         prompt_template = load_user_prompt_template()
-        data_json = json.dumps(data, ensure_ascii=False, indent=2)
+        data_json = orjson.dumps(data, option=orjson.OPT_INDENT_2).decode()
         user_prompt = prompt_template.format(source=source, data_json=data_json)
         messages = [{"role": "system", "content": Config.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 

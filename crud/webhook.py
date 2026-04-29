@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import orjson
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
@@ -31,7 +32,7 @@ async def quick_receive_webhook(
     """同步最小化写入：仅持久化原始数据，不做任何分析/转发"""
     event = WebhookEvent(
         source=source,
-        headers=raw_headers if isinstance(raw_headers, dict) else json.loads(raw_headers),
+        headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
         raw_payload=raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace"),
         processing_status="received",
     )
