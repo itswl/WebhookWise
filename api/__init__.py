@@ -33,6 +33,7 @@ class AnalysisResolution:
     is_duplicate: bool
     original_event: object | None  # WebhookEvent
     beyond_window: bool
+    is_reused: bool = False  # True 表示从 Redis 缓存复用其他 Worker 的分析结果
 
 
 @dataclass(frozen=True)

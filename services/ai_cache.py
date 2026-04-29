@@ -3,8 +3,9 @@
 基于 Redis 的分析结果缓存，支持 SETEX 自动过期和命中计数。
 """
 
-import json
 import logging
+
+import orjson
 
 from core.config import Config
 
@@ -31,13 +32,15 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
             logger.debug(f"缓存未命中: {cache_key[:20]}...")
             return None
 
-        cached_result = json.loads(cached_json)
+        cached_result = orjson.loads(cached_json)
 
-        # 增加命中计数
+        # 增加命中计数（pipeline 合并 RTT）
         counter_key = f"{cache_key}:hits"
-        hit_count = await redis_client.incr(counter_key)
-        # 同步 counter TTL
-        await redis_client.expire(counter_key, Config.ANALYSIS_CACHE_TTL)
+        pipe = redis_client.pipeline()
+        pipe.incr(counter_key)
+        pipe.expire(counter_key, Config.ANALYSIS_CACHE_TTL)
+        results = await pipe.execute()
+        hit_count = results[0]
 
         cached_result["_cache_hit"] = True
         cached_result["_cache_hit_count"] = hit_count
@@ -62,12 +65,14 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         # 清理内部字段（以 _ 开头的）
         result_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
 
-        json_str = json.dumps(result_to_cache, ensure_ascii=False)
-        await redis_client.setex(cache_key, Config.ANALYSIS_CACHE_TTL, json_str)
+        cached_bytes = orjson.dumps(result_to_cache)
 
-        # 初始化命中计数器
+        # pipeline 合并两次 SETEX，减少 RTT
         counter_key = f"{cache_key}:hits"
-        await redis_client.setex(counter_key, Config.ANALYSIS_CACHE_TTL, "0")
+        pipe = redis_client.pipeline()
+        pipe.setex(cache_key, Config.ANALYSIS_CACHE_TTL, cached_bytes)
+        pipe.setex(counter_key, Config.ANALYSIS_CACHE_TTL, "0")
+        await pipe.execute()
 
         logger.info(f"分析结果已缓存到 Redis: {cache_key[:20]}..., TTL={Config.ANALYSIS_CACHE_TTL}s")
         return True

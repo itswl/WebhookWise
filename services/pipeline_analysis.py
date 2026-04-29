@@ -109,10 +109,10 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
     logger.info(f"[Lock] 告警正在由其他节点处理，轮询 Redis 缓存等待中: hash={alert_hash[:16]}")
 
     deadline = _time.monotonic() + Config.PROCESSING_LOCK_WAIT_SECONDS
-    poll_interval = Config.PROCESSING_LOCK_POLL_INTERVAL_MS / 1000.0
+    poll_interval = 0.1  # 初始 100ms，指数退避
 
     while _time.monotonic() < deadline:
-        await asyncio.sleep(poll_interval)
+        await asyncio.sleep(min(poll_interval, 2.0))  # 上限 2s
 
         # 查 Redis 缓存而非 DB，消除惊群效应下的数据库读风暴
         cached = await get_cached_analysis(alert_hash)
@@ -123,7 +123,8 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
                 alert_hash=alert_hash,
                 source=webhook_full_data.get("source", ""),
             )
-            return AnalysisResolution(cached, False, True, None, False)
+            return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+        poll_interval *= 1.5  # 指数增长
 
     # ── 轮询超时 fallback：与原逻辑一致 ──
     logger.warning(f"[Lock] 轮询等待 {Config.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")

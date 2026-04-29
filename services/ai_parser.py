@@ -4,10 +4,11 @@
 包含多层容错策略：JSON 修复、截断补全、文本兜底提取。
 """
 
-import json
 import logging
 import re
 from typing import Any
+
+import orjson
 
 from services.ai_prompts import (
     _close_truncated_json,
@@ -36,15 +37,15 @@ def fix_json_format(json_str: str) -> str:
         return json_str
 
     try:
-        json.loads(json_str)
+        orjson.loads(json_str)
         return json_str
-    except json.JSONDecodeError:
+    except (orjson.JSONDecodeError, ValueError):
         pass
 
     if HAS_JSON5:
         try:
             parsed = json5.loads(json_str)
-            return json.dumps(parsed, ensure_ascii=False)
+            return orjson.dumps(parsed).decode()
         except Exception as e:
             logger.debug(f"json5 解析失败: {e}")
 
@@ -172,8 +173,8 @@ def _try_parse_json_analysis(candidate: str) -> AnalysisResult | None:
 
     for text in attempts:
         try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
+            parsed = orjson.loads(text)
+        except (orjson.JSONDecodeError, ValueError):
             continue
 
         if isinstance(parsed, dict):
