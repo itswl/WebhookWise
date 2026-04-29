@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, Index, Integer, LargeBinary, String, Text, func
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import JSONB
 
 from adapters.summary_extractors import extract_summary_fields
@@ -70,13 +71,18 @@ class WebhookEvent(Base):
 
     def to_summary_dict(self):
         """返回摘要信息（用于列表显示，减少数据传输量）"""
+        # 检查 deferred 列是否已加载，避免在 async session 中触发 lazy loading
+        unloaded = sa_inspect(self).unloaded
+
         # 提取 AI 分析摘要
         summary = None
-        if self.ai_analysis:
-            summary = self.ai_analysis.get("summary", "")
+        ai_analysis = self.ai_analysis if "ai_analysis" not in unloaded else None
+        if ai_analysis:
+            summary = ai_analysis.get("summary", "")
 
         # 提取关键告警信息（委托给 adapter 层的摘要提取器）
-        alert_info = extract_summary_fields(self.source, self.parsed_data)
+        parsed_data = self.parsed_data if "parsed_data" not in unloaded else None
+        alert_info = extract_summary_fields(self.source, parsed_data)
 
         return {
             "id": self.id,

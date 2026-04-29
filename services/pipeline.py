@@ -39,6 +39,67 @@ _NON_RETRYABLE_ERRORS = (
     UnicodeDecodeError,
 )
 
+
+async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
+    """发送 Dead Letter 飞书告警。复用项目已有的飞书通知通道。"""
+    try:
+        from core.config import Config
+        from core.http_client import get_http_client
+
+        forward_url = getattr(Config.ai, "FORWARD_URL", "") or ""
+        if not forward_url or not ("feishu.cn" in forward_url or "lark" in forward_url):
+            logger.critical(
+                "[Pipeline] Dead Letter 告警: event_id=%s, retry_count=%d, error=%s",
+                event_id,
+                retry_count,
+                error,
+            )
+            return
+
+        card = {
+            "msg_type": "interactive",
+            "card": {
+                "config": {"wide_screen_mode": True},
+                "header": {
+                    "title": {"tag": "plain_text", "content": "\U0001f6a8 Dead Letter \u544a\u8b66"},
+                    "template": "red",
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": (
+                                f"**event_id**: {event_id}\n"
+                                f"**\u91cd\u8bd5\u6b21\u6570**: {retry_count}\n"
+                                f"**\u9519\u8bef\u7c7b\u578b**: {type(error).__name__}\n"
+                                f"**\u9519\u8bef\u8be6\u60c5**: {str(error)[:200]}"
+                            ),
+                        },
+                    },
+                    {
+                        "tag": "note",
+                        "elements": [
+                            {
+                                "tag": "plain_text",
+                                "content": "\u8be5\u4e8b\u4ef6\u5df2\u8017\u5c3d\u6240\u6709\u91cd\u8bd5\u6b21\u6570\uff0c\u8bf7\u4eba\u5de5\u6392\u67e5\u5904\u7406\u3002",
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+
+        client = get_http_client()
+        resp = await client.post(forward_url, json=card, timeout=10)
+        if resp.status_code != 200:
+            logger.warning(
+                "[Pipeline] Dead Letter \u98de\u4e66\u544a\u8b66\u53d1\u9001\u5931\u8d25: status=%s", resp.status_code
+            )
+    except Exception:
+        logger.warning("[Pipeline] Dead Letter \u544a\u8b66\u53d1\u9001\u5931\u8d25", exc_info=True)
+
+
 # 最大重试次数，超过后标记为 dead_letter 不再捕捉
 _MAX_RETRIES = 5
 
@@ -273,6 +334,7 @@ async def _handle_webhook_process_inner(
                 )
                 await _update_processing_status(event_id, "dead_letter")
                 WEBHOOK_DEAD_LETTER_TOTAL.inc()
+                await _send_dead_letter_alert(event_id, current_retry, e)
             else:
                 logger.error(
                     "Webhook 处理失败（可重试，退回 received 等待 RecoveryPoller）| event_id=%s | retry=%d/%d | error=%s",
@@ -292,4 +354,5 @@ async def _handle_webhook_process_inner(
             )
             await _update_processing_status(event_id, "dead_letter")
             WEBHOOK_DEAD_LETTER_TOTAL.inc()
+            await _send_dead_letter_alert(event_id, 0, e)
         return
