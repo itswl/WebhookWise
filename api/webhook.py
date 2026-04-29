@@ -80,8 +80,6 @@ async def list_webhooks(
             query = query.options(
                 defer(WebhookEvent.raw_payload),
                 defer(WebhookEvent.headers),
-                defer(WebhookEvent.parsed_data),
-                defer(WebhookEvent.ai_analysis),
             )
 
         result = await session.execute(query)
@@ -144,8 +142,6 @@ async def list_webhooks_cursor(
             query = query.options(
                 defer(WebhookEvent.raw_payload),
                 defer(WebhookEvent.headers),
-                defer(WebhookEvent.parsed_data),
-                defer(WebhookEvent.ai_analysis),
             )
 
         result = await session.execute(query.limit(limit))
