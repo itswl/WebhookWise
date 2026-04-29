@@ -25,6 +25,62 @@ HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
 
 
+async def compute_prev_alert_ids(
+    session: AsyncSession,
+    events: list,
+) -> dict[int, int | None]:
+    """使用 SQL LAG 窗口函数计算 prev_alert_id（跨页链路追踪）。
+
+    Returns:
+        dict: {event_id: prev_alert_id} 映射
+    """
+    if not events:
+        return {}
+
+    event_ids = [e.id for e in events]
+    all_hashes = list({e.alert_hash for e in events if e.alert_hash})
+
+    if not all_hashes:
+        return dict.fromkeys(event_ids)
+
+    try:
+        lag_col = (
+            func.lag(WebhookEvent.id)
+            .over(
+                partition_by=WebhookEvent.alert_hash,
+                order_by=WebhookEvent.id,
+            )
+            .label("prev_alert_id")
+        )
+
+        subq = (
+            select(
+                WebhookEvent.id.label("event_id"),
+                lag_col,
+            )
+            .filter(WebhookEvent.alert_hash.in_(all_hashes))
+            .subquery()
+        )
+
+        stmt = select(
+            subq.c.event_id,
+            subq.c.prev_alert_id,
+        ).filter(subq.c.event_id.in_(event_ids))
+
+        result = await session.execute(stmt)
+        prev_map: dict[int, int | None] = {row.event_id: row.prev_alert_id for row in result.all()}
+
+        # 补齐没有 alert_hash 的事件
+        for eid in event_ids:
+            if eid not in prev_map:
+                prev_map[eid] = None
+
+        return prev_map
+    except Exception as e:
+        logger.warning(f"LAG 窗口函数计算 prev_alert_id 失败: {e}")
+        return dict.fromkeys(event_ids)
+
+
 @dataclass(frozen=True)
 class SaveWebhookResult:
     webhook_id: int | str

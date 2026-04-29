@@ -8,10 +8,11 @@ import logging
 import time
 from typing import Any
 
+import httpx
 from tenacity import (
     before_sleep_log,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -31,7 +32,9 @@ ForwardResult = dict[str, Any]
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception(
+        lambda e: isinstance(e, (httpx.RequestError, httpx.TimeoutException, ConnectionError, TimeoutError))
+    ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
