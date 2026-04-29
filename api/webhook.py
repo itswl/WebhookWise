@@ -4,7 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,8 @@ from models import WebhookEvent
 from services.pipeline import handle_webhook_process
 
 webhook_router = APIRouter()
+
+MAX_PAGE = 500
 
 
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
@@ -54,6 +56,11 @@ async def list_webhooks(
     session: AsyncSession = Depends(get_db_session),
 ):
     offset = (page - 1) * page_size
+    if page > MAX_PAGE and cursor_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor_id 游标分页",
+        )
     if cursor_id is not None:
         offset = 0
 

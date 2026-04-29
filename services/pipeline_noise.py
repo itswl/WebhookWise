@@ -152,14 +152,23 @@ async def persist_webhook_with_noise_context(
     analysis_resolution: AnalysisResolution,
     alert_hash: str,
     event_id: int | None = None,
+    skip_noise: bool = False,
 ) -> PersistedEventContext:
-    """对外入口：计算降噪并持久化 webhook 数据。"""
-    noise_context = await _compute_noise_reduction(
-        alert_hash=alert_hash,
-        source=request_context.source,
-        parsed_data=request_context.parsed_data,
-        analysis_result=analysis_resolution.analysis_result,
-    )
+    """对外入口：计算降噪并持久化 webhook 数据。
+
+    当 *skip_noise=True* 时跳过降噪重算，使用默认无降噪上下文，
+    适用于缓存复用的 Worker 轻量路径。
+    """
+    if skip_noise:
+        logger.info("[Pipeline] 缓存复用路径：跳过降噪重算，使用默认 NoiseContext")
+        noise_context = _default_noise_context()
+    else:
+        noise_context = await _compute_noise_reduction(
+            alert_hash=alert_hash,
+            source=request_context.source,
+            parsed_data=request_context.parsed_data,
+            analysis_result=analysis_resolution.analysis_result,
+        )
 
     analysis_with_noise = _apply_noise_metadata(analysis_resolution.analysis_result, noise_context)
     save_result = await save_webhook_data(

@@ -177,6 +177,14 @@ class RuntimeConfigManager:
                     typed_value = _deserialize_value(config_row.value, config_row.value_type)
                     setattr(Config, key, typed_value)
             logger.info(f"[RuntimeConfig] 热更新 {len(keys)} 个配置: {keys}")
+
+            # Prompt 模板缓存重载
+            prompt_keys = {"AI_USER_PROMPT", "AI_SYSTEM_PROMPT"}
+            if prompt_keys & set(keys):
+                from services.ai_prompts import reload_user_prompt_template
+
+                reload_user_prompt_template()
+                logger.info("[RuntimeConfig] Prompt 模板缓存已重载")
         except Exception as e:
             logger.warning(f"[RuntimeConfig] 处理配置变更通知失败: {e}")
 
