@@ -7,6 +7,7 @@ from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pythonjsonlogger import jsonlogger
 
 from core.config import Config
+from core.log_context import get_log_context
 from core.trace import get_trace_id
 
 
@@ -15,6 +16,12 @@ class TraceIdFilter(logging.Filter):
 
     def filter(self, record):
         record.trace_id = get_trace_id() or "-"
+        ctx = get_log_context()
+        record.event_id = ctx.get("event_id") or "-"
+        record.alert_hash = ctx.get("alert_hash") or "-"
+        record.source = ctx.get("source") or "-"
+        record.processing_status = ctx.get("processing_status") or "-"
+        record.route_type = ctx.get("route_type") or "-"
         return True
 
 
@@ -53,7 +60,8 @@ def setup_logger():
 
     # 标准日志格式（控制台，含 trace_id）
     console_formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [%(trace_id)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s [%(levelname)s] [%(trace_id)s] [%(event_id)s] [%(source)s] [%(processing_status)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # 文件处理器（支持轮转，最大 10MB，保留 5 个备份）
@@ -67,7 +75,8 @@ def setup_logger():
 
     # 文件使用结构化 JSON 日志
     json_formatter = jsonlogger.JsonFormatter(
-        "%(asctime)s %(name)s %(levelname)s %(trace_id)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s %(name)s %(levelname)s %(trace_id)s %(event_id)s %(alert_hash)s %(source)s %(processing_status)s %(route_type)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(json_formatter)
 

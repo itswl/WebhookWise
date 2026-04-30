@@ -44,6 +44,12 @@ def sanitize_source(source: str) -> str:
 # 1. 业务吞吐与状态指标
 WEBHOOK_RECEIVED_TOTAL = Counter("webhook_received_total", "Total number of webhooks received", ["source", "status"])
 
+WEBHOOK_PROCESSING_STATUS_TOTAL = Counter(
+    "webhook_processing_status_total",
+    "Webhook processing status transitions total",
+    ["status"],
+)
+
 # 2. 智能降噪指标 (AIOps 核心价值)
 WEBHOOK_NOISE_REDUCED_TOTAL = Counter(
     "webhook_noise_reduced_total",
@@ -66,6 +72,19 @@ AI_ANALYSIS_DURATION_SECONDS = Histogram(
     "Time spent on AI analysis",
     ["source", "engine"],
     buckets=(1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, float("inf")),
+)
+
+WEBHOOK_PROCESSING_DURATION_SECONDS = Histogram(
+    "webhook_processing_duration_seconds",
+    "Time spent from start of pipeline to finish",
+    ["source", "outcome"],
+    buckets=(0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, float("inf")),
+)
+
+OPENAI_ERRORS_TOTAL = Counter(
+    "openai_errors_total",
+    "OpenAI call errors total",
+    ["type"],
 )
 
 # 5. 系统状态指标
