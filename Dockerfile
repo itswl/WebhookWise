@@ -32,7 +32,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc \
     PATH=/home/appuser/.local/bin:$PATH
 
 # 从构建阶段复制已安装的依赖
@@ -63,7 +62,7 @@ COPY alembic/ ./alembic/
 # 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录并设置权限
-RUN mkdir -p logs webhooks_data ${PROMETHEUS_MULTIPROC_DIR} && \
+RUN mkdir -p logs webhooks_data /tmp/prometheus_multiproc && \
     chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
