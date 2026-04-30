@@ -4,6 +4,7 @@ import redis.asyncio as redis
 
 from core.config import Config
 from core.logger import logger
+from core.utils import mask_url
 
 _redis_client: redis.Redis | None = None
 
@@ -16,9 +17,13 @@ def get_redis() -> redis.Redis:
             Config.redis.REDIS_URL,
             decode_responses=True,
             max_connections=100,
+            socket_connect_timeout=Config.redis.REDIS_SOCKET_CONNECT_TIMEOUT,
+            socket_timeout=Config.redis.REDIS_SOCKET_TIMEOUT,
+            socket_keepalive=True,
+            health_check_interval=Config.redis.REDIS_HEALTH_CHECK_INTERVAL,
         )
         _redis_client = redis.Redis(connection_pool=pool)
-        logger.info(f"[Redis] 成功初始化连接池: {Config.redis.REDIS_URL}")
+        logger.info(f"[Redis] 成功初始化连接池: {mask_url(Config.redis.REDIS_URL)}")
     return _redis_client
 
 
