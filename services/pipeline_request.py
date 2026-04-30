@@ -20,7 +20,7 @@ def _parse_webhook_request(
 ) -> WebhookRequestContext:
     requested_source = source or headers.get("x-webhook-source", "unknown")
 
-    logger.debug(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
+    logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
     try:
         raw_hash = hashlib.sha256(raw_body).hexdigest() if raw_body else None
     except Exception:

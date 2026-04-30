@@ -8,6 +8,15 @@ from core.redis_client import get_redis
 from core.runtime_config import _KEY_TO_SUBCONFIG, runtime_config
 from crud.webhook import count_dead_letters, list_dead_letters, replay_dead_letter
 from db.session import get_db_session
+from schemas.admin import (
+    ConfigResponse,
+    ConfigUpdateResponse,
+    DeadLetterListResponse,
+    PromptGetResponse,
+    PromptReloadResponse,
+    ReplayAllResponse,
+    ReplayResponse,
+)
 
 admin_router = APIRouter()
 
@@ -112,7 +121,7 @@ def _run_add_unique_constraint_migration() -> bool:
     return add_unique_constraint()
 
 
-@admin_router.get("/api/config")
+@admin_router.get("/api/config", response_model=ConfigResponse)
 async def get_config():
     try:
         response = {}
@@ -129,7 +138,7 @@ async def get_config():
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/config")
+@admin_router.post("/api/config", response_model=ConfigUpdateResponse)
 async def update_config(payload: dict | None = None):
     try:
         if not payload:
@@ -153,7 +162,7 @@ async def update_config(payload: dict | None = None):
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/prompt/reload")
+@admin_router.post("/api/prompt/reload", response_model=PromptReloadResponse)
 def reload_prompt():
     try:
         new_template = _reload_prompt_template()
@@ -168,7 +177,7 @@ def reload_prompt():
         return _fail(str(e), 500)
 
 
-@admin_router.get("/api/prompt")
+@admin_router.get("/api/prompt", response_model=PromptGetResponse)
 def get_prompt():
     try:
         template = _load_current_prompt_template()
@@ -193,7 +202,7 @@ def migration_add_unique_constraint():
 # ── Dead Letter 重放 ──────────────────────────────────────────────────────────
 
 
-@admin_router.get("/api/admin/dead-letters")
+@admin_router.get("/api/admin/dead-letters", response_model=DeadLetterListResponse)
 async def get_dead_letters(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -217,7 +226,7 @@ async def get_dead_letters(
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/{event_id}/replay")
+@admin_router.post("/api/admin/dead-letters/{event_id}/replay", response_model=ReplayResponse)
 async def replay_single_dead_letter(
     event_id: int,
     session: AsyncSession = Depends(get_db_session),
@@ -246,7 +255,7 @@ async def replay_single_dead_letter(
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/replay-all")
+@admin_router.post("/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse)
 async def replay_all_dead_letters(
     batch_size: int = Query(50, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
