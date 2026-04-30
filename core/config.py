@@ -2,6 +2,7 @@ import logging
 import os
 import socket
 import warnings as _warnings
+from functools import lru_cache
 from typing import Any
 
 from dotenv import load_dotenv
@@ -349,4 +350,32 @@ class _AppConfig(BaseSettings):
         return False
 
 
-Config = _AppConfig()
+# ── 延迟加载 ─────────────────────────────────────────────
+
+Settings = _AppConfig  # 公开类别名
+
+
+@lru_cache
+def get_settings() -> _AppConfig:
+    """延迟初始化配置，首次调用时解析环境变量。"""
+    return _AppConfig()
+
+
+def reset_settings() -> None:
+    """清除配置缓存，用于测试和热重载。"""
+    get_settings.cache_clear()
+
+
+class _ConfigProxy:
+    """延迟代理，首次属性访问时才初始化 Settings。"""
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_settings(), name)
+
+    def __repr__(self) -> str:
+        return repr(get_settings())
+
+
+Config = _ConfigProxy()

@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from crud.webhook import SaveWebhookResult, _build_event
+from crud.webhook import SaveWebhookResult
+from services.event_builder import build_event
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():
-    event = _build_event(
+    event = build_event(
         source="test",
         client_ip="127.0.0.1",
         raw_payload=b"{}",

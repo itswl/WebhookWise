@@ -1,7 +1,6 @@
 """业务协调层 — 从 crud/webhook.py 提取的保存协调逻辑。"""
 
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -12,20 +11,21 @@ from core.logger import logger
 from core.utils import generate_alert_hash
 from crud.webhook import (
     SaveWebhookResult,
-    WebhookData,
-    _build_event,
-    _decode_raw_payload,
-    _fill_event_fields,
-    _normalize_headers,
     _update_existing_event,
 )
 from db.session import session_scope
 from models import WebhookEvent
 from services.dedup_strategy import _resolve_analysis_for_duplicate, check_duplicate_alert
+from services.event_builder import (
+    AnalysisResult,
+    HeadersDict,
+    WebhookData,
+    build_event,
+    decode_raw_payload,
+    fill_event_fields,
+    normalize_headers,
+)
 from services.file_backup import save_webhook_to_file
-
-HeadersDict = dict[str, str]
-AnalysisResult = dict[str, Any]
 
 
 async def _save_duplicate_event(
@@ -58,7 +58,9 @@ async def _save_duplicate_event(
     if event_id is not None:
         dup_event = await session.get(WebhookEvent, event_id)
         if dup_event:
-            _fill_event_fields(
+            # 保留 gateway 写入的 source
+            gateway_source = dup_event.source
+            fill_event_fields(
                 dup_event,
                 source=source,
                 client_ip=client_ip,
@@ -86,13 +88,16 @@ async def _save_duplicate_event(
                 dup_event.prev_alert_id = prev_result.scalar_one_or_none()
             except Exception as e:
                 logger.warning(f"计算重复告警 prev_alert_id 失败: {e}")
+            # 恢复 gateway 原始 source，避免 normalize 降级为 "unknown"
+            if gateway_source and gateway_source != "unknown":
+                dup_event.source = gateway_source
             await session.flush()
             logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
             if Config.server.ENABLE_FILE_BACKUP:
                 save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
             return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
 
-    duplicate_event = _build_event(
+    duplicate_event = build_event(
         source=source,
         client_ip=client_ip,
         raw_payload=raw_payload,
@@ -168,8 +173,8 @@ async def _upsert_new_event(
             source=source,
             client_ip=client_ip,
             timestamp=now,
-            raw_payload=_decode_raw_payload(raw_payload),
-            headers=_normalize_headers(headers),
+            raw_payload=decode_raw_payload(raw_payload),
+            headers=normalize_headers(headers),
             parsed_data=data,
             alert_hash=alert_hash,
             ai_analysis=ai_analysis,
@@ -239,7 +244,7 @@ async def _upsert_new_event(
     final_ai_analysis = ai_analysis if ai_analysis else None
     final_importance = importance
 
-    dup_event = _build_event(
+    dup_event = build_event(
         source=source,
         client_ip=client_ip,
         raw_payload=raw_payload,

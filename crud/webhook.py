@@ -1,7 +1,6 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
 import orjson
 from fastapi import Request
@@ -15,12 +14,16 @@ from core.logger import logger
 from core.utils import generate_alert_hash  # noqa: F401
 from db.session import session_scope
 from models import FailedForward, SystemConfig, WebhookEvent
+from services.event_builder import (
+    AnalysisResult,
+    HeadersDict,
+    WebhookData,
+    build_event,
+    decode_raw_payload,
+    fill_event_fields,
+    normalize_headers,
+)
 from services.file_backup import get_webhooks_from_files, save_webhook_to_file
-
-WebhookData = dict[str, Any]
-
-HeadersDict = dict[str, str]
-AnalysisResult = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -66,7 +69,7 @@ async def quick_receive_webhook(
     return event_id
 
 
-async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+async def query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
     stmt = (
         select(WebhookEvent)
         .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.beyond_window == 1)
@@ -76,7 +79,7 @@ async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str
     return result.scalars().first()
 
 
-async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+async def query_latest_original_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
     stmt = (
         select(WebhookEvent)
         .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0)
@@ -86,94 +89,11 @@ async def _query_latest_original_event(session: AsyncSession, alert_hash: str) -
     return result.scalars().first()
 
 
-def _decode_raw_payload(raw_payload: bytes | None) -> bytes | None:
-    """将原始 bytes payload 压缩为 gzip bytes。"""
-    if not raw_payload:
-        return None
-    return compress_payload(raw_payload.decode("utf-8"))
-
-
-def _normalize_headers(headers: HeadersDict | None) -> HeadersDict:
-    return dict(headers) if headers else {}
-
-
-def _fill_event_fields(
-    event: WebhookEvent,
-    *,
-    source: str,
-    client_ip: str | None,
-    data: WebhookData,
-    alert_hash: str,
-    ai_analysis: AnalysisResult | None,
-    importance: str | None,
-    forward_status: str,
-    is_duplicate: int,
-    duplicate_of: int | None,
-    duplicate_count: int,
-    beyond_window: int,
-    processing_status: str = "completed",
-    last_notified_at: datetime | None = None,
-    headers: HeadersDict | None = None,
-    raw_payload: bytes | None = None,
-) -> None:
-    """统一将字段映射到 ORM 对象，集中维护字段赋值逻辑。"""
-    event.source = source
-    event.client_ip = client_ip
-    event.timestamp = datetime.now()
-    event.parsed_data = data
-    event.alert_hash = alert_hash
-    event.ai_analysis = ai_analysis
-    event.importance = importance
-    event.forward_status = forward_status
-    event.is_duplicate = is_duplicate
-    event.duplicate_of = duplicate_of
-    event.duplicate_count = duplicate_count
-    event.beyond_window = beyond_window
-    event.processing_status = processing_status
-    if last_notified_at is not None:
-        event.last_notified_at = last_notified_at
-    if headers is not None:
-        event.headers = _normalize_headers(headers)
-    if raw_payload is not None:
-        event.raw_payload = _decode_raw_payload(raw_payload)
-
-
-def _build_event(
-    *,
-    source: str,
-    client_ip: str | None,
-    raw_payload: bytes | None,
-    headers: HeadersDict | None,
-    data: WebhookData,
-    alert_hash: str,
-    ai_analysis: AnalysisResult | None,
-    importance: str | None,
-    forward_status: str,
-    is_duplicate: int,
-    duplicate_of: int | None,
-    duplicate_count: int,
-    beyond_window: int,
-    last_notified_at: datetime | None = None,
-) -> WebhookEvent:
-    event = WebhookEvent()
-    _fill_event_fields(
-        event,
-        source=source,
-        client_ip=client_ip,
-        data=data,
-        alert_hash=alert_hash,
-        ai_analysis=ai_analysis,
-        importance=importance,
-        forward_status=forward_status,
-        is_duplicate=is_duplicate,
-        duplicate_of=duplicate_of,
-        duplicate_count=duplicate_count,
-        beyond_window=beyond_window,
-        last_notified_at=last_notified_at,
-        headers=headers,
-        raw_payload=raw_payload,
-    )
-    return event
+# ── 向后兼容别名（已迁移至 services.event_builder） ──
+_decode_raw_payload = decode_raw_payload
+_normalize_headers = normalize_headers
+_fill_event_fields = fill_event_fields
+_build_event = build_event
 
 
 async def _update_existing_event(
@@ -206,8 +126,11 @@ async def _update_existing_event(
             forward_status=forward_status,
         )
 
+    # 保留 gateway 写入的 source，Worker 的 normalize 不应覆盖
+    gateway_source = event.source
+
     # 补全字段（raw_payload / headers 已在 quick_receive_webhook 写入，仅在需要时覆盖）
-    _fill_event_fields(
+    fill_event_fields(
         event,
         source=source,
         client_ip=client_ip,
@@ -224,6 +147,10 @@ async def _update_existing_event(
         headers=headers,
         raw_payload=raw_payload,
     )
+
+    # 恢复 gateway 原始 source，避免 normalize 降级为 "unknown"
+    if gateway_source and gateway_source != "unknown":
+        event.source = gateway_source
 
     # 写入时计算 prev_alert_id
     try:
@@ -259,7 +186,7 @@ async def _save_new_event(
     ai_analysis: AnalysisResult | None,
     forward_status: str,
 ) -> SaveWebhookResult:
-    webhook_event = _build_event(
+    webhook_event = build_event(
         source=source,
         client_ip=client_ip,
         raw_payload=raw_payload,
