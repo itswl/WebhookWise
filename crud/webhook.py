@@ -6,7 +6,7 @@ from typing import Any
 import orjson
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
@@ -37,8 +37,12 @@ async def quick_receive_webhook(
     raw_headers: dict,
     raw_body: str | bytes,
     parsed_data: dict | None = None,
-) -> WebhookEvent:
-    """同步最小化写入：仅持久化原始数据，不做任何分析/转发"""
+) -> int:
+    """同步最小化写入：仅持久化原始数据，不做任何分析/转发。
+
+    使用 SQLAlchemy Core insert().returning() 绕过 ORM Identity Map，
+    减少对象实例化与状态跟踪开销。返回新创建的 event_id。
+    """
     raw_text = raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace")
     # 大 payload 在线程中压缩，避免阻塞事件循环
     body_len = len(raw_body) if isinstance(raw_body, bytes) else len(raw_body.encode("utf-8"))
@@ -46,16 +50,20 @@ async def quick_receive_webhook(
         compressed = await asyncio.to_thread(compress_payload, raw_text)
     else:
         compressed = compress_payload(raw_text)
-    event = WebhookEvent(
-        source=source,
-        headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
-        raw_payload=compressed,
-        parsed_data=parsed_data,
-        processing_status="received",
+    stmt = (
+        insert(WebhookEvent)
+        .values(
+            source=source,
+            headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
+            raw_payload=compressed,
+            parsed_data=parsed_data,
+            processing_status="received",
+        )
+        .returning(WebhookEvent.id)
     )
-    session.add(event)
-    await session.flush()  # 获取 ID 但不 commit（让调用方控制事务）
-    return event
+    result = await session.execute(stmt)
+    event_id: int = result.scalar_one()
+    return event_id
 
 
 async def _query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:

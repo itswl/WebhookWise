@@ -4,6 +4,11 @@ Webhook AI分析服务主入口
 """
 
 import asyncio
+
+import uvloop
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 import sys
 from pathlib import Path
 
@@ -34,4 +39,6 @@ if __name__ == "__main__":
         host=Config.server.HOST,
         port=Config.server.PORT,
         log_level="debug" if Config.server.DEBUG else "info",
+        loop="uvloop",
+        http="httptools",
     )

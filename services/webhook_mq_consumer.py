@@ -40,13 +40,12 @@ async def _init_consumer_group() -> None:
 
 
 async def _process_one(
-    redis,
     msg_id: str,
     fields: dict,
     semaphore: asyncio.Semaphore,
     handle_webhook_process,
 ) -> None:
-    """处理单条消息，受 Semaphore 控制。无论成功失败均 XACK。"""
+    """处理单条消息，受 Semaphore 控制。XACK 由外层批量执行。"""
     async with semaphore:
         try:
             event_id_str = fields.get("event_id", "")
@@ -70,12 +69,6 @@ async def _process_one(
                 f"[MQ] 消息处理失败: msg_id={msg_id}",
                 exc_info=True,
             )
-        finally:
-            # 无论成功失败都 XACK — DB 状态机已接管重试
-            try:
-                await redis.xack(_QUEUE, _GROUP, msg_id)
-            except Exception:
-                logger.warning(f"[MQ] XACK 失败: {msg_id}")
 
 
 async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
@@ -131,9 +124,12 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
 
             # messages 格式: [[stream_name, [(msg_id, {field: value}), ...]]]
             for _stream_name, entries in messages:
+                # 收集本批所有 msg_id，无论成功失败都要 ack
+                # — DB 状态机（retry_count + RecoveryPoller）已接管重试
+                batch_msg_ids = [msg_id for msg_id, _ in entries]
                 tasks = []
                 for msg_id, fields in entries:
-                    task = asyncio.create_task(_process_one(redis, msg_id, fields, semaphore, handle_webhook_process))
+                    task = asyncio.create_task(_process_one(msg_id, fields, semaphore, handle_webhook_process))
                     tasks.append(task)
                 # 等待本批全部完成再拉下一批，避免无限堆积
                 if tasks:
@@ -148,6 +144,12 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
                             "[MQ] 优雅停机超时，%d 个任务未完成，将由 RecoveryPoller 补偿",
                             len([t for t in tasks if not t.done()]),
                         )
+                # 批量确认，一次网络往返
+                if batch_msg_ids:
+                    try:
+                        await redis.xack(_QUEUE, _GROUP, *batch_msg_ids)
+                    except Exception:
+                        logger.warning("[MQ] 批量 XACK 失败: %d 条消息", len(batch_msg_ids))
 
         except asyncio.CancelledError:
             logger.info("[MQ] Consumer 收到取消信号，退出")

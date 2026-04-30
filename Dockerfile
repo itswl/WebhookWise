@@ -78,4 +78,4 @@ ENTRYPOINT ["./entrypoint.sh"]
 #   - 如果只需单 Worker 且不需要进程管理，可直接使用：
 #     CMD ["uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "core.app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "-e", "UVICORN_LOOP=uvloop", "-e", "UVICORN_HTTP=httptools", "core.app:app"]
