@@ -4,6 +4,7 @@ api/reanalysis.py
 重新分析 + 手动转发路由。
 """
 
+import orjson
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import Config
 from core.logger import logger
 from core.utils import mask_url
+from core.compression import decompress_payload
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
+from adapters.ecosystem_adapters import normalize_webhook_event
 from services.ai_analyzer import analyze_webhook_with_ai
 from services.forward import forward_to_remote
 
@@ -29,9 +32,23 @@ async def _get_webhook_event_by_id(session, webhook_id: int) -> WebhookEvent | N
 
 
 async def _build_webhook_context(event: WebhookEvent) -> dict:
+    parsed_data = event.parsed_data
+    if parsed_data is None:
+        raw_text = decompress_payload(event.raw_payload)
+        if raw_text:
+            try:
+                parsed_data = orjson.loads(raw_text)
+            except Exception:
+                parsed_data = None
+
+    source = event.source
+    if (not source or source == "unknown") and isinstance(parsed_data, dict):
+        normalized = normalize_webhook_event(parsed_data, None)
+        source = normalized.source or source
+        parsed_data = normalized.data
     return {
-        "source": event.source,
-        "parsed_data": event.parsed_data,
+        "source": source,
+        "parsed_data": parsed_data,
         "timestamp": event.timestamp.isoformat() if event.timestamp else None,
         "client_ip": event.client_ip,
     }
