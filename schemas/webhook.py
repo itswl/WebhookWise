@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from schemas.base import APIResponse, CursorPaginationInfo
+
+DuplicateType = Literal["new", "within_window", "beyond_window"]
 
 
 class WebhookEventFull(BaseModel):
@@ -28,6 +32,9 @@ class WebhookEventFull(BaseModel):
     duplicate_of: int | None = None
     duplicate_count: int
     beyond_window: bool
+    beyond_time_window: bool = False
+    is_within_window: bool = False
+    duplicate_type: DuplicateType = "new"
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -46,6 +53,9 @@ class WebhookEventSummary(BaseModel):
     duplicate_of: int | None = None
     duplicate_count: int
     beyond_window: bool
+    beyond_time_window: bool = False
+    is_within_window: bool = False
+    duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
     summary: str | None = None
     alert_info: dict | None = None
