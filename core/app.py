@@ -24,65 +24,11 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
-from db.session import dispose_engine, init_engine, session_scope
+from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
 from services.pipeline import get_running_tasks
 from services.poller_scheduler import start_scheduler, stop_scheduler
 from services.recovery_poller import RecoveryPoller
-
-
-async def _ensure_schema() -> None:
-    """Alembic 的最后防线：启动时确保关键 schema 字段存在。
-
-    所有 DDL 变更的主入口是 Alembic（entrypoint.sh [2/3]）。
-    此函数仅作为防御性补建，当 Alembic upgrade 因异常跳过实际 DDL 时，
-    通过 raw SQL 幂等地补齐最关键的列和索引，确保应用可正常启动。
-
-    注意：Poller 复合索引等非关键 DDL 已由 Alembic 迁移
-    d5a2b3c4e6f7 覆盖，不再在此处重复补建。
-    """
-    from sqlalchemy import text
-
-    async with session_scope() as session:
-        # ── retry_count 列 ──
-        result = await session.execute(
-            text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = 'webhook_events' AND column_name = 'retry_count'"
-            )
-        )
-        if not result.scalar():
-            await session.execute(
-                text("ALTER TABLE webhook_events " "ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
-            )
-            logger.info("[Schema] 已添加 retry_count 列")
-
-        # ── prev_alert_id 列 ──
-        result = await session.execute(
-            text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = 'webhook_events' AND column_name = 'prev_alert_id'"
-            )
-        )
-        if not result.scalar():
-            await session.execute(text("ALTER TABLE webhook_events " "ADD COLUMN prev_alert_id BIGINT"))
-            logger.info("[Schema] 已添加 prev_alert_id 列")
-
-        # ── idx_pending_webhooks 部分索引 ──
-        result = await session.execute(
-            text("SELECT indexname FROM pg_indexes " "WHERE indexname = 'idx_pending_webhooks'")
-        )
-        if not result.scalar():
-            await session.execute(
-                text(
-                    "CREATE INDEX idx_pending_webhooks ON webhook_events (created_at) "
-                    "WHERE processing_status IN ('received', 'analyzing', 'failed')"
-                )
-            )
-            logger.info("[Schema] 已创建 idx_pending_webhooks 索引")
-
-        await session.commit()
-    logger.info("[Schema] 防御性 schema 检查完成")
 
 
 @asynccontextmanager
@@ -96,8 +42,6 @@ async def lifespan(app: FastAPI):
         )
     get_http_client()
     await init_engine()
-    # 防御性 schema 迁移：确保关键列/索引存在
-    await _ensure_schema()
     # 从数据库加载运行时配置（覆盖 .env 默认值）
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听

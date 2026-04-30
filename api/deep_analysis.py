@@ -21,6 +21,7 @@ from core.http_client import get_http_client
 from core.logger import logger
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
+from schemas.analysis import DeepAnalysisListResponse
 
 deep_analysis_router = APIRouter()
 
@@ -161,7 +162,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
-@deep_analysis_router.get("/api/deep-analyses")
+@deep_analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
 async def list_all_deep_analyses(
     page: int = Query(1),
     per_page: int = Query(20),

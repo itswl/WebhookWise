@@ -214,7 +214,7 @@ async def _handle_webhook_process_inner(
         else:
             payload = event.parsed_data or {}
 
-    logger.debug(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
+    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
     WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
     analysis_result = {}
     original_event = None

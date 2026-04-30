@@ -93,10 +93,8 @@ const API = {
         }
 
         const queryParams = new URLSearchParams();
-        if (params.page) queryParams.append('page', params.page);
         if (params.page_size) queryParams.append('page_size', params.page_size);
         if (params.fields) queryParams.append('fields', params.fields);
-        if (params.include_total !== undefined) queryParams.append('include_total', String(params.include_total));
 
         const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);

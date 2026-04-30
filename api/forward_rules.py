@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from models import ForwardRule
+from schemas.rules import ForwardRuleDetailResponse, ForwardRuleListResponse
 
 forward_rules_router = APIRouter()
 
@@ -16,7 +17,7 @@ forward_rules_router = APIRouter()
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 
-@forward_rules_router.get("/api/forward-rules")
+@forward_rules_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
 async def get_forward_rules(session: AsyncSession = Depends(get_db_session)):
     stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
     result = await session.execute(stmt)
@@ -24,7 +25,7 @@ async def get_forward_rules(session: AsyncSession = Depends(get_db_session)):
     return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
-@forward_rules_router.post("/api/forward-rules")
+@forward_rules_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
 async def create_forward_rule(payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
     payload = payload or {}
     name = payload.get("name", "")
@@ -65,7 +66,7 @@ async def create_forward_rule(payload: dict | None = None, session: AsyncSession
     return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
 
 
-@forward_rules_router.put("/api/forward-rules/{rule_id}")
+@forward_rules_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
 async def update_forward_rule(
     rule_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)
 ):
