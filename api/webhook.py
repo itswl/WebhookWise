@@ -4,6 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
+import orjson
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
@@ -210,7 +211,7 @@ async def receive_webhook(
     parsed_data = None
     if raw_body and "application/json" in content_type:
         try:
-            parsed_data = await request.json()
+            parsed_data = orjson.loads(raw_body)
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -219,7 +220,7 @@ async def receive_webhook(
     raw_body_str = raw_body.decode("utf-8", errors="replace")
 
     # ★ 同步入库：202 之前持久化原始数据
-    event = await quick_receive_webhook(
+    event_id = await quick_receive_webhook(
         session=session,
         source=headers.get("x-webhook-source", "unknown"),
         raw_headers=headers,
@@ -230,7 +231,7 @@ async def receive_webhook(
     await session.commit()
 
     # 更新为 event_id 格式的 trace_id
-    set_trace_id(generate_trace_id(event_id=event.id))
+    set_trace_id(generate_trace_id(event_id=event_id))
 
     # 通过 Redis Stream 投递给 Worker 异步处理
     redis = get_redis()
@@ -238,13 +239,13 @@ async def receive_webhook(
     # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
     await redis.xadd(
         Config.server.WEBHOOK_MQ_QUEUE,
-        {"event_id": str(event.id), "client_ip": client_ip or ""},
+        {"event_id": str(event_id), "client_ip": client_ip or ""},
         maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
         approximate=True,
     )
     return JSONResponse(
         status_code=202,
-        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
+        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event_id},
     )
 
 
@@ -268,7 +269,7 @@ async def receive_webhook_with_source(
     parsed_data = None
     if raw_body and "application/json" in content_type:
         try:
-            parsed_data = await request.json()
+            parsed_data = orjson.loads(raw_body)
         except Exception:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
@@ -277,7 +278,7 @@ async def receive_webhook_with_source(
     raw_body_str = raw_body.decode("utf-8", errors="replace")
 
     # ★ 同步入库：202 之前持久化原始数据
-    event = await quick_receive_webhook(
+    event_id = await quick_receive_webhook(
         session=session,
         source=source,
         raw_headers=headers,
@@ -288,7 +289,7 @@ async def receive_webhook_with_source(
     await session.commit()
 
     # 更新为 event_id 格式的 trace_id
-    set_trace_id(generate_trace_id(event_id=event.id))
+    set_trace_id(generate_trace_id(event_id=event_id))
 
     # 通过 Redis Stream 投递给 Worker 异步处理
     redis = get_redis()
@@ -296,11 +297,11 @@ async def receive_webhook_with_source(
     # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
     await redis.xadd(
         Config.server.WEBHOOK_MQ_QUEUE,
-        {"event_id": str(event.id), "client_ip": client_ip or ""},
+        {"event_id": str(event_id), "client_ip": client_ip or ""},
         maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
         approximate=True,
     )
     return JSONResponse(
         status_code=202,
-        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event.id},
+        content={"success": True, "message": "Webhook received and queued for processing", "event_id": event_id},
     )
