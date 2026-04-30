@@ -31,7 +31,14 @@ def _build_engine_kwargs():
         "max_overflow": Config.db.DB_MAX_OVERFLOW,
         "pool_recycle": Config.db.DB_POOL_RECYCLE,
         "pool_timeout": Config.db.DB_POOL_TIMEOUT,
-        "connect_args": {"server_settings": {"statement_timeout": str(Config.db.DB_STATEMENT_TIMEOUT_MS)}},
+        "connect_args": {
+            "server_settings": {
+                "statement_timeout": str(Config.db.DB_STATEMENT_TIMEOUT_MS),
+                # 关闭同步提交可提升写入 3-5x，断电时可能丢失最近 1-2s 数据
+                # Webhook 场景可接受（有 Redis MQ + RecoveryPoller 兜底）
+                "synchronous_commit": Config.db.DB_SYNC_COMMIT,
+            }
+        },
     }
 
 

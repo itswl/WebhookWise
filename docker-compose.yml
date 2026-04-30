@@ -7,6 +7,17 @@ services:
     container_name: webhook-receiver
     restart: unless-stopped
 
+    # TCP 调优：提升高并发连接处理能力
+    sysctls:
+      # 监听队列上限，默认 128 不足以应对突发流量
+      net.core.somaxconn: 4096
+      # 允许 TIME_WAIT 状态的 socket 被重新使用，加快端口回收
+      net.ipv4.tcp_tw_reuse: 1
+      # 扩大本地端口范围，支撑更多出站连接（转发 / OpenClaw / 飞书）
+      net.ipv4.ip_local_port_range: "1024 65535"
+      # SYN 半连接队列上限，防止 SYN Flood 时丢包
+      net.ipv4.tcp_max_syn_backlog: 8192
+
     # 资源限制
     deploy:
       resources:

@@ -4,7 +4,6 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-import orjson
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
@@ -207,25 +206,18 @@ async def receive_webhook(
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    content_type = request.headers.get("content-type", "").lower()
-    parsed_data = None
-    if raw_body and "application/json" in content_type:
-        try:
-            parsed_data = orjson.loads(raw_body)
-        except Exception:
-            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
 
-    # ★ 同步入库：202 之前持久化原始数据
+    # ★ 网关零解析：仅持久化原始 bytes，parsed_data 由 Worker 延迟解析
     event_id = await quick_receive_webhook(
         session=session,
         source=headers.get("x-webhook-source", "unknown"),
         raw_headers=headers,
         raw_body=raw_body_str,
-        parsed_data=parsed_data,
+        parsed_data=None,
     )
     # 显式提交：Worker 使用独立 session，需要在此确保数据已落盘
     await session.commit()
@@ -265,25 +257,18 @@ async def receive_webhook_with_source(
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
-    content_type = request.headers.get("content-type", "").lower()
-    parsed_data = None
-    if raw_body and "application/json" in content_type:
-        try:
-            parsed_data = orjson.loads(raw_body)
-        except Exception:
-            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON"})
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
 
-    # ★ 同步入库：202 之前持久化原始数据
+    # ★ 网关零解析：仅持久化原始 bytes，parsed_data 由 Worker 延迟解析
     event_id = await quick_receive_webhook(
         session=session,
         source=source,
         raw_headers=headers,
         raw_body=raw_body_str,
-        parsed_data=parsed_data,
+        parsed_data=None,
     )
     # 显式提交：Worker 使用独立 session，需要在此确保数据已落盘
     await session.commit()

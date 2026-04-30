@@ -80,6 +80,10 @@ class DBConfig(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=5000, description="SQL 语句超时(ms)")
+    DB_SYNC_COMMIT: str = Field(
+        default="off",
+        description="PostgreSQL synchronous_commit 设置，关闭可提升写入 3-5x，但断电时可能丢失最近 1-2s 数据",
+    )
 
 
 class RedisConfig(BaseSettings):

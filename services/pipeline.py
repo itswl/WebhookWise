@@ -201,12 +201,20 @@ async def _handle_webhook_process_inner(
 
         # 在 session 关闭前提取所有需要的字段到局部变量
         headers = event.headers or {}
-        payload = event.parsed_data or {}
         raw_payload = await decompress_payload_async(event.raw_payload) or ""
         raw_body = raw_payload.encode("utf-8") if isinstance(raw_payload, str) else b""
         source = event.source
 
-    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
+        # 延迟解析：网关零解析模式下 parsed_data 为 None，从 raw_payload 恢复
+        if event.parsed_data is None and raw_payload:
+            try:
+                payload = orjson.loads(raw_payload)
+            except Exception:
+                payload = {}
+        else:
+            payload = event.parsed_data or {}
+
+    logger.debug(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
     WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
     analysis_result = {}
     original_event = None
