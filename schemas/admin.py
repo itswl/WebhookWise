@@ -53,6 +53,29 @@ class ReplayAllResponse(BaseModel):
     event_ids: list[int] = []
 
 
+# ── Stuck Events ─────────────────────────────────────────────────────────────
+
+
+class StuckEventItem(BaseModel):
+    id: int
+    source: str | None = None
+    processing_status: str | None = None
+    retry_count: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class StuckEventListResponse(BaseModel):
+    success: bool
+    data: list[StuckEventItem]
+
+
+class StuckEventRequeueResponse(BaseModel):
+    success: bool
+    message: str
+    event_id: int
+
+
 # ── Config ───────────────────────────────────────────────────────────────────
 
 

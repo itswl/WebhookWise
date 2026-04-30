@@ -8,6 +8,7 @@ from core.logger import logger
 from core.redis_client import get_redis
 from core.runtime_config import _KEY_TO_SUBCONFIG, runtime_config
 from crud.webhook import count_dead_letters, list_dead_letters, replay_dead_letter
+from crud.webhook import list_stuck_events, requeue_stuck_event
 from db.session import get_db_session
 from schemas.admin import (
     ConfigResponse,
@@ -17,6 +18,8 @@ from schemas.admin import (
     PromptReloadResponse,
     ReplayAllResponse,
     ReplayResponse,
+    StuckEventListResponse,
+    StuckEventRequeueResponse,
 )
 
 admin_router = APIRouter()
@@ -257,6 +260,56 @@ async def replay_single_dead_letter(
         return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
         logger.error(f"重放 dead_letter 失败: event_id={event_id}, error={e!s}", exc_info=True)
+        return _fail(str(e), 500)
+
+
+@admin_router.get("/api/admin/stuck-events", response_model=StuckEventListResponse)
+async def get_stuck_events(
+    status: str = Query("", alias="status"),
+    older_than_seconds: int = Query(300, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    session: AsyncSession = Depends(get_db_session),
+):
+    statuses = [s for s in (status or "").split(",") if s.strip()]
+    try:
+        items = await list_stuck_events(session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit)
+        for item in items:
+            if item.get("created_at"):
+                item["created_at"] = item["created_at"].isoformat()
+            if item.get("updated_at"):
+                item["updated_at"] = item["updated_at"].isoformat()
+        return _ok(items, 200)
+    except Exception as e:
+        logger.error(f"查询 stuck-events 失败: {e!s}", exc_info=True)
+        return _fail(str(e), 500)
+
+
+@admin_router.post(
+    "/api/admin/stuck-events/{event_id}/requeue",
+    response_model=StuckEventRequeueResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def requeue_single_stuck_event(
+    event_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        updated = await requeue_stuck_event(session, event_id)
+        if not updated:
+            return _fail(f"事件 {event_id} 不存在或状态不可重放", 404)
+        await session.commit()
+
+        redis = get_redis()
+        await redis.xadd(
+            Config.server.WEBHOOK_MQ_QUEUE,
+            {"event_id": str(event_id), "client_ip": "admin-requeue"},
+            maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+            approximate=True,
+        )
+        logger.info(f"[Admin] Stuck event 重放成功: event_id={event_id}")
+        return _ok(http_status=200, message=f"事件 {event_id} 已重新入队", event_id=event_id)
+    except Exception as e:
+        logger.error(f"重放 stuck-event 失败: event_id={event_id}, error={e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
