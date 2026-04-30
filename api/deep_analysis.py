@@ -15,7 +15,6 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import get_default_engine, get_engine
-from core.compression import decompress_payload_async
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
@@ -23,6 +22,7 @@ from crud.helpers import count_with_timeout
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse
+from services.event_payload import load_event_payload
 
 deep_analysis_router = APIRouter()
 
@@ -105,13 +105,9 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         if not event:
             return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
-        alert_data = event.parsed_data or {}
-        if not alert_data and event.raw_payload:
-            try:
-                raw_text = await decompress_payload_async(event.raw_payload) or ""
-                alert_data = json.loads(raw_text)
-            except (json.JSONDecodeError, TypeError):
-                alert_data = {"raw": await decompress_payload_async(event.raw_payload) or ""}
+        alert_data, raw_text = await load_event_payload(event)
+        if not isinstance(alert_data, dict):
+            alert_data = {"raw": raw_text or ""}
 
         user_question = payload.get("user_question", "")
         engine_pref = payload.get("engine", "auto")
