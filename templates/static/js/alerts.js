@@ -693,8 +693,21 @@ const AlertsModule = {
                 }
 
                 // 更新原始数据标签页
-                if (dataTab && fullData.parsed_data) {
-                    dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
+                if (dataTab) {
+                    if (fullData.parsed_data) {
+                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
+                    } else if (fullData.raw_payload) {
+                        // parsed_data 为 null（零解析模式），fallback 到解压后的 raw_payload
+                        let rawData;
+                        try {
+                            rawData = JSON.parse(fullData.raw_payload);
+                        } catch (e) {
+                            rawData = fullData.raw_payload;
+                        }
+                        dataTab.innerHTML = renderJSONBlock(rawData, '原始数据');
+                    } else {
+                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
+                    }
                 }
 
                 // 更新 AI 分析标签页
