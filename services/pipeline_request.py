@@ -23,8 +23,9 @@ def _parse_webhook_request(
     logger.info(f"[Webhook] 收到请求: IP={client_ip}, Source={requested_source}")
     try:
         raw_hash = hashlib.sha256(raw_body).hexdigest() if raw_body else None
-    except Exception:
+    except Exception as e:
         raw_hash = None
+        logger.warning("[Webhook] 原始载荷哈希计算失败: %s", e)
     logger.debug(f"[Webhook] 原始载荷: size={len(raw_body) if raw_body else 0}, sha256={raw_hash}")
 
     if not payload and raw_body:
