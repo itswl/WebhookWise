@@ -12,6 +12,7 @@ from core.config import Config
 from core.logger import logger
 from db.session import get_db_session
 from models import WebhookEvent
+from schemas.analysis import ReanalysisResponse
 from services.ai_analyzer import analyze_webhook_with_ai
 from services.forward import forward_to_remote
 
@@ -88,7 +89,7 @@ async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int,
 # ── 路由 ─────────────────────────────────────────────────────────────────────
 
 
-@reanalysis_router.post("/api/reanalyze/{webhook_id}")
+@reanalysis_router.post("/api/reanalyze/{webhook_id}", response_model=ReanalysisResponse)
 async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
     """重新分析指定的 webhook，并更新所有引用它的重复告警"""
     try:

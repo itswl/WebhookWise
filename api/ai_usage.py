@@ -12,6 +12,7 @@ from core.logger import logger
 from core.redis_client import get_redis
 from db.session import get_db_session
 from models import AIUsageLog
+from schemas.admin import AIUsageResponse
 
 ai_usage_router = APIRouter()
 
@@ -24,7 +25,7 @@ def _fail(msg: str, status_code: int = 500):
     return JSONResponse(content={"success": False, "error": msg}, status_code=status_code)
 
 
-@ai_usage_router.get("/api/ai-usage")
+@ai_usage_router.get("/api/ai-usage", response_model=AIUsageResponse)
 async def get_ai_usage(period: str = Query("day"), session: AsyncSession = Depends(get_db_session)):
     try:
         cache_bucket = int(time.time() // 60)

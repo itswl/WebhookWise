@@ -4,7 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from crud.webhook import get_client_ip, list_webhook_summaries, list_webhook_summaries_cursor, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
+from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse
 
 webhook_router = APIRouter()
 
@@ -25,7 +26,7 @@ webhook_router = APIRouter()
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
 
 
-@webhook_router.get("/health")
+@webhook_router.get("/health", response_model=HealthResponse)
 async def health_check():
     db_ok = await test_db_connection()
     status = "healthy" if db_ok else "unhealthy"
@@ -43,9 +44,8 @@ async def dashboard():
 # ── Webhooks API ────────────────────────────────────────────────────────────────
 
 
-@webhook_router.get("/api/webhooks", dependencies=[Depends(verify_api_key)])
+@webhook_router.get("/api/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
 async def list_webhooks(
-    page: int = Query(1, ge=1, description="Deprecated: 保留向后兼容，实际不影响查询。请使用 cursor_id 分页。"),
     page_size: int = Query(20, ge=1, le=500),
     fields: str = Query("summary"),
     importance: str = Query(""),
@@ -53,13 +53,6 @@ async def list_webhooks(
     cursor_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    # page 参数已弃用，强制要求使用 cursor_id 分页
-    if page is not None and page > 1 and cursor_id is None:
-        raise HTTPException(
-            status_code=422,
-            detail="page 参数已弃用，请使用 cursor_id 进行游标分页。首页请求无需 cursor_id，后续页面请使用上一页返回的 next_cursor。",
-        )
-
     try:
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
@@ -117,7 +110,7 @@ async def list_webhooks(
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
-@webhook_router.get("/api/webhooks/cursor", dependencies=[Depends(verify_api_key)])
+@webhook_router.get("/api/webhooks/cursor", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
 async def list_webhooks_cursor(
     limit: int = Query(200, ge=1, le=500),
     fields: str = Query("summary"),
@@ -168,7 +161,7 @@ async def list_webhooks_cursor(
             "success": True,
             "data": items,
             "status": 200,
-            "cursor": {
+            "pagination": {
                 "limit": limit,
                 "next_cursor": next_cursor,
                 "has_more": has_more,
@@ -179,7 +172,9 @@ async def list_webhooks_cursor(
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
-@webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)])
+@webhook_router.get(
+    "/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=WebhookDetailResponse
+)
 async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
     result = await session.execute(select(WebhookEvent).filter_by(id=webhook_id))
     event = result.scalars().first()
@@ -194,6 +189,8 @@ async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(ge
 @webhook_router.post(
     "/webhook",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
+    response_model=WebhookReceiveResponse,
+    status_code=202,
 )
 async def receive_webhook(
     request: Request,
@@ -244,6 +241,8 @@ async def receive_webhook(
 @webhook_router.post(
     "/webhook/{source}",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
+    response_model=WebhookReceiveResponse,
+    status_code=202,
 )
 async def receive_webhook_with_source(
     source: str,
