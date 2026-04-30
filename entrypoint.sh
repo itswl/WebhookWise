@@ -3,6 +3,12 @@
 
 set -e  # 遇到错误立即退出
 
+# 动态加载 jemalloc（兼容 x86_64/aarch64）
+JEMALLOC_PATH=$(find /usr/lib -name "libjemalloc.so.2" -print -quit 2>/dev/null)
+if [ -n "$JEMALLOC_PATH" ]; then
+    export LD_PRELOAD="$JEMALLOC_PATH"
+fi
+
 # Worker 模式：跳过 DB 初始化和迁移（由 api 节点负责），直接启动 Poller
 if [ "$RUN_MODE" = "worker" ]; then
     echo "Starting in Worker mode..."
