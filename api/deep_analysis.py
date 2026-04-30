@@ -15,7 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import get_default_engine, get_engine
-from core.compression import decompress_payload
+from core.compression import decompress_payload_async
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
@@ -106,10 +106,10 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         alert_data = event.parsed_data or {}
         if not alert_data and event.raw_payload:
             try:
-                raw_text = decompress_payload(event.raw_payload) or ""
+                raw_text = await decompress_payload_async(event.raw_payload) or ""
                 alert_data = json.loads(raw_text)
             except (json.JSONDecodeError, TypeError):
-                alert_data = {"raw": decompress_payload(event.raw_payload) or ""}
+                alert_data = {"raw": await decompress_payload_async(event.raw_payload) or ""}
 
         user_question = payload.get("user_question", "")
         engine_pref = payload.get("engine", "auto")
@@ -361,7 +361,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             alert_data = webhook_event.parsed_data or {}
             if not alert_data and webhook_event.raw_payload:
                 try:
-                    raw_text = decompress_payload(webhook_event.raw_payload) or ""
+                    raw_text = await decompress_payload_async(webhook_event.raw_payload) or ""
                     alert_data = json.loads(raw_text)
                 except Exception:
                     alert_data = {}

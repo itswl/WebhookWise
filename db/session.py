@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -35,7 +36,8 @@ def _build_engine_kwargs():
 
 
 def _async_url() -> str:
-    return Config.db.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    url = make_url(Config.db.DATABASE_URL)
+    return str(url.set(drivername="postgresql+asyncpg"))
 
 
 # ────────────────────────────────────────

@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer
 
 from core.auth import verify_api_key
 from core.config import Config
@@ -16,7 +15,7 @@ from core.logger import logger
 from core.redis_client import get_redis
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from crud.webhook import get_client_ip, quick_receive_webhook
+from crud.webhook import get_client_ip, list_webhook_summaries, list_webhook_summaries_cursor, quick_receive_webhook
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 
@@ -62,44 +61,46 @@ async def list_webhooks(
         )
 
     try:
-        query = select(WebhookEvent)
-
-        if cursor_id is not None:
-            query = query.where(WebhookEvent.id < cursor_id)
-        if importance:
-            query = query.filter(WebhookEvent.importance == importance)
-        if source:
-            query = query.filter(WebhookEvent.source == source)
-
-        query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
-
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
 
-        if not return_full:
-            query = query.options(
-                defer(WebhookEvent.raw_payload),
-                defer(WebhookEvent.headers),
+        if return_full:
+            # 完整模式：仍走 ORM 实例路径
+            query = select(WebhookEvent)
+            if cursor_id is not None:
+                query = query.where(WebhookEvent.id < cursor_id)
+            if importance:
+                query = query.filter(WebhookEvent.importance == importance)
+            if source:
+                query = query.filter(WebhookEvent.source == source)
+            query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
+
+            result = await session.execute(query)
+            events = list(result.scalars().all())
+
+            has_more = len(events) > page_size
+            if has_more:
+                events = events[:page_size]
+
+            items = []
+            for event in events:
+                d = event.to_dict()
+                d["prev_alert_id"] = event.prev_alert_id
+                beyond_window = bool(event.beyond_window)
+                d["beyond_time_window"] = beyond_window
+                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
+                items.append(d)
+
+            next_cursor = events[-1].id if has_more and events else None
+        else:
+            # 摘要模式：投影查询，避免 ORM 实例化
+            items, has_more, next_cursor = await list_webhook_summaries(
+                session,
+                cursor_id=cursor_id,
+                importance=importance,
+                source=source,
+                page_size=page_size,
             )
-
-        result = await session.execute(query)
-        events = list(result.scalars().all())
-
-        # page_size+1 策略：多取一条判断 has_more
-        has_more = len(events) > page_size
-        if has_more:
-            events = events[:page_size]
-
-        items = []
-        for event in events:
-            d = event.to_dict() if return_full else event.to_summary_dict()
-            d["prev_alert_id"] = event.prev_alert_id
-            beyond_window = bool(event.beyond_window)
-            d["beyond_time_window"] = beyond_window
-            d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-            items.append(d)
-
-        next_cursor = events[-1].id if has_more and events else None
 
         return {
             "success": True,
@@ -126,38 +127,42 @@ async def list_webhooks_cursor(
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
-        query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
-
-        if importance:
-            query = query.filter(WebhookEvent.importance == importance)
-        if source:
-            query = query.filter(WebhookEvent.source == source)
-        if cursor_id is not None:
-            query = query.filter(WebhookEvent.id < cursor_id)
-
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
 
-        if not return_full:
-            query = query.options(
-                defer(WebhookEvent.raw_payload),
-                defer(WebhookEvent.headers),
+        if return_full:
+            # 完整模式：仍走 ORM 实例路径
+            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            if importance:
+                query = query.filter(WebhookEvent.importance == importance)
+            if source:
+                query = query.filter(WebhookEvent.source == source)
+            if cursor_id is not None:
+                query = query.filter(WebhookEvent.id < cursor_id)
+
+            result = await session.execute(query.limit(limit))
+            events = result.scalars().all()
+
+            items = []
+            for event in events:
+                d = event.to_dict()
+                d["prev_alert_id"] = event.prev_alert_id
+                beyond_window = bool(event.beyond_window)
+                d["beyond_time_window"] = beyond_window
+                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
+                items.append(d)
+
+            has_more = len(events) == limit
+            next_cursor = events[-1].id if has_more else None
+        else:
+            # 摘要模式：投影查询，避免 ORM 实例化
+            items, has_more, next_cursor = await list_webhook_summaries_cursor(
+                session,
+                cursor_id=cursor_id,
+                importance=importance,
+                source=source,
+                limit=limit,
             )
-
-        result = await session.execute(query.limit(limit))
-        events = result.scalars().all()
-
-        items = []
-        for event in events:
-            d = event.to_dict() if return_full else event.to_summary_dict()
-            d["prev_alert_id"] = event.prev_alert_id
-            beyond_window = bool(event.beyond_window)
-            d["beyond_time_window"] = beyond_window
-            d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-            items.append(d)
-
-        has_more = len(events) == limit
-        next_cursor = events[-1].id if has_more else None
 
         return {
             "success": True,
