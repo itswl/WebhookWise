@@ -67,12 +67,10 @@ echo "✅ 数据库约束检查完成"
 
 # 5. Alembic 迁移（增量 schema 变更）
 echo "[5/5] Alembic 迁移..."
-cd /app && alembic upgrade head 2>&1 || {
-    echo "⚠️  Alembic upgrade 失败，尝试 stamp head 后重试..."
-    alembic stamp head 2>&1
-    alembic upgrade head 2>&1 || echo "⚠️  Alembic 迁移最终失败，依赖应用层 schema 保障"
-}
-echo "✅ Alembic 迁移完成"
+if ! cd /app && alembic upgrade head 2>&1; then
+    echo "⚠️ Alembic 迁移失败，请检查日志。应用将继续启动（_ensure_schema 会补建关键列）"
+fi
+echo "✅ Alembic 迁移检查完成"
 
 echo "======================================"
 echo "数据库准备完成，启动应用服务..."
