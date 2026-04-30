@@ -1,7 +1,15 @@
-"""RecoveryPoller — 补偿轮询器。
+"""RecoveryPoller — 补偿轮询器（Outbox Pattern 兆底补偿）。
 
 周期性扫描数据库中长期处于 received/analyzing 状态的僵尸事件，
 以平缓速率重新分发处理，实现削峰填谷和 At-Least-Once 语义。
+
+── Outbox Pattern 兆底补偿说明 ──
+Webhook 接收端（api/webhook.py）的两步操作：
+  1. session.commit()  → 将事件写入 DB（processing_status='received'）
+  2. redis.xadd()      → 投递到 Redis Stream 触发 Worker 处理
+若步骤 2 失败（Redis 不可用、网络闪断等），事件将永远停留在 'received' 状态。
+RecoveryPoller 正是这一场景的兆底补偿：扫描 processing_status IN ('received', 'analyzing', 'failed')
+且 created_at 超过阈值的记录，重新触发 pipeline 处理，确保没有事件被遗漏。
 """
 
 from __future__ import annotations
@@ -147,7 +155,14 @@ class RecoveryPoller:
                 await redis.eval(_RELEASE_LOCK_LUA, 1, _LOCK_KEY, lock_value)
 
     async def _do_recover(self) -> None:
-        """实际恢复逻辑：查找僵尸事件并重新处理。"""
+        """实际恢复逻辑：查找僵尸事件并重新处理。
+
+        Outbox Pattern 兆底补偿：扫描 processing_status IN ('received', 'analyzing', 'failed')
+        且 created_at 超过阻塞阈值的记录。这覆盖了以下场景：
+        - DB 已写入但 Redis xadd 失败（事件停留在 'received'）
+        - Worker 处理中崩溃（事件停留在 'analyzing'）
+        - 可重试异常后被 pipeline 退回 'received' 等待重试
+        """
         threshold = datetime.now() - timedelta(
             seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS,
         )

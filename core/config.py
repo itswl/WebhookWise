@@ -1,5 +1,6 @@
 import logging
 import os
+import socket
 import warnings as _warnings
 from typing import Any
 
@@ -20,7 +21,7 @@ class ServerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    WORKER_ID: str = Field(default="iMacBook-Air.local-39865")
+    WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
     METRICS_PORT: int = Field(default=0)
