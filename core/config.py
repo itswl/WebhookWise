@@ -313,10 +313,9 @@ class _AppConfig(BaseSettings):
                 config_warnings.append(
                     "API_KEY 未配置，生产环境不建议启用（建议设置 API_KEY 或开启 ALLOW_UNAUTHENTICATED_ADMIN 仅用于本地）"
                 )
-        if self.ai.ENABLE_AI_ANALYSIS and not self.ai.OPENAI_API_KEY:
-            config_warnings.append("ENABLE_AI_ANALYSIS=True 但 OPENAI_API_KEY 未配置，AI 分析将失败")
-        if self.ai.ENABLE_FORWARD and not self.ai.FORWARD_URL:
-            config_warnings.append("ENABLE_FORWARD=True 但 FORWARD_URL 未配置")
+        # 注意：ENABLE_AI_ANALYSIS / OPENAI_API_KEY / ENABLE_FORWARD / FORWARD_URL
+        # 均为 [动态] 配置，由 RuntimeConfig 从数据库加载后覆盖，
+        # 此处 .env 默认值不代表最终运行值，故不在启动阶段校验。
 
         if config_warnings:
             for w in config_warnings:
