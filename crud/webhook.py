@@ -645,6 +645,46 @@ async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+async def list_stuck_events(
+    session: AsyncSession,
+    *,
+    statuses: list[str] | None = None,
+    older_than_seconds: int = 300,
+    limit: int = 50,
+) -> list[dict]:
+    statuses = statuses or ["received", "analyzing", "failed"]
+    threshold = datetime.now() - timedelta(seconds=max(0, older_than_seconds))
+
+    stmt = (
+        select(
+            WebhookEvent.id,
+            WebhookEvent.source,
+            WebhookEvent.created_at,
+            WebhookEvent.updated_at,
+            WebhookEvent.retry_count,
+            WebhookEvent.processing_status,
+        )
+        .where(WebhookEvent.processing_status.in_(statuses))
+        .where(WebhookEvent.created_at < threshold)
+        .order_by(WebhookEvent.created_at.asc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.all()]
+
+
+async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
+    """将 received/analyzing/failed 事件重置为 received，供 MQ/RecoveryPoller 重新处理。"""
+    stmt = (
+        update(WebhookEvent)
+        .where(WebhookEvent.id == event_id)
+        .where(WebhookEvent.processing_status.in_(["received", "analyzing", "failed"]))
+        .values(processing_status="received")
+    )
+    result = await session.execute(stmt)
+    return bool(result.rowcount)
+
+
 # ── 运行时配置 CRUD ──
 
 
