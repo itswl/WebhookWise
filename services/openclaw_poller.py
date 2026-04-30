@@ -432,7 +432,7 @@ async def _poll_pending_analyses_inner():
 
             result = await session.execute(
                 select(DeepAnalysis)
-                .options(defer(DeepAnalysis.analysis_result), defer(DeepAnalysis.user_question))
+                .options(defer(DeepAnalysis.user_question))
                 .filter_by(status="pending")
                 .order_by(DeepAnalysis.created_at.asc())
                 .limit(10)
