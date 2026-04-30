@@ -5,29 +5,41 @@ from __future__ import annotations
 import asyncio
 import gzip
 
+import zstandard as zstd
+
 # 低于此阈值的 payload 不压缩，节省 CPU
 COMPRESS_THRESHOLD_BYTES = 4096
 
+# Zstandard 编解码器（模块级单例，线程安全）
+_compressor = zstd.ZstdCompressor(level=3)
+_decompressor = zstd.ZstdDecompressor()
+
+# Magic headers
+_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+_GZIP_MAGIC = b"\x1f\x8b"
+
 
 def compress_payload(text: str | bytes | None) -> bytes | None:
-    """将文本 payload gzip 压缩为 bytes。小于阈值时直接返回 UTF-8 bytes。"""
+    """将文本 payload 使用 Zstandard 压缩为 bytes。小于阈值时直接返回 UTF-8 bytes。"""
     if not text:
         return None
     raw = text.encode("utf-8") if isinstance(text, str) else text
     if len(raw) < COMPRESS_THRESHOLD_BYTES:
         return raw
-    return gzip.compress(raw, compresslevel=6)
+    return _compressor.compress(raw)
 
 
 def decompress_payload(data: bytes | str | None) -> str | None:
-    """将 gzip 压缩的 bytes 解压为文本。兼容迁移前的未压缩数据。"""
+    """解压 bytes 为文本。自动识别 Zstd/Gzip/原始数据，向后兼容已有 gzip 数据。"""
     if data is None:
         return None
     if isinstance(data, str):
         return data
-    if data[:2] == b"\x1f\x8b":
+    if data[:4] == _ZSTD_MAGIC:
+        return _decompressor.decompress(data).decode("utf-8")
+    if data[:2] == _GZIP_MAGIC:
         return gzip.decompress(data).decode("utf-8")
-    # 迁移前的旧数据：直接 decode
+    # 无 magic header：当作原始 UTF-8 文本处理
     return data.decode("utf-8")
 
 

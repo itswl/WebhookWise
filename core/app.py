@@ -4,6 +4,7 @@ import socket
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -148,7 +149,7 @@ async def lifespan(app: FastAPI):
     stop_log_listener()
 
 
-app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
+app = FastAPI(title="Webhook AI Assistant", default_response_class=ORJSONResponse, lifespan=lifespan)
 
 
 setup_metrics(app)

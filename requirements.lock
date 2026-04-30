@@ -54,10 +54,14 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
+hiredis==3.3.1
+    # via -r requirements.txt
 httpcore==1.0.9
     # via httpx
 httptools==0.7.1
-    # via uvicorn
+    # via
+    #   -r requirements.txt
+    #   uvicorn
 httpx==0.27.0
     # via
     #   -r requirements.txt
@@ -190,10 +194,14 @@ uvicorn==0.29.0
     #   fastapi-cli
     #   fastapi-cloud-cli
 uvloop==0.22.1
-    # via uvicorn
+    # via
+    #   -r requirements.txt
+    #   uvicorn
 watchfiles==1.1.1
     # via uvicorn
 websocket-client==1.7.0
     # via -r requirements.txt
 websockets==16.0
     # via uvicorn
+zstandard==0.25.0
+    # via -r requirements.txt

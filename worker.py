@@ -1,6 +1,11 @@
 """独立 Worker 进程入口 - 仅运行 Poller 调度器"""
 
 import asyncio
+
+import uvloop
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 import signal
 
 from core.http_client import close_http_client, get_http_client
