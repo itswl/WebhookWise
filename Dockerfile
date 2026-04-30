@@ -73,8 +73,10 @@ USER appuser
 EXPOSE 8000
 
 # 健康检查（使用 Python 原生方式，无需 curl）
+# - api/all 模式：探测 HTTP /health
+# - worker 模式：探测 Redis/DB 连通性（worker 不监听 8000，避免误判为 unhealthy）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD bash -lc 'if [ "$RUN_MODE" = "worker" ]; then python3 - <<'"'"'PY'"'"'\nimport asyncio\nfrom core.redis_client import get_redis\nfrom db.session import init_engine, test_db_connection\n\nasync def main():\n    await init_engine()\n    ok = await test_db_connection()\n    if not ok:\n        raise SystemExit(1)\n    r = get_redis()\n    await r.ping()\n\nasyncio.run(main())\nPY\nelse python3 -c "import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\").read()"; fi' || exit 1
 
 # 设置启动入口点（自动执行数据库初始化和迁移）
 ENTRYPOINT ["./entrypoint.sh"]
