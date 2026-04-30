@@ -59,6 +59,8 @@ def fill_event_fields(
     event.duplicate_count = duplicate_count
     event.beyond_window = beyond_window
     event.processing_status = processing_status
+    event.failure_reason = None
+    event.error_message = None
     if last_notified_at is not None:
         event.last_notified_at = last_notified_at
     if headers is not None:

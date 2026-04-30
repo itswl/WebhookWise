@@ -183,6 +183,8 @@ async def _upsert_new_event(
             ai_analysis=ai_analysis,
             importance=importance,
             processing_status="completed",
+            failure_reason=None,
+            error_message=None,
             forward_status=forward_status,
             is_duplicate=0,
             duplicate_of=None,
