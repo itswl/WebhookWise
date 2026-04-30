@@ -1,6 +1,7 @@
 """Webhook 处理主管线 — 纯协调层，业务逻辑委托给子模块。"""
 
 import asyncio
+import time
 
 import httpx
 import orjson
@@ -14,10 +15,13 @@ except ImportError:
 
 from api import InvalidJsonError
 from core.compression import decompress_payload_async
+from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
     WEBHOOK_DEAD_LETTER_TOTAL,
     WEBHOOK_NOISE_REDUCED_TOTAL,
+    WEBHOOK_PROCESSING_DURATION_SECONDS,
+    WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
     sanitize_source,
@@ -136,6 +140,8 @@ async def _update_processing_status(event_id: int | None, status: str) -> None:
             await session.execute(
                 update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status)
             )
+        set_log_context(processing_status=status)
+        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=status).inc()
     except Exception as e:
         logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
 
@@ -169,6 +175,8 @@ async def handle_webhook_process(
     并发控制由 Redis Stream 的 count 参数自然限流，无需进程内 Semaphore。
     """
     set_trace_id(generate_trace_id(event_id=event_id))
+    clear_log_context()
+    set_log_context(event_id=event_id)
     task = asyncio.current_task()
     if task:
         _running_tasks.add(task)
@@ -185,6 +193,9 @@ async def _handle_webhook_process_inner(
     event_id: int,
     client_ip: str = "",
 ):
+    start_perf = time.perf_counter()
+    outcome = "unknown"
+    metric_source = "unknown"
     # ── 合并会话：加载事件 + 更新状态为 analyzing（单次 checkout/checkin）──
     async with session_scope() as session:
         stmt = (
@@ -214,6 +225,9 @@ async def _handle_webhook_process_inner(
         else:
             payload = event.parsed_data or {}
 
+    set_log_context(source=source or "unknown", processing_status="analyzing", route_type="ai")
+    metric_source = sanitize_source(source or "")
+    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
     WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
     analysis_result = {}
@@ -223,9 +237,12 @@ async def _handle_webhook_process_inner(
         try:
             request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
         except InvalidJsonError:
+            outcome = "invalid_json"
             return
 
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
+        set_log_context(alert_hash=alert_hash, source=request_context.source or "unknown")
+        metric_source = sanitize_source(request_context.source)
 
         # 分布式锁：保护同一 alert_hash 的并发分析
         # got_lock=True: 本 Worker 负责执行 AI 分析
@@ -239,6 +256,7 @@ async def _handle_webhook_process_inner(
         original_event = analysis_resolution.original_event
 
         if analysis_resolution.is_reused:
+            set_log_context(route_type="cache")
             # ── 轻量路径：缓存复用的 Worker 跳过降噪重算和转发 ──
             logger.info("[Pipeline] 缓存命中轻量路径：跳过降噪计算与转发（由持锁 Worker 负责）")
             persisted = await persist_webhook_with_noise_context(
@@ -260,6 +278,9 @@ async def _handle_webhook_process_inner(
             ).inc()
 
             logger.info(f"[Pipeline] 轻量路径处理完成: id={save_result.webhook_id}, reused=True")
+            set_log_context(processing_status="completed")
+            outcome = "completed"
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
 
             if event_id is None:
                 await _update_processing_status(event_id, "completed")
@@ -320,6 +341,9 @@ async def _handle_webhook_process_inner(
         logger.info(
             f"[Pipeline] 处理流程结束: id={save_result.webhook_id}, forwarded={forward_decision.should_forward}"
         )
+        set_log_context(processing_status="completed")
+        outcome = "completed"
+        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
 
         # processing_status 已在 save_webhook_data 事务中统一设为 "completed"，
         # 仅当无 event_id（向后兼容旧路径）时才单独更新。
@@ -343,6 +367,7 @@ async def _handle_webhook_process_inner(
                 )
                 await _update_processing_status(event_id, "dead_letter")
                 WEBHOOK_DEAD_LETTER_TOTAL.inc()
+                outcome = "dead_letter"
                 await _send_dead_letter_alert(event_id, current_retry, e)
             else:
                 logger.error(
@@ -354,6 +379,7 @@ async def _handle_webhook_process_inner(
                     exc_info=True,
                 )
                 await _update_processing_status(event_id, "received")
+                outcome = "retry"
         else:
             logger.warning(
                 "Webhook 处理失败（不可重试，标记为死信）| event_id=%s | error=%s | type=%s",
@@ -363,5 +389,9 @@ async def _handle_webhook_process_inner(
             )
             await _update_processing_status(event_id, "dead_letter")
             WEBHOOK_DEAD_LETTER_TOTAL.inc()
+            outcome = "dead_letter"
             await _send_dead_letter_alert(event_id, 0, e)
         return
+    finally:
+        duration = time.perf_counter() - start_perf
+        WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
