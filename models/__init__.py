@@ -56,6 +56,8 @@ class WebhookEvent(Base):
     processing_status = Column(String(20), default="received", nullable=False, index=True)
     # 状态流转: received → analyzing → completed → failed / dead_letter
     retry_count = Column(Integer, default=0, nullable=False)  # RecoveryPoller 重试计数
+    failure_reason = Column(String(500), nullable=True)
+    error_message = Column(Text, nullable=True)
 
     # 转发状态
     forward_status = Column(String(20))  # success, failed, skipped
@@ -108,6 +110,8 @@ class WebhookEvent(Base):
             "duplicate_count": self.duplicate_count,
             "beyond_window": self.beyond_window,
             "forward_status": self.forward_status,
+            "failure_reason": self.failure_reason,
+            "error_message": self.error_message,
             "summary": summary,  # AI 摘要（而非完整分析）
             "alert_info": alert_info,  # 告警关键信息（而非完整 parsed_data）
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -129,6 +133,8 @@ class WebhookEvent(Base):
             "importance": self.importance,
             "processing_status": self.processing_status,
             "forward_status": self.forward_status,
+            "failure_reason": self.failure_reason,
+            "error_message": self.error_message,
             "is_duplicate": self.is_duplicate,
             "duplicate_of": self.duplicate_of,
             "duplicate_count": self.duplicate_count,

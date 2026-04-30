@@ -446,6 +446,13 @@ const AlertsModule = {
         html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
+        const statusMap = { received: '已接收', analyzing: '分析中', completed: '已完成', failed: '失败', dead_letter: '死信' };
+        const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
+        html += '<div class="info-item"><div class="info-label">处理状态</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
+        if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
+            const failure = webhook.failure_reason || webhook.error_message || '-';
+            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">失败原因</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
+        }
         if (webhook.is_duplicate) {
             html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
             if (webhook.prev_alert_id) {
@@ -458,14 +465,9 @@ const AlertsModule = {
             html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
 
             // 显示重复类型
-            const isWithinWindow = webhook.is_within_window || false;
-            const isBeyondWindow = webhook.beyond_time_window || false;
             let duplicateType = '未知';
-            if (isBeyondWindow) {
-                duplicateType = '窗口外重复（超过24小时）';
-            } else if (isWithinWindow) {
-                duplicateType = '窗口内重复（24小时内）';
-            }
+            if (webhook.duplicate_type === 'beyond_window') duplicateType = '窗口外重复（超过时间窗口）';
+            if (webhook.duplicate_type === 'within_window') duplicateType = '窗口内重复（时间窗口内）';
             html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + escapeHtml(String(duplicateType)) + '</div></div>';
         }
         html += '</div>';
