@@ -19,8 +19,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
 # 安装 jemalloc 内存分配器（运行阶段）
 # jemalloc 替换 glibc malloc，减少内存碎片 30-40%，降低 RSS 占用
 # 对 Python 多 Worker 长时间运行的服务尤其显著
+# LD_PRELOAD 在 entrypoint.sh 中动态设置，兼容 x86_64/aarch64
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && rm -rf /var/lib/apt/lists/*
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 appuser
