@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 
 from core.config import Config
 from core.http_client import get_http_client
-from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL
+from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL, OPENAI_ERRORS_TOTAL
 from core.redis_client import get_redis
 from core.utils import feishu_cb
 from services.ai_parser import _parse_ai_analysis_response
@@ -29,6 +29,19 @@ AnalysisResult = dict[str, Any]
 
 # AsyncOpenAI 模块级单例，避免每次调用都新建客户端导致连接池泄漏
 _openai_client: AsyncOpenAI | None = None
+
+
+def _classify_openai_error(err: Exception) -> str:
+    name = type(err).__name__
+    if isinstance(err, httpx.TimeoutException):
+        return "timeout"
+    if name in {"RateLimitError", "APIRateLimitError"}:
+        return "rate_limit"
+    if name in {"APITimeoutError", "TimeoutError"}:
+        return "timeout"
+    if isinstance(err, ValueError) and ("空响应" in str(err) or "None 内容" in str(err)):
+        return "empty_response"
+    return "other"
 
 
 def _get_openai_client() -> AsyncOpenAI:
@@ -196,6 +209,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
         return analysis_result
 
     except Exception as e:
+        OPENAI_ERRORS_TOTAL.labels(type=_classify_openai_error(e)).inc()
         logger.error(f"OpenAI API 调用失败: {e!s}")
         raise
 
@@ -251,6 +265,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
         return analysis_result, tokens_in, tokens_out
 
     except Exception as e:
+        OPENAI_ERRORS_TOTAL.labels(type=_classify_openai_error(e)).inc()
         logger.error(f"OpenAI API 调用失败: {e!s}")
         raise
 
