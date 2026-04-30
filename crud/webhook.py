@@ -12,8 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
 from core.config import Config
 from core.logger import logger
-
-# We will import the purely utility functions back from core.utils
 from core.utils import generate_alert_hash  # noqa: F401
 from db.session import session_scope
 from models import FailedForward, SystemConfig, WebhookEvent
@@ -552,6 +550,117 @@ async def delete_failed_forward(
     except Exception as e:
         logger.error(f"删除转发失败记录失败: {e!s}")
         return False
+
+
+# ── 投影查询（摘要列表专用） ──
+
+# 摘要列表需要的列（避免加载 raw_payload / headers 等大字段）
+_SUMMARY_COLUMNS = [
+    WebhookEvent.id,
+    WebhookEvent.source,
+    WebhookEvent.client_ip,
+    WebhookEvent.timestamp,
+    WebhookEvent.importance,
+    WebhookEvent.is_duplicate,
+    WebhookEvent.duplicate_of,
+    WebhookEvent.duplicate_count,
+    WebhookEvent.beyond_window,
+    WebhookEvent.forward_status,
+    WebhookEvent.ai_analysis,
+    WebhookEvent.parsed_data,
+    WebhookEvent.created_at,
+    WebhookEvent.prev_alert_id,
+]
+
+
+def _row_to_summary_dict(row) -> dict:
+    """将投影查询 Row 转换为摘要字典，与 WebhookEvent.to_summary_dict() 输出一致。"""
+    from adapters.summary_extractors import extract_summary_fields
+
+    ai_analysis = row.ai_analysis
+    summary = ai_analysis.get("summary", "") if ai_analysis else None
+    alert_info = extract_summary_fields(row.source, row.parsed_data)
+
+    beyond_window = bool(row.beyond_window)
+    is_dup = bool(row.is_duplicate)
+
+    return {
+        "id": row.id,
+        "source": row.source,
+        "client_ip": row.client_ip,
+        "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+        "importance": row.importance,
+        "is_duplicate": row.is_duplicate,
+        "duplicate_of": row.duplicate_of,
+        "duplicate_count": row.duplicate_count,
+        "beyond_window": row.beyond_window,
+        "forward_status": row.forward_status,
+        "summary": summary,
+        "alert_info": alert_info,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "prev_alert_id": row.prev_alert_id,
+        "beyond_time_window": beyond_window,
+        "is_within_window": is_dup and not beyond_window,
+    }
+
+
+async def list_webhook_summaries(
+    session: AsyncSession,
+    *,
+    cursor_id: int | None = None,
+    importance: str = "",
+    source: str = "",
+    page_size: int = 20,
+) -> tuple[list[dict], bool, int | None]:
+    """投影查询：仅 SELECT 摘要字段，返回 (items, has_more, next_cursor)。"""
+    query = select(*_SUMMARY_COLUMNS)
+
+    if cursor_id is not None:
+        query = query.where(WebhookEvent.id < cursor_id)
+    if importance:
+        query = query.where(WebhookEvent.importance == importance)
+    if source:
+        query = query.where(WebhookEvent.source == source)
+
+    query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
+    result = await session.execute(query)
+    rows = result.all()
+
+    has_more = len(rows) > page_size
+    if has_more:
+        rows = rows[:page_size]
+
+    items = [_row_to_summary_dict(r) for r in rows]
+    next_cursor = rows[-1].id if has_more and rows else None
+    return items, has_more, next_cursor
+
+
+async def list_webhook_summaries_cursor(
+    session: AsyncSession,
+    *,
+    cursor_id: int | None = None,
+    importance: str = "",
+    source: str = "",
+    limit: int = 200,
+) -> tuple[list[dict], bool, int | None]:
+    """投影查询（timestamp+id 双排序），返回 (items, has_more, next_cursor)。"""
+    query = select(*_SUMMARY_COLUMNS)
+
+    if importance:
+        query = query.where(WebhookEvent.importance == importance)
+    if source:
+        query = query.where(WebhookEvent.source == source)
+    if cursor_id is not None:
+        query = query.where(WebhookEvent.id < cursor_id)
+
+    query = query.order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc()).limit(limit)
+    result = await session.execute(query)
+    rows = result.all()
+
+    has_more = len(rows) == limit
+    items = [_row_to_summary_dict(r) for r in rows]
+    next_cursor = rows[-1].id if has_more and rows else None
+    return items, has_more, next_cursor
 
 
 # ── 运行时配置 CRUD ──

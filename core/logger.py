@@ -4,6 +4,8 @@ import queue
 import sys
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
+from pythonjsonlogger import jsonlogger
+
 from core.config import Config
 from core.trace import get_trace_id
 
@@ -15,14 +17,6 @@ class TraceIdFilter(logging.Filter):
         record.trace_id = get_trace_id() or "-"
         return True
 
-
-# 尝试导入结构化日志库
-try:
-    from pythonjsonlogger import jsonlogger
-
-    HAS_JSON_LOGGER = True
-except ImportError:
-    HAS_JSON_LOGGER = False
 
 # 全局 QueueListener 引用，供 shutdown 时调用 stop()
 _log_listener: QueueListener | None = None
@@ -71,14 +65,11 @@ def setup_logger():
     )
     file_handler.setLevel(log_level)
 
-    # 文件使用结构化 JSON 日志（如果可用且配置允许）
-    if HAS_JSON_LOGGER:
-        json_formatter = jsonlogger.JsonFormatter(
-            "%(asctime)s %(name)s %(levelname)s %(trace_id)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-        )
-        file_handler.setFormatter(json_formatter)
-    else:
-        file_handler.setFormatter(console_formatter)
+    # 文件使用结构化 JSON 日志
+    json_formatter = jsonlogger.JsonFormatter(
+        "%(asctime)s %(name)s %(levelname)s %(trace_id)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    file_handler.setFormatter(json_formatter)
 
     # 控制台处理器
     console_handler = logging.StreamHandler(sys.stdout)

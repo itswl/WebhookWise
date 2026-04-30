@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 
 # 低于此阈值的 payload 不压缩，节省 CPU
@@ -28,3 +29,15 @@ def decompress_payload(data: bytes | str | None) -> str | None:
         return gzip.decompress(data).decode("utf-8")
     # 迁移前的旧数据：直接 decode
     return data.decode("utf-8")
+
+
+async def decompress_payload_async(data: bytes | str | None) -> str | None:
+    """异步解压：大 payload 卸载到线程池，与 compress_payload 对称处理。"""
+    if data is None:
+        return None
+    if isinstance(data, str):
+        return data
+    # 超过阈值时卸载到线程池，避免阻塞事件循环
+    if len(data) > COMPRESS_THRESHOLD_BYTES:
+        return await asyncio.to_thread(decompress_payload, data)
+    return decompress_payload(data)

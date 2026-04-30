@@ -13,7 +13,7 @@ except ImportError:
     _QueryCanceledError = None  # 兼容无 asyncpg 环境
 
 from api import InvalidJsonError
-from core.compression import decompress_payload
+from core.compression import decompress_payload_async
 from core.logger import logger
 from core.metrics import (
     WEBHOOK_DEAD_LETTER_TOTAL,
@@ -202,7 +202,7 @@ async def _handle_webhook_process_inner(
         # 在 session 关闭前提取所有需要的字段到局部变量
         headers = event.headers or {}
         payload = event.parsed_data or {}
-        raw_payload = decompress_payload(event.raw_payload) or ""
+        raw_payload = await decompress_payload_async(event.raw_payload) or ""
         raw_body = raw_payload.encode("utf-8") if isinstance(raw_payload, str) else b""
         source = event.source
 
