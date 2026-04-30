@@ -214,6 +214,9 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
 }
 
 .badge-high { background: #fee2e2; color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
