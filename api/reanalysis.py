@@ -104,7 +104,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
         return {
             "success": True,
-            "status": 200,
+            "status": "success",
             "analysis": analysis_result,
             "original_importance": old_importance,
             "new_importance": new_importance,
