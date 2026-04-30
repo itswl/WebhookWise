@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -64,6 +64,26 @@ async def init_engine():
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.db.DATABASE_URL.split('@')[-1]}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
+    _setup_pool_metrics(_engine)
+
+
+def _setup_pool_metrics(engine: AsyncEngine):
+    """注册连接池事件监听，通过回调更新 Prometheus Gauge。"""
+    from core.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
+
+    pool = engine.sync_engine.pool
+
+    @event.listens_for(pool, "checkout")
+    def _on_checkout(dbapi_conn, connection_record, connection_proxy):
+        DB_POOL_CHECKED_OUT.inc()
+
+    @event.listens_for(pool, "checkin")
+    def _on_checkin(dbapi_conn, connection_record):
+        DB_POOL_CHECKED_OUT.dec()
+
+    # 初始化连接池容量
+    DB_POOL_SIZE.set(pool.size() + pool.overflow())
+    _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin → Prometheus Gauge)")
 
 
 async def dispose_engine():

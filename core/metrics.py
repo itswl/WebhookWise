@@ -1,3 +1,5 @@
+import os
+
 import prometheus_client
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -67,7 +69,11 @@ AI_ANALYSIS_DURATION_SECONDS = Histogram(
 )
 
 # 5. 系统状态指标
-DATABASE_EVENTS_COUNT = Gauge("database_webhook_events_count", "Current number of webhook events in active table")
+DATABASE_EVENTS_COUNT = Gauge(
+    "database_webhook_events_count",
+    "Current number of webhook events in active table",
+    multiprocess_mode="liveall",
+)
 
 # 6. 内部状态水位线指标
 WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL = Counter(
@@ -83,6 +89,7 @@ WEBHOOK_RECOVERY_POLLED_TOTAL = Counter(
 WEBHOOK_RUNNING_TASKS = Gauge(
     "webhook_running_tasks",
     "当前正在运行的 webhook 处理任务数",
+    multiprocess_mode="livesum",
 )
 
 WEBHOOK_DEAD_LETTER_TOTAL = Counter(
@@ -93,18 +100,21 @@ WEBHOOK_DEAD_LETTER_TOTAL = Counter(
 DB_POOL_CHECKED_OUT = Gauge(
     "db_pool_checked_out",
     "当前已借出的数据库连接数",
+    multiprocess_mode="livesum",
 )
 
 DB_POOL_SIZE = Gauge(
     "db_pool_size",
     "数据库连接池总容量（pool_size + max_overflow）",
+    multiprocess_mode="liveall",
 )
 
 
 def update_db_pool_metrics():
-    """更新数据库连接池指标。
+    """更新数据库连接池容量指标。
 
-    在 Prometheus scrape 时通过自定义 Collector 自动调用，也可手动调用。
+    checked_out 已通过 Pool 事件回调实时更新（见 db/session.py），
+    此函数仅更新连接池容量上限（极少变化）。
     """
     try:
         from db.session import get_engine
@@ -113,10 +123,9 @@ def update_db_pool_metrics():
         if engine is None:
             return
         pool = engine.sync_engine.pool
-        DB_POOL_CHECKED_OUT.set(pool.checkedout())
         DB_POOL_SIZE.set(pool.size() + pool.overflow())
-    except Exception:
-        pass
+    except (AttributeError, RuntimeError) as e:
+        logger.warning("[Metrics] 无法获取 DB 连接池容量: %s", e)
 
 
 class _DBPoolCollector:
@@ -134,7 +143,14 @@ prometheus_client.REGISTRY.register(_DBPoolCollector())
 
 
 def setup_metrics(app):
-    """初始化并挂载 Prometheus 指标"""
+    """初始化并挂载 Prometheus 指标。
+
+    自动检测 PROMETHEUS_MULTIPROC_DIR 环境变量：
+    - 已设置：多进程模式，使用 MultiProcessCollector 聚合各 Worker 指标
+    - 未设置：单进程模式，保持 Instrumentator 原有行为
+    """
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+
     instrumentator = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
@@ -145,8 +161,27 @@ def setup_metrics(app):
     )
     instrumentator.instrument(app)
 
-    if Config.server.METRICS_PORT > 0 and Config.server.METRICS_PORT != Config.server.PORT:
-        # 启动独立的 Prometheus metrics 服务器
+    if multiproc_dir:
+        # ── 多进程模式：Gunicorn 多 Worker 聚合 ──
+        from prometheus_client import (
+            CONTENT_TYPE_LATEST,
+            CollectorRegistry,
+            generate_latest,
+            multiprocess,
+        )
+        from starlette.responses import Response
+
+        logger.info("[Metrics] Prometheus 多进程模式: %s", multiproc_dir)
+
+        async def metrics_endpoint(request):
+            registry = CollectorRegistry()
+            multiprocess.MultiProcessCollector(registry)
+            data = generate_latest(registry)
+            return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
+        app.add_route("/metrics", metrics_endpoint, methods=["GET"])
+    elif Config.server.METRICS_PORT > 0 and Config.server.METRICS_PORT != Config.server.PORT:
+        # ── 单进程 + 独立端口模式 ──
         try:
             prometheus_client.start_http_server(port=Config.server.METRICS_PORT, addr=Config.server.HOST)
             logger.info(f"[Metrics] 成功启动独立的 Prometheus 监控端口: {Config.server.METRICS_PORT}")
@@ -159,7 +194,7 @@ def setup_metrics(app):
                 logger.error(f"[Metrics] 启动独立监控端口失败: {e}")
         # 注意：无论是否绑定成功，都不向主 FastAPI 挂载 /metrics 路由，实现端口隔离。
     else:
-        # 复用主程序的端口
+        # ── 单进程 + 复用主端口模式 ──
         logger.info(f"[Metrics] 复用主程序端口暴露 Prometheus 监控: {Config.server.PORT}/metrics")
         instrumentator.expose(app, endpoint="/metrics")
 

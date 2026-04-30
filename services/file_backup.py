@@ -1,6 +1,5 @@
 """文件备份服务 — 从 crud/webhook.py 提取的文件读写逻辑。"""
 
-import json
 import os
 import re
 from datetime import datetime
@@ -50,8 +49,8 @@ def save_webhook_to_file(
         full_data["ai_analysis"] = ai_analysis
 
     # 保存数据
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(full_data, f, indent=2, ensure_ascii=False)
+    with open(filepath, "wb") as f:
+        f.write(orjson.dumps(full_data, option=orjson.OPT_INDENT_2))
 
     return filepath
 
