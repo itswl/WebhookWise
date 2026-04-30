@@ -26,6 +26,7 @@ from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
+from services.metrics_poller import MetricsPoller
 from services.pipeline import get_running_tasks
 from services.poller_scheduler import start_scheduler, stop_scheduler
 from services.recovery_poller import RecoveryPoller
@@ -46,12 +47,15 @@ async def lifespan(app: FastAPI):
     await runtime_config.load_from_db()
     # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
+    metrics_poller = MetricsPoller()
+    await metrics_poller.start()
     recovery_poller = None
     if Config.server.RUN_MODE in ("worker", "all"):
         await start_scheduler()
         recovery_poller = RecoveryPoller()
         await recovery_poller.start()
     yield
+    await metrics_poller.stop()
     # 1. 停止 RecoveryPoller（不再产生新的恢复任务）
     if recovery_poller:
         await recovery_poller.stop()

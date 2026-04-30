@@ -97,6 +97,41 @@ WEBHOOK_DEAD_LETTER_TOTAL = Counter(
     "不可重试的死信事件总数",
 )
 
+WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
+    "webhook_processing_status_count",
+    "Webhook 事件各 processing_status 的数量",
+    ["status"],
+    multiprocess_mode="liveall",
+)
+
+WEBHOOK_STUCK_STATUS_COUNT = Gauge(
+    "webhook_stuck_status_count",
+    "超过阈值的僵尸事件数量（按 processing_status）",
+    ["status"],
+    multiprocess_mode="liveall",
+)
+
+WEBHOOK_MQ_STREAM_LENGTH = Gauge(
+    "webhook_mq_stream_length",
+    "Webhook Redis Stream 长度",
+    ["stream"],
+    multiprocess_mode="liveall",
+)
+
+WEBHOOK_MQ_GROUP_PENDING = Gauge(
+    "webhook_mq_group_pending",
+    "Webhook Redis Stream consumer group pending 数量",
+    ["stream", "group"],
+    multiprocess_mode="liveall",
+)
+
+WEBHOOK_MQ_GROUP_LAG = Gauge(
+    "webhook_mq_group_lag",
+    "Webhook Redis Stream consumer group lag 数量",
+    ["stream", "group"],
+    multiprocess_mode="liveall",
+)
+
 DB_POOL_CHECKED_OUT = Gauge(
     "db_pool_checked_out",
     "当前已借出的数据库连接数",
