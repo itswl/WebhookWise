@@ -34,7 +34,11 @@ def decompress_payload(data: bytes | str | None) -> str | None:
     if data is None:
         return None
     if isinstance(data, str):
-        return data
+        if data.startswith("\\x"):
+            # PostgreSQL BYTEA hex format → decode to bytes, then fall through
+            data = bytes.fromhex(data[2:])
+        else:
+            return data
     if data[:4] == _ZSTD_MAGIC:
         return _decompressor.decompress(data).decode("utf-8")
     if data[:2] == _GZIP_MAGIC:
@@ -48,7 +52,11 @@ async def decompress_payload_async(data: bytes | str | None) -> str | None:
     if data is None:
         return None
     if isinstance(data, str):
-        return data
+        if data.startswith("\\x"):
+            # PostgreSQL BYTEA hex format → decode to bytes, then fall through
+            data = bytes.fromhex(data[2:])
+        else:
+            return data
     # 超过阈值时卸载到线程池，避免阻塞事件循环
     if len(data) > COMPRESS_THRESHOLD_BYTES:
         return await asyncio.to_thread(decompress_payload, data)
