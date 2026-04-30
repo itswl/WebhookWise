@@ -71,6 +71,7 @@ class SecurityConfig(BaseSettings):
     # [静态] 基础设施配置，修改后需重启生效
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
+    ADMIN_WRITE_KEY: str = Field(default="", description="破坏性 Admin 操作单独的 API Key，为空时退回到普通 API_KEY")
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
@@ -102,6 +103,9 @@ class RedisConfig(BaseSettings):
 
     # [静态] 基础设施配置，修改后需重启生效
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    REDIS_SOCKET_CONNECT_TIMEOUT: int = Field(default=5, description="连接超时秒数")
+    REDIS_SOCKET_TIMEOUT: int = Field(default=10, description="操作超时秒数")
+    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, description="健康检查间隔秒数")
 
 
 class AIConfig(BaseSettings):

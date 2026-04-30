@@ -55,3 +55,33 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
         )
 
     return True
+
+
+async def verify_admin_write(
+    request: Request,
+    auth: HTTPAuthorizationCredentials = _AUTH_DEPENDENCY,
+):
+    """
+    验证 Admin 写操作权限。
+    如果配置了 ADMIN_WRITE_KEY，则要求 Bearer token 必须匹配此 key；
+    否则退回到普通 verify_api_key 行为（向后兼容）。
+    """
+    admin_write_key = Config.security.ADMIN_WRITE_KEY
+
+    # 情况 1：配置了单独的 ADMIN_WRITE_KEY → 只校验它
+    if admin_write_key:
+        if not auth or auth.credentials != admin_write_key:
+            client_ip = request.client.host if request.client else "unknown"
+            logger.warning(
+                "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
+                client_ip,
+                request.url.path,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin write permission required",
+            )
+        return True
+
+    # 情况 2：未配置 ADMIN_WRITE_KEY → 回退到普通 API_KEY 逻辑
+    return await verify_api_key(request, auth)

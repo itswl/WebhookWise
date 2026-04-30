@@ -234,52 +234,19 @@ async def _handle_webhook_process_inner(
             logger.debug("[Pipeline] 进入 AI 分析阶段")
             analysis_resolution = await resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
 
-            analysis_result = analysis_resolution.analysis_result
-            original_event = analysis_resolution.original_event
+        # ── 锁已释放：以下操作不需要互斥保护 ──
+        analysis_result = analysis_resolution.analysis_result
+        original_event = analysis_resolution.original_event
 
-            if analysis_resolution.is_reused:
-                # ── 轻量路径：缓存复用的 Worker 跳过降噪重算和转发 ──
-                logger.info("[Pipeline] 缓存命中轻量路径：跳过降噪计算与转发（由持锁 Worker 负责）")
-                persisted = await persist_webhook_with_noise_context(
-                    request_context=request_context,
-                    analysis_resolution=analysis_resolution,
-                    alert_hash=alert_hash,
-                    event_id=event_id,
-                    skip_noise=True,
-                )
-
-                save_result = persisted.save_result
-                noise_context = persisted.noise_context
-                analysis_result = _apply_noise_metadata(analysis_result, noise_context)
-
-                WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-                    source=sanitize_source(request_context.source),
-                    relation=noise_context.relation,
-                    suppressed=str(noise_context.suppress_forward).lower(),
-                ).inc()
-
-                logger.info(f"[Pipeline] 轻量路径处理完成: id={save_result.webhook_id}, reused=True")
-
-                if event_id is None:
-                    await _update_processing_status(event_id, "completed")
-
-                return _build_webhook_response(
-                    save_result.webhook_id,
-                    analysis_result,
-                    {"status": "skipped", "reason": "缓存复用路径，由持锁 Worker 负责转发"},
-                    save_result.is_duplicate,
-                    save_result.original_id,
-                    save_result.beyond_window,
-                    save_result.is_duplicate and not save_result.beyond_window,
-                )
-
-            # ── 完整路径：降噪 + 持久化 + 转发 ──
-            logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
+        if analysis_resolution.is_reused:
+            # ── 轻量路径：缓存复用的 Worker 跳过降噪重算和转发 ──
+            logger.info("[Pipeline] 缓存命中轻量路径：跳过降噪计算与转发（由持锁 Worker 负责）")
             persisted = await persist_webhook_with_noise_context(
                 request_context=request_context,
                 analysis_resolution=analysis_resolution,
                 alert_hash=alert_hash,
                 event_id=event_id,
+                skip_noise=True,
             )
 
             save_result = persisted.save_result
@@ -292,7 +259,41 @@ async def _handle_webhook_process_inner(
                 suppressed=str(noise_context.suppress_forward).lower(),
             ).inc()
 
-        # ── 锁外：转发阶段（无需持有 processing_lock）──
+            logger.info(f"[Pipeline] 轻量路径处理完成: id={save_result.webhook_id}, reused=True")
+
+            if event_id is None:
+                await _update_processing_status(event_id, "completed")
+
+            return _build_webhook_response(
+                save_result.webhook_id,
+                analysis_result,
+                {"status": "skipped", "reason": "缓存复用路径，由持锁 Worker 负责转发"},
+                save_result.is_duplicate,
+                save_result.original_id,
+                save_result.beyond_window,
+                save_result.is_duplicate and not save_result.beyond_window,
+            )
+
+        # ── 完整路径：降噪 + 持久化 + 转发 ──
+        logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
+        persisted = await persist_webhook_with_noise_context(
+            request_context=request_context,
+            analysis_resolution=analysis_resolution,
+            alert_hash=alert_hash,
+            event_id=event_id,
+        )
+
+        save_result = persisted.save_result
+        noise_context = persisted.noise_context
+        analysis_result = _apply_noise_metadata(analysis_result, noise_context)
+
+        WEBHOOK_NOISE_REDUCED_TOTAL.labels(
+            source=sanitize_source(request_context.source),
+            relation=noise_context.relation,
+            suppressed=str(noise_context.suppress_forward).lower(),
+        ).inc()
+
+        # ── 转发阶段 ──
         beyond_window = save_result.beyond_window
         is_dup = save_result.is_duplicate
         original_id = save_result.original_id

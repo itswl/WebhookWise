@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import declarative_base
 
 from core.config import Config
+from core.utils import mask_url
 
 _logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def _async_url() -> str:
 async def init_engine():
     """创建全局 AsyncEngine 和 async_sessionmaker（应用启动时调用一次）"""
     global _engine, _session_factory
-    _logger.info(f"[DB] 正在初始化异步数据库连接池: {Config.db.DATABASE_URL.split('@')[-1]}")
+    _logger.info(f"[DB] 正在初始化异步数据库连接池: {mask_url(Config.db.DATABASE_URL)}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
     _setup_pool_metrics(_engine)

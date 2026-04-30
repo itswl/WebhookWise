@@ -25,7 +25,7 @@ class DeadLetterItem(BaseModel):
 class DeadLetterPagination(BaseModel):
     page: int
     page_size: int
-    total: int
+    total: int | None = None
 
 
 class DeadLetterListResponse(BaseModel):
