@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.ecosystem_adapters import normalize_webhook_event
+from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
 from core.utils import mask_url
-from core.compression import decompress_payload
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
-from adapters.ecosystem_adapters import normalize_webhook_event
 from services.ai_analyzer import analyze_webhook_with_ai
 from services.forward import forward_to_remote
 
