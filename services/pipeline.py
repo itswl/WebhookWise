@@ -227,6 +227,9 @@ async def _handle_webhook_process_inner(
 
         alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
 
+        # 分布式锁：保护同一 alert_hash 的并发分析
+        # got_lock=True: 本 Worker 负责执行 AI 分析
+        # got_lock=False: 其他 Worker 已在分析，通过 Pub/Sub 等待结果复用
         async with processing_lock(alert_hash) as got_lock:
             logger.debug("[Pipeline] 进入 AI 分析阶段")
             analysis_resolution = await resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
