@@ -175,8 +175,8 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
         try:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("pubsub 关闭时异常（已忽略）: %s", exc)
 
     # ── Pub/Sub 等待超时 fallback：与原逻辑一致 ──
     logger.warning(f"[Lock] Pub/Sub 等待 {Config.retry.PROCESSING_LOCK_WAIT_SECONDS}s 超时，执行兜底分析")
