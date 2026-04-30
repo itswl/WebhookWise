@@ -149,7 +149,7 @@ async def consume_webhook_queue(stop_event: asyncio.Event) -> None:
                     try:
                         await redis.xack(_QUEUE, _GROUP, *batch_msg_ids)
                     except Exception:
-                        logger.warning("[MQ] 批量 XACK 失败: %d 条消息", len(batch_msg_ids))
+                        logger.error("[MQ] 批量 XACK 失败: %d 条消息", len(batch_msg_ids), exc_info=True)
 
         except asyncio.CancelledError:
             logger.info("[MQ] Consumer 收到取消信号，退出")

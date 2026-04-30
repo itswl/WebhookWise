@@ -77,8 +77,9 @@ async def _call_openai_completion(
     logger.info(f"调用 OpenAI API 分析 webhook: {source}")
     try:
         prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
-    except Exception:
+    except Exception as e:
         prompt_hash = None
+        logger.warning("[AI] 哈希计算失败: %s", e)
     logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
     response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
 
@@ -150,8 +151,9 @@ async def _call_openai_completion(
 
     try:
         resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
-    except Exception:
+    except Exception as e:
         resp_hash = None
+        logger.warning("[AI] 哈希计算失败: %s", e)
     logger.debug(f"[AI] response_size={len(ai_response)}, response_sha256={resp_hash}")
 
     return ai_response, finish_reason, tokens_in, tokens_out

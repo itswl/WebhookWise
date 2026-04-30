@@ -38,7 +38,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /root/.local /home/appuser/.local
 
 # 复制项目文件
-COPY .env.example .env
+COPY .env.example .env.example
 COPY main.py .
 COPY worker.py .
 COPY entrypoint.sh .
