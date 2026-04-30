@@ -30,6 +30,7 @@ from core.trace import generate_trace_id, set_trace_id
 from core.utils import generate_alert_hash, processing_lock
 from db.session import session_scope
 from models import WebhookEvent
+from services.event_payload import load_event_payload
 from services.pipeline_analysis import resolve_analysis
 from services.pipeline_forward import _refresh_original_event, decide_forwarding, execute_forwarding
 from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
@@ -214,18 +215,11 @@ async def _handle_webhook_process_inner(
 
         # 在 session 关闭前提取所有需要的字段到局部变量
         headers = event.headers or {}
-        raw_payload = await decompress_payload_async(event.raw_payload) or ""
-        raw_body = raw_payload.encode("utf-8") if isinstance(raw_payload, str) else b""
+        payload, raw_text = await load_event_payload(event)
+        raw_body = raw_text.encode("utf-8") if raw_text else b""
         source = event.source
 
-        # 延迟解析：网关零解析模式下 parsed_data 为 None，从 raw_payload 恢复
-        if event.parsed_data is None and raw_payload:
-            try:
-                payload = orjson.loads(raw_payload)
-            except Exception:
-                payload = {}
-        else:
-            payload = event.parsed_data or {}
+        payload = payload or {}
 
     set_log_context(source=source or "unknown", processing_status="analyzing", route_type="ai")
     metric_source = sanitize_source(source or "")
