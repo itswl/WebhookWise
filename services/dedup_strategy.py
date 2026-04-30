@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
 from core.logger import logger
-from crud.webhook import _query_last_beyond_window_event, _query_latest_original_event
+from crud.webhook import query_last_beyond_window_event, query_latest_original_event
 from db.session import session_scope
 from models import WebhookEvent
 
@@ -102,7 +102,7 @@ async def _do_check_duplicate(
         if any_event:
             original_ref = await _resolve_original_reference(session, any_event)
             original_id = original_ref.id
-            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
+            last_beyond_window = await query_last_beyond_window_event(session, alert_hash)
 
             # 窗口起点策略：优先 recent beyond_window，其次原始告警。
             window_start, window_start_id = _resolve_window_start(original_ref, last_beyond_window)
@@ -127,8 +127,8 @@ async def _do_check_duplicate(
 
         if check_beyond_window:
             # 并发场景下，recent beyond_window 用于判断是否可直接复用他 worker 的结果。
-            last_beyond_window = await _query_last_beyond_window_event(session, alert_hash)
-            history_event = await _query_latest_original_event(session, alert_hash)
+            last_beyond_window = await query_last_beyond_window_event(session, alert_hash)
+            history_event = await query_latest_original_event(session, alert_hash)
 
             if history_event:
                 time_diff = (now - history_event.timestamp).total_seconds() / 3600
