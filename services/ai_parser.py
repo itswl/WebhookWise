@@ -58,16 +58,37 @@ def fix_json_format(json_str: str) -> str:
     return fixed.strip()
 
 
-def _extract_json_string_field(text: str, key: str) -> str | None:
-    strict = re.search(rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', text, re.DOTALL)
+def _extract_flexible_field(text: str, key: str) -> str | None:
+    """多格式字段提取：依次尝试严格JSON、截断JSON、宽松KV格式。"""
+    # 1. 严格 JSON 格式: "key": "value"
+    strict = re.search(rf'"{ re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', text, re.DOTALL)
     if strict:
         return _safe_json_string(strict.group(1)).strip()
 
-    truncated = re.search(rf'"{re.escape(key)}"\s*:\s*"([^\n]*)', text)
+    # 2. 截断 JSON 格式: "key": "value（未闭合）
+    truncated = re.search(rf'"{ re.escape(key)}"\s*:\s*"([^\n]*)', text)
     if truncated:
-        return truncated.group(1).strip().strip(",").strip()
+        val = truncated.group(1).strip().strip(",").strip()
+        if val:
+            return val
+
+    # 3. 宽松 KV 格式: key: value 或 key=value（YAML / plain text）
+    kv = re.search(
+        rf'(?:^|\n)\s*{re.escape(key)}\s*[:=]\s*"?([^",\n\}}\]]+)"?',
+        text,
+        re.IGNORECASE,
+    )
+    if kv:
+        val = kv.group(1).strip()
+        if val:
+            return val
 
     return None
+
+
+def _extract_json_string_field(text: str, key: str) -> str | None:
+    """向后兼容包装：委托给 _extract_flexible_field。"""
+    return _extract_flexible_field(text, key)
 
 
 def _extract_json_array_field(text: str, key: str) -> list[str]:
@@ -206,10 +227,13 @@ def extract_from_text(text: str, source: str) -> AnalysisResult:
         summary = _extract_json_string_field(text, "summary")
         if summary:
             result["summary"] = summary
-        elif re.search(r"(告警|错误|异常|故障)", text):
-            result["summary"] = "检测到系统告警或异常，需要关注"
         else:
-            result["summary"] = "Webhook 事件已接收，AI 分析结果解析不完整"
+            # 截取原始文本的前 200 字符作为降级 summary
+            cleaned = text.strip()[:200]
+            if cleaned:
+                result["summary"] = f"AI 分析结果（格式非预期）: {cleaned}"
+            else:
+                result["summary"] = "Webhook 事件已接收，AI 分析结果为空"
 
         event_type = _extract_json_string_field(text, "event_type")
         if event_type:
@@ -260,5 +284,5 @@ def _parse_ai_analysis_response(ai_response: str, source: str) -> AnalysisResult
         if parsed is not None:
             return _normalize_analysis_result(parsed, source)
 
-    logger.warning("JSON 解析失败，回退到文本提取策略")
+    logger.warning("JSON 解析失败，回退到文本提取策略。原始响应片段: %s", ai_response[:300])
     return _normalize_analysis_result(extract_from_text(payload or ai_response, source), source)
