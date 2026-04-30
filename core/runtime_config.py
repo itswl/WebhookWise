@@ -1,6 +1,15 @@
 """
-运行时配置管理器
-从数据库加载运行时配置，通过 Redis Pub/Sub 实现多 Worker 热更新。
+运行时配置管理器 — 业务策略热更新
+
+配置优先级（从低到高）：
+1. core/config.py 中的 Pydantic 默认值
+2. .env 文件中的环境变量覆盖
+3. 数据库 system_configs 表中的值（启动时 load_from_db 加载）
+4. Web 管理界面 /api/config 修改后通过 Redis Pub/Sub 实时同步
+
+RUNTIME_KEYS 中定义的配置项支持热更新，修改后无需重启即可生效。
+其余配置（DATABASE_URL、REDIS_URL、连接池参数等）为静态基础设施配置，
+修改后必须重启服务才能生效。
 """
 
 import asyncio

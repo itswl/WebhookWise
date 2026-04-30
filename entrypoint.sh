@@ -49,7 +49,7 @@ fi
 # [2/3] Alembic 迁移（所有 DDL 变更的唯一入口）
 echo "[2/3] Alembic 迁移..."
 if ! cd /app && alembic upgrade head 2>&1; then
-    echo "⚠️ Alembic 迁移失败，请检查日志。应用将继续启动（_ensure_schema 会补建关键列）"
+    echo "⚠️ Alembic 迁移失败，请检查日志。应用将继续启动，但数据库 Schema 可能不完整"
 fi
 echo "✅ Alembic 迁移完成"
 
@@ -57,5 +57,5 @@ echo "======================================"
 echo "数据库准备完成，启动应用服务..."
 echo "======================================"
 
-# [3/3] 启动应用（_ensure_schema 在 lifespan 中自动执行）
+# [3/3] 启动应用
 exec "$@"
