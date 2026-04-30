@@ -4,13 +4,11 @@ api/reanalysis.py
 重新分析 + 手动转发路由。
 """
 
-import orjson
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from core.compression import decompress_payload
 from core.config import Config
 from core.logger import logger
 from core.utils import mask_url
@@ -18,6 +16,7 @@ from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
 from services.ai_analyzer import analyze_webhook_with_ai
+from services.event_payload import load_event_payload
 from services.forward import forward_to_remote
 
 reanalysis_router = APIRouter()
@@ -32,14 +31,7 @@ async def _get_webhook_event_by_id(session, webhook_id: int) -> WebhookEvent | N
 
 
 async def _build_webhook_context(event: WebhookEvent) -> dict:
-    parsed_data = event.parsed_data
-    if parsed_data is None:
-        raw_text = decompress_payload(event.raw_payload)
-        if raw_text:
-            try:
-                parsed_data = orjson.loads(raw_text)
-            except Exception:
-                parsed_data = None
+    parsed_data, _raw_text = await load_event_payload(event)
 
     source = event.source
     if (not source or source == "unknown") and isinstance(parsed_data, dict):
