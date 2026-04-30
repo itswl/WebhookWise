@@ -64,7 +64,7 @@ COPY alembic/ ./alembic/
 # 创建必要的目录并设置权限
 RUN mkdir -p logs webhooks_data /tmp/prometheus_multiproc && \
     chmod +x entrypoint.sh && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app /tmp/prometheus_multiproc
 
 # 切换到非 root 用户
 USER appuser
