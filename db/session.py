@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -43,8 +42,15 @@ def _build_engine_kwargs():
 
 
 def _async_url() -> str:
-    url = make_url(Config.db.DATABASE_URL)
-    return str(url.set(drivername="postgresql+asyncpg"))
+    """将 DATABASE_URL 的 driver 前缀安全替换为 asyncpg。
+
+    不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
+    """
+    url = Config.db.DATABASE_URL
+    for prefix in ("postgresql+psycopg2://", "postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return url.replace(prefix, "postgresql+asyncpg://", 1)
+    return url
 
 
 # ────────────────────────────────────────
