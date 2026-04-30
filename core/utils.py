@@ -1,17 +1,30 @@
-import asyncio
 import hashlib
 import hmac
 import time
 from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import orjson
 
 from core.config import Config
 from core.logger import logger
+
+
+def mask_url(url: str) -> str:
+    """安全脱敏 URL，移除用户名和密码，仅保留 scheme + host + port + path。"""
+    try:
+        parsed = urlparse(url)
+        if parsed.hostname:
+            port = f":{parsed.port}" if parsed.port else ""
+            return f"{parsed.scheme}://***@{parsed.hostname}{port}{parsed.path}"
+        return "***"
+    except Exception:
+        return "***"
+
 
 WebhookData = dict[str, Any]
 
@@ -372,27 +385,8 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     key_string = orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS).decode()
     hash_value = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
-    logger.debug(f"[Hash] 生成告警哈希: hash={hash_value[:16]}..., input_keys={list(key_fields.keys())}")
+    logger.debug("[Hash] 生成告警哈希: hash=%s..., input_keys=%s", hash_value[:16], list(key_fields.keys()))
     return hash_value
-
-
-# Lua 脚本：仅当 value 匹配时续期锁（原子操作）
-_RENEW_LOCK_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
-else
-    return 0
-end
-"""
-
-# Lua 脚本：仅当 value 匹配时释放锁（原子操作）
-_RELEASE_LOCK_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-else
-    return 0
-end
-"""
 
 
 @asynccontextmanager
@@ -415,57 +409,25 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     Yields:
         bool: True=获得锁（执行分析），False=未获得锁（等待结果）
     """
-    import core.redis_client
+    from core.distributed_lock import DistributedLock
 
-    redis_client = core.redis_client.get_redis()
     lock_key = f"lock:webhook:{alert_hash}"
-    lock_value = Config.server.WORKER_ID
     ttl = Config.retry.PROCESSING_LOCK_TTL_SECONDS
-
-    lock_acquired = False
-    watchdog_task = None
+    lock = DistributedLock(key=lock_key, ttl=ttl)
 
     try:
-        # 尝试获取锁
-        lock_acquired = bool(await redis_client.set(lock_key, lock_value, nx=True, ex=ttl))
+        lock_acquired = await lock.acquire()
         if lock_acquired:
-            logger.debug(f"[Lock] 成功锁定告警: hash={alert_hash}, worker={Config.server.WORKER_ID}")
+            logger.debug("[Lock] 成功锁定告警: hash=%s, worker=%s", alert_hash, Config.server.WORKER_ID)
         else:
-            logger.debug(f"告警正由其他 worker 处理中: hash={alert_hash[:16]}...")
+            logger.debug("告警正由其他 worker 处理中: hash=%s...", alert_hash[:16])
     except Exception as e:
-        logger.error(f"获取处理锁失败: {e}")
-
-    # 获取锁成功后启动 Watchdog 自动续期
-    if lock_acquired:
-
-        async def _watchdog():
-            """每 TTL/3 秒自动续期锁，在到期前有 2 次续期机会"""
-            interval = ttl / 3
-            while True:
-                await asyncio.sleep(interval)
-                try:
-                    renewed = await redis_client.eval(_RENEW_LOCK_LUA, 1, lock_key, lock_value, str(ttl))
-                    if not renewed:
-                        logger.warning(f"[Lock] Watchdog 续期失败（锁已不属于自己）: hash={alert_hash[:16]}...")
-                        break
-                    logger.debug(f"[Lock] Watchdog 续期成功: hash={alert_hash[:16]}...")
-                except Exception as e:
-                    logger.error(f"[Lock] Watchdog 续期异常: {e}")
-                    break
-
-        watchdog_task = asyncio.create_task(_watchdog())
+        lock_acquired = False
+        logger.error("获取处理锁失败: %s", e)
 
     try:
         yield lock_acquired
     finally:
-        # 先取消 Watchdog → await 取消完成 → 再释放锁
-        if watchdog_task:
-            watchdog_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await watchdog_task
+        await lock.release()
         if lock_acquired:
-            try:
-                await redis_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
-                logger.debug(f"释放处理锁: hash={alert_hash[:16]}...")
-            except Exception as e:
-                logger.error(f"释放锁失败: {e}")
+            logger.debug("释放处理锁: hash=%s...", alert_hash[:16])

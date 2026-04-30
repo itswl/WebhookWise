@@ -24,6 +24,9 @@ async def count_with_timeout(
         return result.scalar() or 0
     except Exception as e:
         logger.warning("COUNT query timeout (%dms): %s", timeout_ms, e)
+        # 关键：清理已中止的事务，避免后续查询连带失败
+        with contextlib.suppress(Exception):
+            await session.rollback()
         return None
     finally:
         with contextlib.suppress(Exception):

@@ -62,7 +62,7 @@ def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
         params["scopes"] = device_auth["scopes"]
         params["auth"]["deviceToken"] = device_auth["device_token"]
         params["device"] = device_auth["device"]
-        logger.debug(f"Device auth attached: deviceId={device_auth['device']['id'][:16]}...")
+        logger.debug("Device auth attached: deviceId=%s...", device_auth["device"]["id"][:16])
 
     return frame
 
@@ -118,7 +118,7 @@ def _build_device_auth(nonce: str) -> dict | None:
         signature = private_key.sign(payload.encode())
         sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
 
-        logger.debug(f"Device auth built: signedAt={signed_at}, nonce={nonce[:16]}...")
+        logger.debug("Device auth built: signedAt=%s, nonce=%s...", signed_at, nonce[:16])
 
         return {
             "role": "operator",
@@ -172,7 +172,7 @@ def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
     except websocket.WebSocketTimeoutException:
         logger.debug("No connect.challenge received (timeout) — likely OpenClaw, not OpenClaw")
     except Exception as e:
-        logger.debug(f"Error receiving challenge: {e}")
+        logger.debug("Error receiving challenge: %s", e)
     finally:
         ws.settimeout(old_timeout)
     return None
@@ -216,7 +216,7 @@ class OpenClawWSClient:
         4. send(connect_frame)
         5. 循环 recv() 等待 type=res 的响应（跳过 event 帧）
         """
-        logger.debug(f"Sending connect frame for runId={self.run_id}")
+        logger.debug("Sending connect frame for runId=%s", self.run_id)
 
         try:
             # Step 1: 尝试接收 connect.challenge（OpenClaw 会在连接后立即推送）
@@ -310,7 +310,7 @@ class OpenClawWSClient:
                 if text:
                     with self._lock:
                         self._text_fragments.append(text)
-                    logger.debug(f"Received text fragment, length={len(text)}")
+                    logger.debug("Received text fragment, length=%s", len(text))
             return False
 
         elif event_type == "chat":
@@ -404,7 +404,7 @@ class OpenClawWSClient:
 
         try:
             # 创建 WebSocket 连接（使用较短的连接超时快速失败）
-            logger.debug(f"Establishing TCP + WebSocket connection to {self.ws_url}...")
+            logger.debug("Establishing TCP + WebSocket connection to %s...", self.ws_url)
             self._ws = websocket.create_connection(
                 self.ws_url,
                 timeout=self.connect_timeout,  # 连接超时，不是等待结果超时
@@ -491,7 +491,7 @@ class OpenClawWSClient:
                 try:
                     self._ws.close()
                 except Exception as e:
-                    logger.debug(f"WebSocket close failed: {e}")
+                    logger.debug("WebSocket close failed: %s", e)
 
     def _get_connection_error_message(self) -> str:
         """根据连接错误类型返回清晰的错误信息"""
@@ -674,7 +674,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
 
                 if role != "assistant":
                     # 最后一条是 user/toolResult 等，agent 还在处理
-                    logger.debug(f"Poll: last message role is '{role}', analysis pending")
+                    logger.debug("Poll: last message role is '%s', analysis pending", role)
                     return {"status": "pending"}
 
                 # 检查 content 是否包含工具调用（正在调用工具）
@@ -741,7 +741,7 @@ def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, 
             try:
                 ws.close()
             except Exception as e:
-                logger.debug(f"WebSocket close failed: {e}")
+                logger.debug("WebSocket close failed: %s", e)
 
 
 def wait_for_result(

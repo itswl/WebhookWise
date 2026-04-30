@@ -34,7 +34,7 @@ async def _init_consumer_group() -> None:
     except Exception as e:
         # redis-py 对 BUSYGROUP 抛出 ResponseError
         if "BUSYGROUP" in str(e):
-            logger.debug(f"[MQ] Consumer Group 已存在: {_GROUP}")
+            logger.debug("[MQ] Consumer Group 已存在: %s", _GROUP)
         else:
             raise
 

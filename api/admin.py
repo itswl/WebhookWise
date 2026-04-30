@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
+from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
@@ -138,7 +139,7 @@ async def get_config():
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/config", response_model=ConfigUpdateResponse)
+@admin_router.post("/api/config", response_model=ConfigUpdateResponse, dependencies=[Depends(verify_admin_write)])
 async def update_config(payload: dict | None = None):
     try:
         if not payload:
@@ -187,7 +188,7 @@ def get_prompt():
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/migrations/add_unique_constraint")
+@admin_router.post("/api/migrations/add_unique_constraint", dependencies=[Depends(verify_admin_write)])
 def migration_add_unique_constraint():
     try:
         success = _run_add_unique_constraint_migration()
@@ -226,7 +227,11 @@ async def get_dead_letters(
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/{event_id}/replay", response_model=ReplayResponse)
+@admin_router.post(
+    "/api/admin/dead-letters/{event_id}/replay",
+    response_model=ReplayResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def replay_single_dead_letter(
     event_id: int,
     session: AsyncSession = Depends(get_db_session),
@@ -255,7 +260,9 @@ async def replay_single_dead_letter(
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse)
+@admin_router.post(
+    "/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)]
+)
 async def replay_all_dead_letters(
     batch_size: int = Query(50, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),

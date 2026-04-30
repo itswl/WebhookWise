@@ -199,7 +199,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
             if response.status_code == 204 or response.status_code == 202:
                 # 204 No Content / 202 Accepted - 分析仍在进行中
                 last_error = "分析进行中"
-                logger.debug(f"分析进行中 (尝试 {attempt + 1}/{retry_count})")
+                logger.debug("分析进行中 (尝试 %s/%s)", attempt + 1, retry_count)
                 continue
 
             if response.status_code != 200:
@@ -319,7 +319,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 ):
                     hit_count = prev_snapshot.get("hit_count", 1) + 1
                     if hit_count >= Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS:
-                        logger.debug(f"[Poller] 分析稳定确认: id={record_id}")
+                        logger.debug("[Poller] 分析稳定确认: id=%s", record_id)
                     else:
                         await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
                         return {"id": record_id, "action": "skip"}
@@ -517,7 +517,7 @@ async def _poll_pending_analyses_inner():
                     notify_dict = {**rec_dict, **upd}
                     asyncio.create_task(_notify_feishu_deep_analysis(notify_dict, source))
                 except Exception as e:
-                    logger.debug(f"飞书深度分析通知失败: {e}")
+                    logger.debug("飞书深度分析通知失败: %s", e)
 
     except Exception as e:
         logger.error(f"轮询任务异常: {e}")

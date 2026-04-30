@@ -30,7 +30,7 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
 
         cached_json = await redis_client.get(cache_key)
         if not cached_json:
-            logger.debug(f"缓存未命中: {cache_key[:20]}...")
+            logger.debug("缓存未命中: %s...", cache_key[:20])
             return None
 
         cached_result = orjson.loads(cached_json)
@@ -132,7 +132,9 @@ async def log_ai_usage(
                 source=source,
             )
             session.add(usage_log)
-            logger.debug(f"AI 使用记录: type={route_type}, tokens={tokens_in}+{tokens_out}, cost=${cost_estimate:.6f}")
+            logger.debug(
+                "AI 使用记录: type=%s, tokens=%s+%s, cost=$%.6f", route_type, tokens_in, tokens_out, cost_estimate
+            )
 
     except Exception as e:
         logger.warning(f"记录 AI 使用日志失败: {e}")
