@@ -29,6 +29,7 @@ async def main():
     await runtime_config.start_subscriber()
 
     from services.poller_scheduler import start_scheduler, stop_scheduler
+    from services.recovery_poller import RecoveryPoller
 
     stop_event = asyncio.Event()
 
@@ -41,10 +42,13 @@ async def main():
         loop.add_signal_handler(sig, _signal_handler)
 
     await start_scheduler()
+    recovery_poller = RecoveryPoller()
+    await recovery_poller.start()
     logger.info("[Worker] Poller worker started, waiting for shutdown signal...")
     await stop_event.wait()
 
     logger.info("[Worker] Shutting down...")
+    await recovery_poller.stop()
     await stop_scheduler()
     await runtime_config.stop_subscriber()
     await dispose_engine()
