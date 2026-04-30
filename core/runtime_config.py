@@ -193,29 +193,37 @@ class RuntimeConfigManager:
         logger.info("[RuntimeConfig] Pub/Sub 订阅已停止")
 
     async def _subscribe_loop(self):
-        """Redis Pub/Sub 监听循环"""
+        """Redis Pub/Sub 监听循环
+
+        使用 get_message(timeout=) 轮询而非阻塞式 listen()，
+        以兼容全局连接池的 socket_timeout 设置。
+        get_message 内部以 timeout 参数控制单次等待时长，
+        超时返回 None 而非抛异常，避免 Pub/Sub 长连接被误判断开。
+        """
         while self._running:
+            pubsub = None
             try:
                 r = get_redis()
                 pubsub = r.pubsub()
                 await pubsub.subscribe(RUNTIME_CONFIG_CHANNEL)
-                async for message in pubsub.listen():
-                    if not self._running:
-                        break
-                    if message["type"] != "message":
+                while self._running:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
+                    if message is None:
                         continue
-                    await self._on_config_updated(message["data"])
+                    if message["type"] == "message":
+                        await self._on_config_updated(message["data"])
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.warning(f"[RuntimeConfig] Pub/Sub 监听异常，5秒后重连: {e}")
                 await asyncio.sleep(5)
             finally:
-                try:
-                    await pubsub.unsubscribe(RUNTIME_CONFIG_CHANNEL)
-                    await pubsub.close()
-                except Exception as exc:
-                    logger.debug(f"[RuntimeConfig] Pub/Sub 清理时忽略异常: {exc}")
+                if pubsub:
+                    try:
+                        await pubsub.unsubscribe(RUNTIME_CONFIG_CHANNEL)
+                        await pubsub.close()
+                    except Exception as exc:
+                        logger.debug(f"[RuntimeConfig] Pub/Sub 清理时忽略异常: {exc}")
 
     async def _on_config_updated(self, data):
         """收到变更通知，从 DB 重新加载"""
