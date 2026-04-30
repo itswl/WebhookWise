@@ -520,6 +520,9 @@ def _row_to_summary_dict(row) -> dict:
 
     beyond_window = bool(row.beyond_window)
     is_dup = bool(row.is_duplicate)
+    duplicate_type = "new"
+    if is_dup:
+        duplicate_type = "beyond_window" if beyond_window else "within_window"
 
     return {
         "id": row.id,
@@ -527,10 +530,10 @@ def _row_to_summary_dict(row) -> dict:
         "client_ip": row.client_ip,
         "timestamp": row.timestamp.isoformat() if row.timestamp else None,
         "importance": row.importance,
-        "is_duplicate": row.is_duplicate,
+        "is_duplicate": is_dup,
         "duplicate_of": row.duplicate_of,
         "duplicate_count": row.duplicate_count,
-        "beyond_window": row.beyond_window,
+        "beyond_window": beyond_window,
         "forward_status": row.forward_status,
         "summary": summary,
         "alert_info": alert_info,
@@ -538,6 +541,7 @@ def _row_to_summary_dict(row) -> dict:
         "prev_alert_id": row.prev_alert_id,
         "beyond_time_window": beyond_window,
         "is_within_window": is_dup and not beyond_window,
+        "duplicate_type": duplicate_type,
     }
 
 

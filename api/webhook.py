@@ -22,6 +22,19 @@ from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListRe
 
 webhook_router = APIRouter()
 
+def _apply_duplicate_fields(d: dict) -> dict:
+    is_dup = bool(d.get("is_duplicate"))
+    beyond_window = bool(d.get("beyond_window"))
+    d["is_duplicate"] = is_dup
+    d["beyond_window"] = beyond_window
+    d["beyond_time_window"] = beyond_window
+    d["is_within_window"] = bool(is_dup and not beyond_window)
+    if is_dup:
+        d["duplicate_type"] = "beyond_window" if beyond_window else "within_window"
+    else:
+        d["duplicate_type"] = "new"
+    return d
+
 
 # ── 健康检查 & Dashboard ────────────────────────────────────────────────────────
 
@@ -79,10 +92,7 @@ async def list_webhooks(
             for event in events:
                 d = event.to_dict()
                 d["prev_alert_id"] = event.prev_alert_id
-                beyond_window = bool(event.beyond_window)
-                d["beyond_time_window"] = beyond_window
-                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-                items.append(d)
+                items.append(_apply_duplicate_fields(d))
 
             next_cursor = events[-1].id if has_more and events else None
         else:
@@ -140,10 +150,7 @@ async def list_webhooks_cursor(
             for event in events:
                 d = event.to_dict()
                 d["prev_alert_id"] = event.prev_alert_id
-                beyond_window = bool(event.beyond_window)
-                d["beyond_time_window"] = beyond_window
-                d["is_within_window"] = bool(event.is_duplicate and not beyond_window) if event.is_duplicate else False
-                items.append(d)
+                items.append(_apply_duplicate_fields(d))
 
             has_more = len(events) == limit
             next_cursor = events[-1].id if has_more else None
@@ -180,7 +187,9 @@ async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(ge
     event = result.scalars().first()
     if not event:
         return JSONResponse({"success": False, "error": "Webhook not found"}, status_code=404)
-    return {"success": True, "data": event.to_dict()}
+    d = event.to_dict()
+    d["prev_alert_id"] = event.prev_alert_id
+    return {"success": True, "data": _apply_duplicate_fields(d)}
 
 
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
