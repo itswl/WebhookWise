@@ -231,6 +231,12 @@
     border: 1px solid #c8e1ff;
 }
 
+.badge-new {
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+
 /* ==================== 分页 ==================== */
 .pagination {
     display: flex;

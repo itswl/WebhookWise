@@ -309,7 +309,9 @@ const AlertsModule = {
         let html = '';
         webhooks.forEach((webhook) => {
             const importance = webhook.importance || 'low';
-            const isDuplicate = webhook.is_duplicate === 1;
+            const isDuplicate = Number(webhook.is_duplicate) === 1;
+            const isBeyondWindow = Number(webhook.beyond_window) === 1 || webhook.beyond_time_window === true;
+            const isWithinWindow = isDuplicate && !isBeyondWindow;
             // 兼容两种数据格式：完整模式(ai_analysis)和摘要模式(summary)
             const analysis = webhook.ai_analysis || {};
             const summary = webhook.summary || analysis.summary || '';
@@ -351,18 +353,12 @@ const AlertsModule = {
             html += '</div></div>';
             html += '<div class="alert-right">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
-            // 显示重复类型：窗口内 or 窗口外
-            if (isDuplicate) {
-                const isWithinWindow = webhook.is_within_window || false;
-                const isBeyondWindow = webhook.beyond_time_window || false;
-
-                if (isBeyondWindow) {
-                    html += '<span class="badge badge-duplicate" title="超过24小时窗口的重复告警">窗口外重复</span>';
-                } else if (isWithinWindow) {
-                    html += '<span class="badge badge-duplicate" title="24小时窗口内的重复告警">窗口内重复</span>';
-                } else {
-                    html += '<span class="badge badge-duplicate">重复</span>';
-                }
+            if (isBeyondWindow) {
+                html += '<span class="badge badge-duplicate" title="超过时间窗口的重复告警">窗口外重复</span>';
+            } else if (isWithinWindow) {
+                html += '<span class="badge badge-duplicate" title="时间窗口内的重复告警">窗口内重复</span>';
+            } else {
+                html += '<span class="badge badge-new">新告警</span>';
             }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
