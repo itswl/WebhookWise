@@ -22,6 +22,7 @@ class ServerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
@@ -29,7 +30,11 @@ class ServerConfig(BaseSettings):
     DEBUG: bool = os.getenv("FLASK_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
     ENABLE_POLLERS: bool = Field(default=True)
+
+    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     LOG_LEVEL: str = Field(default="INFO")
+
+    # [静态] 基础设施配置，修改后需重启生效
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     ENABLE_FILE_BACKUP: bool = Field(default=False)
@@ -38,6 +43,7 @@ class ServerConfig(BaseSettings):
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(
         default=30, description="Webhook 后台处理最大并发数（对齐 DB_POOL_SIZE + DB_MAX_OVERFLOW）"
     )
+    # [静态] 基础设施配置，修改后需重启生效
     WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(
         default=30, description="Semaphore 获取超时秒数，超时后 Fail-Closed 放弃处理"
     )
@@ -48,7 +54,7 @@ class ServerConfig(BaseSettings):
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
 
-    # Redis Stream MQ
+    # [静态] Redis Stream MQ，修改后需重启生效
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue", description="Webhook 消息队列 Redis Stream 名称")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors", description="Consumer Group 名称")
     WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, description="每次 XREADGROUP 拉取的最大消息数")
@@ -62,6 +68,7 @@ class SecurityConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
@@ -75,6 +82,7 @@ class DBConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
     DB_POOL_SIZE: int = Field(default=20)
     DB_MAX_OVERFLOW: int = Field(default=30)
@@ -92,6 +100,7 @@ class RedisConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
 
@@ -100,35 +109,44 @@ class AIConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # AI 分析和转发
+    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     ENABLE_AI_ANALYSIS: bool = Field(default=True)
-    ENABLE_AI_DEGRADATION: bool = Field(default=False)
     FORWARD_URL: str = Field(default="")
     ENABLE_FORWARD: bool = Field(default=True)
-
-    # OpenAI API
     OPENAI_API_KEY: str = Field(default="")
     OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
+    AI_SYSTEM_PROMPT: str = Field(
+        default="你是一个专业的 DevOps 和系统运维专家，擅长分析 webhook 事件并提供准确的运维建议。你的职责是：1. 快速识别事件类型和严重程度 2. 提供清晰的问题摘要 3. 给出可执行的处理建议 4. 识别潜在风险和影响范围 5. 建议监控和预防措施 重要：你必须始终返回严格符合 JSON 标准的格式，不要使用注释、尾随逗号或单引号。"
+    )
+    ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
+    NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
+    ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
+    SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
+    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, description="AI 分析输入 payload 最大字节数")
+    AI_PAYLOAD_STRIP_KEYS: str = Field(
+        default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data",
+        description="AI 分析前移除的噪音字段名，逗号分隔",
+    )
+    RULE_HIGH_KEYWORDS: str = Field(
+        default="error,failure,critical,alert,错误,失败,故障", description="规则降级：高优先级关键字"
+    )
+    RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告", description="规则降级：警告级别关键字")
+    RULE_METRIC_KEYWORDS: str = Field(
+        default="4xxqps,5xxqps,error,cpu,memory,disk", description="规则降级：指标名称关键字"
+    )
+    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, description="规则降级：超阈值倍数提升为 high")
+
+    # [静态] 基础设施配置，修改后需重启生效
+    ENABLE_AI_DEGRADATION: bool = Field(default=False)
     OPENAI_TEMPERATURE: float = Field(default=0.2)
     OPENAI_MAX_TOKENS: int = Field(default=1800)
     OPENAI_TRUNCATION_RETRY_MAX_TOKENS: int = Field(default=2600)
     AI_CONTINUATION_ENABLED: bool = Field(
         default=True, description="是否启用 AI 响应截断自动续写，告警风暴期间可关闭以节省吞吐"
     )
-
-    # AI 提示词
-    AI_SYSTEM_PROMPT: str = Field(
-        default="你是一个专业的 DevOps 和系统运维专家，擅长分析 webhook 事件并提供准确的运维建议。你的职责是：1. 快速识别事件类型和严重程度 2. 提供清晰的问题摘要 3. 给出可执行的处理建议 4. 识别潜在风险和影响范围 5. 建议监控和预防措施 重要：你必须始终返回严格符合 JSON 标准的格式，不要使用注释、尾随逗号或单引号。"
-    )
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")
-
-    # 告警智能降噪 + 根因分析
-    ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
-    NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
-    ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
-    SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
 
     # AIOps 升级 / 缓存 / 路由
     CACHE_ENABLED: bool = Field(default=True)
@@ -146,34 +164,17 @@ class AIConfig(BaseSettings):
         }
     )
 
-    # ChatOps / 飞书
+    # [静态] ChatOps / 飞书，修改后需重启生效
     CHATOPS_ENABLED: bool = Field(default=False)
     FEISHU_BOT_APP_ID: str = Field(default="")
     FEISHU_BOT_APP_SECRET: str = Field(default="")
 
-    # 深度分析引擎
+    # [静态] 深度分析引擎，修改后需重启生效
     DEEP_ANALYSIS_ENGINE: str = Field(default="local")
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
 
-    # Payload 清洗
-    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, description="AI 分析输入 payload 最大字节数")
-    AI_PAYLOAD_STRIP_KEYS: str = Field(
-        default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data",
-        description="AI 分析前移除的噪音字段名，逗号分隔",
-    )
-
-    # 规则降级
-    RULE_HIGH_KEYWORDS: str = Field(
-        default="error,failure,critical,alert,错误,失败,故障", description="规则降级：高优先级关键字"
-    )
-    RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告", description="规则降级：警告级别关键字")
-    RULE_METRIC_KEYWORDS: str = Field(
-        default="4xxqps,5xxqps,error,cpu,memory,disk", description="规则降级：指标名称关键字"
-    )
-    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, description="规则降级：超阈值倍数提升为 high")
-
-    # 超时
+    # [静态] 超时配置，修改后需重启生效
     AI_API_TIMEOUT: int = Field(default=10)
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     FORWARD_TIMEOUT: int = Field(default=10)
@@ -184,6 +185,7 @@ class OpenClawConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     OPENCLAW_ENABLED: bool = Field(default=False)
     OPENCLAW_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
     OPENCLAW_GATEWAY_TOKEN: str = Field(default="")
@@ -213,6 +215,7 @@ class CircuitBreakerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    # [静态] 基础设施配置，修改后需重启生效
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT: float = Field(default=30.0)
     CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5)
@@ -226,28 +229,27 @@ class RetryConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # 重复告警去重
+    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     DUPLICATE_ALERT_TIME_WINDOW: int = Field(default=24)
     FORWARD_DUPLICATE_ALERTS: bool = Field(default=False)
     REANALYZE_AFTER_TIME_WINDOW: bool = Field(default=True)
     FORWARD_AFTER_TIME_WINDOW: bool = Field(default=True)
-
-    # 周期性提醒
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
 
-    # 并发与通知窗口
+    # [静态] 并发与锁配置，修改后需重启生效
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
     PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=200)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
+    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
 
-    # 保存重试
+    # [静态] 保存重试，修改后需重启生效
     SAVE_MAX_RETRIES: int = Field(default=3)
     SAVE_RETRY_DELAY_SECONDS: float = Field(default=0.1)
 
-    # 转发失败重试补偿
+    # [静态] 转发失败重试补偿，修改后需重启生效
     ENABLE_FORWARD_RETRY: bool = Field(default=True)
     FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
