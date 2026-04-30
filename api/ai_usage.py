@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
+from crud.helpers import count_with_timeout
 from db.session import get_db_session
 from models import AIUsageLog
 from schemas.admin import AIUsageResponse
@@ -56,8 +57,7 @@ async def get_ai_usage(period: str = Query("day"), session: AsyncSession = Depen
         stmt_total = (
             select(func.count(AIUsageLog.id)).select_from(AIUsageLog).filter(AIUsageLog.timestamp >= start_time)
         )
-        res_total = await session.execute(stmt_total)
-        total_calls = res_total.scalar() or 0
+        total_calls = await count_with_timeout(session, stmt_total) or 0
 
         # 2. Route Breakdown
         stmt_route = (
@@ -87,8 +87,7 @@ async def get_ai_usage(period: str = Query("day"), session: AsyncSession = Depen
             .select_from(AIUsageLog)
             .filter(AIUsageLog.timestamp >= start_time, AIUsageLog.cache_hit)
         )
-        res_cache_hits = await session.execute(stmt_cache_hits)
-        _cache_hits = res_cache_hits.scalar() or 0
+        _cache_hits = await count_with_timeout(session, stmt_cache_hits) or 0
 
         ai_calls = route_breakdown.get("ai", 0)
         avg_ai_cost = (
