@@ -121,9 +121,7 @@ class WebhookEvent(Base):
             "source": self.source,
             "client_ip": self.client_ip,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "raw_payload": decompress_payload(self.raw_payload)
-            if isinstance(self.raw_payload, bytes)
-            else self.raw_payload,
+            "raw_payload": decompress_payload(self.raw_payload),
             "headers": self.headers,
             "parsed_data": self.parsed_data,
             "alert_hash": self.alert_hash,

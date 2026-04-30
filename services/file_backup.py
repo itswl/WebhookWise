@@ -41,7 +41,7 @@ def save_webhook_to_file(
         "source": source,
         "client_ip": client_ip,
         "headers": dict(headers) if headers else {},
-        "raw_payload": decompress_payload(raw_payload) if isinstance(raw_payload, bytes) else raw_payload,
+        "raw_payload": decompress_payload(raw_payload),
         "parsed_data": data,
     }
 
