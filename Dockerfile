@@ -32,6 +32,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc \
     PATH=/home/appuser/.local/bin:$PATH
 
 # 从构建阶段复制已安装的依赖
@@ -42,6 +43,7 @@ COPY .env.example .env
 COPY main.py .
 COPY worker.py .
 COPY entrypoint.sh .
+COPY gunicorn_config.py .
 COPY core/ ./core/
 COPY api/ ./api/
 COPY models/ ./models/
@@ -61,7 +63,7 @@ COPY alembic/ ./alembic/
 # 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录并设置权限
-RUN mkdir -p logs webhooks_data && \
+RUN mkdir -p logs webhooks_data ${PROMETHEUS_MULTIPROC_DIR} && \
     chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
@@ -85,4 +87,4 @@ ENTRYPOINT ["./entrypoint.sh"]
 #   - 如果只需单 Worker 且不需要进程管理，可直接使用：
 #     CMD ["uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "-e", "UVICORN_LOOP=uvloop", "-e", "UVICORN_HTTP=httptools", "core.app:app"]
+CMD ["gunicorn", "-c", "gunicorn_config.py", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "-e", "UVICORN_LOOP=uvloop", "-e", "UVICORN_HTTP=httptools", "core.app:app"]

@@ -169,7 +169,7 @@ async def _update_existing_event(
     logger.info(f"[save] UPDATE 已有记录: ID={event.id}, alert_hash={alert_hash}")
 
     if Config.server.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, ai_analysis)
 
     return SaveWebhookResult(event.id, False, None, False)
 
@@ -225,7 +225,7 @@ async def _save_new_event(
     logger.info(f"Webhook 数据已保存到数据库: ID={webhook_event.id}")
 
     if Config.server.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, ai_analysis)
 
     return SaveWebhookResult(webhook_event.id, False, None, False)
 
@@ -297,7 +297,7 @@ async def get_all_webhooks(
 
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {e!s}")
-        webhooks = get_webhooks_from_files(limit=page_size)
+        webhooks = await asyncio.to_thread(get_webhooks_from_files, page_size)
         return webhooks, len(webhooks), None
 
 
@@ -374,11 +374,13 @@ async def get_failed_forwards(
         if target_type:
             conditions.append(FailedForward.target_type == target_type)
 
-        # 总数查询
+        # 总数查询（带超时防护）
+        from crud.helpers import count_with_timeout
+
         count_stmt = select(func.count()).select_from(FailedForward)
         for cond in conditions:
             count_stmt = count_stmt.filter(cond)
-        total = (await sess.execute(count_stmt)).scalar() or 0
+        total = await count_with_timeout(sess, count_stmt)
 
         # 数据查询
         query = select(FailedForward)
@@ -622,11 +624,12 @@ async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int
     return [dict(row._mapping) for row in result.all()]
 
 
-async def count_dead_letters(session: AsyncSession) -> int:
-    """统计 dead_letter 数量"""
+async def count_dead_letters(session: AsyncSession) -> int | None:
+    """统计 dead_letter 数量（带超时防护）。"""
+    from crud.helpers import count_with_timeout
+
     stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == "dead_letter")
-    result = await session.execute(stmt)
-    return result.scalar_one()
+    return await count_with_timeout(session, stmt)
 
 
 async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:

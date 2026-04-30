@@ -9,6 +9,12 @@ if [ -n "$JEMALLOC_PATH" ]; then
     export LD_PRELOAD="$JEMALLOC_PATH"
 fi
 
+# 清理 Prometheus 多进程残留文件
+if [ -n "$PROMETHEUS_MULTIPROC_DIR" ]; then
+    rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"/*
+    mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
+fi
+
 # Worker 模式：跳过 DB 初始化和迁移（由 api 节点负责），直接启动 Poller
 if [ "$RUN_MODE" = "worker" ]; then
     echo "Starting in Worker mode..."

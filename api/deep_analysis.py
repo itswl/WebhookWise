@@ -19,6 +19,7 @@ from core.compression import decompress_payload_async
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
+from crud.helpers import count_with_timeout
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse
@@ -186,12 +187,10 @@ async def list_all_deep_analyses(
                 total = int(estimate)
             else:
                 total_query = select(func.count()).select_from(DeepAnalysis)
-                total_res = await session.execute(total_query)
-                total = total_res.scalar()
+                total = await count_with_timeout(session, total_query)
         except Exception:
             total_query = select(func.count()).select_from(DeepAnalysis)
-            total_res = await session.execute(total_query)
-            total = total_res.scalar()
+            total = await count_with_timeout(session, total_query)
     else:
         # 有条件：用精确 COUNT（索引加速），添加超时兜底
         total_query = select(func.count()).select_from(DeepAnalysis)
@@ -199,14 +198,7 @@ async def list_all_deep_analyses(
             total_query = total_query.filter(DeepAnalysis.status == status_filter)
         if engine_filter:
             total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
-        try:
-            await session.execute(text("SET LOCAL statement_timeout = '2000'"))
-            total_res = await session.execute(total_query)
-            total = total_res.scalar()
-        except Exception:
-            total = None
-        finally:
-            await session.execute(text("RESET statement_timeout"))
+        total = await count_with_timeout(session, total_query)
 
     # 记录查询
     query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())

@@ -46,6 +46,7 @@ services:
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
       MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
 
     volumes:
       - ./.env:/app/.env # 挂载 .env 文件
@@ -93,6 +94,7 @@ services:
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
       MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     volumes:
       - ./.env:/app/.env
       - ./logs:/app/logs

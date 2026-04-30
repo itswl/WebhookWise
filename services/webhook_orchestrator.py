@@ -1,5 +1,6 @@
 """业务协调层 — 从 crud/webhook.py 提取的保存协调逻辑。"""
 
+import asyncio
 from datetime import datetime
 
 from sqlalchemy import column, select
@@ -94,7 +95,9 @@ async def _save_duplicate_event(
             await session.flush()
             logger.info(f"[save] UPDATE 重复告警记录: ID={dup_event.id}, original={original.id}")
             if Config.server.ENABLE_FILE_BACKUP:
-                save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
+                await asyncio.to_thread(
+                    save_webhook_to_file, data, source, raw_payload, headers, client_ip, final_ai_analysis
+                )
             return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
 
     duplicate_event = build_event(
@@ -137,7 +140,7 @@ async def _save_duplicate_event(
         logger.info(f"重复告警已保存: ID={duplicate_event.id}, 无AI分析结果")
 
     if Config.server.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
+        await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, final_ai_analysis)
 
     return SaveWebhookResult(duplicate_event.id, True, original.id, beyond_window)
 
@@ -232,7 +235,7 @@ async def _upsert_new_event(
 
         logger.info(f"Webhook 数据已保存到数据库 (UPSERT): ID={row_id}")
         if Config.server.ENABLE_FILE_BACKUP:
-            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+            await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, ai_analysis)
         return SaveWebhookResult(row_id, False, None, False)
 
     # 冲突：已有原始告警，原子性 +1 duplicate_count 已完成
@@ -264,12 +267,12 @@ async def _upsert_new_event(
 
     logger.info(f"并发冲突降级：重复告警已保存 ID={dup_event.id}, original={row_id}")
     if Config.server.ENABLE_FILE_BACKUP:
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, final_ai_analysis)
+        await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, final_ai_analysis)
 
     return SaveWebhookResult(dup_event.id, True, row_id, beyond_window)
 
 
-def _save_to_file_fallback(
+async def _save_to_file_fallback(
     data: WebhookData,
     source: str,
     raw_payload: bytes | None,
@@ -277,7 +280,7 @@ def _save_to_file_fallback(
     client_ip: str | None,
     ai_analysis: AnalysisResult | None,
 ) -> SaveWebhookResult:
-    file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+    file_id = await asyncio.to_thread(save_webhook_to_file, data, source, raw_payload, headers, client_ip, ai_analysis)
     return SaveWebhookResult(file_id, False, None, False)
 
 
@@ -366,4 +369,4 @@ async def save_webhook_data(
 
     except Exception as e:
         logger.error(f"保存 webhook 数据到数据库失败: {e!s}")
-        return _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
+        return await _save_to_file_fallback(data, source, raw_payload, headers, client_ip, ai_analysis)
