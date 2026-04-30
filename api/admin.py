@@ -1,9 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.config import Config
 from core.logger import logger
+from core.redis_client import get_redis
 from core.runtime_config import _KEY_TO_SUBCONFIG, runtime_config
+from crud.webhook import count_dead_letters, list_dead_letters, replay_dead_letter
+from db.session import get_db_session
 
 admin_router = APIRouter()
 
@@ -183,4 +187,102 @@ def migration_add_unique_constraint():
         return _fail("数据库迁移失败，请查看日志", 500)
     except Exception as e:
         logger.error(f"执行迁移失败: {e}")
+        return _fail(str(e), 500)
+
+
+# ── Dead Letter 重放 ──────────────────────────────────────────────────────────
+
+
+@admin_router.get("/api/admin/dead-letters")
+async def get_dead_letters(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """列出所有 dead_letter 事件（分页）"""
+    try:
+        items = await list_dead_letters(session, page=page, page_size=page_size)
+        total = await count_dead_letters(session)
+        # 序列化 datetime 字段
+        for item in items:
+            if item.get("timestamp"):
+                item["timestamp"] = item["timestamp"].isoformat()
+        return _ok(
+            data=items,
+            http_status=200,
+            pagination={"page": page, "page_size": page_size, "total": total},
+        )
+    except Exception as e:
+        logger.error(f"查询 dead_letter 列表失败: {e!s}", exc_info=True)
+        return _fail(str(e), 500)
+
+
+@admin_router.post("/api/admin/dead-letters/{event_id}/replay")
+async def replay_single_dead_letter(
+    event_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """重放单个 dead_letter：重置状态 + 重新投递 Redis Stream"""
+    try:
+        updated = await replay_dead_letter(session, event_id)
+        if not updated:
+            return _fail(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
+
+        # 先提交 DB，再投递 Redis Stream（与 api/webhook.py 保持一致）
+        await session.commit()
+
+        redis = get_redis()
+        await redis.xadd(
+            Config.server.WEBHOOK_MQ_QUEUE,
+            {"event_id": str(event_id), "client_ip": ""},
+            maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+            approximate=True,
+        )
+
+        logger.info(f"[Admin] Dead letter 重放成功: event_id={event_id}")
+        return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
+    except Exception as e:
+        logger.error(f"重放 dead_letter 失败: event_id={event_id}, error={e!s}", exc_info=True)
+        return _fail(str(e), 500)
+
+
+@admin_router.post("/api/admin/dead-letters/replay-all")
+async def replay_all_dead_letters(
+    batch_size: int = Query(50, ge=1, le=500),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """批量重放所有 dead_letter（限流，最多 batch_size 条）"""
+    try:
+        items = await list_dead_letters(session, page=1, page_size=batch_size)
+        if not items:
+            return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
+
+        replayed_ids = []
+        for item in items:
+            eid = item["id"]
+            updated = await replay_dead_letter(session, eid)
+            if updated:
+                replayed_ids.append(eid)
+
+        # 先提交 DB，再批量投递 Redis Stream
+        await session.commit()
+
+        redis = get_redis()
+        for eid in replayed_ids:
+            await redis.xadd(
+                Config.server.WEBHOOK_MQ_QUEUE,
+                {"event_id": str(eid), "client_ip": ""},
+                maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+                approximate=True,
+            )
+
+        logger.info(f"[Admin] 批量重放完成: {len(replayed_ids)} 条")
+        return _ok(
+            http_status=200,
+            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+            replayed=len(replayed_ids),
+            event_ids=replayed_ids,
+        )
+    except Exception as e:
+        logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
