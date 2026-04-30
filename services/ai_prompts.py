@@ -15,6 +15,13 @@ logger = logging.getLogger("webhook_service.ai_prompts")
 
 # 缓存 prompt 模板
 _user_prompt_template: str | None = None
+# 当前 prompt 模板来源（用于日志追踪）
+_user_prompt_source: str = "unknown"
+
+
+def get_prompt_source() -> str:
+    """获取当前 prompt 模板来源描述（供 AI 调用时日志输出）。"""
+    return _user_prompt_source
 
 
 def load_user_prompt_template() -> str:
@@ -29,7 +36,7 @@ def load_user_prompt_template() -> str:
     Returns:
         str: Prompt 模板字符串，支持 {source} 和 {data_json} 占位符
     """
-    global _user_prompt_template
+    global _user_prompt_template, _user_prompt_source
 
     # 如果已缓存，直接返回
     if _user_prompt_template is not None:
@@ -37,6 +44,7 @@ def load_user_prompt_template() -> str:
 
     # 1. 优先使用环境变量中的直接内容
     if Config.ai.AI_USER_PROMPT:
+        _user_prompt_source = "env:AI_USER_PROMPT"
         logger.info("使用环境变量 AI_USER_PROMPT 中的 prompt 模板")
         _user_prompt_template = Config.ai.AI_USER_PROMPT
         return _user_prompt_template
@@ -54,6 +62,7 @@ def load_user_prompt_template() -> str:
             try:
                 with open(file_path, encoding="utf-8") as f:
                     _user_prompt_template = f.read()
+                _user_prompt_source = f"file:{file_path}"
                 logger.info(f"成功从文件加载 prompt 模板: {file_path}")
                 return _user_prompt_template
             except Exception as e:
@@ -62,6 +71,7 @@ def load_user_prompt_template() -> str:
             logger.warning(f"Prompt 模板文件不存在: {file_path}，使用默认模板")
 
     # 3. 使用默认模板
+    _user_prompt_source = "builtin:default"
     logger.info("使用默认硬编码 prompt 模板")
     _user_prompt_template = """请分析以下 webhook 事件：
 
@@ -133,8 +143,9 @@ def reload_user_prompt_template() -> str:
     Returns:
         str: 新加载的 Prompt 模板字符串
     """
-    global _user_prompt_template
+    global _user_prompt_template, _user_prompt_source
     _user_prompt_template = None
+    _user_prompt_source = "unknown"
     logger.info("清除 prompt 模板缓存，重新加载")
     return load_user_prompt_template()
 

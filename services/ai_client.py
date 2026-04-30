@@ -159,13 +159,27 @@ async def _call_openai_completion(
 
 async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResult:
     """使用 OpenAI API 分析 webhook 数据"""
-    from services.ai_prompts import load_user_prompt_template
+    from services.ai_prompts import get_prompt_source, load_user_prompt_template
 
     try:
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
+
+        prompt_source = get_prompt_source()
+        logger.info(
+            "[AI] Prompt 来源: %s | user_prompt 长度: %d | data_yaml 长度: %d | source: %s",
+            prompt_source,
+            len(user_prompt),
+            len(data_yaml),
+            source,
+        )
+        if not user_prompt or not user_prompt.strip():
+            raise ValueError(
+                f"user_prompt 为空，无法调用 AI 分析。"
+                f"prompt_source={prompt_source}, template_len={len(prompt_template)}, data_yaml_len={len(data_yaml)}"
+            )
 
         ai_response, finish_reason, _tokens_in, _tokens_out = await _call_openai_completion(
             Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
@@ -191,13 +205,27 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
     Returns:
         tuple: (分析结果, 输入 tokens, 输出 tokens)
     """
-    from services.ai_prompts import load_user_prompt_template
+    from services.ai_prompts import get_prompt_source, load_user_prompt_template
 
     try:
         prompt_template = load_user_prompt_template()
         cleaned_data = sanitize_for_ai(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
+
+        prompt_source = get_prompt_source()
+        logger.info(
+            "[AI] Prompt 来源: %s | user_prompt 长度: %d | data_yaml 长度: %d | source: %s",
+            prompt_source,
+            len(user_prompt),
+            len(data_yaml),
+            source,
+        )
+        if not user_prompt or not user_prompt.strip():
+            raise ValueError(
+                f"user_prompt 为空，无法调用 AI 分析。"
+                f"prompt_source={prompt_source}, template_len={len(prompt_template)}, data_yaml_len={len(data_yaml)}"
+            )
 
         ai_response, finish_reason, tokens_in, tokens_out = await _call_openai_completion(
             Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
