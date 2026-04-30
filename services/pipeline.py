@@ -137,9 +137,11 @@ async def _update_processing_status(event_id: int | None, status: str) -> None:
         return
     try:
         async with session_scope() as session:
-            await session.execute(
-                update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status)
-            )
+            values: dict = {"processing_status": status}
+            if status in ("analyzing", "completed"):
+                values["failure_reason"] = None
+                values["error_message"] = None
+            await session.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(**values))
         set_log_context(processing_status=status)
         WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=status).inc()
     except Exception as e:
@@ -201,7 +203,7 @@ async def _handle_webhook_process_inner(
         stmt = (
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
-            .values(processing_status="analyzing")
+            .values(processing_status="analyzing", failure_reason=None, error_message=None)
             .returning(WebhookEvent)
         )
         result = await session.execute(stmt)
@@ -365,7 +367,18 @@ async def _handle_webhook_process_inner(
                     current_retry,
                     e,
                 )
-                await _update_processing_status(event_id, "dead_letter")
+                async with session_scope() as session:
+                    await session.execute(
+                        update(WebhookEvent)
+                        .where(WebhookEvent.id == event_id)
+                        .values(
+                            processing_status="dead_letter",
+                            failure_reason="max_retries_exhausted",
+                            error_message=str(e)[:2000],
+                        )
+                    )
+                set_log_context(processing_status="dead_letter")
+                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
                 WEBHOOK_DEAD_LETTER_TOTAL.inc()
                 outcome = "dead_letter"
                 await _send_dead_letter_alert(event_id, current_retry, e)
@@ -378,7 +391,18 @@ async def _handle_webhook_process_inner(
                     e,
                     exc_info=True,
                 )
-                await _update_processing_status(event_id, "received")
+                async with session_scope() as session:
+                    await session.execute(
+                        update(WebhookEvent)
+                        .where(WebhookEvent.id == event_id)
+                        .values(
+                            processing_status="received",
+                            failure_reason="retryable_error",
+                            error_message=str(e)[:2000],
+                        )
+                    )
+                set_log_context(processing_status="received")
+                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="received").inc()
                 outcome = "retry"
         else:
             logger.warning(
@@ -387,7 +411,18 @@ async def _handle_webhook_process_inner(
                 e,
                 type(e).__name__,
             )
-            await _update_processing_status(event_id, "dead_letter")
+            async with session_scope() as session:
+                await session.execute(
+                    update(WebhookEvent)
+                    .where(WebhookEvent.id == event_id)
+                    .values(
+                        processing_status="dead_letter",
+                        failure_reason="non_retryable_error",
+                        error_message=str(e)[:2000],
+                    )
+                )
+            set_log_context(processing_status="dead_letter")
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
             WEBHOOK_DEAD_LETTER_TOTAL.inc()
             outcome = "dead_letter"
             await _send_dead_letter_alert(event_id, 0, e)
