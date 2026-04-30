@@ -68,15 +68,21 @@ async def verify_webhook_auth_dep(request: Request):
                     detail=f"Request body too large: {length} bytes (max {Config.security.MAX_WEBHOOK_BODY_BYTES})",
                 )
         except ValueError:
-            pass  # 无效的 Content-Length，让后续逻辑处理
+            logger.debug("无效的 Content-Length 头: %s", content_length)
 
     # 2. 读取 body 并验证签名
     raw_body = await request.body()
     headers = dict(request.headers)
     try:
         ensure_webhook_auth(headers, raw_body)
-    except (InvalidSignatureError, Exception):
+    except InvalidSignatureError:
         raise HTTPException(status_code=401, detail="Unauthorized") from None
+    except ValueError as e:
+        logger.warning("Webhook 签名验证参数异常: %s", e)
+        raise HTTPException(status_code=401, detail="Unauthorized") from None
+    except Exception as e:
+        logger.error("Webhook 认证内部错误: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 async def check_rate_limit_dep(request: Request):
@@ -88,4 +94,4 @@ async def check_rate_limit_dep(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning(f"限流检查失败: {e}")
+        logger.error("限流检查异常（降级放行）: %s", e, exc_info=True)

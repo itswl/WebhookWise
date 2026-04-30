@@ -126,7 +126,7 @@ class CircuitBreaker:
 
             return core.redis_client.get_redis()
         except Exception as e:
-            logger.warning(f"CircuitBreaker [{self.name}] 获取 Redis 失败，降级放行: {e}")
+            logger.error(f"CircuitBreaker [{self.name}] 获取 Redis 失败，降级放行: {e}")
             return None
 
     @property

@@ -159,8 +159,8 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         )
 
     except Exception as e:
-        logger.error(f"深度分析失败: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        logger.error("深度分析失败: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})
 
 
 @deep_analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
@@ -256,15 +256,15 @@ async def forward_deep_analysis(
     try:
         target_url = (payload.get("target_url") or "").strip()
         if not target_url:
-            return JSONResponse(status_code=400, content={"success": False, "message": "转发 URL 不能为空"})
+            return JSONResponse(status_code=400, content={"success": False, "error": "转发 URL 不能为空"})
         if not target_url.startswith(("http://", "https://")):
-            return JSONResponse(status_code=400, content={"success": False, "message": "URL 格式无效"})
+            return JSONResponse(status_code=400, content={"success": False, "error": "URL 格式无效"})
 
         analysis = await session.get(DeepAnalysis, analysis_id)
         if not analysis:
-            return JSONResponse(status_code=404, content={"success": False, "message": "分析记录不存在"})
+            return JSONResponse(status_code=404, content={"success": False, "error": "分析记录不存在"})
         if analysis.status != "completed":
-            return JSONResponse(status_code=400, content={"success": False, "message": "分析尚未完成"})
+            return JSONResponse(status_code=400, content={"success": False, "error": "分析尚未完成"})
 
         source = "unknown"
         if analysis.webhook_event_id:
@@ -303,8 +303,8 @@ async def forward_deep_analysis(
                     session=session,
                 )
             except Exception as rec_err:
-                logger.warning(f"记录飞书发送失败异常: {rec_err}")
-            return JSONResponse(status_code=500, content={"success": False, "message": "飞书发送失败"})
+                logger.warning("记录飞书发送失败异常: %s", rec_err)
+            return JSONResponse(status_code=202, content={"success": True, "message": "分析已提交，飞书通知可能延迟"})
         else:
             fwd_payload = {
                 "type": "deep_analysis",
@@ -321,8 +321,8 @@ async def forward_deep_analysis(
             resp.raise_for_status()
             return {"success": True, "message": f"已转发 (HTTP {resp.status_code})"}
     except Exception as e:
-        logger.error(f"转发深度分析失败: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
+        logger.error("转发深度分析失败: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})
 
 
 @deep_analysis_router.post("/api/deep-analyses/{analysis_id}/retry")
@@ -335,11 +335,12 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
     try:
         record = await session.get(DeepAnalysis, analysis_id)
         if not record:
-            return JSONResponse(status_code=404, content={"error": "分析记录不存在"})
+            return JSONResponse(status_code=404, content={"success": False, "error": "分析记录不存在"})
 
         if record.status not in ("failed", "completed"):
             return JSONResponse(
-                status_code=400, content={"error": f"只能在失败或已完成状态下重新拉取，当前状态: {record.status}"}
+                status_code=400,
+                content={"success": False, "error": f"只能在失败或已完成状态下重新拉取，当前状态: {record.status}"},
             )
 
         if not record.openclaw_session_key:
@@ -348,7 +349,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             webhook_event = webhook_result.scalars().first()
 
             if not webhook_event:
-                return JSONResponse(status_code=404, content={"error": "关联的 webhook 事件不存在"})
+                return JSONResponse(status_code=404, content={"success": False, "error": "关联的 webhook 事件不存在"})
 
             # 重新构造 webhook_data
             alert_data = webhook_event.parsed_data or {}
@@ -397,10 +398,14 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
 
             if result.get("status") == "error":
-                return JSONResponse(status_code=400, content={"error": result.get("error", "获取失败")})
+                return JSONResponse(
+                    status_code=400, content={"success": False, "error": result.get("error", "获取失败")}
+                )
 
             if result.get("status") != "completed":
-                return JSONResponse(status_code=400, content={"error": f"获取未完成: {result.get('status')}"})
+                return JSONResponse(
+                    status_code=400, content={"success": False, "error": f"获取未完成: {result.get('status')}"}
+                )
 
             text = result.get("text", "")
 
@@ -483,5 +488,5 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             return {"success": True, "message": "已重新开始拉取，请等待结果"}
 
     except Exception as e:
-        logger.error(f"重试深度分析失败: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error("重试深度分析失败: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error"})

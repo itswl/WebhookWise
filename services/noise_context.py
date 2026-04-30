@@ -68,24 +68,31 @@ async def _load_recent_alert_contexts(
     window_start = current_time - timedelta(minutes=window_minutes)
 
     async with session_scope() as session:
-        # 查找时间窗口内的其他告警（排除自身）
-        events = result = await session.execute(
-            select(WebhookEvent).filter(WebhookEvent.timestamp >= window_start, WebhookEvent.timestamp <= current_time)
+        # 投影查询：仅加载需要的字段，避免拉取 raw_payload 等大字段
+        result = await session.execute(
+            select(
+                WebhookEvent.id,
+                WebhookEvent.alert_hash,
+                WebhookEvent.importance,
+                WebhookEvent.source,
+                WebhookEvent.timestamp,
+                WebhookEvent.parsed_data,
+            ).filter(WebhookEvent.timestamp >= window_start, WebhookEvent.timestamp <= current_time)
         )
-        events = result.scalars().all()
+        rows = result.all()
 
-        for event in events:
+        for row in rows:
             parsed = {}
-            if event.parsed_data:
-                parsed = event.parsed_data if isinstance(event.parsed_data, dict) else {}
+            if row.parsed_data:
+                parsed = row.parsed_data if isinstance(row.parsed_data, dict) else {}
 
             recent.append(
                 AlertContext(
-                    alert_id=event.id,
-                    alert_hash=getattr(event, "alert_hash", "") or "",
-                    importance=event.importance or "medium",
-                    source=event.source or "unknown",
-                    timestamp=event.timestamp or window_start,
+                    alert_id=row.id,
+                    alert_hash=row.alert_hash or "",
+                    importance=row.importance or "medium",
+                    source=row.source or "unknown",
+                    timestamp=row.timestamp or window_start,
                     parsed_data=parsed,
                 )
             )
