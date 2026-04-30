@@ -397,12 +397,23 @@ end
 
 @asynccontextmanager
 async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
-    """
-    告警处理锁上下文管理器（Redis 分布式锁）
+    """获取基于 alert_hash 的分布式处理锁。
 
-    利用 Redis SET NX EX 防止多 worker 并发处理同一告警。
-    内置 Watchdog 自动续期机制，每 TTL/3 秒续期一次，
-    防止长耗时 AI 分析期间锁被 TTL 过期释放导致重复处理。
+    保护范围：MQ Consumer 内同一 alert_hash 的并发分析。
+    当重复 webhook 同时抵达时，多个 Worker 可能从 Redis Stream
+    拉取到相同 alert_hash 的不同消息。此锁确保：
+    - 仅一个 Worker 获得锁并执行昂贵的 AI 分析
+    - 其他 Worker (got_lock=False) 通过 Pub/Sub 等待分析结果复用
+
+    非保护范围：此锁不用于 MQ Consumer 与 Recovery Poller 的跨路径互斥。
+    Recovery Poller 仅扫描 created_at 超过阈值（默认 300s）的僵尸事件，
+    与 MQ Consumer 的实时消费天然时间隔离。
+
+    实现：Redis SET NX EX + Watchdog 自动续期（TTL/3 间隔）。
+    释放：Lua 脚本原子检查 value 后 DEL，防止误删他人锁。
+
+    Yields:
+        bool: True=获得锁（执行分析），False=未获得锁（等待结果）
     """
     import core.redis_client
 

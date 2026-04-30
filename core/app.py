@@ -33,10 +33,14 @@ from services.recovery_poller import RecoveryPoller
 
 
 async def _ensure_schema() -> None:
-    """启动时确保关键 schema 字段存在（防御性迁移）。
+    """Alembic 的最后防线：启动时确保关键 schema 字段存在。
 
-    当 Alembic upgrade 因 stamp head 等原因跳过实际 DDL 时，
-    此函数作为双保险，通过 raw SQL 幂等地补齐缺失字段和索引。
+    所有 DDL 变更的主入口是 Alembic（entrypoint.sh [2/3]）。
+    此函数仅作为防御性补建，当 Alembic upgrade 因异常跳过实际 DDL 时，
+    通过 raw SQL 幂等地补齐最关键的列和索引，确保应用可正常启动。
+
+    注意：Poller 复合索引等非关键 DDL 已由 Alembic 迁移
+    d5a2b3c4e6f7 覆盖，不再在此处重复补建。
     """
     from sqlalchemy import text
 
@@ -77,17 +81,6 @@ async def _ensure_schema() -> None:
                 )
             )
             logger.info("[Schema] 已创建 idx_pending_webhooks 索引")
-
-        # ── Poller 复合索引（幂等补建）──
-        await session.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_deep_analyses_status_created " "ON deep_analyses(status, created_at)")
-        )
-        await session.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_failed_forwards_status_next_retry "
-                "ON failed_forwards(status, next_retry_at)"
-            )
-        )
 
         await session.commit()
     logger.info("[Schema] 防御性 schema 检查完成")

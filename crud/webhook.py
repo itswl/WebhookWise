@@ -6,7 +6,7 @@ from typing import Any
 import orjson
 from fastapi import Request
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
@@ -669,6 +669,50 @@ async def list_webhook_summaries_cursor(
     items = [_row_to_summary_dict(r) for r in rows]
     next_cursor = rows[-1].id if has_more and rows else None
     return items, has_more, next_cursor
+
+
+# ── Dead Letter 查询与重放 ──
+
+
+async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict]:
+    """查询所有 dead_letter 状态的事件（分页）"""
+    stmt = (
+        select(
+            WebhookEvent.id,
+            WebhookEvent.source,
+            WebhookEvent.timestamp,
+            WebhookEvent.alert_hash,
+            WebhookEvent.importance,
+            WebhookEvent.retry_count,
+            WebhookEvent.processing_status,
+        )
+        .where(WebhookEvent.processing_status == "dead_letter")
+        .order_by(WebhookEvent.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.all()]
+
+
+async def count_dead_letters(session: AsyncSession) -> int:
+    """统计 dead_letter 数量"""
+    stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == "dead_letter")
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
+async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
+    """重放单个 dead_letter 事件：重置状态并重新投递 Redis Stream"""
+    stmt = (
+        update(WebhookEvent)
+        .where(WebhookEvent.id == event_id)
+        .where(WebhookEvent.processing_status == "dead_letter")
+        .values(processing_status="received", retry_count=0)
+        .returning(WebhookEvent.id)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none() is not None
 
 
 # ── 运行时配置 CRUD ──
