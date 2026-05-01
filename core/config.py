@@ -265,6 +265,7 @@ class RetryConfig(BaseSettings):
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     FORWARD_RETRY_POLL_INTERVAL: int = Field(default=30)
     FORWARD_RETRY_BATCH_SIZE: int = Field(default=100)
+    FORWARD_RETRY_CONCURRENCY: int = Field(default=10, description="转发失败重试并发数（建议 10-20）")
 
 
 # ── 顶层组合 ────────────────────────────────────────────────
