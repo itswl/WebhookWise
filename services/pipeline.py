@@ -246,6 +246,11 @@ async def _handle_webhook_process_inner(
         # got_lock=False: 其他 Worker 已在分析，通过 Pub/Sub 等待结果复用
         async with processing_lock(alert_hash) as lock_result:
             if lock_result.suppressed:
+                from sqlalchemy import delete
+
+                from core.config import Config
+                from core.redis_client import get_redis
+
                 set_log_context(route_type="suppressed")
                 WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
                 logger.warning(
@@ -254,20 +259,56 @@ async def _handle_webhook_process_inner(
                     lock_result.queue_size,
                 )
 
+                redis = get_redis()
+                agg_key = f"storm:agg:{alert_hash}"
+                window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
+                keep_latest_n = max(0, int(Config.retry.PROCESSING_LOCK_STORM_KEEP_LATEST_N))
+
+                try:
+                    if await redis.hsetnx(agg_key, "event_id", str(event_id)):
+                        await redis.expire(agg_key, window_seconds)
+                    agg_event_id_raw = await redis.hget(agg_key, "event_id")
+                    agg_event_id = int(agg_event_id_raw) if agg_event_id_raw is not None else event_id
+                    storm_count = int(await redis.hincrby(agg_key, "count", 1))
+                    await redis.hset(agg_key, mapping={"last_event_id": str(event_id), "last_seen_ts": str(time.time())})
+                    await redis.expire(agg_key, window_seconds)
+
+                    if keep_latest_n:
+                        zkey = f"storm:keep:{alert_hash}"
+                        await redis.zadd(zkey, {str(event_id): time.time()})
+                        await redis.expire(zkey, window_seconds)
+                        zcard = int(await redis.zcard(zkey))
+                        excess = zcard - keep_latest_n
+                        if excess > 0:
+                            removed = await redis.zpopmin(zkey, excess)
+                            delete_ids = [
+                                int(member)
+                                for member, _score in removed
+                                if member is not None and int(member) not in (agg_event_id,)
+                            ]
+                            if delete_ids:
+                                async with session_scope() as session:
+                                    await session.execute(delete(WebhookEvent).where(WebhookEvent.id.in_(delete_ids)))
+                except Exception as exc:
+                    logger.warning("[Pipeline] 告警风暴聚合写入失败: %s", exc)
+                    agg_event_id = event_id
+                    storm_count = lock_result.queue_size
+
                 noise_context = NoiseReductionContext(
                     relation="storm",
                     root_cause_event_id=None,
                     confidence=1.0,
                     suppress_forward=True,
                     reason="alert_storm_backpressure",
-                    related_alert_count=lock_result.queue_size,
+                    related_alert_count=storm_count,
                     related_alert_ids=[],
                 )
                 base_analysis = {
                     "importance": "low",
-                    "summary": "告警风暴抑制",
+                    "summary": "告警风暴聚合",
                     "reason": "alert_storm_backpressure",
-                    "queue_size": lock_result.queue_size,
+                    "storm_count": storm_count,
+                    "window_seconds": window_seconds,
                 }
                 analysis_result = _apply_noise_metadata(base_analysis, noise_context)
                 save_result = await save_webhook_data(
@@ -279,8 +320,15 @@ async def _handle_webhook_process_inner(
                     ai_analysis=analysis_result,
                     forward_status="skipped",
                     alert_hash=alert_hash,
-                    event_id=event_id,
+                    event_id=agg_event_id,
                 )
+                if event_id != agg_event_id:
+                    async with session_scope() as session:
+                        await session.execute(
+                            update(WebhookEvent)
+                            .where(WebhookEvent.id == event_id)
+                            .values(processing_status="completed", forward_status="skipped", failure_reason=None, error_message=None)
+                        )
                 WEBHOOK_NOISE_REDUCED_TOTAL.labels(
                     source=sanitize_source(request_context.source),
                     relation=noise_context.relation,
@@ -293,7 +341,7 @@ async def _handle_webhook_process_inner(
                 return _build_webhook_response(
                     save_result.webhook_id,
                     analysis_result,
-                    {"status": "skipped", "reason": "告警风暴抑制"},
+                    {"status": "skipped", "reason": "告警风暴聚合抑制"},
                     save_result.is_duplicate,
                     save_result.original_id,
                     save_result.beyond_window,
