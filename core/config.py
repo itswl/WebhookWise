@@ -51,6 +51,7 @@ class ServerConfig(BaseSettings):
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(
         default=300, description="事件在 received/analyzing 状态超过此秒数视为僵尸"
     )
+    RECOVERY_POLLER_CONCURRENCY: int = Field(default=5, description="RecoveryPoller 并发恢复数（建议 3-10）")
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(
