@@ -37,7 +37,7 @@ services:
     environment:
       RUN_MODE: api
       PORT: ${PORT:-8000}
-      FLASK_ENV: ${FLASK_ENV:-production}
+      APP_ENV: ${APP_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_KEY: ${API_KEY}
