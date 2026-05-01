@@ -58,6 +58,10 @@ def _get_openai_client() -> AsyncOpenAI:
     return _openai_client
 
 
+def get_openai_client() -> AsyncOpenAI:
+    return _get_openai_client()
+
+
 def reset_openai_client():
     """释放 OpenAI 单例引用，供 lifespan shutdown 调用"""
     global _openai_client

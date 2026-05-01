@@ -5,7 +5,6 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from functools import partial
 
 import core.redis_client
 from core.config import Config
@@ -292,16 +291,11 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
             if Config.openclaw.OPENCLAW_HTTP_API_URL:
                 result = await _poll_via_http(rec["openclaw_session_key"])
             else:
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    partial(
-                        poll_session_result,
-                        gateway_url=Config.openclaw.OPENCLAW_GATEWAY_URL,
-                        gateway_token=Config.openclaw.OPENCLAW_GATEWAY_TOKEN,
-                        session_key=rec["openclaw_session_key"],
-                        timeout=Config.openclaw.OPENCLAW_POLL_TIMEOUT,
-                    ),
+                result = await poll_session_result(
+                    gateway_url=Config.openclaw.OPENCLAW_GATEWAY_URL,
+                    gateway_token=Config.openclaw.OPENCLAW_GATEWAY_TOKEN,
+                    session_key=rec["openclaw_session_key"],
+                    timeout=Config.openclaw.OPENCLAW_POLL_TIMEOUT,
                 )
 
             # --- 处理 completed ---
