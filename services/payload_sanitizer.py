@@ -18,7 +18,9 @@ def _get_offload_threshold_bytes() -> int:
     return v
 
 
-def _should_offload(data) -> bool:
+def _should_offload(data, depth: int = 0) -> bool:
+    if depth > 2:
+        return False
     if data is None:
         return False
     if isinstance(data, dict):
@@ -30,13 +32,23 @@ def _should_offload(data) -> bool:
                 return True
             if isinstance(v, list) and len(v) > 5000:
                 return True
-            if isinstance(v, dict) and len(v) > 2000:
+            if isinstance(v, dict) and (len(v) > 2000 or _should_offload(v, depth + 1)):
                 return True
+            if isinstance(v, list) and depth < 2:
+                for item in v[:2000]:
+                    if isinstance(item, (dict, list)) and _should_offload(item, depth + 1):
+                        return True
             if n >= 2000:
                 break
         return False
     if isinstance(data, list):
-        return len(data) > 5000
+        if len(data) > 5000:
+            return True
+        if depth < 2:
+            for item in data[:2000]:
+                if isinstance(item, (dict, list)) and _should_offload(item, depth + 1):
+                    return True
+        return False
     return False
 
 
