@@ -81,8 +81,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # DDL lock_timeout 防死锁：若 5s 内无法获得表锁则自动超时失败
-        connection.execute(text("SET lock_timeout = '5s'"))
+        connection.execute(text("SET lock_timeout = '30s'"))
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
