@@ -105,6 +105,9 @@ docs/
 - **内容**: 性能优化效果对比
 - **数据**: 优化前后的实际测试结果
 
+### [POSTGRES_PARTITIONING.md](performance/POSTGRES_PARTITIONING.md)
+- **内容**: 时序流水表的 PostgreSQL 原生分区方案（更适用于归档表）
+
 ## 📝 变更日志
 
 ### [MIGRATION_RESULT.md](changelogs/MIGRATION_RESULT.md)

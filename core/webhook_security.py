@@ -10,6 +10,14 @@ from core.redis_client import get_redis
 from core.utils import verify_signature
 from crud.webhook import get_client_ip
 
+_INCR_EXPIRE_IF_FIRST_LUA = """
+local c = redis.call("incr", KEYS[1])
+if c == 1 then
+    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
+end
+return c
+"""
+
 
 def extract_token(headers: dict) -> str:
     token = headers.get("token", "")
@@ -44,9 +52,7 @@ async def enforce_webhook_rate_limit(request: Request) -> str | None:
     redis = get_redis()
     window = int(time.time() // 60)
     key = f"rl:webhook:{client_ip}:{window}"
-    current = await redis.incr(key)
-    if current == 1:
-        await redis.expire(key, 70)
+    current = int(await redis.eval(_INCR_EXPIRE_IF_FIRST_LUA, 1, key, 70))
     if current > Config.security.WEBHOOK_RATE_LIMIT_PER_MINUTE:
         return client_ip
     return None

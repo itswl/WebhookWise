@@ -29,6 +29,14 @@ def mask_url(url: str) -> str:
 
 WebhookData = dict[str, Any]
 
+_INCR_EXPIRE_IF_FIRST_LUA = """
+local c = redis.call("incr", KEYS[1])
+if c == 1 then
+    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
+end
+return c
+"""
+
 
 class CircuitState(Enum):
     CLOSED = "closed"  # 正常，允许请求通过
@@ -422,9 +430,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator["ProcessingLockResu
     if threshold:
         try:
             redis = get_redis()
-            queue_size = int(await redis.incr(queue_key))
-            if queue_size == 1:
-                await redis.expire(queue_key, window_seconds)
+            queue_size = int(await redis.eval(_INCR_EXPIRE_IF_FIRST_LUA, 1, queue_key, window_seconds))
             if queue_size > threshold:
                 suppressed = True
         except Exception as e:
