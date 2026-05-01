@@ -250,6 +250,8 @@ class RetryConfig(BaseSettings):
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
     PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=200)
+    PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
+    PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
     # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
