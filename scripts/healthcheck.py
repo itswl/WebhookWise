@@ -4,15 +4,19 @@ import urllib.request
 
 
 async def _check_worker() -> None:
-    from core.redis_client import get_redis
-    from db.session import init_engine, test_db_connection
+    from core.redis_client import dispose_redis, get_redis
+    from db.session import dispose_engine, init_engine, test_db_connection
 
-    await init_engine()
-    ok = await test_db_connection()
-    if not ok:
-        raise SystemExit(1)
-    r = get_redis()
-    await r.ping()
+    try:
+        await init_engine()
+        ok = await test_db_connection()
+        if not ok:
+            raise SystemExit(1)
+        r = get_redis()
+        await r.ping()
+    finally:
+        await dispose_redis()
+        await dispose_engine()
 
 
 def _check_api() -> None:
