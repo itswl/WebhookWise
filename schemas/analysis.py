@@ -22,6 +22,9 @@ class DeepAnalysisRecord(BaseModel):
     openclaw_run_id: str | None = None
     openclaw_session_key: str | None = None
     status: str | None = None
+    source: str | None = None
+    is_duplicate: bool = False
+    beyond_window: bool = False
 
 
 class DeepAnalysisListData(BaseModel):

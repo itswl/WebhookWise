@@ -196,8 +196,16 @@ async def list_all_deep_analyses(
             total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
         total = await count_with_timeout(session, total_query)
 
-    # 记录查询
-    query = select(DeepAnalysis).order_by(DeepAnalysis.id.desc())
+    query = (
+        select(
+            DeepAnalysis,
+            WebhookEvent.source,
+            WebhookEvent.is_duplicate,
+            WebhookEvent.beyond_window,
+        )
+        .outerjoin(WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id)
+        .order_by(DeepAnalysis.id.desc())
+    )
 
     if cursor:
         query = query.filter(DeepAnalysis.id < cursor)
@@ -216,11 +224,19 @@ async def list_all_deep_analyses(
         query = query.offset(offset)
 
     result = await session.execute(query.limit(per_page))
-    records = result.scalars().all()
+    rows = result.all()
 
-    next_cursor = records[-1].id if records else None
+    next_cursor = rows[-1][0].id if rows else None
 
     total_pages = math.ceil(total / per_page) if total is not None and total > 0 else (1 if total is not None else None)
+
+    items = []
+    for record, source, is_duplicate, beyond_window in rows:
+        d = record.to_dict()
+        d["source"] = source
+        d["is_duplicate"] = bool(is_duplicate) if is_duplicate is not None else False
+        d["beyond_window"] = bool(beyond_window) if beyond_window is not None else False
+        items.append(d)
 
     return {
         "success": True,
@@ -230,7 +246,7 @@ async def list_all_deep_analyses(
             "page": page if not cursor else None,
             "per_page": per_page,
             "next_cursor": next_cursor,
-            "items": [r.to_dict() for r in records],
+            "items": items,
         },
     }
 

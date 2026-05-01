@@ -9,7 +9,9 @@
  * @returns {string} 格式化后的时间字符串 (MM/DD HH:mm)
  */
 function formatTime(timestamp) {
+    if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
     const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '-';
     return date.toLocaleString('zh-CN', {
         month: '2-digit',
         day: '2-digit',
@@ -24,8 +26,10 @@ function formatTime(timestamp) {
  * @returns {string} 相对时间字符串（如：5分钟前、2小时前）
  */
 function timeAgo(timestamp) {
+    if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
     const now = new Date();
     const past = new Date(timestamp);
+    if (Number.isNaN(past.getTime())) return '-';
     const seconds = Math.floor((now - past) / 1000);
 
     if (seconds < 60) return seconds + '秒前';
