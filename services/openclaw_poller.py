@@ -8,18 +8,11 @@ from datetime import datetime
 
 import core.redis_client
 from core.config import Config
+from core.distributed_lock import DistributedLock
 from core.http_client import get_http_client
 from core.trace import get_trace_id
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
-
-_RELEASE_LOCK_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-else
-    return 0
-end
-"""
 
 # 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
 # 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
@@ -140,24 +133,16 @@ async def _notify_feishu_deep_analysis_failed(record_dict: dict, reason: str = "
 
 async def poll_pending_analyses():
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
-    import core.redis_client
-
-    redis_client = core.redis_client.get_redis()
-    # Redis 全局分布式锁（防止多个 worker 同时查表和调接口）
     lock_key = "openclaw:poller:global_lock"
-
-    # 尝试获取锁，有效时间 60 秒
-    lock_value = str(uuid.uuid4())
-    if not await redis_client.set(lock_key, lock_value, nx=True, ex=60):
-        logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
-        return
-
-    try:
-        await _poll_pending_analyses_inner()
-    except Exception as e:
-        logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
-    finally:
-        await redis_client.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
+    lock = DistributedLock(key=lock_key, ttl=60, lock_value=str(uuid.uuid4()))
+    async with lock as acquired:
+        if not acquired:
+            logger.debug("另一个 worker 的轮询正在执行，跳过本轮")
+            return
+        try:
+            await _poll_pending_analyses_inner()
+        except Exception as e:
+            logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
 
 
 async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
