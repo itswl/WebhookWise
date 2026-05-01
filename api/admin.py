@@ -129,7 +129,7 @@ def _load_current_prompt_template() -> str:
 
 
 def _run_add_unique_constraint_migration() -> bool:
-    from migrations.migrations_tool import add_unique_constraint
+    from scripts.migrations_tool import add_unique_constraint
 
     logger.info("开始执行数据库迁移：添加唯一约束")
     return add_unique_constraint()
@@ -309,7 +309,9 @@ async def get_stuck_events(
 ):
     statuses = [s for s in (status or "").split(",") if s.strip()]
     try:
-        items = await list_stuck_events(session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit)
+        items = await list_stuck_events(
+            session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit
+        )
         for item in items:
             if item.get("created_at"):
                 item["created_at"] = item["created_at"].isoformat()
