@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 from crud.webhook import query_last_beyond_window_event, query_latest_original_event
 from db.session import session_scope
@@ -75,7 +75,7 @@ async def check_duplicate_alert(
         return DuplicateCheckResult(False, None, False, None)
 
     if time_window_hours is None:
-        time_window_hours = Config.retry.DUPLICATE_ALERT_TIME_WINDOW
+        time_window_hours = policies.retry.DUPLICATE_ALERT_TIME_WINDOW
 
     if session is not None:
         # 使用调用方提供的 session，不管理其生命周期
