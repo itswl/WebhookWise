@@ -66,6 +66,14 @@ docs/
   - 自定义 Prompt
   - 最佳实践
 
+### 配置与背压
+
+#### [CONFIG_PROVIDER.md](features/CONFIG_PROVIDER.md)
+- **内容**: 静态配置与运行时策略的边界拆分（policies 统一读取）与来源追踪接口
+
+#### [ALERT_STORM_BACKPRESSURE.md](features/ALERT_STORM_BACKPRESSURE.md)
+- **内容**: 告警风暴下的 Fail-Fast + 聚合写入策略（避免协程大量挂起）
+
 ## 🔧 故障排查
 
 ### [TROUBLESHOOTING.md](troubleshooting/TROUBLESHOOTING.md)
@@ -127,6 +135,8 @@ docs/
 - **配置告警去重** → [TIME_WINDOW_BEHAVIOR_CONFIG.md](features/TIME_WINDOW_BEHAVIOR_CONFIG.md)
 - **了解去重原理** → [DUPLICATE_TIME_WINDOW.md](features/DUPLICATE_TIME_WINDOW.md)
 - **自定义 AI 分析** → [PROMPT_CONFIG.md](features/PROMPT_CONFIG.md)
+- **排查配置来源** → [CONFIG_PROVIDER.md](features/CONFIG_PROVIDER.md)
+- **应对告警风暴** → [ALERT_STORM_BACKPRESSURE.md](features/ALERT_STORM_BACKPRESSURE.md)
 - **排查问题** → [TROUBLESHOOTING.md](troubleshooting/TROUBLESHOOTING.md)
 - **优化性能** → [PERFORMANCE_OPTIMIZATION.md](performance/PERFORMANCE_OPTIMIZATION.md)
 
