@@ -18,11 +18,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("webhook_events", sa.Column("failure_reason", sa.String(length=500), nullable=True))
-    op.add_column("webhook_events", sa.Column("error_message", sa.Text(), nullable=True))
+    op.execute(sa.text("ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS failure_reason VARCHAR(500)"))
+    op.execute(sa.text("ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS error_message TEXT"))
 
 
 def downgrade() -> None:
-    op.drop_column("webhook_events", "error_message")
-    op.drop_column("webhook_events", "failure_reason")
-
+    op.execute(sa.text("ALTER TABLE webhook_events DROP COLUMN IF EXISTS error_message"))
+    op.execute(sa.text("ALTER TABLE webhook_events DROP COLUMN IF EXISTS failure_reason"))
