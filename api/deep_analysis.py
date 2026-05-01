@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import get_default_engine, get_engine
+from core.compression import decompress_payload_async
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
