@@ -4,11 +4,16 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from crud.forward_rules import (
+    create_forward_rule,
+    delete_forward_rule,
+    get_forward_rule,
+    get_forward_rules,
+    update_forward_rule,
+)
 from db.session import get_db_session
-from models import ForwardRule
 from schemas.rules import ForwardRuleDetailResponse, ForwardRuleListResponse
 
 forward_rules_router = APIRouter()
@@ -18,15 +23,13 @@ forward_rules_router = APIRouter()
 
 
 @forward_rules_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
-async def get_forward_rules(session: AsyncSession = Depends(get_db_session)):
-    stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
-    result = await session.execute(stmt)
-    rules = result.scalars().all()
+async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)):
+    rules = await get_forward_rules(session)
     return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
 @forward_rules_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
-async def create_forward_rule(payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
+async def create_forward_rule_endpoint(payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
     payload = payload or {}
     name = payload.get("name", "")
     if isinstance(name, str):
@@ -49,70 +52,44 @@ async def create_forward_rule(payload: dict | None = None, session: AsyncSession
         if not target_url:
             return JSONResponse(status_code=400, content={"success": False, "error": "目标地址不能为空"})
 
-    rule = ForwardRule(
+    rule = await create_forward_rule(
+        session=session,
         name=name,
+        target_type=target_type,
         enabled=payload.get("enabled", True),
         priority=payload.get("priority", 0),
         match_importance=payload.get("match_importance", ""),
         match_duplicate=payload.get("match_duplicate", "all"),
         match_source=payload.get("match_source", ""),
-        target_type=target_type,
         target_url=payload.get("target_url", ""),
         target_name=payload.get("target_name", ""),
         stop_on_match=payload.get("stop_on_match", False),
     )
-    session.add(rule)
-    await session.flush()
     return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
 
 
 @forward_rules_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
-async def update_forward_rule(
+async def update_forward_rule_endpoint(
     rule_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)
 ):
     payload = payload or {}
-    stmt = select(ForwardRule).filter_by(id=rule_id)
-    result = await session.execute(stmt)
-    rule = result.scalars().first()
+    rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
-
-    for field in [
-        "name",
-        "enabled",
-        "priority",
-        "match_importance",
-        "match_duplicate",
-        "match_source",
-        "target_type",
-        "target_url",
-        "target_name",
-        "stop_on_match",
-    ]:
-        if field in payload:
-            setattr(rule, field, payload[field])
-
-    rule.updated_at = datetime.now()
-    await session.flush()
     return {"success": True, "data": rule.to_dict(), "message": "规则更新成功"}
 
 
 @forward_rules_router.delete("/api/forward-rules/{rule_id}")
-async def delete_forward_rule(rule_id: int, session: AsyncSession = Depends(get_db_session)):
-    stmt = select(ForwardRule).filter_by(id=rule_id)
-    result = await session.execute(stmt)
-    rule = result.scalars().first()
-    if not rule:
+async def delete_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depends(get_db_session)):
+    success = await delete_forward_rule(session=session, rule_id=rule_id)
+    if not success:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
-    session.delete(rule)
     return {"success": True, "message": "规则已删除"}
 
 
 @forward_rules_router.post("/api/forward-rules/{rule_id}/test")
 async def test_forward_rule(rule_id: int, session: AsyncSession = Depends(get_db_session)):
-    stmt = select(ForwardRule).filter_by(id=rule_id)
-    result = await session.execute(stmt)
-    rule = result.scalars().first()
+    rule = await get_forward_rule(session=session, rule_id=rule_id)
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
 
