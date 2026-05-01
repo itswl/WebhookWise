@@ -361,9 +361,9 @@ const AlertsModule = {
             html += '<div class="alert-right">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
             if (duplicateType === 'beyond_window') {
-                html += '<span class="badge badge-duplicate" title="超过时间窗口的重复告警">窗口外重复</span>';
+                html += '<span class="badge badge-duplicate badge-duplicate-beyond" title="超过时间窗口的重复告警">窗口外重复</span>';
             } else if (duplicateType === 'within_window') {
-                html += '<span class="badge badge-duplicate" title="时间窗口内的重复告警">窗口内重复</span>';
+                html += '<span class="badge badge-duplicate badge-duplicate-within" title="时间窗口内的重复告警">窗口内重复</span>';
             } else {
                 html += '<span class="badge badge-new">新告警</span>';
             }
