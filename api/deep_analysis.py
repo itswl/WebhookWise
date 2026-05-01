@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import math
 import re
 import time
 from datetime import datetime
@@ -10,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import get_default_engine, get_engine
@@ -19,7 +18,7 @@ from core.config import Config
 from core.config_provider import policies
 from core.http_client import get_http_client
 from core.logger import logger
-from crud.helpers import count_with_timeout
+from crud.analysis import get_deep_analyses_for_webhook, get_deep_analysis_list
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse
@@ -183,96 +182,25 @@ async def list_all_deep_analyses(
     if hasattr(engine_filter, "default"):
         engine_filter = engine_filter.default
 
-    per_page = max(1, min(per_page, 100))
-    # 总数（智能估算策略）
-    has_filters = bool(status_filter or engine_filter)
-
-    if not has_filters:
-        # 无条件：先尝试 pg_class 估算
-        try:
-            estimate_result = await session.execute(
-                text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'deep_analyses'")
-            )
-            estimate = estimate_result.scalar()
-            if estimate is not None and estimate > 100000:
-                total = int(estimate)
-            else:
-                total_query = select(func.count()).select_from(DeepAnalysis)
-                total = await count_with_timeout(session, total_query)
-        except Exception:
-            total_query = select(func.count()).select_from(DeepAnalysis)
-            total = await count_with_timeout(session, total_query)
-    else:
-        # 有条件：用精确 COUNT（索引加速），添加超时兜底
-        total_query = select(func.count()).select_from(DeepAnalysis)
-        if status_filter:
-            total_query = total_query.filter(DeepAnalysis.status == status_filter)
-        if engine_filter:
-            total_query = total_query.filter(DeepAnalysis.engine == engine_filter)
-        total = await count_with_timeout(session, total_query)
-
-    query = (
-        select(
-            DeepAnalysis,
-            WebhookEvent.source,
-            WebhookEvent.is_duplicate,
-            WebhookEvent.beyond_window,
+    try:
+        data = await get_deep_analysis_list(
+            session=session,
+            page=page,
+            per_page=per_page,
+            cursor=cursor,
+            status_filter=status_filter,
+            engine_filter=engine_filter,
+            max_page=MAX_PAGE,
         )
-        .outerjoin(WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id)
-        .order_by(DeepAnalysis.id.desc())
-    )
-
-    if cursor:
-        query = query.filter(DeepAnalysis.id < cursor)
-    if status_filter:
-        query = query.filter(DeepAnalysis.status == status_filter)
-    if engine_filter:
-        query = query.filter(DeepAnalysis.engine == engine_filter)
-
-    if not cursor:
-        if page > MAX_PAGE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"page 超过上限 {MAX_PAGE}，请使用 cursor 游标分页",
-            )
-        offset = (page - 1) * per_page
-        query = query.offset(offset)
-
-    result = await session.execute(query.limit(per_page))
-    rows = result.all()
-
-    next_cursor = rows[-1][0].id if rows else None
-
-    total_pages = math.ceil(total / per_page) if total is not None and total > 0 else (1 if total is not None else None)
-
-    items = []
-    for record, source, is_duplicate, beyond_window in rows:
-        d = record.to_dict()
-        d["source"] = source
-        d["is_duplicate"] = bool(is_duplicate) if is_duplicate is not None else False
-        d["beyond_window"] = bool(beyond_window) if beyond_window is not None else False
-        items.append(d)
-
-    return {
-        "success": True,
-        "data": {
-            "total": total,
-            "total_pages": total_pages,
-            "page": page if not cursor else None,
-            "per_page": per_page,
-            "next_cursor": next_cursor,
-            "items": items,
-        },
-    }
+        return {"success": True, "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @deep_analysis_router.get("/api/deep-analyses/{webhook_id}")
 async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
-    result = await session.execute(
-        select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
-    )
-    records = result.scalars().all()
-    return {"success": True, "data": [r.to_dict() for r in records]}
+    data = await get_deep_analyses_for_webhook(session, webhook_id)
+    return {"success": True, "data": data}
 
 
 @deep_analysis_router.post("/api/deep-analyses/{analysis_id}/forward")
