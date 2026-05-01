@@ -265,30 +265,68 @@ async def _handle_webhook_process_inner(
                 keep_latest_n = max(0, int(Config.retry.PROCESSING_LOCK_STORM_KEEP_LATEST_N))
 
                 try:
-                    if await redis.hsetnx(agg_key, "event_id", str(event_id)):
-                        await redis.expire(agg_key, window_seconds)
-                    agg_event_id_raw = await redis.hget(agg_key, "event_id")
-                    agg_event_id = int(agg_event_id_raw) if agg_event_id_raw is not None else event_id
-                    storm_count = int(await redis.hincrby(agg_key, "count", 1))
-                    await redis.hset(agg_key, mapping={"last_event_id": str(event_id), "last_seen_ts": str(time.time())})
-                    await redis.expire(agg_key, window_seconds)
+                    now_ts = time.time()
+                    agg_res = await redis.eval(
+                        """
+local created = redis.call("hsetnx", KEYS[1], "event_id", ARGV[1])
+if created == 1 then
+    redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+end
+local eid = redis.call("hget", KEYS[1], "event_id")
+local cnt = redis.call("hincrby", KEYS[1], "count", 1)
+redis.call("hset", KEYS[1], "last_event_id", ARGV[1], "last_seen_ts", ARGV[3])
+redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+return {eid, cnt}
+""",
+                        1,
+                        agg_key,
+                        str(event_id),
+                        str(window_seconds),
+                        str(now_ts),
+                    )
+                    agg_event_id = int(agg_res[0]) if agg_res and agg_res[0] is not None else event_id
+                    storm_count = int(agg_res[1]) if agg_res and agg_res[1] is not None else lock_result.queue_size
 
                     if keep_latest_n:
                         zkey = f"storm:keep:{alert_hash}"
-                        await redis.zadd(zkey, {str(event_id): time.time()})
-                        await redis.expire(zkey, window_seconds)
-                        zcard = int(await redis.zcard(zkey))
-                        excess = zcard - keep_latest_n
-                        if excess > 0:
-                            removed = await redis.zpopmin(zkey, excess)
-                            delete_ids = [
-                                int(member)
-                                for member, _score in removed
-                                if member is not None and int(member) not in (agg_event_id,)
-                            ]
-                            if delete_ids:
-                                async with session_scope() as session:
-                                    await session.execute(delete(WebhookEvent).where(WebhookEvent.id.in_(delete_ids)))
+                        removed_members = await redis.eval(
+                            """
+redis.call("zadd", KEYS[1], ARGV[1], ARGV[2])
+redis.call("expire", KEYS[1], tonumber(ARGV[3]))
+local keep = tonumber(ARGV[4])
+local card = redis.call("zcard", KEYS[1])
+if keep <= 0 then
+    local members = redis.call("zrange", KEYS[1], 0, -1)
+    if #members > 0 then
+        redis.call("del", KEYS[1])
+    end
+    return members
+end
+if card > keep then
+    local excess = card - keep
+    local members = redis.call("zrange", KEYS[1], 0, excess - 1)
+    if #members > 0 then
+        redis.call("zrem", KEYS[1], unpack(members))
+    end
+    return members
+end
+return {}
+""",
+                            1,
+                            zkey,
+                            str(now_ts),
+                            str(event_id),
+                            str(window_seconds),
+                            str(keep_latest_n),
+                        )
+                        delete_ids = [
+                            int(member)
+                            for member in (removed_members or [])
+                            if member is not None and int(member) not in (agg_event_id,)
+                        ]
+                        if delete_ids:
+                            async with session_scope() as session:
+                                await session.execute(delete(WebhookEvent).where(WebhookEvent.id.in_(delete_ids)))
                 except Exception as exc:
                     logger.warning("[Pipeline] 告警风暴聚合写入失败: %s", exc)
                     agg_event_id = event_id
