@@ -90,6 +90,17 @@ class ConfigUpdateResponse(BaseModel):
     message: str
 
 
+class ConfigSourceItem(BaseModel):
+    key: str
+    source: str
+    updated_at: str | None = None
+    updated_by: str | None = None
+
+
+class ConfigSourcesResponse(APIResponse[list[ConfigSourceItem]]):
+    """配置来源响应"""
+
+
 # ── Prompt ───────────────────────────────────────────────────────────────────
 
 

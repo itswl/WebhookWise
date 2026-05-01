@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import time
+from datetime import datetime
 
 from core.config import Config
 from core.config_provider import policies
@@ -57,8 +58,8 @@ _KEY_TO_SUBCONFIG: dict[str, str] = {
 }
 
 
-def _set_nested(key: str, value) -> None:
-    policies.set(key, value)
+def _set_nested(key: str, value, *, source: str | None = None, updated_at=None, updated_by: str | None = None) -> None:
+    policies.set(key, value, source=source, updated_at=updated_at, updated_by=updated_by)
 
 
 # 16 个运行时可变配置定义（从 admin.py _CONFIG_SCHEMA 对齐）
@@ -122,7 +123,13 @@ class RuntimeConfigManager:
             for key, config_row in configs.items():
                 if key in RUNTIME_KEYS:
                     typed_value = _deserialize_value(config_row.value, config_row.value_type)
-                    _set_nested(key, typed_value)
+                    _set_nested(
+                        key,
+                        typed_value,
+                        source="db",
+                        updated_at=config_row.updated_at,
+                        updated_by=config_row.updated_by,
+                    )
                     count += 1
             logger.info(f"[RuntimeConfig] 从数据库加载 {count} 个运行时配置")
         except Exception as e:
@@ -136,7 +143,7 @@ class RuntimeConfigManager:
         str_value = _serialize_value(value, value_type)
         await upsert_runtime_config(key, str_value, value_type, updated_by)
         typed_value = _deserialize_value(str_value, value_type)
-        _set_nested(key, typed_value)
+        _set_nested(key, typed_value, source="db", updated_at=datetime.now(), updated_by=updated_by)
         await self._publish_change([key])
 
     async def save_batch(self, updates: dict, updated_by: str = "api"):
@@ -149,7 +156,7 @@ class RuntimeConfigManager:
             str_value = _serialize_value(value, value_type)
             await upsert_runtime_config(key, str_value, value_type, updated_by)
             typed_value = _deserialize_value(str_value, value_type)
-            _set_nested(key, typed_value)
+            _set_nested(key, typed_value, source="db", updated_at=datetime.now(), updated_by=updated_by)
             changed_keys.append(key)
         if changed_keys:
             await self._publish_change(changed_keys)
@@ -233,7 +240,13 @@ class RuntimeConfigManager:
                 if key in configs and key in RUNTIME_KEYS:
                     config_row = configs[key]
                     typed_value = _deserialize_value(config_row.value, config_row.value_type)
-                    _set_nested(key, typed_value)
+                    _set_nested(
+                        key,
+                        typed_value,
+                        source="db",
+                        updated_at=config_row.updated_at,
+                        updated_by=config_row.updated_by,
+                    )
             logger.info(f"[RuntimeConfig] 热更新 {len(keys)} 个配置: {keys}")
 
             # Prompt 模板缓存重载
