@@ -37,6 +37,8 @@ class WebhookEventFull(BaseModel):
     duplicate_type: DuplicateType = "new"
     created_at: str | None = None
     updated_at: str | None = None
+    prev_alert_id: int | None = None
+    prev_alert_timestamp: str | None = None
 
 
 class WebhookEventSummary(BaseModel):
@@ -61,6 +63,7 @@ class WebhookEventSummary(BaseModel):
     alert_info: dict | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
+    prev_alert_timestamp: str | None = None
 
 
 class WebhookReceiveResponse(BaseModel):
