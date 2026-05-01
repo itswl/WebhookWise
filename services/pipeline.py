@@ -13,7 +13,7 @@ try:
 except ImportError:
     _QueryCanceledError = None  # 兼容无 asyncpg 环境
 
-from api import InvalidJsonError
+from api import InvalidJsonError, NoiseReductionContext
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
@@ -23,6 +23,7 @@ from core.metrics import (
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
+    WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
 from core.trace import generate_trace_id, set_trace_id
@@ -34,6 +35,7 @@ from services.pipeline_analysis import resolve_analysis
 from services.pipeline_forward import _refresh_original_event, decide_forwarding, execute_forwarding
 from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
 from services.pipeline_request import _build_webhook_response, _parse_webhook_request
+from services.webhook_orchestrator import save_webhook_data
 
 _NON_RETRYABLE_ERRORS = (
     ValueError,
@@ -242,7 +244,63 @@ async def _handle_webhook_process_inner(
         # 分布式锁：保护同一 alert_hash 的并发分析
         # got_lock=True: 本 Worker 负责执行 AI 分析
         # got_lock=False: 其他 Worker 已在分析，通过 Pub/Sub 等待结果复用
-        async with processing_lock(alert_hash) as got_lock:
+        async with processing_lock(alert_hash) as lock_result:
+            if lock_result.suppressed:
+                set_log_context(route_type="suppressed")
+                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
+                logger.warning(
+                    "[Pipeline] 告警风暴触发 Fail-Fast: hash=%s, queue=%d",
+                    alert_hash[:16],
+                    lock_result.queue_size,
+                )
+
+                noise_context = NoiseReductionContext(
+                    relation="storm",
+                    root_cause_event_id=None,
+                    confidence=1.0,
+                    suppress_forward=True,
+                    reason="alert_storm_backpressure",
+                    related_alert_count=lock_result.queue_size,
+                    related_alert_ids=[],
+                )
+                base_analysis = {
+                    "importance": "low",
+                    "summary": "告警风暴抑制",
+                    "reason": "alert_storm_backpressure",
+                    "queue_size": lock_result.queue_size,
+                }
+                analysis_result = _apply_noise_metadata(base_analysis, noise_context)
+                save_result = await save_webhook_data(
+                    data=request_context.parsed_data,
+                    source=request_context.source,
+                    raw_payload=request_context.payload,
+                    headers=request_context.headers,
+                    client_ip=request_context.client_ip,
+                    ai_analysis=analysis_result,
+                    forward_status="skipped",
+                    alert_hash=alert_hash,
+                    event_id=event_id,
+                )
+                WEBHOOK_NOISE_REDUCED_TOTAL.labels(
+                    source=sanitize_source(request_context.source),
+                    relation=noise_context.relation,
+                    suppressed="true",
+                ).inc()
+                set_log_context(processing_status="completed")
+                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
+                outcome = "suppressed"
+
+                return _build_webhook_response(
+                    save_result.webhook_id,
+                    analysis_result,
+                    {"status": "skipped", "reason": "告警风暴抑制"},
+                    save_result.is_duplicate,
+                    save_result.original_id,
+                    save_result.beyond_window,
+                    save_result.is_duplicate and not save_result.beyond_window,
+                )
+
+            got_lock = lock_result.got_lock
             logger.debug("[Pipeline] 进入 AI 分析阶段")
             analysis_resolution = await resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
 
