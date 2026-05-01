@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from openai import AsyncOpenAI
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,7 +72,9 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
         # - recommendations:
         # - confidence:
 
-    client = AsyncOpenAI(api_key=Config.ai.OPENAI_API_KEY, base_url=Config.ai.OPENAI_API_URL)
+    from services.ai_client import get_openai_client
+
+    client = get_openai_client()
     response = await client.chat.completions.create(
         model=Config.ai.OPENAI_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_question}],
