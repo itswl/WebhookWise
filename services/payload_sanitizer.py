@@ -11,7 +11,11 @@ from core.logger import get_logger
 
 logger = get_logger("payload_sanitizer")
 
-_OFFLOAD_THRESHOLD_BYTES = 512 * 1024
+def _get_offload_threshold_bytes() -> int:
+    v = int(getattr(Config.server, "PAYLOAD_OFFLOAD_THRESHOLD_BYTES", 0) or 0)
+    if v <= 0:
+        return 512 * 1024
+    return v
 
 
 def _should_offload(data) -> bool:
@@ -20,8 +24,9 @@ def _should_offload(data) -> bool:
     if isinstance(data, dict):
         if len(data) > 2000:
             return True
+        threshold = _get_offload_threshold_bytes()
         for n, v in enumerate(data.values()):
-            if isinstance(v, (str, bytes, bytearray)) and len(v) >= _OFFLOAD_THRESHOLD_BYTES:
+            if isinstance(v, (str, bytes, bytearray)) and len(v) >= threshold:
                 return True
             if isinstance(v, list) and len(v) > 5000:
                 return True

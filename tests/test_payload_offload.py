@@ -13,7 +13,8 @@ async def test_sanitize_for_ai_async_offloads_large_payload(monkeypatch):
 
     monkeypatch.setattr(payload_sanitizer.asyncio, "to_thread", fake_to_thread)
 
-    big = {"raw": "x" * (512 * 1024)}
+    threshold = payload_sanitizer._get_offload_threshold_bytes()
+    big = {"raw": "x" * threshold}
     out = await payload_sanitizer.sanitize_for_ai_async(big)
     assert out
     assert called["n"] == 1

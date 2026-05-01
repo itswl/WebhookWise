@@ -240,7 +240,7 @@ async def receive_webhook(
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
-    if len(raw_body) >= 512 * 1024:
+    if len(raw_body) >= Config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES:
         raw_body_str = await asyncio.to_thread(raw_body.decode, "utf-8", "replace")
     else:
         raw_body_str = raw_body.decode("utf-8", errors="replace")
@@ -296,7 +296,7 @@ async def receive_webhook_with_source(
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
-    if len(raw_body) >= 512 * 1024:
+    if len(raw_body) >= Config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES:
         raw_body_str = await asyncio.to_thread(raw_body.decode, "utf-8", "replace")
     else:
         raw_body_str = raw_body.decode("utf-8", errors="replace")
