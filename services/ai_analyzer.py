@@ -18,6 +18,7 @@ from tenacity import (
 )
 
 from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 from core.metrics import AI_ANALYSIS_DURATION_SECONDS, sanitize_source
 from services.ai_cache import get_cached_analysis, log_ai_usage, save_to_cache
@@ -88,7 +89,7 @@ async def analyze_webhook_with_ai(
         logger.info(f"跳过缓存: 用户请求重新分析, source={source}")
 
     # Step 2: 检查是否启用 AI 分析
-    if not Config.ai.ENABLE_AI_ANALYSIS:
+    if not policies.ai.ENABLE_AI_ANALYSIS:
         logger.info("AI 分析功能已禁用，使用基础规则分析")
         result = analyze_with_rules(parsed_data, source)
         result["_degraded"] = True
@@ -99,7 +100,7 @@ async def analyze_webhook_with_ai(
         return result
 
     # Step 3: 检查 API Key
-    if not Config.ai.OPENAI_API_KEY:
+    if not policies.ai.OPENAI_API_KEY:
         logger.warning("OpenAI API Key 未配置，降级为规则分析")
         result = analyze_with_rules(parsed_data, source)
         result["_degraded"] = True
@@ -126,7 +127,7 @@ async def analyze_webhook_with_ai(
             route_type="ai",
             alert_hash=alert_hash,
             source=source,
-            model=Config.ai.OPENAI_MODEL,
+            model=policies.ai.OPENAI_MODEL,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
@@ -192,8 +193,8 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         alert_level = labels.get("internal_label_alert_level", labels.get("severity", "")).lower()
 
         # 判断重要性
-        high_keywords = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
-        warn_keywords = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+        high_keywords = [k.strip().lower() for k in policies.ai.RULE_HIGH_KEYWORDS.split(",")]
+        warn_keywords = [k.strip().lower() for k in policies.ai.RULE_WARN_KEYWORDS.split(",")]
         if alert_level in high_keywords:
             analysis["importance"] = "high"
             analysis["summary"] = f"🔴 严重告警: {alert_name}"
@@ -215,8 +216,8 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         level = str(data.get("Level", "")).lower()
 
         # 判断重要性
-        high_keywords = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
-        warn_keywords = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+        high_keywords = [k.strip().lower() for k in policies.ai.RULE_HIGH_KEYWORDS.split(",")]
+        warn_keywords = [k.strip().lower() for k in policies.ai.RULE_WARN_KEYWORDS.split(",")]
         if level in high_keywords:
             analysis["importance"] = "high"
             analysis["summary"] = f"🔴 严重告警: {rule_name}"
@@ -228,7 +229,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         else:
             # 检查指标名称中的关键词
             metric_name = str(data.get("MetricName", "")).lower()
-            metric_keywords = [k.strip().lower() for k in Config.ai.RULE_METRIC_KEYWORDS.split(",")]
+            metric_keywords = [k.strip().lower() for k in policies.ai.RULE_METRIC_KEYWORDS.split(",")]
             if any(keyword in metric_name for keyword in metric_keywords):
                 analysis["importance"] = "medium"
                 analysis["summary"] = f"📊 监控告警: {rule_name}"
@@ -242,7 +243,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
             try:
                 current_num = float(current_value)
                 threshold_num = float(threshold)
-                if current_num > threshold_num * Config.ai.RULE_THRESHOLD_MULTIPLIER:
+                if current_num > threshold_num * policies.ai.RULE_THRESHOLD_MULTIPLIER:
                     # 超过4倍阈值，提升重要性
                     analysis["importance"] = "high"
                     analysis["summary"] = f"🔴 严重超标: {rule_name} (当前值 {current_value} >> 阈值 {threshold})"
@@ -263,8 +264,8 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
             analysis["event_type"] = event
 
             # 基于关键词判断
-            high_kw = [k.strip().lower() for k in Config.ai.RULE_HIGH_KEYWORDS.split(",")]
-            warn_kw = [k.strip().lower() for k in Config.ai.RULE_WARN_KEYWORDS.split(",")]
+            high_kw = [k.strip().lower() for k in policies.ai.RULE_HIGH_KEYWORDS.split(",")]
+            warn_kw = [k.strip().lower() for k in policies.ai.RULE_WARN_KEYWORDS.split(",")]
             if any(keyword in event for keyword in high_kw):
                 analysis["importance"] = "high"
                 analysis["summary"] = f"🔴 严重事件: {event}"

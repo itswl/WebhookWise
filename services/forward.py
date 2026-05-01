@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from core.config import Config
+from core.config_provider import policies
 from core.http_client import get_http_client
 from core.trace import get_trace_id
 from core.utils import forward_cb, openclaw_cb
@@ -39,12 +40,12 @@ async def forward_to_remote(
         is_periodic_reminder: 是否为周期性提醒
     """
     # 检查是否启用转发
-    if not Config.ai.ENABLE_FORWARD:
+    if not policies.ai.ENABLE_FORWARD:
         logger.info("转发功能已禁用")
         return {"status": "disabled", "message": "转发功能已禁用"}
 
     if target_url is None:
-        target_url = Config.ai.FORWARD_URL
+        target_url = policies.ai.FORWARD_URL
 
     try:
         # 检查是否是飞书 webhook

@@ -18,6 +18,7 @@ import json
 import time
 
 from core.config import Config
+from core.config_provider import policies
 from core.logger import get_logger
 from core.redis_client import get_redis
 from crud.webhook import get_all_runtime_configs, upsert_runtime_config
@@ -57,12 +58,7 @@ _KEY_TO_SUBCONFIG: dict[str, str] = {
 
 
 def _set_nested(key: str, value) -> None:
-    """根据映射表将值写入正确的子配置对象"""
-    sub = _KEY_TO_SUBCONFIG.get(key)
-    if sub:
-        setattr(getattr(Config, sub), key, value)
-    else:
-        setattr(Config, key, value)
+    policies.set(key, value)
 
 
 # 16 个运行时可变配置定义（从 admin.py _CONFIG_SCHEMA 对齐）
@@ -247,6 +243,12 @@ class RuntimeConfigManager:
 
                 reload_user_prompt_template()
                 logger.info("[RuntimeConfig] Prompt 模板缓存已重载")
+
+            openai_keys = {"OPENAI_API_KEY", "OPENAI_API_URL"}
+            if openai_keys & set(keys):
+                from services.ai_client import reset_openai_client
+
+                reset_openai_client()
         except Exception as e:
             logger.warning(f"[RuntimeConfig] 处理配置变更通知失败: {e}")
 

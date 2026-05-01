@@ -13,6 +13,7 @@ import yaml
 from openai import AsyncOpenAI
 
 from core.config import Config
+from core.config_provider import policies
 from core.http_client import get_http_client
 from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL, OPENAI_ERRORS_TOTAL
 from core.redis_client import get_redis
@@ -49,8 +50,8 @@ def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(
-            api_key=Config.ai.OPENAI_API_KEY,
-            base_url=Config.ai.OPENAI_API_URL,
+            api_key=policies.ai.OPENAI_API_KEY,
+            base_url=policies.ai.OPENAI_API_URL,
             http_client=get_http_client(),  # 复用应用统一的连接池
             timeout=httpx.Timeout(60.0, connect=10.0),  # AI 分析允许更长超时
         )
@@ -70,7 +71,7 @@ def reset_openai_client():
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
     return await client.chat.completions.create(
-        model=Config.ai.OPENAI_MODEL, messages=messages, temperature=Config.ai.OPENAI_TEMPERATURE, max_tokens=max_tokens
+        model=policies.ai.OPENAI_MODEL, messages=messages, temperature=Config.ai.OPENAI_TEMPERATURE, max_tokens=max_tokens
     )
 
 
@@ -121,7 +122,7 @@ async def _call_openai_completion(
             "AI 返回空响应 | finish_reason=%s | content=%r | model=%s | tokens_in=%d | tokens_out=%d | choice=%r",
             finish_reason,
             raw_content,
-            Config.ai.OPENAI_MODEL,
+            policies.ai.OPENAI_MODEL,
             tokens_in,
             tokens_out,
             choice,
@@ -147,7 +148,7 @@ async def _call_openai_completion(
                     {"role": "user", "content": _CONTINUATION_INSTRUCTION},
                 ]
                 continuation_response = await client.chat.completions.create(
-                    model=Config.ai.OPENAI_MODEL,
+                    model=policies.ai.OPENAI_MODEL,
                     messages=continuation_messages,
                     max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
                     temperature=0.3,
@@ -201,7 +202,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
             )
 
         ai_response, finish_reason, _tokens_in, _tokens_out = await _call_openai_completion(
-            Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
+            policies.ai.AI_SYSTEM_PROMPT, user_prompt, source
         )
 
         analysis_result = _parse_ai_analysis_response(ai_response, source)
@@ -248,16 +249,16 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
             )
 
         ai_response, finish_reason, tokens_in, tokens_out = await _call_openai_completion(
-            Config.ai.AI_SYSTEM_PROMPT, user_prompt, source
+            policies.ai.AI_SYSTEM_PROMPT, user_prompt, source
         )
 
         # Prometheus 打点 & 成本计算
         input_cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS
         output_cost = (tokens_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
         total_cost = input_cost + output_cost
-        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="input").inc(tokens_in)  # nosec B106
-        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="output").inc(tokens_out)  # nosec B106
-        AI_COST_USD_TOTAL.labels(model=Config.ai.OPENAI_MODEL).inc(total_cost)
+        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="input").inc(tokens_in)  # nosec B106
+        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="output").inc(tokens_out)  # nosec B106
+        AI_COST_USD_TOTAL.labels(model=policies.ai.OPENAI_MODEL).inc(total_cost)
         logger.info(f"[AI] Token 使用: in={tokens_in}, out={tokens_out}, cost=${total_cost:.4f}")
 
         analysis_result = _parse_ai_analysis_response(ai_response, source)
@@ -303,12 +304,12 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             return
 
         # 只有启用转发且配置了转发地址才发送
-        if not Config.ai.ENABLE_FORWARD or not Config.ai.FORWARD_URL:
+        if not policies.ai.ENABLE_FORWARD or not policies.ai.FORWARD_URL:
             logger.info("转发未启用，跳过降级通知")
             return
 
         # 检查是否是飞书 webhook
-        is_feishu = "feishu.cn" in Config.ai.FORWARD_URL or "lark" in Config.ai.FORWARD_URL
+        is_feishu = "feishu.cn" in policies.ai.FORWARD_URL or "lark" in policies.ai.FORWARD_URL
 
         if is_feishu:
             # 构建飞书告警消息
@@ -355,7 +356,7 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
             client = get_http_client()
             response = await feishu_cb.call_async(
                 client.post,
-                Config.ai.FORWARD_URL,
+                policies.ai.FORWARD_URL,
                 json=forward_data,
                 headers={"Content-Type": "application/json"},
                 timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT,

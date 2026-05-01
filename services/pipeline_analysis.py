@@ -6,6 +6,7 @@ from datetime import datetime
 
 from api import AnalysisResolution
 from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 from models import WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai
@@ -92,7 +93,7 @@ async def _resolve_analysis_with_lock(alert_hash: str, webhook_full_data: dict) 
             original_event,
             last_beyond_window_event,
             webhook_full_data,
-            Config.retry.REANALYZE_AFTER_TIME_WINDOW,
+            policies.retry.REANALYZE_AFTER_TIME_WINDOW,
             prefer_recent_beyond_window=False,
         )
     elif is_duplicate and original_event:
@@ -206,7 +207,7 @@ async def _resolve_analysis_without_lock(alert_hash: str, webhook_full_data: dic
             original_event,
             last_beyond_window_event,
             webhook_full_data,
-            Config.retry.REANALYZE_AFTER_TIME_WINDOW,
+            policies.retry.REANALYZE_AFTER_TIME_WINDOW,
             prefer_recent_beyond_window=True,
         )
     elif is_duplicate and original_event:

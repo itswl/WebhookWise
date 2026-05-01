@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from adapters.registry import get_default_engine, get_engine
 from core.compression import decompress_payload_async
 from core.config import Config
+from core.config_provider import policies
 from core.http_client import get_http_client
 from core.logger import logger
 from crud.helpers import count_with_timeout
@@ -45,7 +46,7 @@ def _resolve_engine(requested: str):
 async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict, float]:
     start_time = time.time()
 
-    if not Config.ai.OPENAI_API_KEY:
+    if not policies.ai.OPENAI_API_KEY:
         raise ValueError("AI 服务未配置")
 
     prompt_path = Path(__file__).parent.parent.parent / "prompts" / "deep_analysis.txt"
@@ -76,7 +77,7 @@ async def _local_ai_analysis(alert_data: dict, user_question: str) -> tuple[dict
 
     client = get_openai_client()
     response = await client.chat.completions.create(
-        model=Config.ai.OPENAI_MODEL,
+        model=policies.ai.OPENAI_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_question}],
         temperature=Config.ai.OPENAI_TEMPERATURE,
         max_tokens=Config.ai.OPENAI_MAX_TOKENS * 2,
