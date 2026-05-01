@@ -53,7 +53,7 @@ fi
 
 # [2/3] Alembic 迁移（所有 DDL 变更的唯一入口）
 echo "[2/3] Alembic 迁移..."
-if ! cd /app && alembic upgrade head 2>&1; then
+if ! (cd /app && alembic upgrade head) 2>&1; then
     echo "⚠️ Alembic 迁移失败，请检查日志。应用将继续启动，但数据库 Schema 可能不完整"
 fi
 echo "✅ Alembic 迁移完成"
