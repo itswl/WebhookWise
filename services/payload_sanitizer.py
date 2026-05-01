@@ -2,12 +2,45 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import orjson
 
 from core.config import Config
 from core.logger import get_logger
 
 logger = get_logger("payload_sanitizer")
+
+_OFFLOAD_THRESHOLD_BYTES = 512 * 1024
+
+
+def _should_offload(data) -> bool:
+    if data is None:
+        return False
+    if isinstance(data, dict):
+        if len(data) > 2000:
+            return True
+        for n, v in enumerate(data.values()):
+            if isinstance(v, (str, bytes, bytearray)) and len(v) >= _OFFLOAD_THRESHOLD_BYTES:
+                return True
+            if isinstance(v, list) and len(v) > 5000:
+                return True
+            if isinstance(v, dict) and len(v) > 2000:
+                return True
+            if n >= 2000:
+                break
+        return False
+    if isinstance(data, list):
+        return len(data) > 5000
+    return False
+
+
+async def sanitize_for_ai_async(parsed_data: dict) -> dict:
+    if not parsed_data:
+        return parsed_data
+    if _should_offload(parsed_data):
+        return await asyncio.to_thread(sanitize_for_ai, parsed_data)
+    return sanitize_for_ai(parsed_data)
 
 
 def sanitize_for_ai(parsed_data: dict) -> dict:

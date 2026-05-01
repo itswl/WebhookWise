@@ -19,7 +19,7 @@ from core.redis_client import get_redis
 from core.utils import feishu_cb
 from services.ai_parser import _parse_ai_analysis_response
 from services.ai_response_repair import repair_concatenated_response
-from services.payload_sanitizer import sanitize_for_ai
+from services.payload_sanitizer import sanitize_for_ai_async
 
 logger = logging.getLogger("webhook_service.ai_client")
 
@@ -182,7 +182,7 @@ async def analyze_with_openai(data: dict[str, Any], source: str) -> AnalysisResu
 
     try:
         prompt_template = load_user_prompt_template()
-        cleaned_data = sanitize_for_ai(data)
+        cleaned_data = await sanitize_for_ai_async(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
 
@@ -229,7 +229,7 @@ async def analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tupl
 
     try:
         prompt_template = load_user_prompt_template()
-        cleaned_data = sanitize_for_ai(data)
+        cleaned_data = await sanitize_for_ai_async(data)
         data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         user_prompt = prompt_template.format(source=source, data_json=data_yaml)
 
