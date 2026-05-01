@@ -53,6 +53,10 @@ class ServerConfig(BaseSettings):
     )
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
+    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(
+        default=524288,
+        description="超过该字节数的 payload 解码/清洗将使用 asyncio.to_thread() 执行，避免阻塞事件循环",
+    )
 
     # [静态] Redis Stream MQ，修改后需重启生效
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue", description="Webhook 消息队列 Redis Stream 名称")
