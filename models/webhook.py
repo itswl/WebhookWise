@@ -1,0 +1,146 @@
+import logging
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+
+from adapters.summary_extractors import extract_summary_fields
+from core.compression import decompress_payload
+from db.session import Base
+
+_logger = logging.getLogger(__name__)
+
+
+class WebhookEvent(Base):
+    """Webhook 事件模型"""
+
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(100), nullable=False, index=True)
+    client_ip = Column(String(50))
+    timestamp = Column(DateTime, nullable=False, default=datetime.now, index=True)
+
+    raw_payload = Column(LargeBinary)
+    headers = Column(JSONB)
+    parsed_data = Column(JSONB)
+
+    alert_hash = Column(String(64), index=True)
+
+    ai_analysis = Column(JSONB)
+    importance = Column(String(20), index=True)
+
+    processing_status = Column(String(20), default="received", nullable=False, index=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    failure_reason = Column(String(500), nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    forward_status = Column(String(20))
+
+    prev_alert_id = Column(BigInteger, nullable=True)
+
+    is_duplicate = Column(Integer, default=0)
+    duplicate_of = Column(Integer)
+    duplicate_count = Column(Integer, default=1)
+    beyond_window = Column(Integer, default=0)
+    last_notified_at = Column(DateTime)
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        Index("idx_hash_timestamp", "alert_hash", "timestamp"),
+        Index("idx_importance_timestamp", "importance", "timestamp"),
+        Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
+        Index("idx_status_created", "processing_status", "created_at"),
+        Index("idx_source_timestamp_id", "source", "timestamp", "id"),
+    )
+
+    def to_summary_dict(self):
+        summary = None
+        ai_analysis = self.ai_analysis
+        if ai_analysis:
+            summary = ai_analysis.get("summary", "")
+
+        alert_info = extract_summary_fields(self.source, self.parsed_data)
+
+        return {
+            "id": self.id,
+            "source": self.source,
+            "client_ip": self.client_ip,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "importance": self.importance,
+            "is_duplicate": self.is_duplicate,
+            "duplicate_of": self.duplicate_of,
+            "duplicate_count": self.duplicate_count,
+            "beyond_window": self.beyond_window,
+            "forward_status": self.forward_status,
+            "failure_reason": self.failure_reason,
+            "error_message": self.error_message,
+            "summary": summary,
+            "alert_info": alert_info,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "prev_alert_id": self.prev_alert_id,
+        }
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "source": self.source,
+            "client_ip": self.client_ip,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "raw_payload": decompress_payload(self.raw_payload),
+            "headers": self.headers,
+            "parsed_data": self.parsed_data,
+            "alert_hash": self.alert_hash,
+            "ai_analysis": self.ai_analysis,
+            "importance": self.importance,
+            "processing_status": self.processing_status,
+            "forward_status": self.forward_status,
+            "failure_reason": self.failure_reason,
+            "error_message": self.error_message,
+            "is_duplicate": self.is_duplicate,
+            "duplicate_of": self.duplicate_of,
+            "duplicate_count": self.duplicate_count,
+            "beyond_window": self.beyond_window,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ArchivedWebhookEvent(Base):
+    """已归档的 Webhook 事件模型（历史备份）"""
+
+    __tablename__ = "archived_webhook_events"
+
+    id = Column(Integer, primary_key=True)
+    source = Column(String(100), nullable=False, index=True)
+    client_ip = Column(String(50))
+    timestamp = Column(DateTime, nullable=False, index=True)
+
+    raw_payload = Column(LargeBinary)
+    headers = Column(JSONB)
+    parsed_data = Column(JSONB)
+    alert_hash = Column(String(64), index=True)
+    ai_analysis = Column(JSONB)
+    importance = Column(String(20), index=True)
+    forward_status = Column(String(20))
+    is_duplicate = Column(Integer)
+    duplicate_of = Column(Integer)
+    duplicate_count = Column(Integer)
+    beyond_window = Column(Integer)
+    last_notified_at = Column(DateTime)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    archived_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)
