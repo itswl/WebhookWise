@@ -9,6 +9,17 @@ import sqlalchemy.exc
 from sqlalchemy import update
 
 try:
+    from openai import AuthenticationError as _OpenAIAuthenticationError
+    from openai import BadRequestError as _OpenAIBadRequestError
+    from openai import PermissionDeniedError as _OpenAIPermissionDeniedError
+    from openai import UnprocessableEntityError as _OpenAIUnprocessableEntityError
+except Exception:
+    _OpenAIAuthenticationError = None
+    _OpenAIBadRequestError = None
+    _OpenAIPermissionDeniedError = None
+    _OpenAIUnprocessableEntityError = None
+
+try:
     from asyncpg.exceptions import QueryCanceledError as _QueryCanceledError
 except ImportError:
     _QueryCanceledError = None  # 兼容无 asyncpg 环境
@@ -113,8 +124,42 @@ _MAX_RETRIES = 5
 _running_tasks: set[asyncio.Task] = set()
 
 
+def _walk_exception_chain(exc: Exception):
+    visited: set[int] = set()
+    current: Exception | None = exc
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _is_openai_non_retryable(exc: Exception) -> bool:
+    for err in _walk_exception_chain(exc):
+        name = type(err).__name__
+        if name in {"BadRequestError", "UnprocessableEntityError", "PermissionDeniedError", "AuthenticationError"}:
+            return True
+        if _OpenAIBadRequestError and isinstance(err, _OpenAIBadRequestError):
+            return True
+        if _OpenAIUnprocessableEntityError and isinstance(err, _OpenAIUnprocessableEntityError):
+            return True
+        if _OpenAIPermissionDeniedError and isinstance(err, _OpenAIPermissionDeniedError):
+            return True
+        if _OpenAIAuthenticationError and isinstance(err, _OpenAIAuthenticationError):
+            return True
+
+        msg = str(err).lower()
+        if "context_length" in msg or "context length" in msg or "maximum context" in msg:
+            return True
+        if "content_policy" in msg or "content policy" in msg or "content filter" in msg:
+            return True
+
+    return False
+
+
 def _is_retryable(exc: Exception) -> bool:
     """判断异常是否可重试。"""
+    if _is_openai_non_retryable(exc):
+        return False
     # 网络相关异常：可重试
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
         return True
@@ -365,7 +410,12 @@ return {}
                         await session.execute(
                             update(WebhookEvent)
                             .where(WebhookEvent.id == event_id)
-                            .values(processing_status="completed", forward_status="skipped", failure_reason=None, error_message=None)
+                            .values(
+                                processing_status="completed",
+                                forward_status="skipped",
+                                failure_reason=None,
+                                error_message=None,
+                            )
                         )
                 WEBHOOK_NOISE_REDUCED_TOTAL.labels(
                     source=sanitize_source(request_context.source),
