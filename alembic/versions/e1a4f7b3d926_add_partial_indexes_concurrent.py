@@ -25,21 +25,32 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Add partial indexes using CONCURRENTLY to avoid locking tables."""
-    with op.get_context().autocommit_block():
-        op.execute(
-            sa.text(
-                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_status_created_partial "
-                "ON webhook_events (processing_status, created_at DESC) "
-                "WHERE processing_status IN ('received', 'analyzing', 'failed')"
-            )
-        )
-        op.execute(
-            sa.text(
-                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_failed_status_retry_partial "
-                "ON failed_forwards (status, next_retry_at) "
-                "WHERE status IN ('pending', 'retrying')"
-            )
-        )
+    ctx = op.get_context()
+
+    def _create_index(concurrently_sql: str, normal_sql: str) -> None:
+        try:
+            try:
+                with ctx.autocommit_block():
+                    op.execute(sa.text(concurrently_sql))
+            except AssertionError:
+                op.execute(sa.text(concurrently_sql))
+        except Exception:
+            op.execute(sa.text(normal_sql))
+
+    _create_index(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_status_created_partial "
+        "ON webhook_events (processing_status, created_at DESC) "
+        "WHERE processing_status IN ('received', 'analyzing', 'failed')",
+        "CREATE INDEX IF NOT EXISTS idx_status_created_partial "
+        "ON webhook_events (processing_status, created_at DESC)",
+    )
+    _create_index(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_failed_status_retry_partial "
+        "ON failed_forwards (status, next_retry_at) "
+        "WHERE status IN ('pending', 'retrying')",
+        "CREATE INDEX IF NOT EXISTS idx_failed_status_retry_partial "
+        "ON failed_forwards (status, next_retry_at)",
+    )
 
 
 def downgrade() -> None:
