@@ -25,7 +25,7 @@ from core.metrics import setup_metrics
 from core.otel import setup_otel
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
-from core.trace import extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
+from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
 from services.metrics_poller import MetricsPoller
@@ -144,6 +144,10 @@ class TraceContextMiddleware:
 
         headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
         incoming = extract_trace_id_from_headers(headers)
+        if incoming and "traceparent" not in headers:
+            raw_headers = list(scope.get("headers") or [])
+            raw_headers.append((b"traceparent", build_traceparent(incoming).encode("latin1")))
+            scope["headers"] = raw_headers
         token = set_trace_id(incoming or generate_trace_id())
         try:
             await self.app(scope, receive, send)
