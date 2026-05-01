@@ -65,6 +65,12 @@ async def init_engine():
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {mask_url(Config.db.DATABASE_URL)}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        from core.otel import instrument_sqlalchemy
+
+        instrument_sqlalchemy(_engine.sync_engine)
+    except Exception:
+        pass
     _setup_pool_metrics(_engine)
 
 
