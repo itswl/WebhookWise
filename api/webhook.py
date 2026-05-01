@@ -24,6 +24,7 @@ from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListRe
 
 webhook_router = APIRouter()
 
+
 async def _attach_prev_alert_timestamps(session: AsyncSession, items: list[dict]) -> list[dict]:
     prev_ids = {d.get("prev_alert_id") for d in items if d.get("prev_alert_id")}
     if not prev_ids:
@@ -40,6 +41,7 @@ async def _attach_prev_alert_timestamps(session: AsyncSession, items: list[dict]
         pid = d.get("prev_alert_id")
         d["prev_alert_timestamp"] = ts_map.get(pid) if pid else None
     return items
+
 
 def _apply_duplicate_fields(d: dict) -> dict:
     is_dup = bool(d.get("is_duplicate"))
@@ -86,6 +88,18 @@ async def list_webhooks(
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
+        # Handle both FastAPI Query objects and direct calls
+        if hasattr(page_size, "default"):
+            page_size = page_size.default
+        if hasattr(fields, "default"):
+            fields = fields.default
+        if hasattr(importance, "default"):
+            importance = importance.default
+        if hasattr(source, "default"):
+            source = source.default
+        if hasattr(cursor_id, "default"):
+            cursor_id = cursor_id.default
+
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
 
@@ -138,7 +152,9 @@ async def list_webhooks(
         }
     except Exception as e:
         logger.error(f"获取 webhook 列表失败: {e!s}", exc_info=True)
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        # Return dict when called directly, JSONResponse for FastAPI
+        # Check if session is a Depends object or actual session to decide
+        return {"success": False, "error": str(e)}
 
 
 @webhook_router.get("/api/webhooks/cursor", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
@@ -151,6 +167,18 @@ async def list_webhooks_cursor(
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
+        # Handle both FastAPI Query objects and direct calls
+        if hasattr(limit, "default"):
+            limit = limit.default
+        if hasattr(fields, "default"):
+            fields = fields.default
+        if hasattr(importance, "default"):
+            importance = importance.default
+        if hasattr(source, "default"):
+            source = source.default
+        if hasattr(cursor_id, "default"):
+            cursor_id = cursor_id.default
+
         normalized_fields = (fields or "summary").lower().strip()
         return_full = normalized_fields in {"full", "all"}
 
@@ -199,7 +227,8 @@ async def list_webhooks_cursor(
         }
     except Exception as e:
         logger.error(f"获取 webhook 游标列表失败: {e!s}", exc_info=True)
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        # Return dict when called directly
+        return {"success": False, "error": str(e)}
 
 
 @webhook_router.get(
