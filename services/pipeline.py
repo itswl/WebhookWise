@@ -14,7 +14,6 @@ except ImportError:
     _QueryCanceledError = None  # 兼容无 asyncpg 环境
 
 from api import InvalidJsonError
-from core.compression import decompress_payload_async
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
