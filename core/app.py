@@ -24,6 +24,7 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
+from core.trace import extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
 from services.metrics_poller import MetricsPoller
@@ -128,6 +129,27 @@ class SecurityHeadersMiddleware:
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+class TraceContextMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+        incoming = extract_trace_id_from_headers(headers)
+        token = set_trace_id(incoming or generate_trace_id())
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            trace_id_var.reset(token)
+
+
+app.add_middleware(TraceContextMiddleware)
 
 
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"

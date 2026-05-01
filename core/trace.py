@@ -35,3 +35,19 @@ def build_traceparent(trace_id: str) -> str:
         tid_hex = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
     span_id = secrets.token_hex(8)
     return f"00-{tid_hex}-{span_id}-01"
+
+
+def extract_trace_id_from_headers(headers: dict) -> str:
+    xrid = (headers.get("x-request-id") or headers.get("X-Request-Id") or "").strip()
+    if xrid:
+        return xrid
+    tp = (headers.get("traceparent") or headers.get("Traceparent") or "").strip()
+    if not tp:
+        return ""
+    parts = tp.split("-")
+    if len(parts) != 4:
+        return ""
+    trace_id = parts[1]
+    if len(trace_id) != 32 or any(c not in "0123456789abcdef" for c in trace_id.lower()):
+        return ""
+    return trace_id[:12]
