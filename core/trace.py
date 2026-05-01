@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextvars
+import hashlib
+import secrets
 import uuid
 
 trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
@@ -23,3 +25,13 @@ def set_trace_id(tid: str) -> contextvars.Token:
 def get_trace_id() -> str:
     """获取当前协程的 trace_id。"""
     return trace_id_var.get()
+
+
+def build_traceparent(trace_id: str) -> str:
+    raw = (trace_id or "").strip()
+    if len(raw) == 32 and all(c in "0123456789abcdef" for c in raw):
+        tid_hex = raw
+    else:
+        tid_hex = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    span_id = secrets.token_hex(8)
+    return f"00-{tid_hex}-{span_id}-01"
