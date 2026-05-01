@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 
 
@@ -32,4 +32,4 @@ class LocalAnalysisEngine:
         return result
 
     def is_available(self) -> bool:
-        return Config.ai.ENABLE_AI_ANALYSIS
+        return policies.ai.ENABLE_AI_ANALYSIS

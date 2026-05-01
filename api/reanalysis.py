@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 from core.utils import mask_url
 from db.session import get_db_session
@@ -89,7 +89,7 @@ async def _manual_forward(session, webhook_event: WebhookEvent, webhook_id: int,
     webhook_data = await _build_webhook_context(webhook_event)
     analysis_result = webhook_event.ai_analysis or {}
 
-    logger.info(f"手动转发 webhook ID: {webhook_id} 到 {mask_url(custom_url or Config.ai.FORWARD_URL)}")
+    logger.info(f"手动转发 webhook ID: {webhook_id} 到 {mask_url(custom_url or policies.ai.FORWARD_URL)}")
     forward_result = await forward_to_remote(webhook_data, analysis_result, custom_url)
 
     webhook_event.forward_status = forward_result.get("status", "unknown")
@@ -147,7 +147,7 @@ async def manual_forward_webhook(
         return {
             "success": True,
             "data": forward_result,
-            "message": f"已转发至 {mask_url(custom_url or Config.ai.FORWARD_URL)}",
+            "message": f"已转发至 {mask_url(custom_url or policies.ai.FORWARD_URL)}",
         }
     except HTTPException:
         raise

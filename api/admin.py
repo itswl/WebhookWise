@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api import _fail, _ok
 from core.auth import verify_admin_write
 from core.config import Config
+from core.config_provider import policies
 from core.logger import logger
 from core.redis_client import get_redis
 from core.runtime_config import _KEY_TO_SUBCONFIG, runtime_config
@@ -136,7 +137,7 @@ async def get_config():
         response = {}
         for field_name, (env_var, _value_type, _validator) in _CONFIG_SCHEMA.items():
             sub_name = _KEY_TO_SUBCONFIG.get(env_var)
-            value = getattr(getattr(Config, sub_name), env_var, "") if sub_name else ""
+            value = getattr(getattr(policies, sub_name), env_var, "") if sub_name else ""
             if env_var == "OPENAI_API_KEY" and value:
                 response[field_name] = "已配置"
             else:

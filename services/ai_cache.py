@@ -9,6 +9,7 @@ import logging
 import orjson
 
 from core.config import Config
+from core.config_provider import policies
 
 logger = logging.getLogger("webhook_service.ai_cache")
 
@@ -122,7 +123,7 @@ async def log_ai_usage(
 
         async with session_scope() as session:
             usage_log = AIUsageLog(
-                model=model or Config.ai.OPENAI_MODEL,
+                model=model or policies.ai.OPENAI_MODEL,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_estimate=cost_estimate,
