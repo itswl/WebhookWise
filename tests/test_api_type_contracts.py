@@ -16,9 +16,8 @@ def _compile_jsonb_sqlite(type_, compiler, **kw):
 async def session(monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    from db.session import Base
-
     # Import models to register them with Base.metadata
+    from db.session import Base
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
