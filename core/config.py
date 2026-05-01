@@ -27,7 +27,7 @@ class ServerConfig(BaseSettings):
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
     METRICS_PORT: int = Field(default=0)
-    DEBUG: bool = os.getenv("FLASK_ENV", "production") == "development"
+    DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
     ENABLE_POLLERS: bool = Field(default=True)
 
