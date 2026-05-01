@@ -5,6 +5,7 @@
 使用指数退避策略逐条调用 forward_to_remote() 进行重试。
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -34,15 +35,25 @@ async def poll_pending_retries():
     redis = get_redis()
     lock_key = "forward:retry:poller:lock"
 
-    # 获取分布式锁，有效期 60 秒
+    lock_ttl = max(
+        60,
+        int(
+            (Config.retry.FORWARD_RETRY_BATCH_SIZE / max(1, Config.retry.FORWARD_RETRY_CONCURRENCY))
+            * max(1, Config.server.FORWARD_REQUEST_TIMEOUT_SECONDS)
+            + 60
+        ),
+    )
+    lock_ttl = min(lock_ttl, 600)
+
     lock_value = str(uuid.uuid4())
-    acquired = await redis.set(lock_key, lock_value, nx=True, ex=60)
+    acquired = await redis.set(lock_key, lock_value, nx=True, ex=lock_ttl)
     if not acquired:
         logger.debug("[ForwardRetry] 未获取到分布式锁，跳过本轮")
         return
 
     try:
         now = datetime.now()
+        record_ids: list[int] = []
 
         async with session_scope() as session:
             # 查询待重试记录：status IN ('pending', 'retrying') AND next_retry_at <= now
@@ -63,12 +74,30 @@ async def poll_pending_retries():
                 return
 
             logger.info(f"[ForwardRetry] 本轮扫描到 {len(records)} 条待重试记录")
+            record_ids = [r.id for r in records]
 
-            for record in records:
+        semaphore = asyncio.Semaphore(max(1, Config.retry.FORWARD_RETRY_CONCURRENCY))
+
+        async def _retry_one(record_id: int):
+            async with semaphore:
                 try:
-                    await _retry_forward(session, record)
+                    async with session_scope() as inner_session:
+                        stmt = (
+                            select(FailedForward)
+                            .options(defer(FailedForward.forward_data), defer(FailedForward.forward_headers))
+                            .where(FailedForward.id == record_id)
+                        )
+                        result = await inner_session.execute(stmt)
+                        record = result.scalar_one_or_none()
+                        if not record:
+                            return
+                        if record.status not in ("pending", "retrying"):
+                            return
+                        await _retry_forward(inner_session, record)
                 except Exception as e:  # noqa: PERF203
-                    logger.error(f"[ForwardRetry] 重试记录 ID={record.id} 异常: {e}")
+                    logger.error(f"[ForwardRetry] 重试记录 ID={record_id} 异常: {e}")
+
+        await asyncio.gather(*[_retry_one(rid) for rid in record_ids])
 
     finally:
         # 释放锁
