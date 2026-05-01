@@ -217,7 +217,7 @@ const AlertsModule = {
             if (importance === 'high') highCount++;
             else if (importance === 'medium') mediumCount++;
 
-            if (w.is_duplicate === 1) duplicateCount++;
+            if (!!w.is_duplicate) duplicateCount++;
         });
 
         document.getElementById('highCount').textContent = highCount;
@@ -248,9 +248,9 @@ const AlertsModule = {
 
             let matchDuplicate = true;
             if (duplicateFilter === 'original') {
-                matchDuplicate = !webhook.is_duplicate || webhook.is_duplicate === 0;
+                matchDuplicate = !webhook.is_duplicate;
             } else if (duplicateFilter === 'duplicate') {
-                matchDuplicate = webhook.is_duplicate === 1;
+                matchDuplicate = !!webhook.is_duplicate;
             }
 
             return matchSearch && matchImportance && matchSource && matchDuplicate;

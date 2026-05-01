@@ -22,6 +22,23 @@ from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListRe
 
 webhook_router = APIRouter()
 
+async def _attach_prev_alert_timestamps(session: AsyncSession, items: list[dict]) -> list[dict]:
+    prev_ids = {d.get("prev_alert_id") for d in items if d.get("prev_alert_id")}
+    if not prev_ids:
+        for d in items:
+            d.setdefault("prev_alert_timestamp", None)
+        return items
+
+    result = await session.execute(select(WebhookEvent.id, WebhookEvent.timestamp).where(WebhookEvent.id.in_(prev_ids)))
+    ts_map: dict[int, str | None] = {}
+    for row in result.all():
+        ts_map[int(row.id)] = row.timestamp.isoformat() if row.timestamp else None
+
+    for d in items:
+        pid = d.get("prev_alert_id")
+        d["prev_alert_timestamp"] = ts_map.get(pid) if pid else None
+    return items
+
 def _apply_duplicate_fields(d: dict) -> dict:
     is_dup = bool(d.get("is_duplicate"))
     beyond_window = bool(d.get("beyond_window"))
@@ -94,6 +111,7 @@ async def list_webhooks(
                 d["prev_alert_id"] = event.prev_alert_id
                 items.append(_apply_duplicate_fields(d))
 
+            await _attach_prev_alert_timestamps(session, items)
             next_cursor = events[-1].id if has_more and events else None
         else:
             # 摘要模式：投影查询，避免 ORM 实例化
@@ -104,6 +122,7 @@ async def list_webhooks(
                 source=source,
                 page_size=page_size,
             )
+            await _attach_prev_alert_timestamps(session, items)
 
         return {
             "success": True,
@@ -152,6 +171,7 @@ async def list_webhooks_cursor(
                 d["prev_alert_id"] = event.prev_alert_id
                 items.append(_apply_duplicate_fields(d))
 
+            await _attach_prev_alert_timestamps(session, items)
             has_more = len(events) == limit
             next_cursor = events[-1].id if has_more else None
         else:
@@ -163,6 +183,7 @@ async def list_webhooks_cursor(
                 source=source,
                 limit=limit,
             )
+            await _attach_prev_alert_timestamps(session, items)
 
         return {
             "success": True,
@@ -189,7 +210,9 @@ async def get_webhook_detail(webhook_id: int, session: AsyncSession = Depends(ge
         return JSONResponse({"success": False, "error": "Webhook not found"}, status_code=404)
     d = event.to_dict()
     d["prev_alert_id"] = event.prev_alert_id
-    return {"success": True, "data": _apply_duplicate_fields(d)}
+    item = _apply_duplicate_fields(d)
+    await _attach_prev_alert_timestamps(session, [item])
+    return {"success": True, "data": item}
 
 
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
