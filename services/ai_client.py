@@ -40,8 +40,20 @@ def _classify_openai_error(err: Exception) -> str:
         return "rate_limit"
     if name in {"APITimeoutError", "TimeoutError"}:
         return "timeout"
-    if isinstance(err, ValueError) and ("空响应" in str(err) or "None 内容" in str(err)):
-        return "empty_response"
+    if name in {"BadRequestError", "UnprocessableEntityError"}:
+        msg = str(err).lower()
+        if "context_length" in msg or "context length" in msg or "maximum context" in msg:
+            return "context_length"
+        if "content_policy" in msg or "content policy" in msg or "content filter" in msg:
+            return "content_filter"
+        return "bad_request"
+    if name in {"PermissionDeniedError", "AuthenticationError"}:
+        return "auth"
+    if isinstance(err, ValueError):
+        if "内容被过滤" in str(err) or "content_filter" in str(err):
+            return "content_filter"
+        if "空响应" in str(err) or "None 内容" in str(err):
+            return "empty_response"
     return "other"
 
 
@@ -70,9 +82,28 @@ def reset_openai_client():
 
 
 async def _request_openai_completion(client: AsyncOpenAI, messages: list[dict[str, str]], max_tokens: int):
-    return await client.chat.completions.create(
-        model=policies.ai.OPENAI_MODEL, messages=messages, temperature=Config.ai.OPENAI_TEMPERATURE, max_tokens=max_tokens
-    )
+    try:
+        resp = await client.chat.completions.create(
+            model=policies.ai.OPENAI_MODEL,
+            messages=messages,
+            temperature=Config.ai.OPENAI_TEMPERATURE,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        resp._used_json_mode = True
+        return resp
+    except Exception as e:
+        if not isinstance(e, TypeError) and "response_format" not in str(e):
+            raise
+        logger.warning("[AI] response_format 参数不支持，回退到普通输出: %s", e)
+        resp = await client.chat.completions.create(
+            model=policies.ai.OPENAI_MODEL,
+            messages=messages,
+            temperature=Config.ai.OPENAI_TEMPERATURE,
+            max_tokens=max_tokens,
+        )
+        resp._used_json_mode = False
+        return resp
 
 
 # 续写指令：不携带完整 user_prompt，节省 Input Token
@@ -100,6 +131,7 @@ async def _call_openai_completion(
         logger.warning("[AI] 哈希计算失败: %s", e)
     logger.debug(f"[AI] prompt_size={len(user_prompt)}, prompt_sha256={prompt_hash}")
     response = await _request_openai_completion(client, messages, Config.ai.OPENAI_MAX_TOKENS)
+    used_json_mode = bool(getattr(response, "_used_json_mode", False))
 
     # 提取 token 使用量
     tokens_in = 0
@@ -116,6 +148,14 @@ async def _call_openai_completion(
     choice = response.choices[0]
     finish_reason = getattr(choice, "finish_reason", None)
     raw_content = getattr(choice.message, "content", None)
+    if raw_content is None or not str(raw_content).strip():
+        tool_calls = getattr(choice.message, "tool_calls", None)
+        if tool_calls:
+            first_call = tool_calls[0]
+            fn = getattr(first_call, "function", None)
+            args = getattr(fn, "arguments", None) if fn else None
+            if args:
+                raw_content = args
     ai_response = (raw_content or "").strip()
     if not ai_response:
         logger.error(
@@ -140,32 +180,63 @@ async def _call_openai_completion(
         if not Config.ai.AI_CONTINUATION_ENABLED:
             logger.warning("AI 响应被截断，但续写功能已通过配置关闭 (AI_CONTINUATION_ENABLED=False)，直接使用截断内容")
         else:
-            logger.info("AI 响应被截断，使用续写模式继续生成")
-            try:
-                continuation_messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "assistant", "content": ai_response},
-                    {"role": "user", "content": _CONTINUATION_INSTRUCTION},
-                ]
-                continuation_response = await client.chat.completions.create(
-                    model=policies.ai.OPENAI_MODEL,
-                    messages=continuation_messages,
-                    max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
-                    temperature=0.3,
-                )
+            if used_json_mode:
+                logger.info("AI 响应被截断，使用更高 max_tokens 重新生成（JSON Mode）")
+                try:
+                    retry_response = await _request_openai_completion(
+                        client, messages, Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS
+                    )
+                    retry_used_json_mode = bool(getattr(retry_response, "_used_json_mode", False))
+                    if hasattr(retry_response, "usage") and retry_response.usage:
+                        tokens_in += getattr(retry_response.usage, "prompt_tokens", 0) or 0
+                        tokens_out += getattr(retry_response.usage, "completion_tokens", 0) or 0
 
-                # 累加续写的 token 使用量
-                if hasattr(continuation_response, "usage") and continuation_response.usage:
-                    tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
-                    tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
+                    if hasattr(retry_response, "choices") and retry_response.choices:
+                        retry_choice = retry_response.choices[0]
+                        retry_finish_reason = getattr(retry_choice, "finish_reason", None)
+                        retry_content = getattr(retry_choice.message, "content", None)
+                        if retry_content is None or not str(retry_content).strip():
+                            tool_calls = getattr(retry_choice.message, "tool_calls", None)
+                            if tool_calls:
+                                first_call = tool_calls[0]
+                                fn = getattr(first_call, "function", None)
+                                args = getattr(fn, "arguments", None) if fn else None
+                                if args:
+                                    retry_content = args
+                        retry_text = (retry_content or "").strip()
+                        if retry_text:
+                            ai_response = retry_text
+                            finish_reason = retry_finish_reason
+                            used_json_mode = retry_used_json_mode
+                except Exception as cont_err:
+                    logger.warning("JSON Mode 截断重试失败，回退到续写拼接: %s", cont_err)
 
-                if hasattr(continuation_response, "choices") and continuation_response.choices:
-                    continuation_content = (continuation_response.choices[0].message.content or "").strip()
-                    if continuation_content:
-                        ai_response = repair_concatenated_response(ai_response, continuation_content)
-                        finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
-            except Exception as cont_err:
-                logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
+            if finish_reason == "length" and ai_response:
+                logger.info("AI 响应被截断，使用续写模式继续生成")
+                try:
+                    continuation_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "assistant", "content": ai_response},
+                        {"role": "user", "content": _CONTINUATION_INSTRUCTION},
+                    ]
+                    continuation_response = await client.chat.completions.create(
+                        model=policies.ai.OPENAI_MODEL,
+                        messages=continuation_messages,
+                        max_tokens=Config.ai.OPENAI_TRUNCATION_RETRY_MAX_TOKENS,
+                        temperature=0.3,
+                    )
+
+                    if hasattr(continuation_response, "usage") and continuation_response.usage:
+                        tokens_in += getattr(continuation_response.usage, "prompt_tokens", 0) or 0
+                        tokens_out += getattr(continuation_response.usage, "completion_tokens", 0) or 0
+
+                    if hasattr(continuation_response, "choices") and continuation_response.choices:
+                        continuation_content = (continuation_response.choices[0].message.content or "").strip()
+                        if continuation_content:
+                            ai_response = repair_concatenated_response(ai_response, continuation_content)
+                            finish_reason = getattr(continuation_response.choices[0], "finish_reason", finish_reason)
+                except Exception as cont_err:
+                    logger.warning(f"续写请求失败，使用截断内容作为最终结果: {cont_err!s}")
 
     try:
         resp_hash = hashlib.sha256(ai_response.encode("utf-8")).hexdigest()
