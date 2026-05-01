@@ -14,6 +14,12 @@ const AlertsModule = {
     _loadingMore: false,
     currentForwardId: null,
     currentTabByAlert: {},
+    _extractCursorMeta(result) {
+        const pag = result ? (result.cursor || result.pagination) : null;
+        const nextCursor = pag ? (pag.next_cursor ?? null) : null;
+        const hasMore = pag ? !!pag.has_more : false;
+        return { nextCursor, hasMore };
+    },
 
     /**
      * 初始化告警模块
@@ -146,8 +152,9 @@ const AlertsModule = {
             }
 
             this.alerts = result.data;
-            this.nextCursor = result.cursor ? result.cursor.next_cursor : null;
-            this.hasMore = result.cursor ? !!result.cursor.has_more : false;
+            const meta = this._extractCursorMeta(result);
+            this.nextCursor = meta.nextCursor;
+            this.hasMore = meta.hasMore;
             this.totalCount = null;
 
             console.log('✅ 数据加载完成:', this.alerts.length, '条（总共', this.totalCount, '条）');
@@ -179,8 +186,9 @@ const AlertsModule = {
             }
 
             this.alerts = this.alerts.concat(result.data);
-            this.nextCursor = result.cursor ? result.cursor.next_cursor : null;
-            this.hasMore = result.cursor ? !!result.cursor.has_more : false;
+            const meta = this._extractCursorMeta(result);
+            this.nextCursor = meta.nextCursor;
+            this.hasMore = meta.hasMore;
 
             this.updateStats();
             this.filterAlerts(false);
@@ -191,7 +199,7 @@ const AlertsModule = {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = '加载更多';
+                btn.textContent = '加载更多 200 条';
             }
             this._loadingMore = false;
         }

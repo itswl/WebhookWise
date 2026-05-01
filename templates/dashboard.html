@@ -244,7 +244,7 @@
                 <div class="section-title">实时统计</div>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-label">总告警数</div>
+                        <div class="stat-label">加载告警数</div>
                         <div class="stat-value" id="totalCount">0</div>
                         <div class="stat-trend">最后更新: <span id="lastUpdate">-</span></div>
                     </div>
@@ -320,7 +320,7 @@
                     <button id="prevPage" onclick="goToPage('prev')">上一页</button>
                     <button id="nextPage" onclick="goToPage('next')">下一页</button>
                     <button id="lastPage" onclick="goToPage('last')">末页</button>
-                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;">加载更多</button>
+                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;">加载更多 200 条</button>
                 </div>
                 <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
                     <option value="10">10 条/页</option>
