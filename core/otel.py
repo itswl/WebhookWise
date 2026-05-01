@@ -2,10 +2,57 @@ from __future__ import annotations
 
 import os
 
+_enabled_cache: bool | None = None
+_httpx_instrumented = False
+_redis_instrumented = False
+_sqlalchemy_instrumented = False
+
+
+def _otel_enabled() -> bool:
+    global _enabled_cache
+    if _enabled_cache is None:
+        _enabled_cache = os.getenv("OTEL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    return bool(_enabled_cache)
+
+
+def instrument_httpx() -> None:
+    global _httpx_instrumented
+    if _httpx_instrumented or not _otel_enabled():
+        return
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    except Exception:
+        return
+    HTTPXClientInstrumentor().instrument()
+    _httpx_instrumented = True
+
+
+def instrument_redis() -> None:
+    global _redis_instrumented
+    if _redis_instrumented or not _otel_enabled():
+        return
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except Exception:
+        return
+    RedisInstrumentor().instrument()
+    _redis_instrumented = True
+
+
+def instrument_sqlalchemy(engine) -> None:
+    global _sqlalchemy_instrumented
+    if _sqlalchemy_instrumented or not _otel_enabled():
+        return
+    try:
+        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    except Exception:
+        return
+    SQLAlchemyInstrumentor().instrument(engine=engine)
+    _sqlalchemy_instrumented = True
+
 
 def setup_otel(app) -> None:
-    enabled = os.getenv("OTEL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
-    if not enabled:
+    if not _otel_enabled():
         return
 
     try:
@@ -26,3 +73,5 @@ def setup_otel(app) -> None:
 
     exclude = os.getenv("OTEL_EXCLUDED_URLS", "/metrics,/static").strip()
     FastAPIInstrumentor.instrument_app(app, excluded_urls=exclude)
+    instrument_httpx()
+    instrument_redis()
