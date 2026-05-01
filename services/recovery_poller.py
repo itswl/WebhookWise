@@ -137,11 +137,16 @@ class RecoveryPoller:
 
         logger.info("[Recovery] 发现 %d 条僵尸事件，开始恢复处理", len(zombie_events))
 
-        for event in zombie_events:
-            try:
-                await self._reprocess_event(event)
-            except Exception:  # noqa: PERF203
-                logger.exception("[Recovery] 恢复事件 %s 失败", event.id)
+        semaphore = asyncio.Semaphore(max(1, Config.server.RECOVERY_POLLER_CONCURRENCY))
+
+        async def _recover_one(e: WebhookEvent):
+            async with semaphore:
+                try:
+                    await self._reprocess_event(e)
+                except Exception:  # noqa: PERF203
+                    logger.exception("[Recovery] 恢复事件 %s 失败", e.id)
+
+        await asyncio.gather(*[_recover_one(e) for e in zombie_events])
 
     @staticmethod
     async def _reprocess_event(event: WebhookEvent) -> None:
