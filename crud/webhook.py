@@ -7,6 +7,7 @@ from fastapi import Request
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
 from core.config import Config
@@ -262,6 +263,27 @@ async def get_all_webhooks(
         async with session_scope() as session:
             # 构建查询（纯 Keyset，不使用 OFFSET）
             query = select(WebhookEvent)
+            if fields == "summary":
+                query = query.options(
+                    load_only(
+                        WebhookEvent.id,
+                        WebhookEvent.source,
+                        WebhookEvent.client_ip,
+                        WebhookEvent.timestamp,
+                        WebhookEvent.importance,
+                        WebhookEvent.is_duplicate,
+                        WebhookEvent.duplicate_of,
+                        WebhookEvent.duplicate_count,
+                        WebhookEvent.beyond_window,
+                        WebhookEvent.forward_status,
+                        WebhookEvent.failure_reason,
+                        WebhookEvent.error_message,
+                        WebhookEvent.ai_analysis,
+                        WebhookEvent.parsed_data,
+                        WebhookEvent.created_at,
+                        WebhookEvent.prev_alert_id,
+                    )
+                )
 
             if cursor_id is not None:
                 query = query.filter(WebhookEvent.id < cursor_id)
