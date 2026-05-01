@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,8 @@ from crud.webhook import (
 from db.session import get_db_session
 from schemas.admin import (
     ConfigResponse,
+    ConfigSourceItem,
+    ConfigSourcesResponse,
     ConfigUpdateResponse,
     DeadLetterListResponse,
     PromptGetResponse,
@@ -145,6 +149,33 @@ async def get_config():
         return _ok(response, 200)
     except Exception as e:
         logger.error(f"获取配置失败: {e!s}")
+        return _fail(str(e), 500)
+
+
+@admin_router.get("/api/config/sources", response_model=ConfigSourcesResponse)
+async def get_config_sources():
+    try:
+        keys = sorted({env_var for env_var, _v, _va in _CONFIG_SCHEMA.values()} | set(_KEY_TO_SUBCONFIG.keys()))
+        items: list[ConfigSourceItem] = []
+        for key in keys:
+            meta = policies.meta(key)
+            source = meta.get("source")
+            if not source:
+                source = "env" if os.getenv(key) is not None else "default"
+            updated_at = meta.get("updated_at")
+            if updated_at is not None:
+                updated_at = updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at)
+            items.append(
+                ConfigSourceItem(
+                    key=key,
+                    source=str(source),
+                    updated_at=updated_at,
+                    updated_by=meta.get("updated_by"),
+                )
+            )
+        return _ok(items, 200)
+    except Exception as e:
+        logger.error(f"获取配置来源失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
