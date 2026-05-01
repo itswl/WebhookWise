@@ -52,7 +52,6 @@ COPY services/ ./services/
 COPY adapters/ ./adapters/
 COPY templates/ ./templates/
 COPY prompts/ ./prompts/
-COPY migrations/ ./migrations/
 COPY schemas/ ./schemas/
 COPY scripts/ ./scripts/
 COPY alembic.ini .
