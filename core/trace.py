@@ -10,29 +10,32 @@ import uuid
 trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
 
 
+def _normalize_trace_id(raw: str) -> str:
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if len(lowered) == 32 and all(c in "0123456789abcdef" for c in lowered):
+        return lowered
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
 def generate_trace_id(event_id: int | None = None) -> str:
-    """生成 trace_id。优先使用 event_id，否则生成 UUID 短码。"""
     if event_id:
-        return f"evt-{event_id}"
-    return uuid.uuid4().hex[:12]
+        return _normalize_trace_id(f"evt-{event_id}")
+    return uuid.uuid4().hex
 
 
 def set_trace_id(tid: str) -> contextvars.Token:
-    """设置当前协程的 trace_id。"""
-    return trace_id_var.set(tid)
+    return trace_id_var.set(_normalize_trace_id(tid))
 
 
 def get_trace_id() -> str:
-    """获取当前协程的 trace_id。"""
     return trace_id_var.get()
 
 
 def build_traceparent(trace_id: str) -> str:
-    raw = (trace_id or "").strip()
-    if len(raw) == 32 and all(c in "0123456789abcdef" for c in raw):
-        tid_hex = raw
-    else:
-        tid_hex = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    tid_hex = _normalize_trace_id(trace_id)
     span_id = secrets.token_hex(8)
     return f"00-{tid_hex}-{span_id}-01"
 
@@ -40,7 +43,7 @@ def build_traceparent(trace_id: str) -> str:
 def extract_trace_id_from_headers(headers: dict) -> str:
     xrid = (headers.get("x-request-id") or headers.get("X-Request-Id") or "").strip()
     if xrid:
-        return xrid
+        return _normalize_trace_id(xrid)
     tp = (headers.get("traceparent") or headers.get("Traceparent") or "").strip()
     if not tp:
         return ""
@@ -50,4 +53,4 @@ def extract_trace_id_from_headers(headers: dict) -> str:
     trace_id = parts[1]
     if len(trace_id) != 32 or any(c not in "0123456789abcdef" for c in trace_id.lower()):
         return ""
-    return trace_id[:12]
+    return trace_id.lower()

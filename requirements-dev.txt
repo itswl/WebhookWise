@@ -9,3 +9,7 @@ requests>=2.32.4
 types-redis>=4.6.0
 aiosqlite>=0.20.0
 greenlet>=3.0.0
+opentelemetry-api>=1.27.0
+opentelemetry-sdk>=1.27.0
+opentelemetry-instrumentation-fastapi>=0.48b0
+opentelemetry-instrumentation-asgi>=0.48b0
