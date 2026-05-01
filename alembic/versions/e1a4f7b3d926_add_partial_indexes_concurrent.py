@@ -1,9 +1,6 @@
 """add partial indexes for recovery poller and failed forwards
 
-Uses CREATE INDEX CONCURRENTLY to avoid blocking concurrent reads/writes.
-CONCURRENTLY cannot run inside a transaction block, so we COMMIT the
-implicit Alembic transaction before executing, then BEGIN a new one
-so Alembic can record the migration version normally.
+Use partial indexes to speed up poller queries.
 
 Revision ID: e1a4f7b3d926
 Revises: d5a2b3c4e6f7
@@ -24,32 +21,19 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Add partial indexes using CONCURRENTLY to avoid locking tables."""
-    ctx = op.get_context()
-
-    def _create_index(concurrently_sql: str, normal_sql: str) -> None:
-        try:
-            try:
-                with ctx.autocommit_block():
-                    op.execute(sa.text(concurrently_sql))
-            except AssertionError:
-                op.execute(sa.text(concurrently_sql))
-        except Exception:
-            op.execute(sa.text(normal_sql))
-
-    _create_index(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_status_created_partial "
-        "ON webhook_events (processing_status, created_at DESC) "
-        "WHERE processing_status IN ('received', 'analyzing', 'failed')",
-        "CREATE INDEX IF NOT EXISTS idx_status_created_partial "
-        "ON webhook_events (processing_status, created_at DESC)",
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS idx_status_created_partial "
+            "ON webhook_events (processing_status, created_at DESC) "
+            "WHERE processing_status IN ('received', 'analyzing', 'failed')"
+        )
     )
-    _create_index(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_failed_status_retry_partial "
-        "ON failed_forwards (status, next_retry_at) "
-        "WHERE status IN ('pending', 'retrying')",
-        "CREATE INDEX IF NOT EXISTS idx_failed_status_retry_partial "
-        "ON failed_forwards (status, next_retry_at)",
+    op.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS idx_failed_status_retry_partial "
+            "ON failed_forwards (status, next_retry_at) "
+            "WHERE status IN ('pending', 'retrying')"
+        )
     )
 
 
