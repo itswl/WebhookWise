@@ -4,6 +4,8 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
@@ -238,7 +240,10 @@ async def receive_webhook(
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
-    raw_body_str = raw_body.decode("utf-8", errors="replace")
+    if len(raw_body) >= 512 * 1024:
+        raw_body_str = await asyncio.to_thread(raw_body.decode, "utf-8", "replace")
+    else:
+        raw_body_str = raw_body.decode("utf-8", errors="replace")
 
     # ★ 网关零解析：仅持久化原始 bytes，parsed_data 由 Worker 延迟解析
     event_id = await quick_receive_webhook(
@@ -291,7 +296,10 @@ async def receive_webhook_with_source(
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
-    raw_body_str = raw_body.decode("utf-8", errors="replace")
+    if len(raw_body) >= 512 * 1024:
+        raw_body_str = await asyncio.to_thread(raw_body.decode, "utf-8", "replace")
+    else:
+        raw_body_str = raw_body.decode("utf-8", errors="replace")
 
     # ★ 网关零解析：仅持久化原始 bytes，parsed_data 由 Worker 延迟解析
     event_id = await quick_receive_webhook(
