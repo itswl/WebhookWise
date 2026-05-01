@@ -14,12 +14,15 @@ async def count_with_timeout(
     stmt,
     timeout_ms: int = 2000,
 ) -> int | None:
-    """带 statement_timeout 兜底的 COUNT 查询。
+    """带 statement_timeout 兜底的 COUNT 查询（PostgreSQL-only, skip for SQLite）。
 
     超时返回 None，调用方应适配 None 场景。
     """
     try:
-        await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+        # Try to set statement_timeout (PostgreSQL-specific)
+        with contextlib.suppress(Exception):
+            await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+
         result = await session.execute(stmt)
         return result.scalar() or 0
     except Exception as e:
@@ -29,5 +32,6 @@ async def count_with_timeout(
             await session.rollback()
         return None
     finally:
+        # Try to reset statement_timeout (PostgreSQL-specific)
         with contextlib.suppress(Exception):
             await session.execute(text("RESET statement_timeout"))

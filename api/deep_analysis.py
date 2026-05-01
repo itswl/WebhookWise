@@ -171,6 +171,18 @@ async def list_all_deep_analyses(
     engine_filter: str = Query("", alias="engine"),
     session: AsyncSession = Depends(get_db_session),
 ):
+    # Handle both FastAPI Query objects and direct calls
+    if hasattr(page, "default"):
+        page = page.default
+    if hasattr(per_page, "default"):
+        per_page = per_page.default
+    if hasattr(cursor, "default"):
+        cursor = cursor.default
+    if hasattr(status_filter, "default"):
+        status_filter = status_filter.default
+    if hasattr(engine_filter, "default"):
+        engine_filter = engine_filter.default
+
     per_page = max(1, min(per_page, 100))
     # 总数（智能估算策略）
     has_filters = bool(status_filter or engine_filter)

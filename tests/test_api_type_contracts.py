@@ -18,6 +18,8 @@ async def session(monkeypatch):
 
     from db.session import Base
 
+    # Import models to register them with Base.metadata
+
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -122,7 +124,9 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
 
     monkeypatch.setattr("api.deep_analysis.MAX_PAGE", 2)
 
-    resp = await list_all_deep_analyses(page=1, per_page=20, cursor=None, status_filter="", engine_filter="", session=session)
+    resp = await list_all_deep_analyses(
+        page=1, per_page=20, cursor=None, status_filter="", engine_filter="", session=session
+    )
     assert resp["success"] is True
     items = resp["data"]["items"]
     assert len(items) == 2
