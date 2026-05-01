@@ -1,9 +1,8 @@
-import contextlib
 import logging
 import uuid
 from datetime import datetime
 
-from core.redis_client import get_redis
+from core.distributed_lock import DistributedLock
 from services.data_maintenance import archive_old_data
 
 logger = logging.getLogger("webhook_service.maintenance")
@@ -13,14 +12,6 @@ _last_run_date = None
 
 _LOCK_KEY = "maintenance:poller:lock"
 _LOCK_TTL_SECONDS = 600  # 与调度间隔匹配
-
-_RELEASE_LOCK_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-else
-    return 0
-end
-"""
 
 
 async def check_and_run_maintenance():
@@ -35,20 +26,14 @@ async def check_and_run_maintenance():
     if now.hour != 3 or now.date() == _last_run_date:
         return
 
-    redis = get_redis()
-    lock_value = str(uuid.uuid4())
-    if not await redis.set(_LOCK_KEY, lock_value, nx=True, ex=_LOCK_TTL_SECONDS):
-        logger.debug("[Maintenance] 另一个 worker 正在执行，跳过本轮")
-        return
-
-    try:
+    lock = DistributedLock(key=_LOCK_KEY, ttl=_LOCK_TTL_SECONDS, lock_value=str(uuid.uuid4()))
+    async with lock as acquired:
+        if not acquired:
+            logger.debug("[Maintenance] 另一个 worker 正在执行，跳过本轮")
+            return
         logger.info(f"[Maintenance] 开始执行凌晨维护任务 (当前时间: {now.strftime('%H:%M:%S')})")
 
-        # 1. 归档 30 天前的数据
         moved = await archive_old_data(archive_days=30)
         logger.info(f"[Maintenance] 归档任务完成，移动了 {moved} 条记录")
 
         _last_run_date = now.date()
-    finally:
-        with contextlib.suppress(Exception):
-            await redis.eval(_RELEASE_LOCK_LUA, 1, _LOCK_KEY, lock_value)

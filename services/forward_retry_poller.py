@@ -14,25 +14,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import defer
 
 from core.config import Config
+from core.distributed_lock import DistributedLock
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
 
 logger = logging.getLogger("webhook_service.forward_retry")
 
-_RELEASE_LOCK_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-else
-    return 0
-end
-"""
-
 
 async def poll_pending_retries():
     """核心逻辑：获取 Redis 分布式锁，查询待重试记录，逐条重试"""
-    from core.redis_client import get_redis
-
-    redis = get_redis()
     lock_key = "forward:retry:poller:lock"
 
     lock_ttl = max(
@@ -46,12 +36,11 @@ async def poll_pending_retries():
     lock_ttl = min(lock_ttl, 600)
 
     lock_value = str(uuid.uuid4())
-    acquired = await redis.set(lock_key, lock_value, nx=True, ex=lock_ttl)
-    if not acquired:
-        logger.debug("[ForwardRetry] 未获取到分布式锁，跳过本轮")
-        return
-
-    try:
+    lock = DistributedLock(key=lock_key, ttl=lock_ttl, lock_value=lock_value)
+    async with lock as acquired:
+        if not acquired:
+            logger.debug("[ForwardRetry] 未获取到分布式锁，跳过本轮")
+            return
         now = datetime.now()
         record_ids: list[int] = []
 
@@ -98,13 +87,6 @@ async def poll_pending_retries():
                     logger.error(f"[ForwardRetry] 重试记录 ID={record_id} 异常: {e}")
 
         await asyncio.gather(*[_retry_one(rid) for rid in record_ids])
-
-    finally:
-        # 释放锁
-        import contextlib
-
-        with contextlib.suppress(Exception):
-            await redis.eval(_RELEASE_LOCK_LUA, 1, lock_key, lock_value)
 
 
 async def _retry_forward(session, record: FailedForward):
