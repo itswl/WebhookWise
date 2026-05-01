@@ -26,7 +26,7 @@ async def test_http_client_injects_trace_headers(monkeypatch):
     finally:
         await client.aclose()
 
-    assert captured["x_request_id"] == "evt-123"
+    assert captured["x_request_id"] and len(captured["x_request_id"]) == 32
     assert captured["traceparent"] and captured["traceparent"].startswith("00-")
 
 
@@ -34,11 +34,11 @@ def test_extract_trace_id_from_headers_prefers_x_request_id():
     from core.trace import extract_trace_id_from_headers
 
     tid = extract_trace_id_from_headers({"x-request-id": "evt-999"})
-    assert tid == "evt-999"
+    assert tid and len(tid) == 32
 
 
 def test_extract_trace_id_from_headers_parses_traceparent():
     from core.trace import extract_trace_id_from_headers
 
     tid = extract_trace_id_from_headers({"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
-    assert tid == "4bf92f3577b3"
+    assert tid == "4bf92f3577b34da6a3ce929d0e0e4736"

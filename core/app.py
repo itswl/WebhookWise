@@ -22,6 +22,7 @@ from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
+from core.otel import setup_otel
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
 from core.trace import extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
@@ -94,6 +95,7 @@ app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
 
 
 setup_metrics(app)
+setup_otel(app)
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
 
