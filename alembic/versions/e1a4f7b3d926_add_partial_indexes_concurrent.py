@@ -25,32 +25,21 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Add partial indexes using CONCURRENTLY to avoid locking tables."""
-    # Exit the implicit transaction — CONCURRENTLY cannot run inside a txn
-    op.execute(sa.text("COMMIT"))
-
-    # RecoveryPoller 僵尸事件扫描优化
-    # 覆盖 processing_status IN ('received','analyzing','failed') 的行，
-    # 按 created_at DESC 排序，加速 ORDER BY + LIMIT 查询
-    op.execute(
-        sa.text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_status_created_partial "
-            "ON webhook_events (processing_status, created_at DESC) "
-            "WHERE processing_status IN ('received', 'analyzing', 'failed')"
+    with op.get_context().autocommit_block():
+        op.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_status_created_partial "
+                "ON webhook_events (processing_status, created_at DESC) "
+                "WHERE processing_status IN ('received', 'analyzing', 'failed')"
+            )
         )
-    )
-
-    # 转发失败重试查询优化
-    # 覆盖 status IN ('pending','retrying') 的行，按 next_retry_at 排序
-    op.execute(
-        sa.text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_failed_status_retry_partial "
-            "ON failed_forwards (status, next_retry_at) "
-            "WHERE status IN ('pending', 'retrying')"
+        op.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_failed_status_retry_partial "
+                "ON failed_forwards (status, next_retry_at) "
+                "WHERE status IN ('pending', 'retrying')"
+            )
         )
-    )
-
-    # Re-enter transaction for Alembic version-table bookkeeping
-    op.execute(sa.text("BEGIN"))
 
 
 def downgrade() -> None:
