@@ -100,6 +100,12 @@ WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL = Counter(
     "Semaphore 获取超时触发 Fail-Closed 的总次数",
 )
 
+WEBHOOK_STORM_SUPPRESSED_TOTAL = Counter(
+    "webhook_storm_suppressed_total",
+    "告警风暴下触发 Fail-Fast 抑制的 webhook 总数",
+    ["source"],
+)
+
 WEBHOOK_RECOVERY_POLLED_TOTAL = Counter(
     "webhook_recovery_polled_total",
     "RecoveryPoller 恢复的僵尸事件总数",

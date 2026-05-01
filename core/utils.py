@@ -3,6 +3,7 @@ import hmac
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 from urllib.parse import urlparse
@@ -390,7 +391,7 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
 
 
 @asynccontextmanager
-async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
+async def processing_lock(alert_hash: str) -> AsyncGenerator["ProcessingLockResult", None]:
     """获取基于 alert_hash 的分布式处理锁。
 
     保护范围：MQ Consumer 内同一 alert_hash 的并发分析。
@@ -407,27 +408,60 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[bool, None]:
     释放：Lua 脚本原子检查 value 后 DEL，防止误删他人锁。
 
     Yields:
-        bool: True=获得锁（执行分析），False=未获得锁（等待结果）
+        ProcessingLockResult
     """
     from core.distributed_lock import DistributedLock
+    from core.redis_client import get_redis
+
+    threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
+    window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
+    queue_key = f"queue:webhook:{alert_hash}"
+    queue_size = 0
+    suppressed = False
+
+    if threshold:
+        try:
+            redis = get_redis()
+            queue_size = int(await redis.incr(queue_key))
+            if queue_size == 1:
+                await redis.expire(queue_key, window_seconds)
+            if queue_size > threshold:
+                suppressed = True
+        except Exception as e:
+            logger.warning("processing_lock 计数失败: %s", e)
 
     lock_key = f"lock:webhook:{alert_hash}"
     ttl = Config.retry.PROCESSING_LOCK_TTL_SECONDS
     lock = DistributedLock(key=lock_key, ttl=ttl)
+    lock_acquired = False
 
     try:
-        lock_acquired = await lock.acquire()
-        if lock_acquired:
-            logger.debug("[Lock] 成功锁定告警: hash=%s, worker=%s", alert_hash, Config.server.WORKER_ID)
-        else:
-            logger.debug("告警正由其他 worker 处理中: hash=%s...", alert_hash[:16])
+        if not suppressed:
+            lock_acquired = await lock.acquire()
+            if lock_acquired:
+                logger.debug("[Lock] 成功锁定告警: hash=%s, worker=%s", alert_hash, Config.server.WORKER_ID)
+            else:
+                logger.debug("告警正由其他 worker 处理中: hash=%s...", alert_hash[:16])
     except Exception as e:
         lock_acquired = False
         logger.error("获取处理锁失败: %s", e)
 
     try:
-        yield lock_acquired
+        yield ProcessingLockResult(
+            got_lock=lock_acquired,
+            should_wait=not suppressed and not lock_acquired,
+            suppressed=suppressed,
+            queue_size=queue_size,
+        )
     finally:
         await lock.release()
         if lock_acquired:
             logger.debug("释放处理锁: hash=%s...", alert_hash[:16])
+
+
+@dataclass(frozen=True)
+class ProcessingLockResult:
+    got_lock: bool
+    should_wait: bool
+    suppressed: bool
+    queue_size: int = 0
