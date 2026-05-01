@@ -231,6 +231,18 @@
     border: 1px solid #c8e1ff;
 }
 
+.badge-duplicate-within {
+    background: #f1f8ff;
+    color: #0366d6;
+    border: 1px solid #c8e1ff;
+}
+
+.badge-duplicate-beyond {
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+}
+
 .badge-new {
     background: #f3f4f6;
     color: #4b5563;
