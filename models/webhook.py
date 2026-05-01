@@ -92,13 +92,16 @@ class WebhookEvent(Base):
             "prev_alert_id": self.prev_alert_id,
         }
 
-    def to_dict(self):
+    def to_dict(self, *, include_raw_payload: bool = True):
+        raw_payload = None
+        if include_raw_payload:
+            raw_payload = decompress_payload(self.raw_payload)
         return {
             "id": self.id,
             "source": self.source,
             "client_ip": self.client_ip,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "raw_payload": decompress_payload(self.raw_payload),
+            "raw_payload": raw_payload,
             "headers": self.headers,
             "parsed_data": self.parsed_data,
             "alert_hash": self.alert_hash,

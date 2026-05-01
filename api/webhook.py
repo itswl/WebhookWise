@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from core.auth import verify_api_key
 from core.config import Config
@@ -105,7 +106,7 @@ async def list_webhooks(
 
         if return_full:
             # 完整模式：仍走 ORM 实例路径
-            query = select(WebhookEvent)
+            query = select(WebhookEvent).options(defer(WebhookEvent.raw_payload))
             if cursor_id is not None:
                 query = query.where(WebhookEvent.id < cursor_id)
             if importance:
@@ -123,7 +124,7 @@ async def list_webhooks(
 
             items = []
             for event in events:
-                d = event.to_dict()
+                d = event.to_dict(include_raw_payload=False)
                 d["prev_alert_id"] = event.prev_alert_id
                 items.append(_apply_duplicate_fields(d))
 
@@ -184,7 +185,11 @@ async def list_webhooks_cursor(
 
         if return_full:
             # 完整模式：仍走 ORM 实例路径
-            query = select(WebhookEvent).order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            query = (
+                select(WebhookEvent)
+                .options(defer(WebhookEvent.raw_payload))
+                .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            )
             if importance:
                 query = query.filter(WebhookEvent.importance == importance)
             if source:
@@ -197,7 +202,7 @@ async def list_webhooks_cursor(
 
             items = []
             for event in events:
-                d = event.to_dict()
+                d = event.to_dict(include_raw_payload=False)
                 d["prev_alert_id"] = event.prev_alert_id
                 items.append(_apply_duplicate_fields(d))
 
