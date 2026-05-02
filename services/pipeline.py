@@ -264,6 +264,7 @@ async def _handle_webhook_process_inner(
         payload, raw_text = await load_event_payload(event)
         raw_body = raw_text.encode("utf-8") if raw_text else b""
         source = event.source
+        event_timestamp = event.timestamp.isoformat() if event.timestamp else None
 
         payload = payload or {}
 
@@ -277,7 +278,7 @@ async def _handle_webhook_process_inner(
 
     try:
         try:
-            request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source)
+            request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source, event_timestamp)
         except InvalidJsonError:
             outcome = "invalid_json"
             return

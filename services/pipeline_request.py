@@ -16,7 +16,12 @@ from core.logger import logger
 
 
 def _parse_webhook_request(
-    client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: str | None
+    client_ip: str,
+    headers: dict,
+    payload: dict,
+    raw_body: bytes,
+    source: str | None,
+    event_timestamp: str | None = None,
 ) -> WebhookRequestContext:
     requested_source = source or headers.get("x-webhook-source", "unknown")
 
@@ -45,6 +50,7 @@ def _parse_webhook_request(
         "query": {},
         "parsed_data": parsed_data,
         "source": requested_source,
+        "timestamp": event_timestamp,
     }
 
     return WebhookRequestContext(
