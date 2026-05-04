@@ -119,8 +119,8 @@ async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Except
             }
         }
         await get_http_client().post(url, json=card, timeout=10)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Pipeline] 发送死信告警失败: %s", e)
 
 
 # ── 阶段逻辑 ──────────────────────────────────────────────────────────────────
@@ -267,8 +267,8 @@ async def _handle_forwarding(
                 matched_rules.append(r.to_dict())
                 if r.stop_on_match:
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
     if is_dup:
         if orig and orig.last_notified_at and (
