@@ -118,7 +118,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     monkeypatch.setattr("api.analysis.MAX_PAGE", 2)
 
     resp = await list_all_deep_analyses(
-        page=1, per_page=20, cursor=None, status_filter="", engine_filter="", session=session
+        page=1, per_page=20, cursor=None, status="", engine="", session=session
     )
     assert resp["success"] is True
     items = resp["data"]["items"]

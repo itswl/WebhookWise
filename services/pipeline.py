@@ -243,7 +243,7 @@ async def _decide_forwarding(
 ) -> ForwardDecision:
     """转发决策逻辑"""
     from core.config import Config
-    if noise.suppress_forward:
+    if noise and noise.suppress_forward:
         return ForwardDecision(False, f"智能降噪抑制转发: {noise.reason}", False)
 
     # 1. 匹配规则
