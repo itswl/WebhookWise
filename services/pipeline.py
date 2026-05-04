@@ -217,12 +217,9 @@ async def _increment_and_get_retry_count(event_id: int | None) -> int:
 async def handle_webhook_process(
     event_id: int,
     client_ip: str = "",
+    session: sqlalchemy.ext.asyncio.AsyncSession | None = None,
 ):
-    """处理 webhook 的主流程入口。
-
-    仅接收 event_id，从 DB 加载完整事件数据，避免持有大对象。
-    并发控制由 Redis Stream 的 count 参数自然限流，无需进程内 Semaphore。
-    """
+    """处理 webhook 的主流程入口。"""
     set_trace_id(generate_trace_id(event_id=event_id))
     clear_log_context()
     set_log_context(event_id=event_id)
@@ -231,7 +228,7 @@ async def handle_webhook_process(
         _running_tasks.add(task)
         WEBHOOK_RUNNING_TASKS.inc()
     try:
-        await _handle_webhook_process_inner(event_id, client_ip)
+        await _handle_webhook_process_inner(event_id, client_ip, session=session)
     finally:
         if task:
             _running_tasks.discard(task)
@@ -241,19 +238,20 @@ async def handle_webhook_process(
 async def _handle_webhook_process_inner(
     event_id: int,
     client_ip: str = "",
+    session: sqlalchemy.ext.asyncio.AsyncSession | None = None,
 ):
     start_perf = time.perf_counter()
     outcome = "unknown"
     metric_source = "unknown"
     # ── 合并会话：加载事件 + 更新状态为 analyzing（单次 checkout/checkin）──
-    async with session_scope() as session:
+    async with session_scope(existing_session=session) as sess:
         stmt = (
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
             .values(processing_status="analyzing", failure_reason=None, error_message=None)
             .returning(WebhookEvent)
         )
-        result = await session.execute(stmt)
+        result = await sess.execute(stmt)
         event = result.scalar_one_or_none()
         if not event:
             logger.error(f"[Pipeline] Event {event_id} not found in DB")
@@ -265,13 +263,13 @@ async def _handle_webhook_process_inner(
         raw_body = raw_text.encode("utf-8") if raw_text else b""
         source = event.source
         event_timestamp = event.timestamp.isoformat() if event.timestamp else None
-
         payload = payload or {}
 
     set_log_context(source=source or "unknown", processing_status="analyzing", route_type="ai")
     metric_source = sanitize_source(source or "")
     WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
     logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
+
     WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
     analysis_result = {}
     original_event = None

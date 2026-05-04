@@ -120,19 +120,22 @@ async def get_db_session():
 
 
 @asynccontextmanager
-async def session_scope():
+async def session_scope(existing_session: AsyncSession | None = None):
     """异步数据库会话上下文管理器，自动处理提交和回滚。
 
-    始终创建新 session。供 Poller、BackgroundTasks 等不通过路由的代码路径使用。
-    路由端点应使用 Depends(get_db_session) 显式注入 session。
+    如果传入了 existing_session，则直接使用它且不执行自动提交/回滚（由调用方负责）。
+    始终创建新 session（若未传入）。供 Poller、TaskIQ 等不通过路由的代码路径使用。
     """
-    async with _session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+    if existing_session:
+        yield existing_session
+    else:
+        async with _session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
 
 # ────────────────────────────────────────

@@ -25,11 +25,15 @@ schedule_source = RedisScheduleSource(
     redis_url=REDIS_URL,
 )
 
-# 3. 异步任务代理 (使用 ListQueueBroker 配合 Redis)
+# 3. 异步任务代理
 broker = ListQueueBroker(
     url=REDIS_URL,
     result_backend=result_backend,
 ).with_result_backend(result_backend)
+
+# 4. 依赖注入
+# TaskIQ 使用 taskiq_dependencies 自动处理依赖
+# 不需要显式初始化，但我们需要确保 broker 支持它
 
 # 在测试环境下可以切换为 InMemoryBroker
 if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
