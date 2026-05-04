@@ -21,7 +21,7 @@ def _set_config(**kwargs):
                 originals[k] = getattr(getattr(Config, sub_name), k)
             else:
                 originals[k] = getattr(getattr(Config, sub_name), k)
-    
+
     for k, v in kwargs.items():
         runtime_info = Config.RUNTIME_KEYS.get(k)
         sub_name = runtime_info["sub"] if runtime_info else None
