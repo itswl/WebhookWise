@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
-from core.redis_client import get_redis
 from services.webhook_orchestrator import (
     count_dead_letters,
     list_dead_letters,
@@ -34,15 +33,9 @@ from services.config_service import (
     get_config_sources,
     get_current_config,
 )
+from services.tasks import process_webhook_task
 
 admin_router = APIRouter()
-
-
-def _run_add_unique_constraint_migration() -> bool:
-    from scripts.migrations_tool import add_unique_constraint
-
-    logger.info("开始执行数据库迁移：添加唯一约束")
-    return add_unique_constraint()
 
 
 @admin_router.get("/api/config", response_model=ConfigResponse)
@@ -93,13 +86,7 @@ async def update_config(payload: dict | None = None):
 def reload_prompt():
     try:
         new_template = reload_user_prompt_template()
-        logger.info("AI Prompt 模板已重新加载")
-        return _ok(
-            status=200,
-            message="Prompt 模板已重新加载",
-            template_length=len(new_template),
-            preview=new_template[:200] + "..." if len(new_template) > 200 else new_template,
-        )
+        return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=new_template[:200] + "...")
     except Exception as e:
         logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
@@ -115,80 +102,40 @@ def get_prompt():
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/migrations/add_unique_constraint", dependencies=[Depends(verify_admin_write)])
-def migration_add_unique_constraint():
-    try:
-        success = _run_add_unique_constraint_migration()
-        if success:
-            return _ok(status=200, message="数据库迁移成功：唯一约束已添加")
-        return _fail("数据库迁移失败，请查看日志", 500)
-    except Exception as e:
-        logger.error(f"执行迁移失败: {e}")
-        return _fail(str(e), 500)
-
-
-# ── Dead Letter 重放 ──────────────────────────────────────────────────────────
+# ── Dead Letter & Stuck Events ──────────────────────────────────────────────────────────
 
 
 @admin_router.get("/api/admin/dead-letters", response_model=DeadLetterListResponse)
-async def get_dead_letters(
+async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """列出所有 dead_letter 事件（分页）"""
     try:
         items = await list_dead_letters(session, page=page, page_size=page_size)
         total = await count_dead_letters(session)
-        # 序列化 datetime 字段
-        for item in items:
-            if item.get("timestamp"):
-                item["timestamp"] = item["timestamp"].isoformat()
-        return _ok(
-            data=items,
-            http_status=200,
-            pagination={"page": page, "page_size": page_size, "total": total},
-        )
+        return _ok(data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total})
     except Exception as e:
         logger.error(f"查询 dead_letter 列表失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
-@admin_router.post(
-    "/api/admin/dead-letters/{event_id}/replay",
-    response_model=ReplayResponse,
-    dependencies=[Depends(verify_admin_write)],
-)
-async def replay_single_dead_letter(
-    event_id: int,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """重放单个 dead_letter：重置状态 + 重新投递 Redis Stream"""
+@admin_router.post("/api/admin/dead-letters/{event_id}/replay", response_model=ReplayResponse, dependencies=[Depends(verify_admin_write)])
+async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
         updated = await replay_dead_letter(session, event_id)
         if not updated:
             return _fail(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
-
-        # 先提交 DB，再投递 Redis Stream（与 api/webhook.py 保持一致）
         await session.commit()
-
-        redis = get_redis()
-        await redis.xadd(
-            Config.server.WEBHOOK_MQ_QUEUE,
-            {"event_id": str(event_id), "client_ip": ""},
-            maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
-            approximate=True,
-        )
-
-        logger.info(f"[Admin] Dead letter 重放成功: event_id={event_id}")
+        await process_webhook_task.kiq(event_id=event_id)
         return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
-        logger.error(f"重放 dead_letter 失败: event_id={event_id}, error={e!s}", exc_info=True)
+        logger.error(f"重放 dead_letter 失败: {event_id=}, error={e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
 @admin_router.get("/api/admin/stuck-events", response_model=StuckEventListResponse)
-async def get_stuck_events(
+async def get_stuck_events_endpoint(
     status: str = Query("", alias="status"),
     older_than_seconds: int = Query(300, ge=0),
     limit: int = Query(50, ge=1, le=500),
@@ -196,88 +143,39 @@ async def get_stuck_events(
 ):
     statuses = [s for s in (status or "").split(",") if s.strip()]
     try:
-        items = await list_stuck_events(
-            session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit
-        )
-        for item in items:
-            if item.get("created_at"):
-                item["created_at"] = item["created_at"].isoformat()
-            if item.get("updated_at"):
-                item["updated_at"] = item["updated_at"].isoformat()
+        items = await list_stuck_events(session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit)
         return _ok(items, 200)
     except Exception as e:
         logger.error(f"查询 stuck-events 失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
-@admin_router.post(
-    "/api/admin/stuck-events/{event_id}/requeue",
-    response_model=StuckEventRequeueResponse,
-    dependencies=[Depends(verify_admin_write)],
-)
-async def requeue_single_stuck_event(
-    event_id: int,
-    session: AsyncSession = Depends(get_db_session),
-):
+@admin_router.post("/api/admin/stuck-events/{event_id}/requeue", response_model=StuckEventRequeueResponse, dependencies=[Depends(verify_admin_write)])
+async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
         updated = await requeue_stuck_event(session, event_id)
         if not updated:
             return _fail(f"事件 {event_id} 不存在或状态不可重放", 404)
         await session.commit()
-
-        redis = get_redis()
-        await redis.xadd(
-            Config.server.WEBHOOK_MQ_QUEUE,
-            {"event_id": str(event_id), "client_ip": "admin-requeue"},
-            maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
-            approximate=True,
-        )
-        logger.info(f"[Admin] Stuck event 重放成功: event_id={event_id}")
+        await process_webhook_task.kiq(event_id=event_id, client_ip="admin-requeue")
         return _ok(http_status=200, message=f"事件 {event_id} 已重新入队", event_id=event_id)
     except Exception as e:
-        logger.error(f"重放 stuck-event 失败: event_id={event_id}, error={e!s}", exc_info=True)
+        logger.error(f"重放 stuck-event 失败: {event_id=}, error={e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
-@admin_router.post(
-    "/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)]
-)
-async def replay_all_dead_letters(
-    batch_size: int = Query(50, ge=1, le=500),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """批量重放所有 dead_letter（限流，最多 batch_size 条）"""
+@admin_router.post("/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)])
+async def replay_all_dead_letters(batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)):
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
-        if not items:
-            return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
-
+        if not items: return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
         replayed_ids = []
         for item in items:
             eid = item["id"]
-            updated = await replay_dead_letter(session, eid)
-            if updated:
-                replayed_ids.append(eid)
-
-        # 先提交 DB，再批量投递 Redis Stream
+            if await replay_dead_letter(session, eid): replayed_ids.append(eid)
         await session.commit()
-
-        redis = get_redis()
-        for eid in replayed_ids:
-            await redis.xadd(
-                Config.server.WEBHOOK_MQ_QUEUE,
-                {"event_id": str(eid), "client_ip": ""},
-                maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
-                approximate=True,
-            )
-
-        logger.info(f"[Admin] 批量重放完成: {len(replayed_ids)} 条")
-        return _ok(
-            http_status=200,
-            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
-            replayed=len(replayed_ids),
-            event_ids=replayed_ids,
-        )
+        for eid in replayed_ids: await process_webhook_task.kiq(event_id=eid)
+        return _ok(http_status=200, message=f"已重放 {len(replayed_ids)} 条 dead_letter", replayed=len(replayed_ids), event_ids=replayed_ids)
     except Exception as e:
         logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
