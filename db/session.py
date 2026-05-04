@@ -96,8 +96,8 @@ async def init_engine():
         from core.otel import instrument_sqlalchemy
 
         instrument_sqlalchemy(_engine.sync_engine)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("[DB] SQLAlchemy 自动探测失败（可能未安装 OTEL）: %s", e)
     _setup_pool_metrics(_engine)
 
 

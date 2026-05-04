@@ -68,5 +68,5 @@ async def _refresh_mq_stats() -> None:
     try:
         stream_len = int(await redis.xlen(stream))
         WEBHOOK_MQ_STREAM_LENGTH.labels(stream=stream).set(stream_len)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("[Metrics] 刷新 MQ 指标失败: %s", e)
