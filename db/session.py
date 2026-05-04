@@ -10,8 +10,35 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import declarative_base
 
+from typing import TYPE_CHECKING, Any, TypeVar
+
 from core.config import Config
 from core.logger import mask_url
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+T = TypeVar("T", bound="BaseModel")
+
+
+class SerializerMixin:
+    """提供通用的序列化能力，减少 Models 与 Schemas 之间的重复代码。"""
+
+    def to_schema(self, schema_cls: type[T]) -> T:
+        """将 Model 实例转换为指定的 Pydantic Schema。"""
+        return schema_cls.model_validate(self)
+
+    def to_dict(self, schema_cls: type["BaseModel"] | None = None) -> dict[str, Any]:
+        """将 Model 实例转换为字典。如果提供 schema_cls，则通过 Schema 进行过滤和格式化。"""
+        if schema_cls:
+            return self.to_schema(schema_cls).model_dump()
+        # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段）
+        return {
+            c.name: getattr(self, c.name) 
+            for c in self.__table__.columns 
+            if not isinstance(getattr(self, c.name), (bytes, memoryview))
+        }
+
 
 _logger = logging.getLogger(__name__)
 
