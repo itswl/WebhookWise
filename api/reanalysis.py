@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from core.utils import mask_url
 from db.session import get_db_session

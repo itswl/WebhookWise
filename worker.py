@@ -10,10 +10,10 @@ from taskiq import AsyncBroker
 from taskiq.receiver import Receiver
 from taskiq.schedule_sources import LabelScheduleSource
 
+from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
 from core.redis_client import dispose_redis, get_redis
-from core.runtime_config import runtime_config
 from core.taskiq_broker import broker, schedule_source
 from db.session import dispose_engine, init_engine
 
@@ -34,9 +34,9 @@ async def startup():
     await init_engine()
     get_redis()
 
-    # 加载运行时配置
-    await runtime_config.load_from_db()
-    await runtime_config.start_subscriber()
+    # 从数据库加载热更新配置
+    await Config.load_from_db()
+    await Config.start_subscriber()
 
     # 启动 TaskIQ 运行环境
     await broker.startup()
@@ -47,7 +47,7 @@ async def shutdown():
     """清理工作进程环境"""
     logger.info("[Worker] 正在关闭工作进程...")
     await broker.shutdown()
-    await runtime_config.stop_subscriber()
+    await Config.stop_subscriber()
     await dispose_engine()
     await dispose_redis()
     await close_http_client()

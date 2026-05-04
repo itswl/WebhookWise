@@ -10,7 +10,7 @@ from api import (
     PersistedEventContext,
     WebhookRequestContext,
 )
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from db.session import session_scope
 from models import WebhookEvent

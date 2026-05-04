@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from crud.webhook import query_last_beyond_window_event, query_latest_original_event
 from db.session import session_scope

@@ -24,8 +24,6 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.otel import setup_otel
 from core.redis_client import dispose_redis
-from core.runtime_config import runtime_config
-from core.taskiq_broker import broker, schedule_source
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
@@ -48,14 +46,15 @@ async def lifespan(app: FastAPI):
     get_http_client()
     await init_engine()
     # 从数据库加载运行时配置
-    await runtime_config.load_from_db()
-    await runtime_config.start_subscriber()
-    
+    await Config.load_from_db()
+    await Config.start_subscriber()
+
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
-    
+
     yield
-    
+
+    await Config.stop_subscriber()
     await broker.shutdown()
     
     # 优雅等待正在运行的任务
@@ -72,7 +71,6 @@ async def lifespan(app: FastAPI):
             timeout=grace_timeout,
         )
     
-    await runtime_config.stop_subscriber()
     await dispose_engine()
     await dispose_redis()
     reset_openai_client()

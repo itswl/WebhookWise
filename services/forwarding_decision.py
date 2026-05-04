@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from db.session import session_scope
 from models import ForwardRule, WebhookEvent

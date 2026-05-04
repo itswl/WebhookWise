@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 
 

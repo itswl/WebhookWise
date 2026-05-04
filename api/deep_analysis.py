@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from adapters.registry import get_default_engine, get_engine
 from core.compression import decompress_payload_async
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.http_client import get_http_client
 from core.logger import logger
 from crud.analysis import get_deep_analyses_for_webhook, get_deep_analysis_list

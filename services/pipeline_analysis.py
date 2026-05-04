@@ -6,7 +6,7 @@ from datetime import datetime
 
 from api import AnalysisResolution
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from models import WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai
