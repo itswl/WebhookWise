@@ -1,6 +1,6 @@
 """logic sinking: add unique constraints and processing_locks
 
-Consolidate manual migrations from scripts/migrate_db.py and 
+Consolidate manual migrations from scripts/migrate_db.py and
 scripts/apply_unique_constraint.py into Alembic.
 
 Revision ID: 6a7b8c9d0e1f
@@ -23,10 +23,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute("SET lock_timeout = '5s'")
-    
+
     conn = op.get_bind()
     insp = inspect(conn)
-    
+
     # 1. 确保 webhook_events 字段完整 (来自 migrate_db.py)
     columns = [c["name"] for c in insp.get_columns("webhook_events")]
     if "is_duplicate" not in columns:

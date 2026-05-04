@@ -7,6 +7,8 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+# 必须导入任务以注册到 broker
+import services.tasks  # noqa: F401
 from adapters.plugins.local_engine import LocalAnalysisEngine
 from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
 from adapters.registry import register_engine
@@ -21,14 +23,11 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.otel import setup_otel
 from core.redis_client import dispose_redis
+from core.taskiq_broker import broker
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.ai_analyzer import reset_openai_client
-from services.metrics_poller import MetricsPoller
 from services.pipeline import get_running_tasks
-
-# 必须导入任务以注册到 broker
-import services.tasks  # noqa: F401
 
 
 @asynccontextmanager
@@ -53,7 +52,7 @@ async def lifespan(app: FastAPI):
 
     await Config.stop_subscriber()
     await broker.shutdown()
-    
+
     # 优雅等待正在运行的任务
     running = get_running_tasks()
     if running:
@@ -67,7 +66,7 @@ async def lifespan(app: FastAPI):
             running,
             timeout=grace_timeout,
         )
-    
+
     await dispose_engine()
     await dispose_redis()
     reset_openai_client()

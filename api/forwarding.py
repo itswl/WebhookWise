@@ -3,15 +3,12 @@ Forwarding API Routes.
 Consolidated from forward_rules and forward_retry.
 """
 
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
-from core.config import Config
-from core.logger import logger
 from db.session import get_db_session
 from schemas import (
     ForwardRuleDetailResponse,
@@ -23,7 +20,6 @@ from services.forward import (
     delete_forward_rule,
     get_failed_forward_stats,
     get_failed_forwards,
-    get_forward_rule,
     get_forward_rules,
     manual_retry_reset,
     update_forward_rule,
@@ -46,8 +42,10 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
     name = payload.get("name", "").strip() if isinstance(payload.get("name"), str) else ""
     target_type = payload.get("target_type", "").strip() if isinstance(payload.get("target_type"), str) else ""
 
-    if not name: return JSONResponse(status_code=400, content={"success": False, "error": "规则名称不能为空"})
-    if target_type not in ("feishu", "openclaw", "webhook"): return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
+    if not name:
+        return JSONResponse(status_code=400, content={"success": False, "error": "规则名称不能为空"})
+    if target_type not in ("feishu", "openclaw", "webhook"):
+        return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
 
     rule = await create_forward_rule(
         session=session, name=name, target_type=target_type,
@@ -63,16 +61,20 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
 
 
 @forwarding_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
-async def update_forward_rule_endpoint(rule_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
+async def update_forward_rule_endpoint(
+    rule_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)
+):
     payload = payload or {}
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
-    if not rule: return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+    if not rule:
+        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     return {"success": True, "data": rule, "message": "规则更新成功"}
 
 
 @forwarding_router.delete("/api/forward-rules/{rule_id}")
 async def delete_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depends(get_db_session)):
-    if not await delete_forward_rule(session=session, rule_id=rule_id): return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+    if not await delete_forward_rule(session=session, rule_id=rule_id):
+        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     return {"success": True, "message": "规则已删除"}
 
 
@@ -80,7 +82,13 @@ async def delete_forward_rule_endpoint(rule_id: int, session: AsyncSession = Dep
 
 
 @forwarding_router.get("/api/failed-forwards")
-async def list_failed_forwards(status: str = Query(None), target_type: str = Query(None), limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), session: AsyncSession = Depends(get_db_session)):
+async def list_failed_forwards(
+    status: str = Query(None),
+    target_type: str = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_db_session)
+):
     records, total = await get_failed_forwards(status, target_type, limit, offset, session)
     return _ok(data=records, total=total, limit=limit, offset=offset)
 
@@ -92,11 +100,13 @@ async def get_retry_stats(session: AsyncSession = Depends(get_db_session)):
 
 @forwarding_router.post("/api/failed-forwards/{failed_forward_id}/retry")
 async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)):
-    if await manual_retry_reset(failed_forward_id, session): return _ok(message="已重置为待重试")
+    if await manual_retry_reset(failed_forward_id, session):
+        return _ok(message="已重置为待重试")
     return _fail("记录不存在或状态不是 exhausted", 400)
 
 
 @forwarding_router.delete("/api/failed-forwards/{failed_forward_id}")
 async def delete_record(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)):
-    if await delete_failed_forward(failed_forward_id, session): return _ok(message="记录已删除")
+    if await delete_failed_forward(failed_forward_id, session):
+        return _ok(message="记录已删除")
     return _fail("记录不存在", 404)

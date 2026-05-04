@@ -80,7 +80,7 @@ def get_current_config():
         runtime_info = Config.RUNTIME_KEYS.get(env_var)
         sub_name = runtime_info["sub"] if runtime_info else None
         value = getattr(getattr(Config, sub_name), env_var, "") if sub_name else ""
-        
+
         if env_var == "OPENAI_API_KEY" and value:
             response[field_name] = "已配置"
         else:

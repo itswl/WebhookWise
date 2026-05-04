@@ -1,3 +1,8 @@
+"""
+Ecosystem Adapters for WebhookWise.
+Handles normalization of various webhook sources into a standard format.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -5,9 +10,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from core.circuit_breaker import feishu_cb
 from core.config import Config
 from core.http_client import get_http_client
-from core.circuit_breaker import feishu_cb
 
 logger = logging.getLogger("webhook_service.ecosystem_adapters")
 
@@ -26,10 +31,12 @@ class NormalizedWebhook:
 
 
 def _header_get(headers: HeadersLike | None, key: str) -> str | None:
-    if not headers: return None
+    if not headers:
+        return None
     target = key.lower()
     for k, v in headers.items():
-        if str(k).lower() == target: return str(v)
+        if str(k).lower() == target:
+            return str(v)
     return None
 
 
@@ -39,23 +46,30 @@ def _normalize_level(value: Any) -> str:
     medium = {"warning", "warn", "p1", "medium", "moderate", "警告"}
     low = {"info", "ok", "resolved", "normal", "low", "notice", "恢复", "已恢复", "正常"}
 
-    if text in high: return "critical"
-    if text in medium: return "warning"
-    if text in low: return "info"
-    
-    if any(k in text for k in high): return "critical"
-    if any(k in text for k in medium): return "warning"
+    if text in high:
+        return "critical"
+    if text in medium:
+        return "warning"
+    if text in low:
+        return "info"
+
+    if any(k in text for k in high):
+        return "critical"
+    if any(k in text for k in medium):
+        return "warning"
     return "warning"
 
 
 def _pick_first(*values: Any) -> Any:
     for v in values:
-        if v is not None and str(v).strip(): return v
+        if v is not None and str(v).strip():
+            return v
     return None
 
 
 def _extract_tag(tags: Any, key: str) -> str | None:
-    if not isinstance(tags, list): return None
+    if not isinstance(tags, list):
+        return None
     prefix = f"{key}:"
     for t in tags:
         if isinstance(t, str) and t.startswith(prefix):
@@ -76,7 +90,8 @@ def register_simple_adapters():
         return str(data.get("Namespace", "")).startswith("VCM_") and bool(data.get("Resources"))
 
     @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor"})
-    def _norm_volc(data: dict) -> dict: return dict(data)
+    def _norm_volc(data: dict) -> dict:
+        return dict(data)
 
     # 2. Grafana
     @registry.register_detector("grafana")
@@ -89,8 +104,10 @@ def register_simple_adapters():
         state = _pick_first(data.get("state"), data.get("status"))
         res = dict(data)
         res.update({"Type": "GrafanaAlert", "RuleName": rule, "Level": _normalize_level(state), "event": "alert"})
-        if "message" in data: res["summary"] = data["message"]
-        if "ruleId" in data or "panelId" in data: res["Resources"] = [{"InstanceId": str(_pick_first(data.get("ruleId"), data.get("panelId")))}]
+        if "message" in data:
+            res["summary"] = data["message"]
+        if "ruleId" in data or "panelId" in data:
+            res["Resources"] = [{"InstanceId": str(_pick_first(data.get("ruleId"), data.get("panelId")))}]
         return res
 
     # 3. Prometheus / Alertmanager
@@ -105,11 +122,16 @@ def register_simple_adapters():
         annotations = first.get("annotations", {})
         name = _pick_first(labels.get("alertname"), data.get("alertingRuleName"), "prometheus_alert")
         res = dict(data)
-        res.update({"Type": "PrometheusAlert", "RuleName": name, "Level": _normalize_level(labels.get("severity")), "event": "alert"})
+        res.update({
+            "Type": "PrometheusAlert", "RuleName": name,
+            "Level": _normalize_level(labels.get("severity")), "event": "alert"
+        })
         summary = _pick_first(annotations.get("summary"), annotations.get("description"))
-        if summary: res["summary"] = summary
+        if summary:
+            res["summary"] = summary
         instance = _pick_first(labels.get("instance"), labels.get("pod"), labels.get("host"))
-        if instance: res["Resources"] = [{"InstanceId": instance}]
+        if instance:
+            res["Resources"] = [{"InstanceId": instance}]
         return res
 
     # 4. Datadog
@@ -125,8 +147,10 @@ def register_simple_adapters():
         res = dict(data)
         res.update({"Type": "DatadogAlert", "RuleName": title, "Level": _normalize_level(level), "event": "alert"})
         host = _pick_first(data.get("host"), _extract_tag(tags, "host"), _extract_tag(tags, "instance"))
-        if host: res["Resources"] = [{"InstanceId": host}]
-        if "text" in data or "body" in data: res["summary"] = _pick_first(data.get("text"), data.get("body"))
+        if host:
+            res["Resources"] = [{"InstanceId": host}]
+        if "text" in data or "body" in data:
+            res["summary"] = _pick_first(data.get("text"), data.get("body"))
         return res
 
     # 5. PagerDuty
@@ -138,9 +162,16 @@ def register_simple_adapters():
     def _norm_pagerduty(data: dict) -> dict:
         inc = data.get("incident", {})
         evt = data.get("event", {})
-        title = _pick_first(inc.get("title"), evt.get("data", {}).get("title"), data.get("description"), "pagerduty_incident")
+        title = _pick_first(
+            inc.get("title"), evt.get("data", {}).get("title"),
+            data.get("description"), "pagerduty_incident"
+        )
         res = dict(data)
-        res.update({"Type": "PagerDutyEvent", "RuleName": title, "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")), "event": evt.get("event_type", "alert")})
+        res.update({
+            "Type": "PagerDutyEvent", "RuleName": title,
+            "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
+            "event": evt.get("event_type", "alert")
+        })
         return res
 
 
@@ -175,7 +206,7 @@ def normalize_webhook_event(
 
     # 3. 归一化
     normalized = registry.normalize(adapter_name, dict(data))
-    
+
     # 决定最终来源名称
     placeholder_sources = {"unknown", "custom", "default", "generic"}
     source_is_alias = registry.find_adapter_by_source(s_hint) == adapter_name if s_hint else False
@@ -185,17 +216,24 @@ def normalize_webhook_event(
     return NormalizedWebhook(final_source, normalized, adapter_name)
 
 
-# ========== 飞书深度分析通知 (保持原样，略作格式精简) ==========
+# ========== 飞书深度分析通知 ==========
 
 
 def _truncate_text(text: str, max_len: int) -> str:
-    if not text: return ""
+    if not text:
+        return ""
     text = str(text)
     return text if len(text) <= max_len else text[:max_len - 3] + "..."
 
 
-async def send_feishu_deep_analysis(webhook_url: str, analysis_record: dict, source: str = "", webhook_event_id: int = 0) -> bool:
-    if not webhook_url: return False
+async def send_feishu_deep_analysis(
+    webhook_url: str,
+    analysis_record: dict,
+    source: str = "",
+    webhook_event_id: int = 0
+) -> bool:
+    if not webhook_url:
+        return False
     res = analysis_record.get("analysis_result", {})
     engine, duration = analysis_record.get("engine", "uk"), analysis_record.get("duration_seconds", 0)
     conf = round(res.get("confidence", 0) * 100) if isinstance(res.get("confidence"), (int, float)) else 0
@@ -203,13 +241,24 @@ async def send_feishu_deep_analysis(webhook_url: str, analysis_record: dict, sou
     card = {
         "msg_type": "interactive",
         "card": {
-            "header": {"title": {"tag": "plain_text", "content": f"🔬 [{'[' + source + '] ' if source else ''}深度分析完成"}, "template": "blue"},
+            "header": {
+                "title": {"tag": "plain_text", "content": f"🔬 [{'[' + source + '] ' if source else ''}深度分析完成"},
+                "template": "blue"
+            },
             "elements": [
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**🔍 根因分析：**\n{_truncate_text(res.get('root_cause', '无'), 500)}"}},
                 {"tag": "hr"},
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**💥 影响范围：**\n{_truncate_text(res.get('impact', '无'), 500)}"}},
                 {"tag": "hr"},
-                {"tag": "note", "elements": [{"tag": "plain_text", "content": f"引擎: {engine} | 置信度: {conf}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}"}]},
+                {
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "plain_text",
+                            "content": f"引擎: {engine} | 置信度: {conf}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}"
+                        }
+                    ]
+                },
             ],
         },
     }

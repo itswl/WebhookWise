@@ -42,10 +42,15 @@ async def run_recovery_scan():
     logger.info("[Recovery] 发现 %d 条僵尸事件，开始恢复处理", len(zombie_events))
 
     for e in zombie_events:
-        try:
-            from services.pipeline import handle_webhook_process
-            logger.info("[Recovery] 重新处理事件 id=%s", e.id)
-            WEBHOOK_RECOVERY_POLLED_TOTAL.inc()
-            await handle_webhook_process(event_id=e.id, client_ip="recovery")
-        except Exception:
-            logger.exception("[Recovery] 恢复事件 %s 失败", e.id)
+        await _recover_single_event(e)
+
+
+async def _recover_single_event(e: WebhookEvent):
+    """恢复单条事件，独立 try-except 避免影响循环"""
+    try:
+        from services.pipeline import handle_webhook_process
+        logger.info("[Recovery] 重新处理事件 id=%s", e.id)
+        WEBHOOK_RECOVERY_POLLED_TOTAL.inc()
+        await handle_webhook_process(event_id=e.id, client_ip="recovery")
+    except Exception:
+        logger.exception("[Recovery] 恢复事件 %s 失败", e.id)

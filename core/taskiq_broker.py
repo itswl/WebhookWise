@@ -1,12 +1,12 @@
-"""TaskIQ Broker 配置 
+"""TaskIQ Broker 配置
 
 定义异步任务代理，支持定时任务 (Schedule) 和分布式执行。
 """
 
 import logging
 
-from taskiq import InMemoryBroker, AsyncBroker
-from taskiq_redis import RedisAsyncResultBackend, RedisScheduleSource, ListQueueBroker
+from taskiq import InMemoryBroker
+from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend, RedisScheduleSource
 
 from core.config import Config
 

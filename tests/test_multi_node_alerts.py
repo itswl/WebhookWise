@@ -6,7 +6,6 @@
 预期：两个节点的告警应该分别处理，不应该被误判为重复告警
 """
 
-import json
 import os
 import sys
 

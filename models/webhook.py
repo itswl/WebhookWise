@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import logging
 from dataclasses import dataclass
@@ -21,16 +22,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.summary_extractors import extract_summary_fields
 from core.compression import compress_payload, decompress_payload
-from db.session import Base, SerializerMixin, session_scope
+from db.session import Base, SerializerMixin
 
 _logger = logging.getLogger(__name__)
 
 
 # ====== 告警哈希字段配置 ======
 PROMETHEUS_ROOT_FIELDS = ["alertingRuleName"]
-PROMETHEUS_LABEL_FIELDS = ["alertname", "internal_label_alert_level", "host", "instance", "pod", "namespace", "service", "path", "method"]
+PROMETHEUS_LABEL_FIELDS = [
+    "alertname", "internal_label_alert_level", "host", "instance", "pod", "namespace", "service", "path", "method"
+]
 PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
-GENERIC_FIELDS = ["Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"]
+GENERIC_FIELDS = [
+    "Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"
+]
 
 
 @dataclass(frozen=True)
@@ -105,14 +110,15 @@ class WebhookEvent(Base, SerializerMixin):
                 resources = data.get("Resources", [])
                 if isinstance(resources, list) and resources and isinstance(resources[0], dict):
                     rid = resources[0].get("InstanceId") or resources[0].get("Id") or resources[0].get("id")
-                    if rid: key_fields["resource_id"] = rid
+                    if rid:
+                        key_fields["resource_id"] = rid
                     dims = resources[0].get("Dimensions", [])
                     if isinstance(dims, list):
                         important = {"Node", "ResourceID", "Instance", "InstanceId", "Host", "Pod", "Container"}
                         for d in dims:
                             if isinstance(d, dict) and d.get("Name") in important and d.get("Value"):
                                 key_fields[f"dim_{d['Name'].lower()}"] = d["Value"]
-        
+
         return hashlib.sha256(orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS)).hexdigest()
 
     @classmethod
@@ -120,12 +126,15 @@ class WebhookEvent(Base, SerializerMixin):
         """检查重复告警"""
         now = datetime.now()
         threshold = now - timedelta(hours=time_window_hours)
-        
+
         # 查窗口内最新记录
         stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.timestamp >= threshold).order_by(cls.timestamp.desc()).limit(1)
-        any_event = (await session.execute(stmt)).scalar_one_or_none()
-        
-        last_beyond = (await session.execute(select(cls).filter(cls.alert_hash == alert_hash, cls.beyond_window == 1).order_by(cls.timestamp.desc()).limit(1))).scalar_one_or_none()
+        res = await session.execute(stmt)
+        any_event = res.scalar_one_or_none()
+
+        last_beyond_stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.beyond_window == 1).order_by(cls.timestamp.desc()).limit(1)
+        last_beyond_res = await session.execute(last_beyond_stmt)
+        last_beyond = last_beyond_res.scalar_one_or_none()
 
         if any_event:
             original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
@@ -135,19 +144,28 @@ class WebhookEvent(Base, SerializerMixin):
             return DuplicateCheckResult(True, orig, not is_within, last_beyond)
 
         # 查窗口外历史
-        history = (await session.execute(select(cls).filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0).order_by(cls.timestamp.desc()).limit(1))).scalar_one_or_none()
-        return DuplicateCheckResult(False, history, True, last_beyond) if history else DuplicateCheckResult(False, None, False, None)
+        history_stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0).order_by(cls.timestamp.desc()).limit(1)
+        history_res = await session.execute(history_stmt)
+        history = history_res.scalar_one_or_none()
+
+        if history:
+            return DuplicateCheckResult(False, history, True, last_beyond)
+        return DuplicateCheckResult(False, None, False, None)
 
     def fill_fields(self, **kwargs):
         """统一填充字段"""
         for k, v in kwargs.items():
             if k == "raw_payload" and isinstance(v, bytes):
-                try: v = compress_payload(v.decode("utf-8"))
-                except Exception: pass
-            if k == "headers" and v is not None: v = dict(v)
-            if hasattr(self, k): setattr(self, k, v)
-        if not self.timestamp: self.timestamp = datetime.now()
-        if not self.created_at: self.created_at = datetime.now()
+                with contextlib.suppress(Exception):
+                    v = compress_payload(v.decode("utf-8"))
+            if k == "headers" and v is not None:
+                v = dict(v)
+            if hasattr(self, k):
+                setattr(self, k, v)
+        if not self.timestamp:
+            self.timestamp = datetime.now()
+        if not self.created_at:
+            self.created_at = datetime.now()
         self.updated_at = datetime.now()
 
     def to_summary_dict(self):
@@ -164,13 +182,19 @@ class WebhookEvent(Base, SerializerMixin):
         return res
 
     def to_dict(self, *, include_raw_payload: bool = True, schema_cls: Any = None) -> dict[str, Any]:
-        if schema_cls: return super().to_dict(schema_cls)
+        if schema_cls:
+            return super().to_dict(schema_cls)
+
         res = super().to_dict()
-        if include_raw_payload: res["raw_payload"] = decompress_payload(self.raw_payload)
-        else: res.pop("raw_payload", None)
+        if include_raw_payload:
+            res["raw_payload"] = decompress_payload(self.raw_payload)
+        else:
+            res.pop("raw_payload", None)
+
         for k in ["timestamp", "created_at", "updated_at", "last_notified_at"]:
             val = getattr(self, k, None)
-            if isinstance(val, datetime): res[k] = val.isoformat()
+            if isinstance(val, datetime):
+                res[k] = val.isoformat()
         return res
 
 
