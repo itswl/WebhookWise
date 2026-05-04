@@ -339,8 +339,17 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
 
     return {
         "total_calls": total, "route_breakdown": route_breakdown,
+        "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
         "tokens": {"input": stats[0] or 0, "output": stats[1] or 0, "total": (stats[0] or 0) + (stats[1] or 0)},
-        "cost": {"total": float(stats[2] or 0.0)}
+        "cost": {"total": float(stats[2] or 0.0), "saved_estimate": 0.0},
+        "cache_statistics": {
+            "total_cache_entries": 0,
+            "total_hits": route_breakdown.get("cache", 0) + route_breakdown.get("reuse", 0),
+            "avg_hits_per_entry": 0.0,
+            "cache_hit_rate": 0.0,
+            "saved_calls": route_breakdown.get("cache", 0) + route_breakdown.get("reuse", 0)
+        },
+        "trend": []
     }
 
 
