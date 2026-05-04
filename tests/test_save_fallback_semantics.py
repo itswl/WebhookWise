@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from crud.webhook import SaveWebhookResult
+from services.webhook_orchestrator import SaveWebhookResult
 from services.event_builder import build_event
 
 

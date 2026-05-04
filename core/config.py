@@ -362,9 +362,14 @@ class _UnifiedConfigManager:
 
     async def load_from_db(self):
         """从数据库加载热更新配置"""
+        from db.session import session_scope
+        from models import SystemConfig
+        from sqlalchemy import select
         try:
-            from crud.webhook import get_all_runtime_configs
-            configs = await get_all_runtime_configs()
+            async with session_scope() as session:
+                result = await session.execute(select(SystemConfig))
+                configs = {row.key: row for row in result.scalars().all()}
+            
             count = 0
             for key, row in configs.items():
                 if key in self.RUNTIME_KEYS:
@@ -382,8 +387,17 @@ class _UnifiedConfigManager:
         v_type = self.RUNTIME_KEYS[key]["type"]
         str_val = self._serialize(value, v_type)
         
-        from crud.webhook import upsert_runtime_config
-        await upsert_runtime_config(key, str_val, v_type, updated_by)
+        from db.session import session_scope
+        from models import SystemConfig
+        from sqlalchemy import select
+        async with session_scope() as session:
+            existing = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
+            config = existing.scalar_one_or_none()
+            if config:
+                config.value, config.value_type, config.updated_by = str_val, v_type, updated_by
+            else:
+                config = SystemConfig(key=key, value=str_val, value_type=v_type, updated_by=updated_by)
+                session.add(config)
         
         typed_val = self._deserialize(str_val, v_type)
         self.set_override(key, typed_val, source="db", updated_by=updated_by)

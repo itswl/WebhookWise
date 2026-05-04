@@ -9,9 +9,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import policies
 from core.logger import logger
-from crud.webhook import query_last_beyond_window_event, query_latest_original_event
 from db.session import session_scope
 from models import WebhookEvent
+
+
+async def query_last_beyond_window_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+    stmt = (
+        select(WebhookEvent)
+        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.beyond_window == 1)
+        .order_by(WebhookEvent.timestamp.desc())
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def query_latest_original_event(session: AsyncSession, alert_hash: str) -> WebhookEvent | None:
+    stmt = (
+        select(WebhookEvent)
+        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0)
+        .order_by(WebhookEvent.timestamp.desc())
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
 
 AnalysisResult = dict[str, Any]
 

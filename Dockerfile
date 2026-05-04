@@ -47,7 +47,6 @@ COPY core/ ./core/
 COPY api/ ./api/
 COPY models/ ./models/
 COPY db/ ./db/
-COPY crud/ ./crud/
 COPY services/ ./services/
 COPY adapters/ ./adapters/
 COPY templates/ ./templates/

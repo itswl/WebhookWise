@@ -9,9 +9,8 @@ import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 
-from crud.webhook import get_all_webhooks
-from db.session import Base
-from models import WebhookEvent
+from services.webhook_orchestrator import get_all_webhooks
+from db.session import Base, session_scope
 
 
 # SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON
@@ -47,7 +46,7 @@ async def setup_test_db(monkeypatch):
             await session.close()
 
     # 替换数据库连接
-    monkeypatch.setattr("crud.webhook.session_scope", mock_session_scope)
+    monkeypatch.setattr("services.webhook_orchestrator.session_scope", mock_session_scope)
 
     # 插入一些测试数据
     async with mock_session_scope() as session:

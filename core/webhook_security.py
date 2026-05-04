@@ -8,7 +8,7 @@ from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
 from core.utils import verify_signature
-from crud.webhook import get_client_ip
+from services.webhook_orchestrator import get_client_ip
 
 _INCR_EXPIRE_IF_FIRST_LUA = """
 local c = redis.call("incr", KEYS[1])

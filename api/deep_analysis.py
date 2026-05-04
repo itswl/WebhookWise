@@ -18,8 +18,9 @@ from core.config import Config
 from core.config import policies
 from core.http_client import get_http_client
 from core.logger import logger
-from crud.analysis import get_deep_analyses_for_webhook, get_deep_analysis_list
 from db.session import get_db_session
+from services.ai_analyzer import get_deep_analyses_for_webhook, get_deep_analysis_list
+from services.forward import record_failed_forward
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse
 from services.event_payload import load_event_payload
@@ -245,7 +246,7 @@ async def forward_deep_analysis(
             if success:
                 return {"success": True, "message": "已发送到飞书"}
             try:
-                from crud.webhook import record_failed_forward
+                from services.forward import record_failed_forward
 
                 await record_failed_forward(
                     webhook_event_id=analysis.webhook_event_id or 0,
@@ -414,7 +415,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                     )
                     if not success:
                         try:
-                            from crud.webhook import record_failed_forward
+                            from services.forward import record_failed_forward
 
                             await record_failed_forward(
                                 webhook_event_id=record.webhook_event_id,

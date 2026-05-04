@@ -43,9 +43,8 @@ from services.ai_analyzer import analyze_webhook_with_ai
 from services.ai_cache import get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from services.dedup_strategy import check_duplicate_alert
-from services.forward import forward_to_openclaw, forward_to_remote
+from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
 from services.webhook_orchestrator import save_webhook_data
-from crud.webhook import record_failed_forward
 
 try:
     from openai import AuthenticationError as _OpenAIAuthenticationError

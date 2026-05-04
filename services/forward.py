@@ -25,6 +25,213 @@ AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
 
 
+from datetime import datetime, timedelta
+
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import count_with_timeout, session_scope
+from models import FailedForward, ForwardRule, WebhookEvent
+
+
+async def get_forward_rules(session: AsyncSession):
+    stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
+async def create_forward_rule(
+    session: AsyncSession,
+    name: str,
+    target_type: str,
+    enabled: bool = True,
+    priority: int = 0,
+    match_importance: str = "",
+    match_duplicate: str = "all",
+    match_source: str = "",
+    target_url: str = "",
+    target_name: str = "",
+    stop_on_match: bool = False,
+):
+    rule = ForwardRule(
+        name=name,
+        enabled=enabled,
+        priority=priority,
+        match_importance=match_importance,
+        match_duplicate=match_duplicate,
+        match_source=match_source,
+        target_type=target_type,
+        target_url=target_url,
+        target_name=target_name,
+        stop_on_match=stop_on_match,
+    )
+    session.add(rule)
+    await session.flush()
+    return rule
+
+
+async def get_forward_rule(session: AsyncSession, rule_id: int):
+    stmt = select(ForwardRule).filter_by(id=rule_id)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict):
+    rule = await get_forward_rule(session, rule_id)
+    if not rule:
+        return None
+
+    for field in [
+        "name", "enabled", "priority", "match_importance", "match_duplicate",
+        "match_source", "target_type", "target_url", "target_name", "stop_on_match",
+    ]:
+        if field in payload:
+            setattr(rule, field, payload[field])
+
+    rule.updated_at = datetime.now()
+    await session.flush()
+    return rule
+
+
+async def delete_forward_rule(session: AsyncSession, rule_id: int):
+    rule = await get_forward_rule(session, rule_id)
+    if not rule:
+        return False
+    session.delete(rule)
+    return True
+
+
+async def record_failed_forward(
+    webhook_event_id: int,
+    forward_rule_id: int | None,
+    target_url: str,
+    target_type: str,
+    failure_reason: str,
+    error_message: str | None = None,
+    forward_data: dict | None = None,
+    forward_headers: dict | None = None,
+    max_retries: int | None = None,
+    session: AsyncSession | None = None,
+) -> FailedForward | None:
+    """写入转发失败记录，计算首次重试时间"""
+    if max_retries is None:
+        max_retries = Config.retry.FORWARD_RETRY_MAX_RETRIES
+
+    now = datetime.now()
+    next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
+
+    record = FailedForward(
+        webhook_event_id=webhook_event_id,
+        forward_rule_id=forward_rule_id,
+        target_url=target_url,
+        target_type=target_type,
+        status="pending",
+        failure_reason=failure_reason,
+        error_message=error_message,
+        retry_count=0,
+        max_retries=max_retries,
+        next_retry_at=next_retry_at,
+        forward_data=forward_data,
+        forward_headers=forward_headers,
+        created_at=now,
+        updated_at=now,
+    )
+
+    try:
+        if session is not None:
+            session.add(record)
+            await session.flush()
+            logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
+            return record
+
+        async with session_scope() as scoped_session:
+            scoped_session.add(record)
+            await scoped_session.flush()
+            logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
+            return record
+    except Exception as e:
+        logger.error(f"写入转发失败记录失败: {e!s}")
+        return None
+
+
+async def get_failed_forwards(
+    status: str | None = None,
+    target_type: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    session: AsyncSession | None = None,
+) -> tuple[list[dict], int]:
+    """按状态/类型分页查询转发失败记录"""
+
+    async def _query(sess: AsyncSession) -> tuple[list[dict], int]:
+        conditions = []
+        if status: conditions.append(FailedForward.status == status)
+        if target_type: conditions.append(FailedForward.target_type == target_type)
+
+        count_stmt = select(func.count()).select_from(FailedForward)
+        for cond in conditions: count_stmt = count_stmt.filter(cond)
+        total = await count_with_timeout(sess, count_stmt)
+
+        query = select(FailedForward)
+        for cond in conditions: query = query.filter(cond)
+        query = query.order_by(FailedForward.next_retry_at.asc()).offset(offset).limit(limit)
+        result = await sess.execute(query)
+        records = result.scalars().all()
+        return [r.to_dict() for r in records], total
+
+    if session: return await _query(session)
+    async with session_scope() as scoped_session: return await _query(scoped_session)
+
+
+async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[str, int]:
+    async def _query(sess: AsyncSession) -> dict[str, int]:
+        stmt = select(FailedForward.status, func.count()).group_by(FailedForward.status)
+        result = await sess.execute(stmt)
+        rows = result.all()
+        stats = {"pending": 0, "retrying": 0, "success": 0, "exhausted": 0, "total": 0}
+        for status_val, count in rows:
+            if status_val in stats: stats[status_val] = count
+            stats["total"] += count
+        return stats
+    if session: return await _query(session)
+    async with session_scope() as scoped_session: return await _query(scoped_session)
+
+
+async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | None = None) -> bool:
+    async def _reset(sess: AsyncSession) -> bool:
+        record = await sess.get(FailedForward, failed_forward_id)
+        if not record or record.status != "exhausted": return False
+        now = datetime.now()
+        record.status, record.retry_count, record.updated_at = "pending", 0, now
+        record.next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
+        await sess.flush()
+        return True
+    if session: return await _reset(session)
+    async with session_scope() as scoped_session: return await _reset(scoped_session)
+
+
+async def delete_failed_forward(failed_forward_id: int, session: AsyncSession | None = None) -> bool:
+    async def _delete(sess: AsyncSession) -> bool:
+        record = await sess.get(FailedForward, failed_forward_id)
+        if not record: return False
+        await sess.delete(record); await sess.flush()
+        return True
+    if session: return await _delete(session)
+    async with session_scope() as scoped_session: return await _delete(scoped_session)
+
+
+async def cleanup_old_success_records(days: int = 7, session: AsyncSession | None = None) -> int:
+    cutoff = datetime.now() - timedelta(days=days)
+    async def _cleanup(sess: AsyncSession) -> int:
+        stmt = sa_delete(FailedForward).where(FailedForward.status == "success").where(FailedForward.updated_at < cutoff)
+        result = await sess.execute(stmt); count = result.rowcount
+        await sess.flush()
+        return count
+    if session: return await _cleanup(session)
+    async with session_scope() as scoped_session: return await _cleanup(scoped_session)
+
+
 async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
