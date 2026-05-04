@@ -14,10 +14,13 @@ if [ -n "$PROMETHEUS_MULTIPROC_DIR" ] && [ -d "$PROMETHEUS_MULTIPROC_DIR" ]; the
     rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"/*
 fi
 
-# Worker 模式：跳过 DB 初始化和迁移（由 api 节点负责），直接启动 Poller
+# Worker 模式：启动 TaskIQ Worker 和 Scheduler
 if [ "$RUN_MODE" = "worker" ]; then
-    echo "Starting in Worker mode..."
-    exec python worker.py
+    echo "Starting in TaskIQ Worker mode..."
+    # 启动 TaskIQ Worker (并发由 --workers 指定)
+    # 同时在后台启动 Scheduler
+    taskiq scheduler core.taskiq_broker:broker core.taskiq_broker:schedule_source --fs-import services.tasks &
+    exec taskiq worker core.taskiq_broker:broker --fs-import services.tasks
 fi
 
 # 以下是 API / all 模式的启动流程

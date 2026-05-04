@@ -25,13 +25,15 @@ from core.metrics import setup_metrics
 from core.otel import setup_otel
 from core.redis_client import dispose_redis
 from core.runtime_config import runtime_config
+from core.taskiq_broker import broker, schedule_source
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.ai_client import reset_openai_client
 from services.metrics_poller import MetricsPoller
 from services.pipeline import get_running_tasks
-from services.poller_scheduler import start_scheduler, stop_scheduler
-from services.recovery_poller import RecoveryPoller
+
+# 必须导入任务以注册到 broker
+import services.tasks  # noqa: F401
 
 
 @asynccontextmanager
@@ -45,23 +47,22 @@ async def lifespan(app: FastAPI):
         )
     get_http_client()
     await init_engine()
-    # 从数据库加载运行时配置（覆盖 .env 默认值）
+    # 从数据库加载运行时配置
     await runtime_config.load_from_db()
-    # 启动 Redis Pub/Sub 配置变更监听
     await runtime_config.start_subscriber()
+    
+    # 启动 TaskIQ Broker (API 侧只需 startup)
+    await broker.startup()
+    
     metrics_poller = MetricsPoller()
     await metrics_poller.start()
-    recovery_poller = None
-    if Config.server.RUN_MODE in ("worker", "all"):
-        await start_scheduler()
-        recovery_poller = RecoveryPoller()
-        await recovery_poller.start()
+    
     yield
+    
     await metrics_poller.stop()
-    # 1. 停止 RecoveryPoller（不再产生新的恢复任务）
-    if recovery_poller:
-        await recovery_poller.stop()
-    # 2. 优雅等待正在运行的 webhook 处理任务
+    await broker.shutdown()
+    
+    # 优雅等待正在运行的任务
     running = get_running_tasks()
     if running:
         grace_timeout = Config.server.GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
@@ -74,19 +75,11 @@ async def lifespan(app: FastAPI):
             running,
             timeout=grace_timeout,
         )
-        if pending:
-            logger.warning(
-                "优雅停机超时，%d 个任务未完成，将由下次 RecoveryPoller 补偿",
-                len(pending),
-            )
-    # 3. 停止轮询调度器
-    if Config.server.RUN_MODE in ("worker", "all"):
-        await stop_scheduler()
-    # 停止配置变更监听
+    
     await runtime_config.stop_subscriber()
     await dispose_engine()
     await dispose_redis()
-    reset_openai_client()  # 释放 OpenAI 单例引用（其底层连接随 close_http_client 一并关闭）
+    reset_openai_client()
     await close_http_client()
     stop_log_listener()
 
