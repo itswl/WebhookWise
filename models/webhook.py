@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import hashlib
 import logging
@@ -41,9 +43,9 @@ GENERIC_FIELDS = [
 @dataclass(frozen=True)
 class DuplicateCheckResult:
     is_duplicate: bool
-    original_event: "WebhookEvent" | None
+    original_event: WebhookEvent | None
     beyond_window: bool
-    last_beyond_window_event: "WebhookEvent" | None
+    last_beyond_window_event: WebhookEvent | None
 
 
 class WebhookEvent(Base, SerializerMixin):
