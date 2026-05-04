@@ -1,30 +1,27 @@
-"""Webhook 处理主管线 — 纯协调层，业务逻辑委托给子模块。"""
+"""Webhook 处理主管线 — 纯协调层。
+集成解析、分析决策、降噪计算与转发执行。
+"""
 
 import asyncio
+import hashlib
+import logging
 import time
+from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 import orjson
 import sqlalchemy.exc
-from sqlalchemy import update
+from sqlalchemy import delete, select, update
 
-try:
-    from openai import AuthenticationError as _OpenAIAuthenticationError
-    from openai import BadRequestError as _OpenAIBadRequestError
-    from openai import PermissionDeniedError as _OpenAIPermissionDeniedError
-    from openai import UnprocessableEntityError as _OpenAIUnprocessableEntityError
-except Exception:
-    _OpenAIAuthenticationError = None
-    _OpenAIBadRequestError = None
-    _OpenAIPermissionDeniedError = None
-    _OpenAIUnprocessableEntityError = None
-
-try:
-    from asyncpg.exceptions import QueryCanceledError as _QueryCanceledError
-except ImportError:
-    _QueryCanceledError = None  # 兼容无 asyncpg 环境
-
-from api import InvalidJsonError, NoiseReductionContext
+from adapters.ecosystem_adapters import normalize_webhook_event
+from api import (
+    AnalysisResolution,
+    ForwardDecision,
+    InvalidJsonError,
+    NoiseReductionContext,
+    WebhookRequestContext,
+)
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
@@ -39,580 +36,291 @@ from core.metrics import (
 )
 from core.trace import generate_trace_id, set_trace_id
 from core.utils import generate_alert_hash, processing_lock
+from core.compression import decompress_payload_async
 from db.session import session_scope
-from models import WebhookEvent
-from services.event_payload import load_event_payload
-from services.pipeline_analysis import resolve_analysis
-from services.pipeline_forward import _refresh_original_event, decide_forwarding, execute_forwarding
-from services.pipeline_noise import _apply_noise_metadata, persist_webhook_with_noise_context
-from services.pipeline_request import _build_webhook_response, _parse_webhook_request
+from models import DeepAnalysis, ForwardRule, WebhookEvent
+from services.ai_analyzer import analyze_webhook_with_ai
+from services.ai_cache import get_cached_analysis, log_ai_usage
+from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
+from services.dedup_strategy import check_duplicate_alert
+from services.forward import forward_to_openclaw, forward_to_remote
 from services.webhook_orchestrator import save_webhook_data
+from crud.webhook import record_failed_forward
 
-_NON_RETRYABLE_ERRORS = (
-    ValueError,
-    KeyError,
-    TypeError,
-    orjson.JSONDecodeError,
-    UnicodeDecodeError,
-)
+try:
+    from openai import AuthenticationError as _OpenAIAuthenticationError
+    from openai import BadRequestError as _OpenAIBadRequestError
+    from openai import PermissionDeniedError as _OpenAIPermissionDeniedError
+    from openai import UnprocessableEntityError as _OpenAIUnprocessableEntityError
+except Exception:
+    _OpenAIAuthenticationError = _OpenAIBadRequestError = _OpenAIPermissionDeniedError = _OpenAIUnprocessableEntityError = None
 
+try:
+    from asyncpg.exceptions import QueryCanceledError as _QueryCanceledError
+except ImportError:
+    _QueryCanceledError = None
 
-async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
-    """发送 Dead Letter 飞书告警。复用项目已有的飞书通知通道。"""
-    try:
-        from core.config import Config
-        from core.http_client import get_http_client
-
-        forward_url = getattr(Config.ai, "FORWARD_URL", "") or ""
-        if not forward_url or not ("feishu.cn" in forward_url or "lark" in forward_url):
-            logger.critical(
-                "[Pipeline] Dead Letter 告警: event_id=%s, retry_count=%d, error=%s",
-                event_id,
-                retry_count,
-                error,
-            )
-            return
-
-        card = {
-            "msg_type": "interactive",
-            "card": {
-                "config": {"wide_screen_mode": True},
-                "header": {
-                    "title": {"tag": "plain_text", "content": "\U0001f6a8 Dead Letter \u544a\u8b66"},
-                    "template": "red",
-                },
-                "elements": [
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": (
-                                f"**event_id**: {event_id}\n"
-                                f"**\u91cd\u8bd5\u6b21\u6570**: {retry_count}\n"
-                                f"**\u9519\u8bef\u7c7b\u578b**: {type(error).__name__}\n"
-                                f"**\u9519\u8bef\u8be6\u60c5**: {str(error)[:200]}"
-                            ),
-                        },
-                    },
-                    {
-                        "tag": "note",
-                        "elements": [
-                            {
-                                "tag": "plain_text",
-                                "content": "\u8be5\u4e8b\u4ef6\u5df2\u8017\u5c3d\u6240\u6709\u91cd\u8bd5\u6b21\u6570\uff0c\u8bf7\u4eba\u5de5\u6392\u67e5\u5904\u7406\u3002",
-                            }
-                        ],
-                    },
-                ],
-            },
-        }
-
-        client = get_http_client()
-        resp = await client.post(forward_url, json=card, timeout=10)
-        if resp.status_code != 200:
-            logger.warning(
-                "[Pipeline] Dead Letter \u98de\u4e66\u544a\u8b66\u53d1\u9001\u5931\u8d25: status=%s", resp.status_code
-            )
-    except Exception:
-        logger.warning("[Pipeline] Dead Letter \u544a\u8b66\u53d1\u9001\u5931\u8d25", exc_info=True)
-
-
-# 最大重试次数，超过后标记为 dead_letter 不再捕捉
+_NON_RETRYABLE_ERRORS = (ValueError, KeyError, TypeError, orjson.JSONDecodeError, UnicodeDecodeError)
 _MAX_RETRIES = 5
-
-# 正在运行的 webhook 处理任务跟踪（供优雅停机使用）
 _running_tasks: set[asyncio.Task] = set()
 
 
-def _walk_exception_chain(exc: Exception):
-    visited: set[int] = set()
-    current: Exception | None = exc
-    while current is not None and id(current) not in visited:
-        visited.add(id(current))
-        yield current
-        current = current.__cause__ or current.__context__
+# ── 核心辅助 ──────────────────────────────────────────────────────────────────
 
 
-def _is_openai_non_retryable(exc: Exception) -> bool:
-    for err in _walk_exception_chain(exc):
-        name = type(err).__name__
-        if name in {"BadRequestError", "UnprocessableEntityError", "PermissionDeniedError", "AuthenticationError"}:
-            return True
-        if _OpenAIBadRequestError and isinstance(err, _OpenAIBadRequestError):
-            return True
-        if _OpenAIUnprocessableEntityError and isinstance(err, _OpenAIUnprocessableEntityError):
-            return True
-        if _OpenAIPermissionDeniedError and isinstance(err, _OpenAIPermissionDeniedError):
-            return True
-        if _OpenAIAuthenticationError and isinstance(err, _OpenAIAuthenticationError):
-            return True
-
-        msg = str(err).lower()
-        if "context_length" in msg or "context length" in msg or "maximum context" in msg:
-            return True
-        if "content_policy" in msg or "content policy" in msg or "content filter" in msg:
-            return True
-
-    return False
+async def _load_event_payload(event: WebhookEvent) -> tuple[dict | None, str]:
+    """从数据库记录中加载并解压 payload"""
+    raw_text = await decompress_payload_async(event.raw_payload) or ""
+    parsed_data = event.parsed_data
+    if parsed_data is None and raw_text:
+        try:
+            parsed_data = orjson.loads(raw_text)
+        except Exception:
+            parsed_data = None
+    return parsed_data, raw_text
 
 
 def _is_retryable(exc: Exception) -> bool:
-    """判断异常是否可重试。"""
-    if _is_openai_non_retryable(exc):
-        return False
-    # 网络相关异常：可重试
-    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
-        return True
-    # DB statement_timeout 触发时 asyncpg 抛出 QueryCanceledError：可重试
-    if _QueryCanceledError and isinstance(exc, _QueryCanceledError):
-        return True
-    # SQLAlchemy 层面的操作错误（含超时透传）：可重试
-    if isinstance(exc, sqlalchemy.exc.OperationalError):
-        return True
-    # 明确的数据格式/校验错误：不可重试，其他未知异常：默认可重试（保守策略）
+    """判断异常是否可重试"""
+    # 检查 OpenAI 报错
+    visited = set()
+    curr = exc
+    while curr is not None and id(curr) not in visited:
+        visited.add(id(curr))
+        name = type(curr).__name__
+        if name in {"BadRequestError", "UnprocessableEntityError", "PermissionDeniedError", "AuthenticationError"}:
+            return False
+        msg = str(curr).lower()
+        if any(k in msg for k in ["context_length", "content_policy", "content filter"]):
+            return False
+        curr = curr.__cause__ or curr.__context__
+    
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)): return True
+    if _QueryCanceledError and isinstance(exc, _QueryCanceledError): return True
+    if isinstance(exc, sqlalchemy.exc.OperationalError): return True
     return not isinstance(exc, _NON_RETRYABLE_ERRORS)
 
 
-def get_running_tasks() -> set[asyncio.Task]:
-    """获取当前正在运行的 webhook 处理任务集合。"""
-    return _running_tasks
+async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
+    """发送死信队列告警"""
+    try:
+        from core.config import Config
+        from core.http_client import get_http_client
+        url = Config.ai.FORWARD_URL
+        if not url or "feishu.cn" not in url: return
+        card = {"msg_type": "interactive", "card": {"header": {"title": {"tag": "plain_text", "content": "🚨 Dead Letter 告警"}, "template": "red"}, "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": f"**event_id**: {event_id}\n**重试**: {retry_count}\n**详情**: {str(error)[:200]}"}}]}}
+        await get_http_client().post(url, json=card, timeout=10)
+    except Exception: pass
 
 
-async def _update_processing_status(event_id: int | None, status: str) -> None:
-    """更新 webhook 事件的处理状态（Direct UPDATE，无需先 SELECT）"""
-    if event_id is None:
+# ── 阶段逻辑 ──────────────────────────────────────────────────────────────────
+
+
+def _parse_request(client_ip: str, headers: dict, payload: dict, raw_body: bytes, source: str | None, ts: str | None) -> WebhookRequestContext:
+    src = source or headers.get("x-webhook-source", "unknown")
+    if not payload and raw_body:
+        payload = orjson.loads(raw_body)
+    norm = normalize_webhook_event(payload, src)
+    return WebhookRequestContext(client_ip=client_ip, source=norm.source, payload=raw_body, parsed_data=norm.data, webhook_full_data={"body": payload, "headers": headers, "parsed_data": norm.data, "source": norm.source, "timestamp": ts}, headers=headers)
+
+
+async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) -> AnalysisResolution:
+    from core.config import Config
+    if not got_lock:
+        # 锁竞争逻辑：Pub/Sub 等待
+        from core.redis_client import get_redis
+        redis, channel = get_redis(), f"analysis_done:{alert_hash}"
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+            cached = await get_cached_analysis(alert_hash)
+            if cached:
+                await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+                return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+            deadline = time.monotonic() + Config.retry.PROCESSING_LOCK_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                try:
+                    msg = await asyncio.wait_for(pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0), timeout=6.0)
+                except asyncio.TimeoutError: msg = None
+                cached = await get_cached_analysis(alert_hash)
+                if cached:
+                    await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+                    return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+        finally:
+            await pubsub.unsubscribe(channel); await pubsub.close()
+
+    # 持锁或等待超时：正常检查/分析
+    check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
+    orig, last_beyond = check.original_event, check.last_beyond_window_event
+    
+    if check.beyond_window and orig:
+        if last_beyond and last_beyond.created_at and (datetime.now() - last_beyond.created_at).total_seconds() < Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS:
+            await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+            return AnalysisResolution(last_beyond.ai_analysis or {}, False, True, orig, True)
+        if not Config.retry.REANALYZE_AFTER_TIME_WINDOW:
+            await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+            return AnalysisResolution(orig.ai_analysis or {}, False, True, orig, True)
+        res, rean = await analyze_webhook_with_ai(full_data), True
+    elif check.is_duplicate and orig:
+        target = last_beyond if last_beyond and last_beyond.ai_analysis else orig
+        if target.ai_analysis:
+            await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+            return AnalysisResolution(target.ai_analysis, False, True, orig, False)
+        res, rean = await analyze_webhook_with_ai(full_data), True
+    else:
+        res, rean = await analyze_webhook_with_ai(full_data), True
+    
+    return AnalysisResolution(res, rean, check.is_duplicate, orig, check.beyond_window)
+
+
+async def _compute_noise(alert_hash: str, source: str, parsed: dict, analysis: dict) -> NoiseReductionContext:
+    from core.config import Config
+    if not Config.ai.ENABLE_ALERT_NOISE_REDUCTION:
+        return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, [])
+    now = datetime.now()
+    window = max(1, Config.ai.NOISE_REDUCTION_WINDOW_MINUTES)
+    try:
+        async with session_scope() as session:
+            res = await session.execute(select(WebhookEvent).filter(WebhookEvent.timestamp >= now - timedelta(minutes=window), WebhookEvent.timestamp <= now).order_by(WebhookEvent.timestamp.desc()).limit(100))
+            recent = [AlertContext(e.id, e.source, e.importance, e.parsed_data or {}, e.ai_analysis or {}, e.timestamp or now, e.alert_hash) for e in res.scalars().all() if e.alert_hash != alert_hash]
+    except Exception: recent = []
+    curr = AlertContext(None, source, analysis.get("importance", "medium"), parsed, analysis, now, alert_hash)
+    dec = analyze_noise_reduction(curr, recent, window_minutes=window, min_confidence=Config.ai.ROOT_CAUSE_MIN_CONFIDENCE, suppress_derived=Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD)
+    return NoiseReductionContext(dec.relation, dec.root_cause_event_id, dec.confidence, dec.suppress_forward, dec.reason, dec.related_alert_count, dec.related_alert_ids)
+
+
+async def _handle_forwarding(analysis: dict, is_dup: bool, beyond: bool, noise: NoiseReductionContext, orig: WebhookEvent | None, full_data: dict, webhook_id: int):
+    from core.config import Config
+    if noise.suppress_forward:
+        logger.info(f"智能降噪抑制转发: {noise.reason}")
         return
+
+    # 1. 决策
+    importance = str(analysis.get("importance", "")).lower()
+    should_fwd, is_periodic = False, False
+    
+    # 匹配规则
+    matched_rules = []
     try:
-        async with session_scope() as session:
-            values: dict = {"processing_status": status}
-            if status in ("analyzing", "completed"):
-                values["failure_reason"] = None
-                values["error_message"] = None
-            await session.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(**values))
-        set_log_context(processing_status=status)
-        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=status).inc()
-    except Exception as e:
-        logger.warning(f"[Pipeline] 更新 processing_status 失败: event_id={event_id}, status={status}, error={e!s}")
+        async with session_scope() as sess:
+            rules = (await sess.execute(select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc()))).scalars().all()
+            for r in rules:
+                if r.match_importance and importance not in [x.strip().lower() for x in r.match_importance.split(",")]: continue
+                if r.match_source and full_data.get("source", "").lower() not in [x.strip().lower() for x in r.match_source.split(",")]: continue
+                matched_rules.append(r.to_dict())
+                if r.stop_on_match: break
+    except Exception: pass
+
+    if is_dup:
+        if orig and orig.last_notified_at and (datetime.now() - orig.last_notified_at).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS:
+            should_fwd = False
+        elif Config.retry.ENABLE_PERIODIC_REMINDER and orig and orig.last_notified_at and (datetime.now() - orig.last_notified_at).total_seconds() / 3600 >= Config.retry.REMINDER_INTERVAL_HOURS:
+            should_fwd, is_periodic = True, True
+        else:
+            should_fwd = Config.retry.FORWARD_DUPLICATE_ALERTS
+    elif beyond:
+        should_fwd = Config.retry.FORWARD_AFTER_TIME_WINDOW and not (orig and orig.last_notified_at and (datetime.now() - orig.last_notified_at).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS)
+    else:
+        should_fwd = (importance == "high" or bool(matched_rules))
+
+    if not should_fwd and not matched_rules: return
+
+    # 2. 执行
+    tasks = []
+    if matched_rules:
+        for r in matched_rules:
+            coro = forward_to_openclaw(full_data, analysis) if r["target_type"] == "openclaw" else forward_to_remote(full_data, analysis, target_url=r["target_url"], is_periodic_reminder=is_periodic)
+            tasks.append((r, coro))
+    else:
+        tasks.append(({"name": "default", "target_url": Config.ai.FORWARD_URL, "target_type": "webhook"}, forward_to_remote(full_data, analysis, is_periodic_reminder=is_periodic)))
+
+    results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
+    success = False
+    for (rule, _), res in zip(tasks, results):
+        if isinstance(res, Exception) or (isinstance(res, dict) and res.get("status") != "success"):
+            await record_failed_forward(webhook_id, rule.get("id"), rule.get("target_url", ""), rule.get("target_type", "webhook"), "error", str(res), full_data)
+        else:
+            success = True
+            if rule["target_type"] == "openclaw" and res.get("_pending"):
+                async with session_scope() as sess:
+                    sess.add(DeepAnalysis(webhook_event_id=webhook_id, engine="openclaw", openclaw_run_id=res.get("run_id", ""), openclaw_session_key=res.get("session_key", ""), status="pending"))
+    
+    if success and orig:
+        async with session_scope() as sess:
+            await sess.execute(update(WebhookEvent).where(WebhookEvent.id == orig.id).values(last_notified_at=datetime.now()))
 
 
-async def _increment_and_get_retry_count(event_id: int | None) -> int:
-    """原子递增 retry_count 并返回递增后的值。"""
-    if event_id is None:
-        return 0
-    try:
-        async with session_scope() as session:
-            result = await session.execute(
-                update(WebhookEvent)
-                .where(WebhookEvent.id == event_id)
-                .values(retry_count=WebhookEvent.retry_count + 1)
-                .returning(WebhookEvent.retry_count)
-            )
-            row = result.scalar_one_or_none()
-            return row if row is not None else 0
-    except Exception as e:
-        logger.warning(f"[Pipeline] 递增 retry_count 失败: event_id={event_id}, error={e!s}")
-        return 0
+# ── 主入口 ───────────────────────────────────────────────────────────────────
 
 
-async def handle_webhook_process(
-    event_id: int,
-    client_ip: str = "",
-    session: sqlalchemy.ext.asyncio.AsyncSession | None = None,
-):
-    """处理 webhook 的主流程入口。"""
+async def handle_webhook_process(event_id: int, client_ip: str = "", session: Any = None):
     set_trace_id(generate_trace_id(event_id=event_id))
-    clear_log_context()
-    set_log_context(event_id=event_id)
+    clear_log_context(); set_log_context(event_id=event_id)
     task = asyncio.current_task()
-    if task:
-        _running_tasks.add(task)
-        WEBHOOK_RUNNING_TASKS.inc()
+    if task: _running_tasks.add(task); WEBHOOK_RUNNING_TASKS.inc()
     try:
         await _handle_webhook_process_inner(event_id, client_ip, session=session)
     finally:
-        if task:
-            _running_tasks.discard(task)
-            WEBHOOK_RUNNING_TASKS.dec()
+        if task: _running_tasks.discard(task); WEBHOOK_RUNNING_TASKS.dec()
 
 
-async def _handle_webhook_process_inner(
-    event_id: int,
-    client_ip: str = "",
-    session: sqlalchemy.ext.asyncio.AsyncSession | None = None,
-):
+async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", session: Any = None):
     start_perf = time.perf_counter()
-    outcome = "unknown"
-    metric_source = "unknown"
-    # ── 合并会话：加载事件 + 更新状态为 analyzing（单次 checkout/checkin）──
-    async with session_scope(existing_session=session) as sess:
-        stmt = (
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .values(processing_status="analyzing", failure_reason=None, error_message=None)
-            .returning(WebhookEvent)
-        )
-        result = await sess.execute(stmt)
-        event = result.scalar_one_or_none()
-        if not event:
-            logger.error(f"[Pipeline] Event {event_id} not found in DB")
-            return
-
-        # 在 session 关闭前提取所有需要的字段到局部变量
-        headers = event.headers or {}
-        payload, raw_text = await load_event_payload(event)
-        raw_body = raw_text.encode("utf-8") if raw_text else b""
-        source = event.source
-        event_timestamp = event.timestamp.isoformat() if event.timestamp else None
-        payload = payload or {}
-
-    set_log_context(source=source or "unknown", processing_status="analyzing", route_type="ai")
-    metric_source = sanitize_source(source or "")
-    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
-    logger.info(f"[Pipeline] 开始处理流程: source={source or 'unknown'}, event_id={event_id}")
-
-    WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="received").inc()
-    analysis_result = {}
-    original_event = None
-
+    outcome, metric_source = "unknown", "unknown"
     try:
-        try:
-            request_context = _parse_webhook_request(client_ip, headers, payload, raw_body, source, event_timestamp)
-        except InvalidJsonError:
-            outcome = "invalid_json"
-            return
+        async with session_scope(existing_session=session) as sess:
+            res = await sess.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status="analyzing", failure_reason=None, error_message=None).returning(WebhookEvent))
+            event = res.scalar_one_or_none()
+            if not event: return
+            headers, (payload, raw_text), source = event.headers or {}, await _load_event_payload(event), event.source
+            raw_body = raw_text.encode("utf-8") if raw_text else b""
+            event_ts = event.timestamp.isoformat() if event.timestamp else None
 
-        alert_hash = generate_alert_hash(request_context.parsed_data, request_context.source)
-        set_log_context(alert_hash=alert_hash, source=request_context.source or "unknown")
-        metric_source = sanitize_source(request_context.source)
+        metric_source = sanitize_source(source or "")
+        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
+        WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-        # 分布式锁：保护同一 alert_hash 的并发分析
-        # got_lock=True: 本 Worker 负责执行 AI 分析
-        # got_lock=False: 其他 Worker 已在分析，通过 Pub/Sub 等待结果复用
-        async with processing_lock(alert_hash) as lock_result:
-            if lock_result.suppressed:
-                from sqlalchemy import delete
+        req_ctx = _parse_request(client_ip, headers, payload or {}, raw_body, source, event_ts)
+        alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
+        set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
 
-                from core.config import Config
-                from core.redis_client import get_redis
+        async with processing_lock(alert_hash) as lock_res:
+            if getattr(lock_res, "suppressed", False):
+                noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
+                await save_webhook_data(data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload, headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis={"noise_reduction": noise.__dict__}, forward_status="skipped", alert_hash=alert_hash, event_id=event_id)
+                outcome = "suppressed"; return
+            
+            analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
 
-                set_log_context(route_type="suppressed")
-                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
-                logger.warning(
-                    "[Pipeline] 告警风暴触发 Fail-Fast: hash=%s, queue=%d",
-                    alert_hash[:16],
-                    lock_result.queue_size,
-                )
-
-                redis = get_redis()
-                agg_key = f"storm:agg:{alert_hash}"
-                window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
-                keep_latest_n = max(0, int(Config.retry.PROCESSING_LOCK_STORM_KEEP_LATEST_N))
-
-                try:
-                    now_ts = time.time()
-                    agg_res = await redis.eval(
-                        """
-local created = redis.call("hsetnx", KEYS[1], "event_id", ARGV[1])
-if created == 1 then
-    redis.call("expire", KEYS[1], tonumber(ARGV[2]))
-end
-local eid = redis.call("hget", KEYS[1], "event_id")
-local cnt = redis.call("hincrby", KEYS[1], "count", 1)
-redis.call("hset", KEYS[1], "last_event_id", ARGV[1], "last_seen_ts", ARGV[3])
-redis.call("expire", KEYS[1], tonumber(ARGV[2]))
-return {eid, cnt}
-""",
-                        1,
-                        agg_key,
-                        str(event_id),
-                        str(window_seconds),
-                        str(now_ts),
-                    )
-                    agg_event_id = int(agg_res[0]) if agg_res and agg_res[0] is not None else event_id
-                    storm_count = int(agg_res[1]) if agg_res and agg_res[1] is not None else lock_result.queue_size
-
-                    if keep_latest_n:
-                        zkey = f"storm:keep:{alert_hash}"
-                        removed_members = await redis.eval(
-                            """
-redis.call("zadd", KEYS[1], ARGV[1], ARGV[2])
-redis.call("expire", KEYS[1], tonumber(ARGV[3]))
-local keep = tonumber(ARGV[4])
-local card = redis.call("zcard", KEYS[1])
-if keep <= 0 then
-    local members = redis.call("zrange", KEYS[1], 0, -1)
-    if #members > 0 then
-        redis.call("del", KEYS[1])
-    end
-    return members
-end
-if card > keep then
-    local excess = card - keep
-    local members = redis.call("zrange", KEYS[1], 0, excess - 1)
-    if #members > 0 then
-        redis.call("zrem", KEYS[1], unpack(members))
-    end
-    return members
-end
-return {}
-""",
-                            1,
-                            zkey,
-                            str(now_ts),
-                            str(event_id),
-                            str(window_seconds),
-                            str(keep_latest_n),
-                        )
-                        delete_ids = [
-                            int(member)
-                            for member in (removed_members or [])
-                            if member is not None and int(member) not in (agg_event_id,)
-                        ]
-                        if delete_ids:
-                            async with session_scope() as session:
-                                await session.execute(delete(WebhookEvent).where(WebhookEvent.id.in_(delete_ids)))
-                except Exception as exc:
-                    logger.warning("[Pipeline] 告警风暴聚合写入失败: %s", exc)
-                    agg_event_id = event_id
-                    storm_count = lock_result.queue_size
-
-                noise_context = NoiseReductionContext(
-                    relation="storm",
-                    root_cause_event_id=None,
-                    confidence=1.0,
-                    suppress_forward=True,
-                    reason="alert_storm_backpressure",
-                    related_alert_count=storm_count,
-                    related_alert_ids=[],
-                )
-                base_analysis = {
-                    "importance": "low",
-                    "summary": "告警风暴聚合",
-                    "reason": "alert_storm_backpressure",
-                    "storm_count": storm_count,
-                    "window_seconds": window_seconds,
-                }
-                analysis_result = _apply_noise_metadata(base_analysis, noise_context)
-                save_result = await save_webhook_data(
-                    data=request_context.parsed_data,
-                    source=request_context.source,
-                    raw_payload=request_context.payload,
-                    headers=request_context.headers,
-                    client_ip=request_context.client_ip,
-                    ai_analysis=analysis_result,
-                    forward_status="skipped",
-                    alert_hash=alert_hash,
-                    event_id=agg_event_id,
-                )
-                if event_id != agg_event_id:
-                    async with session_scope() as session:
-                        await session.execute(
-                            update(WebhookEvent)
-                            .where(WebhookEvent.id == event_id)
-                            .values(
-                                processing_status="completed",
-                                forward_status="skipped",
-                                failure_reason=None,
-                                error_message=None,
-                            )
-                        )
-                WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-                    source=sanitize_source(request_context.source),
-                    relation=noise_context.relation,
-                    suppressed="true",
-                ).inc()
-                set_log_context(processing_status="completed")
-                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
-                outcome = "suppressed"
-
-                return _build_webhook_response(
-                    save_result.webhook_id,
-                    analysis_result,
-                    {"status": "skipped", "reason": "告警风暴聚合抑制"},
-                    save_result.is_duplicate,
-                    save_result.original_id,
-                    save_result.beyond_window,
-                    save_result.is_duplicate and not save_result.beyond_window,
-                )
-
-            got_lock = lock_result.got_lock
-            logger.debug("[Pipeline] 进入 AI 分析阶段")
-            analysis_resolution = await resolve_analysis(alert_hash, request_context.webhook_full_data, got_lock)
-
-        # ── 锁已释放：以下操作不需要互斥保护 ──
-        analysis_result = analysis_resolution.analysis_result
-        original_event = analysis_resolution.original_event
-
-        if analysis_resolution.is_reused:
+        if analysis_res.is_reused:
             set_log_context(route_type="cache")
-            # ── 轻量路径：缓存复用的 Worker 跳过降噪重算和转发 ──
-            logger.info("[Pipeline] 缓存命中轻量路径：跳过降噪计算与转发（由持锁 Worker 负责）")
-            persisted = await persist_webhook_with_noise_context(
-                request_context=request_context,
-                analysis_resolution=analysis_resolution,
-                alert_hash=alert_hash,
-                event_id=event_id,
-                skip_noise=True,
-            )
+            noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
+        else:
+            noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
 
-            save_result = persisted.save_result
-            noise_context = persisted.noise_context
-            analysis_result = _apply_noise_metadata(analysis_result, noise_context)
+        final_analysis = dict(analysis_res.analysis_result)
+        final_analysis["noise_reduction"] = noise.__dict__
+        
+        save_res = await save_webhook_data(data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload, headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis=final_analysis, alert_hash=alert_hash, is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window, original_event=analysis_res.original_event, beyond_window=analysis_res.beyond_window, reanalyzed=analysis_res.reanalyzed, event_id=event_id)
 
-            WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-                source=sanitize_source(request_context.source),
-                relation=noise_context.relation,
-                suppressed=str(noise_context.suppress_forward).lower(),
-            ).inc()
+        if not analysis_res.is_reused:
+            await _handle_forwarding(final_analysis, save_res.is_duplicate and not save_res.beyond_window, save_res.beyond_window, noise, analysis_res.original_event, req_ctx.webhook_full_data, save_res.webhook_id)
 
-            logger.info(f"[Pipeline] 轻量路径处理完成: id={save_result.webhook_id}, reused=True")
-            set_log_context(processing_status="completed")
-            outcome = "completed"
-            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
-
-            if event_id is None:
-                await _update_processing_status(event_id, "completed")
-
-            return _build_webhook_response(
-                save_result.webhook_id,
-                analysis_result,
-                {"status": "skipped", "reason": "缓存复用路径，由持锁 Worker 负责转发"},
-                save_result.is_duplicate,
-                save_result.original_id,
-                save_result.beyond_window,
-                save_result.is_duplicate and not save_result.beyond_window,
-            )
-
-        # ── 完整路径：降噪 + 持久化 + 转发 ──
-        logger.debug("[Pipeline] 进入持久化与降噪计算阶段")
-        persisted = await persist_webhook_with_noise_context(
-            request_context=request_context,
-            analysis_resolution=analysis_resolution,
-            alert_hash=alert_hash,
-            event_id=event_id,
-        )
-
-        save_result = persisted.save_result
-        noise_context = persisted.noise_context
-        analysis_result = _apply_noise_metadata(analysis_result, noise_context)
-
-        WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-            source=sanitize_source(request_context.source),
-            relation=noise_context.relation,
-            suppressed=str(noise_context.suppress_forward).lower(),
-        ).inc()
-
-        # ── 转发阶段 ──
-        beyond_window = save_result.beyond_window
-        is_dup = save_result.is_duplicate
-        original_id = save_result.original_id
-        is_duplicate = is_dup and not beyond_window
-        importance = str(analysis_result.get("importance", "")).lower()
-
-        original_event = await _refresh_original_event(original_id, original_event)
-
-        logger.debug("[Pipeline] 进入转发决策阶段")
-        forward_decision = await decide_forwarding(
-            importance,
-            is_duplicate,
-            beyond_window,
-            noise_context,
-            original_event,
-            original_id,
-            source=request_context.source,
-        )
-
-        forward_result = await execute_forwarding(
-            forward_decision, request_context, analysis_result, persisted, original_event
-        )
-
-        logger.info(
-            f"[Pipeline] 处理流程结束: id={save_result.webhook_id}, forwarded={forward_decision.should_forward}"
-        )
-        set_log_context(processing_status="completed")
         outcome = "completed"
+        set_log_context(processing_status="completed")
         WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
 
-        # processing_status 已在 save_webhook_data 事务中统一设为 "completed"，
-        # 仅当无 event_id（向后兼容旧路径）时才单独更新。
-        if event_id is None:
-            await _update_processing_status(event_id, "completed")
-
-        return _build_webhook_response(
-            save_result.webhook_id, analysis_result, forward_result, is_dup, original_id, beyond_window, is_duplicate
-        )
-
     except Exception as e:
-        if _is_retryable(e):
-            # 先递增 retry_count 并判断是否超过最大重试次数
-            current_retry = await _increment_and_get_retry_count(event_id)
-            if current_retry >= _MAX_RETRIES:
-                logger.warning(
-                    "Webhook 处理失败（重试次数已耗尽，标记为死信）| event_id=%s | retry_count=%d | error=%s",
-                    event_id,
-                    current_retry,
-                    e,
-                )
-                async with session_scope() as session:
-                    await session.execute(
-                        update(WebhookEvent)
-                        .where(WebhookEvent.id == event_id)
-                        .values(
-                            processing_status="dead_letter",
-                            failure_reason="max_retries_exhausted",
-                            error_message=str(e)[:2000],
-                        )
-                    )
-                set_log_context(processing_status="dead_letter")
-                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
-                WEBHOOK_DEAD_LETTER_TOTAL.inc()
-                outcome = "dead_letter"
-                await _send_dead_letter_alert(event_id, current_retry, e)
-            else:
-                logger.error(
-                    "Webhook 处理失败（可重试，退回 received 等待 RecoveryPoller）| event_id=%s | retry=%d/%d | error=%s",
-                    event_id,
-                    current_retry,
-                    _MAX_RETRIES,
-                    e,
-                    exc_info=True,
-                )
-                async with session_scope() as session:
-                    await session.execute(
-                        update(WebhookEvent)
-                        .where(WebhookEvent.id == event_id)
-                        .values(
-                            processing_status="received",
-                            failure_reason="retryable_error",
-                            error_message=str(e)[:2000],
-                        )
-                    )
-                set_log_context(processing_status="received")
-                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="received").inc()
-                outcome = "retry"
-        else:
-            logger.warning(
-                "Webhook 处理失败（不可重试，标记为死信）| event_id=%s | error=%s | type=%s",
-                event_id,
-                e,
-                type(e).__name__,
-            )
-            async with session_scope() as session:
-                await session.execute(
-                    update(WebhookEvent)
-                    .where(WebhookEvent.id == event_id)
-                    .values(
-                        processing_status="dead_letter",
-                        failure_reason="non_retryable_error",
-                        error_message=str(e)[:2000],
-                    )
-                )
-            set_log_context(processing_status="dead_letter")
-            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
-            WEBHOOK_DEAD_LETTER_TOTAL.inc()
-            outcome = "dead_letter"
-            await _send_dead_letter_alert(event_id, 0, e)
-        return
+        retryable = _is_retryable(e)
+        status = "received" if retryable else "dead_letter"
+        async with session_scope() as sess:
+            await sess.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(processing_status=status, failure_reason="retry_err" if retryable else "fat_err", error_message=str(e)[:2000]))
+        if status == "dead_letter": await _send_dead_letter_alert(event_id, 0, e)
+        outcome = "retry" if retryable else "dead_letter"
+        logger.error(f"处理失败 (retryable={retryable}): {e}", exc_info=True)
     finally:
         duration = time.perf_counter() - start_perf
         WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
+
+
+def get_running_tasks(): return _running_tasks
