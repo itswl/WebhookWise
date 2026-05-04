@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import logger
 from core.redis_client import get_redis
-from crud.ai_usage import get_ai_usage_stats
+from services.ai_analyzer import get_ai_usage_stats
 from db.session import get_db_session
 from schemas.admin import AIUsageResponse
 

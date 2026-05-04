@@ -6,7 +6,7 @@ from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
-from crud.webhook import (
+from services.webhook_orchestrator import (
     count_dead_letters,
     list_dead_letters,
     list_stuck_events,

@@ -60,7 +60,7 @@ async def _notify_feishu_deep_analysis(record_dict: dict, source: str = ""):
         )
         if not success:
             try:
-                from crud.webhook import record_failed_forward
+                from services.forward import record_failed_forward
 
                 await record_failed_forward(
                     webhook_event_id=record_dict["webhook_event_id"],
@@ -111,7 +111,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: dict, reason: str = "
             logger.info(f"深度分析失败通知已发送: id={record_dict['id']}, reason={reason}")
         else:
             try:
-                from crud.webhook import record_failed_forward
+                from services.forward import record_failed_forward
 
                 await record_failed_forward(
                     webhook_event_id=record_dict["webhook_event_id"],

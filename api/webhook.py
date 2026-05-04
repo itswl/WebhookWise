@@ -18,7 +18,12 @@ from core.logger import logger
 from core.redis_client import get_redis
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from crud.webhook import get_client_ip, list_webhook_summaries, list_webhook_summaries_cursor, quick_receive_webhook
+from services.webhook_orchestrator import (
+    get_client_ip,
+    list_webhook_summaries,
+    list_webhook_summaries_cursor,
+    quick_receive_webhook,
+)
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse

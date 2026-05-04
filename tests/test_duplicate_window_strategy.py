@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from crud.webhook import SaveWebhookResult
+from services.webhook_orchestrator import SaveWebhookResult
 from services.dedup_strategy import DuplicateCheckResult, _resolve_window_start
 
 

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud.forward_rules import (
+from services.forward import (
     create_forward_rule,
     delete_forward_rule,
     get_forward_rule,
