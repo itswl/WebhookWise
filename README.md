@@ -93,9 +93,8 @@ alembic revision --autogenerate -m "描述变更内容"
 ├── api/                # API 路由定义 (Webhook, 深度分析, 管理端等)
 ├── core/               # 核心基础设施 (配置, Logger, HTTP连接池, 监控指标)
 ├── models/             # SQLAlchemy 数据库模型定义
-├── crud/               # 数据库操作隔离层
 ├── db/                 # 数据库连接池与 session 管理
-├── services/           # 核心业务逻辑 (AI 分析引擎, 降噪算法, 主处理管道, 轮询器)
+├── services/           # 核心业务逻辑 (AI 分析引擎, 降噪算法, 主处理管道, 任务定义)
 ├── adapters/           # 生态适配器 (Prometheus, 华为云等格式转换)
 ├── migrations/         # 旧系统数据库迁移脚本
 ├── alembic/            # Alembic 数据库迁移（增量 schema 变更）

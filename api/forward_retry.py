@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.logger import logger
-from crud.webhook import (
+from services.forward import (
     delete_failed_forward,
     get_failed_forward_stats,
     get_failed_forwards,
