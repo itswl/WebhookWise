@@ -81,13 +81,13 @@ const API = {
         if (params.use_cursor || params.cursor_id !== undefined || params.limit) {
             const queryParams = new URLSearchParams();
             const limit = params.limit || params.page_size || 200;
-            queryParams.append('limit', limit);
+            queryParams.append('page_size', limit);
             if (params.cursor_id !== null && params.cursor_id !== undefined) queryParams.append('cursor_id', params.cursor_id);
             if (params.fields) queryParams.append('fields', params.fields);
             if (params.importance) queryParams.append('importance', params.importance);
             if (params.source) queryParams.append('source', params.source);
 
-            const response = await this.authenticatedFetch('/api/webhooks/cursor?' + queryParams.toString());
+            const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return await response.json();
         }
