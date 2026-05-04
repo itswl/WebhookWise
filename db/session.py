@@ -32,13 +32,17 @@ class SerializerMixin:
         """将 Model 实例转换为字典。如果提供 schema_cls，则通过 Schema 进行过滤和格式化。"""
         if schema_cls:
             return self.to_schema(schema_cls).model_dump()
-        # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段）
-        return {
-            c.name: getattr(self, c.name)
-            for c in self.__table__.columns
-            if not isinstance(getattr(self, c.name), (bytes, memoryview))
-        }
-
+        # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段，格式化 datetime）
+        import datetime
+        res = {}
+        for c in self.__table__.columns:
+            val = getattr(self, c.name)
+            if isinstance(val, (bytes, memoryview)):
+                continue
+            if isinstance(val, datetime.datetime):
+                val = val.isoformat()
+            res[c.name] = val
+        return res
 
 _logger = logging.getLogger(__name__)
 
