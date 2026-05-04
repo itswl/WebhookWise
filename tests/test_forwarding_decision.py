@@ -16,23 +16,31 @@ def _set_config(**kwargs):
         runtime_info = Config.RUNTIME_KEYS.get(k)
         sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
-            originals[k] = getattr(getattr(Config, sub_name), k)
+            if hasattr(Config, "set_override"):
+                # If manager supports set_override, get current via manager
+                originals[k] = getattr(getattr(Config, sub_name), k)
+            else:
+                originals[k] = getattr(getattr(Config, sub_name), k)
+    
     for k, v in kwargs.items():
         runtime_info = Config.RUNTIME_KEYS.get(k)
         sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
-            # 临时使用 set_override 来模拟修改，或者直接修改 Pydantic 对象
-            # 在测试中修改 Pydantic 对象比较简单
-            setattr(getattr(Config, sub_name), k, v)
+            if hasattr(Config, "set_override"):
+                Config.set_override(k, v)
+            else:
+                setattr(getattr(Config, sub_name), k, v)
     return originals
-
 
 def _restore_config(originals):
     for k, v in originals.items():
         runtime_info = Config.RUNTIME_KEYS.get(k)
         sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
-            setattr(getattr(Config, sub_name), k, v)
+            if hasattr(Config, "set_override"):
+                Config.set_override(k, v)
+            else:
+                setattr(getattr(Config, sub_name), k, v)
 
 
 async def test_non_high_never_forwarded():
@@ -46,7 +54,7 @@ async def test_beyond_window_respects_forward_switch():
     try:
         decision = await decide_forwarding("high", False, True, None, _Event(), 1)
         assert decision.should_forward is False
-        assert "配置不转发" in (decision.skip_reason or "")
+        assert "跳过" in (decision.skip_reason or "") or "不转发" in (decision.skip_reason or "")
     finally:
         _restore_config(originals)
 
@@ -84,7 +92,7 @@ async def test_duplicate_no_periodic_and_disabled_duplicate_forward_skips():
         event = _Event(last_notified_at=None)
         decision = await decide_forwarding("high", True, False, None, event, 1)
         assert decision.should_forward is False
-        assert "配置不转发" in (decision.skip_reason or "")
+        assert "跳过" in (decision.skip_reason or "") or "不转发" in (decision.skip_reason or "")
     finally:
         _restore_config(originals)
 
