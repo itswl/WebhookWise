@@ -1,6 +1,7 @@
 import hashlib
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 
 import orjson
@@ -13,12 +14,14 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.summary_extractors import extract_summary_fields
 from core.compression import compress_payload, decompress_payload
-from db.session import Base, SerializerMixin
+from db.session import Base, SerializerMixin, session_scope
 
 _logger = logging.getLogger(__name__)
 
@@ -28,6 +31,14 @@ PROMETHEUS_ROOT_FIELDS = ["alertingRuleName"]
 PROMETHEUS_LABEL_FIELDS = ["alertname", "internal_label_alert_level", "host", "instance", "pod", "namespace", "service", "path", "method"]
 PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
 GENERIC_FIELDS = ["Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"]
+
+
+@dataclass(frozen=True)
+class DuplicateCheckResult:
+    is_duplicate: bool
+    original_event: "WebhookEvent" | None
+    beyond_window: bool
+    last_beyond_window_event: "WebhookEvent" | None
 
 
 class WebhookEvent(Base, SerializerMixin):
@@ -104,6 +115,29 @@ class WebhookEvent(Base, SerializerMixin):
         
         return hashlib.sha256(orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS)).hexdigest()
 
+    @classmethod
+    async def check_duplicate(cls, alert_hash: str, session: AsyncSession, time_window_hours: int = 24) -> DuplicateCheckResult:
+        """检查重复告警"""
+        now = datetime.now()
+        threshold = now - timedelta(hours=time_window_hours)
+        
+        # 查窗口内最新记录
+        stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.timestamp >= threshold).order_by(cls.timestamp.desc()).limit(1)
+        any_event = (await session.execute(stmt)).scalar_one_or_none()
+        
+        last_beyond = (await session.execute(select(cls).filter(cls.alert_hash == alert_hash, cls.beyond_window == 1).order_by(cls.timestamp.desc()).limit(1))).scalar_one_or_none()
+
+        if any_event:
+            original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
+            orig = await session.get(cls, original_id) if original_id else any_event
+            window_start = last_beyond.timestamp if last_beyond else orig.timestamp
+            is_within = (now - window_start).total_seconds() / 3600 <= time_window_hours
+            return DuplicateCheckResult(True, orig, not is_within, last_beyond)
+
+        # 查窗口外历史
+        history = (await session.execute(select(cls).filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0).order_by(cls.timestamp.desc()).limit(1))).scalar_one_or_none()
+        return DuplicateCheckResult(False, history, True, last_beyond) if history else DuplicateCheckResult(False, None, False, None)
+
     def fill_fields(self, **kwargs):
         """统一填充字段"""
         for k, v in kwargs.items():
@@ -121,32 +155,22 @@ class WebhookEvent(Base, SerializerMixin):
         summary = ai_analysis.get("summary", "") if ai_analysis else None
         alert_info = extract_summary_fields(self.source, self.parsed_data)
 
-        # 结合基础 dict 和自定义字段
         res = self.to_dict()
         res.update({
-            "summary": summary,
-            "alert_info": alert_info,
+            "summary": summary, "alert_info": alert_info,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         })
         return res
 
     def to_dict(self, *, include_raw_payload: bool = True, schema_cls: Any = None) -> dict[str, Any]:
-        if schema_cls:
-            return super().to_dict(schema_cls)
-        
+        if schema_cls: return super().to_dict(schema_cls)
         res = super().to_dict()
-        if include_raw_payload:
-            res["raw_payload"] = decompress_payload(self.raw_payload)
-        else:
-            res.pop("raw_payload", None)
-        
-        # 格式化日期
+        if include_raw_payload: res["raw_payload"] = decompress_payload(self.raw_payload)
+        else: res.pop("raw_payload", None)
         for k in ["timestamp", "created_at", "updated_at", "last_notified_at"]:
             val = getattr(self, k, None)
-            if isinstance(val, datetime):
-                res[k] = val.isoformat()
-        
+            if isinstance(val, datetime): res[k] = val.isoformat()
         return res
 
 

@@ -40,9 +40,9 @@ from core.compression import decompress_payload_async
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai
-from services.ai_cache import get_cached_analysis, log_ai_usage
+from services.ai_analyzer import get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from services.dedup_strategy import check_duplicate_alert
+from models.webhook import WebhookEvent
 from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
 from services.webhook_orchestrator import save_webhook_data
 
@@ -149,7 +149,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
             await pubsub.unsubscribe(channel); await pubsub.close()
 
     # 持锁或等待超时：正常检查/分析
-    check = await check_duplicate_alert(alert_hash, check_beyond_window=True)
+    check = await WebhookEvent.check_duplicate(alert_hash, check_beyond_window=True)
     orig, last_beyond = check.original_event, check.last_beyond_window_event
     
     if check.beyond_window and orig:
