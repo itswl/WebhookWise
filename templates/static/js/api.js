@@ -80,7 +80,7 @@ const API = {
     async getWebhooks(params = {}) {
         if (params.use_cursor || params.cursor_id !== undefined || params.limit) {
             const queryParams = new URLSearchParams();
-            const limit = params.limit || params.page_size || 200;
+            const limit = params.limit || params.page_size || 100;
             queryParams.append('page_size', limit);
             if (params.cursor_id !== null && params.cursor_id !== undefined) queryParams.append('cursor_id', params.cursor_id);
             if (params.fields) queryParams.append('fields', params.fields);
