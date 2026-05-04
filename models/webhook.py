@@ -58,6 +58,7 @@ class WebhookEvent(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
+        Index("idx_unique_alert_hash_original", "alert_hash", unique=True, postgresql_where=(is_duplicate == 0)),
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
         Index("idx_importance_timestamp", "importance", "timestamp"),
         Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
