@@ -9,8 +9,6 @@ from sqlalchemy import func, select
 
 from core.config import Config
 from core.metrics import (
-    WEBHOOK_MQ_GROUP_LAG,
-    WEBHOOK_MQ_GROUP_PENDING,
     WEBHOOK_MQ_STREAM_LENGTH,
     WEBHOOK_PROCESSING_STATUS_COUNT,
     WEBHOOK_STUCK_STATUS_COUNT,

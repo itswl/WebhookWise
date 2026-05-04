@@ -1,19 +1,22 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+"""
+Admin and Management API Routes.
+Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
+"""
+
+import json
+import time
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
-from services.webhook_orchestrator import (
-    count_dead_letters,
-    list_dead_letters,
-    list_stuck_events,
-    replay_dead_letter,
-    requeue_stuck_event,
-)
+from core.redis_client import get_redis
 from db.session import get_db_session
 from schemas import (
+    AIUsageResponse,
     ConfigResponse,
     ConfigSourceItem,
     ConfigSourcesResponse,
@@ -26,7 +29,11 @@ from schemas import (
     StuckEventListResponse,
     StuckEventRequeueResponse,
 )
-from services.ai_analyzer import load_user_prompt_template, reload_user_prompt_template
+from services.ai_analyzer import (
+    get_ai_usage_stats,
+    load_user_prompt_template,
+    reload_user_prompt_template,
+)
 from services.config_service import (
     build_prompt_source,
     collect_config_updates,
@@ -34,6 +41,13 @@ from services.config_service import (
     get_current_config,
 )
 from services.tasks import process_webhook_task
+from services.webhook_orchestrator import (
+    count_dead_letters,
+    list_dead_letters,
+    list_stuck_events,
+    replay_dead_letter,
+    requeue_stuck_event,
+)
 
 admin_router = APIRouter()
 
@@ -86,7 +100,12 @@ async def update_config(payload: dict | None = None):
 def reload_prompt():
     try:
         new_template = reload_user_prompt_template()
-        return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=new_template[:200] + "...")
+        return _ok(
+            status=200,
+            message="Prompt 模板已重新加载",
+            template_length=len(new_template),
+            preview=new_template[:200] + "..."
+        )
     except Exception as e:
         logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
@@ -120,7 +139,11 @@ async def get_dead_letters_endpoint(
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/{event_id}/replay", response_model=ReplayResponse, dependencies=[Depends(verify_admin_write)])
+@admin_router.post(
+    "/api/admin/dead-letters/{event_id}/replay",
+    response_model=ReplayResponse,
+    dependencies=[Depends(verify_admin_write)]
+)
 async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
         updated = await replay_dead_letter(session, event_id)
@@ -143,14 +166,20 @@ async def get_stuck_events_endpoint(
 ):
     statuses = [s for s in (status or "").split(",") if s.strip()]
     try:
-        items = await list_stuck_events(session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit)
+        items = await list_stuck_events(
+            session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit
+        )
         return _ok(items, 200)
     except Exception as e:
         logger.error(f"查询 stuck-events 失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/stuck-events/{event_id}/requeue", response_model=StuckEventRequeueResponse, dependencies=[Depends(verify_admin_write)])
+@admin_router.post(
+    "/api/admin/stuck-events/{event_id}/requeue",
+    response_model=StuckEventRequeueResponse,
+    dependencies=[Depends(verify_admin_write)]
+)
 async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
         updated = await requeue_stuck_event(session, event_id)
@@ -164,18 +193,62 @@ async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depe
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)])
-async def replay_all_dead_letters(batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)):
+@admin_router.post(
+    "/api/admin/dead-letters/replay-all",
+    response_model=ReplayAllResponse,
+    dependencies=[Depends(verify_admin_write)]
+)
+async def replay_all_dead_letters(
+    batch_size: int = Query(50, ge=1, le=500),
+    session: AsyncSession = Depends(get_db_session)
+):
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
-        if not items: return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
+        if not items:
+            return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
         replayed_ids = []
         for item in items:
             eid = item["id"]
-            if await replay_dead_letter(session, eid): replayed_ids.append(eid)
+            if await replay_dead_letter(session, eid):
+                replayed_ids.append(eid)
         await session.commit()
-        for eid in replayed_ids: await process_webhook_task.kiq(event_id=eid)
-        return _ok(http_status=200, message=f"已重放 {len(replayed_ids)} 条 dead_letter", replayed=len(replayed_ids), event_ids=replayed_ids)
+        for eid in replayed_ids:
+            await process_webhook_task.kiq(event_id=eid)
+        return _ok(
+            http_status=200,
+            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+            replayed=len(replayed_ids),
+            event_ids=replayed_ids
+        )
     except Exception as e:
         logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)
+        return _fail(str(e), 500)
+
+
+@admin_router.get("/api/ai-usage", response_model=AIUsageResponse)
+async def get_ai_usage_endpoint(period: str = Query("day"), session: AsyncSession = Depends(get_db_session)):
+    try:
+        cache_bucket = int(time.time() // 60)
+        cache_key = f"api:ai_usage:{period}:{cache_bucket}"
+
+        redis = get_redis()
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                return _ok(json.loads(cached), 200)
+        except Exception as e:
+            logger.debug(f"AI usage 读取缓存失败: {e}")
+
+        usage_data = await get_ai_usage_stats(session=session, period=period)
+
+        try:
+            redis = get_redis()
+            await redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
+        except Exception as e:
+            logger.debug(f"AI usage 缓存写入失败: {e}")
+
+        return _ok(usage_data, 200)
+
+    except Exception as e:
+        logger.error(f"获取 AI 使用统计失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)

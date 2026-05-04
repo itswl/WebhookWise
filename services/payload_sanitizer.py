@@ -6,8 +6,7 @@ import asyncio
 
 import orjson
 
-from core.config import Config
-from core.config import policies
+from core.config import Config, policies
 from core.logger import get_logger
 
 logger = get_logger("payload_sanitizer")

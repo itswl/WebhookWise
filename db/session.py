@@ -1,5 +1,7 @@
+import contextlib
 import logging
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -9,8 +11,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
-
-from typing import TYPE_CHECKING, Any, TypeVar
 
 from core.config import Config
 from core.logger import mask_url
@@ -34,8 +34,8 @@ class SerializerMixin:
             return self.to_schema(schema_cls).model_dump()
         # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段）
         return {
-            c.name: getattr(self, c.name) 
-            for c in self.__table__.columns 
+            c.name: getattr(self, c.name)
+            for c in self.__table__.columns
             if not isinstance(getattr(self, c.name), (bytes, memoryview))
         }
 

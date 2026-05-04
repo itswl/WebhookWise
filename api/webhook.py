@@ -4,28 +4,22 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
-import asyncio
-
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
-from core.logger import logger
-from core.redis_client import get_redis
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from services.webhook_orchestrator import (
-    get_client_ip,
-    list_webhook_summaries,
-    list_webhook_summaries_cursor,
-    quick_receive_webhook,
-)
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse
 from services.tasks import process_webhook_task
+from services.webhook_orchestrator import (
+    get_client_ip,
+    list_webhook_summaries,
+    quick_receive_webhook,
+)
 
 webhook_router = APIRouter()
 
@@ -83,7 +77,7 @@ async def receive_webhook(
     set_trace_id(generate_trace_id(event_id=event_id))
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
-    
+
     return {"success": True, "message": "Webhook received and queued for processing", "event_id": event_id}
 
 
