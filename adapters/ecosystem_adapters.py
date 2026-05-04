@@ -163,6 +163,7 @@ def register_simple_adapters():
         inc = data.get("incident", {})
         evt = data.get("event", {})
         alert_id = inc.get("id") or evt.get("data", {}).get("id")
+        service = inc.get("service", {}).get("summary") or evt.get("data", {}).get("service", {}).get("summary")
         title = _pick_first(
             inc.get("title"), evt.get("data", {}).get("title"),
             data.get("description"), "pagerduty_incident"
@@ -172,7 +173,8 @@ def register_simple_adapters():
             "Type": "PagerDutyEvent", "RuleName": title,
             "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
             "event": evt.get("event_type", "alert"),
-            "alert_id": alert_id
+            "alert_id": alert_id,
+            "service": service
         })
         return res
 

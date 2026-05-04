@@ -348,7 +348,7 @@ async def get_deep_analysis_list(
     session: AsyncSession, page: int = 1, per_page: int = 20, cursor: int | None = None,
     status_filter: str = "", engine_filter: str = "", max_page: int = 500
 ):
-    query = select(DeepAnalysis, WebhookEvent.source).outerjoin(
+    query = select(DeepAnalysis, WebhookEvent).outerjoin(
         WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id
     ).order_by(DeepAnalysis.id.desc())
 
@@ -361,9 +361,11 @@ async def get_deep_analysis_list(
 
     res = await session.execute(query.limit(per_page))
     items = []
-    for rec, src in res.all():
+    for rec, evt in res.all():
         d = rec.to_dict()
-        d["source"] = src
+        d["source"] = evt.source if evt else None
+        d["is_duplicate"] = bool(evt.is_duplicate) if evt else False
+        d["beyond_window"] = bool(evt.beyond_window) if evt else False
         items.append(d)
     return {"items": items, "per_page": per_page}
 
