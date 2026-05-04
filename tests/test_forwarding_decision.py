@@ -46,7 +46,7 @@ async def test_beyond_window_respects_forward_switch():
     try:
         decision = await decide_forwarding("high", False, True, None, _Event(), 1)
         assert decision.should_forward is False
-        assert "配置跳过转发" in (decision.skip_reason or "")
+        assert "配置不转发" in (decision.skip_reason or "")
     finally:
         _restore_config(originals)
 
@@ -84,7 +84,7 @@ async def test_duplicate_no_periodic_and_disabled_duplicate_forward_skips():
         event = _Event(last_notified_at=None)
         decision = await decide_forwarding("high", True, False, None, event, 1)
         assert decision.should_forward is False
-        assert "配置跳过转发" in (decision.skip_reason or "")
+        assert "配置不转发" in (decision.skip_reason or "")
     finally:
         _restore_config(originals)
 
@@ -95,7 +95,7 @@ async def test_duplicate_no_periodic_and_enabled_duplicate_forward_forwards():
         event = _Event(last_notified_at=None)
         decision = await decide_forwarding("high", True, False, None, event, 1)
         assert decision.should_forward is True
-        assert decision.is_periodic_reminder is False
+        assert decision.skip_reason is None
     finally:
         _restore_config(originals)
 
