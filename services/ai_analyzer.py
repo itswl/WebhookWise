@@ -322,9 +322,9 @@ async def analyze_webhook_with_ai(
 
     # 生成 alert_hash（如果未提供）
     if not alert_hash:
-        from core.utils import generate_alert_hash
+        from models import WebhookEvent
 
-        alert_hash = generate_alert_hash(parsed_data, source)
+        alert_hash = WebhookEvent.generate_hash(parsed_data, source)
 
     # Step 1: 检查缓存（skip_cache=True 时跳过）
     if Config.ai.CACHE_ENABLED and not skip_cache:

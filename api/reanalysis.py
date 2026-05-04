@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core.config import policies
 from core.logger import logger
-from core.utils import mask_url
+from core.logger import mask_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
