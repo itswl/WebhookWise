@@ -22,7 +22,7 @@ result_backend = RedisAsyncResultBackend(
 
 # 2. 调度器源 (用于管理定时任务)
 schedule_source = RedisScheduleSource(
-    redis_url=REDIS_URL,
+    url=REDIS_URL,
 )
 
 # 3. 异步任务代理
