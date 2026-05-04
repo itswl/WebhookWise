@@ -11,11 +11,8 @@ from adapters.plugins.local_engine import LocalAnalysisEngine
 from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
 from adapters.registry import register_engine
 from api.admin import admin_router
-from api.ai_usage import ai_usage_router
-from api.deep_analysis import deep_analysis_router
-from api.forward_retry import forward_retry_router
-from api.forward_rules import forward_rules_router
-from api.reanalysis import reanalysis_router
+from api.analysis import analysis_router
+from api.forwarding import forwarding_router
 from api.webhook import webhook_router
 from core.auth import verify_api_key
 from core.config import Config
@@ -26,7 +23,7 @@ from core.otel import setup_otel
 from core.redis_client import dispose_redis
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
-from services.ai_client import reset_openai_client
+from services.ai_analyzer import reset_openai_client
 from services.metrics_poller import MetricsPoller
 from services.pipeline import get_running_tasks
 
@@ -149,10 +146,7 @@ _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 logger.debug(f"worker_id={_WORKER_ID}")
 
 
-app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
-app.include_router(forward_retry_router, dependencies=[Depends(verify_api_key)])
-app.include_router(forward_rules_router, dependencies=[Depends(verify_api_key)])
-app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
-app.include_router(ai_usage_router, dependencies=[Depends(verify_api_key)])
+app.include_router(analysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(forwarding_router, dependencies=[Depends(verify_api_key)])
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
 app.include_router(webhook_router)

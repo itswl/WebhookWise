@@ -24,7 +24,7 @@ from services.webhook_orchestrator import (
 )
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
-from schemas.webhook import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse
+from schemas import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse
 from services.tasks import process_webhook_task
 
 webhook_router = APIRouter()

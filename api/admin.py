@@ -13,7 +13,7 @@ from services.webhook_orchestrator import (
     requeue_stuck_event,
 )
 from db.session import get_db_session
-from schemas.admin import (
+from schemas import (
     ConfigResponse,
     ConfigSourceItem,
     ConfigSourcesResponse,
@@ -26,7 +26,7 @@ from schemas.admin import (
     StuckEventListResponse,
     StuckEventRequeueResponse,
 )
-from services.ai_prompts import load_user_prompt_template, reload_user_prompt_template
+from services.ai_analyzer import load_user_prompt_template, reload_user_prompt_template
 from services.config_service import (
     build_prompt_source,
     collect_config_updates,

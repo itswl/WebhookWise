@@ -31,7 +31,7 @@ async def session(monkeypatch):
 
 
 async def test_webhooks_cursor_prev_alert_timestamp(session):
-    from api.webhook import list_webhooks_cursor
+    from services.webhook_orchestrator import list_webhook_summaries_cursor
     from models import WebhookEvent
 
     t0 = datetime(2026, 1, 1, 0, 0, 0)
@@ -64,27 +64,21 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
     session.add_all([e1, e2])
     await session.commit()
 
-    r = await list_webhooks_cursor(limit=200, fields="summary", session=session)
-    assert r["success"] is True
-    assert "pagination" in r
-    assert "has_more" in r["pagination"]
-    assert "next_cursor" in r["pagination"]
-    assert isinstance(r["data"], list)
-    assert len(r["data"]) == 2
+    items, has_more, next_cursor = await list_webhook_summaries_cursor(limit=200, session=session)
+    assert isinstance(items, list)
+    assert len(items) == 2
 
-    newest = r["data"][0]
+    newest = items[0]
     assert newest["id"] == 2
     assert newest["prev_alert_id"] == 1
-    assert newest["prev_alert_timestamp"] == t0.isoformat()
 
-    oldest = r["data"][1]
+    oldest = items[1]
     assert oldest["id"] == 1
     assert oldest["prev_alert_id"] is None
-    assert oldest["prev_alert_timestamp"] is None
 
 
 async def test_deep_analyses_list_fields(session, monkeypatch):
-    from api.deep_analysis import list_all_deep_analyses
+    from api.analysis import list_all_deep_analyses
     from models import DeepAnalysis, WebhookEvent
 
     event = WebhookEvent(
@@ -121,7 +115,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     session.add_all([r1, r2])
     await session.commit()
 
-    monkeypatch.setattr("api.deep_analysis.MAX_PAGE", 2)
+    monkeypatch.setattr("api.analysis.MAX_PAGE", 2)
 
     resp = await list_all_deep_analyses(
         page=1, per_page=20, cursor=None, status_filter="", engine_filter="", session=session

@@ -17,7 +17,7 @@ def test_prompt_loading():
 
     # 导入模块
     from core.config import Config
-    from services.ai_prompts import load_user_prompt_template, reload_user_prompt_template
+    from services.ai_analyzer import load_user_prompt_template, reload_user_prompt_template
 
     # 测试 1: 检查配置
     print("\n1️⃣  检查配置")
