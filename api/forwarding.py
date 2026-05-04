@@ -33,7 +33,8 @@ forwarding_router = APIRouter()
 
 @forwarding_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)):
-    return {"success": True, "data": await get_forward_rules(session)}
+    rules = await get_forward_rules(session)
+    return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
 @forwarding_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
