@@ -3,8 +3,7 @@
 """
 
 import asyncio
-import hashlib
-import logging
+import contextlib
 import time
 from datetime import datetime, timedelta
 from typing import Any
@@ -18,32 +17,24 @@ from adapters.ecosystem_adapters import normalize_webhook_event
 from api import (
     AnalysisResolution,
     ForwardDecision,
-    InvalidJsonError,
     NoiseReductionContext,
     WebhookRequestContext,
 )
+from core.compression import decompress_payload_async
+from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
-    WEBHOOK_DEAD_LETTER_TOTAL,
-    WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
-    WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
 from core.trace import generate_trace_id, set_trace_id
-from core.distributed_lock import processing_lock
-from core.compression import decompress_payload_async
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
-from services.ai_analyzer import (
-    analyze_webhook_with_ai, 
-    get_cached_analysis, 
-    log_ai_usage
-)
+from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
 from services.webhook_orchestrator import save_webhook_data
@@ -95,7 +86,7 @@ def _is_retryable(exc: Exception) -> bool:
         if any(k in msg for k in ["context_length", "content_policy", "content filter"]):
             return False
         curr = curr.__cause__ or curr.__context__
-    
+
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
         return True
     if _QueryCanceledError and isinstance(exc, _QueryCanceledError):
@@ -114,14 +105,14 @@ async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Except
         if not url or "feishu.cn" not in url:
             return
         card = {
-            "msg_type": "interactive", 
+            "msg_type": "interactive",
             "card": {
-                "header": {"title": {"tag": "plain_text", "content": "🚨 Dead Letter 告警"}, "template": "red"}, 
+                "header": {"title": {"tag": "plain_text", "content": "🚨 Dead Letter 告警"}, "template": "red"},
                 "elements": [
                     {
-                        "tag": "div", 
+                        "tag": "div",
                         "text": {
-                            "tag": "lark_md", 
+                            "tag": "lark_md",
                             "content": f"**event_id**: {event_id}\n**重试**: {retry_count}\n**详情**: {str(error)[:200]}"
                         }
                     }
@@ -144,12 +135,12 @@ def _parse_request(
         payload = orjson.loads(raw_body)
     norm = normalize_webhook_event(payload, src)
     return WebhookRequestContext(
-        client_ip=client_ip, source=norm.source, payload=raw_body, 
-        parsed_data=norm.data, 
+        client_ip=client_ip, source=norm.source, payload=raw_body,
+        parsed_data=norm.data,
         webhook_full_data={
-            "body": payload, "headers": headers, "parsed_data": norm.data, 
+            "body": payload, "headers": headers, "parsed_data": norm.data,
             "source": norm.source, "timestamp": ts
-        }, 
+        },
         headers=headers
     )
 
@@ -172,12 +163,10 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
                 return AnalysisResolution(cached, False, True, None, False, is_reused=True)
             deadline = time.monotonic() + Config.retry.PROCESSING_LOCK_WAIT_SECONDS
             while time.monotonic() < deadline:
-                try:
+                with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(
                         pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0), timeout=6.0
                     )
-                except asyncio.TimeoutError:
-                    pass
                 cached = await get_cached_analysis(alert_hash)
                 if cached:
                     await log_ai_usage(
@@ -192,7 +181,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
     async with session_scope() as session:
         check = await WebhookEvent.check_duplicate(alert_hash, session=session)
     orig, last_beyond = check.original_event, check.last_beyond_window_event
-    
+
     if check.beyond_window and orig:
         if last_beyond and last_beyond.created_at and (
             datetime.now() - last_beyond.created_at
@@ -211,7 +200,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
         res, rean = await analyze_webhook_with_ai(full_data), True
     else:
         res, rean = await analyze_webhook_with_ai(full_data), True
-    
+
     return AnalysisResolution(res, rean, check.is_duplicate, orig, check.beyond_window)
 
 
@@ -224,32 +213,32 @@ async def _compute_noise(alert_hash: str, source: str, parsed: dict, analysis: d
     try:
         async with session_scope() as session:
             stmt = select(WebhookEvent).filter(
-                WebhookEvent.timestamp >= now - timedelta(minutes=window), 
+                WebhookEvent.timestamp >= now - timedelta(minutes=window),
                 WebhookEvent.timestamp <= now
             ).order_by(WebhookEvent.timestamp.desc()).limit(100)
             res = await session.execute(stmt)
             recent = [
                 AlertContext(
-                    e.id, e.source, e.importance, e.parsed_data or {}, 
+                    e.id, e.source, e.importance, e.parsed_data or {},
                     e.ai_analysis or {}, e.timestamp or now, e.alert_hash
-                ) 
+                )
                 for e in res.scalars().all() if e.alert_hash != alert_hash
             ]
     except Exception:
         recent = []
     curr = AlertContext(None, source, analysis.get("importance", "medium"), parsed, analysis, now, alert_hash)
     dec = analyze_noise_reduction(
-        curr, recent, window_minutes=window, min_confidence=Config.ai.ROOT_CAUSE_MIN_CONFIDENCE, 
+        curr, recent, window_minutes=window, min_confidence=Config.ai.ROOT_CAUSE_MIN_CONFIDENCE,
         suppress_derived=Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD
     )
     return NoiseReductionContext(
-        dec.relation, dec.root_cause_event_id, dec.confidence, 
+        dec.relation, dec.root_cause_event_id, dec.confidence,
         dec.suppress_forward, dec.reason, dec.related_alert_count, dec.related_alert_ids
     )
 
 
 async def _decide_forwarding(
-    importance: str, is_duplicate: bool, beyond_window: bool, noise: NoiseReductionContext, 
+    importance: str, is_duplicate: bool, beyond_window: bool, noise: NoiseReductionContext,
     orig: WebhookEvent | None, source: str
 ) -> ForwardDecision:
     """转发决策逻辑"""
@@ -306,9 +295,9 @@ async def _decide_forwarding(
         skip_reason = f"重要性为 {importance}，非高风险事件不自动转发" if not should_fwd else None
 
     return ForwardDecision(
-        should_forward=should_fwd or bool(matched_rules), 
-        skip_reason=skip_reason if not (should_fwd or bool(matched_rules)) else None, 
-        is_periodic_reminder=is_periodic, 
+        should_forward=should_fwd or bool(matched_rules),
+        skip_reason=skip_reason if not (should_fwd or bool(matched_rules)) else None,
+        is_periodic_reminder=is_periodic,
         matched_rules=matched_rules
     )
 
@@ -328,13 +317,13 @@ async def _execute_forwarding(
                 coro = forward_to_openclaw(full_data, analysis)
             else:
                 coro = forward_to_remote(
-                    full_data, analysis, target_url=r["target_url"], 
+                    full_data, analysis, target_url=r["target_url"],
                     is_periodic_reminder=decision.is_periodic_reminder
                 )
             tasks.append((r, coro))
     else:
         tasks.append((
-            {"name": "default", "target_url": Config.ai.FORWARD_URL, "target_type": "webhook"}, 
+            {"name": "default", "target_url": Config.ai.FORWARD_URL, "target_type": "webhook"},
             forward_to_remote(full_data, analysis, is_periodic_reminder=decision.is_periodic_reminder)
         ))
 
@@ -343,7 +332,7 @@ async def _execute_forwarding(
     for (rule, _), res in zip(tasks, results):
         if isinstance(res, Exception) or (isinstance(res, dict) and res.get("status") != "success"):
             await record_failed_forward(
-                webhook_id, rule.get("id"), rule.get("target_url", ""), 
+                webhook_id, rule.get("id"), rule.get("target_url", ""),
                 rule.get("target_type", "webhook"), "error", str(res), full_data
             )
         else:
@@ -351,11 +340,11 @@ async def _execute_forwarding(
             if rule["target_type"] == "openclaw" and res.get("_pending"):
                 async with session_scope() as sess:
                     sess.add(DeepAnalysis(
-                        webhook_event_id=webhook_id, engine="openclaw", 
-                        openclaw_run_id=res.get("run_id", ""), 
+                        webhook_event_id=webhook_id, engine="openclaw",
+                        openclaw_run_id=res.get("run_id", ""),
                         openclaw_session_key=res.get("session_key", ""), status="pending"
                     ))
-    
+
     if success and orig_id:
         async with session_scope() as sess:
             await sess.execute(update(WebhookEvent).where(WebhookEvent.id == orig_id).values(
@@ -412,14 +401,14 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             if getattr(lock_res, "suppressed", False):
                 noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
                 await save_webhook_data(
-                    data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload, 
-                    headers=req_ctx.headers, client_ip=req_ctx.client_ip, 
-                    ai_analysis={"noise_reduction": noise.__dict__}, forward_status="skipped", 
+                    data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
+                    headers=req_ctx.headers, client_ip=req_ctx.client_ip,
+                    ai_analysis={"noise_reduction": noise.__dict__}, forward_status="skipped",
                     alert_hash=alert_hash, event_id=event_id
                 )
                 outcome = "suppressed"
                 return
-            
+
             analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
 
         if analysis_res.is_reused:
@@ -430,19 +419,19 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
 
         final_analysis = dict(analysis_res.analysis_result)
         final_analysis["noise_reduction"] = noise.__dict__
-        
+
         save_res = await save_webhook_data(
-            data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload, 
-            headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis=final_analysis, 
-            alert_hash=alert_hash, is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window, 
-            original_event=analysis_res.original_event, beyond_window=analysis_res.beyond_window, 
+            data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
+            headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis=final_analysis,
+            alert_hash=alert_hash, is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window,
+            original_event=analysis_res.original_event, beyond_window=analysis_res.beyond_window,
             reanalyzed=analysis_res.reanalyzed, event_id=event_id
         )
 
         if not analysis_res.is_reused:
             fwd_dec = await _decide_forwarding(
-                str(final_analysis.get("importance", "")).lower(), 
-                save_res.is_duplicate and not save_res.beyond_window, 
+                str(final_analysis.get("importance", "")).lower(),
+                save_res.is_duplicate and not save_res.beyond_window,
                 save_res.beyond_window, noise, analysis_res.original_event, req_ctx.source
             )
             await _execute_forwarding(fwd_dec, req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id)
@@ -456,7 +445,7 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
         status = "received" if retryable else "dead_letter"
         async with session_scope() as sess:
             await sess.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(
-                processing_status=status, failure_reason="retry_err" if retryable else "fat_err", 
+                processing_status=status, failure_reason="retry_err" if retryable else "fat_err",
                 error_message=str(e)[:2000]
             ))
         if status == "dead_letter":
