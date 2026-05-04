@@ -19,8 +19,8 @@ if [ "$RUN_MODE" = "worker" ]; then
     echo "Starting in TaskIQ Worker mode..."
     # 启动 TaskIQ Worker (并发由 --workers 指定)
     # 同时在后台启动 Scheduler
-    taskiq scheduler core.taskiq_broker:broker core.taskiq_broker:schedule_source --fs-import services.tasks &
-    exec taskiq worker core.taskiq_broker:broker --fs-import services.tasks
+    taskiq scheduler core.taskiq_broker:broker core.taskiq_broker:schedule_source services.tasks &
+    exec taskiq worker core.taskiq_broker:broker services.tasks
 fi
 
 # 以下是 API / all 模式的启动流程
