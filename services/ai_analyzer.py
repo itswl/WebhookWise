@@ -1,26 +1,21 @@
-"""AI 分析核心引擎 
+"""AI 分析核心引擎
 
 集成 Prompt 管理、缓存、LLM 调用、结构化解析与成本追踪。
 """
 
-import asyncio
 import contextlib
-import hashlib
 import logging
-import math
-import os
-import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 import instructor
 import orjson
 import yaml
 from openai import AsyncOpenAI
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import (
     before_sleep_log,
@@ -43,7 +38,7 @@ from core.metrics import (
 )
 from db.session import count_with_timeout, session_scope
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
-from schemas import Importance, WebhookAnalysisResult
+from schemas import WebhookAnalysisResult
 from services.payload_sanitizer import sanitize_for_ai_async
 
 # 类型别名
@@ -63,7 +58,8 @@ def get_prompt_source() -> str:
 
 def load_user_prompt_template() -> str:
     global _user_prompt_template, _user_prompt_source
-    if _user_prompt_template is not None: return _user_prompt_template
+    if _user_prompt_template is not None:
+        return _user_prompt_template
 
     if Config.ai.AI_USER_PROMPT:
         _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", Config.ai.AI_USER_PROMPT
@@ -72,13 +68,16 @@ def load_user_prompt_template() -> str:
     prompt_file = Config.ai.AI_USER_PROMPT_FILE
     if prompt_file:
         file_path = Path(prompt_file)
-        if not file_path.is_absolute(): file_path = Path(__file__).parent.parent / file_path
+        if not file_path.is_absolute():
+            file_path = Path(__file__).parent.parent / file_path
         if file_path.exists():
             try:
-                with open(file_path, encoding="utf-8") as f: _user_prompt_template = f.read()
+                with open(file_path, encoding="utf-8") as f:
+                    _user_prompt_template = f.read()
                 _user_prompt_source = f"file:{file_path}"
                 return _user_prompt_template
-            except Exception as e: logger.warning(f"从文件加载 prompt 模板失败: {e}")
+            except Exception as e:
+                logger.warning(f"从文件加载 prompt 模板失败: {e}")
 
     _user_prompt_source = "builtin:default"
     _user_prompt_template = """请分析以下 webhook 事件：
@@ -92,7 +91,8 @@ def load_user_prompt_template() -> str:
 
 
 def reload_user_prompt_template() -> str:
-    global _user_prompt_template; _user_prompt_template = None
+    global _user_prompt_template
+    _user_prompt_template = None
     return load_user_prompt_template()
 
 
@@ -104,24 +104,30 @@ def get_cache_key(alert_hash: str) -> str:
 
 
 async def get_cached_analysis(alert_hash: str) -> dict | None:
-    if not Config.ai.CACHE_ENABLED: return None
+    if not Config.ai.CACHE_ENABLED:
+        return None
     try:
         from core.redis_client import get_redis
         r, ck = get_redis(), get_cache_key(alert_hash)
         cached_json = await r.get(ck)
-        if not cached_json: return None
+        if not cached_json:
+            return None
         res = orjson.loads(cached_json)
         counter_key = f"{ck}:hits"
         pipe = r.pipeline()
-        pipe.incr(counter_key); pipe.expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
+        pipe.incr(counter_key)
+        pipe.expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
         hits = (await pipe.execute())[0]
         res.update({"_cache_hit": True, "_cache_hit_count": hits})
         return res
-    except Exception as e: logger.warning(f"读取缓存失败: {e}"); return None
+    except Exception as e:
+        logger.warning(f"读取缓存失败: {e}")
+        return None
 
 
 async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
-    if not Config.ai.CACHE_ENABLED: return False
+    if not Config.ai.CACHE_ENABLED:
+        return False
     try:
         from core.redis_client import get_redis
         r, ck = get_redis(), get_cache_key(alert_hash)
@@ -132,19 +138,32 @@ async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
         pipe.setex(ck, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
         pipe.setex(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
         await pipe.execute()
-        with contextlib.suppress(Exception): await r.publish(f"analysis_done:{alert_hash}", "1")
+        with contextlib.suppress(Exception):
+            await r.publish(f"analysis_done:{alert_hash}", "1")
         return True
-    except Exception as e: logger.warning(f"保存缓存失败: {e}"); return False
+    except Exception as e:
+        logger.warning(f"保存缓存失败: {e}")
+        return False
 
 
-async def log_ai_usage(route_type: str, alert_hash: str, source: str, model: str | None = None, tokens_in: int = 0, tokens_out: int = 0, cache_hit: bool = False) -> None:
+async def log_ai_usage(
+    route_type: str, alert_hash: str, source: str, model: str | None = None,
+    tokens_in: int = 0, tokens_out: int = 0, cache_hit: bool = False
+) -> None:
     try:
         cost = 0.0
         if route_type == "ai" and tokens_in > 0:
-            cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (tokens_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
+            cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
+                tokens_out / 1000
+            ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
         async with session_scope() as session:
-            session.add(AIUsageLog(model=model or policies.ai.OPENAI_MODEL, tokens_in=tokens_in, tokens_out=tokens_out, cost_estimate=cost, cache_hit=cache_hit, route_type=route_type, alert_hash=alert_hash, source=source))
-    except Exception as e: logger.warning(f"记录 AI 使用日志失败: {e}")
+            session.add(AIUsageLog(
+                model=model or policies.ai.OPENAI_MODEL, tokens_in=tokens_in, tokens_out=tokens_out,
+                cost_estimate=cost, cache_hit=cache_hit, route_type=route_type,
+                alert_hash=alert_hash, source=source
+            ))
+    except Exception as e:
+        logger.warning(f"记录 AI 使用日志失败: {e}")
 
 
 # ── LLM 调用 ─────────────────────────────────────────────────────────────
@@ -157,7 +176,10 @@ def _get_instructor_client() -> instructor.Instructor:
     global _openai_client, _instructor_client
     if _instructor_client is None:
         if _openai_client is None:
-            _openai_client = AsyncOpenAI(api_key=policies.ai.OPENAI_API_KEY, base_url=policies.ai.OPENAI_API_URL, http_client=get_http_client(), timeout=httpx.Timeout(60.0, connect=10.0))
+            _openai_client = AsyncOpenAI(
+                api_key=policies.ai.OPENAI_API_KEY, base_url=policies.ai.OPENAI_API_URL,
+                http_client=get_http_client(), timeout=httpx.Timeout(60.0, connect=10.0)
+            )
         _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
     return _instructor_client
 
@@ -179,7 +201,8 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
         temperature=Config.ai.OPENAI_TEMPERATURE, max_retries=2
     )
 
-    t_in, t_out = (completion.usage.prompt_tokens if completion.usage else 0), (completion.usage.completion_tokens if completion.usage else 0)
+    t_in = completion.usage.prompt_tokens if completion.usage else 0
+    t_out = completion.usage.completion_tokens if completion.usage else 0
     cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (t_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
     AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="input").inc(t_in)
     AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="output").inc(t_out)
@@ -187,8 +210,11 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
     return res.to_dict(), t_in, t_out
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=2, max=30, jitter=2), reraise=True,
-       retry=retry_if_exception(lambda e: isinstance(e, (httpx.RequestError, httpx.TimeoutException, ConnectionError, TimeoutError))))
+@retry(
+    stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=2, max=30, jitter=2), reraise=True,
+    retry=retry_if_exception(lambda e: isinstance(e, (httpx.RequestError, httpx.TimeoutException, ConnectionError, TimeoutError))),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
 async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple[dict[str, Any], int, int]:
     start = time.time()
     try:
@@ -196,27 +222,42 @@ async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple
         AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="openai").observe(time.time() - start)
         return res, t_in, t_out
     except Exception as e:
-        OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc(); raise
+        OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
+        raise
 
 
 async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
     try:
-        if not policies.ai.ENABLE_FORWARD or not policies.ai.FORWARD_URL: return
+        if not policies.ai.ENABLE_FORWARD or not policies.ai.FORWARD_URL:
+            return
         from core.redis_client import get_redis
-        if not await get_redis().set("ai_degradation_alert_lock", "1", nx=True, ex=86400): return
-        
-        card = {"msg_type": "interactive", "card": {"header": {"title": {"tag": "plain_text", "content": "⚠️ AI 分析降级通知"}, "template": "orange"}, "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": f"**来源**: {webhook_data.get('source', 'uk')}\n**原因**: {error_reason}"}}]}}
+        if not await get_redis().set("ai_degradation_alert_lock", "1", nx=True, ex=86400):
+            return
+
+        card = {
+            "msg_type": "interactive",
+            "card": {
+                "header": {"title": {"tag": "plain_text", "content": "⚠️ AI 分析降级通知"}, "template": "orange"},
+                "elements": [
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**来源**: {webhook_data.get('source', 'uk')}\n**原因**: {error_reason}"}}
+                ]
+            }
+        }
         await feishu_cb.call_async(get_http_client().post, policies.ai.FORWARD_URL, json=card, timeout=10)
-    except Exception as e: logger.error(f"发送降级通知失败: {e}")
+    except Exception as e:
+        logger.error(f"发送降级通知失败: {e}")
 
 
 # ── 解析与规则分析 ─────────────────────────────────────────────────────────────
 
 
 def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
-    start = time.time()
-    res = {"source": source, "event_type": "unknown", "importance": "medium", "summary": "规则分析（AI 降级）", "actions": ["查看告警详情"], "risks": ["分析可能不准"]}
-    
+    start_time = time.time()
+    res = {
+        "source": source, "event_type": "unknown", "importance": "medium",
+        "summary": "规则分析（AI 降级）", "actions": ["查看告警详情"], "risks": ["分析可能不准"]
+    }
+
     # 极简规则判断
     rule_name = data.get("RuleName") or data.get("alert_name") or "unknown"
     res["event_type"] = rule_name
@@ -224,21 +265,24 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     high_kw = policies.ai.RULE_HIGH_KEYWORDS.lower().split(",")
     if level in high_kw or any(k in rule_name.lower() for k in high_kw):
         res["importance"], res["summary"] = "high", f"🔴 严重告警: {rule_name}"
-    
-    AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="rule").observe(time.time() - start)
+
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="rule").observe(time.time() - start_time)
     return res
 
 
 # ── 主业务逻辑 ─────────────────────────────────────────────────────────────
 
 
-async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False) -> AnalysisResult:
+async def analyze_webhook_with_ai(
+    webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
+) -> AnalysisResult:
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
-    if not alert_hash: alert_hash = WebhookEvent.generate_hash(parsed, source)
+    if not alert_hash:
+        alert_hash = WebhookEvent.generate_hash(parsed, source)
 
     if Config.ai.CACHE_ENABLED and not skip_cache:
         cached = await get_cached_analysis(alert_hash)
-        if cached: 
+        if cached:
             await log_ai_usage("cache", alert_hash, source, cache_hit=True)
             return {**cached, "_route_type": "cache"}
 
@@ -256,7 +300,8 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
     except Exception as e:
         logger.error(f"AI 分析失败: {e}")
         if Config.ai.ENABLE_AI_DEGRADATION:
-            res = analyze_with_rules(parsed, source); res.update({"_degraded": True, "_route_type": "rule"})
+            res = analyze_with_rules(parsed, source)
+            res.update({"_degraded": True, "_route_type": "rule"})
             await _send_degradation_alert(webhook_data, str(e))
             return res
         raise
@@ -267,14 +312,31 @@ async def analyze_webhook_with_ai(webhook_data: WebhookData, alert_hash: str | N
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
     now = datetime.now()
-    start_time = now - timedelta(days=1 if period == "day" else 7 if period == "week" else 30 if period == "month" else 365)
-    
-    total = await count_with_timeout(session, select(func.count(AIUsageLog.id)).filter(AIUsageLog.timestamp >= start_time)) or 0
-    route_stats = (await session.execute(select(AIUsageLog.route_type, func.count(AIUsageLog.id)).filter(AIUsageLog.timestamp >= start_time).group_by(AIUsageLog.route_type))).all()
+    if period == "day":
+        delta = timedelta(days=1)
+    elif period == "week":
+        delta = timedelta(days=7)
+    elif period == "month":
+        delta = timedelta(days=30)
+    else:
+        delta = timedelta(days=365)
+
+    start_time = now - delta
+
+    total_stmt = select(func.count(AIUsageLog.id)).filter(AIUsageLog.timestamp >= start_time)
+    total = await count_with_timeout(session, total_stmt) or 0
+
+    route_stmt = select(AIUsageLog.route_type, func.count(AIUsageLog.id)).filter(
+        AIUsageLog.timestamp >= start_time
+    ).group_by(AIUsageLog.route_type)
+    route_stats = (await session.execute(route_stmt)).all()
     route_breakdown = {r[0]: r[1] for r in route_stats}
-    
-    stats = (await session.execute(select(func.sum(AIUsageLog.tokens_in), func.sum(AIUsageLog.tokens_out), func.sum(AIUsageLog.cost_estimate)).filter(AIUsageLog.timestamp >= start_time))).first()
-    
+
+    stats_stmt = select(
+        func.sum(AIUsageLog.tokens_in), func.sum(AIUsageLog.tokens_out), func.sum(AIUsageLog.cost_estimate)
+    ).filter(AIUsageLog.timestamp >= start_time)
+    stats = (await session.execute(stats_stmt)).first()
+
     return {
         "total_calls": total, "route_breakdown": route_breakdown,
         "tokens": {"input": stats[0] or 0, "output": stats[1] or 0, "total": (stats[0] or 0) + (stats[1] or 0)},
@@ -282,26 +344,44 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
     }
 
 
-async def get_deep_analysis_list(session: AsyncSession, page: int = 1, per_page: int = 20, cursor: int | None = None, status_filter: str = "", engine_filter: str = "", max_page: int = 500):
-    query = select(DeepAnalysis, WebhookEvent.source).outerjoin(WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id).order_by(DeepAnalysis.id.desc())
-    if cursor: query = query.filter(DeepAnalysis.id < cursor)
-    if status_filter: query = query.filter(DeepAnalysis.status == status_filter)
-    
+async def get_deep_analysis_list(
+    session: AsyncSession, page: int = 1, per_page: int = 20, cursor: int | None = None,
+    status_filter: str = "", engine_filter: str = "", max_page: int = 500
+):
+    query = select(DeepAnalysis, WebhookEvent.source).outerjoin(
+        WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id
+    ).order_by(DeepAnalysis.id.desc())
+
+    if cursor:
+        query = query.filter(DeepAnalysis.id < cursor)
+    if status_filter:
+        query = query.filter(DeepAnalysis.status == status_filter)
+    if engine_filter:
+        query = query.filter(DeepAnalysis.engine == engine_filter)
+
     res = await session.execute(query.limit(per_page))
     items = []
     for rec, src in res.all():
-        d = rec.to_dict(); d["source"] = src; items.append(d)
+        d = rec.to_dict()
+        d["source"] = src
+        items.append(d)
     return {"items": items, "per_page": per_page}
 
 
 async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int):
-    res = await session.execute(select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc()))
+    stmt = select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
+    res = await session.execute(stmt)
     return res.scalars().all()
 
 
 async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
     try:
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
-        if not Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK: return
-        await send_feishu_deep_analysis(Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK, {"summary": "分析失败", "root_cause": error}, source, webhook_data.get("id", 0))
-    except Exception as e: logger.error(f"发送失败通知失败: {e}")
+        if not Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+            return
+        await send_feishu_deep_analysis(
+            Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK, {"summary": "分析失败", "root_cause": error},
+            source, webhook_data.get("id", 0)
+        )
+    except Exception as e:
+        logger.error(f"发送失败通知失败: {e}")

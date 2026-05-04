@@ -1,21 +1,20 @@
-"""TaskIQ 异步任务定义 
+"""TaskIQ 异步任务定义
 
 将原有的 Pollers 逻辑转化为 TaskIQ 任务，并支持统一的依赖注入。
 """
 
 import logging
-from datetime import datetime
 
-from taskiq import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import Depends
 
 from core.taskiq_broker import broker
 from db.session import get_db_session
 from services.data_maintenance import archive_old_data_by_policy
-from services.recovery_poller import run_recovery_scan
 from services.forward_retry_poller import poll_pending_retries
-from services.openclaw_poller import poll_pending_analyses
 from services.metrics_poller import refresh_all_metrics
+from services.openclaw_poller import poll_pending_analyses
+from services.recovery_poller import run_recovery_scan
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -57,9 +56,9 @@ async def run_metrics_refresh_task():
 
 @broker.task(task_name="webhook_process_task")
 async def process_webhook_task(
-    event_id: int, 
+    event_id: int,
     client_ip: str | None = None,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session)  # noqa: B008
 ):
     """异步处理单条 Webhook 事件"""
     from services.pipeline import handle_webhook_process

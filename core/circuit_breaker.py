@@ -3,7 +3,7 @@
 import logging
 import time
 from enum import Enum
-from typing import Any, Callable
+from typing import Callable
 
 import httpx
 
@@ -103,7 +103,8 @@ class CircuitBreaker:
 
     async def _check_state_async(self) -> CircuitState:
         r = self._get_redis()
-        if r is None: return CircuitState.CLOSED
+        if r is None:
+            return CircuitState.CLOSED
         try:
             state_str = await r.eval(_CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time()))
             return CircuitState(state_str) if state_str else CircuitState.CLOSED
@@ -113,11 +114,15 @@ class CircuitBreaker:
 
     async def _record_failure(self) -> bool:
         r = self._get_redis()
-        if r is None: return False
+        if r is None:
+            return False
         try:
             open_until_ts = str(time.time() + self.recovery_timeout)
             state_expire = int(self.recovery_timeout * 2) + 1
-            tripped = await r.eval(_CB_RECORD_FAILURE_LUA, 3, self._failures_key, self._state_key, self._open_until_key, str(self.failure_window), str(self.failure_threshold), open_until_ts, str(state_expire))
+            tripped = await r.eval(
+                _CB_RECORD_FAILURE_LUA, 3, self._failures_key, self._state_key, self._open_until_key,
+                str(self.failure_window), str(self.failure_threshold), open_until_ts, str(state_expire)
+            )
             return bool(tripped)
         except Exception as e:
             logger.warning(f"CircuitBreaker [{self.name}] Redis 记录失败异常: {e}")
@@ -125,7 +130,8 @@ class CircuitBreaker:
 
     async def _record_success(self):
         r = self._get_redis()
-        if r is None: return
+        if r is None:
+            return
         try:
             await r.eval(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
         except Exception as e:
@@ -133,7 +139,8 @@ class CircuitBreaker:
 
     async def call_async(self, func: Callable, *args, **kwargs):
         if self.failure_threshold == 0:
-            try: return await func(*args, **kwargs)
+            try:
+                return await func(*args, **kwargs)
             except self.expected_exceptions as e:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
                 return None
@@ -150,7 +157,10 @@ class CircuitBreaker:
         except self.expected_exceptions as e:
             tripped = await self._record_failure()
             if tripped:
-                logger.error(f"CircuitBreaker [{self.name}] 触发熔断: 达到阈值 {self.failure_threshold} 次, 将在 {self.recovery_timeout}s 后恢复")
+                logger.error(
+                    f"CircuitBreaker [{self.name}] 触发熔断: 达到阈值 {self.failure_threshold} 次, "
+                    f"将在 {self.recovery_timeout}s 后恢复"
+                )
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
             return None
 

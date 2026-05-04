@@ -1,10 +1,9 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import delete, insert, select, or_
+from sqlalchemy import delete, insert, or_, select
 
 from core.config import Config
 from db.session import session_scope
@@ -25,25 +24,25 @@ async def archive_old_data_by_policy() -> int:
     total_moved = 0
     try:
         now = datetime.now()
-        
+
         # 1. 构建复合查询条件
         # 我们寻找符合以下任一条件的记录：
         # - 重要性匹配且超过保留天数
         # - 来源匹配且超过保留天数
         # - 超过默认全局保留天数
-        
+
         conditions = []
-        
+
         # 按重要性策略
         for importance, days in Config.maintenance.RETENTION_POLICIES.items():
             threshold = now - timedelta(days=days)
             conditions.append((WebhookEvent.importance == importance) & (WebhookEvent.timestamp < threshold))
-            
+
         # 按来源策略
         for source, days in Config.maintenance.SOURCE_RETENTION_POLICIES.items():
             threshold = now - timedelta(days=days)
             conditions.append((WebhookEvent.source == source) & (WebhookEvent.timestamp < threshold))
-            
+
         # 按关键字匹配策略 (来自 cleanup_general_events.py)
         for field, keywords in Config.maintenance.CLEANUP_KEYWORDS.items():
             for kw in keywords:
@@ -60,7 +59,7 @@ async def archive_old_data_by_policy() -> int:
 
         # 转换为 SQLAlchemy or_ 条件
         # 注意：这里可能产生重叠，但 or_ 会处理
-        combined_filter = or_(*[c for c in conditions])
+        combined_filter = or_(*list(conditions))
 
         batch_limit = 5000
         while True:
@@ -90,7 +89,7 @@ async def archive_old_data_by_policy() -> int:
                         raw = e.raw_payload
                         if isinstance(raw, str):
                             raw = raw.encode("utf-8")
-                        
+
                         archived_records.append({
                             "id": e.id,
                             "source": e.source,
