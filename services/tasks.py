@@ -6,7 +6,7 @@
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import Depends
+from taskiq import TaskiqDepends as Depends
 
 from core.taskiq_broker import broker
 from db.session import get_db_session
