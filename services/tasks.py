@@ -1,16 +1,21 @@
 """TaskIQ 异步任务定义 
 
-将原有的 Pollers 逻辑转化为 TaskIQ 任务。
+将原有的 Pollers 逻辑转化为 TaskIQ 任务，并支持统一的依赖注入。
 """
 
 import logging
 from datetime import datetime
 
+from taskiq import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.taskiq_broker import broker
+from db.session import get_db_session
 from services.data_maintenance import archive_old_data_by_policy
-from services.recovery_poller import RecoveryPoller
+from services.recovery_poller import run_recovery_scan
 from services.forward_retry_poller import poll_pending_retries
 from services.openclaw_poller import poll_pending_analyses
+from services.metrics_poller import refresh_all_metrics
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -27,9 +32,7 @@ async def run_maintenance_task():
 async def run_recovery_task():
     """僵尸事件恢复任务"""
     logger.debug("[Tasks] 执行僵尸事件恢复扫描...")
-    poller = RecoveryPoller()
-    # 直接调用内部恢复逻辑，不再启动循环
-    await poller._do_recover()
+    await run_recovery_scan()
 
 
 @broker.task(task_name="forward_retry_task")
@@ -46,9 +49,19 @@ async def run_openclaw_poll_task():
     await poll_pending_analyses()
 
 
+@broker.task(task_name="metrics_refresh_task")
+async def run_metrics_refresh_task():
+    """刷新系统指标 (DB 状态, 队列堆积等)"""
+    await refresh_all_metrics()
+
+
 @broker.task(task_name="webhook_process_task")
-async def process_webhook_task(event_id: int, client_ip: str | None = None):
+async def process_webhook_task(
+    event_id: int, 
+    client_ip: str | None = None,
+    session: AsyncSession = Depends(get_db_session)
+):
     """异步处理单条 Webhook 事件"""
     from services.pipeline import handle_webhook_process
     logger.info(f"[Tasks] 异步处理 Webhook 事件: ID={event_id}")
-    await handle_webhook_process(event_id=event_id, client_ip=client_ip)
+    await handle_webhook_process(event_id=event_id, client_ip=client_ip, session=session)
