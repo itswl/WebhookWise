@@ -20,7 +20,7 @@ result_backend = RedisAsyncResultBackend(
     redis_url=REDIS_URL,
 )
 
-from taskiq.scheduler import TaskiqScheduler
+from taskiq.scheduler.scheduler import TaskiqScheduler
 
 # 2. 调度器源 (用于管理定时任务)
 schedule_source = RedisScheduleSource(
