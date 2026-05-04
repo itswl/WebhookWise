@@ -233,6 +233,47 @@ class CircuitBreakerConfig(BaseSettings):
     CIRCUIT_BREAKER_FORWARD_TIMEOUT: float = Field(default=30.0)
 
 
+class MaintenanceConfig(BaseSettings):
+    """数据清理 / 归档 / 维护"""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    ENABLE_ARCHIVE_CLEANUP: bool = Field(default=True)
+    ARCHIVE_DAYS_DEFAULT: int = Field(default=30, description="默认归档天数")
+    
+    # 细粒度保留策略 (importance: days)
+    RETENTION_POLICIES: dict[str, int] = Field(
+        default={
+            "high": 90,
+            "medium": 30,
+            "low": 7,
+            "unknown": 3,
+        },
+        description="按重要性配置的保留天数"
+    )
+    
+    # 特定来源保留策略 (source: days)
+    SOURCE_RETENTION_POLICIES: dict[str, int] = Field(
+        default={
+            "prometheus": 30,
+            "grafana": 30,
+            "datadog": 30,
+        },
+        description="按来源配置的保留天数"
+    )
+
+    # 匹配关键字自动清理 (字段: [关键字1, 关键字2])
+    CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
+        default={
+            "summary": ["一般事件:", "测试告警"],
+            "parsed_data": ["一般事件"],
+        },
+        description="匹配特定关键字的记录将被自动归档/清理"
+    )
+
+    MAINTENANCE_HOUR: int = Field(default=3, description="每日维护执行小时 (0-23)")
+
+
 class RetryConfig(BaseSettings):
     """重试 + 去重 + 周期提醒 + 通知冷却 + 锁配置 + 转发重试"""
 
@@ -293,6 +334,8 @@ class _AppConfig(BaseSettings):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
+    maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
+
     @model_validator(mode="after")
     def _validate_cross_fields(self) -> "_AppConfig":
         """跨字段校验，启动时自动执行。"""
@@ -334,7 +377,7 @@ class _AppConfig(BaseSettings):
 
     # ── 向后兼容（已废弃） ──
 
-    _SUB_NAMES = ("server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry")
+    _SUB_NAMES = ("server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry", "maintenance")
 
     def get_flat(self, key: str, default=None):
         """[DEPRECATED] 使用 Config.子配置.字段 替代。"""
