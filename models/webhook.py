@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from adapters.summary_extractors import extract_summary_fields
 from core.compression import compress_payload, decompress_payload
-from db.session import Base
+from db.session import Base, SerializerMixin
 
 _logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
 GENERIC_FIELDS = ["Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"]
 
 
-class WebhookEvent(Base):
+class WebhookEvent(Base, SerializerMixin):
     """Webhook 事件模型"""
 
     __tablename__ = "webhook_events"
@@ -117,61 +117,40 @@ class WebhookEvent(Base):
         self.updated_at = datetime.now()
 
     def to_summary_dict(self):
-        summary = None
         ai_analysis = self.ai_analysis
-        if ai_analysis:
-            summary = ai_analysis.get("summary", "")
-
+        summary = ai_analysis.get("summary", "") if ai_analysis else None
         alert_info = extract_summary_fields(self.source, self.parsed_data)
 
-        return {
-            "id": self.id,
-            "source": self.source,
-            "client_ip": self.client_ip,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "importance": self.importance,
-            "is_duplicate": self.is_duplicate,
-            "duplicate_of": self.duplicate_of,
-            "duplicate_count": self.duplicate_count,
-            "beyond_window": self.beyond_window,
-            "forward_status": self.forward_status,
-            "failure_reason": self.failure_reason,
-            "error_message": self.error_message,
+        # 结合基础 dict 和自定义字段
+        res = self.to_dict()
+        res.update({
             "summary": summary,
             "alert_info": alert_info,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "prev_alert_id": self.prev_alert_id,
-        }
-
-    def to_dict(self, *, include_raw_payload: bool = True):
-        raw_payload = None
-        if include_raw_payload:
-            raw_payload = decompress_payload(self.raw_payload)
-        return {
-            "id": self.id,
-            "source": self.source,
-            "client_ip": self.client_ip,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "raw_payload": raw_payload,
-            "headers": self.headers,
-            "parsed_data": self.parsed_data,
-            "alert_hash": self.alert_hash,
-            "ai_analysis": self.ai_analysis,
-            "importance": self.importance,
-            "processing_status": self.processing_status,
-            "forward_status": self.forward_status,
-            "failure_reason": self.failure_reason,
-            "error_message": self.error_message,
-            "is_duplicate": self.is_duplicate,
-            "duplicate_of": self.duplicate_of,
-            "duplicate_count": self.duplicate_count,
-            "beyond_window": self.beyond_window,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+        })
+        return res
+
+    def to_dict(self, *, include_raw_payload: bool = True, schema_cls: Any = None) -> dict[str, Any]:
+        if schema_cls:
+            return super().to_dict(schema_cls)
+        
+        res = super().to_dict()
+        if include_raw_payload:
+            res["raw_payload"] = decompress_payload(self.raw_payload)
+        else:
+            res.pop("raw_payload", None)
+        
+        # 格式化日期
+        for k in ["timestamp", "created_at", "updated_at", "last_notified_at"]:
+            val = getattr(self, k, None)
+            if isinstance(val, datetime):
+                res[k] = val.isoformat()
+        
+        return res
 
 
-class ArchivedWebhookEvent(Base):
+class ArchivedWebhookEvent(Base, SerializerMixin):
     """已归档的 Webhook 事件模型（历史备份）"""
 
     __tablename__ = "archived_webhook_events"

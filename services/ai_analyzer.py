@@ -296,8 +296,7 @@ async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int):
     result = await session.execute(
         select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
     )
-    records = result.scalars().all()
-    return [r.to_dict() for r in records]
+    return result.scalars().all()
 
 
 async def analyze_webhook_with_ai(

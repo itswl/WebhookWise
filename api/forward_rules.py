@@ -25,19 +25,14 @@ forward_rules_router = APIRouter()
 @forward_rules_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)):
     rules = await get_forward_rules(session)
-    return {"success": True, "data": [r.to_dict() for r in rules]}
+    return {"success": True, "data": rules}
 
 
 @forward_rules_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
 async def create_forward_rule_endpoint(payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
     payload = payload or {}
-    name = payload.get("name", "")
-    if isinstance(name, str):
-        name = name.strip()
-
-    target_type = payload.get("target_type", "")
-    if isinstance(target_type, str):
-        target_type = target_type.strip()
+    name = payload.get("name", "").strip() if isinstance(payload.get("name"), str) else ""
+    target_type = payload.get("target_type", "").strip() if isinstance(payload.get("target_type"), str) else ""
 
     if not name:
         return JSONResponse(status_code=400, content={"success": False, "error": "规则名称不能为空"})
@@ -46,9 +41,7 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
             status_code=400, content={"success": False, "error": "目标类型必须为 feishu/openclaw/webhook"}
         )
     if target_type != "openclaw":
-        target_url = payload.get("target_url", "")
-        if isinstance(target_url, str):
-            target_url = target_url.strip()
+        target_url = payload.get("target_url", "").strip() if isinstance(payload.get("target_url"), str) else ""
         if not target_url:
             return JSONResponse(status_code=400, content={"success": False, "error": "目标地址不能为空"})
 
@@ -65,7 +58,7 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
         target_name=payload.get("target_name", ""),
         stop_on_match=payload.get("stop_on_match", False),
     )
-    return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
+    return {"success": True, "data": rule, "message": "规则创建成功"}
 
 
 @forward_rules_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
@@ -76,7 +69,7 @@ async def update_forward_rule_endpoint(
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
-    return {"success": True, "data": rule.to_dict(), "message": "规则更新成功"}
+    return {"success": True, "data": rule, "message": "规则更新成功"}
 
 
 @forward_rules_router.delete("/api/forward-rules/{rule_id}")
@@ -102,11 +95,9 @@ async def test_forward_rule(rule_id: int, session: AsyncSession = Depends(get_db
 
     if rule.target_type == "openclaw":
         from services.forward import forward_to_openclaw
-
         result = await forward_to_openclaw(test_data, test_analysis)
     else:
         from services.forward import forward_to_remote
-
         result = await forward_to_remote(test_data, test_analysis, target_url=rule.target_url)
 
     return {"success": True, "data": result, "message": "测试完成"}

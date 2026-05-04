@@ -14,10 +14,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from db.session import Base
+from db.session import Base, SerializerMixin
 
 
-class AIUsageLog(Base):
+class AIUsageLog(Base, SerializerMixin):
     """AI 调用成本追踪"""
 
     __tablename__ = "ai_usage_log"
@@ -36,7 +36,7 @@ class AIUsageLog(Base):
     __table_args__ = (Index("idx_usage_timestamp_route", "timestamp", "route_type"),)
 
 
-class DeepAnalysis(Base):
+class DeepAnalysis(Base, SerializerMixin):
     """深度分析历史记录"""
 
     __tablename__ = "deep_analyses"
@@ -53,17 +53,3 @@ class DeepAnalysis(Base):
     openclaw_run_id = Column(String(64), index=True)
     openclaw_session_key = Column(String(200))
     status = Column(String(20), default="completed", index=True)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "webhook_event_id": self.webhook_event_id,
-            "engine": self.engine,
-            "user_question": self.user_question,
-            "analysis_result": self.analysis_result,
-            "duration_seconds": self.duration_seconds,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "openclaw_run_id": self.openclaw_run_id,
-            "openclaw_session_key": self.openclaw_session_key,
-            "status": self.status or "completed",
-        }
