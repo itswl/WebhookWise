@@ -20,6 +20,8 @@ result_backend = RedisAsyncResultBackend(
     redis_url=REDIS_URL,
 )
 
+from taskiq.scheduler import TaskiqScheduler
+
 # 2. 调度器源 (用于管理定时任务)
 schedule_source = RedisScheduleSource(
     url=REDIS_URL,
@@ -30,6 +32,12 @@ broker = ListQueueBroker(
     url=REDIS_URL,
     result_backend=result_backend,
 ).with_result_backend(result_backend)
+
+# 4. 调度器对象
+scheduler = TaskiqScheduler(
+    broker=broker,
+    sources=[schedule_source],
+)
 
 # 4. 依赖注入
 # TaskIQ 使用 taskiq_dependencies 自动处理依赖
