@@ -6,8 +6,7 @@ from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 from pythonjsonlogger import jsonlogger
 
-from core.config import Config
-from core.config_provider import policies
+from core.config import Config, policies
 from core.log_context import get_log_context
 from core.trace import get_trace_id
 

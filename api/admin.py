@@ -6,7 +6,6 @@ from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
-from core.runtime_config import runtime_config
 from crud.webhook import (
     count_dead_letters,
     list_dead_letters,
@@ -80,7 +79,7 @@ async def update_config(payload: dict | None = None):
             return _ok(status=200, message="无需更新")
 
         runtime_updates = {var_name: typed_value for var_name, (_str_val, typed_value) in updates.items()}
-        await runtime_config.save_batch(runtime_updates)
+        await Config.save_batch(runtime_updates)
 
         logger.info(f"配置已更新: {list(updates.keys())}")
         return _ok(status=200, message=f"配置更新成功，已保存 {len(runtime_updates)} 项")

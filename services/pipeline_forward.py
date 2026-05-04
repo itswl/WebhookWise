@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 
 from api import ForwardDecision, NoiseReductionContext, WebhookRequestContext
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from crud.webhook import record_failed_forward
 from db.session import session_scope

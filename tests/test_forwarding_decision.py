@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 from core.config import Config
-from core.runtime_config import _KEY_TO_SUBCONFIG
 from services.pipeline_forward import decide_forwarding
 
 
@@ -14,19 +13,24 @@ class _Event:
 def _set_config(**kwargs):
     originals = {}
     for k in kwargs:
-        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        runtime_info = Config.RUNTIME_KEYS.get(k)
+        sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
             originals[k] = getattr(getattr(Config, sub_name), k)
     for k, v in kwargs.items():
-        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        runtime_info = Config.RUNTIME_KEYS.get(k)
+        sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
+            # 临时使用 set_override 来模拟修改，或者直接修改 Pydantic 对象
+            # 在测试中修改 Pydantic 对象比较简单
             setattr(getattr(Config, sub_name), k, v)
     return originals
 
 
 def _restore_config(originals):
     for k, v in originals.items():
-        sub_name = _KEY_TO_SUBCONFIG.get(k)
+        runtime_info = Config.RUNTIME_KEYS.get(k)
+        sub_name = runtime_info["sub"] if runtime_info else None
         if sub_name:
             setattr(getattr(Config, sub_name), k, v)
 
