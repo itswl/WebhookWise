@@ -18,7 +18,7 @@ from tenacity import (
 )
 
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.logger import logger
 from core.metrics import AI_ANALYSIS_DURATION_SECONDS, sanitize_source
 from services.ai_cache import get_cached_analysis, log_ai_usage, save_to_cache

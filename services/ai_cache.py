@@ -9,7 +9,7 @@ import logging
 import orjson
 
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 
 logger = logging.getLogger("webhook_service.ai_cache")
 

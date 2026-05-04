@@ -1,9 +1,7 @@
 import os
 
 from core.config import Config
-from core.config_provider import policies
 from core.logger import logger
-from core.runtime_config import _KEY_TO_SUBCONFIG
 
 _CONFIG_SCHEMA = {
     "forward_url": ("FORWARD_URL", "str", lambda x: x.startswith("http")),
@@ -79,8 +77,10 @@ def collect_config_updates(payload: dict) -> tuple[dict, list[str]]:
 def get_current_config():
     response = {}
     for field_name, (env_var, _value_type, _validator) in _CONFIG_SCHEMA.items():
-        sub_name = _KEY_TO_SUBCONFIG.get(env_var)
-        value = getattr(getattr(policies, sub_name), env_var, "") if sub_name else ""
+        runtime_info = Config.RUNTIME_KEYS.get(env_var)
+        sub_name = runtime_info["sub"] if runtime_info else None
+        value = getattr(getattr(Config, sub_name), env_var, "") if sub_name else ""
+        
         if env_var == "OPENAI_API_KEY" and value:
             response[field_name] = "已配置"
         else:
@@ -89,10 +89,10 @@ def get_current_config():
 
 
 def get_config_sources():
-    keys = sorted({env_var for env_var, _v, _va in _CONFIG_SCHEMA.values()} | set(_KEY_TO_SUBCONFIG.keys()))
+    keys = sorted(set(Config.RUNTIME_KEYS.keys()))
     items = []
     for key in keys:
-        meta = policies.meta(key)
+        meta = Config.get_meta(key)
         source = meta.get("source")
         if not source:
             source = "env" if os.getenv(key) is not None else "default"

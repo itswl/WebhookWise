@@ -1,7 +1,12 @@
+import asyncio
+import contextlib
+import json
 import logging
 import os
 import socket
+import time
 import warnings as _warnings
+from datetime import datetime
 from functools import lru_cache
 from typing import Any
 
@@ -22,7 +27,6 @@ class ServerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
@@ -30,42 +34,27 @@ class ServerConfig(BaseSettings):
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
     ENABLE_POLLERS: bool = Field(default=True)
-
-    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     LOG_LEVEL: str = Field(default="INFO")
-
-    # [静态] 基础设施配置，修改后需重启生效
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     ENABLE_FILE_BACKUP: bool = Field(default=False)
     JSON_SORT_KEYS: bool = Field(default=False)
     JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
-    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(
-        default=30, description="Webhook 后台处理最大并发数（对齐 DB_POOL_SIZE + DB_MAX_OVERFLOW）"
-    )
-    # [静态] 基础设施配置，修改后需重启生效
-    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(
-        default=30, description="Semaphore 获取超时秒数，超时后 Fail-Closed 放弃处理"
-    )
-    RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60, description="RecoveryPoller 扫描间隔秒数")
-    RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(
-        default=300, description="事件在 received/analyzing 状态超过此秒数视为僵尸"
-    )
-    RECOVERY_POLLER_CONCURRENCY: int = Field(default=5, description="RecoveryPoller 并发恢复数（建议 3-10）")
-    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30, description="优雅停机等待正在运行任务的超时秒数")
-    FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10, description="单个转发请求的超时秒数")
-    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(
-        default=524288,
-        description="超过该字节数的 payload 解码/清洗将使用 asyncio.to_thread() 执行，避免阻塞事件循环",
-    )
+    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
+    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(default=30)
+    RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
+    RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
+    RECOVERY_POLLER_CONCURRENCY: int = Field(default=5)
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
+    FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
+    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
 
-    # [静态] Redis Stream MQ，修改后需重启生效
-    WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue", description="Webhook 消息队列 Redis Stream 名称")
-    WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors", description="Consumer Group 名称")
-    WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, description="每次 XREADGROUP 拉取的最大消息数")
-    WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, description="XREADGROUP 阻塞超时毫秒数")
-    WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000, description="Stream 最大长度（approximate trim）")
-    MQ_CONSUMER_CONCURRENCY: int = Field(default=10, description="Worker 单进程 MQ 消费最大并发处理数")
+    WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
+    WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")
+    WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10)
+    WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000)
+    WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000)
+    MQ_CONSUMER_CONCURRENCY: int = Field(default=10)
 
 
 class SecurityConfig(BaseSettings):
@@ -73,14 +62,13 @@ class SecurityConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
-    ADMIN_WRITE_KEY: str = Field(default="", description="破坏性 Admin 操作单独的 API Key，为空时退回到普通 API_KEY")
+    ADMIN_WRITE_KEY: str = Field(default="")
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
-    REQUIRE_WEBHOOK_AUTH: bool = Field(default=False, description="生产环境强制鉴权，启动时校验 WEBHOOK_SECRET")
+    REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
 
 
 class DBConfig(BaseSettings):
@@ -88,17 +76,13 @@ class DBConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
     DB_POOL_SIZE: int = Field(default=20)
     DB_MAX_OVERFLOW: int = Field(default=30)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
-    DB_STATEMENT_TIMEOUT_MS: int = Field(default=5000, description="SQL 语句超时(ms)")
-    DB_SYNC_COMMIT: str = Field(
-        default="off",
-        description="PostgreSQL synchronous_commit 设置，关闭可提升写入 3-5x，但断电时可能丢失最近 1-2s 数据",
-    )
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=5000)
+    DB_SYNC_COMMIT: str = Field(default="off")
 
 
 class RedisConfig(BaseSettings):
@@ -106,65 +90,49 @@ class RedisConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
-    REDIS_SOCKET_CONNECT_TIMEOUT: int = Field(default=5, description="连接超时秒数")
-    REDIS_SOCKET_TIMEOUT: int = Field(default=10, description="操作超时秒数")
-    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, description="健康检查间隔秒数")
+    REDIS_SOCKET_CONNECT_TIMEOUT: int = Field(default=5)
+    REDIS_SOCKET_TIMEOUT: int = Field(default=10)
+    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30)
 
 
 class AIConfig(BaseSettings):
-    """OpenAI + AI 分析 + 提示词 + 缓存 + 降噪 + 飞书通知 + 转发"""
+    """OpenAI + AI 分析 + 降噪"""
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     ENABLE_AI_ANALYSIS: bool = Field(default=True)
     FORWARD_URL: str = Field(default="")
     ENABLE_FORWARD: bool = Field(default=True)
     OPENAI_API_KEY: str = Field(default="")
     OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
-    AI_SYSTEM_PROMPT: str = Field(
-        default="你是一个专业的 DevOps 和系统运维专家，擅长分析 webhook 事件并提供准确的运维建议。你的职责是：1. 快速识别事件类型和严重程度 2. 提供清晰的问题摘要 3. 给出可执行的处理建议 4. 识别潜在风险和影响范围 5. 建议监控和预防措施 重要：你必须始终返回严格符合 JSON 标准的格式，不要使用注释、尾随逗号或单引号。"
-    )
+    AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
     ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
     NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
     ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
     SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
-    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, description="AI 分析输入 payload 最大字节数")
-    AI_PAYLOAD_STRIP_KEYS: str = Field(
-        default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data",
-        description="AI 分析前移除的噪音字段名，逗号分隔",
-    )
-    RULE_HIGH_KEYWORDS: str = Field(
-        default="error,failure,critical,alert,错误,失败,故障", description="规则降级：高优先级关键字"
-    )
-    RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告", description="规则降级：警告级别关键字")
-    RULE_METRIC_KEYWORDS: str = Field(
-        default="4xxqps,5xxqps,error,cpu,memory,disk", description="规则降级：指标名称关键字"
-    )
-    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, description="规则降级：超阈值倍数提升为 high")
+    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768)
+    AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
+    RULE_HIGH_KEYWORDS: str = Field(default="error,failure,critical,alert,错误,失败,故障")
+    RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告")
+    RULE_METRIC_KEYWORDS: str = Field(default="4xxqps,5xxqps,error,cpu,memory,disk")
+    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0)
 
-    # [静态] 基础设施配置，修改后需重启生效
     ENABLE_AI_DEGRADATION: bool = Field(default=False)
     OPENAI_TEMPERATURE: float = Field(default=0.2)
     OPENAI_MAX_TOKENS: int = Field(default=1800)
     OPENAI_TRUNCATION_RETRY_MAX_TOKENS: int = Field(default=2600)
-    AI_CONTINUATION_ENABLED: bool = Field(
-        default=True, description="是否启用 AI 响应截断自动续写，告警风暴期间可关闭以节省吞吐"
-    )
+    AI_CONTINUATION_ENABLED: bool = Field(default=True)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")
 
-    # AIOps 升级 / 缓存 / 路由
     CACHE_ENABLED: bool = Field(default=True)
     ANALYSIS_CACHE_TTL: int = Field(default=21600)
     SMART_ROUTING_ENABLED: bool = Field(default=True)
     AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003)
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
 
-    # 飞书通知重要性
     IMPORTANCE_CONFIG: dict[str, Any] = Field(
         default={
             "high": {"color": "red", "emoji": "🔴", "text": "高"},
@@ -173,17 +141,12 @@ class AIConfig(BaseSettings):
         }
     )
 
-    # [静态] ChatOps / 飞书，修改后需重启生效
     CHATOPS_ENABLED: bool = Field(default=False)
     FEISHU_BOT_APP_ID: str = Field(default="")
     FEISHU_BOT_APP_SECRET: str = Field(default="")
-
-    # [静态] 深度分析引擎，修改后需重启生效
     DEEP_ANALYSIS_ENGINE: str = Field(default="local")
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
-
-    # [静态] 超时配置，修改后需重启生效
     AI_API_TIMEOUT: int = Field(default=10)
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     FORWARD_TIMEOUT: int = Field(default=10)
@@ -194,26 +157,21 @@ class OpenClawConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     OPENCLAW_ENABLED: bool = Field(default=False)
     OPENCLAW_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
     OPENCLAW_GATEWAY_TOKEN: str = Field(default="")
     OPENCLAW_HOOKS_TOKEN: str = Field(default="")
     OPENCLAW_HTTP_API_URL: str = Field(default="http://127.0.0.1:8085")
     OPENCLAW_TIMEOUT_SECONDS: int = Field(default=300)
-
     OPENCLAW_STABILITY_REQUIRED_HITS: int = Field(default=2)
     OPENCLAW_MIN_WAIT_SECONDS: int = Field(default=30)
     OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=5)
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
-
     OPENCLAW_CONNECT_TIMEOUT: int = Field(default=10)
     OPENCLAW_HANDSHAKE_TIMEOUT: int = Field(default=5)
     OPENCLAW_RECV_TIMEOUT: float = Field(default=1.0)
     OPENCLAW_NONCE_TIMEOUT: float = Field(default=2.0)
     OPENCLAW_POLL_TIMEOUT: int = Field(default=90)
-
-    # OpenClaw Device
     OPENCLAW_DEVICE_ID: str = Field(default="")
     OPENCLAW_DEVICE_PRIVATE_KEY_PEM: str = Field(default="")
     OPENCLAW_DEVICE_TOKEN: str = Field(default="")
@@ -224,7 +182,6 @@ class CircuitBreakerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [静态] 基础设施配置，修改后需重启生效
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT: float = Field(default=30.0)
     CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5)
@@ -239,55 +196,30 @@ class MaintenanceConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     ENABLE_ARCHIVE_CLEANUP: bool = Field(default=True)
-    ARCHIVE_DAYS_DEFAULT: int = Field(default=30, description="默认归档天数")
-    
-    # 细粒度保留策略 (importance: days)
+    ARCHIVE_DAYS_DEFAULT: int = Field(default=30)
     RETENTION_POLICIES: dict[str, int] = Field(
-        default={
-            "high": 90,
-            "medium": 30,
-            "low": 7,
-            "unknown": 3,
-        },
-        description="按重要性配置的保留天数"
+        default={"high": 90, "medium": 30, "low": 7, "unknown": 3}
     )
-    
-    # 特定来源保留策略 (source: days)
     SOURCE_RETENTION_POLICIES: dict[str, int] = Field(
-        default={
-            "prometheus": 30,
-            "grafana": 30,
-            "datadog": 30,
-        },
-        description="按来源配置的保留天数"
+        default={"prometheus": 30, "grafana": 30, "datadog": 30}
     )
-
-    # 匹配关键字自动清理 (字段: [关键字1, 关键字2])
     CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
-        default={
-            "summary": ["一般事件:", "测试告警"],
-            "parsed_data": ["一般事件"],
-        },
-        description="匹配特定关键字的记录将被自动归档/清理"
+        default={"summary": ["一般事件:", "测试告警"], "parsed_data": ["一般事件"]}
     )
-
-    MAINTENANCE_HOUR: int = Field(default=3, description="每日维护执行小时 (0-23)")
+    MAINTENANCE_HOUR: int = Field(default=3)
 
 
 class RetryConfig(BaseSettings):
-    """重试 + 去重 + 周期提醒 + 通知冷却 + 锁配置 + 转发重试"""
+    """重试 + 去重 + 周期提醒"""
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     DUPLICATE_ALERT_TIME_WINDOW: int = Field(default=24)
     FORWARD_DUPLICATE_ALERTS: bool = Field(default=False)
     REANALYZE_AFTER_TIME_WINDOW: bool = Field(default=True)
     FORWARD_AFTER_TIME_WINDOW: bool = Field(default=True)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
-
-    # [静态] 并发与锁配置，修改后需重启生效
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
     PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=200)
@@ -295,14 +227,9 @@ class RetryConfig(BaseSettings):
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
     PROCESSING_LOCK_STORM_KEEP_LATEST_N: int = Field(default=200)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
-    # [动态] 业务策略，运行时由 SystemConfig 热更新覆盖（见 runtime_config.py RUNTIME_KEYS）
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
-
-    # [静态] 保存重试，修改后需重启生效
     SAVE_MAX_RETRIES: int = Field(default=3)
     SAVE_RETRY_DELAY_SECONDS: float = Field(default=0.1)
-
-    # [静态] 转发失败重试补偿，修改后需重启生效
     ENABLE_FORWARD_RETRY: bool = Field(default=True)
     FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
@@ -310,14 +237,14 @@ class RetryConfig(BaseSettings):
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     FORWARD_RETRY_POLL_INTERVAL: int = Field(default=30)
     FORWARD_RETRY_BATCH_SIZE: int = Field(default=100)
-    FORWARD_RETRY_CONCURRENCY: int = Field(default=10, description="转发失败重试并发数（建议 10-20）")
+    FORWARD_RETRY_CONCURRENCY: int = Field(default=10)
 
 
-# ── 顶层组合 ────────────────────────────────────────────────
+# ── 顶层组合与统一管理器 ────────────────────────────────────────────────
 
 
 class _AppConfig(BaseSettings):
-    """应用配置类 — 组合 8 个领域子配置"""
+    """应用配置类 — 组合所有领域子配置"""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -333,106 +260,194 @@ class _AppConfig(BaseSettings):
     openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
-
     maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
+
+    _SUB_NAMES: tuple[str, ...] = (
+        "server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry", "maintenance"
+    )
 
     @model_validator(mode="after")
     def _validate_cross_fields(self) -> "_AppConfig":
-        """跨字段校验，启动时自动执行。"""
-        config_warnings: list[str] = []
-
-        # 强制鉴权校验
         if self.security.REQUIRE_WEBHOOK_AUTH and not self.security.WEBHOOK_SECRET:
-            raise ValueError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空，生产环境必须配置 WEBHOOK_SECRET")
-
-        # 并发数与连接池对齐（警告）
-        max_tasks = self.server.MAX_CONCURRENT_WEBHOOK_TASKS
-        max_db = self.db.DB_POOL_SIZE + self.db.DB_MAX_OVERFLOW
-        if max_tasks > max_db:
-            config_warnings.append(
-                f"MAX_CONCURRENT_WEBHOOK_TASKS({max_tasks}) > "
-                f"DB_POOL_SIZE+DB_MAX_OVERFLOW({max_db})，"
-                "应用并发数超过数据库连接池容量，建议调整"
-            )
-
-        # 非致命警告
-        if not self.security.WEBHOOK_SECRET:
-            config_warnings.append("WEBHOOK_SECRET 未配置，签名验证将被禁用")
-        if not self.security.API_KEY:
-            if self.server.DEBUG or self.security.ALLOW_UNAUTHENTICATED_ADMIN:
-                config_warnings.append("API_KEY 未配置，管理接口将处于公开状态 (仅建议本地使用)")
-            else:
-                config_warnings.append(
-                    "API_KEY 未配置，生产环境不建议启用（建议设置 API_KEY 或开启 ALLOW_UNAUTHENTICATED_ADMIN 仅用于本地）"
-                )
-        # 注意：ENABLE_AI_ANALYSIS / OPENAI_API_KEY / ENABLE_FORWARD / FORWARD_URL
-        # 均为 [动态] 配置，由 RuntimeConfig 从数据库加载后覆盖，
-        # 此处 .env 默认值不代表最终运行值，故不在启动阶段校验。
-
-        if config_warnings:
-            for w in config_warnings:
-                _config_logger.warning("配置警告: %s", w)
-
+            raise ValueError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空")
         return self
-
-    # ── 向后兼容（已废弃） ──
-
-    _SUB_NAMES = ("server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry", "maintenance")
-
-    def get_flat(self, key: str, default=None):
-        """[DEPRECATED] 使用 Config.子配置.字段 替代。"""
-        _warnings.warn(
-            f"get_flat('{key}') 已废弃，请使用层级访问 Config.<子配置>.{key}",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        for sub_name in self._SUB_NAMES:
-            sub = getattr(self, sub_name)
-            if hasattr(sub, key):
-                return getattr(sub, key)
-        return default
-
-    def set_flat(self, key: str, value) -> bool:
-        """[DEPRECATED] 使用 Config.子配置.字段 = value 替代。"""
-        _warnings.warn(
-            f"set_flat('{key}', ...) 已废弃，请使用层级访问 Config.<子配置>.{key} = value",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        for sub_name in self._SUB_NAMES:
-            sub = getattr(self, sub_name)
-            if hasattr(sub, key):
-                setattr(sub, key, value)
-                return True
-        return False
-
-
-# ── 延迟加载 ─────────────────────────────────────────────
-
-Settings = _AppConfig  # 公开类别名
 
 
 @lru_cache
 def get_settings() -> _AppConfig:
-    """延迟初始化配置，首次调用时解析环境变量。"""
     return _AppConfig()
 
 
-def reset_settings() -> None:
-    """清除配置缓存，用于测试和热重载。"""
-    get_settings.cache_clear()
+class _SubConfigView:
+    """子配置视图：支持动态覆盖"""
 
-
-class _ConfigProxy:
-    """延迟代理，首次属性访问时才初始化 Settings。"""
-
-    __slots__ = ()
+    def __init__(self, manager: "_UnifiedConfigManager", sub_name: str, static_sub_config: BaseSettings) -> None:
+        self._manager = manager
+        self._sub_name = sub_name
+        self._static = static_sub_config
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(get_settings(), name)
+        # 1. 优先检查动态覆盖
+        if name in self._manager._overrides:
+            return self._manager._overrides[name]
+        # 2. 回退到静态 Pydantic 配置
+        return getattr(self._static, name)
 
-    def __repr__(self) -> str:
-        return repr(get_settings())
+
+class _UnifiedConfigManager:
+    """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
+
+    RUNTIME_CONFIG_CHANNEL = "webhook:config:updated"
+    
+    # 运行时可变配置定义 (key -> {type, desc})
+    RUNTIME_KEYS = {
+        "FORWARD_URL": {"type": "str", "sub": "ai"},
+        "ENABLE_FORWARD": {"type": "bool", "sub": "ai"},
+        "ENABLE_AI_ANALYSIS": {"type": "bool", "sub": "ai"},
+        "OPENAI_API_KEY": {"type": "str", "sub": "ai"},
+        "OPENAI_API_URL": {"type": "str", "sub": "ai"},
+        "OPENAI_MODEL": {"type": "str", "sub": "ai"},
+        "AI_SYSTEM_PROMPT": {"type": "str", "sub": "ai"},
+        "LOG_LEVEL": {"type": "str", "sub": "server"},
+        "DUPLICATE_ALERT_TIME_WINDOW": {"type": "int", "sub": "retry"},
+        "FORWARD_DUPLICATE_ALERTS": {"type": "bool", "sub": "retry"},
+        "REANALYZE_AFTER_TIME_WINDOW": {"type": "bool", "sub": "retry"},
+        "FORWARD_AFTER_TIME_WINDOW": {"type": "bool", "sub": "retry"},
+        "ENABLE_ALERT_NOISE_REDUCTION": {"type": "bool", "sub": "ai"},
+        "NOISE_REDUCTION_WINDOW_MINUTES": {"type": "int", "sub": "ai"},
+        "ROOT_CAUSE_MIN_CONFIDENCE": {"type": "float", "sub": "ai"},
+        "SUPPRESS_DERIVED_ALERT_FORWARD": {"type": "bool", "sub": "ai"},
+        "RULE_HIGH_KEYWORDS": {"type": "str", "sub": "ai"},
+        "RULE_WARN_KEYWORDS": {"type": "str", "sub": "ai"},
+        "RULE_METRIC_KEYWORDS": {"type": "str", "sub": "ai"},
+        "RULE_THRESHOLD_MULTIPLIER": {"type": "float", "sub": "ai"},
+        "AI_PAYLOAD_MAX_BYTES": {"type": "int", "sub": "ai"},
+        "AI_PAYLOAD_STRIP_KEYS": {"type": "str", "sub": "ai"},
+        "NOTIFICATION_COOLDOWN_SECONDS": {"type": "int", "sub": "retry"},
+    }
+
+    def __init__(self) -> None:
+        self._overrides: dict[str, Any] = {}
+        self._meta: dict[str, dict[str, Any]] = {}
+        self._subscriber_task: asyncio.Task | None = None
+        self._running = False
+
+    def __getattr__(self, name: str) -> Any:
+        settings = get_settings()
+        if hasattr(settings, name):
+            sub = getattr(settings, name)
+            if name in settings._SUB_NAMES:
+                return _SubConfigView(self, name, sub)
+            return sub
+        raise AttributeError(name)
+
+    # ── 动态管理接口 (原 ConfigProvider) ──
+
+    def set_override(self, key: str, value: Any, source: str = "db", updated_by: str | None = None):
+        if value is None:
+            self._overrides.pop(key, None)
+            self._meta.pop(key, None)
+        else:
+            self._overrides[key] = value
+            self._meta[key] = {
+                "source": source,
+                "updated_at": datetime.now(),
+                "updated_by": updated_by
+            }
+
+    def get_meta(self, key: str) -> dict[str, Any]:
+        return self._meta.get(key, {})
+
+    # ── 运行时持久化与同步 (原 RuntimeConfigManager) ──
+
+    async def load_from_db(self):
+        """从数据库加载热更新配置"""
+        try:
+            from crud.webhook import get_all_runtime_configs
+            configs = await get_all_runtime_configs()
+            count = 0
+            for key, row in configs.items():
+                if key in self.RUNTIME_KEYS:
+                    val = self._deserialize(row.value, self.RUNTIME_KEYS[key]["type"])
+                    self.set_override(key, val, source="db", updated_by=row.updated_by)
+                    count += 1
+            _config_logger.info(f"[Config] 从数据库加载 {count} 个热更新配置")
+        except Exception as e:
+            _config_logger.warning(f"[Config] 数据库加载失败: {e}")
+
+    async def save_runtime_config(self, key: str, value: Any, updated_by: str = "api"):
+        if key not in self.RUNTIME_KEYS:
+            raise ValueError(f"不支持热更新的配置: {key}")
+        
+        v_type = self.RUNTIME_KEYS[key]["type"]
+        str_val = self._serialize(value, v_type)
+        
+        from crud.webhook import upsert_runtime_config
+        await upsert_runtime_config(key, str_val, v_type, updated_by)
+        
+        typed_val = self._deserialize(str_val, v_type)
+        self.set_override(key, typed_val, source="db", updated_by=updated_by)
+        await self._publish_change([key])
+
+    async def save_batch(self, updates: dict[str, Any], updated_by: str = "api"):
+        changed_keys = []
+        for key, value in updates.items():
+            if key in self.RUNTIME_KEYS:
+                await self.save_runtime_config(key, value, updated_by)
+                changed_keys.append(key)
+        _config_logger.info(f"[Config] 批量更新完成: {changed_keys}")
+
+    async def _publish_change(self, keys: list[str]):
+        try:
+            from core.redis_client import get_redis
+            r = get_redis()
+            msg = json.dumps({"worker_id": self.server.WORKER_ID, "keys": keys, "ts": time.time()})
+            await r.publish(self.RUNTIME_CONFIG_CHANNEL, msg)
+        except Exception as e:
+            _config_logger.warning(f"[Config] Redis 发布失败: {e}")
+
+    async def start_subscriber(self):
+        if self._running: return
+        self._running = True
+        self._subscriber_task = asyncio.create_task(self._subscribe_loop())
+        _config_logger.info("[Config] 实时同步已启动")
+
+    async def stop_subscriber(self):
+        self._running = False
+        if self._subscriber_task:
+            self._subscriber_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._subscriber_task
+        _config_logger.info("[Config] 实时同步已停止")
+
+    async def _subscribe_loop(self):
+        from core.redis_client import get_redis
+        while self._running:
+            try:
+                r = get_redis()
+                pubsub = r.pubsub()
+                await pubsub.subscribe(self.RUNTIME_CONFIG_CHANNEL)
+                while self._running:
+                    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
+                    if msg and msg["type"] == "message":
+                        data = json.loads(msg["data"])
+                        if data.get("worker_id") != self.server.WORKER_ID:
+                            await self.load_from_db() # 简单处理：重新全量拉取
+                await pubsub.close()
+            except Exception as e:
+                _config_logger.warning(f"[Config] 同步异常，5s后重连: {e}")
+                await asyncio.sleep(5)
+
+    def _serialize(self, v, t: str) -> str:
+        if t == "bool": return str(bool(v)).lower()
+        return str(v)
+
+    def _deserialize(self, v: str, t: str) -> Any:
+        if t == "bool": return v.lower() in ("true", "1", "yes")
+        if t == "int": return int(v)
+        if t == "float": return float(v)
+        return v
 
 
-Config = _ConfigProxy()
+Config = _UnifiedConfigManager()
+policies = Config # 保持向下兼容

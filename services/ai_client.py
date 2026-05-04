@@ -13,7 +13,7 @@ import yaml
 from openai import AsyncOpenAI
 
 from core.config import Config
-from core.config_provider import policies
+from core.config import policies
 from core.http_client import get_http_client
 from core.metrics import AI_COST_USD_TOTAL, AI_TOKENS_TOTAL, OPENAI_ERRORS_TOTAL
 from core.redis_client import get_redis
