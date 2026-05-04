@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class Importance(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class WebhookAnalysisResult(BaseModel):
+    """AI 分析结果模型"""
+
+    source: str = Field(description="来源系统名称")
+    event_type: str = Field(description="详细的事件类型/名称")
+    importance: Importance = Field(description="事件重要程度", default=Importance.MEDIUM)
+    summary: str = Field(description="事件摘要（中文，50字内，包含关键指标或报错信息）")
+    impact_scope: str | None = Field(None, description="影响范围评估")
+    actions: list[str] = Field(default_factory=list, description="建议的响应操作列表")
+    risks: list[str] = Field(default_factory=list, description="潜在的关联风险列表")
+    monitoring_suggestions: list[str] = Field(default_factory=list, description="后续的监控优化建议")
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
 
 
 class DeepAnalysisRecord(BaseModel):
