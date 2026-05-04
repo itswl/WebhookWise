@@ -90,6 +90,12 @@ async def run_worker():
         interval=30,
     )
 
+    # 5. 指标刷新 (每 15s)
+    await broker.task("metrics_refresh_task").schedule(
+        schedule_source,
+        interval=15,
+    )
+
     logger.info("[Worker] 正在运行任务消费者...")
     # 注意：这里我们通常直接运行 'taskiq worker core.taskiq_broker:broker' 命令行
     # 如果要编程式启动，可以调用 Receiver

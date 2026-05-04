@@ -54,12 +54,8 @@ async def lifespan(app: FastAPI):
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
     
-    metrics_poller = MetricsPoller()
-    await metrics_poller.start()
-    
     yield
     
-    await metrics_poller.stop()
     await broker.shutdown()
     
     # 优雅等待正在运行的任务
