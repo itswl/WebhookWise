@@ -4,7 +4,7 @@ import redis.asyncio as redis
 
 from core.config import Config
 from core.logger import logger
-from core.utils import mask_url
+from core.logger import mask_url
 
 _redis_client: redis.Redis | None = None
 

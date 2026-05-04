@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import declarative_base
 
 from core.config import Config
-from core.utils import mask_url
+from core.logger import mask_url
 
 _logger = logging.getLogger(__name__)
 

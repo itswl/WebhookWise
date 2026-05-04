@@ -15,7 +15,7 @@ from core.config import Config
 from core.config import policies
 from core.http_client import get_http_client
 from core.trace import get_trace_id
-from core.utils import forward_cb, openclaw_cb
+from core.circuit_breaker import forward_cb, openclaw_cb
 
 logger = logging.getLogger("webhook_service.forward")
 

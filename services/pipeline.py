@@ -35,7 +35,7 @@ from core.metrics import (
     sanitize_source,
 )
 from core.trace import generate_trace_id, set_trace_id
-from core.utils import generate_alert_hash, processing_lock
+from core.distributed_lock import processing_lock
 from core.compression import decompress_payload_async
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
@@ -280,7 +280,7 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
         WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
         req_ctx = _parse_request(client_ip, headers, payload or {}, raw_body, source, event_ts)
-        alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
+        alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
         set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
 
         async with processing_lock(alert_hash) as lock_res:

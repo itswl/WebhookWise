@@ -3,11 +3,12 @@
 测试同一规则的不同告警实例
 """
 
+import os
 import sys
 
-sys.path.insert(0, "/Users/imwl/webhooks")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.utils import generate_alert_hash
+from models.webhook import WebhookEvent
 
 # 告警1 - 04:47:04 触发，当前值 3.39
 alert1 = {
@@ -59,8 +60,8 @@ alert2 = {
     "alertingRuleName": "自定义 ns-hs-sh-prod-k8s Ingress-Nginx 请求时延过高",
 }
 
-hash1 = generate_alert_hash(alert1, "volcengine-prometheus")
-hash2 = generate_alert_hash(alert2, "volcengine-prometheus")
+hash1 = WebhookEvent.generate_hash(alert1, "volcengine-prometheus")
+hash2 = WebhookEvent.generate_hash(alert2, "volcengine-prometheus")
 
 print("=" * 100)
 print("告警对比分析")
@@ -120,7 +121,7 @@ internal_label_alert_id 是每次告警触发时生成的唯一ID，
   ✓ alertingRuleName - 告警规则名称
   ✓ alertname - 告警规则ID
   ✓ host/pod/instance - 资源标识
-  ✓ path/method - 请求路径和方法
+  ✓ path/method - 请求路径 and 方法
   ✓ fingerprint - Prometheus 生成的指纹
 
 应该移除的字段（不用于去重）:

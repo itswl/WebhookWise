@@ -1,3 +1,4 @@
+import hashlib
 import hmac
 import time
 
@@ -7,7 +8,6 @@ from api import InvalidSignatureError
 from core.config import Config
 from core.logger import logger
 from core.redis_client import get_redis
-from core.utils import verify_signature
 from services.webhook_orchestrator import get_client_ip
 
 _INCR_EXPIRE_IF_FIRST_LUA = """
@@ -17,6 +17,24 @@ if c == 1 then
 end
 return c
 """
+
+
+def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:
+    """验证 webhook 签名"""
+    if secret is None:
+        secret = Config.security.WEBHOOK_SECRET
+
+    if not secret:
+        return False
+
+    expected_signature = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    result = hmac.compare_digest(expected_signature, signature)
+    if not result:
+        logger.warning("[Auth] 签名比对不匹配")
+    else:
+        logger.debug("[Auth] 签名验证通过")
+    return result
 
 
 def extract_token(headers: dict) -> str:

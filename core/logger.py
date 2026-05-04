@@ -4,11 +4,24 @@ import queue
 import sys
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
+from urllib.parse import urlparse
+
 from pythonjsonlogger import jsonlogger
 
 from core.config import Config, policies
 from core.log_context import get_log_context
 from core.trace import get_trace_id
+
+
+def mask_url(url: str) -> str:
+    """安全脱敏 URL，移除用户名和密码。"""
+    try:
+        parsed = urlparse(url)
+        if parsed.hostname:
+            port = f":{parsed.port}" if parsed.port else ""
+            return f"{parsed.scheme}://***@{parsed.hostname}{port}{parsed.path}"
+        return "***"
+    except Exception: return "***"
 
 
 class TraceIdFilter(logging.Filter):

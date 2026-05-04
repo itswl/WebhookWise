@@ -1,16 +1,17 @@
 from datetime import datetime
 
+from models.webhook import WebhookEvent
 from services.webhook_orchestrator import SaveWebhookResult
-from services.event_builder import build_event
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():
-    event = build_event(
+    event = WebhookEvent()
+    event.fill_fields(
         source="test",
         client_ip="127.0.0.1",
         raw_payload=b"{}",
         headers={},
-        data={},
+        parsed_data={},
         alert_hash="abc",
         ai_analysis={"importance": "high"},
         importance="high",

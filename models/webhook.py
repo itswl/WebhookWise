@@ -1,6 +1,9 @@
+import hashlib
 import logging
 from datetime import datetime
+from typing import Any
 
+import orjson
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -14,10 +17,17 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from adapters.summary_extractors import extract_summary_fields
-from core.compression import decompress_payload
+from core.compression import compress_payload, decompress_payload
 from db.session import Base
 
 _logger = logging.getLogger(__name__)
+
+
+# ====== 告警哈希字段配置 ======
+PROMETHEUS_ROOT_FIELDS = ["alertingRuleName"]
+PROMETHEUS_LABEL_FIELDS = ["alertname", "internal_label_alert_level", "host", "instance", "pod", "namespace", "service", "path", "method"]
+PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
+GENERIC_FIELDS = ["Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"]
 
 
 class WebhookEvent(Base):
@@ -65,6 +75,46 @@ class WebhookEvent(Base):
         Index("idx_status_created", "processing_status", "created_at"),
         Index("idx_source_timestamp_id", "source", "timestamp", "id"),
     )
+
+    @staticmethod
+    def generate_hash(data: dict[str, Any], source: str) -> str:
+        """生成告警哈希"""
+        key_fields = {"source": source}
+        if isinstance(data, dict):
+            if "alerts" in data and isinstance(data.get("alerts"), list) and data["alerts"]:
+                # Prometheus
+                key_fields.update({f: data[f] for f in PROMETHEUS_ROOT_FIELDS if f in data})
+                labels = data["alerts"][0].get("labels", {})
+                if isinstance(labels, dict):
+                    key_fields.update({f: labels[f] for f in PROMETHEUS_LABEL_FIELDS if f in labels})
+                key_fields.update({f: data["alerts"][0][f] for f in PROMETHEUS_ALERT_FIELDS if f in data["alerts"][0]})
+            else:
+                # Generic
+                key_fields.update({f: data[f] for f in GENERIC_FIELDS if f in data})
+                resources = data.get("Resources", [])
+                if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+                    rid = resources[0].get("InstanceId") or resources[0].get("Id") or resources[0].get("id")
+                    if rid: key_fields["resource_id"] = rid
+                    dims = resources[0].get("Dimensions", [])
+                    if isinstance(dims, list):
+                        important = {"Node", "ResourceID", "Instance", "InstanceId", "Host", "Pod", "Container"}
+                        for d in dims:
+                            if isinstance(d, dict) and d.get("Name") in important and d.get("Value"):
+                                key_fields[f"dim_{d['Name'].lower()}"] = d["Value"]
+        
+        return hashlib.sha256(orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS)).hexdigest()
+
+    def fill_fields(self, **kwargs):
+        """统一填充字段"""
+        for k, v in kwargs.items():
+            if k == "raw_payload" and isinstance(v, bytes):
+                try: v = compress_payload(v.decode("utf-8"))
+                except Exception: pass
+            if k == "headers" and v is not None: v = dict(v)
+            if hasattr(self, k): setattr(self, k, v)
+        if not self.timestamp: self.timestamp = datetime.now()
+        if not self.created_at: self.created_at = datetime.now()
+        self.updated_at = datetime.now()
 
     def to_summary_dict(self):
         summary = None
