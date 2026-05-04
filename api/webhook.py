@@ -293,16 +293,11 @@ async def receive_webhook(
     # 更新为 event_id 格式的 trace_id
     set_trace_id(generate_trace_id(event_id=event_id))
 
-    # 通过 Redis Stream 投递给 Worker 异步处理
-    redis = get_redis()
-    # CRITICAL: xadd 必须在 session.commit() 之后执行，
-    # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
-    await redis.xadd(
-        Config.server.WEBHOOK_MQ_QUEUE,
-        {"event_id": str(event_id), "client_ip": client_ip or ""},
-        maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
-        approximate=True,
-    )
+    # 使用 TaskIQ 异步处理事件
+    from services.tasks import process_webhook_task
+    # kiq() 是 TaskIQ 的异步发送方法
+    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
+    
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event_id},
@@ -349,16 +344,10 @@ async def receive_webhook_with_source(
     # 更新为 event_id 格式的 trace_id
     set_trace_id(generate_trace_id(event_id=event_id))
 
-    # 通过 Redis Stream 投递给 Worker 异步处理
-    redis = get_redis()
-    # CRITICAL: xadd 必须在 session.commit() 之后执行，
-    # 否则 Worker 可能读到未提交的脏数据。禁止调换顺序。
-    await redis.xadd(
-        Config.server.WEBHOOK_MQ_QUEUE,
-        {"event_id": str(event_id), "client_ip": client_ip or ""},
-        maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
-        approximate=True,
-    )
+    # 使用 TaskIQ 异步处理事件
+    from services.tasks import process_webhook_task
+    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
+
     return JSONResponse(
         status_code=202,
         content={"success": True, "message": "Webhook received and queued for processing", "event_id": event_id},

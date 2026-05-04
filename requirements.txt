@@ -20,6 +20,8 @@ prometheus-fastapi-instrumentator==7.0.0
 alembic==1.18.4
 tenacity>=8.2.0
 instructor==1.1.0
+taskiq==0.12.2
+taskiq-redis==1.2.2
 uvloop>=0.19.0
 hiredis>=2.0.0
 httptools>=0.6.0
