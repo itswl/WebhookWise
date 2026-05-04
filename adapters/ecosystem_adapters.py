@@ -162,6 +162,7 @@ def register_simple_adapters():
     def _norm_pagerduty(data: dict) -> dict:
         inc = data.get("incident", {})
         evt = data.get("event", {})
+        alert_id = inc.get("id") or evt.get("data", {}).get("id")
         title = _pick_first(
             inc.get("title"), evt.get("data", {}).get("title"),
             data.get("description"), "pagerduty_incident"
@@ -170,7 +171,8 @@ def register_simple_adapters():
         res.update({
             "Type": "PagerDutyEvent", "RuleName": title,
             "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
-            "event": evt.get("event_type", "alert")
+            "event": evt.get("event_type", "alert"),
+            "alert_id": alert_id
         })
         return res
 

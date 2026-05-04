@@ -31,7 +31,7 @@ async def mock_session_scope(monkeypatch):
         return Session()
 
     # 替换数据库连接
-    monkeypatch.setattr("services.webhook_orchestrator.session_scope", mock_session_scope)
+    monkeypatch.setattr("services.webhook_orchestrator.session_scope", _mock_session_scope)
 
     # 插入一些测试数据
     async with Session() as session:
@@ -54,7 +54,10 @@ async def mock_session_scope(monkeypatch):
 async def test_get_all_webhooks_pagination(mock_session_scope, monkeypatch):
     # 注入 mock session
     from db import session as db_session
-    monkeypatch.setattr(db_session, "_session_factory", mock_session_scope)
+    def _mock_session_factory():
+        return mock_session_scope()
+
+    monkeypatch.setattr(db_session, "_session_factory", _mock_session_factory)
 
     # 测试第一页
     webhooks, total, next_cursor = await get_all_webhooks(cursor_id=None, page_size=5)
