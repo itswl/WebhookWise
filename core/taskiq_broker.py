@@ -49,3 +49,28 @@ if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
     logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
 else:
     logger.info(f"[TaskIQ] 已初始化 Redis Broker: {REDIS_URL}")
+
+@broker.on_event("startup")
+async def startup_event(state: dict):
+    """Worker 启动时的生命周期事件"""
+    from db.session import init_engine
+    from core.http_client import get_http_client
+    from core.config import Config
+    
+    # 确保数据库已初始化
+    await init_engine()
+    # 确保配置和 HTTP 客户端已初始化
+    get_http_client()
+    await Config.load_from_db()
+    await Config.start_subscriber()
+
+@broker.on_event("shutdown")
+async def shutdown_event(state: dict):
+    """Worker 关闭时的生命周期事件"""
+    from db.session import dispose_engine
+    from core.http_client import close_http_client
+    from core.config import Config
+    
+    await Config.stop_subscriber()
+    await dispose_engine()
+    await close_http_client()
