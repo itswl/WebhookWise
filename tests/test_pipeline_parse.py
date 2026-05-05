@@ -5,10 +5,10 @@ tests/test_pipeline_parse.py
 这两个函数处理进入系统的第一道数据解析，错误会导致事件完全丢失。
 """
 
-import pytest
-import orjson
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import orjson
+import pytest
 
 # ── _parse_request ─────────────────────────────────────────────────────────
 

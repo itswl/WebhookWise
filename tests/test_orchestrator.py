@@ -7,10 +7,8 @@ tests/test_orchestrator.py
 - _row_to_summary_dict()：行数据序列化
 """
 
-import pytest
-from unittest.mock import MagicMock
 from datetime import datetime
-
+from unittest.mock import MagicMock
 
 # ── get_client_ip ─────────────────────────────────────────────────────────────
 

@@ -7,11 +7,8 @@ tests/test_noise_reduction_core.py
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from services.alert_noise_reduction import (
     AlertContext,
-    NoiseReductionDecision,
     _extract_resource_ids,
     _jaccard,
     _tokenize_text,
