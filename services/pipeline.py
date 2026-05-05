@@ -19,10 +19,13 @@ from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
+    WEBHOOK_DEAD_LETTER_TOTAL,
+    WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
+    WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
 from core.trace import generate_trace_id, set_trace_id
@@ -466,6 +469,8 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             if getattr(lock_res, "suppressed", False):
                 logger.info("[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s",
                             event_id, getattr(lock_res, "queue_size", 0))
+                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
+                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
                 noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
                 await save_webhook_data(
                     data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
@@ -532,6 +537,12 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             event_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
         )
 
+        WEBHOOK_NOISE_REDUCED_TOTAL.labels(
+            source=metric_source,
+            relation=noise_relation,
+            suppressed=str(noise.suppress_forward).lower() if noise else "false",
+        ).inc()
+
         outcome = "completed"
         set_log_context(processing_status="completed")
         WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
@@ -546,7 +557,9 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             ))
         if status == "dead_letter":
             await _send_dead_letter_alert(event_id, 0, e)
+            WEBHOOK_DEAD_LETTER_TOTAL.inc()
         outcome = "retry" if retryable else "dead_letter"
+        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
         logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
     finally:
         duration = time.perf_counter() - start_perf

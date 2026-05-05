@@ -15,6 +15,7 @@ from sqlalchemy.orm import defer
 
 from core.config import Config
 from core.distributed_lock import DistributedLock
+from core.metrics import FORWARD_RETRY_TOTAL
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
 
@@ -128,6 +129,7 @@ async def _retry_forward(session, record: FailedForward):
             record.status = "success"
             record.last_retry_at = now
             record.updated_at = now
+            FORWARD_RETRY_TOTAL.labels(status="success").inc()
             logger.info(f"[ForwardRetry] 重试成功: ID={record.id}, webhook_event_id={record.webhook_event_id}")
         else:
             _handle_retry_failure(record, now, f"forward status={status}: {result.get('message', '')}")
@@ -147,11 +149,13 @@ def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
 
     if record.retry_count >= record.max_retries:
         record.status = "exhausted"
+        FORWARD_RETRY_TOTAL.labels(status="exhausted").inc()
         logger.warning(
             f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, retry_count={record.retry_count}/{record.max_retries}"
         )
     else:
         record.status = "retrying"
+        FORWARD_RETRY_TOTAL.labels(status="failed").inc()
         # 指数退避：min(initial_delay * multiplier^(retry_count-1), max_delay)
         delay = min(
             Config.retry.FORWARD_RETRY_INITIAL_DELAY

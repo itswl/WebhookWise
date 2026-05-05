@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
+from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
@@ -64,6 +65,8 @@ async def receive_webhook(
 
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
+        src = sanitize_source(source or request.headers.get("x-webhook-source", "unknown"))
+        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rejected_size").inc()
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
 
     client_ip = get_client_ip(request)
@@ -103,6 +106,7 @@ async def receive_webhook_with_source(
 
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
+        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="rejected_size").inc()
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
 
     client_ip = get_client_ip(request)
