@@ -1,13 +1,13 @@
 """TaskIQ Broker 配置
 
-定义异步任务代理，支持定时任务 (Schedule) 和分布式执行。
+定义异步任务代理（仅用于 webhook_process_task 队列消费）。
+所有定时轮询任务均由 receiver 进程的 asyncio 循环驱动。
 """
 
 import logging
 
 from taskiq import InMemoryBroker
-from taskiq.scheduler.scheduler import TaskiqScheduler
-from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend, RedisScheduleSource
+from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 from core.config import Config
 
@@ -16,26 +16,15 @@ logger = logging.getLogger("webhook_service.taskiq")
 # Redis 连接配置
 REDIS_URL = Config.redis.REDIS_URL
 
-# 1. 结果后端 (用于获取任务返回值)
+# 1. 结果后端
 result_backend = RedisAsyncResultBackend(
     redis_url=REDIS_URL,
 )
 
-# 2. 调度器源 (用于管理定时任务)
-schedule_source = RedisScheduleSource(
-    url=REDIS_URL,
-)
-
-# 3. 异步任务代理
+# 2. 异步任务代理
 broker = ListQueueBroker(
     url=REDIS_URL,
 ).with_result_backend(result_backend)
-
-# 4. 调度器对象
-scheduler = TaskiqScheduler(
-    broker=broker,
-    sources=[schedule_source],
-)
 
 # 在测试环境下可以切换为 InMemoryBroker
 if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
@@ -55,19 +44,11 @@ async def startup_event():
 
     # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
     setup_logger()
-    # 确保数据库已初始化
     await init_engine()
-    # 确保配置和 HTTP 客户端已初始化
     get_http_client()
     await Config.load_from_db()
     await Config.start_subscriber()
-    # 注册定时任务（幂等，每次 worker 启动时覆盖写入）
-    try:
-        from worker import _register_schedules
-        await _register_schedules()
-    except Exception as _e:
-        logger.warning("[TaskIQ] 定时任务注册失败: %s", _e)
-    # 启动时立即执行一次 recovery，捞起重启前遗留的僵尸事件（不受阈值限制）
+    # 启动时立即执行一次 recovery，捞起重启前遗留的僵尸事件
     try:
         from services.recovery_poller import run_recovery_scan
         await run_recovery_scan(stuck_threshold_seconds=0)

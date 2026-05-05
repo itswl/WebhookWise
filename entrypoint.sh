@@ -38,9 +38,7 @@ exit(0 if asyncio.run(_check()) else 1)" 2>/dev/null; then
         echo "❌ Worker: 数据库连接超时，启动失败"
         exit 1
     fi
-    # 启动 TaskIQ Worker (并发由 --workers 指定)
-    # 同时在后台启动 Scheduler
-    taskiq scheduler core.taskiq_broker:scheduler services.tasks &
+    # 启动 TaskIQ Worker (所有定时轮询任务已迁移至 receiver 进程的 asyncio 循环)
     exec taskiq worker core.taskiq_broker:broker services.tasks
 fi
 
