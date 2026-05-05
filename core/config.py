@@ -355,6 +355,10 @@ class _UnifiedConfigManager:
                 "updated_at": datetime.now(),
                 "updated_by": updated_by
             }
+        if key == "LOG_LEVEL":
+            import logging
+            level = getattr(logging, str(value or "INFO").upper(), logging.INFO)
+            logging.getLogger("webhook_service").setLevel(level)
 
     def get_meta(self, key: str) -> dict[str, Any]:
         return self._meta.get(key, {})
