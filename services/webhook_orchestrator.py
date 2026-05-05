@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
+from core.config import Config
 from core.logger import logger
 from db.session import session_scope
 from models import WebhookEvent
@@ -179,13 +180,20 @@ async def get_all_webhooks(
 async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict]:
     stmt = select(
         WebhookEvent.id, WebhookEvent.source, WebhookEvent.timestamp,
-        WebhookEvent.alert_hash, WebhookEvent.importance, WebhookEvent.retry_count,
-        WebhookEvent.processing_status
+        WebhookEvent.created_at, WebhookEvent.alert_hash, WebhookEvent.importance,
+        WebhookEvent.retry_count, WebhookEvent.processing_status
     ).where(WebhookEvent.processing_status == "dead_letter").order_by(WebhookEvent.id.desc()).offset(
         (page - 1) * page_size
     ).limit(page_size)
     result = await session.execute(stmt)
-    return [dict(row._mapping) for row in result.all()]
+    rows = []
+    for row in result.all():
+        d = dict(row._mapping)
+        for k in ("timestamp", "created_at"):
+            if isinstance(d.get(k), datetime):
+                d[k] = d[k].isoformat()
+        rows.append(d)
+    return rows
 
 
 async def count_dead_letters(session: AsyncSession) -> int | None:
@@ -214,7 +222,14 @@ async def list_stuck_events(
         WebhookEvent.created_at < threshold
     ).order_by(WebhookEvent.created_at.asc()).limit(limit)
     res = await session.execute(stmt)
-    return [dict(row._mapping) for row in res.all()]
+    rows = []
+    for row in res.all():
+        d = dict(row._mapping)
+        for k in ("created_at", "updated_at"):
+            if isinstance(d.get(k), datetime):
+                d[k] = d[k].isoformat()
+        rows.append(d)
+    return rows
 
 
 async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
@@ -377,7 +392,7 @@ async def save_webhook_data(
     try:
         async with session_scope() as session:
             if is_duplicate is None:
-                check = await WebhookEvent.check_duplicate(alert_hash, session=session)
+                check = await WebhookEvent.check_duplicate(alert_hash, session=session, time_window_hours=Config.retry.DUPLICATE_ALERT_TIME_WINDOW)
                 is_duplicate, original_event, beyond_window = check.is_duplicate, check.original_event, check.beyond_window
             if is_duplicate and original_event:
                 saved = await _save_duplicate_event(

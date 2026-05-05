@@ -63,6 +63,12 @@ async def startup_event():
     get_http_client()
     await Config.load_from_db()
     await Config.start_subscriber()
+    # 注册定时任务（幂等，每次 worker 启动时覆盖写入）
+    try:
+        from worker import _register_schedules
+        await _register_schedules()
+    except Exception as _e:
+        logger.warning("[TaskIQ] 定时任务注册失败: %s", _e)
 
 @broker.on_event("shutdown")
 async def shutdown_event():
