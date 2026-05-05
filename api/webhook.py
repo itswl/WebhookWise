@@ -124,7 +124,7 @@ async def receive_webhook_with_source(
 @webhook_router.get("/api/webhooks", response_model=WebhookListResponse)
 async def get_webhooks_endpoint(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     cursor: int | None = Query(None, alias="cursor_id"),
     importance: str = Query(""),
     source: str = Query(""),
