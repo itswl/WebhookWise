@@ -41,12 +41,12 @@ def build_feishu_card(
 
     # AI 分析字段
     summary = analysis_result.get("summary", "")
-    impact = analysis_result.get("impact", "") or analysis_result.get("影响范围", "")
-    suggestion = (
-        analysis_result.get("suggestion", "")
-        or analysis_result.get("action", "")
-        or analysis_result.get("建议操作", "")
-    )
+    impact = analysis_result.get("impact_scope", "") or analysis_result.get("impact", "")
+    actions = analysis_result.get("actions") or []
+    if isinstance(actions, list):
+        suggestion = "\n".join(f"{i+1}. {a}" for i, a in enumerate(actions) if a) if actions else ""
+    else:
+        suggestion = str(actions)
 
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 Webhook 事件通知"
