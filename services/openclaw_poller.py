@@ -137,9 +137,7 @@ async def poll_pending_analyses():
     lock = DistributedLock(key=lock_key, ttl=60, lock_value=str(uuid.uuid4()))
     async with lock as acquired:
         if not acquired:
-            logger.debug("[Poller] 另一个 worker 的轮询正在执行，跳过本轮")
             return
-        logger.debug("[Poller] 开始轮询 pending 分析记录")
         try:
             await _poll_pending_analyses_inner()
         except Exception as e:
