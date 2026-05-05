@@ -30,7 +30,6 @@ schedule_source = RedisScheduleSource(
 # 3. 异步任务代理
 broker = ListQueueBroker(
     url=REDIS_URL,
-    result_backend=result_backend,
 ).with_result_backend(result_backend)
 
 # 4. 调度器对象
