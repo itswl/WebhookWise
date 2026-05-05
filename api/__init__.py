@@ -4,9 +4,16 @@ api/__init__.py
 共享 dataclass 和响应工具，所有 route 模块共用。
 """
 
-from dataclasses import dataclass, field
-
 from fastapi.responses import JSONResponse
+
+# dataclass 定义已移到 services/types.py，此处重新导出保持兼容
+from services.types import (  # noqa: F401
+    AnalysisResolution,
+    ForwardDecision,
+    NoiseReductionContext,
+    PersistedEventContext,
+    WebhookRequestContext,
+)
 
 # ── 异常类 ──────────────────────────────────────────────────────────────────
 
@@ -21,54 +28,6 @@ class InvalidSignatureError(WebhookRequestError):
 
 class InvalidJsonError(WebhookRequestError):
     """JSON 解析失败。"""
-
-
-# ── Dataclass ────────────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class AnalysisResolution:
-    analysis_result: dict
-    reanalyzed: bool
-    is_duplicate: bool
-    original_event: object | None  # WebhookEvent
-    beyond_window: bool
-    is_reused: bool = False  # True 表示从 Redis 缓存复用其他 Worker 的分析结果
-
-
-@dataclass(frozen=True)
-class WebhookRequestContext:
-    client_ip: str
-    source: str
-    payload: bytes
-    parsed_data: dict
-    webhook_full_data: dict
-    headers: dict = field(default_factory=dict)
-
-
-@dataclass
-class ForwardDecision:
-    should_forward: bool
-    skip_reason: str | None
-    is_periodic_reminder: bool
-    matched_rules: list = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class NoiseReductionContext:
-    relation: str
-    root_cause_event_id: int | None
-    confidence: float
-    suppress_forward: bool
-    reason: str
-    related_alert_count: int
-    related_alert_ids: list[int]
-
-
-@dataclass(frozen=True)
-class PersistedEventContext:
-    save_result: object  # SaveWebhookResult
-    noise_context: NoiseReductionContext
 
 
 # ── 响应工具 ─────────────────────────────────────────────────────────────────

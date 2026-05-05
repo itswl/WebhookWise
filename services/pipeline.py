@@ -14,7 +14,7 @@ import sqlalchemy.exc
 from sqlalchemy import select, update
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from api import (
+from services.types import (
     AnalysisResolution,
     ForwardDecision,
     NoiseReductionContext,
