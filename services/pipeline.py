@@ -268,37 +268,43 @@ async def _decide_forwarding(
         logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
     # 2. 组合决策
-    should_fwd, is_periodic = False, False
+    should_fwd, is_periodic, skip_reason = False, False, None
+    suppressed = False  # 去重/冷却期明确禁止推送
     if is_duplicate:
         if orig and orig.last_notified_at and (
             datetime.now() - orig.last_notified_at
         ).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS:
-            should_fwd, skip_reason = False, "窗口内重复告警，刚刚已转发"
+            suppressed, skip_reason = True, "窗口内重复告警，刚刚已转发"
         elif Config.retry.ENABLE_PERIODIC_REMINDER and orig and orig.last_notified_at and (
             datetime.now() - orig.last_notified_at
         ).total_seconds() / 3600 >= Config.retry.REMINDER_INTERVAL_HOURS:
-            should_fwd, is_periodic, skip_reason = True, True, None
+            should_fwd, is_periodic = True, True
         else:
-            should_fwd = Config.retry.FORWARD_DUPLICATE_ALERTS
-            skip_reason = "窗口内重复告警，配置跳过转发" if not should_fwd else None
+            if not Config.retry.FORWARD_DUPLICATE_ALERTS:
+                suppressed, skip_reason = True, "窗口内重复告警，配置跳过转发"
+            else:
+                should_fwd = True
     elif beyond_window:
         if not Config.retry.FORWARD_AFTER_TIME_WINDOW:
-            should_fwd, skip_reason = False, "窗口外重复告警，配置不转发"
+            suppressed, skip_reason = True, "窗口外重复告警，配置不转发"
         elif orig and orig.last_notified_at and (
             datetime.now() - orig.last_notified_at
         ).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS:
-            should_fwd, skip_reason = False, "窗口外重复告警，刚刚已转发"
+            suppressed, skip_reason = True, "窗口外重复告警，刚刚已转发"
         else:
-            should_fwd, skip_reason = True, None
+            should_fwd = True
     else:
         should_fwd = (importance == "high" or bool(matched_rules))
         skip_reason = f"重要性为 {importance}，非高风险事件不自动转发" if not should_fwd else None
 
+    # 去重/冷却期明确禁止时，规则匹配不能覆盖
+    final_forward = False if suppressed else (should_fwd or bool(matched_rules))
+
     return ForwardDecision(
-        should_forward=should_fwd or bool(matched_rules),
-        skip_reason=skip_reason if not (should_fwd or bool(matched_rules)) else None,
+        should_forward=final_forward,
+        skip_reason=skip_reason if not final_forward else None,
         is_periodic_reminder=is_periodic,
-        matched_rules=matched_rules
+        matched_rules=matched_rules if not suppressed else []
     )
 
 
