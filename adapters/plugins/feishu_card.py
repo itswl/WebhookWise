@@ -6,7 +6,12 @@ from adapters.ecosystem_adapters import _normalize_level
 from adapters.registry import registry
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
-_IMPORTANCE_EMOJI = {"high": "🔴", "critical": "🚨", "medium": "🟡", "low": "🟢"}
+_IMPORTANCE_LABEL = {
+    "high": "🔴 高",
+    "critical": "🚨 紧急",
+    "medium": "🟡 中",
+    "low": "🟢 低",
+}
 
 
 def build_feishu_card(
@@ -18,33 +23,59 @@ def build_feishu_card(
     """将 webhook 事件和 AI 分析结果构建为飞书交互卡片 payload。"""
     importance = str(analysis_result.get("importance", "medium")).lower()
     template = _IMPORTANCE_TEMPLATE.get(importance, "orange")
-    emoji = _IMPORTANCE_EMOJI.get(importance, "🟡")
+    importance_label = _IMPORTANCE_LABEL.get(importance, "🟡 中")
 
-    source = webhook_data.get("source", "") or webhook_data.get("body", {}).get("source", "")
+    # 数据来源
+    parsed = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
+    source = webhook_data.get("source", "") or parsed.get("source", "")
+    event_type = parsed.get("event_type", "") or parsed.get("Type", "") or ""
+    rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
+    # 事件类型显示：优先 "Type/RuleName"，否则 event_type
+    if event_type and rule_name:
+        event_type_display = f"{event_type}"
+    else:
+        event_type_display = event_type or rule_name or "—"
+
+    # 时间
+    timestamp = webhook_data.get("timestamp", "") or ""
+
+    # AI 分析字段
     summary = analysis_result.get("summary", "")
-    root_cause = analysis_result.get("root_cause", "")
-    suggestion = analysis_result.get("suggestion", "") or analysis_result.get("action", "")
-    event_type = (webhook_data.get("parsed_data") or {}).get("event_type", "") or webhook_data.get("event_type", "")
+    impact = analysis_result.get("impact", "") or analysis_result.get("影响范围", "")
+    suggestion = (
+        analysis_result.get("suggestion", "")
+        or analysis_result.get("action", "")
+        or analysis_result.get("建议操作", "")
+    )
 
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
-    title = f"{prefix}{emoji} [{source}] {event_type or '告警通知'}" if source else f"{prefix}{emoji} 告警通知"
+    title = f"{prefix}📡 Webhook 事件通知"
 
-    elements = []
+    elements: list[dict] = []
+
+    # 字段区块：来源 / 重要性 / 事件类型 / 时间
+    fields = [
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source or '—'}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**重要性**\n{importance_label}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**事件类型**\n{event_type_display or '—'}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{timestamp or '—'}"}},
+    ]
+    elements.append({"tag": "div", "fields": fields})
+    elements.append({"tag": "hr"})
+
+    # 摘要
     if summary:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 摘要：**\n{summary[:600]}"}})
-        elements.append({"tag": "hr"})
-    if root_cause:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🔍 根因：**\n{root_cause[:400]}"}})
-        elements.append({"tag": "hr"})
-    if suggestion:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**💡 建议：**\n{suggestion[:400]}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 事件摘要**\n{summary[:800]}"}})
         elements.append({"tag": "hr"})
 
-    noise = analysis_result.get("noise_reduction") or {}
-    noise_reason = noise.get("reason", "")
-    if noise_reason:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🔕 降噪：**\n{noise_reason[:200]}"}})
+    # 影响范围
+    if impact:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
         elements.append({"tag": "hr"})
+
+    # 建议操作
+    if suggestion:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 建议操作**\n{suggestion[:800]}"}})
 
     if not elements:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "（暂无详情）"}})
