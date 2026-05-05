@@ -167,6 +167,19 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             record.analysis_result = new_result
             record.duration_seconds = 0
             await session.flush()
+            # 发送飞书通知
+            try:
+                from adapters.ecosystem_adapters import send_feishu_deep_analysis
+                if policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+                    fwd_event = await session.get(WebhookEvent, record.webhook_event_id)
+                    fwd_source = fwd_event.source if fwd_event else ""
+                    await send_feishu_deep_analysis(
+                        webhook_url=policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                        analysis_record={"analysis_result": record.analysis_result, "engine": record.engine, "duration_seconds": 0},
+                        source=fwd_source, webhook_event_id=record.webhook_event_id,
+                    )
+            except Exception as _fe:
+                logger.warning("retry: 飞书深度分析通知失败: %s", _fe)
             return {"success": True, "message": "分析已完成"}
 
     # 配置了 HTTP API URL：直接拉取
