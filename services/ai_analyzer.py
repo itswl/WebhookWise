@@ -376,18 +376,37 @@ async def get_deep_analysis_list(
     session: AsyncSession, page: int = 1, per_page: int = 20, cursor: int | None = None,
     status_filter: str = "", engine_filter: str = "", max_page: int = 500
 ):
+    from sqlalchemy import func
+
+    # 基础过滤条件
+    filters = []
+    if cursor:
+        filters.append(DeepAnalysis.id < cursor)
+    if status_filter:
+        filters.append(DeepAnalysis.status == status_filter)
+    if engine_filter:
+        filters.append(DeepAnalysis.engine == engine_filter)
+
+    # COUNT 查询
+    count_query = select(func.count()).select_from(DeepAnalysis)
+    if status_filter:
+        count_query = count_query.where(DeepAnalysis.status == status_filter)
+    if engine_filter:
+        count_query = count_query.where(DeepAnalysis.engine == engine_filter)
+    total = (await session.execute(count_query)).scalar() or 0
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    # 数据查询（游标或页码 offset）
     query = select(DeepAnalysis, WebhookEvent).outerjoin(
         WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id
     ).order_by(DeepAnalysis.id.desc())
+    for f in filters:
+        query = query.where(f)
+    if not cursor:
+        query = query.offset((page - 1) * per_page)
+    query = query.limit(per_page)
 
-    if cursor:
-        query = query.filter(DeepAnalysis.id < cursor)
-    if status_filter:
-        query = query.filter(DeepAnalysis.status == status_filter)
-    if engine_filter:
-        query = query.filter(DeepAnalysis.engine == engine_filter)
-
-    res = await session.execute(query.limit(per_page))
+    res = await session.execute(query)
     rows = res.all()
     items = []
     for rec, evt in rows:
@@ -397,7 +416,7 @@ async def get_deep_analysis_list(
         d["beyond_window"] = bool(evt.beyond_window) if evt else False
         items.append(d)
     next_cursor = items[-1]["id"] if items else None
-    return {"items": items, "per_page": per_page, "page": page, "total": None, "total_pages": None, "next_cursor": next_cursor}
+    return {"items": items, "per_page": per_page, "page": page, "total": total, "total_pages": total_pages, "next_cursor": next_cursor}
 
 
 async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int):
