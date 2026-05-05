@@ -76,6 +76,9 @@ async def _notify_feishu_deep_analysis(record_dict: dict, source: str = ""):
                 )
             except Exception as rec_err:
                 logger.warning(f"记录飞书通知失败异常: {rec_err}")
+        else:
+            logger.info("[Poller] 飞书深度分析通知已发送: id=%s event_id=%s",
+                        record_dict.get("id"), record_dict["webhook_event_id"])
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
@@ -256,6 +259,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 elapsed = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 999
                 if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                     return {"id": record_id, "action": "skip"}
+                logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
                 update = {
                     "status": "failed",
                     "analysis_result": {
@@ -355,6 +359,8 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         and Config.openclaw.OPENCLAW_ENABLE_DEGRADATION
                     ):
                         text = prev_snapshot["first_result"]["text"]
+                        logger.warning("[Poller] 连续错误达阈值，降级使用首次结果: id=%s error_count=%d",
+                                       record_id, error_count)
                         await _clear_poll_stability(record_id)
                         parsed_result = None
                         json_text = _extract_robust_json(text)
@@ -454,12 +460,18 @@ async def _poll_pending_analyses_inner():
 
         # 收集需要写回 DB 的结果
         updates: list[dict] = []
+        skips = 0
         for pr in poll_results:
             if isinstance(pr, Exception):
                 logger.error(f"[Poller] 并发轮询协程异常: {pr}", exc_info=pr)
                 continue
             if pr and pr.get("action") == "update":
                 updates.append(pr)
+            else:
+                skips += 1
+
+        logger.debug("[Poller] 轮询完成 total=%d update=%d skip=%d",
+                     len(pending_dicts), len(updates), skips)
 
         if not updates:
             return

@@ -92,6 +92,9 @@ async def _retry_forward(session, record: FailedForward):
     """重试单条转发失败记录"""
     from services.forward import forward_to_remote
 
+    logger.info("[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",
+                record.id, record.target_url, record.retry_count + 1, record.max_retries)
+
     # 从 DB 获取关联的 WebhookEvent（获取 ai_analysis 等信息）
     event = await session.get(WebhookEvent, record.webhook_event_id)
     if not event:

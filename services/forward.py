@@ -256,6 +256,7 @@ async def forward_to_remote(
     """转发分析结果到远程 Webhook URL (支持飞书卡片自动格式化)。"""
     url = target_url or Config.ai.FORWARD_URL
     if not url:
+        logger.debug("[Forward] 无转发 URL，跳过")
         return {"status": "skipped", "reason": "no_forward_url"}
 
     # 飞书/Lark 自动格式化
@@ -268,6 +269,7 @@ async def forward_to_remote(
 
     async def _do_post():
         client = get_http_client()
+        logger.debug("[Forward] POST %s is_feishu=%s periodic=%s", url, is_feishu, is_periodic_reminder)
         resp = await client.post(url, json=payload, timeout=Config.ai.FORWARD_TIMEOUT)
         resp.raise_for_status()
         return resp
@@ -275,6 +277,7 @@ async def forward_to_remote(
     try:
         response = await forward_cb.call_async(_do_post)
         if response is None:
+            logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
             return {"status": "circuit_broken", "message": "熔断器已开启"}
 
         return {
@@ -282,13 +285,14 @@ async def forward_to_remote(
             "response": response.json() if response.content else {}
         }
     except Exception as e:
-        logger.error(f"转发失败: {url}, error={e!s}")
+        logger.error("[Forward] 转发失败 url=%s error=%s", url, e)
         return {"status": "failed", "message": str(e)}
 
 
 async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: dict) -> dict:
     """推送任务到 OpenClaw 进行深度分析。"""
     if not Config.openclaw.OPENCLAW_ENABLED:
+        logger.debug("[Forward] OpenClaw 未启用，跳过深度分析")
         return {"status": "disabled"}
 
     async def _do_request():
