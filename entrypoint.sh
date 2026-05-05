@@ -17,6 +17,27 @@ fi
 # Worker 模式：启动 TaskIQ Worker 和 Scheduler
 if [ "$RUN_MODE" = "worker" ]; then
     echo "Starting in TaskIQ Worker mode..."
+    # 等待数据库就绪
+    max_retries=30
+    retry_count=0
+    while [ $retry_count -lt $max_retries ]; do
+        if python3 -c "import asyncio; from db.session import init_engine, test_db_connection
+async def _check():
+    await init_engine()
+    return await test_db_connection()
+exit(0 if asyncio.run(_check()) else 1)" 2>/dev/null; then
+            echo "✅ Worker: 数据库连接成功"
+            break
+        else
+            retry_count=$((retry_count + 1))
+            echo "⏳ Worker: 等待数据库... ($retry_count/$max_retries)"
+            sleep 2
+        fi
+    done
+    if [ $retry_count -eq $max_retries ]; then
+        echo "❌ Worker: 数据库连接超时，启动失败"
+        exit 1
+    fi
     # 启动 TaskIQ Worker (并发由 --workers 指定)
     # 同时在后台启动 Scheduler
     taskiq scheduler core.taskiq_broker:scheduler services.tasks &
