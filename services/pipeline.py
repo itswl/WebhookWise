@@ -14,12 +14,6 @@ import sqlalchemy.exc
 from sqlalchemy import select, update
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from services.types import (
-    AnalysisResolution,
-    ForwardDecision,
-    NoiseReductionContext,
-    WebhookRequestContext,
-)
 from core.compression import decompress_payload_async
 from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
@@ -37,6 +31,12 @@ from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
+from services.types import (
+    AnalysisResolution,
+    ForwardDecision,
+    NoiseReductionContext,
+    WebhookRequestContext,
+)
 from services.webhook_orchestrator import save_webhook_data
 
 try:

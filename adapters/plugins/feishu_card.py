@@ -31,10 +31,7 @@ def build_feishu_card(
     event_type = parsed.get("event_type", "") or parsed.get("Type", "") or ""
     rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
     # 事件类型显示：优先 "Type/RuleName"，否则 event_type
-    if event_type and rule_name:
-        event_type_display = f"{event_type}"
-    else:
-        event_type_display = event_type or rule_name or "—"
+    event_type_display = f"{event_type}" if event_type and rule_name else event_type or rule_name or "—"
 
     # 时间
     timestamp = webhook_data.get("timestamp", "") or ""

@@ -51,8 +51,8 @@ async def lifespan(app: FastAPI):
     # 启动 Recovery + Metrics 轮询（API 进程内兜底，worker 侧由 TaskIQ 驱动）
     _poller_tasks = []
     if Config.server.ENABLE_POLLERS:
-        from services.recovery_poller import run_recovery_scan
         from services.metrics_poller import refresh_all_metrics
+        from services.recovery_poller import run_recovery_scan
 
         async def _recovery_loop():
             # 启动时立即执行一次，捞起重启前遗留的僵尸事件
