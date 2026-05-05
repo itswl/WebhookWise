@@ -200,9 +200,18 @@ class TraceContextMiddleware:
             raw_headers = list(scope.get("headers") or [])
             raw_headers.append((b"traceparent", build_traceparent(incoming).encode("latin1")))
             scope["headers"] = raw_headers
-        token = set_trace_id(incoming or generate_trace_id())
+
+        # 优先使用 OTEL 当前 span 的 trace_id 保证日志与 APM 双向关联；
+        # OTEL 未启用时回退到请求头携带的 trace_id 或生成新 id
+        from core.otel import get_otel_trace_id
+        otel_tid = get_otel_trace_id()
+        token = set_trace_id(otel_tid or incoming or generate_trace_id())
         try:
             await self.app(scope, receive, send)
+            # 请求处理完成后，OTEL span 已激活，同步 trace_id 到日志上下文
+            otel_tid = get_otel_trace_id()
+            if otel_tid:
+                set_trace_id(otel_tid)
         finally:
             trace_id_var.reset(token)
 
