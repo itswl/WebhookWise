@@ -93,6 +93,8 @@ def _async_url() -> str:
 async def init_engine():
     """创建全局 AsyncEngine 和 async_sessionmaker（应用启动时调用一次）"""
     global _engine, _session_factory
+    if _session_factory is not None:
+        return  # 已初始化，幂等
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {mask_url(Config.db.DATABASE_URL)}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
@@ -141,6 +143,8 @@ def get_engine() -> AsyncEngine | None:
 
 async def get_db_session():
     """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
+    if _session_factory is None:
+        await init_engine()
     async with _session_factory() as session:
         try:
             yield session
@@ -160,6 +164,8 @@ async def session_scope(existing_session: AsyncSession | None = None):
     if existing_session:
         yield existing_session
     else:
+        if _session_factory is None:
+            await init_engine()
         async with _session_factory() as session:
             try:
                 yield session
