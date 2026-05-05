@@ -49,8 +49,12 @@ def setup_logger():
 
     # 1. JSON 格式化器
     # 强制包含基础字段，其他字段通过 extra 传入
-    format_str = "%(timestamp)s %(level)s %(name)s %(message)s %(trace_id)s"
-    formatter = jsonlogger.JsonFormatter(format_str, json_ensure_ascii=False)
+    format_str = "%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s"
+    formatter = jsonlogger.JsonFormatter(
+        format_str,
+        json_ensure_ascii=False,
+        rename_fields={"asctime": "timestamp", "levelname": "level"},
+    )
 
     # 2. 处理器：控制台 + 滚动文件
     handlers = []

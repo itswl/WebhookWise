@@ -30,13 +30,18 @@ def set_log_context(
 
 
 def get_log_context() -> dict:
-    return {
-        "event_id": event_id_var.get(),
-        "alert_hash": alert_hash_var.get(),
-        "source": source_var.get(),
-        "processing_status": processing_status_var.get(),
-        "route_type": route_type_var.get(),
-    }
+    ctx = {}
+    if (v := event_id_var.get()) is not None:
+        ctx["event_id"] = v
+    if (v := alert_hash_var.get()):
+        ctx["alert_hash"] = v
+    if (v := source_var.get()):
+        ctx["source"] = v
+    if (v := processing_status_var.get()):
+        ctx["processing_status"] = v
+    if (v := route_type_var.get()):
+        ctx["route_type"] = v
+    return ctx
 
 
 def clear_log_context() -> None:
