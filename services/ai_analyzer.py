@@ -283,24 +283,34 @@ async def analyze_webhook_with_ai(
     if Config.ai.CACHE_ENABLED and not skip_cache:
         cached = await get_cached_analysis(alert_hash)
         if cached:
+            hits = cached.get("_cache_hit_count", 1)
+            logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
             await log_ai_usage("cache", alert_hash, source, cache_hit=True)
             return {**cached, "_route_type": "cache"}
 
     if not policies.ai.ENABLE_AI_ANALYSIS or not policies.ai.OPENAI_API_KEY:
+        reason = "disabled" if not policies.ai.ENABLE_AI_ANALYSIS else "no_api_key"
+        logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
         res = analyze_with_rules(parsed, source)
         res.update({"_degraded": True, "_route_type": "rule"})
         await log_ai_usage("rule", alert_hash, source)
         return res
 
     try:
+        logger.debug("[AI] 发起 OpenAI 请求 source=%s model=%s hash=%s...",
+                     source, policies.ai.OPENAI_MODEL, alert_hash[:12])
         analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
+        logger.info("[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
+                    source, policies.ai.OPENAI_MODEL, t_in, t_out,
+                    analysis.get("importance", "unknown"))
         if not analysis.get("_degraded"):
             await save_to_cache(alert_hash, analysis)
         await log_ai_usage("ai", alert_hash, source, model=policies.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
         return {**analysis, "_route_type": "ai"}
     except Exception as e:
-        logger.error(f"AI 分析失败: {e}")
+        logger.error("[AI] 分析失败 source=%s error=%s", source, e)
         if Config.ai.ENABLE_AI_DEGRADATION:
+            logger.info("[AI] 降级为规则分析 source=%s reason=ai_error", source)
             res = analyze_with_rules(parsed, source)
             res.update({"_degraded": True, "_route_type": "rule"})
             await _send_degradation_alert(webhook_data, str(e))

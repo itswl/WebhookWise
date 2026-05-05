@@ -341,16 +341,32 @@ async def _execute_forwarding(
     for (rule, _), res in zip(tasks, results):
         is_pending = isinstance(res, dict) and res.get("_pending")
         is_success = isinstance(res, dict) and (res.get("status") == "success" or is_pending)
+        rule_name = rule.get("name") or rule.get("id", "default")
+        target_url = rule.get("target_url", "")
         if isinstance(res, Exception) or not is_success:
+            logger.warning(
+                "[Forward] 转发失败 rule=%s target=%s event_id=%s error=%s",
+                rule_name, target_url, webhook_id, res
+            )
             # webhook_id may be a file path string if save_webhook_data fell back to file storage
             wh_id = webhook_id if isinstance(webhook_id, int) else None
             if wh_id is not None:
                 await record_failed_forward(
-                    wh_id, rule.get("id"), rule.get("target_url", ""),
+                    wh_id, rule.get("id"), target_url,
                     rule.get("target_type", "webhook"), "error", str(res), full_data
                 )
         else:
             success = True
+            if is_pending:
+                logger.info(
+                    "[Forward] 深度分析已提交 rule=%s event_id=%s run_id=%s",
+                    rule_name, webhook_id, res.get("_openclaw_run_id", "")
+                )
+            else:
+                logger.info(
+                    "[Forward] 转发成功 rule=%s target=%s event_id=%s",
+                    rule_name, target_url, webhook_id
+                )
             if rule["target_type"] == "openclaw" and is_pending and isinstance(webhook_id, int):
                 # 深度分析记录挂在原始事件上，重复事件时用 orig_id
                 target_event_id = orig_id if orig_id else webhook_id
@@ -415,9 +431,13 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
         req_ctx = _parse_request(client_ip, headers, payload or {}, raw_body, source, event_ts)
         alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
         set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
+        logger.info("[Pipeline] 开始处理 event_id=%s source=%s adapter=%s",
+                    event_id, req_ctx.source, req_ctx.parsed_data.get("_adapter", req_ctx.source))
 
         async with processing_lock(alert_hash) as lock_res:
             if getattr(lock_res, "suppressed", False):
+                logger.info("[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s",
+                            event_id, getattr(lock_res, "queue_size", 0))
                 noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
                 await save_webhook_data(
                     data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
@@ -429,13 +449,21 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
                 return
 
             analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
+            if not lock_res.got_lock:
+                logger.debug("[Pipeline] 锁竞争等待完成 event_id=%s got_cached=%s",
+                             event_id, bool(analysis_res.analysis_result))
 
         route_type = analysis_res.analysis_result.get("_route_type", "ai")
+        importance = str(analysis_res.analysis_result.get("importance", "unknown")).lower()
         if analysis_res.is_reused:
             set_log_context(route_type=route_type)
+            logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
             noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
         else:
             set_log_context(route_type=route_type)
+            logger.info("[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
+                        event_id, route_type, importance,
+                        analysis_res.analysis_result.get("_degraded", False))
             noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
 
         final_analysis = dict(analysis_res.analysis_result)
@@ -460,17 +488,20 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
         event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
         importance = str(final_analysis.get("importance", "unknown")).lower()
         route_label = final_analysis.get("_route_type", "ai")
-        fwd_info = ""
+        noise_relation = noise.relation if noise else "unknown"
+        duration_ms = int((time.perf_counter() - start_perf) * 1000)
         if not analysis_res.is_reused:
             if fwd_dec.should_forward:
-                fwd_info = " forward=yes"
+                fwd_info = f" forward=yes rules={len(fwd_dec.matched_rules)}"
+                if fwd_dec.is_periodic_reminder:
+                    fwd_info += "(periodic)"
             else:
                 fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
         else:
             fwd_info = " forward=skipped(reused)"
         logger.info(
-            "[Pipeline] 处理完成 event_id=%s type=%s importance=%s route=%s%s",
-            event_id, event_type, importance, route_label, fwd_info,
+            "[Pipeline] 处理完成 event_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
+            event_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
         )
 
         outcome = "completed"
