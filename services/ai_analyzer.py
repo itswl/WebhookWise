@@ -36,6 +36,7 @@ from core.metrics import (
     OPENAI_ERRORS_TOTAL,
     sanitize_source,
 )
+from core.otel import span as otel_span
 from db.session import count_with_timeout, session_scope
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import WebhookAnalysisResult
@@ -195,18 +196,22 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
     user_prompt = load_user_prompt_template().format(source=source, data_json=data_yaml)
 
-    res, completion = await client.chat.completions.create_with_completion(
-        model=policies.ai.OPENAI_MODEL, response_model=WebhookAnalysisResult,
-        messages=[{"role": "system", "content": policies.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}],
-        temperature=Config.ai.OPENAI_TEMPERATURE, max_retries=2
-    )
+    with otel_span("ai.openai_call", {"source": source, "model": policies.ai.OPENAI_MODEL}) as s:
+        res, completion = await client.chat.completions.create_with_completion(
+            model=policies.ai.OPENAI_MODEL, response_model=WebhookAnalysisResult,
+            messages=[{"role": "system", "content": policies.ai.AI_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}],
+            temperature=Config.ai.OPENAI_TEMPERATURE, max_retries=2
+        )
 
-    t_in = completion.usage.prompt_tokens if completion.usage else 0
-    t_out = completion.usage.completion_tokens if completion.usage else 0
-    cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (t_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
-    AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="input").inc(t_in)
-    AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="output").inc(t_out)
-    AI_COST_USD_TOTAL.labels(model=policies.ai.OPENAI_MODEL).inc(cost)
+        t_in = completion.usage.prompt_tokens if completion.usage else 0
+        t_out = completion.usage.completion_tokens if completion.usage else 0
+        cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (t_out / 1000) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
+        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="input").inc(t_in)
+        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="output").inc(t_out)
+        AI_COST_USD_TOTAL.labels(model=policies.ai.OPENAI_MODEL).inc(cost)
+        if s:
+            s.set_attribute("tokens_in", t_in)
+            s.set_attribute("tokens_out", t_out)
     return res.to_dict(), t_in, t_out
 
 

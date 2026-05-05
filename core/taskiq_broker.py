@@ -48,6 +48,9 @@ async def startup_event():
     get_http_client()
     await Config.load_from_db()
     await Config.start_subscriber()
+    # 初始化 worker 进程 OTEL（TracerProvider + httpx/redis instrumentation）
+    from core.otel import setup_otel_worker
+    setup_otel_worker()
     # 启动时立即执行一次 recovery，捞起重启前遗留的僵尸事件
     try:
         from services.recovery_poller import run_recovery_scan

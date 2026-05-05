@@ -28,6 +28,7 @@ from core.metrics import (
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
+from core.otel import span as otel_span
 from core.trace import generate_trace_id, set_trace_id
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
@@ -420,6 +421,11 @@ async def _execute_forwarding(
 
 async def handle_webhook_process(event_id: int, client_ip: str = "", session: Any = None):
     set_trace_id(generate_trace_id(event_id=event_id))
+    # 若 OTEL 已启用，优先用当前活动 span 的 trace_id 保证日志与 APM 一致
+    from core.otel import get_otel_trace_id
+    otel_tid = get_otel_trace_id()
+    if otel_tid:
+        set_trace_id(otel_tid)
     clear_log_context()
     set_log_context(event_id=event_id)
     task = asyncio.current_task()
@@ -437,133 +443,149 @@ async def handle_webhook_process(event_id: int, client_ip: str = "", session: An
 async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", session: Any = None):
     start_perf = time.perf_counter()
     outcome, metric_source = "unknown", "unknown"
-    try:
-        # 始终使用独立 session 更新状态并立即提交，释放行锁
-        # 若使用 existing_session（TaskIQ 注入），写操作在整个任务结束前不会 commit，
-        # 导致后续 save_webhook_data 的 UPDATE 因等待同一行锁而触发 statement_timeout
-        async with session_scope() as sess:
-            stmt = update(WebhookEvent).where(WebhookEvent.id == event_id).values(
-                processing_status="analyzing", failure_reason=None, error_message=None
-            ).returning(WebhookEvent)
-            res = await sess.execute(stmt)
-            event = res.scalar_one_or_none()
-            if not event:
-                return
-            headers = event.headers or {}
-            payload, raw_text = await _load_event_payload(event)
-            source = event.source
-            raw_body = raw_text.encode("utf-8") if raw_text else b""
-            event_ts = event.timestamp.isoformat() if event.timestamp else None
+    with otel_span("webhook.process", {"event_id": event_id}) as _span:
+        try:
+            # 始终使用独立 session 更新状态并立即提交，释放行锁
+            # 若使用 existing_session（TaskIQ 注入），写操作在整个任务结束前不会 commit，
+            # 导致后续 save_webhook_data 的 UPDATE 因等待同一行锁而触发 statement_timeout
+            async with session_scope() as sess:
+                stmt = update(WebhookEvent).where(WebhookEvent.id == event_id).values(
+                    processing_status="analyzing", failure_reason=None, error_message=None
+                ).returning(WebhookEvent)
+                res = await sess.execute(stmt)
+                event = res.scalar_one_or_none()
+                if not event:
+                    return
+                headers = event.headers or {}
+                payload, raw_text = await _load_event_payload(event)
+                source = event.source
+                raw_body = raw_text.encode("utf-8") if raw_text else b""
+                event_ts = event.timestamp.isoformat() if event.timestamp else None
 
-        metric_source = sanitize_source(source or "")
-        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
-        WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
+            metric_source = sanitize_source(source or "")
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
+            WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-        req_ctx = _parse_request(client_ip, headers, payload or {}, raw_body, source, event_ts)
-        alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
-        set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
-        logger.info("[Pipeline] 开始处理 event_id=%s source=%s adapter=%s",
-                    event_id, req_ctx.source, req_ctx.parsed_data.get("_adapter", req_ctx.source))
+            req_ctx = _parse_request(client_ip, headers, payload or {}, raw_body, source, event_ts)
+            alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
+            set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
+            logger.info("[Pipeline] 开始处理 event_id=%s source=%s adapter=%s",
+                        event_id, req_ctx.source, req_ctx.parsed_data.get("_adapter", req_ctx.source))
+            if _span:
+                _span.set_attribute("source", req_ctx.source or "unknown")
+                _span.set_attribute("alert_hash", alert_hash[:12])
 
-        async with processing_lock(alert_hash) as lock_res:
-            if getattr(lock_res, "suppressed", False):
-                logger.info("[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s",
-                            event_id, getattr(lock_res, "queue_size", 0))
-                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
-                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
-                noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
-                await save_webhook_data(
-                    data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
-                    headers=req_ctx.headers, client_ip=req_ctx.client_ip,
-                    ai_analysis={"noise_reduction": noise.__dict__}, forward_status="skipped",
-                    alert_hash=alert_hash, event_id=event_id
-                )
-                outcome = "suppressed"
-                return
+            async with processing_lock(alert_hash) as lock_res:
+                if getattr(lock_res, "suppressed", False):
+                    logger.info("[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s",
+                                event_id, getattr(lock_res, "queue_size", 0))
+                    WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=metric_source).inc()
+                    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
+                    noise = NoiseReductionContext("storm", None, 1.0, True, "alert_storm_backpressure", getattr(lock_res, "queue_size", 0), [])
+                    await save_webhook_data(
+                        data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
+                        headers=req_ctx.headers, client_ip=req_ctx.client_ip,
+                        ai_analysis={"noise_reduction": noise.__dict__}, forward_status="skipped",
+                        alert_hash=alert_hash, event_id=event_id
+                    )
+                    outcome = "suppressed"
+                    return
 
-            analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
-            if not lock_res.got_lock:
-                logger.debug("[Pipeline] 锁竞争等待完成 event_id=%s got_cached=%s",
-                             event_id, bool(analysis_res.analysis_result))
+                analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
+                if not lock_res.got_lock:
+                    logger.debug("[Pipeline] 锁竞争等待完成 event_id=%s got_cached=%s",
+                                 event_id, bool(analysis_res.analysis_result))
 
-        route_type = analysis_res.analysis_result.get("_route_type", "ai")
-        importance = str(analysis_res.analysis_result.get("importance", "unknown")).lower()
-        if analysis_res.is_reused:
-            set_log_context(route_type=route_type)
-            logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
-            noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
-        else:
-            set_log_context(route_type=route_type)
-            logger.info("[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
-                        event_id, route_type, importance,
-                        analysis_res.analysis_result.get("_degraded", False))
-            noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
-
-        final_analysis = dict(analysis_res.analysis_result)
-        final_analysis["noise_reduction"] = noise.__dict__
-
-        save_res = await save_webhook_data(
-            data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
-            headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis=final_analysis,
-            alert_hash=alert_hash, is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window,
-            original_event=analysis_res.original_event, beyond_window=analysis_res.beyond_window,
-            reanalyzed=analysis_res.reanalyzed, event_id=event_id
-        )
-
-        if not analysis_res.is_reused:
-            fwd_dec = await _decide_forwarding(
-                str(final_analysis.get("importance", "")).lower(),
-                save_res.is_duplicate and not save_res.beyond_window,
-                save_res.beyond_window, noise, analysis_res.original_event, req_ctx.source
-            )
-            await _execute_forwarding(fwd_dec, req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id)
-
-        event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
-        importance = str(final_analysis.get("importance", "unknown")).lower()
-        route_label = final_analysis.get("_route_type", "ai")
-        noise_relation = noise.relation if noise else "unknown"
-        duration_ms = int((time.perf_counter() - start_perf) * 1000)
-        if not analysis_res.is_reused:
-            if fwd_dec.should_forward:
-                fwd_info = f" forward=yes rules={len(fwd_dec.matched_rules)}"
-                if fwd_dec.is_periodic_reminder:
-                    fwd_info += "(periodic)"
+            route_type = analysis_res.analysis_result.get("_route_type", "ai")
+            importance = str(analysis_res.analysis_result.get("importance", "unknown")).lower()
+            if analysis_res.is_reused:
+                set_log_context(route_type=route_type)
+                logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
+                noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
             else:
-                fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
-        else:
-            fwd_info = " forward=skipped(reused)"
-        logger.info(
-            "[Pipeline] 处理完成 event_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
-            event_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
-        )
+                set_log_context(route_type=route_type)
+                logger.info("[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
+                            event_id, route_type, importance,
+                            analysis_res.analysis_result.get("_degraded", False))
+                noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
 
-        WEBHOOK_NOISE_REDUCED_TOTAL.labels(
-            source=metric_source,
-            relation=noise_relation,
-            suppressed=str(noise.suppress_forward).lower() if noise else "false",
-        ).inc()
+            final_analysis = dict(analysis_res.analysis_result)
+            final_analysis["noise_reduction"] = noise.__dict__
 
-        outcome = "completed"
-        set_log_context(processing_status="completed")
-        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
+            save_res = await save_webhook_data(
+                data=req_ctx.parsed_data, source=req_ctx.source, raw_payload=req_ctx.payload,
+                headers=req_ctx.headers, client_ip=req_ctx.client_ip, ai_analysis=final_analysis,
+                alert_hash=alert_hash, is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window,
+                original_event=analysis_res.original_event, beyond_window=analysis_res.beyond_window,
+                reanalyzed=analysis_res.reanalyzed, event_id=event_id
+            )
 
-    except Exception as e:
-        retryable = _is_retryable(e)
-        status = "received" if retryable else "dead_letter"
-        async with session_scope() as sess:
-            await sess.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(
-                processing_status=status, failure_reason="retry_err" if retryable else "fat_err",
-                error_message=str(e)[:2000]
-            ))
-        if status == "dead_letter":
-            await _send_dead_letter_alert(event_id, 0, e)
-            WEBHOOK_DEAD_LETTER_TOTAL.inc()
-        outcome = "retry" if retryable else "dead_letter"
-        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
-        logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
-    finally:
-        duration = time.perf_counter() - start_perf
-        WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
+            if not analysis_res.is_reused:
+                fwd_dec = await _decide_forwarding(
+                    str(final_analysis.get("importance", "")).lower(),
+                    save_res.is_duplicate and not save_res.beyond_window,
+                    save_res.beyond_window, noise, analysis_res.original_event, req_ctx.source
+                )
+                await _execute_forwarding(fwd_dec, req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id)
+
+            event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
+            importance = str(final_analysis.get("importance", "unknown")).lower()
+            route_label = final_analysis.get("_route_type", "ai")
+            noise_relation = noise.relation if noise else "unknown"
+            duration_ms = int((time.perf_counter() - start_perf) * 1000)
+            if not analysis_res.is_reused:
+                if fwd_dec.should_forward:
+                    fwd_info = f" forward=yes rules={len(fwd_dec.matched_rules)}"
+                    if fwd_dec.is_periodic_reminder:
+                        fwd_info += "(periodic)"
+                else:
+                    fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
+            else:
+                fwd_info = " forward=skipped(reused)"
+            logger.info(
+                "[Pipeline] 处理完成 event_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
+                event_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
+            )
+
+            if _span:
+                _span.set_attribute("importance", importance)
+                _span.set_attribute("route", route_label)
+                _span.set_attribute("event_type", event_type)
+                _span.set_attribute("duration_ms", duration_ms)
+
+            WEBHOOK_NOISE_REDUCED_TOTAL.labels(
+                source=metric_source,
+                relation=noise_relation,
+                suppressed=str(noise.suppress_forward).lower() if noise else "false",
+            ).inc()
+
+            outcome = "completed"
+            set_log_context(processing_status="completed")
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
+
+        except Exception as e:
+            retryable = _is_retryable(e)
+            status = "received" if retryable else "dead_letter"
+            async with session_scope() as sess:
+                await sess.execute(update(WebhookEvent).where(WebhookEvent.id == event_id).values(
+                    processing_status=status, failure_reason="retry_err" if retryable else "fat_err",
+                    error_message=str(e)[:2000]
+                ))
+            if status == "dead_letter":
+                await _send_dead_letter_alert(event_id, 0, e)
+                WEBHOOK_DEAD_LETTER_TOTAL.inc()
+            outcome = "retry" if retryable else "dead_letter"
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
+            logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
+            if _span:
+                try:
+                    from opentelemetry.trace import StatusCode
+                    _span.set_status(StatusCode.ERROR, str(e))
+                except Exception:
+                    pass
+        finally:
+            duration = time.perf_counter() - start_perf
+            WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
 
 
 def get_running_tasks():
