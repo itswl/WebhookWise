@@ -10,6 +10,7 @@ import core.redis_client
 from core.config import Config
 from core.distributed_lock import DistributedLock
 from core.http_client import get_http_client
+from core.metrics import DEEP_ANALYSIS_TOTAL
 from core.trace import get_trace_id
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
@@ -246,6 +247,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss",
                             record_id, elapsed_total, timeout_seconds)
                 await _clear_poll_stability(record_id)
+                DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
                 update = {
                     "status": "failed",
                     "analysis_result": {"root_cause": "OpenClaw 分析超时"},
@@ -260,6 +262,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                     return {"id": record_id, "action": "skip"}
                 logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
+                DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
                 update = {
                     "status": "failed",
                     "analysis_result": {
@@ -334,6 +337,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         "analysis_result": analysis_result,
                         "duration_seconds": duration,
                     }
+                    DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
                     # 标记需要查 source 并发飞书通知
                     return {
                         "id": record_id,
@@ -369,6 +373,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                                 parsed_result = json.loads(json_text)
                             except Exception:
                                 parsed_result = None
+                        DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=rec.get("engine", "openclaw")).inc()
                         return {
                             "id": record_id,
                             "action": "update",
@@ -389,6 +394,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         "failure_reason": error_msg,
                     },
                 }
+                DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
                 notify_dict = {**rec, **update}
                 await _notify_feishu_deep_analysis_failed(notify_dict, error_msg)
                 return {"id": record_id, "action": "update", **update}

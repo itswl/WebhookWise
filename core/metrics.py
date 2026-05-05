@@ -87,6 +87,20 @@ OPENAI_ERRORS_TOTAL = Counter(
     ["type"],
 )
 
+# 7. 转发重试指标
+FORWARD_RETRY_TOTAL = Counter(
+    "forward_retry_total",
+    "转发重试结果计数",
+    ["status"],  # status: success, exhausted, failed
+)
+
+# 8. 深度分析结果指标
+DEEP_ANALYSIS_TOTAL = Counter(
+    "deep_analysis_total",
+    "深度分析任务结果计数",
+    ["status", "engine"],  # status: completed, failed, timeout, degraded
+)
+
 # 5. 系统状态指标
 DATABASE_EVENTS_COUNT = Gauge(
     "database_webhook_events_count",

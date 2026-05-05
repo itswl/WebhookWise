@@ -9,6 +9,9 @@ from sqlalchemy import func, select
 
 from core.config import Config
 from core.metrics import (
+    DATABASE_EVENTS_COUNT,
+    WEBHOOK_MQ_GROUP_LAG,
+    WEBHOOK_MQ_GROUP_PENDING,
     WEBHOOK_MQ_STREAM_LENGTH,
     WEBHOOK_PROCESSING_STATUS_COUNT,
     WEBHOOK_STUCK_STATUS_COUNT,
@@ -24,6 +27,19 @@ async def refresh_all_metrics():
     """刷新系统指标（由 TaskIQ 驱动）"""
     await _refresh_db_status_counts()
     await _refresh_mq_stats()
+    await _refresh_db_event_count()
+
+
+async def _refresh_db_event_count() -> None:
+    try:
+        from sqlalchemy import func, select
+
+        from models import WebhookEvent
+        async with session_scope() as session:
+            count = (await session.execute(select(func.count()).select_from(WebhookEvent))).scalar() or 0
+        DATABASE_EVENTS_COUNT.set(count)
+    except Exception as e:
+        logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)
 
 
 async def _refresh_db_status_counts() -> None:
@@ -61,12 +77,22 @@ async def _refresh_db_status_counts() -> None:
 
 
 async def _refresh_mq_stats() -> None:
-    """MQ 指标刷新 (注意：现在迁移到 TaskIQ，这里的 Redis Stream 指标可能不再反映主业务量)"""
-    stream = Config.server.WEBHOOK_MQ_QUEUE
+    """MQ 指标刷新 — TaskIQ 使用 Redis List (ListQueueBroker)。"""
+    queue_name = Config.server.WEBHOOK_MQ_QUEUE
     redis = get_redis()
 
     try:
-        stream_len = int(await redis.xlen(stream))
-        WEBHOOK_MQ_STREAM_LENGTH.labels(stream=stream).set(stream_len)
+        # ListQueueBroker 用 LPUSH/BRPOP，队列是一个 Redis List
+        queue_len = await redis.llen(queue_name)
+        WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(queue_len)
     except Exception as e:
-        logger.debug("[Metrics] 刷新 MQ 指标失败: %s", e)
+        logger.debug("[Metrics] 刷新 MQ 队列长度失败: %s", e)
+
+    # 正在处理（analyzing 状态）的任务数即为有效 "pending" 近似值，
+    # 已在 WEBHOOK_PROCESSING_STATUS_COUNT 中体现，无需额外查 Redis。
+    # GROUP_PENDING / GROUP_LAG 用于 Stream 消费组场景，List 模式设为 0。
+    try:
+        WEBHOOK_MQ_GROUP_PENDING.labels(stream=queue_name, group="taskiq").set(0)
+        WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group="taskiq").set(0)
+    except Exception as e:
+        logger.debug("[Metrics] 刷新 MQ group 指标失败: %s", e)
