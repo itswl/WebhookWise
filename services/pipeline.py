@@ -330,14 +330,19 @@ async def _execute_forwarding(
     results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
     success = False
     for (rule, _), res in zip(tasks, results):
-        if isinstance(res, Exception) or (isinstance(res, dict) and res.get("status") != "success"):
-            await record_failed_forward(
-                webhook_id, rule.get("id"), rule.get("target_url", ""),
-                rule.get("target_type", "webhook"), "error", str(res), full_data
-            )
+        is_pending = isinstance(res, dict) and res.get("_pending")
+        is_success = isinstance(res, dict) and (res.get("status") == "success" or is_pending)
+        if isinstance(res, Exception) or not is_success:
+            # webhook_id may be a file path string if save_webhook_data fell back to file storage
+            wh_id = webhook_id if isinstance(webhook_id, int) else None
+            if wh_id is not None:
+                await record_failed_forward(
+                    wh_id, rule.get("id"), rule.get("target_url", ""),
+                    rule.get("target_type", "webhook"), "error", str(res), full_data
+                )
         else:
             success = True
-            if rule["target_type"] == "openclaw" and res.get("_pending"):
+            if rule["target_type"] == "openclaw" and is_pending and isinstance(webhook_id, int):
                 async with session_scope() as sess:
                     sess.add(DeepAnalysis(
                         webhook_event_id=webhook_id, engine="openclaw",
