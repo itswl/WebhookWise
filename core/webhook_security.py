@@ -114,6 +114,9 @@ async def check_rate_limit_dep(request: Request):
     try:
         limited_ip = await enforce_webhook_rate_limit(request)
         if limited_ip:
+            from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+            src = sanitize_source(request.path_params.get("source", request.query_params.get("source", "unknown")))
+            WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rate_limited").inc()
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
     except HTTPException:
         raise
