@@ -55,6 +55,11 @@ async def lifespan(app: FastAPI):
         from services.metrics_poller import refresh_all_metrics
 
         async def _recovery_loop():
+            # 启动时立即执行一次，捞起重启前遗留的僵尸事件
+            try:
+                await run_recovery_scan(stuck_threshold_seconds=0)
+            except Exception as e:
+                logger.warning("[App] startup recovery scan error: %s", e)
             while True:
                 try:
                     await run_recovery_scan()
