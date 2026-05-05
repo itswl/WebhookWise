@@ -412,7 +412,8 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
         if not Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
             return
         await send_feishu_deep_analysis(
-            Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK, {"summary": "分析失败", "root_cause": error},
+            Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+            {"analysis_result": {"root_cause": error, "impact": "分析失败，无法评估影响范围"}, "engine": "openclaw", "duration_seconds": 0},
             source, webhook_data.get("id", 0)
         )
     except Exception as e:
