@@ -351,11 +351,16 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
     avg_hits = round(reuse_hits / cache_entries, 2) if cache_entries > 0 else 0.0
     hit_rate = round(total_hits / max(total, 1) * 100, 2)
 
+    ai_calls = route_breakdown.get("ai", 0)
+    total_cost = float(stats[2] or 0.0)
+    avg_cost_per_ai_call = total_cost / ai_calls if ai_calls > 0 else 0.0
+    saved_estimate = round(total_hits * avg_cost_per_ai_call, 6)
+
     return {
         "total_calls": total, "route_breakdown": route_breakdown,
         "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
         "tokens": {"input": stats[0] or 0, "output": stats[1] or 0, "total": (stats[0] or 0) + (stats[1] or 0)},
-        "cost": {"total": float(stats[2] or 0.0), "saved_estimate": 0.0},
+        "cost": {"total": total_cost, "saved_estimate": saved_estimate},
         "cache_statistics": {
             "total_cache_entries": cache_entries,
             "total_hits": total_hits,

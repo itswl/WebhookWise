@@ -115,6 +115,15 @@ async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get
     return {"success": True, "data": await get_deep_analyses_for_webhook(session, webhook_id)}
 
 
+@analysis_router.post("/api/deep-analyses/{analysis_id}/retry")
+async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(get_db_session)):
+    record = await session.get(DeepAnalysis, analysis_id)
+    if not record:
+        raise HTTPException(404, "Deep analysis record not found")
+    record.status = "pending"
+    return {"success": True, "message": "已重置为待重试，将在下次轮询时拉取结果"}
+
+
 # ── Reanalysis & Manual Forward ──────────────────────────────────────────────
 
 
