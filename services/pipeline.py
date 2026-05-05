@@ -389,7 +389,10 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
     start_perf = time.perf_counter()
     outcome, metric_source = "unknown", "unknown"
     try:
-        async with session_scope(existing_session=session) as sess:
+        # 始终使用独立 session 更新状态并立即提交，释放行锁
+        # 若使用 existing_session（TaskIQ 注入），写操作在整个任务结束前不会 commit，
+        # 导致后续 save_webhook_data 的 UPDATE 因等待同一行锁而触发 statement_timeout
+        async with session_scope() as sess:
             stmt = update(WebhookEvent).where(WebhookEvent.id == event_id).values(
                 processing_status="analyzing", failure_reason=None, error_message=None
             ).returning(WebhookEvent)
