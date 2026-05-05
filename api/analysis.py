@@ -244,9 +244,16 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
 
         return {"success": True, "message": f"获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果"}
 
-    # 无 HTTP API：重置为 pending 让轮询器处理
+    # 无 HTTP API：检查是否已超时，超时直接标记 failed，否则重置 pending 让轮询器处理
+    timeout_seconds = policies.openclaw.OPENCLAW_TIMEOUT_SECONDS
+    elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else timeout_seconds + 1
+    if elapsed > timeout_seconds:
+        record.status = "failed"
+        record.analysis_result = {"root_cause": f"OpenClaw 分析超时（已等待 {int(elapsed)}s）"}
+        await session.flush()
+        return JSONResponse(status_code=400, content={"success": False, "error": f"分析已超时（{int(elapsed)}s），请重新发起深度分析"})
+    # 未超时：重置 pending，保留原始 created_at 让超时检测继续生效
     record.status = "pending"
-    record.created_at = datetime.now()
     record.analysis_result = None
     await session.flush()
     return {"success": True, "message": "已重置为待重试，将在下次轮询时拉取结果"}
