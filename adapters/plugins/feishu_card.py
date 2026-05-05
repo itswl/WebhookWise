@@ -5,6 +5,58 @@ from __future__ import annotations
 from adapters.ecosystem_adapters import _normalize_level
 from adapters.registry import registry
 
+_IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
+_IMPORTANCE_EMOJI = {"high": "🔴", "critical": "🚨", "medium": "🟡", "low": "🟢"}
+
+
+def build_feishu_card(
+    webhook_data: dict,
+    analysis_result: dict,
+    *,
+    is_periodic_reminder: bool = False,
+) -> dict:
+    """将 webhook 事件和 AI 分析结果构建为飞书交互卡片 payload。"""
+    importance = str(analysis_result.get("importance", "medium")).lower()
+    template = _IMPORTANCE_TEMPLATE.get(importance, "orange")
+    emoji = _IMPORTANCE_EMOJI.get(importance, "🟡")
+
+    source = webhook_data.get("source", "") or webhook_data.get("body", {}).get("source", "")
+    summary = analysis_result.get("summary", "")
+    root_cause = analysis_result.get("root_cause", "")
+    suggestion = analysis_result.get("suggestion", "") or analysis_result.get("action", "")
+    event_type = (webhook_data.get("parsed_data") or {}).get("event_type", "") or webhook_data.get("event_type", "")
+
+    prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
+    title = f"{prefix}{emoji} [{source}] {event_type or '告警通知'}" if source else f"{prefix}{emoji} 告警通知"
+
+    elements = []
+    if summary:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 摘要：**\n{summary[:600]}"}})
+        elements.append({"tag": "hr"})
+    if root_cause:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🔍 根因：**\n{root_cause[:400]}"}})
+        elements.append({"tag": "hr"})
+    if suggestion:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**💡 建议：**\n{suggestion[:400]}"}})
+        elements.append({"tag": "hr"})
+
+    noise = analysis_result.get("noise_reduction") or {}
+    noise_reason = noise.get("reason", "")
+    if noise_reason:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🔕 降噪：**\n{noise_reason[:200]}"}})
+        elements.append({"tag": "hr"})
+
+    if not elements:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "（暂无详情）"}})
+
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": title}, "template": template},
+            "elements": elements,
+        },
+    }
+
 
 @registry.register_detector("feishu_card")
 def detect(data: dict) -> bool:
