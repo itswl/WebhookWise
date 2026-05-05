@@ -258,7 +258,8 @@ async def _save_duplicate_event(
                 source=source, client_ip=client_ip, parsed_data=data, alert_hash=alert_hash,
                 ai_analysis=final_ai_analysis, importance=final_importance, forward_status=forward_status,
                 is_duplicate=1, duplicate_of=original.id, duplicate_count=original.duplicate_count,
-                beyond_window=1 if beyond_window else 0, headers=headers, raw_payload=raw_payload
+                beyond_window=1 if beyond_window else 0, headers=headers, raw_payload=raw_payload,
+                processing_status="completed"
             )
             await session.flush()
             return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
@@ -299,7 +300,8 @@ async def _update_existing_event(
         source=source, client_ip=client_ip, parsed_data=data, alert_hash=alert_hash,
         ai_analysis=ai_analysis, importance=ai_analysis.get("importance") if ai_analysis else None,
         forward_status=forward_status, is_duplicate=0, duplicate_of=None, duplicate_count=1,
-        beyond_window=0, last_notified_at=datetime.now(), headers=headers, raw_payload=raw_payload
+        beyond_window=0, last_notified_at=datetime.now(), headers=headers, raw_payload=raw_payload,
+        processing_status="completed"
     )
     await session.flush()
     return SaveWebhookResult(event.id, False, None, False)
