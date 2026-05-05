@@ -2,6 +2,7 @@ import asyncio
 import os
 import socket
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -84,10 +85,37 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] openclaw poller error: %s", e)
                 await asyncio.sleep(30)
 
+        async def _forward_retry_loop():
+            from services.forward_retry_poller import poll_pending_retries
+            while True:
+                try:
+                    await poll_pending_retries()
+                except Exception as e:
+                    logger.warning("[App] forward retry poller error: %s", e)
+                await asyncio.sleep(Config.retry.FORWARD_RETRY_POLL_INTERVAL)
+
+        async def _maintenance_loop():
+            from services.data_maintenance import archive_old_data_by_policy
+            while True:
+                now = datetime.now()
+                # 计算到下一个 MAINTENANCE_HOUR 点的秒数
+                target = now.replace(hour=Config.maintenance.MAINTENANCE_HOUR, minute=0, second=0, microsecond=0)
+                if target <= now:
+                    target += timedelta(days=1)
+                await asyncio.sleep((target - now).total_seconds())
+                try:
+                    moved = await archive_old_data_by_policy()
+                    logger.info("[App] 数据维护完成，归档 %d 条记录", moved)
+                except Exception as e:
+                    logger.warning("[App] 数据维护失败: %s", e)
+
         _poller_tasks.append(asyncio.create_task(_recovery_loop()))
         _poller_tasks.append(asyncio.create_task(_metrics_loop()))
         _poller_tasks.append(asyncio.create_task(_openclaw_poll_loop()))
-        logger.info("[App] RecoveryPoller、MetricsPoller 和 OpenclawPoller 已启动")
+        if Config.retry.ENABLE_FORWARD_RETRY:
+            _poller_tasks.append(asyncio.create_task(_forward_retry_loop()))
+        _poller_tasks.append(asyncio.create_task(_maintenance_loop()))
+        logger.info("[App] 所有后台轮询任务已启动")
 
     yield
 
