@@ -42,8 +42,8 @@ def _header_get(headers: HeadersLike | None, key: str) -> str | None:
 
 def _normalize_level(value: Any) -> str:
     text = str(value or "").strip().lower()
-    high = {"critical", "error", "fatal", "p0", "sev1", "severe", "high", "urgent", "alerting", "firing", "严重", "紧急"}
-    medium = {"warning", "warn", "p1", "medium", "moderate", "警告"}
+    high = {"critical", "error", "fatal", "p0", "sev1", "severe", "high", "urgent", "alerting", "firing", "triggered", "严重", "紧急"}
+    medium = {"warning", "warn", "p1", "medium", "moderate", "acknowledged", "警告"}
     low = {"info", "ok", "resolved", "normal", "low", "notice", "恢复", "已恢复", "正常"}
 
     if text in high:
@@ -57,6 +57,8 @@ def _normalize_level(value: Any) -> str:
         return "critical"
     if any(k in text for k in medium):
         return "warning"
+    if any(k in text for k in ("resolved", "ok", "normal", "low", "info")):
+        return "info"
     return "warning"
 
 
@@ -84,12 +86,16 @@ def register_simple_adapters():
     """注册轻量级适配器，直接实现在此文件中以减少文件碎片。"""
     from adapters.registry import registry
 
+    # 幂等保护：已注册过就跳过
+    if registry.find_adapter_by_source("volcengine") is not None:
+        return
+
     # 1. 火山引擎 (Volcengine CloudMonitor)
     @registry.register_detector("volcengine")
     def _detect_volc(data: dict) -> bool:
         return str(data.get("Namespace", "")).startswith("VCM_") and bool(data.get("Resources"))
 
-    @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor"})
+    @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor", "volcengine_cloudmonitor"})
     def _norm_volc(data: dict) -> dict:
         return dict(data)
 
@@ -246,7 +252,7 @@ async def send_feishu_deep_analysis(
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": f"🔬 [{'[' + source + '] ' if source else ''}深度分析完成"},
+                "title": {"tag": "plain_text", "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成"},
                 "template": "blue"
             },
             "elements": [

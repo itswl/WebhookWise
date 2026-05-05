@@ -352,8 +352,8 @@ async def _execute_forwarding(
                 async with session_scope() as sess:
                     sess.add(DeepAnalysis(
                         webhook_event_id=webhook_id, engine="openclaw",
-                        openclaw_run_id=res.get("run_id", ""),
-                        openclaw_session_key=res.get("session_key", ""), status="pending"
+                        openclaw_run_id=res.get("_openclaw_run_id", ""),
+                        openclaw_session_key=res.get("_openclaw_session_key", ""), status="pending"
                     ))
 
     if success and orig_id:
