@@ -323,6 +323,8 @@ class _UnifiedConfigManager:
         "AI_PAYLOAD_MAX_BYTES": {"type": "int", "sub": "ai"},
         "AI_PAYLOAD_STRIP_KEYS": {"type": "str", "sub": "ai"},
         "NOTIFICATION_COOLDOWN_SECONDS": {"type": "int", "sub": "retry"},
+        "ENABLE_PERIODIC_REMINDER": {"type": "bool", "sub": "retry"},
+        "REMINDER_INTERVAL_HOURS": {"type": "int", "sub": "retry"},
     }
 
     def __init__(self) -> None:
