@@ -47,6 +47,8 @@ def setup_logger():
     if logger.handlers:
         return logger
 
+    logger.propagate = False
+
     # 1. JSON 格式化器
     # 强制包含基础字段，其他字段通过 extra 传入
     format_str = "%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s"
