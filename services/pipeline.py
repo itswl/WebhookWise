@@ -187,16 +187,16 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
             datetime.now() - last_beyond.created_at
         ).total_seconds() < Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS and not (last_beyond.ai_analysis or {}).get("_degraded"):
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-            return AnalysisResolution(last_beyond.ai_analysis or {}, False, True, orig, True)
+            return AnalysisResolution({**(last_beyond.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True)
         if not Config.retry.REANALYZE_AFTER_TIME_WINDOW and not (orig.ai_analysis or {}).get("_degraded"):
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-            return AnalysisResolution(orig.ai_analysis or {}, False, True, orig, True)
+            return AnalysisResolution({**(orig.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True)
         res, rean = await analyze_webhook_with_ai(full_data), True
     elif check.is_duplicate and orig:
         target = last_beyond if last_beyond and last_beyond.ai_analysis else orig
         if target.ai_analysis and not target.ai_analysis.get("_degraded"):
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-            return AnalysisResolution(target.ai_analysis, False, True, orig, False)
+            return AnalysisResolution({**target.ai_analysis, "_route_type": "db_reuse"}, False, True, orig, False)
         res, rean = await analyze_webhook_with_ai(full_data), True
     else:
         res, rean = await analyze_webhook_with_ai(full_data), True
@@ -430,11 +430,11 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
 
             analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
 
+        route_type = analysis_res.analysis_result.get("_route_type", "ai")
         if analysis_res.is_reused:
-            set_log_context(route_type="cache")
+            set_log_context(route_type=route_type)
             noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
         else:
-            route_type = analysis_res.analysis_result.get("_route_type", "ai")
             set_log_context(route_type=route_type)
             noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
 
@@ -459,7 +459,7 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
 
         event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
         importance = str(final_analysis.get("importance", "unknown")).lower()
-        route_label = final_analysis.get("_route_type", "cache" if analysis_res.is_reused else "ai")
+        route_label = final_analysis.get("_route_type", "ai")
         fwd_info = ""
         if not analysis_res.is_reused:
             if fwd_dec.should_forward:
