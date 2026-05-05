@@ -50,8 +50,11 @@ async def startup_event():
     """Worker 启动时的生命周期事件"""
     from core.config import Config
     from core.http_client import get_http_client
+    from core.logger import setup_logger
     from db.session import init_engine
 
+    # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
+    setup_logger()
     # 确保数据库已初始化
     await init_engine()
     # 确保配置和 HTTP 客户端已初始化
