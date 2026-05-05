@@ -80,7 +80,7 @@ class DBConfig(BaseSettings):
     DB_MAX_OVERFLOW: int = Field(default=30)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
-    DB_STATEMENT_TIMEOUT_MS: int = Field(default=5000)
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
     DB_SYNC_COMMIT: str = Field(default="off")
 
 
