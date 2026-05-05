@@ -245,7 +245,8 @@ async def send_feishu_deep_analysis(
     if not webhook_url:
         return False
     res = analysis_record.get("analysis_result", {})
-    engine, duration = analysis_record.get("engine", "uk"), analysis_record.get("duration_seconds", 0)
+    engine = analysis_record.get("engine", "uk")
+    duration = analysis_record.get("duration_seconds") or 0
     conf = round(res.get("confidence", 0) * 100) if isinstance(res.get("confidence"), (int, float)) else 0
 
     card = {
