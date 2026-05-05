@@ -179,7 +179,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
 
     # 持锁或等待超时：正常检查/分析
     async with session_scope() as session:
-        check = await WebhookEvent.check_duplicate(alert_hash, session=session)
+        check = await WebhookEvent.check_duplicate(alert_hash, session=session, time_window_hours=Config.retry.DUPLICATE_ALERT_TIME_WINDOW)
     orig, last_beyond = check.original_event, check.last_beyond_window_event
 
     if check.beyond_window and orig:
@@ -321,6 +321,9 @@ async def _execute_forwarding(
         for r in decision.matched_rules:
             if r["target_type"] == "openclaw":
                 coro = forward_to_openclaw(full_data, analysis)
+            elif not r.get("target_url"):
+                logger.warning("[Pipeline] 转发规则 '%s' target_url 为空，跳过", r.get("name", r.get("id")))
+                continue
             else:
                 coro = forward_to_remote(
                     full_data, analysis, target_url=r["target_url"],

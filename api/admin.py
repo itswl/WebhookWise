@@ -3,9 +3,6 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
 """
 
-import json
-import time
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +10,8 @@ from api import _fail, _ok
 from core.auth import verify_admin_write
 from core.config import Config
 from core.logger import logger
-from core.redis_client import get_redis
 from db.session import get_db_session
 from schemas import (
-    AIUsageResponse,
     ConfigResponse,
     ConfigSourceItem,
     ConfigSourcesResponse,
@@ -30,7 +25,6 @@ from schemas import (
     StuckEventRequeueResponse,
 )
 from services.ai_analyzer import (
-    get_ai_usage_stats,
     load_user_prompt_template,
     reload_user_prompt_template,
 )
@@ -100,11 +94,12 @@ async def update_config(payload: dict | None = None):
 def reload_prompt():
     try:
         new_template = reload_user_prompt_template()
+        preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
         return _ok(
             status=200,
             message="Prompt 模板已重新加载",
             template_length=len(new_template),
-            preview=new_template[:200] + "..."
+            preview=preview
         )
     except Exception as e:
         logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
@@ -222,33 +217,4 @@ async def replay_all_dead_letters(
         )
     except Exception as e:
         logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)
-        return _fail(str(e), 500)
-
-
-@admin_router.get("/api/ai-usage", response_model=AIUsageResponse)
-async def get_ai_usage_endpoint(period: str = Query("day"), session: AsyncSession = Depends(get_db_session)):
-    try:
-        cache_bucket = int(time.time() // 60)
-        cache_key = f"api:ai_usage:{period}:{cache_bucket}"
-
-        redis = get_redis()
-        try:
-            cached = await redis.get(cache_key)
-            if cached:
-                return _ok(json.loads(cached), 200)
-        except Exception as e:
-            logger.debug(f"AI usage 读取缓存失败: {e}")
-
-        usage_data = await get_ai_usage_stats(session=session, period=period)
-
-        try:
-            redis = get_redis()
-            await redis.setex(cache_key, 70, json.dumps(usage_data, ensure_ascii=False))
-        except Exception as e:
-            logger.debug(f"AI usage 缓存写入失败: {e}")
-
-        return _ok(usage_data, 200)
-
-    except Exception as e:
-        logger.error(f"获取 AI 使用统计失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
