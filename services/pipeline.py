@@ -455,6 +455,21 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             )
             await _execute_forwarding(fwd_dec, req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id)
 
+        event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
+        importance = str(final_analysis.get("importance", "unknown")).lower()
+        fwd_info = ""
+        if not analysis_res.is_reused:
+            if fwd_dec.should_forward:
+                fwd_info = " forward=yes"
+            else:
+                fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
+        else:
+            fwd_info = " forward=skipped(reused)"
+        logger.info(
+            "[Pipeline] 处理完成 event_id=%s type=%s importance=%s%s",
+            event_id, event_type, importance, fwd_info,
+        )
+
         outcome = "completed"
         set_log_context(processing_status="completed")
         WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
