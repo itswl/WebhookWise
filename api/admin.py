@@ -59,8 +59,7 @@ async def get_config():
 async def get_config_sources_endpoint():
     try:
         items_data = get_config_sources()
-        items = [ConfigSourceItem(**item) for item in items_data]
-        return _ok(items, 200)
+        return _ok(items_data, 200)
     except Exception as e:
         logger.error(f"获取配置来源失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
