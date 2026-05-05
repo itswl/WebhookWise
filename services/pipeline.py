@@ -352,9 +352,11 @@ async def _execute_forwarding(
         else:
             success = True
             if rule["target_type"] == "openclaw" and is_pending and isinstance(webhook_id, int):
+                # 深度分析记录挂在原始事件上，重复事件时用 orig_id
+                target_event_id = orig_id if orig_id else webhook_id
                 async with session_scope() as sess:
                     sess.add(DeepAnalysis(
-                        webhook_event_id=webhook_id, engine="openclaw",
+                        webhook_event_id=target_event_id, engine="openclaw",
                         openclaw_run_id=res.get("_openclaw_run_id", ""),
                         openclaw_session_key=res.get("_openclaw_session_key", ""), status="pending"
                     ))
