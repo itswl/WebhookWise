@@ -137,13 +137,10 @@ class WebhookEventFull(BaseModel):
     duplicate_of: int | None = None
     duplicate_count: int
     beyond_window: bool
-    beyond_time_window: bool = False
-    is_within_window: bool = False
     duplicate_type: DuplicateType = "new"
     created_at: str | None = None
     updated_at: str | None = None
     prev_alert_id: int | None = None
-    prev_alert_timestamp: str | None = None
 
 
 class WebhookEventSummary(BaseModel):
@@ -160,15 +157,12 @@ class WebhookEventSummary(BaseModel):
     duplicate_of: int | None = None
     duplicate_count: int
     beyond_window: bool
-    beyond_time_window: bool = False
-    is_within_window: bool = False
     duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
     summary: str | None = None
     alert_info: dict | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
-    prev_alert_timestamp: str | None = None
 
 
 class WebhookReceiveResponse(BaseModel):
