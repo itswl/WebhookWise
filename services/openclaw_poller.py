@@ -239,7 +239,10 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
         try:
             # --- 超时检查 ---
             timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
-            if rec["created_at"] and (datetime.now() - rec["created_at"]).total_seconds() > timeout_seconds:
+            elapsed_total = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 0
+            if rec["created_at"] and elapsed_total > timeout_seconds:
+                logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss",
+                            record_id, elapsed_total, timeout_seconds)
                 await _clear_poll_stability(record_id)
                 update = {
                     "status": "failed",
@@ -297,8 +300,11 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                     and prev_snapshot["text_len"] == current_snapshot["text_len"]
                 ):
                     hit_count = prev_snapshot.get("hit_count", 1) + 1
+                    logger.info("[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
+                                record_id, hit_count, Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS,
+                                msg_count, len(text))
                     if hit_count >= Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS:
-                        logger.debug("[Poller] 分析稳定确认: id=%s", record_id)
+                        logger.info("[Poller] 分析稳定确认，准备写库: id=%s", record_id)
                     else:
                         await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
                         return {"id": record_id, "action": "skip"}
@@ -333,6 +339,8 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         **update,
                     }
                 else:
+                    logger.info("[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s",
+                                record_id, msg_count, len(text))
                     await _set_poll_stability(
                         record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}
                     )
@@ -381,6 +389,8 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 return {"id": record_id, "action": "update", **update}
 
             # --- pending / 其他状态 → skip ---
+            logger.info("[Poller] 分析仍在进行中: id=%s elapsed=%.0fs status=%s",
+                        record_id, elapsed_total, result.get("status", "unknown"))
             return {"id": record_id, "action": "skip"}
 
         except Exception as e:
