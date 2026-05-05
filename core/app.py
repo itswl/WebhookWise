@@ -48,7 +48,36 @@ async def lifespan(app: FastAPI):
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
 
+    # 启动 Recovery + Metrics 轮询（API 进程内兜底，worker 侧由 TaskIQ 驱动）
+    _poller_tasks = []
+    if Config.server.ENABLE_POLLERS:
+        from services.recovery_poller import run_recovery_scan
+        from services.metrics_poller import refresh_all_metrics
+
+        async def _recovery_loop():
+            while True:
+                try:
+                    await run_recovery_scan()
+                except Exception as e:
+                    logger.warning("[App] recovery scan error: %s", e)
+                await asyncio.sleep(Config.server.RECOVERY_POLLER_INTERVAL_SECONDS)
+
+        async def _metrics_loop():
+            while True:
+                try:
+                    await refresh_all_metrics()
+                except Exception as e:
+                    logger.warning("[App] metrics refresh error: %s", e)
+                await asyncio.sleep(15)
+
+        _poller_tasks.append(asyncio.create_task(_recovery_loop()))
+        _poller_tasks.append(asyncio.create_task(_metrics_loop()))
+        logger.info("[App] RecoveryPoller 和 MetricsPoller 已启动")
+
     yield
+
+    for t in _poller_tasks:
+        t.cancel()
 
     await Config.stop_subscriber()
     await broker.shutdown()
@@ -62,10 +91,7 @@ async def lifespan(app: FastAPI):
             len(running),
             grace_timeout,
         )
-        done, pending = await asyncio.wait(
-            running,
-            timeout=grace_timeout,
-        )
+        await asyncio.wait(running, timeout=grace_timeout)
 
     await dispose_engine()
     await dispose_redis()
