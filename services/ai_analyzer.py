@@ -337,17 +337,31 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
     ).filter(AIUsageLog.timestamp >= start_time)
     stats = (await session.execute(stats_stmt)).first()
 
+    # 查询缓存条目数（曾产生 AI 调用的唯一 alert_hash 数）
+    cache_entries_stmt = select(func.count(func.distinct(AIUsageLog.alert_hash))).filter(
+        AIUsageLog.timestamp >= start_time,
+        AIUsageLog.route_type == "ai",
+        AIUsageLog.alert_hash.isnot(None),
+    )
+    cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
+
+    cache_hits = route_breakdown.get("cache", 0)
+    reuse_hits = route_breakdown.get("reuse", 0)
+    total_hits = cache_hits + reuse_hits
+    avg_hits = round(reuse_hits / cache_entries, 2) if cache_entries > 0 else 0.0
+    hit_rate = round(total_hits / max(total, 1) * 100, 2)
+
     return {
         "total_calls": total, "route_breakdown": route_breakdown,
         "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
         "tokens": {"input": stats[0] or 0, "output": stats[1] or 0, "total": (stats[0] or 0) + (stats[1] or 0)},
         "cost": {"total": float(stats[2] or 0.0), "saved_estimate": 0.0},
         "cache_statistics": {
-            "total_cache_entries": 0,
-            "total_hits": route_breakdown.get("cache", 0) + route_breakdown.get("reuse", 0),
-            "avg_hits_per_entry": 0.0,
-            "cache_hit_rate": 0.0,
-            "saved_calls": route_breakdown.get("cache", 0) + route_breakdown.get("reuse", 0)
+            "total_cache_entries": cache_entries,
+            "total_hits": total_hits,
+            "avg_hits_per_entry": avg_hits,
+            "cache_hit_rate": hit_rate,
+            "saved_calls": total_hits,
         },
         "trend": []
     }
@@ -369,14 +383,16 @@ async def get_deep_analysis_list(
         query = query.filter(DeepAnalysis.engine == engine_filter)
 
     res = await session.execute(query.limit(per_page))
+    rows = res.all()
     items = []
-    for rec, evt in res.all():
+    for rec, evt in rows:
         d = rec.to_dict()
         d["source"] = evt.source if evt else None
         d["is_duplicate"] = bool(evt.is_duplicate) if evt else False
         d["beyond_window"] = bool(evt.beyond_window) if evt else False
         items.append(d)
-    return {"items": items, "per_page": per_page}
+    next_cursor = items[-1]["id"] if items else None
+    return {"items": items, "per_page": per_page, "page": page, "total": None, "total_pages": None, "next_cursor": next_cursor}
 
 
 async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int):

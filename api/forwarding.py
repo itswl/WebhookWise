@@ -18,8 +18,10 @@ from services.forward import (
     create_forward_rule,
     delete_failed_forward,
     delete_forward_rule,
+    forward_to_remote,
     get_failed_forward_stats,
     get_failed_forwards,
+    get_forward_rule,
     get_forward_rules,
     manual_retry_reset,
     update_forward_rule,
@@ -77,6 +79,26 @@ async def delete_forward_rule_endpoint(rule_id: int, session: AsyncSession = Dep
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     return {"success": True, "message": "规则已删除"}
+
+
+@forwarding_router.post("/api/forward-rules/{rule_id}/test")
+async def test_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depends(get_db_session)):
+    rule = await get_forward_rule(session, rule_id)
+    if not rule:
+        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+
+    test_webhook = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
+    test_analysis = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
+
+    target_url = rule.target_url if rule.target_type != "openclaw" else None
+    result = await forward_to_remote(test_webhook, test_analysis, target_url=target_url)
+
+    if result.get("status") == "success":
+        return {"success": True, "message": "测试消息已发送", "detail": result}
+    elif result.get("status") == "skipped":
+        return JSONResponse(status_code=400, content={"success": False, "error": "目标 URL 未配置"})
+    else:
+        return JSONResponse(status_code=502, content={"success": False, "error": result.get("message", "发送失败")})
 
 
 # ── Forwarding Retry ─────────────────────────────────────────────────────────
