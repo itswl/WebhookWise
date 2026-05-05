@@ -89,6 +89,7 @@ services:
       - .env
     environment:
       RUN_MODE: worker
+      PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
