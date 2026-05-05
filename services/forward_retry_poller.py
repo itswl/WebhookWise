@@ -39,7 +39,6 @@ async def poll_pending_retries():
     lock = DistributedLock(key=lock_key, ttl=lock_ttl, lock_value=lock_value)
     async with lock as acquired:
         if not acquired:
-            logger.debug("[ForwardRetry] 未获取到分布式锁，跳过本轮")
             return
         now = datetime.now()
         record_ids: list[int] = []
