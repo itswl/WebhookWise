@@ -68,6 +68,13 @@ async def startup_event():
         await _register_schedules()
     except Exception as _e:
         logger.warning("[TaskIQ] 定时任务注册失败: %s", _e)
+    # 启动时立即执行一次 recovery，捞起重启前遗留的僵尸事件（不受阈值限制）
+    try:
+        from services.recovery_poller import run_recovery_scan
+        await run_recovery_scan(stuck_threshold_seconds=0)
+        logger.info("[TaskIQ] 启动恢复扫描完成")
+    except Exception as _e:
+        logger.warning("[TaskIQ] 启动恢复扫描失败: %s", _e)
 
 @broker.on_event("shutdown")
 async def shutdown_event():
