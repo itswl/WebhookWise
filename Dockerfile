@@ -32,6 +32,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
+    PYTHONPATH=/app \
     PATH=/home/appuser/.local/bin:$PATH
 
 # 从构建阶段复制已安装的依赖
