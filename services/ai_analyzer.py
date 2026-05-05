@@ -294,7 +294,8 @@ async def analyze_webhook_with_ai(
 
     try:
         analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
-        await save_to_cache(alert_hash, analysis)
+        if not analysis.get("_degraded"):
+            await save_to_cache(alert_hash, analysis)
         await log_ai_usage("ai", alert_hash, source, model=policies.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
         return {**analysis, "_route_type": "ai"}
     except Exception as e:
