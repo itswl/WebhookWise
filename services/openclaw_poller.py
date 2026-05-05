@@ -170,7 +170,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
         try:
             # 使用 /final 接口直接获取最终结果
             url = f"{base_url}/sessions/{session_key}/final"
-            logger.info(f"HTTP /final 请求 (尝试 {attempt + 1}/{retry_count}): {url}")
+            logger.debug("HTTP /final 请求 (尝试 %s/%s): %s", attempt + 1, retry_count, url)
 
             response = await client.get(url, headers=headers, timeout=30.0)
 
