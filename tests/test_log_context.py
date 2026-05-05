@@ -5,7 +5,6 @@ tests/test_log_context.py
 关键：空值不应出现在日志输出中（避免噪音日志）。
 """
 
-import pytest
 
 from core.log_context import (
     clear_log_context,

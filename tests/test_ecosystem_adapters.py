@@ -9,7 +9,6 @@ import pytest
 
 from adapters.ecosystem_adapters import _normalize_level, normalize_webhook_event
 
-
 # ── Prometheus / Alertmanager ──────────────────────────────────────────────
 
 
