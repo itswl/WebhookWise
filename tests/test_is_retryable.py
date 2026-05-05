@@ -11,7 +11,6 @@ import sqlalchemy.exc
 
 from services.pipeline import _is_retryable
 
-
 # ── 不可重试：永久性失败 ──────────────────────────────────────────────────────
 
 

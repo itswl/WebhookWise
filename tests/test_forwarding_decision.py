@@ -5,10 +5,11 @@ tests/test_forwarding_decision.py
 这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
 """
 
-import pytest
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from core.config import Config
 from services.pipeline import _decide_forwarding
