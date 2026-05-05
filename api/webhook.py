@@ -14,7 +14,7 @@ from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
-from schemas import HealthResponse, WebhookDetailResponse, WebhookListResponse, WebhookReceiveResponse
+from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from services.tasks import process_webhook_task
 from services.webhook_orchestrator import (
     get_client_ip,
