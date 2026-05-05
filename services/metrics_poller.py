@@ -78,7 +78,8 @@ async def _refresh_db_status_counts() -> None:
 
 async def _refresh_mq_stats() -> None:
     """MQ 指标刷新 — TaskIQ 使用 Redis List (ListQueueBroker)。"""
-    queue_name = Config.server.WEBHOOK_MQ_QUEUE
+    from core.taskiq_broker import broker
+    queue_name = getattr(broker, "queue_name", None) or Config.server.WEBHOOK_MQ_QUEUE
     redis = get_redis()
 
     try:
