@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
 from core.config import Config
+from core.logger import logger
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
@@ -77,6 +78,8 @@ async def receive_webhook(
     )
     await session.commit()
     set_trace_id(generate_trace_id(event_id=event_id))
+    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
+                event_id, source or headers.get("x-webhook-source", "unknown"), client_ip, len(raw_body))
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
 
@@ -114,6 +117,8 @@ async def receive_webhook_with_source(
     )
     await session.commit()
     set_trace_id(generate_trace_id(event_id=event_id))
+    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
+                event_id, source, client_ip, len(raw_body))
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
 

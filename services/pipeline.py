@@ -157,6 +157,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
             await pubsub.subscribe(channel)
             cached = await get_cached_analysis(alert_hash)
             if cached:
+                logger.debug("[Pipeline] 锁竞争立即命中缓存 hash=%s...", alert_hash[:12])
                 await log_ai_usage(
                     route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", "")
                 )
@@ -169,10 +170,12 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
                     )
                 cached = await get_cached_analysis(alert_hash)
                 if cached:
+                    logger.debug("[Pipeline] 锁竞争 pub/sub 等待后命中缓存 hash=%s...", alert_hash[:12])
                     await log_ai_usage(
                         route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", "")
                     )
                     return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+            logger.debug("[Pipeline] 锁竞争等待超时，降级为独立分析 hash=%s...", alert_hash[:12])
         finally:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
@@ -186,19 +189,26 @@ async def _resolve_analysis(alert_hash: str, full_data: dict, got_lock: bool) ->
         if last_beyond and last_beyond.created_at and (
             datetime.now() - last_beyond.created_at
         ).total_seconds() < Config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS and not (last_beyond.ai_analysis or {}).get("_degraded"):
+            logger.debug("[Pipeline] 窗口外复用最近 beyond_window 事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution({**(last_beyond.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True)
         if not Config.retry.REANALYZE_AFTER_TIME_WINDOW and not (orig.ai_analysis or {}).get("_degraded"):
+            logger.debug("[Pipeline] 窗口外复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution({**(orig.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True)
+        logger.debug("[Pipeline] 窗口外重新分析 orig_id=%s reason=%s hash=%s...",
+                     orig.id, "reanalyze_enabled" if Config.retry.REANALYZE_AFTER_TIME_WINDOW else "prev_degraded", alert_hash[:12])
         res, rean = await analyze_webhook_with_ai(full_data), True
     elif check.is_duplicate and orig:
         target = last_beyond if last_beyond and last_beyond.ai_analysis else orig
         if target.ai_analysis and not target.ai_analysis.get("_degraded"):
+            logger.debug("[Pipeline] 窗口内复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution({**target.ai_analysis, "_route_type": "db_reuse"}, False, True, orig, False)
+        logger.debug("[Pipeline] 窗口内重新分析 orig_id=%s reason=prev_degraded hash=%s...", orig.id, alert_hash[:12])
         res, rean = await analyze_webhook_with_ai(full_data), True
     else:
+        logger.debug("[Pipeline] 新事件，发起 AI 分析 hash=%s...", alert_hash[:12])
         res, rean = await analyze_webhook_with_ai(full_data), True
 
     return AnalysisResolution(res, rean, check.is_duplicate, orig, check.beyond_window)
@@ -231,6 +241,12 @@ async def _compute_noise(alert_hash: str, source: str, parsed: dict, analysis: d
         curr, recent, window_minutes=window, min_confidence=Config.ai.ROOT_CAUSE_MIN_CONFIDENCE,
         suppress_derived=Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD
     )
+    if dec.suppress_forward:
+        logger.info("[Noise] 抑制转发 relation=%s root_cause_id=%s confidence=%.2f reason=%s",
+                    dec.relation, dec.root_cause_event_id, dec.confidence, dec.reason)
+    elif dec.relation != "standalone":
+        logger.debug("[Noise] 关联但不抑制 relation=%s root_cause_id=%s confidence=%.2f",
+                     dec.relation, dec.root_cause_event_id, dec.confidence)
     return NoiseReductionContext(
         dec.relation, dec.root_cause_event_id, dec.confidence,
         dec.suppress_forward, dec.reason, dec.related_alert_count, dec.related_alert_ids
@@ -244,14 +260,17 @@ async def _decide_forwarding(
     """转发决策逻辑"""
     from core.config import Config
     if noise and noise.suppress_forward:
+        logger.debug("[Forward] 决策=抑制 reason=noise_%s", noise.relation)
         return ForwardDecision(False, f"智能降噪抑制转发: {noise.reason}", False)
 
     # 1. 匹配规则
     matched_rules = []
+    total_rules = 0
     try:
         async with session_scope() as sess:
             rules_stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
             rules = (await sess.execute(rules_stmt)).scalars().all()
+            total_rules = len(rules)
             for r in rules:
                 if r.match_importance and importance not in [
                     x.strip().lower() for x in r.match_importance.split(",")
@@ -264,6 +283,8 @@ async def _decide_forwarding(
                 matched_rules.append(r.to_dict())
                 if r.stop_on_match:
                     break
+        logger.debug("[Forward] 规则匹配完成 total_rules=%d matched=%d importance=%s source=%s",
+                     total_rules, len(matched_rules), importance, source)
     except Exception as e:
         logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
@@ -299,6 +320,13 @@ async def _decide_forwarding(
 
     # 去重/冷却期明确禁止时，规则匹配不能覆盖
     final_forward = False if suppressed else (should_fwd or bool(matched_rules))
+
+    if final_forward:
+        logger.debug("[Forward] 决策=转发 is_periodic=%s matched_rules=%d skip_reason=%s",
+                     is_periodic, len(matched_rules), skip_reason)
+    else:
+        logger.debug("[Forward] 决策=跳过 reason=%s suppressed=%s",
+                     skip_reason or "no_match", suppressed)
 
     return ForwardDecision(
         should_forward=final_forward,
@@ -519,7 +547,7 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
         if status == "dead_letter":
             await _send_dead_letter_alert(event_id, 0, e)
         outcome = "retry" if retryable else "dead_letter"
-        logger.error(f"处理失败 (retryable={retryable}): {e}", exc_info=True)
+        logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
     finally:
         duration = time.perf_counter() - start_perf
         WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)

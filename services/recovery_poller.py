@@ -43,6 +43,8 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None):
     for e in zombie_events:
         await _recover_single_event(e)
 
+    logger.info("[Recovery] 本轮恢复完成 recovered=%d threshold_secs=%d", len(zombie_events), threshold_secs)
+
 
 async def _recover_single_event(e: WebhookEvent):
     """恢复单条事件，独立 try-except 避免影响循环"""
