@@ -578,11 +578,9 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
             logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
             if _span:
-                try:
+                with contextlib.suppress(Exception):
                     from opentelemetry.trace import StatusCode
                     _span.set_status(StatusCode.ERROR, str(e))
-                except Exception:
-                    pass
         finally:
             duration = time.perf_counter() - start_perf
             WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)

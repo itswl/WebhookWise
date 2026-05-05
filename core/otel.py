@@ -190,13 +190,11 @@ def get_otel_trace_id() -> str:
     """
     if not _otel_enabled():
         return ""
-    try:
+    with suppress(Exception):
         from opentelemetry import trace
         ctx = trace.get_current_span().get_span_context()
         if ctx and ctx.is_valid:
             return format(ctx.trace_id, "032x")
-    except Exception:
-        pass
     return ""
 
 
@@ -204,13 +202,11 @@ def get_otel_span_id() -> str:
     """返回当前活动 OTEL span 的 span_id（16 位小写 hex），无活动 span 时返回空字符串。"""
     if not _otel_enabled():
         return ""
-    try:
+    with suppress(Exception):
         from opentelemetry import trace
         ctx = trace.get_current_span().get_span_context()
         if ctx and ctx.is_valid:
             return format(ctx.span_id, "016x")
-    except Exception:
-        pass
     return ""
 
 
