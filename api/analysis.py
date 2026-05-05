@@ -98,7 +98,7 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
     )
     session.add(record)
     await session.flush()
-    return {"success": True, "data": record}
+    return {"success": True, "data": record.to_dict()}
 
 
 @analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
