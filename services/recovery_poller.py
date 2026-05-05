@@ -20,11 +20,10 @@ _MAX_RECOVER_BATCH = 50
 _MAX_RETRIES = 5
 
 
-async def run_recovery_scan():
+async def run_recovery_scan(stuck_threshold_seconds: int | None = None):
     """扫描僵尸事件并重新处理（由 TaskIQ 驱动，不再自启动循环）"""
-    threshold = datetime.now() - timedelta(
-        seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS,
-    )
+    threshold_secs = stuck_threshold_seconds if stuck_threshold_seconds is not None else Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
+    threshold = datetime.now() - timedelta(seconds=threshold_secs)
 
     async with session_scope() as session:
         result = await session.execute(
