@@ -141,11 +141,11 @@ async def get_webhooks_endpoint(
     }
 
 
-@webhook_router.get("/api/webhooks/{webhook_id}", response_model=WebhookDetailResponse)
+@webhook_router.get("/api/webhooks/{webhook_id}")
 async def get_webhook_detail_endpoint(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
     """获取单个 webhook 事件的详细信息。"""
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
-    return {"success": True, "data": event}
+    return {"success": True, "data": event.to_dict()}
