@@ -75,9 +75,19 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] metrics refresh error: %s", e)
                 await asyncio.sleep(15)
 
+        async def _openclaw_poll_loop():
+            from services.openclaw_poller import poll_pending_analyses
+            while True:
+                try:
+                    await poll_pending_analyses()
+                except Exception as e:
+                    logger.warning("[App] openclaw poller error: %s", e)
+                await asyncio.sleep(30)
+
         _poller_tasks.append(asyncio.create_task(_recovery_loop()))
         _poller_tasks.append(asyncio.create_task(_metrics_loop()))
-        logger.info("[App] RecoveryPoller 和 MetricsPoller 已启动")
+        _poller_tasks.append(asyncio.create_task(_openclaw_poll_loop()))
+        logger.info("[App] RecoveryPoller、MetricsPoller 和 OpenclawPoller 已启动")
 
     yield
 
