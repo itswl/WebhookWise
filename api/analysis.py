@@ -138,6 +138,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
     old_imp, new_imp = event.importance, res.get("importance")
     event.ai_analysis, event.importance = res, new_imp
+    event.processing_status = "completed"
 
     updated_dups = 0
     if event.is_duplicate == 0:
@@ -146,6 +147,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         dups = dups_res.scalars().all()
         for d in dups:
             d.ai_analysis, d.importance = res, new_imp
+            d.processing_status = "completed"
         updated_dups = len(dups)
 
     return {
