@@ -215,25 +215,32 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
         # 发送飞书通知
         try:
             from adapters.ecosystem_adapters import send_feishu_deep_analysis
-            if policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
+            feishu_url = policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK
+            logger.info("retry: 准备发送飞书通知, webhook_url=%s, analysis_id=%s", bool(feishu_url), analysis_id)
+            if feishu_url:
                 event = await session.get(WebhookEvent, record.webhook_event_id)
                 source = event.source if event else ""
                 ok = await send_feishu_deep_analysis(
-                    webhook_url=policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
+                    webhook_url=feishu_url,
                     analysis_record={"analysis_result": record.analysis_result, "engine": record.engine, "duration_seconds": record.duration_seconds},
                     source=source, webhook_event_id=record.webhook_event_id,
                 )
-                if not ok:
+                if ok:
+                    logger.info("retry: 飞书通知发送成功, analysis_id=%s", analysis_id)
+                else:
+                    logger.warning("retry: 飞书通知发送失败(返回False), analysis_id=%s", analysis_id)
                     with contextlib.suppress(Exception):
                         await record_failed_forward(
                             webhook_event_id=record.webhook_event_id, forward_rule_id=None,
-                            target_url=policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK, target_type="feishu",
+                            target_url=feishu_url, target_type="feishu",
                             failure_reason="feishu_send_failed", error_message="HTTP重试后飞书通知发送失败",
                             forward_data={"analysis_id": analysis_id, "webhook_event_id": record.webhook_event_id},
                             session=session,
                         )
+            else:
+                logger.warning("retry: DEEP_ANALYSIS_FEISHU_WEBHOOK 未配置，跳过通知")
         except Exception as e:
-            logger.warning("飞书深度分析通知失败: %s", e)
+            logger.warning("retry: 飞书深度分析通知异常: %s", e, exc_info=True)
 
         return {"success": True, "message": f"获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果"}
 
