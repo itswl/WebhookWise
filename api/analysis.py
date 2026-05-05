@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from adapters.ecosystem_adapters import normalize_webhook_event
 from adapters.registry import get_default_engine, get_engine
 from core.config import policies
-from core.logger import mask_url
+from core.logger import logger, mask_url
 from core.redis_client import get_redis
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
@@ -149,6 +149,13 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
             d.ai_analysis, d.importance = res, new_imp
             d.processing_status = "completed"
         updated_dups = len(dups)
+
+    # 重新分析完成后触发转发通知
+    try:
+        fwd_ctx = await _build_webhook_context(event)
+        await forward_to_remote(fwd_ctx, res)
+    except Exception as e:
+        logger.warning("reanalyze: 转发通知失败: %s", e)
 
     return {
         "success": True, "status": "success", "analysis": res,

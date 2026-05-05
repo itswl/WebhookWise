@@ -197,6 +197,12 @@ class WebhookEvent(Base, SerializerMixin):
             val = getattr(self, k, None)
             if isinstance(val, datetime):
                 res[k] = val.isoformat()
+
+        # 计算字段
+        is_dup = bool(self.is_duplicate)
+        beyond = bool(self.beyond_window)
+        res["duplicate_type"] = ("beyond_window" if beyond else "within_window") if is_dup else "new"
+
         return res
 
 

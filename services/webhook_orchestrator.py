@@ -88,11 +88,21 @@ def get_client_ip(request: Request) -> str:
 
 # ── 投影查询逻辑 ──
 
+_PrevEvent = WebhookEvent.__table__.alias("prev_evt")
+_prev_ts_subq = (
+    select(_PrevEvent.c.timestamp)
+    .where(_PrevEvent.c.id == WebhookEvent.prev_alert_id)
+    .correlate(WebhookEvent.__table__)
+    .scalar_subquery()
+    .label("prev_alert_timestamp")
+)
+
 _SUMMARY_COLUMNS = [
     WebhookEvent.id, WebhookEvent.source, WebhookEvent.client_ip, WebhookEvent.timestamp,
     WebhookEvent.importance, WebhookEvent.is_duplicate, WebhookEvent.duplicate_of,
     WebhookEvent.duplicate_count, WebhookEvent.beyond_window, WebhookEvent.forward_status,
     WebhookEvent.ai_analysis, WebhookEvent.parsed_data, WebhookEvent.created_at, WebhookEvent.prev_alert_id,
+    _prev_ts_subq,
 ]
 
 
@@ -100,6 +110,7 @@ def _row_to_summary_dict(row) -> dict:
     from adapters.summary_extractors import extract_summary_fields
     ai_analysis = row.ai_analysis
     beyond_window, is_dup = bool(row.beyond_window), bool(row.is_duplicate)
+    prev_ts = getattr(row, "prev_alert_timestamp", None)
     return {
         "id": row.id, "source": row.source, "client_ip": row.client_ip,
         "timestamp": row.timestamp.isoformat() if row.timestamp else None,
@@ -108,7 +119,9 @@ def _row_to_summary_dict(row) -> dict:
         "forward_status": row.forward_status, "summary": ai_analysis.get("summary", "") if ai_analysis else None,
         "alert_info": extract_summary_fields(row.source, row.parsed_data),
         "created_at": row.created_at.isoformat() if row.created_at else None,
-        "prev_alert_id": row.prev_alert_id, "beyond_time_window": beyond_window,
+        "prev_alert_id": row.prev_alert_id,
+        "prev_alert_timestamp": prev_ts.isoformat() if prev_ts else None,
+        "beyond_time_window": beyond_window,
         "is_within_window": is_dup and not beyond_window,
         "duplicate_type": ("beyond_window" if beyond_window else "within_window") if is_dup else "new",
     }
