@@ -127,10 +127,10 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
     if not record:
         return JSONResponse(status_code=404, content={"success": False, "error": "分析记录不存在"})
 
-    if record.status not in ("failed", "completed"):
+    if record.status not in ("failed", "completed", "pending"):
         return JSONResponse(
             status_code=400,
-            content={"success": False, "error": f"只能在失败或已完成状态下重新拉取，当前状态: {record.status}"},
+            content={"success": False, "error": f"只能在失败、已完成或待处理状态下重新拉取，当前状态: {record.status}"},
         )
 
     if not record.openclaw_session_key:
