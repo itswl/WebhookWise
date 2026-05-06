@@ -81,6 +81,38 @@ if ! (cd /app && alembic upgrade head) 2>&1; then
         exit 1
     fi
 fi
+
+# 极端兜底：如果 DB 实际对象已存在但 alembic_version 未推进，会导致每次启动重复跑同一条幂等迁移
+python3 - << "PY"
+import os
+
+import psycopg2
+
+url = os.environ.get("DATABASE_URL", "")
+if not url:
+    raise SystemExit(0)
+
+conn = psycopg2.connect(url)
+conn.autocommit = True
+cur = conn.cursor()
+cur.execute("select version_num from public.alembic_version")
+current = cur.fetchone()[0]
+
+if current == "9c0b7c3e2a11":
+    cur.execute("select to_regclass('public.processing_locks')")
+    has_processing_locks = bool(cur.fetchone()[0])
+    cur.execute(
+        "select 1 from pg_indexes where schemaname='public' and indexname='idx_unique_alert_hash_original' limit 1"
+    )
+    has_unique_idx = cur.fetchone() is not None
+
+    if has_processing_locks and has_unique_idx:
+        cur.execute("update public.alembic_version set version_num=%s", ("6a7b8c9d0e1f",))
+
+cur.close()
+conn.close()
+PY
+
 echo "✅ Alembic 迁移完成"
 
 echo "======================================"
