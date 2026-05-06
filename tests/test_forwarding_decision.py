@@ -17,12 +17,14 @@ from services.pipeline import _decide_forwarding
 
 class _Event:
     """模拟 WebhookEvent 的最小对象。"""
+
     def __init__(self, last_notified_at=None):
         self.last_notified_at = last_notified_at
 
 
 class _Noise:
     """模拟 NoiseReductionContext。"""
+
     def __init__(self, suppress=False, reason=""):
         self.suppress_forward = suppress
         self.reason = reason
@@ -231,19 +233,22 @@ async def test_beyond_window_in_cooldown_skips():
 
 
 class _FakeRule:
-    def __init__(self, rid, importance="", source="", target_url="https://example.com", stop=False):
+    def __init__(self, rid, importance="", source="", target_url="https://example.com", stop=False, duplicate="all"):
         self.id = rid
         self.name = f"rule-{rid}"
         self.match_importance = importance
         self.match_source = source
+        self.match_duplicate = duplicate
         self.target_type = "webhook"
         self.target_url = target_url
         self.stop_on_match = stop
 
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name,
-            "target_type": self.target_type, "target_url": self.target_url,
+            "id": self.id,
+            "name": self.name,
+            "target_type": self.target_type,
+            "target_url": self.target_url,
             "stop_on_match": self.stop_on_match,
         }
 
