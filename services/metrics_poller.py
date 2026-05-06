@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
 from core.config import Config
@@ -87,7 +88,7 @@ async def _refresh_mq_stats() -> None:
     try:
         stream_len = await redis.xlen(queue_name)
         WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(stream_len)
-    except Exception as e:
+    except RedisError as e:
         logger.debug("[Metrics] 刷新 MQ 队列长度失败: %s", e)
 
     try:
@@ -98,7 +99,7 @@ async def _refresh_mq_stats() -> None:
         else:
             try:
                 pending = int(pending_summary[0] or 0)
-            except Exception:
+            except (TypeError, ValueError, IndexError):
                 pending = 0
         WEBHOOK_MQ_GROUP_PENDING.labels(stream=queue_name, group=group_name).set(pending)
 
@@ -109,5 +110,5 @@ async def _refresh_mq_stats() -> None:
                 lag = int(g.get("lag") or 0)
                 break
         WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group=group_name).set(lag)
-    except Exception as e:
+    except RedisError as e:
         logger.debug("[Metrics] 刷新 MQ group 指标失败: %s", e)
