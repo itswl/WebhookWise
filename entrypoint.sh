@@ -39,7 +39,7 @@ exit(0 if asyncio.run(_check()) else 1)" 2>/dev/null; then
         exit 1
     fi
     # 启动 TaskIQ Worker (所有定时轮询任务已迁移至 receiver 进程的 asyncio 循环)
-    exec taskiq worker core.taskiq_broker:broker services.tasks
+    exec python worker.py
 fi
 
 # 以下是 API / all 模式的启动流程
