@@ -269,7 +269,7 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
         from core.redis_client import get_redis
 
         # 根据错误内容生成短 hash，不同类型的错误不会互相阻塞，但同一种错误 1 小时内只报一次
-        error_hash = hashlib.md5(error_reason[:100].encode("utf-8")).hexdigest()[:8]
+        error_hash = hashlib.md5(error_reason[:100].encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         lock_key = f"ai_error_alert_lock:{error_hash}"
 
         # 冷却时间：3600 秒 (1 小时)
