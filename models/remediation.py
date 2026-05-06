@@ -1,8 +1,8 @@
 import json
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
-    Column,
     DateTime,
     Index,
     Integer,
@@ -10,6 +10,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
 
@@ -19,21 +20,21 @@ class RemediationExecution(Base):
 
     __tablename__ = "remediation_execution"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    execution_id = Column(String(64), unique=True, nullable=False, index=True)
-    runbook_name = Column(String(200), nullable=False)
-    trigger_alert_id = Column(Integer, nullable=True)
-    trigger_alert_hash = Column(String(64))
-    status = Column(String(30), default="pending")
-    steps_log = Column(Text, default="[]")
-    dry_run = Column(Boolean, default=False)
-    started_at = Column(DateTime, default=func.now())
-    completed_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    runbook_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    trigger_alert_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    trigger_alert_hash: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    steps_log: Mapped[str] = mapped_column(Text, default="[]")
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("idx_remediation_status_time", "status", "started_at"),)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
         return {
             "id": self.id,
             "execution_id": self.execution_id,

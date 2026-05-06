@@ -1,7 +1,8 @@
 import contextlib
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
 from core.config import Config
 from core.logger import mask_url
@@ -24,17 +25,20 @@ T = TypeVar("T", bound="BaseModel")
 class SerializerMixin:
     """提供通用的序列化能力，减少 Models 与 Schemas 之间的重复代码。"""
 
+    __table__: Any
+
     def to_schema(self, schema_cls: type[T]) -> T:
         """将 Model 实例转换为指定的 Pydantic Schema。"""
         return schema_cls.model_validate(self)
 
-    def to_dict(self, schema_cls: type["BaseModel"] | None = None) -> dict[str, Any]:
+    def to_dict(self, schema_cls: type["BaseModel"] | None = None) -> dict[str, object]:
         """将 Model 实例转换为字典。如果提供 schema_cls，则通过 Schema 进行过滤和格式化。"""
         if schema_cls:
-            return self.to_schema(schema_cls).model_dump()
+            return cast(dict[str, object], self.to_schema(schema_cls).model_dump())
         # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段，格式化 datetime）
         import datetime
-        res = {}
+
+        res: dict[str, object] = {}
         for c in self.__table__.columns:
             val = getattr(self, c.name)
             if isinstance(val, (bytes, memoryview)):
@@ -44,16 +48,20 @@ class SerializerMixin:
             res[c.name] = val
         return res
 
+
 _logger = logging.getLogger(__name__)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
+
 
 # ── 全局异步引擎（主事件循环使用） ──
 _engine: AsyncEngine | None = None
-_session_factory: async_sessionmaker | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def _build_engine_kwargs():
+def _build_engine_kwargs() -> dict[str, Any]:
     """返回连接池公共参数"""
     return {
         "echo": False,
@@ -78,7 +86,7 @@ def _async_url() -> str:
 
     不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
     """
-    url = Config.db.DATABASE_URL
+    url = cast(str, Config.db.DATABASE_URL)
     for prefix in ("postgresql+psycopg2://", "postgresql://", "postgres://"):
         if url.startswith(prefix):
             return url.replace(prefix, "postgresql+asyncpg://", 1)
@@ -90,7 +98,7 @@ def _async_url() -> str:
 # ────────────────────────────────────────
 
 
-async def init_engine():
+async def init_engine() -> None:
     """创建全局 AsyncEngine 和 async_sessionmaker（应用启动时调用一次）"""
     global _engine, _session_factory
     if _session_factory is not None:
@@ -98,6 +106,7 @@ async def init_engine():
     _logger.info(f"[DB] 正在初始化异步数据库连接池: {mask_url(Config.db.DATABASE_URL)}")
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
+    assert _engine is not None
     try:
         from core.otel import instrument_sqlalchemy
 
@@ -107,26 +116,27 @@ async def init_engine():
     _setup_pool_metrics(_engine)
 
 
-def _setup_pool_metrics(engine: AsyncEngine):
+def _setup_pool_metrics(engine: AsyncEngine) -> None:
     """注册连接池事件监听，通过回调更新 Prometheus Gauge。"""
     from core.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
 
-    pool = engine.sync_engine.pool
+    pool = cast(Any, engine.sync_engine.pool)
 
-    @event.listens_for(pool, "checkout")
-    def _on_checkout(dbapi_conn, connection_record, connection_proxy):
+    def _on_checkout(dbapi_conn: Any, connection_record: Any, connection_proxy: Any) -> None:
         DB_POOL_CHECKED_OUT.inc()
 
-    @event.listens_for(pool, "checkin")
-    def _on_checkin(dbapi_conn, connection_record):
+    def _on_checkin(dbapi_conn: Any, connection_record: Any) -> None:
         DB_POOL_CHECKED_OUT.dec()
+
+    event.listen(pool, "checkout", _on_checkout)
+    event.listen(pool, "checkin", _on_checkin)
 
     # 初始化连接池容量
     DB_POOL_SIZE.set(pool.size() + pool.overflow())
     _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin → Prometheus Gauge)")
 
 
-async def dispose_engine():
+async def dispose_engine() -> None:
     """关闭全局异步引擎（应用关闭时调用）"""
     global _engine, _session_factory
     if _engine:
@@ -141,10 +151,11 @@ def get_engine() -> AsyncEngine | None:
     return _engine
 
 
-async def get_db_session():
+async def get_db_session() -> AsyncIterator[AsyncSession]:
     """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
     if _session_factory is None:
         await init_engine()
+    assert _session_factory is not None
     async with _session_factory() as session:
         try:
             yield session
@@ -155,7 +166,7 @@ async def get_db_session():
 
 
 @asynccontextmanager
-async def session_scope(existing_session: AsyncSession | None = None):
+async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIterator[AsyncSession]:
     """异步数据库会话上下文管理器，自动处理提交和回滚。
 
     如果传入了 existing_session，则直接使用它且不执行自动提交/回滚（由调用方负责）。
@@ -166,6 +177,7 @@ async def session_scope(existing_session: AsyncSession | None = None):
     else:
         if _session_factory is None:
             await init_engine()
+        assert _session_factory is not None
         async with _session_factory() as session:
             try:
                 yield session
@@ -177,7 +189,7 @@ async def session_scope(existing_session: AsyncSession | None = None):
 
 async def count_with_timeout(
     session: AsyncSession,
-    stmt,
+    stmt: Any,
     timeout_ms: int = 2000,
 ) -> int | None:
     """带 statement_timeout 兜底的 COUNT 查询（PostgreSQL-only）。
@@ -208,8 +220,11 @@ async def count_with_timeout(
 # ────────────────────────────────────────
 
 
-async def init_db():
+async def init_db() -> None:
     """初始化数据库表（异步版本）"""
+    if _engine is None:
+        await init_engine()
+    assert _engine is not None
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     _logger.info("数据库表初始化完成")
@@ -218,6 +233,9 @@ async def init_db():
 async def test_db_connection() -> bool:
     """测试数据库连接（异步版本）"""
     try:
+        if _engine is None:
+            await init_engine()
+        assert _engine is not None
         async with _engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         _logger.info("数据库连接测试成功")
