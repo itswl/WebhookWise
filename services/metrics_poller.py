@@ -35,6 +35,7 @@ async def _refresh_db_event_count() -> None:
         from sqlalchemy import func, select
 
         from models import WebhookEvent
+
         async with session_scope() as session:
             count = (await session.execute(select(func.count()).select_from(WebhookEvent))).scalar() or 0
         DATABASE_EVENTS_COUNT.set(count)
@@ -44,15 +45,14 @@ async def _refresh_db_event_count() -> None:
 
 async def _refresh_db_status_counts() -> None:
     known_statuses = ("received", "analyzing", "completed", "failed", "dead_letter")
-    status_counts = {s: 0 for s in known_statuses}
-    stuck_counts = {s: 0 for s in known_statuses}
+    status_counts = dict.fromkeys(known_statuses, 0)
+    stuck_counts = dict.fromkeys(known_statuses, 0)
 
     threshold = datetime.now() - timedelta(seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
 
     async with session_scope() as session:
         result = await session.execute(
-            select(WebhookEvent.processing_status, func.count())
-            .group_by(WebhookEvent.processing_status)
+            select(WebhookEvent.processing_status, func.count()).group_by(WebhookEvent.processing_status)
         )
         for status, count in result.all():
             key = str(status or "")
@@ -79,6 +79,7 @@ async def _refresh_db_status_counts() -> None:
 async def _refresh_mq_stats() -> None:
     """MQ 指标刷新 — TaskIQ 使用 Redis List (ListQueueBroker)。"""
     from core.taskiq_broker import broker
+
     queue_name = getattr(broker, "queue_name", None) or Config.server.WEBHOOK_MQ_QUEUE
     redis = get_redis()
 

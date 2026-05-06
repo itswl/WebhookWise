@@ -442,7 +442,7 @@ async def _execute_forwarding(
 
     results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
     success = False
-    for (rule, _), res in zip(tasks, results):
+    for (rule, _), res in zip(tasks, results, strict=False):
         is_pending = isinstance(res, dict) and res.get("_pending")
         is_success = isinstance(res, dict) and (res.get("status") == "success" or is_pending)
         rule_name = rule.get("name") or rule.get("id", "default")
