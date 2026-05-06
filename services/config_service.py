@@ -47,7 +47,9 @@ def _parse_update_value(key: str, raw_value, value_type: str, validator):
 
     typed_value = str(raw_value).strip()
     if not typed_value:
-        return None, None
+        # 如果前端显式传了空字符串，我们应该允许覆盖为空（或删除配置），但如果是 API Key 等，我们要额外处理
+        # 为兼容已有逻辑，返回特殊标记以删除或覆盖。此处直接返回空字符串
+        return "", ""
     if validator and not validator(typed_value):
         raise ValueError(f"{key} 格式无效")
     return typed_value, typed_value
@@ -67,6 +69,7 @@ def collect_config_updates(payload: dict) -> tuple[dict, list[str]]:
             if string_value is None:
                 logger.debug(f"跳过空值配置: {key}")
                 continue
+
             updates[env_var] = (string_value, typed_value)
         except ValueError as e:
             errors.append(str(e))
