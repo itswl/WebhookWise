@@ -34,6 +34,7 @@ from services.ai_analyzer import (
     get_deep_analysis_list,
 )
 from services.forward import forward_to_remote, record_failed_forward
+from services.pipeline import _decide_forwarding, _execute_forwarding
 
 analysis_router = APIRouter()
 
@@ -53,13 +54,15 @@ def _resolve_engine(requested: str):
 
 async def _build_webhook_context(event: WebhookEvent) -> dict:
     from services.pipeline import _load_event_payload
+
     parsed_data, _ = await _load_event_payload(event)
     source = event.source
     if (not source or source == "unknown") and isinstance(parsed_data, dict):
         normalized = normalize_webhook_event(parsed_data, None)
         source, parsed_data = normalized.source or source, normalized.data
     return {
-        "source": source, "parsed_data": parsed_data,
+        "source": source,
+        "parsed_data": parsed_data,
         "timestamp": event.timestamp.isoformat() if event.timestamp else None,
         "client_ip": event.client_ip,
     }
@@ -82,7 +85,10 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
 
     try:
         res = await engine_impl.analyze(
-            ctx["parsed_data"], source=ctx["source"], headers=event.headers or {}, user_question=payload.get("user_question", "")
+            ctx["parsed_data"],
+            source=ctx["source"],
+            headers=event.headers or {},
+            user_question=payload.get("user_question", ""),
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
@@ -92,9 +98,13 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
         engine_name = "local (fallback)"
 
     record = DeepAnalysis(
-        webhook_event_id=webhook_id, engine=engine_name, user_question=payload.get("user_question", ""),
-        analysis_result=res, status="pending" if res.get("_pending") else "completed",
-        openclaw_run_id=res.get("_openclaw_run_id", ""), openclaw_session_key=res.get("_openclaw_session_key", "")
+        webhook_event_id=webhook_id,
+        engine=engine_name,
+        user_question=payload.get("user_question", ""),
+        analysis_result=res,
+        status="pending" if res.get("_pending") else "completed",
+        openclaw_run_id=res.get("_openclaw_run_id", ""),
+        openclaw_session_key=res.get("_openclaw_session_key", ""),
     )
     session.add(record)
     await session.flush()
@@ -103,8 +113,12 @@ async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: A
 
 @analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
 async def list_all_deep_analyses(
-    page: int = Query(1), per_page: int = Query(20), cursor: int | None = Query(None),
-    status: str = Query(""), engine: str = Query(""), session: AsyncSession = Depends(get_db_session)
+    page: int = Query(1),
+    per_page: int = Query(20),
+    cursor: int | None = Query(None),
+    status: str = Query(""),
+    engine: str = Query(""),
+    session: AsyncSession = Depends(get_db_session),
 ):
     try:
         data = await get_deep_analysis_list(session, page, per_page, cursor, status, engine, MAX_PAGE)
@@ -144,6 +158,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             try:
                 raw_text = await decompress_payload_async(event.raw_payload) or ""
                 import orjson
+
                 alert_data = orjson.loads(raw_text)
             except Exception:
                 alert_data = {}
@@ -151,6 +166,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
         webhook_data = {"source": event.source or "unknown", "headers": event.headers or {}, "parsed_data": alert_data}
 
         from services.forward import analyze_with_openclaw
+
         new_result = await analyze_with_openclaw(webhook_data, user_question=record.user_question or "")
 
         if new_result.get("_pending"):
@@ -170,13 +186,19 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             # 发送飞书通知
             try:
                 from adapters.ecosystem_adapters import send_feishu_deep_analysis
+
                 if policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
                     fwd_event = await session.get(WebhookEvent, record.webhook_event_id)
                     fwd_source = fwd_event.source if fwd_event else ""
                     await send_feishu_deep_analysis(
                         webhook_url=policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
-                        analysis_record={"analysis_result": record.analysis_result, "engine": record.engine, "duration_seconds": 0},
-                        source=fwd_source, webhook_event_id=record.webhook_event_id,
+                        analysis_record={
+                            "analysis_result": record.analysis_result,
+                            "engine": record.engine,
+                            "duration_seconds": 0,
+                        },
+                        source=fwd_source,
+                        webhook_event_id=record.webhook_event_id,
                     )
             except Exception as _fe:
                 logger.warning("retry: 飞书深度分析通知失败: %s", _fe)
@@ -185,12 +207,15 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
     # 配置了 HTTP API URL：直接拉取
     if policies.openclaw.OPENCLAW_HTTP_API_URL:
         from services.openclaw_poller import _poll_via_http
+
         result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
 
         if result.get("status") == "error":
             return JSONResponse(status_code=400, content={"success": False, "error": result.get("error", "获取失败")})
         if result.get("status") != "completed":
-            return JSONResponse(status_code=400, content={"success": False, "error": f"获取未完成: {result.get('status')}"}  )
+            return JSONResponse(
+                status_code=400, content={"success": False, "error": f"获取未完成: {result.get('status')}"}
+            )
 
         text = result.get("text", "")
         parsed_result = None
@@ -200,12 +225,19 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                 parsed_result = json.loads(json_match.group())
 
         if parsed_result and isinstance(parsed_result, dict):
-            parsed_result.update({"_openclaw_run_id": record.openclaw_run_id, "_openclaw_text": text, "_fetched_via": "http-retry"})
+            parsed_result.update(
+                {"_openclaw_run_id": record.openclaw_run_id, "_openclaw_text": text, "_fetched_via": "http-retry"}
+            )
             record.analysis_result = parsed_result
         else:
             record.analysis_result = {
-                "root_cause": text, "impact": "", "recommendations": [], "confidence": 0.5,
-                "_openclaw_run_id": record.openclaw_run_id, "_openclaw_text": text, "_fetched_via": "http-retry",
+                "root_cause": text,
+                "impact": "",
+                "recommendations": [],
+                "confidence": 0.5,
+                "_openclaw_run_id": record.openclaw_run_id,
+                "_openclaw_text": text,
+                "_fetched_via": "http-retry",
             }
 
         record.status = "completed"
@@ -215,6 +247,7 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
         # 发送飞书通知
         try:
             from adapters.ecosystem_adapters import send_feishu_deep_analysis
+
             feishu_url = policies.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK
             logger.info("retry: 准备发送飞书通知, webhook_url=%s, analysis_id=%s", bool(feishu_url), analysis_id)
             if feishu_url:
@@ -222,8 +255,13 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                 source = event.source if event else ""
                 ok = await send_feishu_deep_analysis(
                     webhook_url=feishu_url,
-                    analysis_record={"analysis_result": record.analysis_result, "engine": record.engine, "duration_seconds": record.duration_seconds},
-                    source=source, webhook_event_id=record.webhook_event_id,
+                    analysis_record={
+                        "analysis_result": record.analysis_result,
+                        "engine": record.engine,
+                        "duration_seconds": record.duration_seconds,
+                    },
+                    source=source,
+                    webhook_event_id=record.webhook_event_id,
                 )
                 if ok:
                     logger.info("retry: 飞书通知发送成功, analysis_id=%s", analysis_id)
@@ -231,9 +269,12 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                     logger.warning("retry: 飞书通知发送失败(返回False), analysis_id=%s", analysis_id)
                     with contextlib.suppress(Exception):
                         await record_failed_forward(
-                            webhook_event_id=record.webhook_event_id, forward_rule_id=None,
-                            target_url=feishu_url, target_type="feishu",
-                            failure_reason="feishu_send_failed", error_message="HTTP重试后飞书通知发送失败",
+                            webhook_event_id=record.webhook_event_id,
+                            forward_rule_id=None,
+                            target_url=feishu_url,
+                            target_type="feishu",
+                            failure_reason="feishu_send_failed",
+                            error_message="HTTP重试后飞书通知发送失败",
                             forward_data={"analysis_id": analysis_id, "webhook_event_id": record.webhook_event_id},
                             session=session,
                         )
@@ -251,7 +292,9 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
         record.status = "failed"
         record.analysis_result = {"root_cause": f"OpenClaw 分析超时（已等待 {int(elapsed)}s）"}
         await session.flush()
-        return JSONResponse(status_code=400, content={"success": False, "error": f"分析已超时（{int(elapsed)}s），请重新发起深度分析"})
+        return JSONResponse(
+            status_code=400, content={"success": False, "error": f"分析已超时（{int(elapsed)}s），请重新发起深度分析"}
+        )
     # 未超时：重置 pending，保留原始 created_at 让超时检测继续生效
     record.status = "pending"
     record.analysis_result = None
@@ -286,17 +329,26 @@ async def forward_deep_analysis(
     is_feishu = "feishu.cn" in target_url or "larksuite.com" in target_url
     if is_feishu:
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
+
         ok = await send_feishu_deep_analysis(
             webhook_url=target_url,
-            analysis_record={"analysis_result": analysis.analysis_result, "engine": analysis.engine, "duration_seconds": analysis.duration_seconds},
-            source=source, webhook_event_id=analysis.webhook_event_id or 0,
+            analysis_record={
+                "analysis_result": analysis.analysis_result,
+                "engine": analysis.engine,
+                "duration_seconds": analysis.duration_seconds,
+            },
+            source=source,
+            webhook_event_id=analysis.webhook_event_id or 0,
         )
         if ok:
             return {"success": True, "message": "已发送到飞书"}
         with contextlib.suppress(Exception):
             await record_failed_forward(
-                webhook_event_id=analysis.webhook_event_id or 0, forward_rule_id=None,
-                target_url=target_url, target_type="feishu", failure_reason="feishu_send_failed",
+                webhook_event_id=analysis.webhook_event_id or 0,
+                forward_rule_id=None,
+                target_url=target_url,
+                target_type="feishu",
+                failure_reason="feishu_send_failed",
                 error_message="深度分析结果飞书发送失败",
                 forward_data={"analysis_id": analysis_id, "webhook_event_id": analysis.webhook_event_id},
                 session=session,
@@ -304,9 +356,13 @@ async def forward_deep_analysis(
         return JSONResponse(status_code=202, content={"success": True, "message": "分析已提交，飞书通知可能延迟"})
     else:
         fwd_payload = {
-            "type": "deep_analysis", "analysis_id": analysis_id, "source": source,
-            "engine": analysis.engine, "webhook_event_id": analysis.webhook_event_id,
-            "analysis_result": analysis.analysis_result, "duration_seconds": analysis.duration_seconds,
+            "type": "deep_analysis",
+            "analysis_id": analysis_id,
+            "source": source,
+            "engine": analysis.engine,
+            "webhook_event_id": analysis.webhook_event_id,
+            "analysis_result": analysis.analysis_result,
+            "duration_seconds": analysis.duration_seconds,
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         }
         try:
@@ -345,17 +401,32 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
             d.processing_status = "completed"
         updated_dups = len(dups)
 
-    # 重新分析完成后触发转发通知
+    # 重新分析完成后触发转发通知（按规则）
     try:
         fwd_ctx = await _build_webhook_context(event)
-        await forward_to_remote(fwd_ctx, res)
+        decision = await _decide_forwarding(
+            importance=new_imp or "medium",
+            is_duplicate=False,
+            beyond_window=False,
+            noise=None,
+            orig=None,
+            source=event.source or "unknown",
+        )
+        if decision.should_forward:
+            await _execute_forwarding(decision, fwd_ctx, res, event.id, orig_id=None)
+        else:
+            logger.info("reanalyze: 根据规则跳过转发 reason=%s", decision.skip_reason)
     except Exception as e:
         logger.warning("reanalyze: 转发通知失败: %s", e)
 
     return {
-        "success": True, "status": "success", "analysis": res,
-        "original_importance": old_imp, "new_importance": new_imp,
-        "updated_duplicates": updated_dups, "message": "重新分析完成"
+        "success": True,
+        "status": "success",
+        "analysis": res,
+        "original_importance": old_imp,
+        "new_importance": new_imp,
+        "updated_duplicates": updated_dups,
+        "message": "重新分析完成",
     }
 
 
