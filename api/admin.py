@@ -13,7 +13,6 @@ from core.logger import logger
 from db.session import get_db_session
 from schemas import (
     ConfigResponse,
-    ConfigSourceItem,
     ConfigSourcesResponse,
     ConfigUpdateResponse,
     DeadLetterListResponse,
@@ -94,12 +93,7 @@ def reload_prompt():
     try:
         new_template = reload_user_prompt_template()
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
-        return _ok(
-            status=200,
-            message="Prompt 模板已重新加载",
-            template_length=len(new_template),
-            preview=preview
-        )
+        return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=preview)
     except Exception as e:
         logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
         return _fail(str(e), 500)
@@ -136,7 +130,7 @@ async def get_dead_letters_endpoint(
 @admin_router.post(
     "/api/admin/dead-letters/{event_id}/replay",
     response_model=ReplayResponse,
-    dependencies=[Depends(verify_admin_write)]
+    dependencies=[Depends(verify_admin_write)],
 )
 async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
@@ -172,7 +166,7 @@ async def get_stuck_events_endpoint(
 @admin_router.post(
     "/api/admin/stuck-events/{event_id}/requeue",
     response_model=StuckEventRequeueResponse,
-    dependencies=[Depends(verify_admin_write)]
+    dependencies=[Depends(verify_admin_write)],
 )
 async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)):
     try:
@@ -188,13 +182,10 @@ async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depe
 
 
 @admin_router.post(
-    "/api/admin/dead-letters/replay-all",
-    response_model=ReplayAllResponse,
-    dependencies=[Depends(verify_admin_write)]
+    "/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)]
 )
 async def replay_all_dead_letters(
-    batch_size: int = Query(50, ge=1, le=500),
-    session: AsyncSession = Depends(get_db_session)
+    batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)
 ):
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
@@ -212,7 +203,7 @@ async def replay_all_dead_letters(
             http_status=200,
             message=f"已重放 {len(replayed_ids)} 条 dead_letter",
             replayed=len(replayed_ids),
-            event_ids=replayed_ids
+            event_ids=replayed_ids,
         )
     except Exception as e:
         logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)

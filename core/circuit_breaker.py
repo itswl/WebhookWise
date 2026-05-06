@@ -2,8 +2,8 @@
 
 import logging
 import time
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable
 
 import httpx
 
@@ -96,6 +96,7 @@ class CircuitBreaker:
     def _get_redis(self):
         try:
             import core.redis_client
+
             return core.redis_client.get_redis()
         except Exception as e:
             logger.error(f"CircuitBreaker [{self.name}] 获取 Redis 失败: {e}")
@@ -120,8 +121,15 @@ class CircuitBreaker:
             open_until_ts = str(time.time() + self.recovery_timeout)
             state_expire = int(self.recovery_timeout * 2) + 1
             tripped = await r.eval(
-                _CB_RECORD_FAILURE_LUA, 3, self._failures_key, self._state_key, self._open_until_key,
-                str(self.failure_window), str(self.failure_threshold), open_until_ts, str(state_expire)
+                _CB_RECORD_FAILURE_LUA,
+                3,
+                self._failures_key,
+                self._state_key,
+                self._open_until_key,
+                str(self.failure_window),
+                str(self.failure_threshold),
+                open_until_ts,
+                str(state_expire),
             )
             return bool(tripped)
         except Exception as e:
