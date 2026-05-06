@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy import delete, insert, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from core.config import Config
 from db.session import session_scope
@@ -67,10 +68,7 @@ async def archive_old_data_by_policy() -> int:
             async with session_scope() as session:
                 # 找出待处理的 ID
                 result = await session.execute(
-                    select(WebhookEvent.id)
-                    .filter(combined_filter)
-                    .order_by(WebhookEvent.id.asc())
-                    .limit(batch_limit)
+                    select(WebhookEvent.id).filter(combined_filter).order_by(WebhookEvent.id.asc()).limit(batch_limit)
                 )
                 target_ids = result.scalars().all()
                 if not target_ids:
@@ -90,30 +88,43 @@ async def archive_old_data_by_policy() -> int:
                         if isinstance(raw, str):
                             raw = raw.encode("utf-8")
 
-                        archived_records.append({
-                            "id": e.id,
-                            "source": e.source,
-                            "client_ip": e.client_ip,
-                            "timestamp": e.timestamp,
-                            "raw_payload": raw,
-                            "headers": e.headers,
-                            "parsed_data": e.parsed_data,
-                            "alert_hash": e.alert_hash,
-                            "ai_analysis": e.ai_analysis,
-                            "importance": e.importance,
-                            "forward_status": e.forward_status,
-                            "is_duplicate": e.is_duplicate,
-                            "duplicate_of": e.duplicate_of,
-                            "duplicate_count": e.duplicate_count,
-                            "beyond_window": e.beyond_window,
-                            "last_notified_at": e.last_notified_at,
-                            "created_at": e.created_at,
-                            "updated_at": e.updated_at,
-                            "archived_at": datetime.now(),
-                        })
+                        archived_records.append(
+                            {
+                                "id": e.id,
+                                "source": e.source,
+                                "client_ip": e.client_ip,
+                                "timestamp": e.timestamp,
+                                "raw_payload": raw,
+                                "headers": e.headers,
+                                "parsed_data": e.parsed_data,
+                                "alert_hash": e.alert_hash,
+                                "ai_analysis": e.ai_analysis,
+                                "importance": e.importance,
+                                "forward_status": e.forward_status,
+                                "is_duplicate": e.is_duplicate,
+                                "duplicate_of": e.duplicate_of,
+                                "duplicate_count": e.duplicate_count,
+                                "beyond_window": e.beyond_window,
+                                "last_notified_at": e.last_notified_at,
+                                "created_at": e.created_at,
+                                "updated_at": e.updated_at,
+                                "archived_at": datetime.now(),
+                            }
+                        )
 
                     if archived_records:
-                        await session.execute(insert(ArchivedWebhookEvent), archived_records)
+                        dialect_name = session.get_bind().dialect.name
+                        if dialect_name == "postgresql":
+                            stmt = (
+                                pg_insert(ArchivedWebhookEvent)
+                                .values(archived_records)
+                                .on_conflict_do_nothing(index_elements=["id"])
+                            )
+                        elif dialect_name == "sqlite":
+                            stmt = insert(ArchivedWebhookEvent).values(archived_records).prefix_with("OR IGNORE")
+                        else:
+                            stmt = insert(ArchivedWebhookEvent).values(archived_records)
+                        await session.execute(stmt)
 
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
