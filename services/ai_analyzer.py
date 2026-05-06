@@ -260,19 +260,29 @@ async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple
         raise
 
 
-async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) -> None:
+async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_degraded: bool = False) -> None:
     try:
         if not policies.ai.ENABLE_FORWARD or not policies.ai.FORWARD_URL:
             return
+        import hashlib
+
         from core.redis_client import get_redis
 
-        if not await get_redis().set("ai_degradation_alert_lock", "1", nx=True, ex=86400):
+        # 根据错误内容生成短 hash，不同类型的错误不会互相阻塞，但同一种错误 1 小时内只报一次
+        error_hash = hashlib.md5(error_reason[:100].encode("utf-8")).hexdigest()[:8]
+        lock_key = f"ai_error_alert_lock:{error_hash}"
+
+        # 冷却时间：3600 秒 (1 小时)
+        if not await get_redis().set(lock_key, "1", nx=True, ex=3600):
             return
+
+        title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
+        template = "orange" if is_degraded else "red"
 
         card = {
             "msg_type": "interactive",
             "card": {
-                "header": {"title": {"tag": "plain_text", "content": "⚠️ AI 分析降级通知"}, "template": "orange"},
+                "header": {"title": {"tag": "plain_text", "content": title}, "template": template},
                 "elements": [
                     {
                         "tag": "div",
@@ -286,7 +296,7 @@ async def _send_degradation_alert(webhook_data: WebhookData, error_reason: str) 
         }
         await feishu_cb.call_async(get_http_client().post, policies.ai.FORWARD_URL, json=card, timeout=10)
     except Exception as e:
-        logger.error(f"发送降级通知失败: {e}")
+        logger.error(f"发送 AI 错误通知失败: {e}")
 
 
 # ── 解析与规则分析 ─────────────────────────────────────────────────────────────
@@ -342,8 +352,10 @@ async def analyze_webhook_with_ai(
 
         # 触发降级通知
         if Config.ai.ENABLE_AI_DEGRADATION and reason == "no_api_key":
-            await _send_degradation_alert(
-                webhook_data, "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。"
+            await _send_ai_error_alert(
+                webhook_data,
+                "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。",
+                is_degraded=True,
             )
 
         return res
@@ -371,9 +383,12 @@ async def analyze_webhook_with_ai(
             logger.info("[AI] 降级为规则分析 source=%s reason=ai_error", source)
             res = analyze_with_rules(parsed, source)
             res.update({"_degraded": True, "_route_type": "rule"})
-            await _send_degradation_alert(webhook_data, str(e))
+            await _send_ai_error_alert(webhook_data, str(e), is_degraded=True)
             return res
-        raise
+        else:
+            # 即使不降级，也要发送错误通知
+            await _send_ai_error_alert(webhook_data, str(e), is_degraded=False)
+            raise
 
 
 # ── 统计与列表查询 ─────────────────────────────────────────────────────────────
