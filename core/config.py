@@ -301,6 +301,16 @@ class _SubConfigView:
         # 2. 回退到静态 Pydantic 配置
         return getattr(self._static, name)
 
+    def __dir__(self) -> list[str]:
+        names = set(dir(self._static))
+        for k, meta in self._manager.RUNTIME_KEYS.items():
+            if meta.get("sub") == self._sub_name:
+                names.add(k)
+        return sorted(names)
+
+    def __repr__(self) -> str:
+        return f"<Config.{self._sub_name}>"
+
 
 class _UnifiedConfigManager:
     """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
@@ -341,6 +351,7 @@ class _UnifiedConfigManager:
         self._meta: dict[str, dict[str, Any]] = {}
         self._subscriber_task: asyncio.Task | None = None
         self._running = False
+        self._db_loaded_once = False
 
     def __getattr__(self, name: str) -> Any:
         settings = get_settings()
@@ -371,7 +382,7 @@ class _UnifiedConfigManager:
 
     # ── 运行时持久化与同步 (原 RuntimeConfigManager) ──
 
-    async def load_from_db(self):
+    async def load_from_db(self) -> bool:
         """从数据库加载热更新配置"""
         from sqlalchemy import select
 
@@ -389,9 +400,12 @@ class _UnifiedConfigManager:
                     val = self._deserialize(row.value, self.RUNTIME_KEYS[key]["type"])
                     self.set_override(key, val, source="db", updated_by=row.updated_by)
                     count += 1
+            self._db_loaded_once = True
             _config_logger.info(f"[Config] 从数据库加载 {count} 个热更新配置")
+            return True
         except Exception as e:
             _config_logger.warning(f"[Config] 数据库加载失败: {e}")
+            return False
 
     async def save_runtime_config(self, key: str, value: Any, updated_by: str = "api"):
         if key not in self.RUNTIME_KEYS:
@@ -459,9 +473,14 @@ class _UnifiedConfigManager:
 
     async def _subscribe_loop(self):
         last_sync_time = time.time()
-        # 记录上次是否成功从 DB 加载。如果启动时加载失败，需不断重试直到成功
-
         while self._running:
+            if not self._db_loaded_once:
+                ok = await self.load_from_db()
+                if not ok:
+                    await asyncio.sleep(5)
+                    continue
+                last_sync_time = time.time()
+
             # 每 2 分钟进行一次强制全量同步，防止任何 Worker 状态永久脱节
             now = time.time()
             if now - last_sync_time > 120:

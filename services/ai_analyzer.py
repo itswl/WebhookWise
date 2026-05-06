@@ -5,6 +5,7 @@
 
 import contextlib
 import logging
+import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -45,6 +46,39 @@ from services.payload_sanitizer import sanitize_for_ai_async
 # 类型别名
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
+
+_last_policy_refresh_at: float = 0.0
+
+
+def _get_config_source(key: str) -> str:
+    meta = policies.get_meta(key)
+    source = meta.get("source")
+    if source:
+        return str(source)
+    return "env" if os.getenv(key) is not None else "default"
+
+
+def _format_meta_time(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_seconds: int = 30) -> None:
+    global _last_policy_refresh_at
+    now = time.time()
+    if now - _last_policy_refresh_at < min_interval_seconds:
+        return
+    try:
+        before_url = policies.ai.OPENAI_API_URL
+        before_key = policies.ai.OPENAI_API_KEY
+        await policies.load_from_db()
+        if before_url != policies.ai.OPENAI_API_URL or before_key != policies.ai.OPENAI_API_KEY:
+            reset_openai_client()
+    finally:
+        _last_policy_refresh_at = now
 
 
 # ── Prompt 管理 ─────────────────────────────────────────────────────────────
@@ -331,6 +365,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 async def analyze_webhook_with_ai(
     webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
 ) -> AnalysisResult:
+    await _maybe_refresh_runtime_policies(("OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_API_URL"), min_interval_seconds=60)
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
         alert_hash = WebhookEvent.generate_hash(parsed, source)
@@ -361,8 +396,14 @@ async def analyze_webhook_with_ai(
         return res
 
     try:
+        model_meta = policies.get_meta("OPENAI_MODEL")
         logger.debug(
-            "[AI] 发起 OpenAI 请求 source=%s model=%s hash=%s...", source, policies.ai.OPENAI_MODEL, alert_hash[:12]
+            "[AI] 发起 OpenAI 请求 source=%s model=%s model_source=%s model_updated_at=%s hash=%s...",
+            source,
+            policies.ai.OPENAI_MODEL,
+            _get_config_source("OPENAI_MODEL"),
+            _format_meta_time(model_meta.get("updated_at") if isinstance(model_meta, dict) else None),
+            alert_hash[:12],
         )
         analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
         logger.info(

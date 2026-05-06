@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import orjson
 import sqlalchemy.exc
+from redis.exceptions import RedisError
 from sqlalchemy import select, update
 
 from adapters.ecosystem_adapters import normalize_webhook_event
@@ -48,7 +49,7 @@ try:
     from openai import BadRequestError as _OpenAIBadRequestError
     from openai import PermissionDeniedError as _OpenAIPermissionDeniedError
     from openai import UnprocessableEntityError as _OpenAIUnprocessableEntityError
-except Exception:
+except ImportError:
     _OpenAIAuthenticationError = _OpenAIBadRequestError = _OpenAIPermissionDeniedError = (
         _OpenAIUnprocessableEntityError
     ) = None
@@ -73,7 +74,7 @@ async def _load_event_payload(event: WebhookEvent) -> tuple[dict | None, str]:
     if parsed_data is None and raw_text:
         try:
             parsed_data = orjson.loads(raw_text)
-        except Exception:
+        except orjson.JSONDecodeError:
             parsed_data = None
     return parsed_data, raw_text
 
@@ -81,11 +82,23 @@ async def _load_event_payload(event: WebhookEvent) -> tuple[dict | None, str]:
 def _is_retryable(exc: Exception) -> bool:
     """判断异常是否可重试"""
     # 检查 OpenAI 报错
+    openai_non_retryable_types = tuple(
+        t
+        for t in (
+            _OpenAIAuthenticationError,
+            _OpenAIBadRequestError,
+            _OpenAIPermissionDeniedError,
+            _OpenAIUnprocessableEntityError,
+        )
+        if t is not None
+    )
     visited = set()
     curr = exc
     while curr is not None and id(curr) not in visited:
         visited.add(id(curr))
         name = type(curr).__name__
+        if openai_non_retryable_types and isinstance(curr, openai_non_retryable_types):
+            return False
         if name in {"BadRequestError", "UnprocessableEntityError", "PermissionDeniedError", "AuthenticationError"}:
             return False
         msg = str(curr).lower()
@@ -93,6 +106,8 @@ def _is_retryable(exc: Exception) -> bool:
             return False
         curr = curr.__cause__ or curr.__context__
 
+    if isinstance(exc, RedisError):
+        return True
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
         return True
     if _QueryCanceledError and isinstance(exc, _QueryCanceledError):
