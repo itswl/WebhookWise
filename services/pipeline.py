@@ -526,12 +526,14 @@ async def _handle_webhook_process_inner(event_id: int, client_ip: str = "", sess
                 stmt = (
                     update(WebhookEvent)
                     .where(WebhookEvent.id == event_id)
+                    .where(WebhookEvent.processing_status.in_(["received", "retry", "failed"]))
                     .values(processing_status="analyzing", failure_reason=None, error_message=None)
                     .returning(WebhookEvent)
                 )
                 res = await sess.execute(stmt)
                 event = res.scalar_one_or_none()
                 if not event:
+                    logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
                     return
                 headers = event.headers or {}
                 payload, raw_text = await _load_event_payload(event)
