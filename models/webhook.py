@@ -5,12 +5,11 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import orjson
 from sqlalchemy import (
     BigInteger,
-    Column,
     DateTime,
     Index,
     Integer,
@@ -21,6 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from adapters.summary_extractors import extract_summary_fields
 from core.compression import compress_payload, decompress_payload
@@ -28,15 +28,35 @@ from db.session import Base, SerializerMixin
 
 _logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
 
 # ====== 告警哈希字段配置 ======
 PROMETHEUS_ROOT_FIELDS = ["alertingRuleName"]
 PROMETHEUS_LABEL_FIELDS = [
-    "alertname", "internal_label_alert_level", "host", "instance", "pod", "namespace", "service", "path", "method"
+    "alertname",
+    "internal_label_alert_level",
+    "host",
+    "instance",
+    "pod",
+    "namespace",
+    "service",
+    "path",
+    "method",
 ]
 PROMETHEUS_ALERT_FIELDS = ["fingerprint"]
 GENERIC_FIELDS = [
-    "Type", "RuleName", "event", "event_type", "MetricName", "Level", "alert_id", "alert_name", "resource_id", "service"
+    "Type",
+    "RuleName",
+    "event",
+    "event_type",
+    "MetricName",
+    "Level",
+    "alert_id",
+    "alert_name",
+    "resource_id",
+    "service",
 ]
 
 
@@ -53,37 +73,37 @@ class WebhookEvent(Base, SerializerMixin):
 
     __tablename__ = "webhook_events"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    source = Column(String(100), nullable=False, index=True)
-    client_ip = Column(String(50))
-    timestamp = Column(DateTime, nullable=False, default=datetime.now, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    client_ip: Mapped[str | None] = mapped_column(String(50))
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
 
-    raw_payload = Column(LargeBinary)
-    headers = Column(JSONB)
-    parsed_data = Column(JSONB)
+    raw_payload: Mapped[bytes | None] = mapped_column(LargeBinary)
+    headers: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    parsed_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
-    alert_hash = Column(String(64), index=True)
+    alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
 
-    ai_analysis = Column(JSONB)
-    importance = Column(String(20), index=True)
+    ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    importance: Mapped[str | None] = mapped_column(String(20), index=True)
 
-    processing_status = Column(String(20), default="received", nullable=False, index=True)
-    retry_count = Column(Integer, default=0, nullable=False)
-    failure_reason = Column(String(500), nullable=True)
-    error_message = Column(Text, nullable=True)
+    processing_status: Mapped[str] = mapped_column(String(20), default="received", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    forward_status = Column(String(20))
+    forward_status: Mapped[str | None] = mapped_column(String(20))
 
-    prev_alert_id = Column(BigInteger, nullable=True)
+    prev_alert_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
-    is_duplicate = Column(Integer, default=0)
-    duplicate_of = Column(Integer)
-    duplicate_count = Column(Integer, default=1)
-    beyond_window = Column(Integer, default=0)
-    last_notified_at = Column(DateTime)
+    is_duplicate: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_of: Mapped[int | None] = mapped_column(Integer)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
+    beyond_window: Mapped[int] = mapped_column(Integer, default=0)
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
         Index("idx_unique_alert_hash_original", "alert_hash", unique=True, postgresql_where=(is_duplicate == 0)),
@@ -124,29 +144,48 @@ class WebhookEvent(Base, SerializerMixin):
         return hashlib.sha256(orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS)).hexdigest()
 
     @classmethod
-    async def check_duplicate(cls, alert_hash: str, session: AsyncSession, time_window_hours: int = 24) -> DuplicateCheckResult:
+    async def check_duplicate(
+        cls, alert_hash: str, session: AsyncSession, time_window_hours: int = 24
+    ) -> DuplicateCheckResult:
         """检查重复告警"""
         now = datetime.now()
         threshold = now - timedelta(hours=time_window_hours)
 
         # 查窗口内最新记录
-        stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.timestamp >= threshold).order_by(cls.timestamp.desc()).limit(1)
+        stmt = (
+            select(cls)
+            .filter(cls.alert_hash == alert_hash, cls.timestamp >= threshold)
+            .order_by(cls.timestamp.desc())
+            .limit(1)
+        )
         res = await session.execute(stmt)
         any_event = res.scalar_one_or_none()
 
-        last_beyond_stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.beyond_window == 1).order_by(cls.timestamp.desc()).limit(1)
+        last_beyond_stmt = (
+            select(cls)
+            .filter(cls.alert_hash == alert_hash, cls.beyond_window == 1)
+            .order_by(cls.timestamp.desc())
+            .limit(1)
+        )
         last_beyond_res = await session.execute(last_beyond_stmt)
         last_beyond = last_beyond_res.scalar_one_or_none()
 
         if any_event:
             original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
             orig = await session.get(cls, original_id) if original_id else any_event
+            if orig is None:
+                orig = any_event
             window_start = last_beyond.timestamp if last_beyond else orig.timestamp
             is_within = (now - window_start).total_seconds() / 3600 <= time_window_hours
             return DuplicateCheckResult(True, orig, not is_within, last_beyond)
 
         # 查窗口外历史
-        history_stmt = select(cls).filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0).order_by(cls.timestamp.desc()).limit(1)
+        history_stmt = (
+            select(cls)
+            .filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0)
+            .order_by(cls.timestamp.desc())
+            .limit(1)
+        )
         history_res = await session.execute(history_stmt)
         history = history_res.scalar_one_or_none()
 
@@ -154,13 +193,13 @@ class WebhookEvent(Base, SerializerMixin):
             return DuplicateCheckResult(False, history, True, last_beyond)
         return DuplicateCheckResult(False, None, False, None)
 
-    def fill_fields(self, **kwargs):
+    def fill_fields(self, **kwargs: object) -> None:
         """统一填充字段"""
         for k, v in kwargs.items():
             if k == "raw_payload" and isinstance(v, bytes):
                 with contextlib.suppress(Exception):
                     v = compress_payload(v.decode("utf-8"))
-            if k == "headers" and v is not None:
+            if k == "headers" and isinstance(v, dict):
                 v = dict(v)
             if hasattr(self, k):
                 setattr(self, k, v)
@@ -170,28 +209,28 @@ class WebhookEvent(Base, SerializerMixin):
             self.created_at = datetime.now()
         self.updated_at = datetime.now()
 
-    def to_summary_dict(self):
+    def to_summary_dict(self) -> dict[str, object]:
         ai_analysis = self.ai_analysis
         summary = ai_analysis.get("summary", "") if ai_analysis else None
         alert_info = extract_summary_fields(self.source, self.parsed_data)
 
-        res = self.to_dict()
-        res.update({
-            "summary": summary, "alert_info": alert_info,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        })
+        res = super().to_dict()
+        res.update(
+            {
+                "summary": summary,
+                "alert_info": alert_info,
+                "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+                "created_at": self.created_at.isoformat() if self.created_at else None,
+            }
+        )
         return res
 
-    def to_dict(self, *, include_raw_payload: bool = True, schema_cls: Any = None) -> dict[str, Any]:
+    def to_dict(self, schema_cls: type[BaseModel] | None = None) -> dict[str, object]:
         if schema_cls:
             return super().to_dict(schema_cls)
 
         res = super().to_dict()
-        if include_raw_payload:
-            res["raw_payload"] = decompress_payload(self.raw_payload)
-        else:
-            res.pop("raw_payload", None)
+        res["raw_payload"] = decompress_payload(self.raw_payload)
 
         for k in ["timestamp", "created_at", "updated_at", "last_notified_at"]:
             val = getattr(self, k, None)
@@ -211,25 +250,25 @@ class ArchivedWebhookEvent(Base, SerializerMixin):
 
     __tablename__ = "archived_webhook_events"
 
-    id = Column(Integer, primary_key=True)
-    source = Column(String(100), nullable=False, index=True)
-    client_ip = Column(String(50))
-    timestamp = Column(DateTime, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    client_ip: Mapped[str | None] = mapped_column(String(50))
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 
-    raw_payload = Column(LargeBinary)
-    headers = Column(JSONB)
-    parsed_data = Column(JSONB)
-    alert_hash = Column(String(64), index=True)
-    ai_analysis = Column(JSONB)
-    importance = Column(String(20), index=True)
-    forward_status = Column(String(20))
-    is_duplicate = Column(Integer)
-    duplicate_of = Column(Integer)
-    duplicate_count = Column(Integer)
-    beyond_window = Column(Integer)
-    last_notified_at = Column(DateTime)
-    created_at = Column(DateTime)
-    updated_at = Column(DateTime)
-    archived_at = Column(DateTime, default=datetime.now, index=True)
+    raw_payload: Mapped[bytes | None] = mapped_column(LargeBinary)
+    headers: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    parsed_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    importance: Mapped[str | None] = mapped_column(String(20), index=True)
+    forward_status: Mapped[str | None] = mapped_column(String(20))
+    is_duplicate: Mapped[int | None] = mapped_column(Integer)
+    duplicate_of: Mapped[int | None] = mapped_column(Integer)
+    duplicate_count: Mapped[int | None] = mapped_column(Integer)
+    beyond_window: Mapped[int | None] = mapped_column(Integer)
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, index=True)
 
     __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)

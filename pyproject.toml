@@ -14,3 +14,12 @@ ignore = ["E501"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["models", "db/session.py"]
+
+[[tool.mypy.overrides]]
+module = ["core.*", "adapters.*", "services.*", "api.*", "scripts.*", "gunicorn_config", "worker", "main"]
+follow_imports = "skip"
