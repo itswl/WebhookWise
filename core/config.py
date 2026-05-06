@@ -196,12 +196,8 @@ class MaintenanceConfig(BaseSettings):
 
     ENABLE_ARCHIVE_CLEANUP: bool = Field(default=True)
     ARCHIVE_DAYS_DEFAULT: int = Field(default=30)
-    RETENTION_POLICIES: dict[str, int] = Field(
-        default={"high": 90, "medium": 30, "low": 7, "unknown": 3}
-    )
-    SOURCE_RETENTION_POLICIES: dict[str, int] = Field(
-        default={"prometheus": 30, "grafana": 30, "datadog": 30}
-    )
+    RETENTION_POLICIES: dict[str, int] = Field(default={"high": 90, "medium": 30, "low": 7, "unknown": 3})
+    SOURCE_RETENTION_POLICIES: dict[str, int] = Field(default={"prometheus": 30, "grafana": 30, "datadog": 30})
     CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
         default={"summary": ["一般事件:", "测试告警"], "parsed_data": ["一般事件"]}
     )
@@ -262,7 +258,15 @@ class _AppConfig(BaseSettings):
     maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
 
     _SUB_NAMES: tuple[str, ...] = (
-        "server", "security", "db", "redis", "ai", "openclaw", "circuit_breaker", "retry", "maintenance"
+        "server",
+        "security",
+        "db",
+        "redis",
+        "ai",
+        "openclaw",
+        "circuit_breaker",
+        "retry",
+        "maintenance",
     )
 
     @model_validator(mode="after")
@@ -288,7 +292,12 @@ class _SubConfigView:
     def __getattr__(self, name: str) -> Any:
         # 1. 优先检查动态覆盖
         if name in self._manager._overrides:
-            return self._manager._overrides[name]
+            val = self._manager._overrides[name]
+            # 如果覆盖值为空字符串，但静态配置（如.env）中有值，则优先使用静态配置
+            # 这能避免因错误保存空字符串或从 DB 拉取到脏数据导致丢失关键配置（如 API Key）
+            if val == "" and getattr(self._static, name, None):
+                return getattr(self._static, name)
+            return val
         # 2. 回退到静态 Pydantic 配置
         return getattr(self._static, name)
 
@@ -350,13 +359,10 @@ class _UnifiedConfigManager:
             self._meta.pop(key, None)
         else:
             self._overrides[key] = value
-            self._meta[key] = {
-                "source": source,
-                "updated_at": datetime.now(),
-                "updated_by": updated_by
-            }
+            self._meta[key] = {"source": source, "updated_at": datetime.now(), "updated_by": updated_by}
         if key == "LOG_LEVEL":
             import logging
+
             level = getattr(logging, str(value or "INFO").upper(), logging.INFO)
             logging.getLogger("webhook_service").setLevel(level)
 
@@ -371,6 +377,7 @@ class _UnifiedConfigManager:
 
         from db.session import session_scope
         from models import SystemConfig
+
         try:
             async with session_scope() as session:
                 result = await session.execute(select(SystemConfig))
@@ -393,21 +400,28 @@ class _UnifiedConfigManager:
         v_type = self.RUNTIME_KEYS[key]["type"]
         str_val = self._serialize(value, v_type)
 
-        from sqlalchemy import select
+        from sqlalchemy import delete, select
 
         from db.session import session_scope
         from models import SystemConfig
-        async with session_scope() as session:
-            existing = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
-            config = existing.scalar_one_or_none()
-            if config:
-                config.value, config.value_type, config.updated_by = str_val, v_type, updated_by
-            else:
-                config = SystemConfig(key=key, value=str_val, value_type=v_type, updated_by=updated_by)
-                session.add(config)
 
-        typed_val = self._deserialize(str_val, v_type)
-        self.set_override(key, typed_val, source="db", updated_by=updated_by)
+        async with session_scope() as session:
+            if str_val == "" and v_type == "str":
+                # 如果传入空字符串，我们应该从数据库中删除这个覆盖记录，让它回退到 .env
+                await session.execute(delete(SystemConfig).where(SystemConfig.key == key))
+                self.set_override(key, None, source="db", updated_by=updated_by)
+            else:
+                existing = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
+                config = existing.scalar_one_or_none()
+                if config:
+                    config.value, config.value_type, config.updated_by = str_val, v_type, updated_by
+                else:
+                    config = SystemConfig(key=key, value=str_val, value_type=v_type, updated_by=updated_by)
+                    session.add(config)
+
+                typed_val = self._deserialize(str_val, v_type)
+                self.set_override(key, typed_val, source="db", updated_by=updated_by)
+
         await self._publish_change([key])
 
     async def save_batch(self, updates: dict[str, Any], updated_by: str = "api"):
@@ -421,6 +435,7 @@ class _UnifiedConfigManager:
     async def _publish_change(self, keys: list[str]):
         try:
             from core.redis_client import get_redis
+
             r = get_redis()
             msg = json.dumps({"worker_id": self.server.WORKER_ID, "keys": keys, "ts": time.time()})
             await r.publish(self.RUNTIME_CONFIG_CHANNEL, msg)
@@ -443,16 +458,30 @@ class _UnifiedConfigManager:
         _config_logger.info("[Config] 实时同步已停止")
 
     async def _subscribe_loop(self):
+        last_sync_time = time.time()
+        # 记录上次是否成功从 DB 加载。如果启动时加载失败，需不断重试直到成功
+
         while self._running:
+            # 每 2 分钟进行一次强制全量同步，防止任何 Worker 状态永久脱节
+            now = time.time()
+            if now - last_sync_time > 120:
+                await self.load_from_db()
+                last_sync_time = now
+
             await self._run_subscription()
 
     async def _run_subscription(self):
         from core.redis_client import get_redis
+
         try:
             r = get_redis()
             pubsub = r.pubsub()
             await pubsub.subscribe(self.RUNTIME_CONFIG_CHANNEL)
-            while self._running:
+
+            # 使用较短的超时时间，以便让外部的 while 循环能够定期执行强制全量同步
+            for _ in range(24):  # 24 * 5s = 120s 左右退出一次内层循环
+                if not self._running:
+                    break
                 msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
                 if msg and msg["type"] == "message":
                     data = json.loads(msg["data"])
@@ -479,4 +508,4 @@ class _UnifiedConfigManager:
 
 
 Config = _UnifiedConfigManager()
-policies = Config # 保持向下兼容
+policies = Config  # 保持向下兼容
