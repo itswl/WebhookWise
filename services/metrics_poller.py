@@ -77,24 +77,37 @@ async def _refresh_db_status_counts() -> None:
 
 
 async def _refresh_mq_stats() -> None:
-    """MQ 指标刷新 — TaskIQ 使用 Redis List (ListQueueBroker)。"""
+    """MQ 指标刷新 — TaskIQ 使用 Redis Stream (RedisStreamBroker)。"""
     from core.taskiq_broker import broker
 
     queue_name = getattr(broker, "queue_name", None) or Config.server.WEBHOOK_MQ_QUEUE
+    group_name = getattr(broker, "consumer_group_name", None) or Config.server.WEBHOOK_MQ_CONSUMER_GROUP
     redis = get_redis()
 
     try:
-        # ListQueueBroker 用 LPUSH/BRPOP，队列是一个 Redis List
-        queue_len = await redis.llen(queue_name)
-        WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(queue_len)
+        stream_len = await redis.xlen(queue_name)
+        WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(stream_len)
     except Exception as e:
         logger.debug("[Metrics] 刷新 MQ 队列长度失败: %s", e)
 
-    # 正在处理（analyzing 状态）的任务数即为有效 "pending" 近似值，
-    # 已在 WEBHOOK_PROCESSING_STATUS_COUNT 中体现，无需额外查 Redis。
-    # GROUP_PENDING / GROUP_LAG 用于 Stream 消费组场景，List 模式设为 0。
     try:
-        WEBHOOK_MQ_GROUP_PENDING.labels(stream=queue_name, group="taskiq").set(0)
-        WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group="taskiq").set(0)
+        pending_summary = await redis.xpending(queue_name, group_name)
+        pending = 0
+        if isinstance(pending_summary, dict):
+            pending = int(pending_summary.get("pending") or 0)
+        else:
+            try:
+                pending = int(pending_summary[0] or 0)
+            except Exception:
+                pending = 0
+        WEBHOOK_MQ_GROUP_PENDING.labels(stream=queue_name, group=group_name).set(pending)
+
+        lag = 0
+        groups = await redis.xinfo_groups(queue_name)
+        for g in groups or []:
+            if (g.get("name") or "") == group_name:
+                lag = int(g.get("lag") or 0)
+                break
+        WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group=group_name).set(lag)
     except Exception as e:
         logger.debug("[Metrics] 刷新 MQ group 指标失败: %s", e)
