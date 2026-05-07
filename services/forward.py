@@ -20,11 +20,19 @@ from core.http_client import get_http_client
 from core.logger import logger
 from db.session import count_with_timeout, session_scope
 from models import FailedForward, ForwardRule
+from services.retry_queue import enqueue_forward_retry
 
 # 类型别名
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
+
+
+async def _schedule_failed_forward_retry(record_id: int, delay_seconds: int) -> None:
+    try:
+        await enqueue_forward_retry(record_id, delay_seconds)
+    except Exception as e:
+        logger.warning("[ForwardRetry] 写入 Redis 延迟队列失败 record_id=%s error=%s", record_id, e)
 
 
 async def get_forward_rules(session: AsyncSession) -> list[ForwardRule]:
@@ -143,12 +151,14 @@ async def record_failed_forward(
         if session is not None:
             session.add(record)
             await session.flush()
+            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
             logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
             return record
 
         async with session_scope() as scoped_session:
             scoped_session.add(record)
             await scoped_session.flush()
+            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
             logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
             return record
     except Exception as e:

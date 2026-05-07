@@ -7,6 +7,7 @@
 
 import logging
 import time
+from collections.abc import Awaitable
 
 from core.config import Config
 from core.metrics import (
@@ -23,7 +24,7 @@ logger = logging.getLogger("webhook_service.tasks")
 _last_success_by_name: dict[str, float] = {}
 
 
-async def _run_scheduled(name: str, interval_seconds: int, fn: object) -> None:
+async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     start = time.time()
     try:
         await fn
@@ -59,6 +60,25 @@ async def process_webhook_task(
     logger.info(f"[Tasks] 异步处理 Webhook 事件: ID={event_id}")
     async with session_scope() as session:
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)
+
+
+@broker.task(
+    task_name="scheduled_webhook_retry_drain",
+    schedule=[
+        {"interval": Config.retry.WEBHOOK_RETRY_DRAIN_INTERVAL, "schedule_id": "webhook_retry_drain_interval_seconds"}
+    ],
+)
+async def scheduled_webhook_retry_drain() -> None:
+    from services.retry_queue import drain_due_webhook_retries
+
+    async def _drain() -> None:
+        event_ids = await drain_due_webhook_retries(limit=Config.retry.WEBHOOK_RETRY_DRAIN_BATCH_SIZE)
+        for event_id in event_ids:
+            await process_webhook_task.kiq(event_id=event_id, client_ip="retry-queue")
+        if event_ids:
+            logger.info("[RetryQueue] 已重新投递 webhook retries count=%d", len(event_ids))
+
+    await _run_scheduled("webhook_retry_drain", Config.retry.WEBHOOK_RETRY_DRAIN_INTERVAL, _drain())
 
 
 @broker.task(

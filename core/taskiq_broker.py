@@ -31,6 +31,7 @@ broker: AsyncBroker = RedisStreamBroker(
     consumer_name=Config.server.WORKER_ID,
     xread_count=Config.server.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
     xread_block=Config.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
+    idle_timeout=Config.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
     maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
 ).with_result_backend(result_backend)
 
