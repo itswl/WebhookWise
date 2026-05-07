@@ -54,6 +54,8 @@ class ServerConfig(BaseSettings):
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
     WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(default=30)
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
+    METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
+    OPENCLAW_POLL_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
     RECOVERY_POLLER_CONCURRENCY: int = Field(default=5)
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)

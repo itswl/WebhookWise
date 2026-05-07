@@ -6,12 +6,46 @@
 """
 
 import logging
+import time
 
 from core.config import Config
+from core.metrics import (
+    SCHEDULED_TASK_DURATION_SECONDS,
+    SCHEDULED_TASK_LAG_SECONDS,
+    SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME,
+    SCHEDULED_TASK_RUNS_TOTAL,
+)
 from core.taskiq_broker import broker
 from db.session import session_scope
 
 logger = logging.getLogger("webhook_service.tasks")
+
+_last_success_by_name: dict[str, float] = {}
+
+
+async def _run_scheduled(name: str, interval_seconds: int, fn: object) -> None:
+    start = time.time()
+    try:
+        await fn
+        SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="success").inc()
+        now = time.time()
+        prev = _last_success_by_name.get(name)
+        if prev is not None:
+            lag = max(0.0, now - prev - float(interval_seconds))
+            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
+        else:
+            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(0.0)
+        _last_success_by_name[name] = now
+        SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
+    except Exception:
+        SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="error").inc()
+        last = _last_success_by_name.get(name)
+        if last is not None:
+            lag = max(0.0, time.time() - last - float(interval_seconds))
+            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
+        raise
+    finally:
+        SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
 
 
 @broker.task(task_name="webhook_process_task")
@@ -36,27 +70,37 @@ async def process_webhook_task(
 async def scheduled_recovery_scan() -> None:
     from services.recovery_poller import run_recovery_scan
 
-    await run_recovery_scan()
+    await _run_scheduled("recovery_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_recovery_scan())
 
 
 @broker.task(
     task_name="scheduled_metrics_refresh",
-    schedule=[{"interval": 15, "schedule_id": "metrics_refresh_interval_15s"}],
+    schedule=[
+        {
+            "interval": Config.server.METRICS_REFRESH_INTERVAL_SECONDS,
+            "schedule_id": "metrics_refresh_interval_seconds",
+        }
+    ],
 )
 async def scheduled_metrics_refresh() -> None:
     from services.metrics_poller import refresh_all_metrics
 
-    await refresh_all_metrics()
+    await _run_scheduled("metrics_refresh", Config.server.METRICS_REFRESH_INTERVAL_SECONDS, refresh_all_metrics())
 
 
 @broker.task(
     task_name="scheduled_openclaw_poll",
-    schedule=[{"interval": 30, "schedule_id": "openclaw_poll_interval_30s"}],
+    schedule=[
+        {
+            "interval": Config.server.OPENCLAW_POLL_INTERVAL_SECONDS,
+            "schedule_id": "openclaw_poll_interval_seconds",
+        }
+    ],
 )
 async def scheduled_openclaw_poll() -> None:
     from services.openclaw_poller import poll_pending_analyses
 
-    await poll_pending_analyses()
+    await _run_scheduled("openclaw_poll", Config.server.OPENCLAW_POLL_INTERVAL_SECONDS, poll_pending_analyses())
 
 
 @broker.task(
@@ -70,7 +114,7 @@ async def scheduled_forward_retry_poll() -> None:
         return
     from services.forward_retry_poller import poll_pending_retries
 
-    await poll_pending_retries()
+    await _run_scheduled("forward_retry_poll", Config.retry.FORWARD_RETRY_POLL_INTERVAL, poll_pending_retries())
 
 
 @broker.task(
@@ -79,4 +123,14 @@ async def scheduled_forward_retry_poll() -> None:
 async def scheduled_data_maintenance() -> None:
     from services.data_maintenance import archive_old_data_by_policy
 
-    await archive_old_data_by_policy()
+    start = time.time()
+    try:
+        await archive_old_data_by_policy()
+        SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="success").inc()
+        SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name="data_maintenance").set(time.time())
+        SCHEDULED_TASK_LAG_SECONDS.labels(name="data_maintenance").set(0.0)
+    except Exception:
+        SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="error").inc()
+        raise
+    finally:
+        SCHEDULED_TASK_DURATION_SECONDS.labels(name="data_maintenance").observe(time.time() - start)
