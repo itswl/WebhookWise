@@ -2,8 +2,8 @@
 
 from .admin import (
     ConfigResponse,
-    ConfigSourcesResponse,
     ConfigSourceItem,
+    ConfigSourcesResponse,
     ConfigUpdateResponse,
     DeadLetterItem,
     DeadLetterListResponse,
