@@ -8,7 +8,7 @@ from sqlalchemy.ext.compiler import compiles
 
 from db.session import Base
 from models import WebhookEvent
-from services.webhook_orchestrator import get_all_webhooks
+from services.webhook_query_service import get_all_webhooks
 
 
 # SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON
@@ -31,7 +31,7 @@ async def mock_session_scope(monkeypatch):
         return Session()
 
     # 替换数据库连接
-    monkeypatch.setattr("services.webhook_orchestrator.session_scope", _mock_session_scope)
+    monkeypatch.setattr("services.webhook_query_service.session_scope", _mock_session_scope)
 
     # 插入一些测试数据
     async with Session() as session:
@@ -54,6 +54,7 @@ async def mock_session_scope(monkeypatch):
 async def test_get_all_webhooks_pagination(mock_session_scope, monkeypatch):
     # 注入 mock session
     from db import session as db_session
+
     def _mock_session_factory():
         return mock_session_scope()
 
