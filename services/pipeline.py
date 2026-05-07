@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core.compression import decompress_payload_async
+from core.config import Config
 from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
@@ -35,6 +36,7 @@ from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
+from services.retry_queue import compute_backoff_delay, enqueue_webhook_retry
 from services.types import (
     AnalysisResolution,
     ForwardDecision,
@@ -51,7 +53,6 @@ def _normalize_importance(value: Any) -> str:
     return text
 
 
-_MAX_RETRIES = 5
 _running_tasks: set[asyncio.Task[object]] = set()
 
 
@@ -706,21 +707,87 @@ async def _handle_webhook_process_inner(
 
         except Exception as e:
             retryable = retry_policy.should_retry(e)
-            status = "received" if retryable else "dead_letter"
+            max_retries = max(0, Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
+            next_retry_count = 0
+            status = "dead_letter"
+            if retryable:
+                async with session_scope() as sess:
+                    retry_res = await sess.execute(
+                        update(WebhookEvent)
+                        .where(WebhookEvent.id == event_id)
+                        .where(WebhookEvent.retry_count < max_retries)
+                        .values(
+                            processing_status="retry",
+                            retry_count=WebhookEvent.retry_count + 1,
+                            failure_reason="retry_err",
+                            error_message=str(e)[:2000],
+                        )
+                        .returning(WebhookEvent.retry_count)
+                    )
+                    row = retry_res.first()
+                    if row:
+                        next_retry_count = int(row[0] or 0)
+                        status = "retry"
+
+                if status == "retry":
+                    delay = compute_backoff_delay(
+                        next_retry_count,
+                        initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
+                        max_delay=Config.retry.WEBHOOK_RETRY_MAX_DELAY,
+                        multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
+                    )
+                    try:
+                        await enqueue_webhook_retry(event_id, delay)
+                    except Exception as enqueue_err:
+                        async with session_scope() as sess:
+                            await sess.execute(
+                                update(WebhookEvent)
+                                .where(WebhookEvent.id == event_id)
+                                .values(
+                                    processing_status="received",
+                                    failure_reason="retry_enqueue_failed",
+                                    error_message=str(enqueue_err)[:2000],
+                                )
+                            )
+                        logger.warning(
+                            "[Pipeline] Redis 延迟重试入队失败，回落到 recovery 兜底 event_id=%s error=%s",
+                            event_id,
+                            enqueue_err,
+                        )
+                        outcome = "retry_enqueue_failed"
+                        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
+                        return
+                    outcome = "retry"
+                    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
+                    logger.error(
+                        "[Pipeline] 处理失败，已进入 Redis 延迟重试 event_id=%s retry=%s/%s delay=%ss error=%s",
+                        event_id,
+                        next_retry_count,
+                        max_retries,
+                        delay,
+                        e,
+                        exc_info=True,
+                    )
+                    if _span:
+                        with contextlib.suppress(Exception):
+                            from opentelemetry.trace import StatusCode
+
+                            _span.set_status(StatusCode.ERROR, str(e))
+                    return
+
             async with session_scope() as sess:
                 await sess.execute(
                     update(WebhookEvent)
                     .where(WebhookEvent.id == event_id)
                     .values(
-                        processing_status=status,
-                        failure_reason="retry_err" if retryable else "fat_err",
+                        processing_status="dead_letter",
+                        failure_reason="retry_exhausted" if retryable else "fat_err",
                         error_message=str(e)[:2000],
                     )
                 )
-            if status == "dead_letter":
-                await _send_dead_letter_alert(event_id, 0, e)
-                WEBHOOK_DEAD_LETTER_TOTAL.inc()
-            outcome = "retry" if retryable else "dead_letter"
+            await _send_dead_letter_alert(event_id, next_retry_count, e)
+            WEBHOOK_DEAD_LETTER_TOTAL.inc()
+            outcome = "dead_letter"
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
             logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, e, exc_info=True)
             if _span:
