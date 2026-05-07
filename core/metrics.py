@@ -174,6 +174,25 @@ WEBHOOK_MQ_GROUP_LAG = Gauge(
     multiprocess_mode="liveall",
 )
 
+BACKGROUND_POLLER_UP = Gauge(
+    "background_poller_up",
+    "后台轮询任务是否存活（1=运行中, 0=停止）",
+    ["name"],
+    multiprocess_mode="liveall",
+)
+
+BACKGROUND_POLLER_RESTARTS_TOTAL = Counter(
+    "background_poller_restarts_total",
+    "后台轮询任务异常后重启次数",
+    ["name"],
+)
+
+BACKGROUND_POLLER_CRASHES_TOTAL = Counter(
+    "background_poller_crashes_total",
+    "后台轮询任务未捕获异常/异常退出次数",
+    ["name"],
+)
+
 DB_POOL_CHECKED_OUT = Gauge(
     "db_pool_checked_out",
     "当前已借出的数据库连接数",
