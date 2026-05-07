@@ -6,6 +6,7 @@
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import time
 from collections.abc import Sequence
@@ -36,6 +37,7 @@ from core.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_COST_USD_TOTAL,
     AI_TOKENS_TOTAL,
+    ALERT_NUMERIC_PARSE_FAILURE_TOTAL,
     OPENAI_ERRORS_TOTAL,
     sanitize_source,
 )
@@ -426,20 +428,44 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     thr_val = data.get("Threshold") or data.get("threshold") or data.get("limit")
     multiplier = float(policies.ai.RULE_THRESHOLD_MULTIPLIER or 4.0)
 
-    def _to_float(v: Any) -> float | None:
+    def _record_numeric_parse_failure(field: str, value: Any, reason: str) -> None:
+        ALERT_NUMERIC_PARSE_FAILURE_TOTAL.labels(
+            source=sanitize_source(source),
+            field=field,
+            reason=reason,
+        ).inc()
+        logger.debug(
+            "[AI] 规则分析数值字段解析失败 source=%s field=%s reason=%s value=%r",
+            source,
+            field,
+            reason,
+            value,
+        )
+
+    def _to_float(v: Any, field: str) -> float | None:
         if v is None:
             return None
         if isinstance(v, (int, float)):
-            return float(v)
+            numeric = float(v)
+            if math.isfinite(numeric):
+                return numeric
+            _record_numeric_parse_failure(field, v, "non_finite")
+            return None
         s = str(v).strip()
         if not s:
             return None
-        with contextlib.suppress(ValueError):
-            return float(s)
+        try:
+            numeric = float(s)
+        except ValueError:
+            _record_numeric_parse_failure(field, v, "non_numeric")
+            return None
+        if math.isfinite(numeric):
+            return numeric
+        _record_numeric_parse_failure(field, v, "non_finite")
         return None
 
-    cur_f = _to_float(cur_val)
-    thr_f = _to_float(thr_val)
+    cur_f = _to_float(cur_val, "current")
+    thr_f = _to_float(thr_val, "threshold")
     if cur_f is not None and thr_f is not None and thr_f > 0:
         data_l = str(data).lower()
         is_metric_related = any(k in name_l for k in metric_kw) or any(k in data_l for k in metric_kw)
