@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 
 from core.config import Config
 from core.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
@@ -27,14 +27,15 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
         if stuck_threshold_seconds is not None
         else Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
     )
-    threshold = datetime.now() - timedelta(seconds=threshold_secs)
+    now = datetime.now()
+    threshold = now - timedelta(seconds=threshold_secs)
 
     async with session_scope() as session:
         result = await session.execute(
             select(WebhookEvent)
-            .where(WebhookEvent.processing_status.in_(["received", "analyzing", "failed"]))
+            .where(WebhookEvent.processing_status.in_(["received", "retry", "analyzing", "failed"]))
             .where(WebhookEvent.retry_count < _MAX_RETRIES)
-            .where(WebhookEvent.created_at < threshold)
+            .where(or_(WebhookEvent.updated_at < threshold, WebhookEvent.created_at < threshold))
             .limit(_MAX_RECOVER_BATCH)
         )
         zombie_events = result.scalars().all()
@@ -53,10 +54,30 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
 async def _recover_single_event(e: WebhookEvent) -> None:
     """恢复单条事件，独立 try-except 避免影响循环"""
     try:
-        from services.pipeline import handle_webhook_process
+        from services.tasks import process_webhook_task
 
-        logger.info("[Recovery] 重新处理事件 id=%s", e.id)
+        async with session_scope() as session:
+            stmt = (
+                update(WebhookEvent)
+                .where(WebhookEvent.id == e.id)
+                .where(WebhookEvent.processing_status.in_(["received", "retry", "analyzing", "failed"]))
+                .where(WebhookEvent.retry_count < _MAX_RETRIES)
+                .values(
+                    processing_status="retry",
+                    retry_count=WebhookEvent.retry_count + 1,
+                    failure_reason="stuck_recovery",
+                    error_message=f"recovered_by_poller at {datetime.now().isoformat(timespec='seconds')}",
+                    updated_at=datetime.now(),
+                )
+                .returning(WebhookEvent.id, WebhookEvent.retry_count)
+            )
+            res = await session.execute(stmt)
+            row = res.first()
+            if not row:
+                return
+
+        logger.info("[Recovery] 已重新入队 event_id=%s", e.id)
         WEBHOOK_RECOVERY_POLLED_TOTAL.inc()
-        await handle_webhook_process(event_id=e.id, client_ip="recovery")
+        await process_webhook_task.kiq(event_id=e.id, client_ip="recovery")
     except Exception:
         logger.exception("[Recovery] 恢复事件 %s 失败", e.id)
