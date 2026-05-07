@@ -82,7 +82,7 @@ async def update_forward_rule_endpoint(
     return {"success": True, "data": rule, "message": "规则更新成功"}
 
 
-@forwarding_router.delete("/api/forward-rules/{rule_id}")
+@forwarding_router.delete("/api/forward-rules/{rule_id}", response_model=None)
 async def delete_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
@@ -91,7 +91,7 @@ async def delete_forward_rule_endpoint(
     return {"success": True, "message": "规则已删除"}
 
 
-@forwarding_router.post("/api/forward-rules/{rule_id}/test")
+@forwarding_router.post("/api/forward-rules/{rule_id}/test", response_model=None)
 async def test_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
