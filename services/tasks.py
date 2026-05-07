@@ -5,11 +5,8 @@
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import TaskiqDepends as Depends
-
 from core.taskiq_broker import broker
-from db.session import get_db_session
+from db.session import session_scope
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -18,9 +15,10 @@ logger = logging.getLogger("webhook_service.tasks")
 async def process_webhook_task(
     event_id: int,
     client_ip: str | None = None,
-    session: AsyncSession = Depends(get_db_session)  # noqa: B008
-):
+) -> None:
     """异步处理单条 Webhook 事件"""
     from services.pipeline import handle_webhook_process
+
     logger.info(f"[Tasks] 异步处理 Webhook 事件: ID={event_id}")
-    await handle_webhook_process(event_id=event_id, client_ip=client_ip, session=session)
+    async with session_scope() as session:
+        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)

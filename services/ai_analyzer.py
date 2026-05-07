@@ -7,9 +7,10 @@ import contextlib
 import logging
 import os
 import time
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import httpx
 import instructor
@@ -62,7 +63,7 @@ def _format_meta_time(value: Any) -> str | None:
     if value is None:
         return None
     if hasattr(value, "isoformat"):
-        return value.isoformat()
+        return str(value.isoformat())
     return str(value)
 
 
@@ -138,22 +139,22 @@ def get_cache_key(alert_hash: str) -> str:
     return f"analysis_{alert_hash}"
 
 
-async def get_cached_analysis(alert_hash: str) -> dict | None:
+async def get_cached_analysis(alert_hash: str) -> AnalysisResult | None:
     if not Config.ai.CACHE_ENABLED:
         return None
     try:
-        from core.redis_client import get_redis
+        from core.redis_client import redis_get_str, redis_incr_with_expire
 
-        r, ck = get_redis(), get_cache_key(alert_hash)
-        cached_json = await r.get(ck)
+        ck = get_cache_key(alert_hash)
+        cached_json = await redis_get_str(ck)
         if not cached_json:
             return None
-        res = orjson.loads(cached_json)
+        parsed = orjson.loads(cached_json)
+        if not isinstance(parsed, dict):
+            return None
+        res: AnalysisResult = dict(parsed)
         counter_key = f"{ck}:hits"
-        pipe = r.pipeline()
-        pipe.incr(counter_key)
-        pipe.expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
-        hits = (await pipe.execute())[0]
+        hits = await redis_incr_with_expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
         res.update({"_cache_hit": True, "_cache_hit_count": hits})
         return res
     except Exception as e:
@@ -161,22 +162,20 @@ async def get_cached_analysis(alert_hash: str) -> dict | None:
         return None
 
 
-async def save_to_cache(alert_hash: str, analysis_result: dict) -> bool:
+async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> bool:
     if not Config.ai.CACHE_ENABLED:
         return False
     try:
-        from core.redis_client import get_redis
+        from core.redis_client import redis_publish, redis_setex_bytes, redis_setex_str
 
-        r, ck = get_redis(), get_cache_key(alert_hash)
+        ck = get_cache_key(alert_hash)
         res_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
         cached_bytes = orjson.dumps(res_to_cache)
         counter_key = f"{ck}:hits"
-        pipe = r.pipeline()
-        pipe.setex(ck, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
-        pipe.setex(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
-        await pipe.execute()
+        await redis_setex_bytes(ck, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
+        await redis_setex_str(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
         with contextlib.suppress(Exception):
-            await r.publish(f"analysis_done:{alert_hash}", "1")
+            await redis_publish(f"analysis_done:{alert_hash}", "1")
         return True
     except Exception as e:
         logger.warning(f"保存缓存失败: {e}")
@@ -221,6 +220,35 @@ _openai_client: AsyncOpenAI | None = None
 _instructor_client: instructor.Instructor | None = None
 
 
+class _CompletionUsage(Protocol):
+    prompt_tokens: int
+    completion_tokens: int
+
+
+class _Completion(Protocol):
+    usage: _CompletionUsage | None
+
+
+class _InstructorCompletions(Protocol):
+    async def create_with_completion(
+        self,
+        *,
+        model: str,
+        response_model: type[WebhookAnalysisResult],
+        messages: Sequence[dict[str, str]],
+        temperature: float,
+        max_retries: int,
+    ) -> tuple[WebhookAnalysisResult, _Completion]: ...
+
+
+class _InstructorChat(Protocol):
+    completions: _InstructorCompletions
+
+
+class _InstructorClient(Protocol):
+    chat: _InstructorChat
+
+
 def _get_instructor_client() -> instructor.Instructor:
     global _openai_client, _instructor_client
     if _instructor_client is None:
@@ -235,7 +263,23 @@ def _get_instructor_client() -> instructor.Instructor:
     return _instructor_client
 
 
-def reset_openai_client():
+async def _create_with_completion(
+    client: instructor.Instructor, *, model: str, user_prompt: str
+) -> tuple[WebhookAnalysisResult, _Completion]:
+    typed = cast(_InstructorClient, client)
+    return await typed.chat.completions.create_with_completion(
+        model=model,
+        response_model=WebhookAnalysisResult,
+        messages=[
+            {"role": "system", "content": policies.ai.AI_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=Config.ai.OPENAI_TEMPERATURE,
+        max_retries=2,
+    )
+
+
+def reset_openai_client() -> None:
     global _openai_client, _instructor_client
     _openai_client = _instructor_client = None
 
@@ -247,16 +291,7 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
     user_prompt = load_user_prompt_template().format(source=source, data_json=data_yaml)
 
     with otel_span("ai.openai_call", {"source": source, "model": policies.ai.OPENAI_MODEL}) as s:
-        res, completion = await client.chat.completions.create_with_completion(
-            model=policies.ai.OPENAI_MODEL,
-            response_model=WebhookAnalysisResult,
-            messages=[
-                {"role": "system", "content": policies.ai.AI_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=Config.ai.OPENAI_TEMPERATURE,
-            max_retries=2,
-        )
+        res, completion = await _create_with_completion(client, model=policies.ai.OPENAI_MODEL, user_prompt=user_prompt)
 
         t_in = completion.usage.prompt_tokens if completion.usage else 0
         t_out = completion.usage.completion_tokens if completion.usage else 0
@@ -300,14 +335,14 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
             return
         import hashlib
 
-        from core.redis_client import get_redis
+        from core.redis_client import redis_set_nx_ex
 
         # 根据错误内容生成短 hash，不同类型的错误不会互相阻塞，但同一种错误 1 小时内只报一次
         error_hash = hashlib.md5(error_reason[:100].encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         lock_key = f"ai_error_alert_lock:{error_hash}"
 
         # 冷却时间：3600 秒 (1 小时)
-        if not await get_redis().set(lock_key, "1", nx=True, ex=3600):
+        if not await redis_set_nx_ex(lock_key, "1", 3600):
             return
 
         title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
@@ -435,7 +470,7 @@ async def analyze_webhook_with_ai(
 # ── 统计与列表查询 ─────────────────────────────────────────────────────────────
 
 
-async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
+async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
     now = datetime.now()
     if period == "day":
         delta = timedelta(days=1)
@@ -463,6 +498,9 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
         func.sum(AIUsageLog.tokens_in), func.sum(AIUsageLog.tokens_out), func.sum(AIUsageLog.cost_estimate)
     ).filter(AIUsageLog.timestamp >= start_time)
     stats = (await session.execute(stats_stmt)).first()
+    tokens_in = int(stats[0] or 0) if stats is not None else 0
+    tokens_out = int(stats[1] or 0) if stats is not None else 0
+    total_cost = float(stats[2] or 0.0) if stats is not None else 0.0
 
     # 查询缓存条目数（曾产生 AI 调用的唯一 alert_hash 数）
     cache_entries_stmt = select(func.count(func.distinct(AIUsageLog.alert_hash))).filter(
@@ -479,7 +517,6 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
     hit_rate = round(total_hits / max(total, 1) * 100, 2)
 
     ai_calls = route_breakdown.get("ai", 0)
-    total_cost = float(stats[2] or 0.0)
     avg_cost_per_ai_call = total_cost / ai_calls if ai_calls > 0 else 0.0
     saved_estimate = round(total_hits * avg_cost_per_ai_call, 6)
 
@@ -487,7 +524,7 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day"):
         "total_calls": total,
         "route_breakdown": route_breakdown,
         "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
-        "tokens": {"input": stats[0] or 0, "output": stats[1] or 0, "total": (stats[0] or 0) + (stats[1] or 0)},
+        "tokens": {"input": tokens_in, "output": tokens_out, "total": tokens_in + tokens_out},
         "cost": {"total": total_cost, "saved_estimate": saved_estimate},
         "cache_statistics": {
             "total_cache_entries": cache_entries,
@@ -508,7 +545,7 @@ async def get_deep_analysis_list(
     status_filter: str = "",
     engine_filter: str = "",
     max_page: int = 500,
-):
+) -> dict[str, Any]:
     from sqlalchemy import func
 
     # 基础过滤条件
@@ -561,10 +598,10 @@ async def get_deep_analysis_list(
     }
 
 
-async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int):
+async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int) -> list[DeepAnalysis]:
     stmt = select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
     res = await session.execute(stmt)
-    return res.scalars().all()
+    return list(res.scalars().all())
 
 
 async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
@@ -581,7 +618,7 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
                 "duration_seconds": 0,
             },
             source,
-            webhook_data.get("id", 0),
+            int(webhook_data.get("id", 0) or 0),
         )
     except Exception as e:
         logger.error(f"发送失败通知失败: {e}")

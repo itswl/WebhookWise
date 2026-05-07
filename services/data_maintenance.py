@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.sql.base import Executable
 
 from core.config import Config
 from db.session import session_scope
@@ -32,7 +33,7 @@ async def archive_old_data_by_policy() -> int:
         # - 来源匹配且超过保留天数
         # - 超过默认全局保留天数
 
-        conditions = []
+        conditions: list[sa.ColumnElement[bool]] = []
 
         # 按重要性策略
         for importance, days in Config.maintenance.RETENTION_POLICIES.items():
@@ -60,17 +61,23 @@ async def archive_old_data_by_policy() -> int:
 
         # 转换为 SQLAlchemy or_ 条件
         # 注意：这里可能产生重叠，但 or_ 会处理
-        combined_filter = or_(*list(conditions))
+        combined_filter = or_(*conditions)
 
         batch_limit = 5000
         while True:
             moved_this_round = 0
             async with session_scope() as session:
                 # 找出待处理的 ID
-                result = await session.execute(
-                    select(WebhookEvent.id).filter(combined_filter).order_by(WebhookEvent.id.asc()).limit(batch_limit)
+                target_ids = list(
+                    (
+                        await session.scalars(
+                            select(WebhookEvent.id)
+                            .filter(combined_filter)
+                            .order_by(WebhookEvent.id.asc())
+                            .limit(batch_limit)
+                        )
+                    ).all()
                 )
-                target_ids = result.scalars().all()
                 if not target_ids:
                     break
 
@@ -79,8 +86,9 @@ async def archive_old_data_by_policy() -> int:
                     chunk_ids = target_ids[chunk_start : chunk_start + 1000]
 
                     # 获取完整对象
-                    result = await session.execute(select(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
-                    events = result.scalars().all()
+                    events = list(
+                        (await session.scalars(select(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))).all()
+                    )
 
                     archived_records = []
                     for e in events:
@@ -115,7 +123,7 @@ async def archive_old_data_by_policy() -> int:
                     if archived_records:
                         dialect_name = session.get_bind().dialect.name
                         if dialect_name == "postgresql":
-                            stmt = (
+                            stmt: Executable = (
                                 pg_insert(ArchivedWebhookEvent)
                                 .values(archived_records)
                                 .on_conflict_do_nothing(index_elements=["id"])

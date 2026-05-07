@@ -1,13 +1,14 @@
 import hashlib
 import hmac
 import time
+from typing import Mapping
 
 from fastapi import HTTPException, Request
 
 from api import InvalidSignatureError
 from core.config import Config
 from core.logger import logger
-from core.redis_client import get_redis
+from core.redis_client import redis_eval_int
 from services.webhook_orchestrator import get_client_ip
 
 _INCR_EXPIRE_IF_FIRST_LUA = """
@@ -37,14 +38,14 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
     return result
 
 
-def extract_token(headers: dict) -> str:
+def extract_token(headers: Mapping[str, str]) -> str:
     token = headers.get("token", "")
     if not token and headers.get("authorization", "").startswith("Token "):
         token = headers.get("authorization", "")[6:].strip()
     return token
 
 
-def ensure_webhook_auth(headers: dict, raw_body: bytes) -> None:
+def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes) -> None:
     signature = headers.get("x-webhook-signature", "")
     token = extract_token(headers)
 
@@ -67,10 +68,9 @@ async def enforce_webhook_rate_limit(request: Request) -> str | None:
         return None
 
     client_ip = get_client_ip(request)
-    redis = get_redis()
     window = int(time.time() // 60)
     key = f"rl:webhook:{client_ip}:{window}"
-    current = int(await redis.eval(_INCR_EXPIRE_IF_FIRST_LUA, 1, key, 70))
+    current = await redis_eval_int(_INCR_EXPIRE_IF_FIRST_LUA, 1, key, 70)
     if current > Config.security.WEBHOOK_RATE_LIMIT_PER_MINUTE:
         return client_ip
     return None
@@ -79,7 +79,7 @@ async def enforce_webhook_rate_limit(request: Request) -> str | None:
 # ── FastAPI Depends ────────────────────────────────────────────────────────────
 
 
-async def verify_webhook_auth_dep(request: Request):
+async def verify_webhook_auth_dep(request: Request) -> None:
     """FastAPI Depends：校验 webhook 认证（含 Content-Length 前置 DoS 防御）"""
     # 1. Content-Length 前置检查（在读取 body 之前拦截超大请求）
     content_length = request.headers.get("content-length")
@@ -96,7 +96,7 @@ async def verify_webhook_auth_dep(request: Request):
 
     # 2. 读取 body 并验证签名
     raw_body = await request.body()
-    headers = dict(request.headers)
+    headers: dict[str, str] = dict(request.headers)
     try:
         ensure_webhook_auth(headers, raw_body)
     except InvalidSignatureError:
@@ -109,12 +109,13 @@ async def verify_webhook_auth_dep(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
-async def check_rate_limit_dep(request: Request):
+async def check_rate_limit_dep(request: Request) -> None:
     """FastAPI Depends：检查速率限制"""
     try:
         limited_ip = await enforce_webhook_rate_limit(request)
         if limited_ip:
             from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+
             src = sanitize_source(request.path_params.get("source", request.query_params.get("source", "unknown")))
             WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rate_limited").inc()
             raise HTTPException(status_code=429, detail="Rate limit exceeded")

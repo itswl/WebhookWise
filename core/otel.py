@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import Any
+from typing import Any, Protocol, cast
 
 _enabled_cache: bool | None = None
 _httpx_instrumented = False
@@ -10,6 +11,12 @@ _redis_instrumented = False
 _sqlalchemy_instrumented = False
 _exporter_configured = False
 _provider_initialized = False
+
+
+class SpanLike(Protocol):
+    def set_attribute(self, key: str, value: object) -> None: ...
+
+    def set_status(self, status: object, description: str | None = None) -> None: ...
 
 
 def _otel_enabled() -> bool:
@@ -43,7 +50,7 @@ def instrument_redis() -> None:
     _redis_instrumented = True
 
 
-def instrument_sqlalchemy(engine) -> None:
+def instrument_sqlalchemy(engine: Any) -> None:
     global _sqlalchemy_instrumented
     if _sqlalchemy_instrumented or not _otel_enabled():
         return
@@ -74,7 +81,7 @@ def _parse_headers(raw: str) -> dict[str, str]:
     return items
 
 
-def _setup_otlp_exporter(provider) -> None:
+def _setup_otlp_exporter(provider: Any) -> None:
     global _exporter_configured
     if _exporter_configured:
         return
@@ -147,6 +154,7 @@ def _init_tracer_provider() -> None:
 
     if not has_exporter:
         import logging
+
         logging.getLogger("webhook_service").warning(
             "[OTEL] OTEL_ENABLED=true 但未配置任何 exporter，span 将被静默丢弃。"
             "请设置 OTEL_EXPORTER_OTLP_ENDPOINT 或 OTEL_CONSOLE_EXPORTER=true"
@@ -156,7 +164,7 @@ def _init_tracer_provider() -> None:
 
 
 @contextmanager
-def span(name: str, attributes: dict[str, Any] | None = None):
+def span(name: str, attributes: dict[str, Any] | None = None) -> Iterator[SpanLike | None]:
     """返回 OTEL span 上下文管理器，OTEL 未启用或未安装时为 no-op。
 
     用法::
@@ -171,16 +179,18 @@ def span(name: str, attributes: dict[str, Any] | None = None):
         return
     try:
         from opentelemetry import trace
+
         tracer = trace.get_tracer("webhookwise")
     except Exception:
         yield None
         return
     with tracer.start_as_current_span(name) as s:
-        if attributes and s is not None:
+        span_obj = cast(SpanLike, s) if s is not None else None
+        if attributes and span_obj is not None:
             for k, v in attributes.items():
                 with suppress(Exception):
-                    s.set_attribute(k, str(v))
-        yield s
+                    span_obj.set_attribute(k, str(v))
+        yield span_obj
 
 
 def get_otel_trace_id() -> str:
@@ -192,6 +202,7 @@ def get_otel_trace_id() -> str:
         return ""
     with suppress(Exception):
         from opentelemetry import trace
+
         ctx = trace.get_current_span().get_span_context()
         if ctx and ctx.is_valid:
             return format(ctx.trace_id, "032x")
@@ -204,13 +215,14 @@ def get_otel_span_id() -> str:
         return ""
     with suppress(Exception):
         from opentelemetry import trace
+
         ctx = trace.get_current_span().get_span_context()
         if ctx and ctx.is_valid:
             return format(ctx.span_id, "016x")
     return ""
 
 
-def setup_otel(app) -> None:
+def setup_otel(app: Any) -> None:
     """初始化 receiver 进程 OTEL（含 FastAPI auto-instrumentation）。"""
     if not _otel_enabled():
         return

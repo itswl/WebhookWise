@@ -2,10 +2,11 @@ import logging
 import os
 import queue
 import sys
+from datetime import datetime, timezone
+from json import dumps
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
+from typing import Any
 from urllib.parse import urlparse
-
-from pythonjsonlogger import jsonlogger
 
 from core.config import Config
 from core.log_context import get_log_context
@@ -27,7 +28,7 @@ def mask_url(url: str) -> str:
 class TraceIdFilter(logging.Filter):
     """为每条日志记录注入当前协程的 trace_id。"""
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         record.trace_id = get_trace_id() or "-"
 
         ctx = get_log_context()
@@ -38,7 +39,49 @@ class TraceIdFilter(logging.Filter):
         return True
 
 
-def setup_logger():
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+            "trace_id": getattr(record, "trace_id", "-"),
+        }
+
+        reserved = {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+        }
+
+        for k, v in record.__dict__.items():
+            if k in reserved or k.startswith("_"):
+                continue
+            if k not in payload:
+                payload[k] = v
+
+        return dumps(payload, ensure_ascii=False, default=str)
+
+
+def setup_logger() -> logging.Logger:
     """初始化全局日志系统"""
     log_level = getattr(logging, Config.server.LOG_LEVEL.upper(), logging.INFO)
     logger = logging.getLogger("webhook_service")
@@ -51,15 +94,10 @@ def setup_logger():
 
     # 1. JSON 格式化器
     # 强制包含基础字段，其他字段通过 extra 传入
-    format_str = "%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s"
-    formatter = jsonlogger.JsonFormatter(
-        format_str,
-        json_ensure_ascii=False,
-        rename_fields={"asctime": "timestamp", "levelname": "level"},
-    )
+    formatter: logging.Formatter = JsonFormatter()
 
     # 2. 处理器：控制台 + 滚动文件
-    handlers = []
+    handlers: list[logging.Handler] = []
 
     # 控制台
     stdout_h = logging.StreamHandler(sys.stdout)
@@ -75,7 +113,7 @@ def setup_logger():
         handlers.append(file_h)
 
     # 3. 异步处理：使用 QueueListener 避免日志 I/O 阻塞主线程
-    log_queue = queue.Queue(-1)
+    log_queue: queue.Queue[logging.LogRecord] = queue.Queue(-1)
     queue_handler = QueueHandler(log_queue)
     logger.addHandler(queue_handler)
 
@@ -90,10 +128,10 @@ def setup_logger():
     return logger
 
 
-_log_listener = None
+_log_listener: QueueListener | None = None
 
 
-def stop_log_listener():
+def stop_log_listener() -> None:
     """停止日志后台线程（供应用关闭时调用）"""
     global _log_listener
     if _log_listener:
@@ -101,7 +139,7 @@ def stop_log_listener():
         _log_listener = None
 
 
-def get_logger(name: str):
+def get_logger(name: str) -> logging.Logger:
     """获取子模块 logger，继承主 logger 配置"""
     if name == "webhook_service":
         return setup_logger()

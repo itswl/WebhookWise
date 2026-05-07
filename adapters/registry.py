@@ -3,7 +3,7 @@ import logging
 import pkgutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from adapters.engine_protocol import DeepAnalysisEngine
@@ -11,6 +11,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 WebhookData = dict[str, Any]
+_Normalizer = Callable[[WebhookData], WebhookData]
+_Detector = Callable[[WebhookData], bool]
+_FNorm = TypeVar("_FNorm", bound=_Normalizer)
+_FDet = TypeVar("_FDet", bound=_Detector)
 
 
 class AdapterRegistry:
@@ -20,10 +24,10 @@ class AdapterRegistry:
         self._aliases: dict[str, str] = {}
         self._discovered: bool = False
 
-    def register(self, source_name: str, *, aliases: set[str] | None = None):
+    def register(self, source_name: str, *, aliases: set[str] | None = None) -> Callable[[_FNorm], _FNorm]:
         """装饰器：注册一个生态适配器，可选提供别名集合。"""
 
-        def wrapper(func: Callable[[WebhookData], WebhookData]):
+        def wrapper(func: _FNorm) -> _FNorm:
             self._normalizers[source_name] = func
             # 注册别名映射
             normalized_key = source_name.lower().replace(" ", "")
@@ -36,10 +40,10 @@ class AdapterRegistry:
 
         return wrapper
 
-    def register_detector(self, source_name: str):
+    def register_detector(self, source_name: str) -> Callable[[_FDet], _FDet]:
         """装饰器：注册一个生态适配器探测器。"""
 
-        def wrapper(func: Callable[[WebhookData], bool]):
+        def wrapper(func: _FDet) -> _FDet:
             self._detectors.append((source_name, func))
             logger.debug(f"[Adapter Registry] Registered detector for: {source_name}")
             return func

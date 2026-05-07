@@ -1,8 +1,10 @@
 import asyncio
 import os
 import socket
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +34,7 @@ from services.pipeline import get_running_tasks
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 注册深度分析引擎
     register_engine(LocalAnalysisEngine())
     register_engine(OpenClawAnalysisEngine())
@@ -55,7 +57,7 @@ async def lifespan(app: FastAPI):
         from services.metrics_poller import refresh_all_metrics
         from services.recovery_poller import run_recovery_scan
 
-        async def _recovery_loop():
+        async def _recovery_loop() -> None:
             # 启动时立即执行一次，捞起重启前遗留的僵尸事件
             try:
                 await run_recovery_scan(stuck_threshold_seconds=0)
@@ -68,7 +70,7 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] recovery scan error: %s", e)
                 await asyncio.sleep(Config.server.RECOVERY_POLLER_INTERVAL_SECONDS)
 
-        async def _metrics_loop():
+        async def _metrics_loop() -> None:
             while True:
                 try:
                     await refresh_all_metrics()
@@ -76,8 +78,9 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] metrics refresh error: %s", e)
                 await asyncio.sleep(15)
 
-        async def _openclaw_poll_loop():
+        async def _openclaw_poll_loop() -> None:
             from services.openclaw_poller import poll_pending_analyses
+
             while True:
                 try:
                     await poll_pending_analyses()
@@ -85,8 +88,9 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] openclaw poller error: %s", e)
                 await asyncio.sleep(30)
 
-        async def _forward_retry_loop():
+        async def _forward_retry_loop() -> None:
             from services.forward_retry_poller import poll_pending_retries
+
             while True:
                 try:
                     await poll_pending_retries()
@@ -94,8 +98,9 @@ async def lifespan(app: FastAPI):
                     logger.warning("[App] forward retry poller error: %s", e)
                 await asyncio.sleep(Config.retry.FORWARD_RETRY_POLL_INTERVAL)
 
-        async def _maintenance_loop():
+        async def _maintenance_loop() -> None:
             from services.data_maintenance import archive_old_data_by_policy
+
             while True:
                 now = datetime.now()
                 # 计算到下一个 MAINTENANCE_HOUR 点的秒数
@@ -169,7 +174,7 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
-        async def send_with_headers(message: dict) -> None:
+        async def send_with_headers(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 existing_names = {h[0].lower() for h in headers}
@@ -204,6 +209,7 @@ class TraceContextMiddleware:
         # 优先使用 OTEL 当前 span 的 trace_id 保证日志与 APM 双向关联；
         # OTEL 未启用时回退到请求头携带的 trace_id 或生成新 id
         from core.otel import get_otel_trace_id
+
         otel_tid = get_otel_trace_id()
         token = set_trace_id(otel_tid or incoming or generate_trace_id())
         try:

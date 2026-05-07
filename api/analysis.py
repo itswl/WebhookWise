@@ -8,6 +8,7 @@ import json
 import re
 import time
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -15,11 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
+from adapters.engine_protocol import DeepAnalysisEngine
 from adapters.registry import get_default_engine, get_engine
 from core.config import policies
 from core.http_client import get_http_client
 from core.logger import logger, mask_url
-from core.redis_client import get_redis
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas import (
@@ -40,11 +41,13 @@ analysis_router = APIRouter()
 
 MAX_PAGE = 500
 
+JSONDict = dict[str, Any]
+
 
 # ── Internal Helpers ─────────────────────────────────────────────────────────
 
 
-def _resolve_engine(requested: str):
+def _resolve_engine(requested: str) -> DeepAnalysisEngine | None:
     if requested and requested != "auto":
         engine = get_engine(requested)
         if engine and engine.is_available():
@@ -52,7 +55,7 @@ def _resolve_engine(requested: str):
     return get_default_engine()
 
 
-async def _build_webhook_context(event: WebhookEvent) -> dict:
+async def _build_webhook_context(event: WebhookEvent) -> JSONDict:
     from services.pipeline import _load_event_payload
 
     parsed_data, _ = await _load_event_payload(event)
@@ -71,15 +74,17 @@ async def _build_webhook_context(event: WebhookEvent) -> dict:
 # ── Deep Analysis ────────────────────────────────────────────────────────────
 
 
-@analysis_router.post("/api/deep-analyze/{webhook_id}")
-async def deep_analyze_webhook(webhook_id: int, payload: dict = None, session: AsyncSession = Depends(get_db_session)):
+@analysis_router.post("/api/deep-analyze/{webhook_id}", response_model=None)
+async def deep_analyze_webhook(
+    webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse | JSONDict:
     payload = payload or {}
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     ctx = await _build_webhook_context(event)
-    engine_impl = _resolve_engine(payload.get("engine", "auto"))
+    engine_impl = _resolve_engine(str(payload.get("engine", "auto")))
     if not engine_impl:
         return JSONResponse(status_code=503, content={"success": False, "error": "No engine available"})
 
@@ -119,7 +124,7 @@ async def list_all_deep_analyses(
     status: str = Query(""),
     engine: str = Query(""),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONDict:
     try:
         data = await get_deep_analysis_list(session, page, per_page, cursor, status, engine, MAX_PAGE)
         return {"success": True, "data": data}
@@ -128,12 +133,14 @@ async def list_all_deep_analyses(
 
 
 @analysis_router.get("/api/deep-analyses/{webhook_id}")
-async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     return {"success": True, "data": await get_deep_analyses_for_webhook(session, webhook_id)}
 
 
-@analysis_router.post("/api/deep-analyses/{analysis_id}/retry")
-async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(get_db_session)):
+@analysis_router.post("/api/deep-analyses/{analysis_id}/retry", response_model=None)
+async def retry_deep_analysis(
+    analysis_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse | JSONDict:
     """重新拉取深度分析结果（恢复旧版完整逻辑）"""
     from core.compression import decompress_payload_async
 
@@ -159,7 +166,8 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
                 raw_text = await decompress_payload_async(event.raw_payload) or ""
                 import orjson
 
-                alert_data = orjson.loads(raw_text)
+                loaded = orjson.loads(raw_text)
+                alert_data = loaded if isinstance(loaded, dict) else {}
             except Exception:
                 alert_data = {}
 
@@ -218,13 +226,15 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
             )
 
         text = result.get("text", "")
-        parsed_result = None
+        parsed_result: dict[str, Any] | None = None
         json_match = re.search(r"\{[\s\S]*\}", text)
         if json_match:
             with contextlib.suppress(json.JSONDecodeError):
-                parsed_result = json.loads(json_match.group())
+                loaded = json.loads(json_match.group())
+                if isinstance(loaded, dict):
+                    parsed_result = loaded
 
-        if parsed_result and isinstance(parsed_result, dict):
+        if parsed_result:
             parsed_result.update(
                 {"_openclaw_run_id": record.openclaw_run_id, "_openclaw_text": text, "_fetched_via": "http-retry"}
             )
@@ -302,10 +312,10 @@ async def retry_deep_analysis(analysis_id: int, session: AsyncSession = Depends(
     return {"success": True, "message": "已重置为待重试，将在下次轮询时拉取结果"}
 
 
-@analysis_router.post("/api/deep-analyses/{analysis_id}/forward")
+@analysis_router.post("/api/deep-analyses/{analysis_id}/forward", response_model=None)
 async def forward_deep_analysis(
-    analysis_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)
-):
+    analysis_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse | JSONDict:
     """转发深度分析结果到指定 URL（飞书卡片或通用 Webhook）"""
     payload = payload or {}
     target_url = (payload.get("target_url") or "").strip()
@@ -379,7 +389,7 @@ async def forward_deep_analysis(
 
 
 @analysis_router.post("/api/reanalyze/{webhook_id}", response_model=ReanalysisResponse)
-async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
+async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         raise HTTPException(404, "Webhook not found")
@@ -432,8 +442,8 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
 @analysis_router.post("/api/forward/{webhook_id}")
 async def manual_forward_webhook(
-    webhook_id: int, data: dict | None = None, session: AsyncSession = Depends(get_db_session)
-):
+    webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict:
     data = data or {}
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
@@ -451,15 +461,17 @@ async def manual_forward_webhook(
 
 
 @analysis_router.get("/api/ai-usage", response_model=AIUsageResponse)
-async def get_ai_usage_endpoint(period: str = Query("day"), session: AsyncSession = Depends(get_db_session)):
+async def get_ai_usage_endpoint(
+    period: str = Query("day"), session: AsyncSession = Depends(get_db_session)
+) -> JSONDict:
+    from core.redis_client import redis_get_json_dict, redis_setex_json
+
     cache_key = f"api:ai_usage:{period}:{int(time.time() // 60)}"
-    redis = get_redis()
-    with contextlib.suppress(Exception):
-        cached = await redis.get(cache_key)
-        if cached:
-            return {"success": True, "data": json.loads(cached)}
+    cached_dict = await redis_get_json_dict(cache_key)
+    if cached_dict is not None:
+        return {"success": True, "data": cached_dict}
 
     data = await get_ai_usage_stats(session, period)
     with contextlib.suppress(Exception):
-        await redis.setex(cache_key, 70, json.dumps(data))
+        await redis_setex_json(cache_key, 70, data)
     return {"success": True, "data": data}

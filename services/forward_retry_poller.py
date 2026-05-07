@@ -9,8 +9,10 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from core.config import Config
@@ -22,7 +24,7 @@ from models import FailedForward, WebhookEvent
 logger = logging.getLogger("webhook_service.forward_retry")
 
 
-async def poll_pending_retries():
+async def poll_pending_retries() -> None:
     """核心逻辑：获取 Redis 分布式锁，查询待重试记录，逐条重试"""
     lock_key = "forward:retry:poller:lock"
 
@@ -67,7 +69,7 @@ async def poll_pending_retries():
 
         semaphore = asyncio.Semaphore(max(1, Config.retry.FORWARD_RETRY_CONCURRENCY))
 
-        async def _retry_one(record_id: int):
+        async def _retry_one(record_id: int) -> None:
             async with semaphore:
                 try:
                     async with session_scope() as inner_session:
@@ -89,12 +91,17 @@ async def poll_pending_retries():
         await asyncio.gather(*[_retry_one(rid) for rid in record_ids])
 
 
-async def _retry_forward(session, record: FailedForward):
+async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
     """重试单条转发失败记录"""
     from services.forward import forward_to_remote
 
-    logger.info("[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",
-                record.id, record.target_url, record.retry_count + 1, record.max_retries)
+    logger.info(
+        "[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",
+        record.id,
+        record.target_url,
+        record.retry_count + 1,
+        record.max_retries,
+    )
 
     # 从 DB 获取关联的 WebhookEvent（获取 ai_analysis 等信息）
     event = await session.get(WebhookEvent, record.webhook_event_id)
@@ -106,13 +113,13 @@ async def _retry_forward(session, record: FailedForward):
         return
 
     # 构建 webhook_data 和 analysis_result
-    webhook_data = {
+    webhook_data: dict[str, Any] = {
         "parsed_data": event.parsed_data or {},
         "source": event.source,
         "timestamp": event.timestamp.isoformat() if event.timestamp else None,
         "client_ip": event.client_ip,
     }
-    analysis_result = event.ai_analysis or {}
+    analysis_result: dict[str, Any] = dict(event.ai_analysis or {})
 
     now = datetime.now()
 
@@ -140,7 +147,7 @@ async def _retry_forward(session, record: FailedForward):
     await session.flush()
 
 
-def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str):
+def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str) -> None:
     """处理重试失败：更新计数、计算下次重试时间或标记为 exhausted"""
     record.retry_count += 1
     record.last_retry_at = now

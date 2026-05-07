@@ -3,6 +3,7 @@ Forwarding API Routes.
 Consolidated from forward_rules and forward_retry.
 """
 
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -29,18 +30,22 @@ from services.forward import (
 
 forwarding_router = APIRouter()
 
+JSONDict = dict[str, Any]
+
 
 # ── Forwarding Rules ─────────────────────────────────────────────────────────
 
 
 @forwarding_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
-async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)):
+async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
     return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
 @forwarding_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
-async def create_forward_rule_endpoint(payload: dict | None = None, session: AsyncSession = Depends(get_db_session)):
+async def create_forward_rule_endpoint(
+    payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     payload = payload or {}
     name = payload.get("name", "").strip() if isinstance(payload.get("name"), str) else ""
     target_type = payload.get("target_type", "").strip() if isinstance(payload.get("target_type"), str) else ""
@@ -51,8 +56,11 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
         return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
 
     rule = await create_forward_rule(
-        session=session, name=name, target_type=target_type,
-        enabled=payload.get("enabled", True), priority=payload.get("priority", 0),
+        session=session,
+        name=name,
+        target_type=target_type,
+        enabled=payload.get("enabled", True),
+        priority=payload.get("priority", 0),
         match_importance=payload.get("match_importance", ""),
         match_duplicate=payload.get("match_duplicate", "all"),
         match_source=payload.get("match_source", ""),
@@ -65,8 +73,8 @@ async def create_forward_rule_endpoint(payload: dict | None = None, session: Asy
 
 @forwarding_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
 async def update_forward_rule_endpoint(
-    rule_id: int, payload: dict | None = None, session: AsyncSession = Depends(get_db_session)
-):
+    rule_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     payload = payload or {}
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if not rule:
@@ -75,14 +83,18 @@ async def update_forward_rule_endpoint(
 
 
 @forwarding_router.delete("/api/forward-rules/{rule_id}")
-async def delete_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depends(get_db_session)):
+async def delete_forward_rule_endpoint(
+    rule_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     return {"success": True, "message": "规则已删除"}
 
 
 @forwarding_router.post("/api/forward-rules/{rule_id}/test")
-async def test_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depends(get_db_session)):
+async def test_forward_rule_endpoint(
+    rule_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     rule = await get_forward_rule(session, rule_id)
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
@@ -106,30 +118,30 @@ async def test_forward_rule_endpoint(rule_id: int, session: AsyncSession = Depen
 
 @forwarding_router.get("/api/failed-forwards")
 async def list_failed_forwards(
-    status: str = Query(None),
-    target_type: str = Query(None),
+    status: str | None = Query(None),
+    target_type: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    session: AsyncSession = Depends(get_db_session)
-):
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
     records, total = await get_failed_forwards(status, target_type, limit, offset, session)
     return _ok(data=records, total=total, limit=limit, offset=offset)
 
 
 @forwarding_router.get("/api/failed-forwards/stats")
-async def get_retry_stats(session: AsyncSession = Depends(get_db_session)):
+async def get_retry_stats(session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     return _ok(data=await get_failed_forward_stats(session))
 
 
 @forwarding_router.post("/api/failed-forwards/{failed_forward_id}/retry")
-async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)):
+async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     if await manual_retry_reset(failed_forward_id, session):
         return _ok(message="已重置为待重试")
     return _fail("记录不存在或状态不是 exhausted", 400)
 
 
 @forwarding_router.delete("/api/failed-forwards/{failed_forward_id}")
-async def delete_record(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)):
+async def delete_record(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     if await delete_failed_forward(failed_forward_id, session):
         return _ok(message="记录已删除")
     return _fail("记录不存在", 404)

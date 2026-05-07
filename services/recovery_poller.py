@@ -20,9 +20,13 @@ _MAX_RECOVER_BATCH = 50
 _MAX_RETRIES = 5
 
 
-async def run_recovery_scan(stuck_threshold_seconds: int | None = None):
+async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
     """扫描僵尸事件并重新处理（由 TaskIQ 驱动，不再自启动循环）"""
-    threshold_secs = stuck_threshold_seconds if stuck_threshold_seconds is not None else Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
+    threshold_secs = (
+        stuck_threshold_seconds
+        if stuck_threshold_seconds is not None
+        else Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
+    )
     threshold = datetime.now() - timedelta(seconds=threshold_secs)
 
     async with session_scope() as session:
@@ -46,10 +50,11 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None):
     logger.info("[Recovery] 本轮恢复完成 recovered=%d threshold_secs=%d", len(zombie_events), threshold_secs)
 
 
-async def _recover_single_event(e: WebhookEvent):
+async def _recover_single_event(e: WebhookEvent) -> None:
     """恢复单条事件，独立 try-except 避免影响循环"""
     try:
         from services.pipeline import handle_webhook_process
+
         logger.info("[Recovery] 重新处理事件 id=%s", e.id)
         WEBHOOK_RECOVERY_POLLED_TOTAL.inc()
         await handle_webhook_process(event_id=e.id, client_ip="recovery")

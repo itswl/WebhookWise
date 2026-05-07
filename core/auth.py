@@ -10,8 +10,8 @@ security = HTTPBearer(auto_error=False)
 _AUTH_DEPENDENCY = Security(security)
 
 
-def _redact_headers(headers: dict) -> dict:
-    redacted = {}
+def _redact_headers(headers: dict[str, object]) -> dict[str, object]:
+    redacted: dict[str, object] = {}
     for k, v in headers.items():
         lk = str(k).lower()
         if lk in {"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"}:
@@ -21,14 +21,14 @@ def _redact_headers(headers: dict) -> dict:
     return redacted
 
 
-def _body_meta(body: bytes) -> dict:
+def _body_meta(body: bytes) -> dict[str, object]:
     if not body:
         return {"size": 0, "sha256": None}
     digest = hashlib.sha256(body).hexdigest()
     return {"size": len(body), "sha256": digest}
 
 
-async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = _AUTH_DEPENDENCY):
+async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY) -> bool:
     """
     验证 API Key (Bearer Token)
     如果 Config.security.API_KEY 未配置，则跳过验证（兼容模式）
@@ -59,8 +59,8 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials = 
 
 async def verify_admin_write(
     request: Request,
-    auth: HTTPAuthorizationCredentials = _AUTH_DEPENDENCY,
-):
+    auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
+) -> bool:
     """
     验证 Admin 写操作权限。
     如果配置了 ADMIN_WRITE_KEY，则要求 Bearer token 必须匹配此 key；

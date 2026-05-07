@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-import orjson
 import sqlalchemy
 from fastapi import Request
 from sqlalchemy import column, func, insert, select, update
@@ -54,9 +53,9 @@ def _resolve_analysis_for_duplicate(
 async def quick_receive_webhook(
     session: AsyncSession,
     source: str,
-    raw_headers: dict,
+    raw_headers: dict[str, Any],
     raw_body: str | bytes,
-    parsed_data: dict | None = None,
+    parsed_data: dict[str, Any] | None = None,
 ) -> int:
     """同步最小化写入：仅持久化原始数据。"""
     raw_text = raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8", errors="replace")
@@ -70,7 +69,7 @@ async def quick_receive_webhook(
         insert(WebhookEvent)
         .values(
             source=source,
-            headers=raw_headers if isinstance(raw_headers, dict) else orjson.loads(raw_headers),
+            headers=raw_headers,
             raw_payload=compressed,
             parsed_data=parsed_data,
             processing_status="received",
@@ -122,7 +121,7 @@ _SUMMARY_COLUMNS = [
 ]
 
 
-def _row_to_summary_dict(row) -> dict:
+def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     from adapters.summary_extractors import extract_summary_fields
 
     ai_analysis = row.ai_analysis
@@ -152,7 +151,7 @@ def _row_to_summary_dict(row) -> dict:
 
 async def list_webhook_summaries(
     session: AsyncSession, *, cursor_id: int | None = None, importance: str = "", source: str = "", page_size: int = 20
-) -> tuple[list[dict], bool, int | None]:
+) -> tuple[list[dict[str, Any]], bool, int | None]:
     query = select(*_SUMMARY_COLUMNS)
     if cursor_id is not None:
         query = query.where(WebhookEvent.id < cursor_id)
@@ -172,7 +171,7 @@ async def list_webhook_summaries(
 
 async def list_webhook_summaries_cursor(
     session: AsyncSession, *, cursor_id: int | None = None, importance: str = "", source: str = "", limit: int = 200
-) -> tuple[list[dict], bool, int | None]:
+) -> tuple[list[dict[str, Any]], bool, int | None]:
     query = select(*_SUMMARY_COLUMNS)
     if importance:
         query = query.where(WebhookEvent.importance == importance)
@@ -190,7 +189,7 @@ async def list_webhook_summaries_cursor(
 
 async def get_all_webhooks(
     page: int = 1, page_size: int = 20, cursor_id: int | None = None, fields: str = "summary"
-) -> tuple[list[dict], int, int | None]:
+) -> tuple[list[dict[str, Any]], int, int | None]:
     """向后兼容接口：获取所有 webhooks"""
     async with session_scope() as session:
         items, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=cursor_id, page_size=page_size)
@@ -200,7 +199,7 @@ async def get_all_webhooks(
 # ── Dead Letter & Stuck Events ──
 
 
-async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict]:
+async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
     stmt = (
         select(
             WebhookEvent.id,
@@ -218,7 +217,7 @@ async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int
         .limit(page_size)
     )
     result = await session.execute(stmt)
-    rows = []
+    rows: list[dict[str, Any]] = []
     for row in result.all():
         d = dict(row._mapping)
         for k in ("timestamp", "created_at"):
@@ -248,7 +247,7 @@ async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
 
 async def list_stuck_events(
     session: AsyncSession, *, statuses: list[str] | None = None, older_than_seconds: int = 300, limit: int = 50
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     threshold = datetime.now() - timedelta(seconds=max(0, older_than_seconds))
     stmt = (
         select(
@@ -419,6 +418,8 @@ async def _update_existing_event(
             if original:
                 # 重新获取当前 event，将其更新为 duplicate
                 event = await session.get(WebhookEvent, event_id)
+                if event is None:
+                    raise RuntimeError("WebhookEvent not found") from e
                 original.duplicate_count = (original.duplicate_count or 1) + 1
                 original.updated_at = datetime.now()
 
@@ -443,7 +444,7 @@ async def _update_existing_event(
         raise
 
 
-async def _save_new_event(session: AsyncSession, **kwargs) -> SaveWebhookResult:
+async def _save_new_event(session: AsyncSession, **kwargs: object) -> SaveWebhookResult:
     event = WebhookEvent()
     event.fill_fields(**kwargs, is_duplicate=0, duplicate_count=1, beyond_window=0, last_notified_at=datetime.now())
     session.add(event)
@@ -465,7 +466,7 @@ async def _upsert_new_event(
     beyond_window: bool,
 ) -> SaveWebhookResult:
     now = datetime.now()
-    stmt = (
+    stmt: Any = (
         pg_insert(WebhookEvent)
         .values(
             source=source,

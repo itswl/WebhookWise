@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import orjson
 
@@ -11,6 +12,7 @@ from core.logger import get_logger
 
 logger = get_logger("payload_sanitizer")
 
+
 def _get_offload_threshold_bytes() -> int:
     v = int(getattr(Config.server, "PAYLOAD_OFFLOAD_THRESHOLD_BYTES", 0) or 0)
     if v <= 0:
@@ -18,7 +20,7 @@ def _get_offload_threshold_bytes() -> int:
     return v
 
 
-def _should_offload(data, depth: int = 0) -> bool:
+def _should_offload(data: object, depth: int = 0) -> bool:
     if depth > 2:
         return False
     if data is None:
@@ -52,15 +54,16 @@ def _should_offload(data, depth: int = 0) -> bool:
     return False
 
 
-async def sanitize_for_ai_async(parsed_data: dict) -> dict:
+async def sanitize_for_ai_async(parsed_data: dict[str, Any]) -> dict[str, Any]:
     if not parsed_data:
         return parsed_data
     if _should_offload(parsed_data):
-        return await asyncio.to_thread(sanitize_for_ai, parsed_data)
+        res = await asyncio.to_thread(sanitize_for_ai, parsed_data)
+        return res
     return sanitize_for_ai(parsed_data)
 
 
-def sanitize_for_ai(parsed_data: dict) -> dict:
+def sanitize_for_ai(parsed_data: dict[str, Any]) -> dict[str, Any]:
     """清洗 parsed_data，移除噪音字段并截断过大内容。
 
     1. 递归移除 AI_PAYLOAD_STRIP_KEYS 指定的键
@@ -77,7 +80,8 @@ def sanitize_for_ai(parsed_data: dict) -> dict:
     max_bytes = policies.ai.AI_PAYLOAD_MAX_BYTES
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
-    cleaned = _strip_keys_recursive(parsed_data, strip_keys)
+    cleaned_obj = _strip_keys_recursive(parsed_data, strip_keys)
+    cleaned: dict[str, Any] = cleaned_obj if isinstance(cleaned_obj, dict) else parsed_data
 
     # Phase 2: 检查大小，超限则截断
     serialized = orjson.dumps(cleaned)
@@ -87,12 +91,14 @@ def sanitize_for_ai(parsed_data: dict) -> dict:
             len(serialized),
             max_bytes,
         )
-        cleaned = _truncate_large_values(cleaned, max_bytes)
+        truncated = _truncate_large_values(cleaned, max_bytes)
+        if isinstance(truncated, dict):
+            cleaned = truncated
 
     return cleaned
 
 
-def _strip_keys_recursive(data, strip_keys: set, max_depth: int = 20, _depth: int = 0):
+def _strip_keys_recursive(data: object, strip_keys: set[str], max_depth: int = 20, _depth: int = 0) -> object:
     """递归移除指定的键。"""
     if _depth >= max_depth:
         # 超过最大深度，直接截断返回
@@ -110,7 +116,7 @@ def _strip_keys_recursive(data, strip_keys: set, max_depth: int = 20, _depth: in
     return data
 
 
-def _truncate_large_values(data, max_bytes: int, depth: int = 0) -> dict | list | str:
+def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> object:
     """按值大小降序截断，直到总大小低于限制。"""
     if depth > 5:
         # 超过递归深度直接返回摘要
@@ -124,7 +130,7 @@ def _truncate_large_values(data, max_bytes: int, depth: int = 0) -> dict | list 
             items_with_size.append((k, v, size))
         items_with_size.sort(key=lambda x: x[2], reverse=True)
 
-        result = {}
+        result: dict[str, object] = {}
         current_size = 2  # {}
         for k, v, size in items_with_size:
             if current_size + size + len(k) + 4 > max_bytes and result:

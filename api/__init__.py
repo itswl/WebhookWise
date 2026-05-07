@@ -4,6 +4,8 @@ api/__init__.py
 共享 dataclass 和响应工具，所有 route 模块共用。
 """
 
+from typing import Any
+
 from fastapi.responses import JSONResponse
 
 # dataclass 定义已移到 services/types.py，此处重新导出保持兼容
@@ -33,15 +35,15 @@ class InvalidJsonError(WebhookRequestError):
 # ── 响应工具 ─────────────────────────────────────────────────────────────────
 
 
-def _ok(data=None, http_status: int = 200, **extra) -> JSONResponse:
+def _ok(data: Any = None, http_status: int = 200, **extra: Any) -> JSONResponse:
     """Build success JSON response."""
-    payload = {"success": True, **(extra if extra else {"data": data})}
+    payload: dict[str, Any] = {"success": True, **(extra if extra else {"data": data})}
     if data is not None and "data" not in extra:
         payload["data"] = data
     return JSONResponse(content=payload, status_code=http_status)
 
 
-def _fail(error: str, http_status: int = 400, **extra) -> JSONResponse:
+def _fail(error: str, http_status: int = 400, **extra: Any) -> JSONResponse:
     """Build error JSON response."""
-    payload = {"success": False, "error": error, **extra}
+    payload: dict[str, Any] = {"success": False, "error": error, **extra}
     return JSONResponse(content=payload, status_code=http_status)

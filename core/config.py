@@ -7,7 +7,7 @@ import socket
 import time
 from datetime import datetime
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal, TypeAlias, TypedDict, TypeVar
 
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
@@ -16,6 +16,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 load_dotenv(override=False)
 
 _config_logger = logging.getLogger("config")
+
+RuntimeType: TypeAlias = Literal["str", "int", "float", "bool"]
+RuntimeValue: TypeAlias = str | int | float | bool
+
+
+class _RuntimeKeyMeta(TypedDict):
+    type: RuntimeType
+    sub: str
+
+
+_TSubSettings = TypeVar("_TSubSettings", bound=BaseSettings)
 
 
 # ── 领域子配置 ──────────────────────────────────────────────
@@ -281,44 +292,13 @@ def get_settings() -> _AppConfig:
     return _AppConfig()
 
 
-class _SubConfigView:
-    """子配置视图：支持动态覆盖"""
-
-    def __init__(self, manager: "_UnifiedConfigManager", sub_name: str, static_sub_config: BaseSettings) -> None:
-        self._manager = manager
-        self._sub_name = sub_name
-        self._static = static_sub_config
-
-    def __getattr__(self, name: str) -> Any:
-        # 1. 优先检查动态覆盖
-        if name in self._manager._overrides:
-            val = self._manager._overrides[name]
-            # 如果覆盖值为空字符串，但静态配置（如.env）中有值，则优先使用静态配置
-            # 这能避免因错误保存空字符串或从 DB 拉取到脏数据导致丢失关键配置（如 API Key）
-            if val == "" and getattr(self._static, name, None):
-                return getattr(self._static, name)
-            return val
-        # 2. 回退到静态 Pydantic 配置
-        return getattr(self._static, name)
-
-    def __dir__(self) -> list[str]:
-        names = set(dir(self._static))
-        for k, meta in self._manager.RUNTIME_KEYS.items():
-            if meta.get("sub") == self._sub_name:
-                names.add(k)
-        return sorted(names)
-
-    def __repr__(self) -> str:
-        return f"<Config.{self._sub_name}>"
-
-
 class _UnifiedConfigManager:
     """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
 
     RUNTIME_CONFIG_CHANNEL = "webhook:config:updated"
 
     # 运行时可变配置定义 (key -> {type, desc})
-    RUNTIME_KEYS = {
+    RUNTIME_KEYS: dict[str, _RuntimeKeyMeta] = {
         "FORWARD_URL": {"type": "str", "sub": "ai"},
         "ENABLE_FORWARD": {"type": "bool", "sub": "ai"},
         "ENABLE_AI_ANALYSIS": {"type": "bool", "sub": "ai"},
@@ -347,24 +327,73 @@ class _UnifiedConfigManager:
     }
 
     def __init__(self) -> None:
-        self._overrides: dict[str, Any] = {}
-        self._meta: dict[str, dict[str, Any]] = {}
-        self._subscriber_task: asyncio.Task | None = None
+        self._overrides: dict[str, RuntimeValue] = {}
+        self._meta: dict[str, dict[str, object]] = {}
+        self._subscriber_task: asyncio.Task[object] | None = None
         self._running = False
         self._db_loaded_once = False
 
-    def __getattr__(self, name: str) -> Any:
-        settings = get_settings()
-        if hasattr(settings, name):
-            sub = getattr(settings, name)
-            if name in settings._SUB_NAMES:
-                return _SubConfigView(self, name, sub)
-            return sub
-        raise AttributeError(name)
+    def _merged_sub(self, sub_name: str, base: _TSubSettings) -> _TSubSettings:
+        updates: dict[str, RuntimeValue] = {}
+        for key, value in self._overrides.items():
+            meta = self.RUNTIME_KEYS.get(key)
+            if not meta or meta["sub"] != sub_name:
+                continue
+            if not hasattr(base, key):
+                continue
+            if value == "" and getattr(base, key, None):
+                continue
+            updates[key] = value
+        if not updates:
+            return base
+        updated = base.model_copy(update=updates)
+        return updated
+
+    @property
+    def server(self) -> ServerConfig:
+        return self._merged_sub("server", get_settings().server)
+
+    @property
+    def security(self) -> SecurityConfig:
+        return self._merged_sub("security", get_settings().security)
+
+    @property
+    def db(self) -> DBConfig:
+        return self._merged_sub("db", get_settings().db)
+
+    @property
+    def redis(self) -> RedisConfig:
+        return self._merged_sub("redis", get_settings().redis)
+
+    @property
+    def ai(self) -> AIConfig:
+        return self._merged_sub("ai", get_settings().ai)
+
+    @property
+    def openclaw(self) -> OpenClawConfig:
+        return self._merged_sub("openclaw", get_settings().openclaw)
+
+    @property
+    def circuit_breaker(self) -> CircuitBreakerConfig:
+        return self._merged_sub("circuit_breaker", get_settings().circuit_breaker)
+
+    @property
+    def retry(self) -> RetryConfig:
+        return self._merged_sub("retry", get_settings().retry)
+
+    @property
+    def maintenance(self) -> MaintenanceConfig:
+        return self._merged_sub("maintenance", get_settings().maintenance)
 
     # ── 动态管理接口 (原 ConfigProvider) ──
 
-    def set_override(self, key: str, value: Any, source: str = "db", updated_by: str | None = None):
+    def set_override(
+        self,
+        key: str,
+        value: RuntimeValue | None,
+        source: str = "db",
+        updated_by: str | None = None,
+    ) -> None:
         if value is None:
             self._overrides.pop(key, None)
             self._meta.pop(key, None)
@@ -377,7 +406,7 @@ class _UnifiedConfigManager:
             level = getattr(logging, str(value or "INFO").upper(), logging.INFO)
             logging.getLogger("webhook_service").setLevel(level)
 
-    def get_meta(self, key: str) -> dict[str, Any]:
+    def get_meta(self, key: str) -> dict[str, object]:
         return self._meta.get(key, {})
 
     # ── 运行时持久化与同步 (原 RuntimeConfigManager) ──
@@ -407,7 +436,7 @@ class _UnifiedConfigManager:
             _config_logger.warning(f"[Config] 数据库加载失败: {e}")
             return False
 
-    async def save_runtime_config(self, key: str, value: Any, updated_by: str = "api"):
+    async def save_runtime_config(self, key: str, value: RuntimeValue, updated_by: str = "api") -> None:
         if key not in self.RUNTIME_KEYS:
             raise ValueError(f"不支持热更新的配置: {key}")
 
@@ -438,7 +467,7 @@ class _UnifiedConfigManager:
 
         await self._publish_change([key])
 
-    async def save_batch(self, updates: dict[str, Any], updated_by: str = "api"):
+    async def save_batch(self, updates: dict[str, RuntimeValue], updated_by: str = "api") -> None:
         changed_keys = []
         for key, value in updates.items():
             if key in self.RUNTIME_KEYS:
@@ -446,24 +475,23 @@ class _UnifiedConfigManager:
                 changed_keys.append(key)
         _config_logger.info(f"[Config] 批量更新完成: {changed_keys}")
 
-    async def _publish_change(self, keys: list[str]):
+    async def _publish_change(self, keys: list[str]) -> None:
         try:
-            from core.redis_client import get_redis
+            from core.redis_client import redis_publish
 
-            r = get_redis()
             msg = json.dumps({"worker_id": self.server.WORKER_ID, "keys": keys, "ts": time.time()})
-            await r.publish(self.RUNTIME_CONFIG_CHANNEL, msg)
+            await redis_publish(self.RUNTIME_CONFIG_CHANNEL, msg)
         except Exception as e:
             _config_logger.warning(f"[Config] Redis 发布失败: {e}")
 
-    async def start_subscriber(self):
+    async def start_subscriber(self) -> None:
         if self._running:
             return
         self._running = True
         self._subscriber_task = asyncio.create_task(self._subscribe_loop())
         _config_logger.info("[Config] 实时同步已启动")
 
-    async def stop_subscriber(self):
+    async def stop_subscriber(self) -> None:
         self._running = False
         if self._subscriber_task:
             self._subscriber_task.cancel()
@@ -471,7 +499,7 @@ class _UnifiedConfigManager:
                 await self._subscriber_task
         _config_logger.info("[Config] 实时同步已停止")
 
-    async def _subscribe_loop(self):
+    async def _subscribe_loop(self) -> None:
         last_sync_time = time.time()
         while self._running:
             if not self._db_loaded_once:
@@ -489,12 +517,11 @@ class _UnifiedConfigManager:
 
             await self._run_subscription()
 
-    async def _run_subscription(self):
-        from core.redis_client import get_redis
+    async def _run_subscription(self) -> None:
+        from core.redis_client import redis_pubsub
 
         try:
-            r = get_redis()
-            pubsub = r.pubsub()
+            pubsub = redis_pubsub()
             await pubsub.subscribe(self.RUNTIME_CONFIG_CHANNEL)
 
             # 使用较短的超时时间，以便让外部的 while 循环能够定期执行强制全量同步
@@ -502,21 +529,21 @@ class _UnifiedConfigManager:
                 if not self._running:
                     break
                 msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
-                if msg and msg["type"] == "message":
-                    data = json.loads(msg["data"])
-                    if data.get("worker_id") != self.server.WORKER_ID:
+                if isinstance(msg, dict) and msg.get("type") == "message":
+                    loaded = json.loads(msg.get("data", ""))
+                    if isinstance(loaded, dict) and loaded.get("worker_id") != self.server.WORKER_ID:
                         await self.load_from_db()  # 重新全量拉取
             await pubsub.close()
         except Exception as e:
             _config_logger.warning(f"[Config] 同步异常，5s后重连: {e}")
             await asyncio.sleep(5)
 
-    def _serialize(self, v, t: str) -> str:
+    def _serialize(self, v: RuntimeValue, t: RuntimeType) -> str:
         if t == "bool":
             return str(bool(v)).lower()
         return str(v)
 
-    def _deserialize(self, v: str, t: str) -> Any:
+    def _deserialize(self, v: str, t: RuntimeType) -> RuntimeValue:
         if t == "bool":
             return v.lower() in ("true", "1", "yes")
         if t == "int":

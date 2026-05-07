@@ -11,7 +11,7 @@ import services.tasks  # noqa: F401
 from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
-from core.redis_client import dispose_redis, get_redis
+from core.redis_client import dispose_redis, init_redis
 from core.taskiq_broker import broker
 from db.session import dispose_engine, init_engine
 
@@ -19,14 +19,14 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 logger = logging.getLogger("webhook_service.worker")
 
 
-async def startup():
+async def startup() -> None:
     """初始化工作进程环境"""
     setup_logger()
     logger.info("[Worker] 正在初始化工作进程...")
 
     get_http_client()
     await init_engine()
-    get_redis()
+    init_redis()
 
     await Config.load_from_db()
     await Config.start_subscriber()
@@ -35,7 +35,7 @@ async def startup():
     logger.info("[Worker] TaskIQ Broker 已启动")
 
 
-async def shutdown():
+async def shutdown() -> None:
     """清理工作进程环境"""
     logger.info("[Worker] 正在关闭工作进程...")
     await broker.shutdown()
@@ -47,7 +47,7 @@ async def shutdown():
     logger.info("[Worker] 关闭完成。")
 
 
-async def run_worker():
+async def run_worker() -> None:
     """启动 TaskIQ Worker 进程（仅用于编程式启动，生产推荐使用 entrypoint.sh）"""
     await startup()
 

@@ -117,9 +117,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
 
     monkeypatch.setattr("api.analysis.MAX_PAGE", 2)
 
-    resp = await list_all_deep_analyses(
-        page=1, per_page=20, cursor=None, status="", engine="", session=session
-    )
+    resp = await list_all_deep_analyses(page=1, per_page=20, cursor=None, status="", engine="", session=session)
     assert resp["success"] is True
     items = resp["data"]["items"]
     assert len(items) == 2
@@ -132,3 +130,19 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     assert by_id[999]["source"] is None
     assert by_id[999]["is_duplicate"] is False
     assert by_id[999]["beyond_window"] is False
+
+
+def test_webhook_analysis_result_to_dict_dumps_enum_to_string():
+    from schemas import Importance, WebhookAnalysisResult
+
+    r = WebhookAnalysisResult(
+        source="prometheus",
+        event_type="PrometheusAlert",
+        importance=Importance.HIGH,
+        summary="x",
+        actions=[],
+        risks=[],
+        monitoring_suggestions=[],
+    )
+    d = r.to_dict()
+    assert d["importance"] == "high"

@@ -2,8 +2,9 @@
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from enum import Enum
+from typing import ParamSpec, TypeVar
 
 import httpx
 
@@ -79,9 +80,9 @@ class CircuitBreaker:
         name: str,
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
-        expected_exceptions: tuple = (httpx.RequestError,),
+        expected_exceptions: tuple[type[BaseException], ...] = (httpx.RequestError,),
         failure_window: int = 60,
-    ):
+    ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
@@ -93,34 +94,25 @@ class CircuitBreaker:
         self._state_key = f"{self._prefix}:state"
         self._open_until_key = f"{self._prefix}:open_until"
 
-    def _get_redis(self):
-        try:
-            import core.redis_client
-
-            return core.redis_client.get_redis()
-        except Exception as e:
-            logger.error(f"CircuitBreaker [{self.name}] 获取 Redis 失败: {e}")
-            return None
-
     async def _check_state_async(self) -> CircuitState:
-        r = self._get_redis()
-        if r is None:
-            return CircuitState.CLOSED
         try:
-            state_str = await r.eval(_CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time()))
+            from core.redis_client import redis_eval_str
+
+            state_str = await redis_eval_str(
+                _CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time())
+            )
             return CircuitState(state_str) if state_str else CircuitState.CLOSED
         except Exception as e:
             logger.warning(f"CircuitBreaker [{self.name}] Redis 检查状态失败: {e}")
             return CircuitState.CLOSED
 
     async def _record_failure(self) -> bool:
-        r = self._get_redis()
-        if r is None:
-            return False
         try:
+            from core.redis_client import redis_eval_int
+
             open_until_ts = str(time.time() + self.recovery_timeout)
             state_expire = int(self.recovery_timeout * 2) + 1
-            tripped = await r.eval(
+            tripped = await redis_eval_int(
                 _CB_RECORD_FAILURE_LUA,
                 3,
                 self._failures_key,
@@ -136,16 +128,18 @@ class CircuitBreaker:
             logger.warning(f"CircuitBreaker [{self.name}] Redis 记录失败异常: {e}")
             return False
 
-    async def _record_success(self):
-        r = self._get_redis()
-        if r is None:
-            return
+    async def _record_success(self) -> None:
         try:
-            await r.eval(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
+            from core.redis_client import redis_eval_int
+
+            await redis_eval_int(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
         except Exception as e:
             logger.warning(f"CircuitBreaker [{self.name}] Redis 记录成功异常: {e}")
 
-    async def call_async(self, func: Callable, *args, **kwargs):
+    _P = ParamSpec("_P")
+    _R = TypeVar("_R")
+
+    async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R | None:
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)

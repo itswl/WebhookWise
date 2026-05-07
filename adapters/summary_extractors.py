@@ -9,18 +9,22 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
 # 注册表: source -> extractor function
-_SUMMARY_EXTRACTORS: dict[str, Callable[[dict], dict[str, Any]]] = {}
+WebhookData = dict[str, Any]
+Summary = dict[str, Any]
+_Extractor = Callable[[WebhookData], Summary]
+_SUMMARY_EXTRACTORS: dict[str, _Extractor] = {}
+_F = TypeVar("_F", bound=_Extractor)
 
 
-def register_summary_extractor(source: str):
+def register_summary_extractor(source: str) -> Callable[[_F], _F]:
     """装饰器：注册 source 对应的摘要提取器。"""
 
-    def decorator(func: Callable[[dict], dict[str, Any]]):
+    def decorator(func: _F) -> _F:
         _SUMMARY_EXTRACTORS[source] = func
         logger.debug(f"[Summary Extractor] Registered extractor for: {source}")
         return func
@@ -28,7 +32,7 @@ def register_summary_extractor(source: str):
     return decorator
 
 
-def extract_summary_fields(source: str, parsed_data: dict | None) -> dict[str, Any]:
+def extract_summary_fields(source: str, parsed_data: WebhookData | None) -> Summary:
     """从 parsed_data 中提取 source 特定的摘要字段。
 
     返回值会被合并到 alert_info 字典中。
@@ -47,7 +51,7 @@ def extract_summary_fields(source: str, parsed_data: dict | None) -> dict[str, A
 
 
 @register_summary_extractor("mongodb")
-def _extract_mongodb_summary(parsed_data: dict) -> dict[str, Any]:
+def _extract_mongodb_summary(parsed_data: WebhookData) -> Summary:
     """MongoDB 告警摘要字段提取。"""
     monitor = parsed_data.get("监控项")
     return {
