@@ -16,24 +16,36 @@ from services.pipeline import _is_retryable
 
 class _FakeBadRequest(Exception):
     pass
+
+
 _FakeBadRequest.__name__ = "BadRequestError"
+
 
 class _FakeAuthError(Exception):
     pass
+
+
 _FakeAuthError.__name__ = "AuthenticationError"
+
 
 class _FakePermissionDenied(Exception):
     pass
+
+
 _FakePermissionDenied.__name__ = "PermissionDeniedError"
+
 
 class _FakeUnprocessable(Exception):
     pass
+
+
 _FakeUnprocessable.__name__ = "UnprocessableEntityError"
 
 
 def test_json_decode_error_not_retryable():
     """JSON 解析失败是数据问题，重试无意义。"""
     import orjson
+
     try:
         orjson.loads(b"not-json")
     except orjson.JSONDecodeError as err:
@@ -77,17 +89,19 @@ def test_openai_class_name_unprocessable_not_retryable():
 
 
 def test_context_length_message_not_retryable():
-    """消息包含 context_length 关键词的任意异常不可重试。"""
+    """通用运行时错误默认不可重试（避免无限重试消耗 Token）。"""
     err = RuntimeError("This request exceeds context_length limit")
     assert _is_retryable(err) is False
 
 
 def test_content_policy_message_not_retryable():
+    """通用运行时错误默认不可重试（避免依赖报错文案进行分类）。"""
     err = RuntimeError("Blocked by content_policy violation")
     assert _is_retryable(err) is False
 
 
 def test_content_filter_message_not_retryable():
+    """通用运行时错误默认不可重试（避免依赖报错文案进行分类）。"""
     err = RuntimeError("content filter triggered")
     assert _is_retryable(err) is False
 
@@ -121,8 +135,8 @@ def test_sqlalchemy_operational_error_retryable():
 
 
 def test_generic_runtime_error_retryable():
-    """不在黑名单中的通用运行时错误默认可重试。"""
-    assert _is_retryable(RuntimeError("unexpected error")) is True
+    """不在明确可重试集合中的通用运行时错误默认不可重试。"""
+    assert _is_retryable(RuntimeError("unexpected error")) is False
 
 
 # ── 异常链：__cause__ 链式检查 ────────────────────────────────────────────────
