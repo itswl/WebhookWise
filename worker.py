@@ -8,7 +8,6 @@ import uvloop
 
 # 确保导入任务，以便 TaskIQ 注册
 import services.tasks  # noqa: F401
-from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
 from core.redis_client import dispose_redis, init_redis
@@ -28,10 +27,6 @@ async def startup() -> None:
     await init_engine()
     init_redis()
 
-    if Config.server.ENABLE_RUNTIME_CONFIG:
-        await Config.load_from_db()
-        await Config.start_subscriber()
-
     await broker.startup()
     logger.info("[Worker] TaskIQ Broker 已启动")
 
@@ -40,7 +35,6 @@ async def shutdown() -> None:
     """清理工作进程环境"""
     logger.info("[Worker] 正在关闭工作进程...")
     await broker.shutdown()
-    await Config.stop_subscriber()
     await dispose_engine()
     await dispose_redis()
     await close_http_client()
