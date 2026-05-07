@@ -1,10 +1,6 @@
-import asyncio
-import contextlib
-import json
 import logging
 import os
 import socket
-import time
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Literal, TypeAlias, TypedDict, TypeVar
@@ -44,7 +40,6 @@ class ServerConfig(BaseSettings):
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
     ENABLE_POLLERS: bool = Field(default=True)
-    ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
@@ -294,11 +289,9 @@ def get_settings() -> _AppConfig:
 
 
 class _UnifiedConfigManager:
-    """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
+    """统一配置管理器：只提供静态配置读取（环境变量 / .env / 默认值）。"""
 
-    RUNTIME_CONFIG_CHANNEL = "webhook:config:updated"
-
-    # 运行时可变配置定义 (key -> {type, desc})
+    # 公开暴露给管理接口读取的配置键（不支持运行时热更新）
     RUNTIME_KEYS: dict[str, _RuntimeKeyMeta] = {
         "FORWARD_URL": {"type": "str", "sub": "ai"},
         "ENABLE_FORWARD": {"type": "bool", "sub": "ai"},
@@ -330,9 +323,6 @@ class _UnifiedConfigManager:
     def __init__(self) -> None:
         self._overrides: dict[str, RuntimeValue] = {}
         self._meta: dict[str, dict[str, object]] = {}
-        self._subscriber_task: asyncio.Task[object] | None = None
-        self._running = False
-        self._db_loaded_once = False
 
     def _merged_sub(self, sub_name: str, base: _TSubSettings) -> _TSubSettings:
         updates: dict[str, RuntimeValue] = {}
@@ -342,13 +332,10 @@ class _UnifiedConfigManager:
                 continue
             if not hasattr(base, key):
                 continue
-            if value == "" and getattr(base, key, None):
-                continue
             updates[key] = value
         if not updates:
             return base
-        updated = base.model_copy(update=updates)
-        return updated
+        return base.model_copy(update=updates)
 
     @property
     def server(self) -> ServerConfig:
@@ -386,13 +373,15 @@ class _UnifiedConfigManager:
     def maintenance(self) -> MaintenanceConfig:
         return self._merged_sub("maintenance", get_settings().maintenance)
 
-    # ── 动态管理接口 (原 ConfigProvider) ──
+    def get_meta(self, key: str) -> dict[str, object]:
+        return self._meta.get(key, {})
 
     def set_override(
         self,
         key: str,
         value: RuntimeValue | None,
-        source: str = "db",
+        *,
+        source: str = "override",
         updated_by: str | None = None,
     ) -> None:
         if value is None:
@@ -402,156 +391,20 @@ class _UnifiedConfigManager:
             self._overrides[key] = value
             self._meta[key] = {"source": source, "updated_at": datetime.now(), "updated_by": updated_by}
         if key == "LOG_LEVEL":
-            import logging
-
             level = getattr(logging, str(value or "INFO").upper(), logging.INFO)
             logging.getLogger("webhook_service").setLevel(level)
 
-    def get_meta(self, key: str) -> dict[str, object]:
-        return self._meta.get(key, {})
-
-    # ── 运行时持久化与同步 (原 RuntimeConfigManager) ──
-
     async def load_from_db(self) -> bool:
-        """从数据库加载热更新配置"""
-        from sqlalchemy import select
-
-        from db.session import session_scope
-        from models import SystemConfig
-
-        try:
-            async with session_scope() as session:
-                result = await session.execute(select(SystemConfig))
-                configs = {row.key: row for row in result.scalars().all()}
-
-            count = 0
-            for key, row in configs.items():
-                if key in self.RUNTIME_KEYS:
-                    val = self._deserialize(row.value, self.RUNTIME_KEYS[key]["type"])
-                    self.set_override(key, val, source="db", updated_by=row.updated_by)
-                    count += 1
-            self._db_loaded_once = True
-            _config_logger.info(f"[Config] 从数据库加载 {count} 个热更新配置")
-            return True
-        except Exception as e:
-            _config_logger.warning(f"[Config] 数据库加载失败: {e}")
-            return False
-
-    async def save_runtime_config(self, key: str, value: RuntimeValue, updated_by: str = "api") -> None:
-        if key not in self.RUNTIME_KEYS:
-            raise ValueError(f"不支持热更新的配置: {key}")
-
-        v_type = self.RUNTIME_KEYS[key]["type"]
-        str_val = self._serialize(value, v_type)
-
-        from sqlalchemy import delete, select
-
-        from db.session import session_scope
-        from models import SystemConfig
-
-        async with session_scope() as session:
-            if str_val == "" and v_type == "str":
-                # 如果传入空字符串，我们应该从数据库中删除这个覆盖记录，让它回退到 .env
-                await session.execute(delete(SystemConfig).where(SystemConfig.key == key))
-                self.set_override(key, None, source="db", updated_by=updated_by)
-            else:
-                existing = await session.execute(select(SystemConfig).where(SystemConfig.key == key))
-                config = existing.scalar_one_or_none()
-                if config:
-                    config.value, config.value_type, config.updated_by = str_val, v_type, updated_by
-                else:
-                    config = SystemConfig(key=key, value=str_val, value_type=v_type, updated_by=updated_by)
-                    session.add(config)
-
-                typed_val = self._deserialize(str_val, v_type)
-                self.set_override(key, typed_val, source="db", updated_by=updated_by)
-
-        await self._publish_change([key])
-
-    async def save_batch(self, updates: dict[str, RuntimeValue], updated_by: str = "api") -> None:
-        changed_keys = []
-        for key, value in updates.items():
-            if key in self.RUNTIME_KEYS:
-                await self.save_runtime_config(key, value, updated_by)
-                changed_keys.append(key)
-        _config_logger.info(f"[Config] 批量更新完成: {changed_keys}")
-
-    async def _publish_change(self, keys: list[str]) -> None:
-        try:
-            from core.redis_client import redis_publish
-
-            msg = json.dumps({"worker_id": self.server.WORKER_ID, "keys": keys, "ts": time.time()})
-            await redis_publish(self.RUNTIME_CONFIG_CHANNEL, msg)
-        except Exception as e:
-            _config_logger.warning(f"[Config] Redis 发布失败: {e}")
+        return False
 
     async def start_subscriber(self) -> None:
-        if self._running:
-            return
-        self._running = True
-        self._subscriber_task = asyncio.create_task(self._subscribe_loop())
-        _config_logger.info("[Config] 实时同步已启动")
+        return
 
     async def stop_subscriber(self) -> None:
-        self._running = False
-        if self._subscriber_task:
-            self._subscriber_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._subscriber_task
-        _config_logger.info("[Config] 实时同步已停止")
+        return
 
-    async def _subscribe_loop(self) -> None:
-        last_sync_time = time.time()
-        while self._running:
-            if not self._db_loaded_once:
-                ok = await self.load_from_db()
-                if not ok:
-                    await asyncio.sleep(5)
-                    continue
-                last_sync_time = time.time()
-
-            # 每 2 分钟进行一次强制全量同步，防止任何 Worker 状态永久脱节
-            now = time.time()
-            if now - last_sync_time > 120:
-                await self.load_from_db()
-                last_sync_time = now
-
-            await self._run_subscription()
-
-    async def _run_subscription(self) -> None:
-        from core.redis_client import redis_pubsub
-
-        try:
-            pubsub = redis_pubsub()
-            await pubsub.subscribe(self.RUNTIME_CONFIG_CHANNEL)
-
-            # 使用较短的超时时间，以便让外部的 while 循环能够定期执行强制全量同步
-            for _ in range(24):  # 24 * 5s = 120s 左右退出一次内层循环
-                if not self._running:
-                    break
-                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
-                if isinstance(msg, dict) and msg.get("type") == "message":
-                    loaded = json.loads(msg.get("data", ""))
-                    if isinstance(loaded, dict) and loaded.get("worker_id") != self.server.WORKER_ID:
-                        await self.load_from_db()  # 重新全量拉取
-            await pubsub.close()
-        except Exception as e:
-            _config_logger.warning(f"[Config] 同步异常，5s后重连: {e}")
-            await asyncio.sleep(5)
-
-    def _serialize(self, v: RuntimeValue, t: RuntimeType) -> str:
-        if t == "bool":
-            return str(bool(v)).lower()
-        return str(v)
-
-    def _deserialize(self, v: str, t: RuntimeType) -> RuntimeValue:
-        if t == "bool":
-            return v.lower() in ("true", "1", "yes")
-        if t == "int":
-            return int(v)
-        if t == "float":
-            return float(v)
-        return v
+    async def save_batch(self, updates: dict[str, RuntimeValue], updated_by: str = "api") -> None:
+        raise RuntimeError("运行时配置写入已禁用")
 
 
 Config = _UnifiedConfigManager()
