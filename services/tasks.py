@@ -27,28 +27,44 @@ async def process_webhook_task(
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)
 
 
-@broker.task(task_name="scheduled_recovery_scan", schedule=[{"cron": "*/1 * * * *"}])
+@broker.task(
+    task_name="scheduled_recovery_scan",
+    schedule=[
+        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "recovery_scan_interval_seconds"}
+    ],
+)
 async def scheduled_recovery_scan() -> None:
     from services.recovery_poller import run_recovery_scan
 
     await run_recovery_scan()
 
 
-@broker.task(task_name="scheduled_metrics_refresh", schedule=[{"cron": "*/1 * * * *"}])
+@broker.task(
+    task_name="scheduled_metrics_refresh",
+    schedule=[{"interval": 15, "schedule_id": "metrics_refresh_interval_15s"}],
+)
 async def scheduled_metrics_refresh() -> None:
     from services.metrics_poller import refresh_all_metrics
 
     await refresh_all_metrics()
 
 
-@broker.task(task_name="scheduled_openclaw_poll", schedule=[{"cron": "*/1 * * * *"}])
+@broker.task(
+    task_name="scheduled_openclaw_poll",
+    schedule=[{"interval": 30, "schedule_id": "openclaw_poll_interval_30s"}],
+)
 async def scheduled_openclaw_poll() -> None:
     from services.openclaw_poller import poll_pending_analyses
 
     await poll_pending_analyses()
 
 
-@broker.task(task_name="scheduled_forward_retry_poll", schedule=[{"cron": "*/1 * * * *"}])
+@broker.task(
+    task_name="scheduled_forward_retry_poll",
+    schedule=[
+        {"interval": Config.retry.FORWARD_RETRY_POLL_INTERVAL, "schedule_id": "forward_retry_poll_interval_seconds"}
+    ],
+)
 async def scheduled_forward_retry_poll() -> None:
     if not Config.retry.ENABLE_FORWARD_RETRY:
         return
