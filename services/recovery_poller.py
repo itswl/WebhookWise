@@ -16,12 +16,14 @@ logger = logging.getLogger("webhook_service.recovery")
 
 # 每次最多处理的僵尸事件数量
 _MAX_RECOVER_BATCH = 50
-# 最大重试次数
-_MAX_RETRIES = 5
 
 
 async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
-    """扫描僵尸事件并重新处理（由 TaskIQ 驱动，不再自启动循环）"""
+    """扫描真正卡住的事件并重新处理（由 TaskIQ 驱动，不再自启动循环）。
+
+    常规可重试失败由 Redis 延迟重试队列推进；这里仅兜底 worker 崩溃、
+    入队后未消费等导致长期停留在 received/analyzing 的事件。
+    """
     threshold_secs = (
         stuck_threshold_seconds
         if stuck_threshold_seconds is not None
@@ -33,8 +35,8 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
     async with session_scope() as session:
         result = await session.execute(
             select(WebhookEvent)
-            .where(WebhookEvent.processing_status.in_(["received", "retry", "analyzing", "failed"]))
-            .where(WebhookEvent.retry_count < _MAX_RETRIES)
+            .where(WebhookEvent.processing_status.in_(["received", "analyzing"]))
+            .where(WebhookEvent.retry_count < Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
             .where(or_(WebhookEvent.updated_at < threshold, WebhookEvent.created_at < threshold))
             .limit(_MAX_RECOVER_BATCH)
         )
@@ -60,8 +62,8 @@ async def _recover_single_event(e: WebhookEvent) -> None:
             stmt = (
                 update(WebhookEvent)
                 .where(WebhookEvent.id == e.id)
-                .where(WebhookEvent.processing_status.in_(["received", "retry", "analyzing", "failed"]))
-                .where(WebhookEvent.retry_count < _MAX_RETRIES)
+                .where(WebhookEvent.processing_status.in_(["received", "analyzing"]))
+                .where(WebhookEvent.retry_count < Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
                 .values(
                     processing_status="retry",
                     retry_count=WebhookEvent.retry_count + 1,
