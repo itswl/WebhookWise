@@ -61,6 +61,9 @@ async def worker_startup_event(state: object) -> None:
     setup_logger()
     await init_engine()
     get_http_client()
+    if Config.server.ENABLE_RUNTIME_CONFIG:
+        await Config.load_from_db()
+        await Config.start_subscriber()
     # 初始化 worker 进程 OTEL（TracerProvider + httpx/redis instrumentation）
     from core.otel import setup_otel_worker
 
@@ -77,8 +80,10 @@ async def worker_startup_event(state: object) -> None:
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
+    from core.config import Config
     from core.http_client import close_http_client
     from db.session import dispose_engine
 
+    await Config.stop_subscriber()
     await dispose_engine()
     await close_http_client()
