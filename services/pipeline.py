@@ -49,6 +49,11 @@ _OpenAIAuthenticationError: type[Exception] | None = None
 _OpenAIBadRequestError: type[Exception] | None = None
 _OpenAIPermissionDeniedError: type[Exception] | None = None
 _OpenAIUnprocessableEntityError: type[Exception] | None = None
+_OpenAINotFoundError: type[Exception] | None = None
+_OpenAIRateLimitError: type[Exception] | None = None
+_OpenAIAPIConnectionError: type[Exception] | None = None
+_OpenAIAPITimeoutError: type[Exception] | None = None
+_OpenAIAPIStatusError: type[Exception] | None = None
 
 
 def _normalize_importance(value: Any) -> str:
@@ -65,6 +70,28 @@ try:
     _OpenAIBadRequestError = BadRequestError
     _OpenAIPermissionDeniedError = PermissionDeniedError
     _OpenAIUnprocessableEntityError = UnprocessableEntityError
+    try:
+        from openai import NotFoundError, RateLimitError
+
+        _OpenAINotFoundError = NotFoundError
+        _OpenAIRateLimitError = RateLimitError
+    except ImportError:
+        pass
+
+    try:
+        from openai import APIConnectionError, APITimeoutError
+
+        _OpenAIAPIConnectionError = APIConnectionError
+        _OpenAIAPITimeoutError = APITimeoutError
+    except ImportError:
+        pass
+
+    try:
+        from openai import APIStatusError
+
+        _OpenAIAPIStatusError = APIStatusError
+    except ImportError:
+        pass
 except ImportError:
     pass
 
@@ -99,40 +126,94 @@ async def _load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | Non
 
 def _is_retryable(exc: Exception) -> bool:
     """判断异常是否可重试"""
-    # 检查 OpenAI 报错
-    openai_non_retryable_types = tuple(
-        t
-        for t in (
+
+    def _iter_chain(root: BaseException) -> list[BaseException]:
+        visited: set[int] = set()
+        out: list[BaseException] = []
+        curr: BaseException | None = root
+        while curr is not None and id(curr) not in visited:
+            visited.add(id(curr))
+            out.append(curr)
+            curr = curr.__cause__ or curr.__context__
+        return out
+
+    def _as_tuple(*items: object) -> tuple[type[BaseException], ...]:
+        return tuple(cast(type[BaseException], t) for t in items if isinstance(t, type))
+
+    def _extract_status_code(e: BaseException) -> int | None:
+        if isinstance(e, httpx.HTTPStatusError):
+            return int(getattr(e.response, "status_code", 0) or 0) or None
+        status = getattr(e, "status_code", None)
+        if isinstance(status, int) and status > 0:
+            return status
+        response = getattr(e, "response", None)
+        if response is not None:
+            resp_status = getattr(response, "status_code", None)
+            if isinstance(resp_status, int) and resp_status > 0:
+                return resp_status
+        return None
+
+    def _should_retry_http_status(status_code: int) -> bool:
+        if status_code in {408, 409, 425, 429, 500, 502, 503, 504}:
+            return True
+        if 400 <= status_code < 500:
+            return False
+        return 500 <= status_code < 600
+
+    def _openai_error_code(e: BaseException) -> str | None:
+        code = getattr(e, "code", None)
+        if isinstance(code, str) and code.strip():
+            return code.strip()
+        body = getattr(e, "body", None)
+        if isinstance(body, dict):
+            err = body.get("error")
+            if isinstance(err, dict):
+                c = err.get("code")
+                if isinstance(c, str) and c.strip():
+                    return c.strip()
+        return None
+
+    chain = _iter_chain(exc)
+    for curr in chain:
+        if isinstance(curr, _NON_RETRYABLE_ERRORS):
+            return False
+        if _QueryCanceledError and isinstance(curr, _QueryCanceledError):
+            return True
+        if isinstance(curr, RedisError):
+            return True
+        if isinstance(curr, (httpx.TimeoutException, httpx.NetworkError, httpx.RequestError, ConnectionError, OSError)):
+            return True
+        if isinstance(curr, sqlalchemy.exc.OperationalError):
+            return True
+
+        openai_non_retryable = _as_tuple(
             _OpenAIAuthenticationError,
             _OpenAIBadRequestError,
             _OpenAIPermissionDeniedError,
             _OpenAIUnprocessableEntityError,
+            _OpenAINotFoundError,
         )
-        if t is not None
-    )
-    visited: set[int] = set()
-    curr: BaseException | None = exc
-    while curr is not None and id(curr) not in visited:
-        visited.add(id(curr))
-        name = type(curr).__name__
-        if openai_non_retryable_types and isinstance(curr, openai_non_retryable_types):
+        if openai_non_retryable and isinstance(curr, openai_non_retryable):
             return False
-        if name in {"BadRequestError", "UnprocessableEntityError", "PermissionDeniedError", "AuthenticationError"}:
-            return False
-        msg = str(curr).lower()
-        if any(k in msg for k in ["context_length", "content_policy", "content filter"]):
-            return False
-        curr = curr.__cause__ or curr.__context__
 
-    if isinstance(exc, RedisError):
-        return True
-    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError, OSError)):
-        return True
-    if _QueryCanceledError and isinstance(exc, _QueryCanceledError):
-        return True
-    if isinstance(exc, sqlalchemy.exc.OperationalError):
-        return True
-    return not isinstance(exc, _NON_RETRYABLE_ERRORS)
+        openai_retryable = _as_tuple(_OpenAIRateLimitError, _OpenAIAPIConnectionError, _OpenAIAPITimeoutError)
+        if openai_retryable and isinstance(curr, openai_retryable):
+            return True
+
+        if _OpenAIAPIStatusError and isinstance(curr, _as_tuple(_OpenAIAPIStatusError)):
+            status = _extract_status_code(curr)
+            if status is not None:
+                return _should_retry_http_status(status)
+
+        status = _extract_status_code(curr)
+        if status is not None:
+            return _should_retry_http_status(status)
+
+        code = _openai_error_code(curr)
+        if code in {"context_length_exceeded", "content_policy_violation"}:
+            return False
+
+    return False
 
 
 async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
