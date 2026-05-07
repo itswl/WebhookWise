@@ -75,7 +75,8 @@ services:
 
   worker:
     build: .
-    container_name: webhook-worker
+    # No fixed container_name here: this service is intended to scale horizontally.
+    # Example: docker compose up -d --scale worker=3
     restart: unless-stopped
     deploy:
       resources:
@@ -110,6 +111,7 @@ services:
   scheduler:
     build: .
     container_name: webhook-scheduler
+    # Keep scheduler as a single instance. Scaling it would duplicate scheduled task dispatches.
     restart: unless-stopped
     deploy:
       resources:
