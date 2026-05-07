@@ -97,7 +97,7 @@ def _setup_otlp_exporter(provider: Any) -> None:
     headers = _parse_headers(os.getenv("OTEL_EXPORTER_OTLP_HEADERS", ""))
     timeout = int(float(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "10") or "10"))
 
-    exporter = None
+    exporter: Any | None = None
     if protocol in {"http", "http/protobuf", "http-protobuf"}:
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
