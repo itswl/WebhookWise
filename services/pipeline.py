@@ -299,7 +299,7 @@ async def _compute_noise(
                 AlertContext(
                     e.id,
                     e.source,
-                    e.importance or "medium",
+                    _normalize_importance(e.importance or "medium"),
                     cast(dict[str, Any], e.parsed_data or {}),
                     cast(dict[str, Any], e.ai_analysis or {}),
                     e.timestamp or now,
@@ -310,7 +310,9 @@ async def _compute_noise(
             ]
     except Exception:
         recent = []
-    curr = AlertContext(None, source, str(analysis.get("importance", "medium")), parsed, analysis, now, alert_hash)
+    curr = AlertContext(
+        None, source, _normalize_importance(analysis.get("importance", "medium")), parsed, analysis, now, alert_hash
+    )
     dec = analyze_noise_reduction(
         curr,
         recent,
