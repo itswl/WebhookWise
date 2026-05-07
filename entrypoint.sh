@@ -14,7 +14,7 @@ if [ -n "$PROMETHEUS_MULTIPROC_DIR" ] && [ -d "$PROMETHEUS_MULTIPROC_DIR" ]; the
     rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"/*
 fi
 
-# Worker 模式：启动 TaskIQ Worker 和 Scheduler
+# Worker 模式：启动 TaskIQ Worker（消费 Redis 队列中的异步任务）
 if [ "$RUN_MODE" = "worker" ]; then
     echo "Starting in TaskIQ Worker mode..."
     # 等待数据库就绪
