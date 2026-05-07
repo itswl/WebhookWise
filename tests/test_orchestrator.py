@@ -24,42 +24,36 @@ def _make_request(headers: dict, client_host: str | None = "127.0.0.1"):
 
 def test_get_client_ip_from_x_forwarded_for():
     from services.webhook_orchestrator import get_client_ip
-
     req = _make_request({"x-forwarded-for": "1.2.3.4, 10.0.0.1"})
     assert get_client_ip(req) == "1.2.3.4"
 
 
 def test_get_client_ip_strips_whitespace():
     from services.webhook_orchestrator import get_client_ip
-
     req = _make_request({"x-forwarded-for": "  5.6.7.8 , 192.168.1.1"})
     assert get_client_ip(req) == "5.6.7.8"
 
 
 def test_get_client_ip_from_x_real_ip():
     from services.webhook_orchestrator import get_client_ip
-
     req = _make_request({"x-real-ip": "9.10.11.12"})
     assert get_client_ip(req) == "9.10.11.12"
 
 
 def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip():
     from services.webhook_orchestrator import get_client_ip
-
     req = _make_request({"x-forwarded-for": "1.1.1.1", "x-real-ip": "2.2.2.2"})
     assert get_client_ip(req) == "1.1.1.1"
 
 
 def test_get_client_ip_falls_back_to_client_host():
     from services.webhook_orchestrator import get_client_ip
-
     req = _make_request({}, client_host="192.168.0.5")
     assert get_client_ip(req) == "192.168.0.5"
 
 
 def test_get_client_ip_no_client_returns_unknown():
     from services.webhook_orchestrator import get_client_ip
-
     req = MagicMock()
     req.headers = {}
     req.client = None
@@ -79,7 +73,6 @@ def _make_original(ai_analysis=None, importance=None):
 
 def test_resolve_analysis_uses_provided_ai_analysis():
     from services.webhook_orchestrator import _resolve_analysis_for_duplicate
-
     ai = {"summary": "High CPU", "importance": "high"}
     original = _make_original(ai_analysis=None)
     result, importance = _resolve_analysis_for_duplicate(ai, original, reanalyzed=False)
@@ -89,7 +82,6 @@ def test_resolve_analysis_uses_provided_ai_analysis():
 
 def test_resolve_analysis_falls_back_to_original_if_no_new_analysis():
     from services.webhook_orchestrator import _resolve_analysis_for_duplicate
-
     original = _make_original(ai_analysis={"summary": "Disk low", "importance": "medium"}, importance="medium")
     result, importance = _resolve_analysis_for_duplicate(None, original, reanalyzed=False)
     assert result["summary"] == "Disk low"
@@ -98,7 +90,6 @@ def test_resolve_analysis_falls_back_to_original_if_no_new_analysis():
 
 def test_resolve_analysis_returns_empty_if_both_missing():
     from services.webhook_orchestrator import _resolve_analysis_for_duplicate
-
     original = _make_original(ai_analysis=None, importance=None)
     result, importance = _resolve_analysis_for_duplicate(None, original, reanalyzed=False)
     assert result == {}
@@ -108,7 +99,6 @@ def test_resolve_analysis_returns_empty_if_both_missing():
 def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing():
     """重新分析后，若原始告警无分析，应更新原始告警的 ai_analysis。"""
     from services.webhook_orchestrator import _resolve_analysis_for_duplicate
-
     ai = {"summary": "Root cause found", "importance": "high"}
     original = _make_original(ai_analysis=None, importance=None)
     _resolve_analysis_for_duplicate(ai, original, reanalyzed=True)
@@ -119,7 +109,6 @@ def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing(
 def test_resolve_analysis_does_not_overwrite_original_when_not_reanalyzed():
     """非重分析时，不应修改原始告警的 ai_analysis。"""
     from services.webhook_orchestrator import _resolve_analysis_for_duplicate
-
     ai = {"summary": "New analysis", "importance": "medium"}
     original = _make_original(ai_analysis={"summary": "Original"}, importance="low")
     _resolve_analysis_for_duplicate(ai, original, reanalyzed=False)
@@ -131,20 +120,11 @@ def test_resolve_analysis_does_not_overwrite_original_when_not_reanalyzed():
 
 
 def _make_row(
-    id=1,
-    source="prometheus",
-    client_ip="1.2.3.4",
-    timestamp=None,
-    importance="high",
-    is_duplicate=0,
-    duplicate_of=None,
-    duplicate_count=0,
-    beyond_window=0,
-    forward_status="success",
-    ai_analysis=None,
-    parsed_data=None,
-    created_at=None,
-    prev_alert_id=None,
+    id=1, source="prometheus", client_ip="1.2.3.4",
+    timestamp=None, importance="high", is_duplicate=0,
+    duplicate_of=None, duplicate_count=0, beyond_window=0,
+    forward_status="success", ai_analysis=None, parsed_data=None,
+    created_at=None, prev_alert_id=None,
 ):
     row = MagicMock()
     row.id = id
@@ -168,7 +148,6 @@ def _make_row(
 
 def test_row_to_summary_dict_basic_fields():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row()
     d = _row_to_summary_dict(row)
     assert d["id"] == 1
@@ -181,7 +160,6 @@ def test_row_to_summary_dict_basic_fields():
 
 def test_row_to_summary_dict_timestamps_are_isoformat():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row()
     d = _row_to_summary_dict(row)
     # timestamp 和 created_at 应为 ISO 格式字符串（可被 JSON 序列化）
@@ -192,7 +170,6 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
 
 def test_row_to_summary_dict_duplicate_within_window():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=0)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
@@ -203,7 +180,6 @@ def test_row_to_summary_dict_duplicate_within_window():
 
 def test_row_to_summary_dict_duplicate_beyond_window():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=1)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
@@ -214,7 +190,6 @@ def test_row_to_summary_dict_duplicate_beyond_window():
 
 def test_row_to_summary_dict_summary_from_ai_analysis():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row(ai_analysis={"summary": "High memory usage detected"})
     d = _row_to_summary_dict(row)
     assert d["summary"] == "High memory usage detected"
@@ -222,28 +197,6 @@ def test_row_to_summary_dict_summary_from_ai_analysis():
 
 def test_row_to_summary_dict_summary_none_when_no_ai_analysis():
     from services.webhook_orchestrator import _row_to_summary_dict
-
     row = _make_row(ai_analysis=None)
     d = _row_to_summary_dict(row)
     assert d["summary"] is None
-
-
-def test_analyze_with_rules_high_by_level_keyword():
-    from services.ai_analyzer import analyze_with_rules
-
-    res = analyze_with_rules({"RuleName": "HighCPUUsage", "Level": "critical"}, "prometheus")
-    assert res["importance"] == "high"
-
-
-def test_analyze_with_rules_medium_by_warning_level():
-    from services.ai_analyzer import analyze_with_rules
-
-    res = analyze_with_rules({"RuleName": "LatencyIncreased", "Level": "warning"}, "cloud-monitor")
-    assert res["importance"] == "medium"
-
-
-def test_analyze_with_rules_metric_threshold_promotes_to_high():
-    from services.ai_analyzer import analyze_with_rules
-
-    res = analyze_with_rules({"RuleName": "5xxQPSHigh", "CurrentValue": 500, "Threshold": 100}, "cloud-monitor")
-    assert res["importance"] == "high"

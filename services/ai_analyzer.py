@@ -49,6 +49,8 @@ from services.payload_sanitizer import sanitize_for_ai_async
 WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
 
+_last_policy_refresh_at: float = 0.0
+_policy_refresh_lock = asyncio.Lock()
 _prompt_template_lock = asyncio.Lock()
 _openai_client_lock = asyncio.Lock()
 
@@ -70,7 +72,19 @@ def _format_meta_time(value: Any) -> str | None:
 
 
 async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_seconds: int = 30) -> None:
-    return
+    global _last_policy_refresh_at
+    if not Config.server.ENABLE_RUNTIME_CONFIG:
+        return
+    async with _policy_refresh_lock:
+        now = time.time()
+        if now - _last_policy_refresh_at < min_interval_seconds:
+            return
+        before_url = policies.ai.OPENAI_API_URL
+        before_key = policies.ai.OPENAI_API_KEY
+        await policies.load_from_db()
+        if before_url != policies.ai.OPENAI_API_URL or before_key != policies.ai.OPENAI_API_KEY:
+            await reset_openai_client()
+        _last_policy_refresh_at = now
 
 
 # ── Prompt 管理 ─────────────────────────────────────────────────────────────
@@ -382,75 +396,13 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
         "risks": ["分析可能不准"],
     }
 
-    rule_name = str(data.get("RuleName") or data.get("alert_name") or data.get("AlertName") or "unknown")
+    # 极简规则判断
+    rule_name = data.get("RuleName") or data.get("alert_name") or "unknown"
     res["event_type"] = rule_name
-
-    labels = data.get("labels")
-    labels_sev = labels.get("severity") if isinstance(labels, dict) else None
-    level_raw = (
-        data.get("Level") or data.get("level") or data.get("Severity") or data.get("severity") or labels_sev or ""
-    )
-    level = str(level_raw).strip().lower()
-    name_l = rule_name.lower()
-
-    def _split_keywords(v: str) -> list[str]:
-        items = []
-        for part in v.split(","):
-            p = part.strip().lower()
-            if p:
-                items.append(p)
-        return items
-
-    high_kw = _split_keywords(policies.ai.RULE_HIGH_KEYWORDS)
-    warn_kw = _split_keywords(policies.ai.RULE_WARN_KEYWORDS)
-    metric_kw = _split_keywords(policies.ai.RULE_METRIC_KEYWORDS)
-
-    importance = "medium"
-    if level in high_kw or any(k in level for k in high_kw) or any(k in name_l for k in high_kw):
-        importance = "high"
-    elif level in warn_kw or any(k in level for k in warn_kw) or any(k in name_l for k in warn_kw):
-        importance = "medium"
-    elif any(k in level for k in ("info", "information", "notice", "ok", "resolved", "success", "normal", "恢复")):
-        importance = "low"
-
-    cur_val = data.get("CurrentValue") or data.get("current_value") or data.get("current") or data.get("value")
-    thr_val = data.get("Threshold") or data.get("threshold") or data.get("limit")
-    multiplier = float(policies.ai.RULE_THRESHOLD_MULTIPLIER or 4.0)
-
-    def _to_float(v: Any) -> float | None:
-        if v is None:
-            return None
-        if isinstance(v, (int, float)):
-            return float(v)
-        s = str(v).strip()
-        if not s:
-            return None
-        with contextlib.suppress(ValueError):
-            return float(s)
-        return None
-
-    cur_f = _to_float(cur_val)
-    thr_f = _to_float(thr_val)
-    if cur_f is not None and thr_f is not None and thr_f > 0:
-        is_metric_related = any(k in name_l for k in metric_kw) or any(k in str(data).lower() for k in metric_kw)
-        if is_metric_related:
-            if cur_f >= thr_f * multiplier:
-                importance = "high"
-            elif cur_f >= thr_f and importance != "high":
-                importance = "medium"
-
-    res["importance"] = importance
-    prefix = {"high": "🔴", "medium": "🟠", "low": "🟢"}.get(importance, "🟠")
-    if cur_f is not None and thr_f is not None:
-        res["summary"] = f"{prefix} {rule_name}: 当前值 {cur_f:g} / 阈值 {thr_f:g}"
-    else:
-        res["summary"] = f"{prefix} {rule_name}"
-    if importance == "high":
-        res["actions"] = ["立即确认影响范围", "检查近 5 分钟指标/日志", "按 Runbook 执行处置"]
-        res["risks"] = ["可能导致服务不可用或核心能力下降", "可能影响用户或业务数据"]
-    elif importance == "low":
-        res["actions"] = ["确认是否为预期事件", "必要时补充告警规则"]
-        res["risks"] = ["告警可能噪声偏多"]
+    level = str(data.get("Level", "")).lower()
+    high_kw = policies.ai.RULE_HIGH_KEYWORDS.lower().split(",")
+    if level in high_kw or any(k in rule_name.lower() for k in high_kw):
+        res["importance"], res["summary"] = "high", f"🔴 严重告警: {rule_name}"
 
     AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="rule").observe(time.time() - start_time)
     return res
@@ -462,6 +414,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 async def analyze_webhook_with_ai(
     webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
 ) -> AnalysisResult:
+    await _maybe_refresh_runtime_policies(("OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_API_URL"), min_interval_seconds=60)
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
         alert_hash = WebhookEvent.generate_hash(parsed, source)

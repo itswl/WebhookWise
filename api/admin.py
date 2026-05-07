@@ -3,7 +3,7 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
 """
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
+from core.config import Config, RuntimeValue
 from core.logger import logger
 from db.session import get_db_session
 from schemas import (
@@ -31,6 +32,7 @@ from services.ai_analyzer import (
 )
 from services.config_service import (
     build_prompt_source,
+    collect_config_updates,
     get_config_sources,
     get_current_config,
 )
@@ -68,7 +70,25 @@ async def get_config_sources_endpoint() -> JSONResponse:
 @admin_router.post("/api/config", response_model=ConfigUpdateResponse, dependencies=[Depends(verify_admin_write)])
 async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
     try:
-        return _fail("运行时动态配置已移除，请通过环境变量/ConfigMap 配置并滚动重启生效", 403)
+        if not Config.server.ENABLE_RUNTIME_CONFIG:
+            return _fail("运行时动态配置已禁用，请通过环境变量/ConfigMap 配置并滚动重启生效", 403)
+        if not payload:
+            return _fail("请求体为空", 400)
+
+        updates, errors = collect_config_updates(payload)
+        if errors:
+            return _fail("; ".join(errors), 400)
+
+        if not updates:
+            return _ok(status=200, message="无需更新")
+
+        runtime_updates: dict[str, RuntimeValue] = {
+            var_name: cast(RuntimeValue, typed_value) for var_name, (_str_val, typed_value) in updates.items()
+        }
+        await Config.save_batch(runtime_updates)
+
+        logger.info(f"配置已更新: {list(updates.keys())}")
+        return _ok(status=200, message=f"配置更新成功，已保存 {len(runtime_updates)} 项")
 
     except Exception as e:
         logger.error(f"更新配置失败: {e!s}", exc_info=True)
