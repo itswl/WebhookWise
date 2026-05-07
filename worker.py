@@ -28,8 +28,9 @@ async def startup() -> None:
     await init_engine()
     init_redis()
 
-    await Config.load_from_db()
-    await Config.start_subscriber()
+    if Config.server.ENABLE_RUNTIME_CONFIG:
+        await Config.load_from_db()
+        await Config.start_subscriber()
 
     await broker.startup()
     logger.info("[Worker] TaskIQ Broker 已启动")

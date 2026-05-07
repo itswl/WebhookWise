@@ -52,8 +52,9 @@ async def worker_startup_event(state: object) -> None:
     setup_logger()
     await init_engine()
     get_http_client()
-    await Config.load_from_db()
-    await Config.start_subscriber()
+    if Config.server.ENABLE_RUNTIME_CONFIG:
+        await Config.load_from_db()
+        await Config.start_subscriber()
     # 初始化 worker 进程 OTEL（TracerProvider + httpx/redis instrumentation）
     from core.otel import setup_otel_worker
 

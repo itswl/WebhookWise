@@ -69,6 +69,8 @@ def _format_meta_time(value: Any) -> str | None:
 
 async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_seconds: int = 30) -> None:
     global _last_policy_refresh_at
+    if not Config.server.ENABLE_RUNTIME_CONFIG:
+        return
     now = time.time()
     if now - _last_policy_refresh_at < min_interval_seconds:
         return
