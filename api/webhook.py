@@ -163,7 +163,7 @@ async def get_webhooks_endpoint(
     }
 
 
-@webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)])
+@webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
 async def get_webhook_detail_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
