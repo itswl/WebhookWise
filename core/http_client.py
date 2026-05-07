@@ -36,7 +36,7 @@ def get_http_client() -> httpx.AsyncClient:
     return _async_client
 
 
-async def close_http_client():
+async def close_http_client() -> None:
     """在应用关闭时调用，释放连接池"""
     global _async_client
     if _async_client and not _async_client.is_closed:

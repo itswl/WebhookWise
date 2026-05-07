@@ -1,6 +1,9 @@
 import os
+from collections.abc import Callable
+from typing import cast
 
 import prometheus_client
+from fastapi import FastAPI
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -184,39 +187,26 @@ DB_POOL_SIZE = Gauge(
 )
 
 
-def update_db_pool_metrics():
+def update_db_pool_metrics() -> None:
     """更新数据库连接池容量指标。
 
     checked_out 已通过 Pool 事件回调实时更新（见 db/session.py），
     此函数仅更新连接池容量上限（极少变化）。
     """
     try:
-        from db.session import get_engine
+        from db.session import get_db_pool_capacity, get_engine
 
         engine = get_engine()
         if engine is None:
             return
-        pool = engine.sync_engine.pool
-        DB_POOL_SIZE.set(pool.size() + pool.overflow())
+        cap = get_db_pool_capacity(engine)
+        if cap is not None:
+            DB_POOL_SIZE.set(cap)
     except (AttributeError, RuntimeError) as e:
         logger.warning("[Metrics] 无法获取 DB 连接池容量: %s", e)
 
 
-class _DBPoolCollector:
-    """Prometheus 自定义 Collector，在每次 scrape 时触发 DB 连接池指标更新。"""
-
-    def describe(self):
-        return []
-
-    def collect(self):
-        update_db_pool_metrics()
-        return []
-
-
-prometheus_client.REGISTRY.register(_DBPoolCollector())
-
-
-def setup_metrics(app):
+def setup_metrics(app: FastAPI) -> Instrumentator:
     """初始化并挂载 Prometheus 指标。
 
     自动检测 PROMETHEUS_MULTIPROC_DIR 环境变量：
@@ -234,6 +224,7 @@ def setup_metrics(app):
         inprogress_labels=True,
     )
     instrumentator.instrument(app)
+    update_db_pool_metrics()
 
     if multiproc_dir:
         # ── 多进程模式：Gunicorn 多 Worker 聚合 ──
@@ -247,9 +238,10 @@ def setup_metrics(app):
 
         logger.info("[Metrics] Prometheus 多进程模式: %s", multiproc_dir)
 
-        async def metrics_endpoint(request):
+        async def metrics_endpoint(request: object) -> Response:
             registry = CollectorRegistry()
-            multiprocess.MultiProcessCollector(registry)
+            mp_collector = cast(Callable[[CollectorRegistry], object], multiprocess.MultiProcessCollector)
+            mp_collector(registry)
             data = generate_latest(registry)
             return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 

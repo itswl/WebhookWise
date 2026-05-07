@@ -5,8 +5,8 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Any
 
-import core.redis_client
 from core.config import Config
 from core.distributed_lock import DistributedLock
 from core.http_client import get_http_client
@@ -15,30 +15,28 @@ from core.trace import get_trace_id
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
 
-# 轮询稳定性缓存：{analysis_id: {"msg_count": N, "text_len": M, "hit_count": int, "first_result": {...}}}
-# 需要连续 N 次轮询结果一致才确认完成，避免过早提取中间结果
-# 如果连续超时超过 MAX_CONSECUTIVE_ERRORS 次且已有首次结果，则降级使用首次结果
-# 移除原有的内存锁和缓存字典
+WebhookData = dict[str, Any]
 
 
-async def _get_poll_stability(record_id: int) -> dict:
-    redis_client = core.redis_client.get_redis()
-    val = await redis_client.get(f"openclaw:poller:stability:{record_id}")
-    return json.loads(val) if val else None
+async def _get_poll_stability(record_id: int) -> WebhookData | None:
+    from core.redis_client import redis_get_json_dict
+
+    return await redis_get_json_dict(f"openclaw:poller:stability:{record_id}")
 
 
-async def _set_poll_stability(record_id: int, data: dict):
-    redis_client = core.redis_client.get_redis()
-    # 缓存保留 1 小时
-    await redis_client.setex(f"openclaw:poller:stability:{record_id}", 3600, json.dumps(data))
+async def _set_poll_stability(record_id: int, data: WebhookData) -> None:
+    from core.redis_client import redis_setex_json
+
+    await redis_setex_json(f"openclaw:poller:stability:{record_id}", 3600, data)
 
 
-async def _clear_poll_stability(record_id: int):
-    redis_client = core.redis_client.get_redis()
-    await redis_client.delete(f"openclaw:poller:stability:{record_id}")
+async def _clear_poll_stability(record_id: int) -> None:
+    from core.redis_client import redis_delete
+
+    await redis_delete(f"openclaw:poller:stability:{record_id}")
 
 
-async def _notify_feishu_deep_analysis(record_dict: dict, source: str = ""):
+async def _notify_feishu_deep_analysis(record_dict: WebhookData, source: str = "") -> None:
     """发送深度分析完成的飞书通知（接受 dict）"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
@@ -78,13 +76,16 @@ async def _notify_feishu_deep_analysis(record_dict: dict, source: str = ""):
             except Exception as rec_err:
                 logger.warning(f"记录飞书通知失败异常: {rec_err}")
         else:
-            logger.info("[Poller] 飞书深度分析通知已发送: id=%s event_id=%s",
-                        record_dict.get("id"), record_dict["webhook_event_id"])
+            logger.info(
+                "[Poller] 飞书深度分析通知已发送: id=%s event_id=%s",
+                record_dict.get("id"),
+                record_dict["webhook_event_id"],
+            )
     except Exception as e:
         logger.warning(f"飞书深度分析通知失败: {e}")
 
 
-async def _notify_feishu_deep_analysis_failed(record_dict: dict, reason: str = ""):
+async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: str = "") -> None:
     """发送深度分析失败的飞书通知（接受 dict）"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
     from core.config import Config
@@ -135,7 +136,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: dict, reason: str = "
         logger.warning(f"飞书深度分析失败通知失败: {e}")
 
 
-async def poll_pending_analyses():
+async def poll_pending_analyses() -> None:
     """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
     lock_key = "openclaw:poller:global_lock"
     lock = DistributedLock(key=lock_key, ttl=60, lock_value=str(uuid.uuid4()))
@@ -148,7 +149,7 @@ async def poll_pending_analyses():
             logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
 
 
-async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
+async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
     """
     通过 HTTP API /final 接口获取分析结果（带重试）
 
@@ -193,13 +194,17 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
                 last_error = f"HTTP {response.status_code}"
                 continue
 
-            data = response.json()
+            raw = response.json()
+            if not isinstance(raw, dict):
+                last_error = "Invalid JSON response"
+                continue
+            data: WebhookData = raw
 
             # 根据 /final 接口返回的字段判断状态
             is_final = data.get("isFinal", False)
             is_processing = data.get("isProcessing", False)
             text = data.get("text", "")
-            msg_count = data.get("messageCount", 0)
+            msg_count = int(data.get("messageCount", 0) or 0)
 
             # 判断是否完成
             if is_processing and not text:
@@ -225,7 +230,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> dict:
     return {"status": "error", "error": last_error}
 
 
-async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict:
+async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) -> WebhookData:
     """对单条 pending 记录执行 HTTP 轮询 + 稳定性检查（完全脱离 DB）。
 
     返回一个 dict 描述本次轮询的处理结果，供阶段 3 写回 DB。
@@ -240,15 +245,18 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
 
     async with semaphore:
         try:
+            created_at = rec.get("created_at")
+            created_dt = created_at if isinstance(created_at, datetime) else None
             # --- 超时检查 ---
             timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
-            elapsed_total = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 0
-            if rec["created_at"] and elapsed_total > timeout_seconds:
-                logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss",
-                            record_id, elapsed_total, timeout_seconds)
+            elapsed_total = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
+            if created_dt and elapsed_total > timeout_seconds:
+                logger.info(
+                    "[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds
+                )
                 await _clear_poll_stability(record_id)
                 DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
-                update = {
+                update: WebhookData = {
                     "status": "failed",
                     "analysis_result": {"root_cause": "OpenClaw 分析超时"},
                 }
@@ -258,7 +266,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
 
             # --- session_key 缺失检查 ---
             if not rec["openclaw_session_key"]:
-                elapsed = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 999
+                elapsed = (datetime.now() - created_dt).total_seconds() if created_dt else 999.0
                 if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                     return {"id": record_id, "action": "skip"}
                 logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
@@ -277,7 +285,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 return {"id": record_id, "action": "update", **update}
 
             # --- 最小等待时间 ---
-            elapsed = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 999
+            elapsed = (datetime.now() - created_dt).total_seconds() if created_dt else 999.0
             if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
                 return {"id": record_id, "action": "skip"}
 
@@ -295,7 +303,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
             # --- 处理 completed ---
             if result.get("status") == "completed":
                 text = result.get("text", "")
-                msg_count = result.get("msg_count", 0)
+                msg_count = int(result.get("msg_count", 0) or 0)
 
                 current_snapshot = {"msg_count": msg_count, "text_len": len(text)}
                 prev_snapshot = await _get_poll_stability(record_id)
@@ -306,9 +314,14 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                     and prev_snapshot["text_len"] == current_snapshot["text_len"]
                 ):
                     hit_count = prev_snapshot.get("hit_count", 1) + 1
-                    logger.info("[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
-                                record_id, hit_count, Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS,
-                                msg_count, len(text))
+                    logger.info(
+                        "[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
+                        record_id,
+                        hit_count,
+                        Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS,
+                        msg_count,
+                        len(text),
+                    )
                     if hit_count >= Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS:
                         logger.info("[Poller] 分析稳定确认，准备写库: id=%s", record_id)
                     else:
@@ -331,7 +344,7 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                     else:
                         analysis_result = {"root_cause": text, "_openclaw_text": text}
 
-                    duration = (datetime.now() - rec["created_at"]).total_seconds() if rec["created_at"] else 0
+                    duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
                     update = {
                         "status": "completed",
                         "analysis_result": analysis_result,
@@ -346,8 +359,12 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         **update,
                     }
                 else:
-                    logger.info("[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s",
-                                record_id, msg_count, len(text))
+                    logger.info(
+                        "[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s",
+                        record_id,
+                        msg_count,
+                        len(text),
+                    )
                     await _set_poll_stability(
                         record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}
                     )
@@ -363,8 +380,9 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                         and Config.openclaw.OPENCLAW_ENABLE_DEGRADATION
                     ):
                         text = prev_snapshot["first_result"]["text"]
-                        logger.warning("[Poller] 连续错误达阈值，降级使用首次结果: id=%s error_count=%d",
-                                       record_id, error_count)
+                        logger.warning(
+                            "[Poller] 连续错误达阈值，降级使用首次结果: id=%s error_count=%d", record_id, error_count
+                        )
                         await _clear_poll_stability(record_id)
                         parsed_result = None
                         json_text = _extract_robust_json(text)
@@ -400,8 +418,12 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
                 return {"id": record_id, "action": "update", **update}
 
             # --- pending / 其他状态 → skip ---
-            logger.info("[Poller] 分析仍在进行中: id=%s elapsed=%.0fs status=%s",
-                        record_id, elapsed_total, result.get("status", "unknown"))
+            logger.info(
+                "[Poller] 分析仍在进行中: id=%s elapsed=%.0fs status=%s",
+                record_id,
+                elapsed_total,
+                result.get("status", "unknown"),
+            )
             return {"id": record_id, "action": "skip"}
 
         except Exception as e:
@@ -418,14 +440,14 @@ async def _poll_single_record(rec: dict, semaphore: "asyncio.Semaphore") -> dict
             }
 
 
-async def _poll_pending_analyses_inner():
+async def _poll_pending_analyses_inner() -> None:
     """轮询逻辑主体 — 三阶段分离: 查询 → 并发 HTTP → 批量更新"""
     from db.session import session_scope
     from models import DeepAnalysis
 
     try:
         # ── 阶段 1：查询 pending 列表（快速释放 DB 连接）──
-        pending_dicts: list[dict] = []
+        pending_dicts: list[WebhookData] = []
         async with session_scope() as session:
             from sqlalchemy import select
             from sqlalchemy.orm import defer
@@ -462,13 +484,13 @@ async def _poll_pending_analyses_inner():
         # ── 阶段 2：并发 HTTP 轮询（完全脱离 DB）──
         semaphore = asyncio.Semaphore(5)
         coros = [_poll_single_record(rec, semaphore) for rec in pending_dicts]
-        poll_results: list[dict] = await asyncio.gather(*coros, return_exceptions=True)
+        poll_results: list[WebhookData | BaseException] = await asyncio.gather(*coros, return_exceptions=True)
 
         # 收集需要写回 DB 的结果
-        updates: list[dict] = []
+        updates: list[WebhookData] = []
         skips = 0
         for pr in poll_results:
-            if isinstance(pr, Exception):
+            if isinstance(pr, BaseException):
                 logger.error(f"[Poller] 并发轮询协程异常: {pr}", exc_info=pr)
                 continue
             if pr and pr.get("action") == "update":
@@ -476,8 +498,7 @@ async def _poll_pending_analyses_inner():
             else:
                 skips += 1
 
-        logger.debug("[Poller] 轮询完成 total=%d update=%d skip=%d",
-                     len(pending_dicts), len(updates), skips)
+        logger.debug("[Poller] 轮询完成 total=%d update=%d skip=%d", len(pending_dicts), len(updates), skips)
 
         if not updates:
             return

@@ -18,8 +18,27 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["models", "db/session.py"]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+files = ["."]
+exclude = [
+  "^docs/",
+  "^tests/",
+  "^scripts/",
+  "^templates/",
+  "^alembic/",
+  "^postgres_data/",
+  "^webhooks_data/",
+  "^\\.venv/",
+  "^\\.tox/",
+]
 
 [[tool.mypy.overrides]]
-module = ["core.*", "adapters.*", "services.*", "api.*", "scripts.*", "gunicorn_config", "worker", "main"]
-follow_imports = "skip"
+module = [
+  "opentelemetry.*",
+  "asyncpg.*",
+  "instructor",
+  "uvloop",
+  "gunicorn.*",
+  "prometheus_client.*",
+]
+ignore_missing_imports = true

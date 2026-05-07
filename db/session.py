@@ -86,7 +86,7 @@ def _async_url() -> str:
 
     不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
     """
-    url = cast(str, Config.db.DATABASE_URL)
+    url = Config.db.DATABASE_URL
     for prefix in ("postgresql+psycopg2://", "postgresql://", "postgres://"):
         if url.startswith(prefix):
             return url.replace(prefix, "postgresql+asyncpg://", 1)
@@ -120,7 +120,7 @@ def _setup_pool_metrics(engine: AsyncEngine) -> None:
     """注册连接池事件监听，通过回调更新 Prometheus Gauge。"""
     from core.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
 
-    pool = cast(Any, engine.sync_engine.pool)
+    pool = engine.sync_engine.pool
 
     def _on_checkout(dbapi_conn: Any, connection_record: Any, connection_proxy: Any) -> None:
         DB_POOL_CHECKED_OUT.inc()
@@ -132,8 +132,20 @@ def _setup_pool_metrics(engine: AsyncEngine) -> None:
     event.listen(pool, "checkin", _on_checkin)
 
     # 初始化连接池容量
-    DB_POOL_SIZE.set(pool.size() + pool.overflow())
+    DB_POOL_SIZE.set(int(get_db_pool_capacity(engine) or 0))
     _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin → Prometheus Gauge)")
+
+
+def get_db_pool_capacity(engine: AsyncEngine) -> int | None:
+    pool = engine.sync_engine.pool
+    size = getattr(pool, "size", None)
+    overflow = getattr(pool, "overflow", None)
+    if not callable(size) or not callable(overflow):
+        return None
+    try:
+        return int(size() + overflow())
+    except Exception:
+        return None
 
 
 async def dispose_engine() -> None:

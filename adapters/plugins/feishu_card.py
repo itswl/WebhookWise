@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from adapters.ecosystem_adapters import _normalize_level
 from adapters.registry import registry
 
@@ -14,14 +16,19 @@ _IMPORTANCE_LABEL = {
 }
 
 
+WebhookData = dict[str, Any]
+
+
 def build_feishu_card(
-    webhook_data: dict,
-    analysis_result: dict,
+    webhook_data: WebhookData,
+    analysis_result: WebhookData,
     *,
     is_periodic_reminder: bool = False,
-) -> dict:
+) -> WebhookData:
     """将 webhook 事件和 AI 分析结果构建为飞书交互卡片 payload。"""
-    importance = str(analysis_result.get("importance", "medium")).lower()
+    importance = str(analysis_result.get("importance", "medium")).strip().lower()
+    if "." in importance:
+        importance = importance.rsplit(".", 1)[-1]
     template = _IMPORTANCE_TEMPLATE.get(importance, "orange")
     importance_label = _IMPORTANCE_LABEL.get(importance, "🟡 中")
 
@@ -48,7 +55,7 @@ def build_feishu_card(
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 Webhook 事件通知"
 
-    elements: list[dict] = []
+    elements: list[WebhookData] = []
 
     # 字段区块：来源 / 重要性 / 事件类型 / 时间
     fields = [
@@ -87,7 +94,7 @@ def build_feishu_card(
 
 
 @registry.register_detector("feishu_card")
-def detect(data: dict) -> bool:
+def detect(data: WebhookData) -> bool:
     """检测飞书卡片格式（火山引擎日志服务告警等）"""
     if not isinstance(data, dict):
         return False
@@ -95,7 +102,7 @@ def detect(data: dict) -> bool:
 
 
 @registry.register("feishu_card", aliases={"feishu_card", "volcengine_log"})
-def normalize(data: dict) -> dict:
+def normalize(data: WebhookData) -> WebhookData:
     """
     解析飞书卡片格式，提取关键字段。
     典型来源：火山引擎日志服务告警通知

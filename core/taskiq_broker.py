@@ -6,7 +6,7 @@
 
 import logging
 
-from taskiq import InMemoryBroker
+from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents
 from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
 
 from core.config import Config
@@ -17,12 +17,12 @@ logger = logging.getLogger("webhook_service.taskiq")
 REDIS_URL = Config.redis.REDIS_URL
 
 # 1. 结果后端
-result_backend = RedisAsyncResultBackend(
+result_backend: RedisAsyncResultBackend[object] = RedisAsyncResultBackend(
     redis_url=REDIS_URL,
 )
 
 # 2. 异步任务代理
-broker = RedisStreamBroker(
+broker: AsyncBroker = RedisStreamBroker(
     url=REDIS_URL,
     queue_name=Config.server.WEBHOOK_MQ_QUEUE,
     consumer_group_name=Config.server.WEBHOOK_MQ_CONSUMER_GROUP,
@@ -40,8 +40,8 @@ else:
     logger.info("[TaskIQ] 已初始化 Redis Broker: %s", REDIS_URL)
 
 
-@broker.on_event("worker_startup")
-async def worker_startup_event(state):
+@broker.on_event(TaskiqEvents.WORKER_STARTUP)
+async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
     from core.config import Config
     from core.http_client import get_http_client
@@ -68,8 +68,8 @@ async def worker_startup_event(state):
         logger.warning("[TaskIQ] 启动恢复扫描失败: %s", _e)
 
 
-@broker.on_event("worker_shutdown")
-async def worker_shutdown_event(state):
+@broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
+async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
     from core.config import Config
     from core.http_client import close_http_client

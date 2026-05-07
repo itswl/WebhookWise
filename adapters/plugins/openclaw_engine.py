@@ -42,4 +42,4 @@ class OpenClawAnalysisEngine:
         return result
 
     def is_available(self) -> bool:
-        return Config.openclaw.OPENCLAW_ENABLED
+        return bool(Config.openclaw.OPENCLAW_ENABLED)

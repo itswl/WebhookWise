@@ -35,6 +35,14 @@ class RemediationExecution(Base):
     __table_args__ = (Index("idx_remediation_status_time", "status", "started_at"),)
 
     def to_dict(self) -> dict[str, object]:
+        steps: list[object] = []
+        if self.steps_log:
+            try:
+                loaded = json.loads(self.steps_log)
+                if isinstance(loaded, list):
+                    steps = list(loaded)
+            except Exception:
+                steps = []
         return {
             "id": self.id,
             "execution_id": self.execution_id,
@@ -42,7 +50,7 @@ class RemediationExecution(Base):
             "trigger_alert_id": self.trigger_alert_id,
             "trigger_alert_hash": self.trigger_alert_hash,
             "status": self.status,
-            "steps_log": json.loads(self.steps_log) if self.steps_log else [],
+            "steps_log": steps,
             "dry_run": self.dry_run,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
