@@ -44,7 +44,6 @@ class ServerConfig(BaseSettings):
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
     ENABLE_POLLERS: bool = Field(default=True)
-    ENABLE_POLLER_LEADER_ELECTION: bool = Field(default=True)
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")

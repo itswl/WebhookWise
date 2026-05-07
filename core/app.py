@@ -1,10 +1,8 @@
 import asyncio
-import contextlib
 import os
 import socket
-from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -13,7 +11,6 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 # 必须导入任务以注册到 broker
 import services.tasks  # noqa: F401
-from adapters.plugins.local_engine import LocalAnalysisEngine
 from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
 from adapters.registry import register_engine
 from api.admin import admin_router
@@ -34,124 +31,9 @@ from services.ai_analyzer import reset_openai_client
 from services.pipeline import get_running_tasks
 
 
-def _create_supervised_task(
-    name: str, coro_factory: Callable[[], Awaitable[None]], *, leader: bool
-) -> asyncio.Task[object]:
-    async def _runner() -> None:
-        from core.metrics import (
-            BACKGROUND_POLLER_CRASHES_TOTAL,
-            BACKGROUND_POLLER_LEADER,
-            BACKGROUND_POLLER_RESTARTS_TOTAL,
-            BACKGROUND_POLLER_UP,
-        )
-
-        async def _run_with_leader_election() -> None:
-            from core.redis_client import redis_eval_int, redis_set_nx_ex
-
-            lock_key = f"webhook:poller:leader:{name}"
-            token = Config.server.WORKER_ID
-            ttl_seconds = 60
-            release_script = (
-                "if redis.call('GET', KEYS[1]) == ARGV[1] then " "return redis.call('DEL', KEYS[1]) else return 0 end"
-            )
-            renew_script = (
-                "if redis.call('GET', KEYS[1]) == ARGV[1] then "
-                "return redis.call('EXPIRE', KEYS[1], ARGV[2]) else return 0 end"
-            )
-
-            while True:
-                try:
-                    acquired = await redis_set_nx_ex(lock_key, token, ttl_seconds)
-                except Exception:
-                    BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
-                    logger.exception("[Poller] %s leader election unavailable; skip this round", name)
-                    await asyncio.sleep(5)
-                    continue
-
-                if not acquired:
-                    BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
-                    await asyncio.sleep(5)
-                    continue
-
-                BACKGROUND_POLLER_LEADER.labels(name=name).set(1)
-                lost_event = asyncio.Event()
-
-                async def _renew_loop(lost: asyncio.Event) -> None:
-                    failures = 0
-                    try:
-                        while True:
-                            await asyncio.sleep(ttl_seconds / 2)
-                            try:
-                                renewed = await redis_eval_int(renew_script, 1, lock_key, token, ttl_seconds)
-                            except Exception:
-                                logger.exception("[Poller] %s leader lock renew error", name)
-                                failures += 1
-                                if failures >= 3:
-                                    lost.set()
-                                    return
-                                continue
-                            failures = 0
-                            if renewed == 0:
-                                lost.set()
-                                return
-                    except asyncio.CancelledError:
-                        raise
-
-                poller_task = asyncio.create_task(coro_factory())
-                renew_task = asyncio.create_task(_renew_loop(lost_event))
-                lost_task = asyncio.create_task(lost_event.wait())
-                try:
-                    done, pending = await asyncio.wait({poller_task, lost_task}, return_when=asyncio.FIRST_COMPLETED)
-                    if lost_task in done and lost_event.is_set():
-                        poller_task.cancel()
-                        await asyncio.gather(poller_task, return_exceptions=True)
-                        raise RuntimeError("lost leader lock")
-                    await poller_task
-                    return
-                finally:
-                    lost_task.cancel()
-                    renew_task.cancel()
-                    await asyncio.gather(lost_task, renew_task, return_exceptions=True)
-                    with contextlib.suppress(Exception):
-                        await redis_eval_int(release_script, 1, lock_key, token)
-                    BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
-
-        async def _run_once() -> None:
-            if leader and Config.server.ENABLE_POLLER_LEADER_ELECTION:
-                await _run_with_leader_election()
-                return
-            BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
-            await coro_factory()
-
-        BACKGROUND_POLLER_UP.labels(name=name).set(1)
-        restarted = False
-        try:
-            while True:
-                if restarted:
-                    BACKGROUND_POLLER_RESTARTS_TOTAL.labels(name=name).inc()
-                try:
-                    await _run_once()
-                    BACKGROUND_POLLER_CRASHES_TOTAL.labels(name=name).inc()
-                    logger.error("[Poller] %s exited unexpectedly, restarting", name)
-                    restarted = True
-                    await asyncio.sleep(5)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    BACKGROUND_POLLER_CRASHES_TOTAL.labels(name=name).inc()
-                    logger.exception("[Poller] %s crashed, restarting", name)
-                    restarted = True
-                    await asyncio.sleep(5)
-        finally:
-            BACKGROUND_POLLER_UP.labels(name=name).set(0)
-
-    return asyncio.create_task(_runner(), name=f"poller:{name}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 注册深度分析引擎
-    register_engine(LocalAnalysisEngine())
     register_engine(OpenClawAnalysisEngine())
     if not Config.security.API_KEY and not (Config.server.DEBUG or Config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
@@ -166,81 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
 
-    # 启动 Recovery + Metrics 轮询（API 进程内兜底，worker 侧由 TaskIQ 驱动）
-    _poller_tasks = []
-    if Config.server.ENABLE_POLLERS:
-        from services.metrics_poller import refresh_all_metrics
-        from services.recovery_poller import run_recovery_scan
-
-        async def _recovery_loop() -> None:
-            # 启动时立即执行一次，捞起重启前遗留的僵尸事件
-            try:
-                await run_recovery_scan(stuck_threshold_seconds=0)
-            except Exception as e:
-                logger.warning("[App] startup recovery scan error: %s", e)
-            while True:
-                try:
-                    await run_recovery_scan()
-                except Exception as e:
-                    logger.warning("[App] recovery scan error: %s", e)
-                await asyncio.sleep(Config.server.RECOVERY_POLLER_INTERVAL_SECONDS)
-
-        async def _metrics_loop() -> None:
-            while True:
-                try:
-                    await refresh_all_metrics()
-                except Exception as e:
-                    logger.warning("[App] metrics refresh error: %s", e)
-                await asyncio.sleep(15)
-
-        async def _openclaw_poll_loop() -> None:
-            from services.openclaw_poller import poll_pending_analyses
-
-            while True:
-                try:
-                    await poll_pending_analyses()
-                except Exception as e:
-                    logger.warning("[App] openclaw poller error: %s", e)
-                await asyncio.sleep(30)
-
-        async def _forward_retry_loop() -> None:
-            from services.forward_retry_poller import poll_pending_retries
-
-            while True:
-                try:
-                    await poll_pending_retries()
-                except Exception as e:
-                    logger.warning("[App] forward retry poller error: %s", e)
-                await asyncio.sleep(Config.retry.FORWARD_RETRY_POLL_INTERVAL)
-
-        async def _maintenance_loop() -> None:
-            from services.data_maintenance import archive_old_data_by_policy
-
-            while True:
-                now = datetime.now()
-                # 计算到下一个 MAINTENANCE_HOUR 点的秒数
-                target = now.replace(hour=Config.maintenance.MAINTENANCE_HOUR, minute=0, second=0, microsecond=0)
-                if target <= now:
-                    target += timedelta(days=1)
-                await asyncio.sleep((target - now).total_seconds())
-                try:
-                    moved = await archive_old_data_by_policy()
-                    logger.info("[App] 数据维护完成，归档 %d 条记录", moved)
-                except Exception as e:
-                    logger.warning("[App] 数据维护失败: %s", e)
-
-        _poller_tasks.append(_create_supervised_task("recovery", _recovery_loop, leader=True))
-        _poller_tasks.append(_create_supervised_task("metrics_refresh", _metrics_loop, leader=True))
-        _poller_tasks.append(_create_supervised_task("openclaw_poll", _openclaw_poll_loop, leader=True))
-        if Config.retry.ENABLE_FORWARD_RETRY:
-            _poller_tasks.append(_create_supervised_task("forward_retry", _forward_retry_loop, leader=True))
-        _poller_tasks.append(_create_supervised_task("maintenance", _maintenance_loop, leader=True))
-        logger.info("[App] 所有后台轮询任务已启动")
-
     yield
-
-    for t in _poller_tasks:
-        t.cancel()
 
     await Config.stop_subscriber()
     await broker.shutdown()

@@ -1,12 +1,14 @@
 """TaskIQ Broker 配置
 
-定义异步任务代理（仅用于 webhook_process_task 队列消费）。
-所有定时轮询任务均由 receiver 进程的 asyncio 循环驱动。
+定义：
+- Broker：供 Worker 消费队列
+- Scheduler：独立进程定时投递任务（只负责入队，不执行）
 """
 
 import logging
 
-from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents
+from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqScheduler
+from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
 
 from core.config import Config
@@ -38,6 +40,13 @@ if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
     logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
 else:
     logger.info("[TaskIQ] 已初始化 Redis Broker: %s", REDIS_URL)
+
+scheduler = TaskiqScheduler(
+    broker=broker,
+    sources=[LabelScheduleSource(broker)],
+)
+
+import services.tasks  # noqa: E402,F401
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)

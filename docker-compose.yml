@@ -107,6 +107,36 @@ services:
     networks:
       - webhook_net
 
+  scheduler:
+    build: .
+    container_name: webhook-scheduler
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    env_file:
+      - .env
+    environment:
+      RUN_MODE: scheduler
+      PYTHONPATH: /app
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - webhook_net
+
   redis:
     image: redis:7-alpine
     container_name: webhook-redis
