@@ -1,7 +1,7 @@
 import asyncio
 import os
 import socket
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any
@@ -31,6 +31,35 @@ from core.trace import build_traceparent, extract_trace_id_from_headers, generat
 from db.session import dispose_engine, init_engine
 from services.ai_analyzer import reset_openai_client
 from services.pipeline import get_running_tasks
+
+
+def _create_supervised_task(name: str, coro_factory: Callable[[], Awaitable[None]]) -> asyncio.Task[object]:
+    async def _runner() -> None:
+        from core.metrics import BACKGROUND_POLLER_CRASHES_TOTAL, BACKGROUND_POLLER_RESTARTS_TOTAL, BACKGROUND_POLLER_UP
+
+        BACKGROUND_POLLER_UP.labels(name=name).set(1)
+        restarted = False
+        try:
+            while True:
+                if restarted:
+                    BACKGROUND_POLLER_RESTARTS_TOTAL.labels(name=name).inc()
+                try:
+                    await coro_factory()
+                    BACKGROUND_POLLER_CRASHES_TOTAL.labels(name=name).inc()
+                    logger.error("[Poller] %s exited unexpectedly, restarting", name)
+                    restarted = True
+                    await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    BACKGROUND_POLLER_CRASHES_TOTAL.labels(name=name).inc()
+                    logger.exception("[Poller] %s crashed, restarting", name)
+                    restarted = True
+                    await asyncio.sleep(5)
+        finally:
+            BACKGROUND_POLLER_UP.labels(name=name).set(0)
+
+    return asyncio.create_task(_runner(), name=f"poller:{name}")
 
 
 @asynccontextmanager
@@ -114,12 +143,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 except Exception as e:
                     logger.warning("[App] 数据维护失败: %s", e)
 
-        _poller_tasks.append(asyncio.create_task(_recovery_loop()))
-        _poller_tasks.append(asyncio.create_task(_metrics_loop()))
-        _poller_tasks.append(asyncio.create_task(_openclaw_poll_loop()))
+        _poller_tasks.append(_create_supervised_task("recovery", _recovery_loop))
+        _poller_tasks.append(_create_supervised_task("metrics_refresh", _metrics_loop))
+        _poller_tasks.append(_create_supervised_task("openclaw_poll", _openclaw_poll_loop))
         if Config.retry.ENABLE_FORWARD_RETRY:
-            _poller_tasks.append(asyncio.create_task(_forward_retry_loop()))
-        _poller_tasks.append(asyncio.create_task(_maintenance_loop()))
+            _poller_tasks.append(_create_supervised_task("forward_retry", _forward_retry_loop))
+        _poller_tasks.append(_create_supervised_task("maintenance", _maintenance_loop))
         logger.info("[App] 所有后台轮询任务已启动")
 
     yield
