@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from models.webhook import WebhookEvent
-from services.webhook_orchestrator import SaveWebhookResult
+from services.webhook_command_service import SaveWebhookResult
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():

@@ -20,11 +20,11 @@ from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from services.tasks import process_webhook_task
-from services.webhook_orchestrator import (
+from services.webhook_command_service import (
     get_client_ip,
-    list_webhook_summaries,
     quick_receive_webhook,
 )
+from services.webhook_query_service import list_webhook_summaries
 
 webhook_router = APIRouter()
 

@@ -1,7 +1,7 @@
 """
 tests/test_orchestrator.py
 ==========================
-测试 webhook_orchestrator 的纯函数逻辑：
+测试 webhook command/query services 的纯函数逻辑：
 - get_client_ip()：IP 提取
 - _resolve_analysis_for_duplicate()：重复告警的分析结果解析
 - _row_to_summary_dict()：行数据序列化
@@ -23,42 +23,42 @@ def _make_request(headers: dict, client_host: str | None = "127.0.0.1"):
 
 
 def test_get_client_ip_from_x_forwarded_for():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = _make_request({"x-forwarded-for": "1.2.3.4, 10.0.0.1"})
     assert get_client_ip(req) == "1.2.3.4"
 
 
 def test_get_client_ip_strips_whitespace():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = _make_request({"x-forwarded-for": "  5.6.7.8 , 192.168.1.1"})
     assert get_client_ip(req) == "5.6.7.8"
 
 
 def test_get_client_ip_from_x_real_ip():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = _make_request({"x-real-ip": "9.10.11.12"})
     assert get_client_ip(req) == "9.10.11.12"
 
 
 def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = _make_request({"x-forwarded-for": "1.1.1.1", "x-real-ip": "2.2.2.2"})
     assert get_client_ip(req) == "1.1.1.1"
 
 
 def test_get_client_ip_falls_back_to_client_host():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = _make_request({}, client_host="192.168.0.5")
     assert get_client_ip(req) == "192.168.0.5"
 
 
 def test_get_client_ip_no_client_returns_unknown():
-    from services.webhook_orchestrator import get_client_ip
+    from services.webhook_command_service import get_client_ip
 
     req = MagicMock()
     req.headers = {}
@@ -78,7 +78,7 @@ def _make_original(ai_analysis=None, importance=None):
 
 
 def test_resolve_analysis_uses_provided_ai_analysis():
-    from services.webhook_orchestrator import _resolve_analysis_for_duplicate
+    from services.webhook_command_service import _resolve_analysis_for_duplicate
 
     ai = {"summary": "High CPU", "importance": "high"}
     original = _make_original(ai_analysis=None)
@@ -88,7 +88,7 @@ def test_resolve_analysis_uses_provided_ai_analysis():
 
 
 def test_resolve_analysis_falls_back_to_original_if_no_new_analysis():
-    from services.webhook_orchestrator import _resolve_analysis_for_duplicate
+    from services.webhook_command_service import _resolve_analysis_for_duplicate
 
     original = _make_original(ai_analysis={"summary": "Disk low", "importance": "medium"}, importance="medium")
     result, importance = _resolve_analysis_for_duplicate(None, original, reanalyzed=False)
@@ -97,7 +97,7 @@ def test_resolve_analysis_falls_back_to_original_if_no_new_analysis():
 
 
 def test_resolve_analysis_returns_empty_if_both_missing():
-    from services.webhook_orchestrator import _resolve_analysis_for_duplicate
+    from services.webhook_command_service import _resolve_analysis_for_duplicate
 
     original = _make_original(ai_analysis=None, importance=None)
     result, importance = _resolve_analysis_for_duplicate(None, original, reanalyzed=False)
@@ -107,7 +107,7 @@ def test_resolve_analysis_returns_empty_if_both_missing():
 
 def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing():
     """重新分析后，若原始告警无分析，应更新原始告警的 ai_analysis。"""
-    from services.webhook_orchestrator import _resolve_analysis_for_duplicate
+    from services.webhook_command_service import _resolve_analysis_for_duplicate
 
     ai = {"summary": "Root cause found", "importance": "high"}
     original = _make_original(ai_analysis=None, importance=None)
@@ -118,7 +118,7 @@ def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing(
 
 def test_resolve_analysis_does_not_overwrite_original_when_not_reanalyzed():
     """非重分析时，不应修改原始告警的 ai_analysis。"""
-    from services.webhook_orchestrator import _resolve_analysis_for_duplicate
+    from services.webhook_command_service import _resolve_analysis_for_duplicate
 
     ai = {"summary": "New analysis", "importance": "medium"}
     original = _make_original(ai_analysis={"summary": "Original"}, importance="low")
@@ -167,7 +167,7 @@ def _make_row(
 
 
 def test_row_to_summary_dict_basic_fields():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row()
     d = _row_to_summary_dict(row)
@@ -180,7 +180,7 @@ def test_row_to_summary_dict_basic_fields():
 
 
 def test_row_to_summary_dict_timestamps_are_isoformat():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row()
     d = _row_to_summary_dict(row)
@@ -191,7 +191,7 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
 
 
 def test_row_to_summary_dict_duplicate_within_window():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=0)
     d = _row_to_summary_dict(row)
@@ -202,7 +202,7 @@ def test_row_to_summary_dict_duplicate_within_window():
 
 
 def test_row_to_summary_dict_duplicate_beyond_window():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=1)
     d = _row_to_summary_dict(row)
@@ -213,7 +213,7 @@ def test_row_to_summary_dict_duplicate_beyond_window():
 
 
 def test_row_to_summary_dict_summary_from_ai_analysis():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row(ai_analysis={"summary": "High memory usage detected"})
     d = _row_to_summary_dict(row)
@@ -221,7 +221,7 @@ def test_row_to_summary_dict_summary_from_ai_analysis():
 
 
 def test_row_to_summary_dict_summary_none_when_no_ai_analysis():
-    from services.webhook_orchestrator import _row_to_summary_dict
+    from services.webhook_query_service import _row_to_summary_dict
 
     row = _make_row(ai_analysis=None)
     d = _row_to_summary_dict(row)

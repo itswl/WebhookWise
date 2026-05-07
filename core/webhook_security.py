@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import time
-from typing import Mapping
+from collections.abc import Mapping
 
 from fastapi import HTTPException, Request
 
@@ -9,7 +9,7 @@ from api import InvalidSignatureError
 from core.config import Config
 from core.logger import logger
 from core.redis_client import redis_eval_int
-from services.webhook_orchestrator import get_client_ip
+from services.webhook_command_service import get_client_ip
 
 _INCR_EXPIRE_IF_FIRST_LUA = """
 local c = redis.call("incr", KEYS[1])
