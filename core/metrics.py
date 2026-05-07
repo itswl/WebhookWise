@@ -181,6 +181,13 @@ BACKGROUND_POLLER_UP = Gauge(
     multiprocess_mode="liveall",
 )
 
+BACKGROUND_POLLER_LEADER = Gauge(
+    "background_poller_leader",
+    "后台轮询任务是否为 leader（1=leader, 0=non-leader）",
+    ["name"],
+    multiprocess_mode="liveall",
+)
+
 BACKGROUND_POLLER_RESTARTS_TOTAL = Counter(
     "background_poller_restarts_total",
     "后台轮询任务异常后重启次数",
