@@ -90,6 +90,34 @@ OPENAI_ERRORS_TOTAL = Counter(
     ["type"],
 )
 
+# 9. Scheduler 轮询健康指标
+SCHEDULED_TASK_RUNS_TOTAL = Counter(
+    "scheduled_task_runs_total",
+    "TaskIQ 定时任务执行次数",
+    ["name", "status"],  # status: success, error
+)
+
+SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME = Gauge(
+    "scheduled_task_last_success_unixtime",
+    "TaskIQ 定时任务最近一次成功执行时间（Unix time）",
+    ["name"],
+    multiprocess_mode="livemax",
+)
+
+SCHEDULED_TASK_LAG_SECONDS = Gauge(
+    "scheduled_task_lag_seconds",
+    "TaskIQ 定时任务相对期望周期的滞后秒数（越大表示可能积压/漏跑）",
+    ["name"],
+    multiprocess_mode="livemax",
+)
+
+SCHEDULED_TASK_DURATION_SECONDS = Histogram(
+    "scheduled_task_duration_seconds",
+    "TaskIQ 定时任务单次执行耗时（秒）",
+    ["name"],
+    buckets=(0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, float("inf")),
+)
+
 # 7. 转发重试指标
 FORWARD_RETRY_TOTAL = Counter(
     "forward_retry_total",
