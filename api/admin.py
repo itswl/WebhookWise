@@ -37,13 +37,11 @@ from services.config_service import (
     get_current_config,
 )
 from services.tasks import process_webhook_task
-from services.webhook_orchestrator import (
-    count_dead_letters,
-    list_dead_letters,
-    list_stuck_events,
+from services.webhook_command_service import (
     replay_dead_letter,
     requeue_stuck_event,
 )
+from services.webhook_query_service import count_dead_letters, list_dead_letters, list_stuck_events
 
 admin_router = APIRouter()
 
