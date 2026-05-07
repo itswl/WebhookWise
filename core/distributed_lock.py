@@ -7,6 +7,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from typing import Any
 
 from core.logger import logger
 
@@ -49,7 +50,7 @@ class ProcessingLockResult:
 async def processing_lock(alert_hash: str) -> AsyncGenerator[ProcessingLockResult, None]:
     """获取基于 alert_hash 的分布式处理锁，集成 Fail-Fast 风暴背压。"""
     from core.config import Config
-    from core.redis_client import get_redis
+    from core.redis_client import redis_eval_int
 
     threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
@@ -57,8 +58,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[ProcessingLockResul
 
     if threshold:
         try:
-            redis = get_redis()
-            queue_size = int(await redis.eval(_INCR_EXPIRE_IF_FIRST_LUA, 1, queue_key, window_seconds))
+            queue_size = await redis_eval_int(_INCR_EXPIRE_IF_FIRST_LUA, 1, queue_key, window_seconds)
             if queue_size > threshold:
                 suppressed = True
         except Exception as e:
@@ -83,7 +83,7 @@ async def processing_lock(alert_hash: str) -> AsyncGenerator[ProcessingLockResul
             got_lock=lock_acquired,
             should_wait=not suppressed and not lock_acquired,
             suppressed=suppressed,
-            queue_size=queue_size
+            queue_size=queue_size,
         )
     finally:
         await lock.release()
@@ -98,16 +98,15 @@ class DistributedLock:
         self.key = key
         self.ttl = ttl
         self.value = lock_value or str(uuid.uuid4())
-        self._watchdog_task: asyncio.Task | None = None
+        self._watchdog_task: asyncio.Task[object] | None = None
 
     async def acquire(self, timeout: float | None = None) -> bool:
-        from core.redis_client import get_redis
-        redis = get_redis()
+        from core.redis_client import redis_set_nx_ex
 
         start_time = asyncio.get_event_loop().time()
         while True:
             # SET key value NX EX ttl
-            success = await redis.set(self.key, self.value, nx=True, ex=self.ttl)
+            success = await redis_set_nx_ex(self.key, self.value, self.ttl)
             if success:
                 self._start_watchdog()
                 return True
@@ -118,11 +117,11 @@ class DistributedLock:
             await asyncio.sleep(0.1)
 
     async def release(self) -> None:
-        from core.redis_client import get_redis
-        redis = get_redis()
+        from core.redis_client import redis_eval_int
+
         self._stop_watchdog()
         with suppress(Exception):
-            await redis.eval(_RELEASE_LOCK_LUA, 1, self.key, self.value)
+            await redis_eval_int(_RELEASE_LOCK_LUA, 1, self.key, self.value)
 
     def _start_watchdog(self) -> None:
         self._stop_watchdog()
@@ -134,14 +133,14 @@ class DistributedLock:
             self._watchdog_task = None
 
     async def _watchdog_loop(self) -> None:
-        from core.redis_client import get_redis
-        redis = get_redis()
+        from core.redis_client import redis_eval_int
+
         renew_interval = max(1, self.ttl // 3)
         try:
             while True:
                 await asyncio.sleep(renew_interval)
                 try:
-                    success = await redis.eval(_RENEW_LOCK_LUA, 1, self.key, self.value, self.ttl)
+                    success = await redis_eval_int(_RENEW_LOCK_LUA, 1, self.key, self.value, self.ttl)
                     if not success:
                         logger.warning("[Lock] Watchdog 续期失败（锁可能已过期或被意外释放）: key=%s", self.key)
                         break
@@ -155,5 +154,5 @@ class DistributedLock:
     async def __aenter__(self) -> bool:
         return await self.acquire()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         await self.release()

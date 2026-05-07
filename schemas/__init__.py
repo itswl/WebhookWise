@@ -58,7 +58,7 @@ class WebhookAnalysisResult(BaseModel):
     monitoring_suggestions: list[str] = Field(default_factory=list, description="后续的监控优化建议")
 
     def to_dict(self) -> dict[str, Any]:
-        return self.model_dump()
+        return self.model_dump(mode="json")
 
 
 class DeepAnalysisRecord(BaseModel):
@@ -70,7 +70,7 @@ class DeepAnalysisRecord(BaseModel):
     webhook_event_id: int
     engine: str | None = None
     user_question: str | None = None
-    analysis_result: dict | str | None = None
+    analysis_result: dict[str, Any] | str | None = None
     duration_seconds: float | None = None
     created_at: str | None = None
     openclaw_run_id: str | None = None
@@ -126,10 +126,10 @@ class WebhookEventFull(BaseModel):
     client_ip: str | None = None
     timestamp: str | None = None
     raw_payload: str | None = None
-    headers: dict | None = None
-    parsed_data: dict | None = None
+    headers: dict[str, Any] | None = None
+    parsed_data: dict[str, Any] | None = None
     alert_hash: str | None = None
-    ai_analysis: dict | None = None
+    ai_analysis: dict[str, Any] | None = None
     importance: str | None = None
     processing_status: str
     forward_status: str | None = None
@@ -160,7 +160,7 @@ class WebhookEventSummary(BaseModel):
     duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
     summary: str | None = None
-    alert_info: dict | None = None
+    alert_info: dict[str, Any] | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
 

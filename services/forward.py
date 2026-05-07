@@ -27,10 +27,10 @@ AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
 
 
-async def get_forward_rules(session: AsyncSession):
+async def get_forward_rules(session: AsyncSession) -> list[ForwardRule]:
     stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
     result = await session.execute(stmt)
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 async def create_forward_rule(
@@ -45,7 +45,7 @@ async def create_forward_rule(
     target_url: str = "",
     target_name: str = "",
     stop_on_match: bool = False,
-):
+) -> ForwardRule:
     rule = ForwardRule(
         name=name,
         enabled=enabled,
@@ -63,20 +63,28 @@ async def create_forward_rule(
     return rule
 
 
-async def get_forward_rule(session: AsyncSession, rule_id: int):
+async def get_forward_rule(session: AsyncSession, rule_id: int) -> ForwardRule | None:
     stmt = select(ForwardRule).filter_by(id=rule_id)
     result = await session.execute(stmt)
     return result.scalars().first()
 
 
-async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict):
+async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict[str, Any]) -> ForwardRule | None:
     rule = await get_forward_rule(session, rule_id)
     if not rule:
         return None
 
     fields = [
-        "name", "enabled", "priority", "match_importance", "match_duplicate",
-        "match_source", "target_type", "target_url", "target_name", "stop_on_match",
+        "name",
+        "enabled",
+        "priority",
+        "match_importance",
+        "match_duplicate",
+        "match_source",
+        "target_type",
+        "target_url",
+        "target_name",
+        "stop_on_match",
     ]
     for field in fields:
         if field in payload:
@@ -87,7 +95,7 @@ async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict
     return rule
 
 
-async def delete_forward_rule(session: AsyncSession, rule_id: int):
+async def delete_forward_rule(session: AsyncSession, rule_id: int) -> bool:
     rule = await get_forward_rule(session, rule_id)
     if not rule:
         return False
@@ -102,8 +110,8 @@ async def record_failed_forward(
     target_type: str,
     failure_reason: str,
     error_message: str | None = None,
-    forward_data: dict | None = None,
-    forward_headers: dict | None = None,
+    forward_data: dict[str, Any] | None = None,
+    forward_headers: dict[str, Any] | None = None,
     max_retries: int | None = None,
     session: AsyncSession | None = None,
 ) -> FailedForward | None:
@@ -154,10 +162,10 @@ async def get_failed_forwards(
     limit: int = 20,
     offset: int = 0,
     session: AsyncSession | None = None,
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict[str, Any]], int]:
     """按状态/类型分页查询转发失败记录"""
 
-    async def _query(sess: AsyncSession) -> tuple[list[dict], int]:
+    async def _query(sess: AsyncSession) -> tuple[list[dict[str, Any]], int]:
         conditions = []
         if status:
             conditions.append(FailedForward.status == status)
@@ -194,6 +202,7 @@ async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[
                 stats[status_val] = count
             stats["total"] += count
         return stats
+
     if session:
         return await _query(session)
     async with session_scope() as scoped_session:
@@ -210,6 +219,7 @@ async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | Non
         record.next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         await sess.flush()
         return True
+
     if session:
         return await _reset(session)
     async with session_scope() as scoped_session:
@@ -224,6 +234,7 @@ async def delete_failed_forward(failed_forward_id: int, session: AsyncSession | 
         await sess.delete(record)
         await sess.flush()
         return True
+
     if session:
         return await _delete(session)
     async with session_scope() as scoped_session:
@@ -232,12 +243,16 @@ async def delete_failed_forward(failed_forward_id: int, session: AsyncSession | 
 
 async def cleanup_old_success_records(days: int = 7, session: AsyncSession | None = None) -> int:
     cutoff = datetime.now() - timedelta(days=days)
+
     async def _cleanup(sess: AsyncSession) -> int:
-        stmt = sa_delete(FailedForward).where(FailedForward.status == "success").where(FailedForward.updated_at < cutoff)
+        stmt = (
+            sa_delete(FailedForward).where(FailedForward.status == "success").where(FailedForward.updated_at < cutoff)
+        )
         result = await sess.execute(stmt)
-        count = result.rowcount
+        count = int(result.rowcount or 0)
         await sess.flush()
         return count
+
     if session:
         return await _cleanup(session)
     async with session_scope() as scoped_session:
@@ -263,11 +278,12 @@ async def forward_to_remote(
     is_feishu = "feishu.cn" in url or "larksuite.com" in url
     if is_feishu:
         from adapters.plugins.feishu_card import build_feishu_card
+
         payload = build_feishu_card(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
     else:
         payload = {"webhook": webhook_data, "analysis": analysis_result, "is_periodic_reminder": is_periodic_reminder}
 
-    async def _do_post():
+    async def _do_post() -> httpx.Response:
         client = get_http_client()
         logger.debug("[Forward] POST %s is_feishu=%s periodic=%s", url, is_feishu, is_periodic_reminder)
         resp = await client.post(url, json=payload, timeout=Config.ai.FORWARD_TIMEOUT)
@@ -280,28 +296,34 @@ async def forward_to_remote(
             logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
             return {"status": "circuit_broken", "message": "熔断器已开启"}
 
+        resp_payload: dict[str, Any] = {}
+        if response.content:
+            raw_json = response.json()
+            resp_payload = raw_json if isinstance(raw_json, dict) else {"_raw": raw_json}
         return {
-            "status": "success", "status_code": response.status_code,
-            "response": response.json() if response.content else {}
+            "status": "success",
+            "status_code": response.status_code,
+            "response": resp_payload,
         }
     except Exception as e:
         logger.error("[Forward] 转发失败 url=%s error=%s", url, e)
         return {"status": "failed", "message": str(e)}
 
 
-async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: dict) -> dict:
+async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: AnalysisResult) -> ForwardResult:
     """推送任务到 OpenClaw 进行深度分析。"""
     if not Config.openclaw.OPENCLAW_ENABLED:
         logger.debug("[Forward] OpenClaw 未启用，跳过深度分析")
         return {"status": "disabled"}
 
-    async def _do_request():
+    async def _do_request() -> dict[str, Any]:
         from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
+
         engine = OpenClawAnalysisEngine()
         return await engine.analyze(
             webhook_data.get("parsed_data", {}),
             source=webhook_data.get("source", "unknown"),
-            headers=webhook_data.get("headers", {})
+            headers=webhook_data.get("headers", {}),
         )
 
     try:
@@ -314,7 +336,9 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: dict) 
         return {"status": "error", "message": str(e)}
 
 
-async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thinking_level: str = "high") -> dict:
+async def analyze_with_openclaw(
+    webhook_data: WebhookData, user_question: str = "", thinking_level: str = "high"
+) -> dict[str, Any]:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.trace import get_trace_id
 
@@ -354,11 +378,12 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
     if platform == "hermes":
         import hashlib
         import hmac as hmac_mod
+
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac_mod.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
         headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
-        kwargs: dict = {"content": payload_bytes}
+        kwargs: dict[str, Any] = {"content": payload_bytes}
     else:
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
@@ -384,6 +409,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
                 last_error = f"{platform.capitalize()} 请求被熔断器拦截"
                 if attempt < max_retries - 1:
                     import asyncio
+
                     await asyncio.sleep(2)
                 continue
             response.raise_for_status()
@@ -393,6 +419,7 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
             logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 import asyncio
+
                 await asyncio.sleep(2)
     else:
         logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
@@ -401,7 +428,10 @@ async def analyze_with_openclaw(webhook_data: dict, user_question: str = "", thi
         raise Exception(f"{platform.capitalize()} 请求失败: {last_error}")
 
     try:
-        result = response.json()
+        raw = response.json()
+        if not isinstance(raw, dict):
+            raise ValueError("OpenClaw response is not a JSON object")
+        result: dict[str, Any] = raw
         if platform == "hermes":
             run_id = result.get("delivery_id") or result.get("runId")
             session_key = run_id if run_id else session_key

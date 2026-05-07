@@ -6,12 +6,18 @@ services/noise_context.py
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 
 from db.session import session_scope
 from models import WebhookEvent
-from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
+from services.alert_noise_reduction import (
+    AlertContext,
+    NoiseReductionDecision,
+    analyze_noise_reduction,
+    default_decision,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,17 +25,8 @@ logger = logging.getLogger(__name__)
 # ── 告警上下文构建 ─────────────────────────────────────────────────────────────
 
 
-def _default_noise_context() -> AlertContext:
-    """降噪禁用时返回的默认上下文"""
-    return AlertContext(
-        relation="standalone",
-        root_cause_event_id=None,
-        confidence=0.0,
-        suppress_forward=False,
-        reason="降噪功能已禁用",
-        related_alert_count=0,
-        related_alert_ids=[],
-    )
+def _default_noise_decision() -> NoiseReductionDecision:
+    return default_decision()
 
 
 def _build_alert_context(current_event: WebhookEvent, current_time: datetime) -> AlertContext:
@@ -37,23 +34,18 @@ def _build_alert_context(current_event: WebhookEvent, current_time: datetime) ->
     从当前事件构建 AlertContext，供 analyze_noise_reduction 使用。
     提取当前事件的字段用于关联分析。
     """
-    if current_event.parsed_data is None:
-        parsed = {}
-    elif isinstance(current_event.parsed_data, dict):
-        parsed = current_event.parsed_data
-    else:
-        parsed = {}
-
-    importance = current_event.importance or "medium"
-    current_hash = getattr(current_event, "alert_hash", None) or ""
-
+    parsed_raw = current_event.parsed_data
+    parsed: dict[str, Any] = dict(parsed_raw) if isinstance(parsed_raw, dict) else {}
+    analysis_raw = current_event.ai_analysis
+    analysis: dict[str, Any] = dict(analysis_raw) if isinstance(analysis_raw, dict) else {}
     return AlertContext(
-        alert_id=current_event.id,
-        alert_hash=current_hash,
-        importance=importance,
+        event_id=current_event.id,
         source=current_event.source or "unknown",
-        timestamp=current_time,
+        importance=current_event.importance or "medium",
         parsed_data=parsed,
+        analysis=analysis,
+        timestamp=current_time,
+        alert_hash=current_event.alert_hash,
     )
 
 
@@ -77,23 +69,23 @@ async def _load_recent_alert_contexts(
                 WebhookEvent.source,
                 WebhookEvent.timestamp,
                 WebhookEvent.parsed_data,
+                WebhookEvent.ai_analysis,
             ).filter(WebhookEvent.timestamp >= window_start, WebhookEvent.timestamp <= current_time)
         )
         rows = result.all()
 
         for row in rows:
-            parsed = {}
-            if row.parsed_data:
-                parsed = row.parsed_data if isinstance(row.parsed_data, dict) else {}
-
+            parsed = dict(row.parsed_data) if isinstance(row.parsed_data, dict) else {}
+            analysis = dict(row.ai_analysis) if isinstance(row.ai_analysis, dict) else {}
             recent.append(
                 AlertContext(
-                    alert_id=row.id,
-                    alert_hash=row.alert_hash or "",
-                    importance=row.importance or "medium",
+                    event_id=row.id,
                     source=row.source or "unknown",
-                    timestamp=row.timestamp or window_start,
+                    importance=row.importance or "medium",
                     parsed_data=parsed,
+                    analysis=analysis,
+                    timestamp=row.timestamp or window_start,
+                    alert_hash=row.alert_hash,
                 )
             )
 
@@ -104,37 +96,43 @@ async def _compute_noise_reduction(
     current_context: AlertContext,
     recent_contexts: list[AlertContext],
     min_confidence: float = 0.65,
-) -> tuple[AlertContext, bool]:
+) -> tuple[NoiseReductionDecision, bool]:
     """
     计算当前告警的降噪上下文。
 
     Returns:
-        (noise_context, is_root_cause): 降噪上下文和是否为根因告警
+        (decision, is_root_cause): 降噪决策和是否为根因告警
     """
     if not recent_contexts:
-        return _default_noise_context(), False
+        return _default_noise_decision(), False
 
     try:
-        result = analyze_noise_reduction(current_context, recent_contexts)
-        is_root = result.confidence >= min_confidence and result.relation in ("root_cause", "derived")
-        return result, is_root
+        decision = analyze_noise_reduction(
+            current_context,
+            recent_contexts,
+            window_minutes=5,
+            min_confidence=min_confidence,
+            suppress_derived=True,
+        )
+        is_root = decision.confidence >= min_confidence and decision.relation in ("root_cause", "derived")
+        return decision, is_root
     except Exception as e:
         logger.warning(f"降噪分析失败: {e}")
-        return _default_noise_context(), False
+        return _default_noise_decision(), False
 
 
-async def _apply_noise_metadata(analysis_result: dict, noise_context: AlertContext) -> dict:
+def _apply_noise_metadata(analysis_result: dict[str, Any], decision: NoiseReductionDecision) -> dict[str, Any]:
     """
     将降噪元数据合并到 AI 分析结果中。
     """
     result = dict(analysis_result)
     result["_noise_reduction"] = {
-        "relation": noise_context.relation,
-        "root_cause_event_id": noise_context.root_cause_event_id,
-        "confidence": round(noise_context.confidence, 4),
-        "suppress_forward": noise_context.suppress_forward,
-        "reason": noise_context.reason,
-        "related_alert_count": noise_context.related_alert_count,
+        "relation": decision.relation,
+        "root_cause_event_id": decision.root_cause_event_id,
+        "confidence": round(decision.confidence, 4),
+        "suppress_forward": decision.suppress_forward,
+        "reason": decision.reason,
+        "related_alert_count": decision.related_alert_count,
     }
     return result
 
@@ -142,8 +140,8 @@ async def _apply_noise_metadata(analysis_result: dict, noise_context: AlertConte
 def _persist_webhook_with_noise_context(
     webhook_event: WebhookEvent,
     current_time: datetime,
-    noise_context: AlertContext,
-    analysis_result: dict,
+    decision: NoiseReductionDecision,
+    analysis_result: dict[str, Any],
     is_root_cause: bool,
 ) -> None:
     """
@@ -151,12 +149,7 @@ def _persist_webhook_with_noise_context(
     同时更新 WebhookEvent 的 is_duplicate / duplicate_of 等字段。
     """
     # 合并降噪信息到分析结果
-    enriched_result = _apply_noise_metadata(analysis_result, noise_context)
-
-    # 如果是衍生告警且配置了 suppress_forward，更新事件标记
-    if noise_context.suppress_forward:
-        # 标记当前事件为衍生告警（由根因触发，不独立转发）
-        logger.debug(f"告警 {webhook_event.id} 被标记为衍生告警，抑制转发")
+    enriched_result = _apply_noise_metadata(analysis_result, decision)
 
     # 写入 enriched 结果（供后续流程判断是否转发）
     webhook_event.ai_analysis = enriched_result

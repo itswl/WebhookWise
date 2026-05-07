@@ -8,10 +8,12 @@ OpenClaw WebSocket 客户端模块（异步版）
 
 import asyncio
 import base64
+import contextlib
 import json
 import platform
 import time
 import uuid
+from typing import Any
 
 import websockets
 
@@ -19,6 +21,19 @@ from core.config import Config
 from core.logger import get_logger
 
 logger = get_logger("openclaw_ws")
+
+
+def _loads_dict(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, bytes):
+        with contextlib.suppress(Exception):
+            raw = raw.decode("utf-8")
+    if not isinstance(raw, str):
+        return None
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _http_to_ws_url(http_url: str) -> str:
@@ -30,11 +45,11 @@ def _http_to_ws_url(http_url: str) -> str:
     return f"ws://{url}/ws"
 
 
-def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
+def _build_connect_frame(token: str, device_auth: dict[str, Any] | None = None) -> dict[str, Any]:
     client_platform = "linux" if device_auth else platform.system().lower()
     client_mode = "cli" if device_auth else "backend"
 
-    frame = {
+    frame: dict[str, Any] = {
         "type": "req",
         "id": str(uuid.uuid4()),
         "method": "connect",
@@ -57,7 +72,7 @@ def _build_connect_frame(token: str, device_auth: dict | None = None) -> dict:
     return frame
 
 
-def _build_device_auth(nonce: str) -> dict | None:
+def _build_device_auth(nonce: str) -> dict[str, Any] | None:
     device_id = Config.openclaw.OPENCLAW_DEVICE_ID
     private_key_b64 = Config.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM
     device_token = Config.openclaw.OPENCLAW_DEVICE_TOKEN
@@ -67,6 +82,7 @@ def _build_device_auth(nonce: str) -> dict | None:
 
     try:
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     except ImportError:
         logger.warning("cryptography package not installed, skipping device auth")
@@ -75,6 +91,9 @@ def _build_device_auth(nonce: str) -> dict | None:
     try:
         pem = f"-----BEGIN PRIVATE KEY-----\n{private_key_b64}\n-----END PRIVATE KEY-----\n"
         private_key = serialization.load_pem_private_key(pem.encode(), password=None)
+        if not isinstance(private_key, Ed25519PrivateKey):
+            logger.warning("Unsupported private key type for device auth: %s", type(private_key).__name__)
+            return None
 
         pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
         pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip("=")
@@ -104,17 +123,18 @@ def _build_device_auth(nonce: str) -> dict | None:
         return None
 
 
-async def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
+async def _try_recv_challenge(ws: Any, timeout: float | None = None) -> str | None:
     if timeout is None:
         timeout = Config.openclaw.OPENCLAW_NONCE_TIMEOUT
     try:
         raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-        frame = json.loads(raw)
-        if frame.get("type") == "event" and frame.get("event") == "connect.challenge":
-            nonce = frame.get("payload", {}).get("nonce", "")
-            if nonce:
-                logger.info("Received connect.challenge, nonce=%s...", nonce[:16])
-                return nonce
+        frame = _loads_dict(raw)
+        if frame and frame.get("type") == "event" and frame.get("event") == "connect.challenge":
+            payload = frame.get("payload")
+            nonce_val = payload.get("nonce") if isinstance(payload, dict) else None
+            if isinstance(nonce_val, str) and nonce_val:
+                logger.info("Received connect.challenge, nonce=%s...", nonce_val[:16])
+                return nonce_val
     except asyncio.TimeoutError:
         return None
     except Exception as e:
@@ -123,7 +143,7 @@ async def _try_recv_challenge(ws, timeout: float | None = None) -> str | None:
     return None
 
 
-async def _handshake(ws, gateway_token: str, timeout: float) -> tuple[bool, str | None]:
+async def _handshake(ws: Any, gateway_token: str, timeout: float) -> tuple[bool, str | None]:
     try:
         nonce = await _try_recv_challenge(ws)
         device_auth = _build_device_auth(nonce) if nonce else None
@@ -133,8 +153,8 @@ async def _handshake(ws, gateway_token: str, timeout: float) -> tuple[bool, str 
         response = None
         for _ in range(5):
             raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-            frame = json.loads(raw)
-            if frame.get("type") == "res":
+            frame = _loads_dict(raw)
+            if frame and frame.get("type") == "res":
                 response = frame
                 break
 
@@ -154,7 +174,7 @@ async def _handshake(ws, gateway_token: str, timeout: float) -> tuple[bool, str 
         return False, "handshake_error"
 
 
-def _parse_history_messages(messages: list) -> dict:
+def _parse_history_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
     if not messages:
         return {"status": "pending"}
 
@@ -193,7 +213,9 @@ def _parse_history_messages(messages: list) -> dict:
     return {"status": "completed", "text": final_text, "message": msg}
 
 
-async def poll_session_result(gateway_url: str, gateway_token: str, session_key: str, timeout: int = 30) -> dict:
+async def poll_session_result(
+    gateway_url: str, gateway_token: str, session_key: str, timeout: int = 30
+) -> dict[str, Any]:
     ws_url = _http_to_ws_url(gateway_url)
     start = time.monotonic()
 
@@ -228,8 +250,8 @@ async def poll_session_result(gateway_url: str, gateway_token: str, session_key:
                     return {"status": "error", "error": f"Timeout ({timeout}s)"}
 
                 raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
-                frame = json.loads(raw)
-                if frame.get("type") != "res" or frame.get("id") != request_id:
+                frame = _loads_dict(raw)
+                if not frame or frame.get("type") != "res" or frame.get("id") != request_id:
                     continue
                 if not frame.get("ok"):
                     error = frame.get("error", {})
@@ -254,7 +276,7 @@ async def poll_session_result(gateway_url: str, gateway_token: str, session_key:
 
 async def wait_for_result(
     gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     ws_url = _http_to_ws_url(gateway_url)
     connect_timeout = connect_timeout or Config.openclaw.OPENCLAW_CONNECT_TIMEOUT
     handshake_timeout = Config.openclaw.OPENCLAW_HANDSHAKE_TIMEOUT
@@ -272,11 +294,11 @@ async def wait_for_result(
             if not ok:
                 return {"status": "error", "run_id": run_id, "error": err_type or "handshake_failed"}
 
-            async def _recv_loop():
+            async def _recv_loop() -> dict[str, Any]:
                 while True:
                     raw = await ws.recv()
-                    frame = json.loads(raw)
-                    if frame.get("type") != "event":
+                    frame = _loads_dict(raw)
+                    if not frame or frame.get("type") != "event":
                         continue
                     payload = frame.get("payload", {}) or {}
                     if payload.get("runId") != run_id:
@@ -316,6 +338,7 @@ async def wait_for_result(
                             if not final_text:
                                 final_text = "".join([t for t in text_fragments if isinstance(t, str)])
                             return {"status": "success", "run_id": run_id, "message": message, "text": final_text}
+                return {"status": "timeout", "run_id": run_id, "partial_text": "".join(text_fragments)}
 
             return await asyncio.wait_for(_recv_loop(), timeout=timeout)
 

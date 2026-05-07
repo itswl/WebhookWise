@@ -72,7 +72,7 @@ def _extract_timestamp_from_filename(filepath: Path) -> str:
         return "00000000_000000_000000"
 
 
-def get_webhooks_from_files(limit: int = 50) -> list[dict]:
+def get_webhooks_from_files(limit: int = 50) -> list[dict[str, Any]]:
     """从文件获取 webhook 数据(备份方式)
 
     惰性加载：先按文件名时间戳排序截取，只解析前 limit 个文件，
@@ -92,12 +92,14 @@ def get_webhooks_from_files(limit: int = 50) -> list[dict]:
     selected = files[:limit]
 
     # 4. 只对选中的文件执行 JSON 解析
-    webhooks: list[dict] = []
+    webhooks: list[dict[str, Any]] = []
     for filepath in selected:
         try:
-            webhook_data = orjson.loads(filepath.read_bytes())
-            webhook_data["filename"] = filepath.name
-            webhooks.append(webhook_data)
+            loaded = orjson.loads(filepath.read_bytes())
+            if not isinstance(loaded, dict):
+                continue
+            loaded["filename"] = filepath.name
+            webhooks.append(loaded)
         except Exception as e:  # noqa: PERF203
             logger.error(f"读取文件失败 {filepath.name}: {e!s}")
 

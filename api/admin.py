@@ -3,12 +3,15 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
 """
 
+from typing import Any, cast
+
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
-from core.config import Config
+from core.config import Config, RuntimeValue
 from core.logger import logger
 from db.session import get_db_session
 from schemas import (
@@ -46,7 +49,7 @@ admin_router = APIRouter()
 
 
 @admin_router.get("/api/config", response_model=ConfigResponse)
-async def get_config():
+async def get_config() -> JSONResponse:
     try:
         return _ok(get_current_config(), 200)
     except Exception as e:
@@ -55,7 +58,7 @@ async def get_config():
 
 
 @admin_router.get("/api/config/sources", response_model=ConfigSourcesResponse)
-async def get_config_sources_endpoint():
+async def get_config_sources_endpoint() -> JSONResponse:
     try:
         items_data = get_config_sources()
         return _ok(items_data, 200)
@@ -65,7 +68,7 @@ async def get_config_sources_endpoint():
 
 
 @admin_router.post("/api/config", response_model=ConfigUpdateResponse, dependencies=[Depends(verify_admin_write)])
-async def update_config(payload: dict | None = None):
+async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
     try:
         if not payload:
             return _fail("请求体为空", 400)
@@ -77,7 +80,9 @@ async def update_config(payload: dict | None = None):
         if not updates:
             return _ok(status=200, message="无需更新")
 
-        runtime_updates = {var_name: typed_value for var_name, (_str_val, typed_value) in updates.items()}
+        runtime_updates: dict[str, RuntimeValue] = {
+            var_name: cast(RuntimeValue, typed_value) for var_name, (_str_val, typed_value) in updates.items()
+        }
         await Config.save_batch(runtime_updates)
 
         logger.info(f"配置已更新: {list(updates.keys())}")
@@ -89,7 +94,7 @@ async def update_config(payload: dict | None = None):
 
 
 @admin_router.post("/api/prompt/reload", response_model=PromptReloadResponse)
-def reload_prompt():
+def reload_prompt() -> JSONResponse:
     try:
         new_template = reload_user_prompt_template()
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
@@ -100,7 +105,7 @@ def reload_prompt():
 
 
 @admin_router.get("/api/prompt", response_model=PromptGetResponse)
-def get_prompt():
+def get_prompt() -> JSONResponse:
     try:
         template = load_user_prompt_template()
         return _ok(status=200, template=template, source=build_prompt_source())
@@ -117,7 +122,7 @@ async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONResponse:
     try:
         items = await list_dead_letters(session, page=page, page_size=page_size)
         total = await count_dead_letters(session)
@@ -132,7 +137,7 @@ async def get_dead_letters_endpoint(
     response_model=ReplayResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)):
+async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     try:
         updated = await replay_dead_letter(session, event_id)
         if not updated:
@@ -151,7 +156,7 @@ async def get_stuck_events_endpoint(
     older_than_seconds: int = Query(300, ge=0),
     limit: int = Query(50, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONResponse:
     statuses = [s for s in (status or "").split(",") if s.strip()]
     try:
         items = await list_stuck_events(
@@ -168,7 +173,7 @@ async def get_stuck_events_endpoint(
     response_model=StuckEventRequeueResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)):
+async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     try:
         updated = await requeue_stuck_event(session, event_id)
         if not updated:
@@ -186,7 +191,7 @@ async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depe
 )
 async def replay_all_dead_letters(
     batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)
-):
+) -> JSONResponse:
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
         if not items:

@@ -4,6 +4,8 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,21 +28,26 @@ from services.webhook_orchestrator import (
 
 webhook_router = APIRouter()
 
+JSONDict = dict[str, Any]
+
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
 
 
 @webhook_router.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> JSONResponse:
     """健康检查接口。"""
     db_ok = await test_db_connection()
-    content = {"success": True, "data": {"status": "healthy" if db_ok else "unhealthy", "database": "ok" if db_ok else "failed"}}
+    content = {
+        "success": True,
+        "data": {"status": "healthy" if db_ok else "unhealthy", "database": "ok" if db_ok else "failed"},
+    }
     return JSONResponse(content=content, status_code=200 if db_ok else 503)
 
 
 @webhook_router.get("/")
 @webhook_router.get("/dashboard")
-async def dashboard():
+async def dashboard() -> FileResponse:
     """返回 Dashboard 页面。"""
     return FileResponse("templates/dashboard.html")
 
@@ -58,7 +65,7 @@ async def receive_webhook(
     request: Request,
     source: str | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
@@ -81,8 +88,13 @@ async def receive_webhook(
     )
     await session.commit()
     set_trace_id(generate_trace_id(event_id=event_id))
-    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
-                event_id, source or headers.get("x-webhook-source", "unknown"), client_ip, len(raw_body))
+    logger.info(
+        "[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
+        event_id,
+        source or headers.get("x-webhook-source", "unknown"),
+        client_ip,
+        len(raw_body),
+    )
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
 
@@ -99,7 +111,7 @@ async def receive_webhook_with_source(
     source: str,
     request: Request,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
@@ -121,8 +133,7 @@ async def receive_webhook_with_source(
     )
     await session.commit()
     set_trace_id(generate_trace_id(event_id=event_id))
-    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
-                event_id, source, client_ip, len(raw_body))
+    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d", event_id, source, client_ip, len(raw_body))
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
 
@@ -140,7 +151,7 @@ async def get_webhooks_endpoint(
     importance: str = Query(""),
     source: str = Query(""),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JSONDict:
     """获取所有 webhook 事件的摘要列表。"""
     items, has_more, next_cursor = await list_webhook_summaries(
         session, cursor_id=cursor, importance=importance, source=source, page_size=page_size
@@ -153,7 +164,9 @@ async def get_webhooks_endpoint(
 
 
 @webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)])
-async def get_webhook_detail_endpoint(webhook_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_webhook_detail_endpoint(
+    webhook_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     """获取单个 webhook 事件的详细信息。"""
     event = await session.get(WebhookEvent, webhook_id)
     if not event:

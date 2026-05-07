@@ -17,14 +17,14 @@ from core.metrics import (
     WEBHOOK_PROCESSING_STATUS_COUNT,
     WEBHOOK_STUCK_STATUS_COUNT,
 )
-from core.redis_client import get_redis
+from core.redis_client import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
 
 logger = logging.getLogger("webhook_service.metrics")
 
 
-async def refresh_all_metrics():
+async def refresh_all_metrics() -> None:
     """刷新系统指标（由 TaskIQ 驱动）"""
     await _refresh_db_status_counts()
     await _refresh_mq_stats()
@@ -83,32 +83,18 @@ async def _refresh_mq_stats() -> None:
 
     queue_name = getattr(broker, "queue_name", None) or Config.server.WEBHOOK_MQ_QUEUE
     group_name = getattr(broker, "consumer_group_name", None) or Config.server.WEBHOOK_MQ_CONSUMER_GROUP
-    redis = get_redis()
 
     try:
-        stream_len = await redis.xlen(queue_name)
+        stream_len = await redis_xlen(queue_name)
         WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(stream_len)
     except RedisError as e:
         logger.debug("[Metrics] 刷新 MQ 队列长度失败: %s", e)
 
     try:
-        pending_summary = await redis.xpending(queue_name, group_name)
-        pending = 0
-        if isinstance(pending_summary, dict):
-            pending = int(pending_summary.get("pending") or 0)
-        else:
-            try:
-                pending = int(pending_summary[0] or 0)
-            except (TypeError, ValueError, IndexError):
-                pending = 0
+        pending = await redis_xpending_pending(queue_name, group_name)
         WEBHOOK_MQ_GROUP_PENDING.labels(stream=queue_name, group=group_name).set(pending)
 
-        lag = 0
-        groups = await redis.xinfo_groups(queue_name)
-        for g in groups or []:
-            if (g.get("name") or "") == group_name:
-                lag = int(g.get("lag") or 0)
-                break
+        lag = await redis_xinfo_group_lag(queue_name, group_name)
         WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group=group_name).set(lag)
     except RedisError as e:
         logger.debug("[Metrics] 刷新 MQ group 指标失败: %s", e)

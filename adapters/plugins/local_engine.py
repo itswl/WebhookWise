@@ -32,4 +32,4 @@ class LocalAnalysisEngine:
         return result
 
     def is_available(self) -> bool:
-        return policies.ai.ENABLE_AI_ANALYSIS
+        return bool(policies.ai.ENABLE_AI_ANALYSIS)

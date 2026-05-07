@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from core.circuit_breaker import feishu_cb
 from core.config import Config
@@ -42,7 +42,21 @@ def _header_get(headers: HeadersLike | None, key: str) -> str | None:
 
 def _normalize_level(value: Any) -> str:
     text = str(value or "").strip().lower()
-    high = {"critical", "error", "fatal", "p0", "sev1", "severe", "high", "urgent", "alerting", "firing", "triggered", "严重", "紧急"}
+    high = {
+        "critical",
+        "error",
+        "fatal",
+        "p0",
+        "sev1",
+        "severe",
+        "high",
+        "urgent",
+        "alerting",
+        "firing",
+        "triggered",
+        "严重",
+        "紧急",
+    }
     medium = {"warning", "warn", "p1", "medium", "moderate", "acknowledged", "警告"}
     low = {"info", "ok", "resolved", "normal", "low", "notice", "恢复", "已恢复", "正常"}
 
@@ -62,27 +76,30 @@ def _normalize_level(value: Any) -> str:
     return "warning"
 
 
-def _pick_first(*values: Any) -> Any:
+_T = TypeVar("_T")
+
+
+def _pick_first(*values: _T | None) -> _T | None:
     for v in values:
         if v is not None and str(v).strip():
             return v
     return None
 
 
-def _extract_tag(tags: Any, key: str) -> str | None:
+def _extract_tag(tags: object, key: str) -> str | None:
     if not isinstance(tags, list):
         return None
     prefix = f"{key}:"
     for t in tags:
         if isinstance(t, str) and t.startswith(prefix):
-            return t[len(prefix):].strip()
+            return t[len(prefix) :].strip()
     return None
 
 
 # ── 统一适配器实现 (由插件发现机制调用) ──────────────────────────────────────────────
 
 
-def register_simple_adapters():
+def register_simple_adapters() -> None:
     """注册轻量级适配器，直接实现在此文件中以减少文件碎片。"""
     from adapters.registry import registry
 
@@ -92,20 +109,20 @@ def register_simple_adapters():
 
     # 1. 火山引擎 (Volcengine CloudMonitor)
     @registry.register_detector("volcengine")
-    def _detect_volc(data: dict) -> bool:
+    def _detect_volc(data: WebhookData) -> bool:
         return str(data.get("Namespace", "")).startswith("VCM_") and bool(data.get("Resources"))
 
     @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor", "volcengine_cloudmonitor"})
-    def _norm_volc(data: dict) -> dict:
+    def _norm_volc(data: WebhookData) -> WebhookData:
         return dict(data)
 
     # 2. Grafana
     @registry.register_detector("grafana")
-    def _detect_grafana(data: dict) -> bool:
+    def _detect_grafana(data: WebhookData) -> bool:
         return any(k in data for k in ("ruleName", "dashboardId")) and any(k in data for k in ("state", "status"))
 
     @registry.register("grafana", aliases={"grafana"})
-    def _norm_grafana(data: dict) -> dict:
+    def _norm_grafana(data: WebhookData) -> WebhookData:
         rule = _pick_first(data.get("ruleName"), data.get("title"), "grafana_alert")
         state = _pick_first(data.get("state"), data.get("status"))
         res = dict(data)
@@ -118,20 +135,24 @@ def register_simple_adapters():
 
     # 3. Prometheus / Alertmanager
     @registry.register_detector("prometheus")
-    def _detect_prom(data: dict) -> bool:
+    def _detect_prom(data: WebhookData) -> bool:
         return isinstance(data.get("alerts"), list) and len(data["alerts"]) > 0
 
     @registry.register("prometheus", aliases={"prometheus", "alertmanager"})
-    def _norm_prom(data: dict) -> dict:
+    def _norm_prom(data: WebhookData) -> WebhookData:
         first = data.get("alerts", [{}])[0]
         labels = first.get("labels", {})
         annotations = first.get("annotations", {})
         name = _pick_first(labels.get("alertname"), data.get("alertingRuleName"), "prometheus_alert")
         res = dict(data)
-        res.update({
-            "Type": "PrometheusAlert", "RuleName": name,
-            "Level": _normalize_level(labels.get("severity")), "event": "alert"
-        })
+        res.update(
+            {
+                "Type": "PrometheusAlert",
+                "RuleName": name,
+                "Level": _normalize_level(labels.get("severity")),
+                "event": "alert",
+            }
+        )
         summary = _pick_first(annotations.get("summary"), annotations.get("description"))
         if summary:
             res["summary"] = summary
@@ -142,11 +163,11 @@ def register_simple_adapters():
 
     # 4. Datadog
     @registry.register_detector("datadog")
-    def _detect_datadog(data: dict) -> bool:
+    def _detect_datadog(data: WebhookData) -> bool:
         return sum(1 for k in ("alert_type", "event_type", "query") if k in data) >= 2
 
     @registry.register("datadog", aliases={"datadog"})
-    def _norm_datadog(data: dict) -> dict:
+    def _norm_datadog(data: WebhookData) -> WebhookData:
         tags = data.get("tags", [])
         title = _pick_first(data.get("alert_name"), data.get("title"), "datadog_alert")
         level = _pick_first(data.get("alert_type"), data.get("priority"))
@@ -161,27 +182,29 @@ def register_simple_adapters():
 
     # 5. PagerDuty
     @registry.register_detector("pagerduty")
-    def _detect_pagerduty(data: dict) -> bool:
+    def _detect_pagerduty(data: WebhookData) -> bool:
         return "incident" in data or (isinstance(data.get("event"), dict) and "event_type" in data["event"])
 
     @registry.register("pagerduty", aliases={"pagerduty"})
-    def _norm_pagerduty(data: dict) -> dict:
+    def _norm_pagerduty(data: WebhookData) -> WebhookData:
         inc = data.get("incident", {})
         evt = data.get("event", {})
         alert_id = inc.get("id") or evt.get("data", {}).get("id")
         service = inc.get("service", {}).get("summary") or evt.get("data", {}).get("service", {}).get("summary")
         title = _pick_first(
-            inc.get("title"), evt.get("data", {}).get("title"),
-            data.get("description"), "pagerduty_incident"
+            inc.get("title"), evt.get("data", {}).get("title"), data.get("description"), "pagerduty_incident"
         )
         res = dict(data)
-        res.update({
-            "Type": "PagerDutyEvent", "RuleName": title,
-            "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
-            "event": evt.get("event_type", "alert"),
-            "alert_id": alert_id,
-            "service": service
-        })
+        res.update(
+            {
+                "Type": "PagerDutyEvent",
+                "RuleName": title,
+                "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
+                "event": evt.get("event_type", "alert"),
+                "alert_id": alert_id,
+                "service": service,
+            }
+        )
         return res
 
 
@@ -233,14 +256,11 @@ def _truncate_text(text: str, max_len: int) -> str:
     if not text:
         return ""
     text = str(text)
-    return text if len(text) <= max_len else text[:max_len - 3] + "..."
+    return text if len(text) <= max_len else text[: max_len - 3] + "..."
 
 
 async def send_feishu_deep_analysis(
-    webhook_url: str,
-    analysis_record: dict,
-    source: str = "",
-    webhook_event_id: int = 0
+    webhook_url: str, analysis_record: dict[str, Any], source: str = "", webhook_event_id: int = 0
 ) -> bool:
     if not webhook_url:
         return False
@@ -253,22 +273,37 @@ async def send_feishu_deep_analysis(
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成"},
-                "template": "blue"
+                "title": {
+                    "tag": "plain_text",
+                    "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成",
+                },
+                "template": "blue",
             },
             "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**🔍 根因分析：**\n{_truncate_text(res.get('root_cause', '无'), 500)}"}},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**🔍 根因分析：**\n{_truncate_text(res.get('root_cause', '无'), 500)}",
+                    },
+                },
                 {"tag": "hr"},
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**💥 影响范围：**\n{_truncate_text(res.get('impact', '无'), 500)}"}},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**💥 影响范围：**\n{_truncate_text(res.get('impact', '无'), 500)}",
+                    },
+                },
                 {"tag": "hr"},
                 {
                     "tag": "note",
                     "elements": [
                         {
                             "tag": "plain_text",
-                            "content": f"引擎: {engine} | 置信度: {conf}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}"
+                            "content": f"引擎: {engine} | 置信度: {conf}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}",
                         }
-                    ]
+                    ],
                 },
             ],
         },

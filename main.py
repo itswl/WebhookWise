@@ -20,7 +20,7 @@ from core.logger import logger
 from db.session import init_engine, test_db_connection
 
 
-async def _check_db():
+async def _check_db() -> bool:
     await init_engine()
     return await test_db_connection()
 

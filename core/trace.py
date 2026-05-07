@@ -6,6 +6,8 @@ import contextvars
 import hashlib
 import secrets
 import uuid
+from collections.abc import Mapping
+from typing import Any
 
 trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
 
@@ -26,7 +28,7 @@ def generate_trace_id(event_id: int | None = None) -> str:
     return uuid.uuid4().hex
 
 
-def set_trace_id(tid: str) -> contextvars.Token:
+def set_trace_id(tid: str) -> contextvars.Token[str]:
     return trace_id_var.set(_normalize_trace_id(tid))
 
 
@@ -40,7 +42,7 @@ def build_traceparent(trace_id: str) -> str:
     return f"00-{tid_hex}-{span_id}-01"
 
 
-def extract_trace_id_from_headers(headers: dict) -> str:
+def extract_trace_id_from_headers(headers: Mapping[str, Any]) -> str:
     xrid = (headers.get("x-request-id") or headers.get("X-Request-Id") or "").strip()
     if xrid:
         return _normalize_trace_id(xrid)
