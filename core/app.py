@@ -64,9 +64,9 @@ def _create_supervised_task(
                     acquired = await redis_set_nx_ex(lock_key, token, ttl_seconds)
                 except Exception:
                     BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
-                    logger.exception("[Poller] %s leader election unavailable; running without lock", name)
-                    await coro_factory()
-                    return
+                    logger.exception("[Poller] %s leader election unavailable; skip this round", name)
+                    await asyncio.sleep(5)
+                    continue
 
                 if not acquired:
                     BACKGROUND_POLLER_LEADER.labels(name=name).set(0)
@@ -77,6 +77,7 @@ def _create_supervised_task(
                 lost_event = asyncio.Event()
 
                 async def _renew_loop(lost: asyncio.Event) -> None:
+                    failures = 0
                     try:
                         while True:
                             await asyncio.sleep(ttl_seconds / 2)
@@ -84,7 +85,12 @@ def _create_supervised_task(
                                 renewed = await redis_eval_int(renew_script, 1, lock_key, token, ttl_seconds)
                             except Exception:
                                 logger.exception("[Poller] %s leader lock renew error", name)
+                                failures += 1
+                                if failures >= 3:
+                                    lost.set()
+                                    return
                                 continue
+                            failures = 0
                             if renewed == 0:
                                 lost.set()
                                 return
