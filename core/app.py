@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await dispose_engine()
     await dispose_redis()
-    reset_openai_client()
+    await reset_openai_client()
     await close_http_client()
     stop_log_listener()
 

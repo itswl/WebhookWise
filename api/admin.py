@@ -96,9 +96,9 @@ async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
 
 
 @admin_router.post("/api/prompt/reload", response_model=PromptReloadResponse)
-def reload_prompt() -> JSONResponse:
+async def reload_prompt() -> JSONResponse:
     try:
-        new_template = reload_user_prompt_template()
+        new_template = await reload_user_prompt_template()
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
         return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=preview)
     except Exception as e:
@@ -107,9 +107,9 @@ def reload_prompt() -> JSONResponse:
 
 
 @admin_router.get("/api/prompt", response_model=PromptGetResponse)
-def get_prompt() -> JSONResponse:
+async def get_prompt() -> JSONResponse:
     try:
-        template = load_user_prompt_template()
+        template = await load_user_prompt_template()
         return _ok(status=200, template=template, source=build_prompt_source())
     except Exception as e:
         logger.error(f"获取 prompt 模板失败: {e!s}", exc_info=True)

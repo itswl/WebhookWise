@@ -3,6 +3,7 @@
 集成 Prompt 管理、缓存、LLM 调用、结构化解析与成本追踪。
 """
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -49,6 +50,9 @@ WebhookData = dict[str, Any]
 AnalysisResult = dict[str, Any]
 
 _last_policy_refresh_at: float = 0.0
+_policy_refresh_lock = asyncio.Lock()
+_prompt_template_lock = asyncio.Lock()
+_openai_client_lock = asyncio.Lock()
 
 
 def _get_config_source(key: str) -> str:
@@ -71,16 +75,15 @@ async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_se
     global _last_policy_refresh_at
     if not Config.server.ENABLE_RUNTIME_CONFIG:
         return
-    now = time.time()
-    if now - _last_policy_refresh_at < min_interval_seconds:
-        return
-    try:
+    async with _policy_refresh_lock:
+        now = time.time()
+        if now - _last_policy_refresh_at < min_interval_seconds:
+            return
         before_url = policies.ai.OPENAI_API_URL
         before_key = policies.ai.OPENAI_API_KEY
         await policies.load_from_db()
         if before_url != policies.ai.OPENAI_API_URL or before_key != policies.ai.OPENAI_API_KEY:
-            reset_openai_client()
-    finally:
+            await reset_openai_client()
         _last_policy_refresh_at = now
 
 
@@ -94,44 +97,46 @@ def get_prompt_source() -> str:
     return _user_prompt_source
 
 
-def load_user_prompt_template() -> str:
+async def load_user_prompt_template() -> str:
     global _user_prompt_template, _user_prompt_source
-    if _user_prompt_template is not None:
-        return _user_prompt_template
+    async with _prompt_template_lock:
+        if _user_prompt_template is not None:
+            return _user_prompt_template
 
-    if Config.ai.AI_USER_PROMPT:
-        _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", Config.ai.AI_USER_PROMPT
-        return _user_prompt_template
+        if Config.ai.AI_USER_PROMPT:
+            _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", Config.ai.AI_USER_PROMPT
+            return _user_prompt_template
 
-    prompt_file = Config.ai.AI_USER_PROMPT_FILE
-    if prompt_file:
-        file_path = Path(prompt_file)
-        if not file_path.is_absolute():
-            file_path = Path(__file__).parent.parent / file_path
-        if file_path.exists():
-            try:
-                with open(file_path, encoding="utf-8") as f:
-                    _user_prompt_template = f.read()
-                _user_prompt_source = f"file:{file_path}"
-                return _user_prompt_template
-            except Exception as e:
-                logger.warning(f"从文件加载 prompt 模板失败: {e}")
+        prompt_file = Config.ai.AI_USER_PROMPT_FILE
+        if prompt_file:
+            file_path = Path(prompt_file)
+            if not file_path.is_absolute():
+                file_path = Path(__file__).parent.parent / file_path
+            if file_path.exists():
+                try:
+                    with open(file_path, encoding="utf-8") as f:
+                        _user_prompt_template = f.read()
+                    _user_prompt_source = f"file:{file_path}"
+                    return _user_prompt_template
+                except Exception as e:
+                    logger.warning(f"从文件加载 prompt 模板失败: {e}")
 
-    _user_prompt_source = "builtin:default"
-    _user_prompt_template = """请分析以下 webhook 事件：
+        _user_prompt_source = "builtin:default"
+        _user_prompt_template = """请分析以下 webhook 事件：
 **来源**: {source}
 **数据内容**:
 ```yaml
 {data_json}
 ```
 请识别事件的类型、严重程度，并提供摘要、影响评估和处理建议。"""
-    return _user_prompt_template
+        return _user_prompt_template
 
 
-def reload_user_prompt_template() -> str:
+async def reload_user_prompt_template() -> str:
     global _user_prompt_template
-    _user_prompt_template = None
-    return load_user_prompt_template()
+    async with _prompt_template_lock:
+        _user_prompt_template = None
+    return await load_user_prompt_template()
 
 
 # ── 缓存管理 ─────────────────────────────────────────────────────────────
@@ -253,16 +258,22 @@ class _InstructorClient(Protocol):
 
 def _get_instructor_client() -> instructor.Instructor:
     global _openai_client, _instructor_client
-    if _instructor_client is None:
-        if _openai_client is None:
-            _openai_client = AsyncOpenAI(
-                api_key=policies.ai.OPENAI_API_KEY,
-                base_url=policies.ai.OPENAI_API_URL,
-                http_client=get_http_client(),
-                timeout=httpx.Timeout(60.0, connect=10.0),
-            )
-        _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
-    return _instructor_client
+    raise RuntimeError("_get_instructor_client 已弃用，请使用 _get_instructor_client_async")
+
+
+async def _get_instructor_client_async() -> instructor.Instructor:
+    global _openai_client, _instructor_client
+    async with _openai_client_lock:
+        if _instructor_client is None:
+            if _openai_client is None:
+                _openai_client = AsyncOpenAI(
+                    api_key=policies.ai.OPENAI_API_KEY,
+                    base_url=policies.ai.OPENAI_API_URL,
+                    http_client=get_http_client(),
+                    timeout=httpx.Timeout(60.0, connect=10.0),
+                )
+            _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
+        return _instructor_client
 
 
 async def _create_with_completion(
@@ -281,16 +292,17 @@ async def _create_with_completion(
     )
 
 
-def reset_openai_client() -> None:
+async def reset_openai_client() -> None:
     global _openai_client, _instructor_client
-    _openai_client = _instructor_client = None
+    async with _openai_client_lock:
+        _openai_client = _instructor_client = None
 
 
 async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
-    client = _get_instructor_client()
+    client = await _get_instructor_client_async()
     cleaned_data = await sanitize_for_ai_async(data)
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    user_prompt = load_user_prompt_template().format(source=source, data_json=data_yaml)
+    user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
 
     with otel_span("ai.openai_call", {"source": source, "model": policies.ai.OPENAI_MODEL}) as s:
         res, completion = await _create_with_completion(client, model=policies.ai.OPENAI_MODEL, user_prompt=user_prompt)
