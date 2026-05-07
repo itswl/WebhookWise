@@ -95,24 +95,30 @@ def _setup_otlp_exporter(provider: Any) -> None:
         protocol = "http/protobuf" if endpoint.startswith(("http://", "https://")) else "grpc"
 
     headers = _parse_headers(os.getenv("OTEL_EXPORTER_OTLP_HEADERS", ""))
-    timeout = float(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "10") or "10")
+    timeout = int(float(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "10") or "10"))
 
     exporter = None
     if protocol in {"http", "http/protobuf", "http-protobuf"}:
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as HttpOTLPSpanExporter,
+            )
         except Exception:
             exporter = None
         else:
-            exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
+            exporter = HttpOTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
     elif protocol in {"grpc"}:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter as GrpcOTLPSpanExporter,
+            )
         except Exception:
             exporter = None
         else:
             insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "").strip().lower() in {"1", "true", "yes", "on"}
-            exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=insecure)
+            exporter = GrpcOTLPSpanExporter(
+                endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=insecure
+            )
 
     if exporter is None:
         return
