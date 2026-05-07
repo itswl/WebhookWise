@@ -34,7 +34,7 @@ class SerializerMixin:
     def to_dict(self, schema_cls: type["BaseModel"] | None = None) -> dict[str, object]:
         """将 Model 实例转换为字典。如果提供 schema_cls，则通过 Schema 进行过滤和格式化。"""
         if schema_cls:
-            return cast(dict[str, object], self.to_schema(schema_cls).model_dump())
+            return cast(dict[str, object], self.to_schema(schema_cls).model_dump(mode="json"))
         # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段，格式化 datetime）
         import datetime
 

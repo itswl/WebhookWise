@@ -447,7 +447,7 @@ async def analyze_webhook_with_ai(
             policies.ai.OPENAI_MODEL,
             t_in,
             t_out,
-            analysis.get("importance", "unknown"),
+            str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
         if not analysis.get("_degraded"):
             await save_to_cache(alert_hash, analysis)
