@@ -68,11 +68,10 @@ async def worker_startup_event(state: object) -> None:
     from core.otel import setup_otel_worker
 
     setup_otel_worker()
-    # 启动时立即执行一次 recovery，捞起重启前遗留的僵尸事件
     try:
         from services.recovery_poller import run_recovery_scan
 
-        await run_recovery_scan(stuck_threshold_seconds=0)
+        await run_recovery_scan(stuck_threshold_seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
         logger.info("[TaskIQ] 启动恢复扫描完成")
     except Exception as _e:
         logger.warning("[TaskIQ] 启动恢复扫描失败: %s", _e)
