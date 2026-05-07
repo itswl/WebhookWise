@@ -292,7 +292,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict[str, Any], got_lock
             if cached:
                 logger.debug("[Pipeline] 锁竞争立即命中缓存 hash=%s...", alert_hash[:12])
                 await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-                return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+                return AnalysisResolution(cached, False, False, None, False, is_reused=True)
             deadline = time.monotonic() + Config.retry.PROCESSING_LOCK_WAIT_SECONDS
             while time.monotonic() < deadline:
                 with contextlib.suppress(asyncio.TimeoutError):
@@ -304,7 +304,7 @@ async def _resolve_analysis(alert_hash: str, full_data: dict[str, Any], got_lock
                 if cached:
                     logger.debug("[Pipeline] 锁竞争 pub/sub 等待后命中缓存 hash=%s...", alert_hash[:12])
                     await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-                    return AnalysisResolution(cached, False, True, None, False, is_reused=True)
+                    return AnalysisResolution(cached, False, False, None, False, is_reused=True)
             logger.debug("[Pipeline] 锁竞争等待超时，降级为独立分析 hash=%s...", alert_hash[:12])
         finally:
             await pubsub.unsubscribe(channel)
@@ -771,6 +771,13 @@ async def _handle_webhook_process_inner(
             final_analysis = dict(analysis_res.analysis_result)
             final_analysis["noise_reduction"] = noise.__dict__
 
+            is_dup_for_save: bool | None = analysis_res.is_duplicate or analysis_res.beyond_window
+            original_for_save = analysis_res.original_event
+            beyond_for_save = analysis_res.beyond_window
+            if original_for_save is None:
+                is_dup_for_save = None
+                beyond_for_save = False
+
             save_res = await save_webhook_data(
                 data=req_ctx.parsed_data,
                 source=req_ctx.source,
@@ -779,9 +786,9 @@ async def _handle_webhook_process_inner(
                 client_ip=req_ctx.client_ip,
                 ai_analysis=final_analysis,
                 alert_hash=alert_hash,
-                is_duplicate=analysis_res.is_duplicate or analysis_res.beyond_window,
-                original_event=analysis_res.original_event,
-                beyond_window=analysis_res.beyond_window,
+                is_duplicate=is_dup_for_save,
+                original_event=original_for_save,
+                beyond_window=beyond_for_save,
                 reanalyzed=analysis_res.reanalyzed,
                 event_id=event_id,
             )

@@ -407,6 +407,7 @@ async def _update_existing_event(
         if "idx_unique_alert_hash_original" in str(e):
             # 违反了唯一索引，说明在分析期间，其他 worker 已经插入了相同的 alert_hash (is_duplicate=0)
             # 我们需要回滚刚才的改动，并将当前事件转化为重复告警
+            await session.rollback()
             session.expunge(event)
 
             # 查找那个抢先创建的 original_event
