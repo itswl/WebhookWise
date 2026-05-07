@@ -44,9 +44,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     get_http_client()
     await init_engine()
-    # 从数据库加载运行时配置
-    await Config.load_from_db()
-    await Config.start_subscriber()
+    if Config.server.ENABLE_RUNTIME_CONFIG:
+        await Config.load_from_db()
+        await Config.start_subscriber()
 
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()

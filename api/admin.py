@@ -70,6 +70,8 @@ async def get_config_sources_endpoint() -> JSONResponse:
 @admin_router.post("/api/config", response_model=ConfigUpdateResponse, dependencies=[Depends(verify_admin_write)])
 async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
     try:
+        if not Config.server.ENABLE_RUNTIME_CONFIG:
+            return _fail("运行时动态配置已禁用，请通过环境变量/ConfigMap 配置并滚动重启生效", 403)
         if not payload:
             return _fail("请求体为空", 400)
 
