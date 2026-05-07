@@ -1,7 +1,7 @@
 """
 tests/test_is_retryable.py
 ==========================
-测试 pipeline._is_retryable() 的异常分类逻辑。
+测试 retry_policy.should_retry() 的异常分类逻辑。
 该函数决定一个失败的 Webhook 处理是重新入队还是进入死信。
 """
 
@@ -9,7 +9,7 @@ import httpx
 import pytest
 import sqlalchemy.exc
 
-from services.pipeline import _is_retryable
+from core.retry_policies import retry_policy
 
 # ── 不可重试：永久性失败 ──────────────────────────────────────────────────────
 
@@ -49,61 +49,61 @@ def test_json_decode_error_not_retryable():
     try:
         orjson.loads(b"not-json")
     except orjson.JSONDecodeError as err:
-        assert _is_retryable(err) is False
+        assert retry_policy.should_retry(err) is False
     else:
         pytest.fail("orjson.loads should have raised JSONDecodeError")
 
 
 def test_value_error_not_retryable():
-    assert _is_retryable(ValueError("bad value")) is False
+    assert retry_policy.should_retry(ValueError("bad value")) is False
 
 
 def test_type_error_not_retryable():
-    assert _is_retryable(TypeError("wrong type")) is False
+    assert retry_policy.should_retry(TypeError("wrong type")) is False
 
 
 def test_key_error_not_retryable():
-    assert _is_retryable(KeyError("missing key")) is False
+    assert retry_policy.should_retry(KeyError("missing key")) is False
 
 
 def test_unicode_decode_error_not_retryable():
     err = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid")
-    assert _is_retryable(err) is False
+    assert retry_policy.should_retry(err) is False
 
 
 def test_openai_class_name_bad_request_not_retryable():
     """通过类名检测 OpenAI 错误，即使没有实际导入 openai 包。"""
-    assert _is_retryable(_FakeBadRequest("prompt too long")) is False
+    assert retry_policy.should_retry(_FakeBadRequest("prompt too long")) is False
 
 
 def test_openai_class_name_auth_not_retryable():
-    assert _is_retryable(_FakeAuthError("invalid api key")) is False
+    assert retry_policy.should_retry(_FakeAuthError("invalid api key")) is False
 
 
 def test_openai_class_name_permission_not_retryable():
-    assert _is_retryable(_FakePermissionDenied("forbidden")) is False
+    assert retry_policy.should_retry(_FakePermissionDenied("forbidden")) is False
 
 
 def test_openai_class_name_unprocessable_not_retryable():
-    assert _is_retryable(_FakeUnprocessable("entity error")) is False
+    assert retry_policy.should_retry(_FakeUnprocessable("entity error")) is False
 
 
 def test_context_length_message_not_retryable():
     """通用运行时错误默认不可重试（避免无限重试消耗 Token）。"""
     err = RuntimeError("This request exceeds context_length limit")
-    assert _is_retryable(err) is False
+    assert retry_policy.should_retry(err) is False
 
 
 def test_content_policy_message_not_retryable():
     """通用运行时错误默认不可重试（避免依赖报错文案进行分类）。"""
     err = RuntimeError("Blocked by content_policy violation")
-    assert _is_retryable(err) is False
+    assert retry_policy.should_retry(err) is False
 
 
 def test_content_filter_message_not_retryable():
     """通用运行时错误默认不可重试（避免依赖报错文案进行分类）。"""
     err = RuntimeError("content filter triggered")
-    assert _is_retryable(err) is False
+    assert retry_policy.should_retry(err) is False
 
 
 # ── 可重试：瞬时失败 ──────────────────────────────────────────────────────────
@@ -111,32 +111,32 @@ def test_content_filter_message_not_retryable():
 
 def test_connection_error_retryable():
     """网络断开是瞬时故障，应该重试。"""
-    assert _is_retryable(ConnectionError("connection reset")) is True
+    assert retry_policy.should_retry(ConnectionError("connection reset")) is True
 
 
 def test_os_error_retryable():
-    assert _is_retryable(OSError("broken pipe")) is True
+    assert retry_policy.should_retry(OSError("broken pipe")) is True
 
 
 def test_httpx_timeout_retryable():
     err = httpx.ReadTimeout("timed out", request=None)
-    assert _is_retryable(err) is True
+    assert retry_policy.should_retry(err) is True
 
 
 def test_httpx_connect_error_retryable():
     err = httpx.ConnectError("failed to connect", request=None)
-    assert _is_retryable(err) is True
+    assert retry_policy.should_retry(err) is True
 
 
 def test_sqlalchemy_operational_error_retryable():
     """数据库连接中断（如 asyncpg 断线）应该重试。"""
     err = sqlalchemy.exc.OperationalError("stmt", {}, Exception("connection lost"))
-    assert _is_retryable(err) is True
+    assert retry_policy.should_retry(err) is True
 
 
 def test_generic_runtime_error_retryable():
     """不在明确可重试集合中的通用运行时错误默认不可重试。"""
-    assert _is_retryable(RuntimeError("unexpected error")) is False
+    assert retry_policy.should_retry(RuntimeError("unexpected error")) is False
 
 
 # ── 异常链：__cause__ 链式检查 ────────────────────────────────────────────────
@@ -147,7 +147,7 @@ def test_chained_cause_bad_request_not_retryable():
     inner = _FakeBadRequest("model rejected prompt")
     outer = RuntimeError("AI call failed")
     outer.__cause__ = inner
-    assert _is_retryable(outer) is False
+    assert retry_policy.should_retry(outer) is False
 
 
 def test_chained_context_not_retryable():
@@ -155,7 +155,7 @@ def test_chained_context_not_retryable():
     inner = _FakeAuthError("401")
     outer = Exception("wrapper")
     outer.__context__ = inner
-    assert _is_retryable(outer) is False
+    assert retry_policy.should_retry(outer) is False
 
 
 def test_circular_exception_chain_does_not_hang():
@@ -163,5 +163,5 @@ def test_circular_exception_chain_does_not_hang():
     err = RuntimeError("cycle")
     err.__cause__ = err  # 循环引用
     # 不抛异常即可
-    result = _is_retryable(err)
+    result = retry_policy.should_retry(err)
     assert isinstance(result, bool)

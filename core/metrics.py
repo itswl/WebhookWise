@@ -90,6 +90,12 @@ OPENAI_ERRORS_TOTAL = Counter(
     ["type"],
 )
 
+ALERT_NUMERIC_PARSE_FAILURE_TOTAL = Counter(
+    "alert_numeric_parse_failure_total",
+    "Alert numeric field parse failures during rule analysis",
+    ["source", "field", "reason"],
+)
+
 # 9. Scheduler 轮询健康指标
 SCHEDULED_TASK_RUNS_TOTAL = Counter(
     "scheduled_task_runs_total",

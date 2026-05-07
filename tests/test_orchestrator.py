@@ -247,3 +247,57 @@ def test_analyze_with_rules_metric_threshold_promotes_to_high():
 
     res = analyze_with_rules({"RuleName": "5xxQPSHigh", "CurrentValue": 500, "Threshold": 100}, "cloud-monitor")
     assert res["importance"] == "high"
+
+
+def test_analyze_with_rules_records_non_numeric_metric_value(monkeypatch):
+    from services import ai_analyzer
+
+    class _Counter:
+        calls: list[dict[str, str]]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def labels(self, **labels: str) -> "_Counter":
+            self.calls.append(labels)
+            return self
+
+        def inc(self) -> None:
+            pass
+
+    counter = _Counter()
+    monkeypatch.setattr(ai_analyzer, "ALERT_NUMERIC_PARSE_FAILURE_TOTAL", counter)
+
+    res = ai_analyzer.analyze_with_rules(
+        {"RuleName": "MemoryUsage", "CurrentValue": "500MB", "Threshold": 100}, "prometheus"
+    )
+
+    assert res["importance"] == "medium"
+    assert counter.calls == [{"source": "prometheus", "field": "current", "reason": "non_numeric"}]
+
+
+def test_analyze_with_rules_records_non_finite_metric_value(monkeypatch):
+    from services import ai_analyzer
+
+    class _Counter:
+        calls: list[dict[str, str]]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def labels(self, **labels: str) -> "_Counter":
+            self.calls.append(labels)
+            return self
+
+        def inc(self) -> None:
+            pass
+
+    counter = _Counter()
+    monkeypatch.setattr(ai_analyzer, "ALERT_NUMERIC_PARSE_FAILURE_TOTAL", counter)
+
+    res = ai_analyzer.analyze_with_rules(
+        {"RuleName": "MemoryUsage", "CurrentValue": "NaN", "Threshold": 100}, "prometheus"
+    )
+
+    assert res["summary"] == "🟠 MemoryUsage"
+    assert counter.calls == [{"source": "prometheus", "field": "current", "reason": "non_finite"}]
