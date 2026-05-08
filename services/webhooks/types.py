@@ -1,10 +1,20 @@
 """业务流程数据结构 — 供 pipeline 和其他 service 层使用，不依赖 api 层。"""
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from models import WebhookEvent
+
+
+class WebhookProcessingStatus(StrEnum):
+    RECEIVED = "received"
+    ANALYZING = "analyzing"
+    RETRY = "retry"
+    FAILED = "failed"
+    COMPLETED = "completed"
+    DEAD_LETTER = "dead_letter"
 
 
 @dataclass(frozen=True)
