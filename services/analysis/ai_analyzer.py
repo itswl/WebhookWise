@@ -4,7 +4,6 @@
 """
 
 import asyncio
-import contextlib
 import logging
 import math
 import os
@@ -181,7 +180,7 @@ async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> boo
     if not Config.ai.CACHE_ENABLED:
         return False
     try:
-        from core.redis_client import redis_publish, redis_setex_bytes, redis_setex_str
+        from core.redis_client import redis_setex_bytes, redis_setex_str
 
         ck = get_cache_key(alert_hash)
         res_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
@@ -189,8 +188,6 @@ async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> boo
         counter_key = f"{ck}:hits"
         await redis_setex_bytes(ck, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
         await redis_setex_str(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
-        with contextlib.suppress(Exception):
-            await redis_publish(f"analysis_done:{alert_hash}", "1")
         return True
     except Exception as e:
         logger.warning(f"保存缓存失败: {e}")
@@ -328,8 +325,8 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
         cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
             t_out / 1000
         ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
-        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="input").inc(t_in)
-        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="output").inc(t_out)
+        AI_TOKENS_TOTAL.labels(Config.ai.OPENAI_MODEL, "input").inc(t_in)
+        AI_TOKENS_TOTAL.labels(Config.ai.OPENAI_MODEL, "output").inc(t_out)
         AI_COST_USD_TOTAL.labels(model=Config.ai.OPENAI_MODEL).inc(cost)
         if s:
             s.set_attribute("tokens_in", t_in)

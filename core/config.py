@@ -211,8 +211,6 @@ class RetryConfig(BaseSettings):
     FORWARD_AFTER_TIME_WINDOW: bool = Field(default=True)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
-    PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
-    PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)

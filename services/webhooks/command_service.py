@@ -179,7 +179,7 @@ async def _save_duplicate_event(
 
 async def _save_new_event(session: AsyncSession, **kwargs: object) -> SaveWebhookResult:
     event = WebhookEvent()
-    event.fill_fields(**kwargs, is_duplicate=0, duplicate_count=1, beyond_window=0, last_notified_at=datetime.now())
+    event.fill_fields(**kwargs, is_duplicate=0, duplicate_count=1, beyond_window=0, last_notified_at=None)
     session.add(event)
     await session.flush()
     return SaveWebhookResult(event.id, False, None, False)
@@ -223,7 +223,7 @@ async def _update_existing_event(
         duplicate_of=None,
         duplicate_count=1,
         beyond_window=0,
-        last_notified_at=datetime.now(),
+        last_notified_at=None,
         headers=headers,
         raw_payload=raw_payload,
         processing_status="completed",
@@ -300,7 +300,7 @@ async def _upsert_new_event(
             is_duplicate=0,
             duplicate_count=1,
             beyond_window=0,
-            last_notified_at=now,
+            last_notified_at=None,
         )
         .on_conflict_do_update(
             index_elements=["alert_hash"],
@@ -352,61 +352,98 @@ async def save_webhook_data(
 ) -> SaveWebhookResult:
     if alert_hash is None:
         alert_hash = WebhookEvent.generate_hash(data, source)
-    safe_headers = redact_headers(headers)
     try:
         async with session_scope() as session:
-            if is_duplicate is None:
-                check = await WebhookEvent.check_duplicate(
-                    alert_hash, session=session, time_window_hours=Config.retry.DUPLICATE_ALERT_TIME_WINDOW
-                )
-                is_duplicate, original_event, beyond_window = (
-                    check.is_duplicate,
-                    check.original_event,
-                    check.beyond_window,
-                )
-            if is_duplicate and original_event:
-                saved = await _save_duplicate_event(
-                    session,
-                    source=source,
-                    client_ip=client_ip,
-                    raw_payload=raw_payload,
-                    headers=safe_headers,
-                    data=data,
-                    alert_hash=alert_hash,
-                    ai_analysis=ai_analysis,
-                    forward_status=forward_status,
-                    original_event=original_event,
-                    beyond_window=beyond_window,
-                    reanalyzed=reanalyzed,
-                    event_id=event_id,
-                )
-                if saved:
-                    return saved
-            if event_id is not None:
-                return await _update_existing_event(
-                    session,
-                    event_id=event_id,
-                    source=source,
-                    client_ip=client_ip,
-                    raw_payload=raw_payload,
-                    headers=safe_headers,
-                    data=data,
-                    alert_hash=alert_hash,
-                    ai_analysis=ai_analysis,
-                    forward_status=forward_status,
-                )
-            return await _upsert_new_event(
+            return await save_webhook_data_in_session(
                 session,
-                source=source,
-                client_ip=client_ip,
-                raw_payload=raw_payload,
-                headers=safe_headers,
                 data=data,
-                alert_hash=alert_hash,
+                source=source,
+                raw_payload=raw_payload,
+                headers=headers,
+                client_ip=client_ip,
                 ai_analysis=ai_analysis,
                 forward_status=forward_status,
+                alert_hash=alert_hash,
+                is_duplicate=is_duplicate,
+                original_event=original_event,
                 beyond_window=beyond_window,
+                reanalyzed=reanalyzed,
+                event_id=event_id,
             )
     except Exception:
         logger.exception("保存 webhook 事件失败")
         raise
+
+
+async def save_webhook_data_in_session(
+    session: AsyncSession,
+    data: WebhookData,
+    source: str = "unknown",
+    raw_payload: bytes | None = None,
+    headers: HeadersDict | None = None,
+    client_ip: str | None = None,
+    ai_analysis: AnalysisResult | None = None,
+    forward_status: str = "pending",
+    alert_hash: str | None = None,
+    is_duplicate: bool | None = None,
+    original_event: WebhookEvent | None = None,
+    beyond_window: bool = False,
+    reanalyzed: bool = False,
+    event_id: int | None = None,
+) -> SaveWebhookResult:
+    """Persist webhook data using an existing transaction/session."""
+    if alert_hash is None:
+        alert_hash = WebhookEvent.generate_hash(data, source)
+    safe_headers = redact_headers(headers)
+    if is_duplicate is None:
+        check = await WebhookEvent.check_duplicate(
+            alert_hash, session=session, time_window_hours=Config.retry.DUPLICATE_ALERT_TIME_WINDOW
+        )
+        is_duplicate, original_event, beyond_window = (
+            check.is_duplicate,
+            check.original_event,
+            check.beyond_window,
+        )
+    if is_duplicate and original_event:
+        saved = await _save_duplicate_event(
+            session,
+            source=source,
+            client_ip=client_ip,
+            raw_payload=raw_payload,
+            headers=safe_headers,
+            data=data,
+            alert_hash=alert_hash,
+            ai_analysis=ai_analysis,
+            forward_status=forward_status,
+            original_event=original_event,
+            beyond_window=beyond_window,
+            reanalyzed=reanalyzed,
+            event_id=event_id,
+        )
+        if saved:
+            return saved
+    if event_id is not None:
+        return await _update_existing_event(
+            session,
+            event_id=event_id,
+            source=source,
+            client_ip=client_ip,
+            raw_payload=raw_payload,
+            headers=safe_headers,
+            data=data,
+            alert_hash=alert_hash,
+            ai_analysis=ai_analysis,
+            forward_status=forward_status,
+        )
+    return await _upsert_new_event(
+        session,
+        source=source,
+        client_ip=client_ip,
+        raw_payload=raw_payload,
+        headers=safe_headers,
+        data=data,
+        alert_hash=alert_hash,
+        ai_analysis=ai_analysis,
+        forward_status=forward_status,
+        beyond_window=beyond_window,
+    )
