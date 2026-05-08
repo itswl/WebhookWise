@@ -3,20 +3,20 @@
 批量重试失败的深度分析记录
 
 用法:
-    python scripts/retry_failed_deep_analyses.py [OPTIONS]
+    python -m scripts.ops.retry_failed_deep_analyses [OPTIONS]
 
 示例:
     # 重试所有失败记录
-    python scripts/retry_failed_deep_analyses.py
+    python -m scripts.ops.retry_failed_deep_analyses
 
     # 只列出待重试的记录，不实际执行
-    python scripts/retry_failed_deep_analyses.py --list
+    python -m scripts.ops.retry_failed_deep_analyses --list
 
     # 只重试指定 webhook_event_id 关联的记录
-    python scripts/retry_failed_deep_analyses.py --webhook-id 20177
+    python -m scripts.ops.retry_failed_deep_analyses --webhook-id 20177
 
     # 重试最近 N 条失败记录
-    python scripts/retry_failed_deep_analyses.py --limit 50
+    python -m scripts.ops.retry_failed_deep_analyses --limit 50
 """
 
 import argparse
@@ -25,7 +25,7 @@ import os
 import sys
 
 # 添加项目根目录到 path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import select
 

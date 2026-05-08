@@ -2,13 +2,13 @@
 """
 告警数据查询脚本
 用法:
-    python query_alerts.py --id 5           # 查询单条
-    python query_alerts.py --list           # 列出最近20条
-    python query_alerts.py --hash <hash>   # 按 hash 查询
-    python query_alerts.py --source <src>  # 按来源筛选
-    python query_alerts.py --importance high # 按重要性筛选
-    python query_alerts.py --duplicate     # 查询重复告警
-    python query_alerts.py --limit 50      # 自定义数量
+    python -m scripts.ops.query_alerts --id 5
+    python -m scripts.ops.query_alerts --list
+    python -m scripts.ops.query_alerts --hash <hash>
+    python -m scripts.ops.query_alerts --source <src>
+    python -m scripts.ops.query_alerts --importance high
+    python -m scripts.ops.query_alerts --duplicate
+    python -m scripts.ops.query_alerts --limit 50
 """
 
 import argparse
@@ -19,7 +19,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import func, select
 
