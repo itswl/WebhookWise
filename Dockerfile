@@ -77,7 +77,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD ["python3", "-m", "scripts.healthcheck"]
 
-# 设置启动入口点（自动执行数据库初始化和迁移）
+# 设置启动入口点（按 RUN_MODE 分发进程；迁移由独立 migrate job 执行）
 ENTRYPOINT ["./entrypoint.sh"]
 
 # 使用 Gunicorn + UvicornWorker 运行应用(生产环境)
