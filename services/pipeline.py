@@ -37,7 +37,7 @@ from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
 from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
-from services.retry_queue import compute_backoff_delay, enqueue_webhook_retry
+from services.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
 from services.types import (
     AnalysisResolution,
     ForwardDecision,
@@ -664,7 +664,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                 multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
             )
             try:
-                await enqueue_webhook_retry(event_id, delay)
+                await schedule_webhook_retry(event_id, delay)
             except Exception as enqueue_err:
                 async with session_scope() as sess:
                     await sess.execute(
@@ -677,7 +677,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                         )
                     )
                 logger.warning(
-                    "[Pipeline] Redis 延迟重试入队失败，回落到 recovery 兜底 event_id=%s error=%s",
+                    "[Pipeline] TaskIQ 延迟重试调度失败，回落到 recovery 兜底 event_id=%s error=%s",
                     event_id,
                     enqueue_err,
                 )
@@ -688,7 +688,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
             outcome = "retry"
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
             logger.error(
-                "[Pipeline] 处理失败，已进入 Redis 延迟重试 event_id=%s retry=%s/%s delay=%ss error=%s",
+                "[Pipeline] 处理失败，已进入 TaskIQ 延迟重试 event_id=%s retry=%s/%s delay=%ss error=%s",
                 event_id,
                 next_retry_count,
                 max_retries,

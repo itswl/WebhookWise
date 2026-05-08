@@ -63,25 +63,6 @@ async def process_webhook_task(
 
 
 @broker.task(
-    task_name="scheduled_webhook_retry_drain",
-    schedule=[
-        {"interval": Config.retry.WEBHOOK_RETRY_DRAIN_INTERVAL, "schedule_id": "webhook_retry_drain_interval_seconds"}
-    ],
-)
-async def scheduled_webhook_retry_drain() -> None:
-    from services.retry_queue import drain_due_webhook_retries
-
-    async def _drain() -> None:
-        event_ids = await drain_due_webhook_retries(limit=Config.retry.WEBHOOK_RETRY_DRAIN_BATCH_SIZE)
-        for event_id in event_ids:
-            await process_webhook_task.kiq(event_id=event_id, client_ip="retry-queue")
-        if event_ids:
-            logger.info("[RetryQueue] 已重新投递 webhook retries count=%d", len(event_ids))
-
-    await _run_scheduled("webhook_retry_drain", Config.retry.WEBHOOK_RETRY_DRAIN_INTERVAL, _drain())
-
-
-@broker.task(
     task_name="scheduled_recovery_scan",
     schedule=[
         {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "recovery_scan_interval_seconds"}

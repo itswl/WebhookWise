@@ -1,7 +1,8 @@
-"""Redis-backed delayed retry queues.
+"""Redis-backed delayed retry queue for failed forwarding.
 
-The database remains the source of record for event/forward status, while Redis
-holds the scheduling primitive that decides when a retry is due.
+Webhook processing retries use TaskIQ's dynamic scheduler directly. Failed
+forwarding keeps this lightweight queue because retries are batched with
+FailedForward audit records and per-batch concurrency controls.
 """
 
 from __future__ import annotations
@@ -20,31 +21,13 @@ redis.call("zrem", KEYS[1], unpack(items))
 return table.concat(items, ",")
 """
 
-WEBHOOK_RETRY_ZSET = "webhook:retry:delayed"
 FORWARD_RETRY_ZSET = "forward:retry:delayed"
-
-
-def compute_backoff_delay(
-    attempt: int,
-    *,
-    initial_delay: int,
-    max_delay: int,
-    multiplier: float,
-) -> int:
-    """Return bounded exponential backoff delay in seconds."""
-    normalized_attempt = max(1, int(attempt))
-    delay = initial_delay * (multiplier ** (normalized_attempt - 1))
-    return max(0, int(min(delay, max_delay)))
 
 
 async def _enqueue_due_id(zset_key: str, item_id: int, delay_seconds: int) -> None:
     score = time.time() + max(0, int(delay_seconds))
     redis = cast(Any, get_redis())
     await redis.zadd(zset_key, {str(item_id): score})
-
-
-async def enqueue_webhook_retry(event_id: int, delay_seconds: int) -> None:
-    await _enqueue_due_id(WEBHOOK_RETRY_ZSET, event_id, delay_seconds)
 
 
 async def enqueue_forward_retry(failed_forward_id: int, delay_seconds: int) -> None:
@@ -58,10 +41,6 @@ async def drain_due_ids(zset_key: str, *, limit: int, now: float | None = None) 
     if not raw:
         return []
     return [int(part) for part in raw.split(",") if part.isdigit()]
-
-
-async def drain_due_webhook_retries(*, limit: int) -> list[int]:
-    return await drain_due_ids(WEBHOOK_RETRY_ZSET, limit=limit)
 
 
 async def drain_due_forward_retries(*, limit: int) -> list[int]:

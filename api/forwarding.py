@@ -68,6 +68,7 @@ async def create_forward_rule_endpoint(
         target_name=payload.get("target_name", ""),
         stop_on_match=payload.get("stop_on_match", False),
     )
+    await session.commit()
     return {"success": True, "data": rule, "message": "规则创建成功"}
 
 
@@ -79,6 +80,7 @@ async def update_forward_rule_endpoint(
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+    await session.commit()
     return {"success": True, "data": rule, "message": "规则更新成功"}
 
 
@@ -88,6 +90,7 @@ async def delete_forward_rule_endpoint(
 ) -> JSONDict | JSONResponse:
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+    await session.commit()
     return {"success": True, "message": "规则已删除"}
 
 
@@ -136,6 +139,7 @@ async def get_retry_stats(session: AsyncSession = Depends(get_db_session)) -> JS
 @forwarding_router.post("/api/failed-forwards/{failed_forward_id}/retry")
 async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     if await manual_retry_reset(failed_forward_id, session):
+        await session.commit()
         return _ok(message="已重置为待重试")
     return _fail("记录不存在或状态不是 exhausted", 400)
 
@@ -143,5 +147,6 @@ async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(
 @forwarding_router.delete("/api/failed-forwards/{failed_forward_id}")
 async def delete_record(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     if await delete_failed_forward(failed_forward_id, session):
+        await session.commit()
         return _ok(message="记录已删除")
     return _fail("记录不存在", 404)

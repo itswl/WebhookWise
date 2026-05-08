@@ -84,6 +84,7 @@ async def deep_analyze_webhook(
     )
     session.add(record)
     await session.flush()
+    await session.commit()
     return {"success": True, "data": record.to_dict()}
 
 
@@ -140,6 +141,7 @@ async def retry_deep_analysis(
             record.openclaw_session_key = new_result.get("_openclaw_session_key", "")
             record.duration_seconds = 0
             await session.flush()
+            await session.commit()
             return {"success": True, "message": "已重新发起分析任务，请等待结果"}
 
         record.status = "completed"
@@ -149,6 +151,7 @@ async def retry_deep_analysis(
         await session.flush()
         with contextlib.suppress(Exception):
             await _notify_completed_deep_analysis(session, record)
+        await session.commit()
         return {"success": True, "message": "分析已完成"}
 
     if Config.openclaw.OPENCLAW_HTTP_API_URL:
@@ -179,6 +182,7 @@ async def retry_deep_analysis(
         except Exception as e:
             logger.warning("retry: 飞书深度分析通知异常: %s", e, exc_info=True)
 
+        await session.commit()
         return {"success": True, "message": f"获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果"}
 
     timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
@@ -187,6 +191,7 @@ async def retry_deep_analysis(
         record.status = "failed"
         record.analysis_result = {"root_cause": f"OpenClaw 分析超时（已等待 {int(elapsed)}s）"}
         await session.flush()
+        await session.commit()
         return JSONResponse(
             status_code=400, content={"success": False, "error": f"分析已超时（{int(elapsed)}s），请重新发起深度分析"}
         )
@@ -194,6 +199,7 @@ async def retry_deep_analysis(
     record.status = "pending"
     record.analysis_result = None
     await session.flush()
+    await session.commit()
     return {"success": True, "message": "已重置为待重试，将在下次轮询时拉取结果"}
 
 
@@ -248,6 +254,7 @@ async def forward_deep_analysis(
                 forward_data={"analysis_id": analysis_id, "webhook_event_id": analysis.webhook_event_id},
                 session=session,
             )
+            await session.commit()
         return JSONResponse(status_code=202, content={"success": True, "message": "分析已提交，飞书通知可能延迟"})
 
     fwd_payload = {
