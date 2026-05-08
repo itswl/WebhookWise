@@ -14,7 +14,7 @@ import websocket
 from dotenv import load_dotenv
 
 # 加载 .env
-env_path = Path(__file__).resolve().parent.parent / ".env"
+env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(env_path)
 
 gateway_url = (
