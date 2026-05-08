@@ -30,7 +30,7 @@ from tenacity import (
 )
 
 from core.circuit_breaker import feishu_cb
-from core.config import Config, policies
+from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
 from core.metrics import (
@@ -58,7 +58,7 @@ _openai_client_lock = asyncio.Lock()
 
 
 def _get_config_source(key: str) -> str:
-    meta = policies.get_meta(key)
+    meta = Config.get_meta(key)
     source = meta.get("source")
     if source:
         return str(source)
@@ -81,10 +81,10 @@ async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_se
         now = time.time()
         if now - _last_policy_refresh_at < min_interval_seconds:
             return
-        before_url = policies.ai.OPENAI_API_URL
-        before_key = policies.ai.OPENAI_API_KEY
-        await policies.load_from_db()
-        if before_url != policies.ai.OPENAI_API_URL or before_key != policies.ai.OPENAI_API_KEY:
+        before_url = Config.ai.OPENAI_API_URL
+        before_key = Config.ai.OPENAI_API_KEY
+        await Config.load_from_db()
+        if before_url != Config.ai.OPENAI_API_URL or before_key != Config.ai.OPENAI_API_KEY:
             await reset_openai_client()
         _last_policy_refresh_at = now
 
@@ -209,7 +209,7 @@ async def log_ai_usage(
         async with session_scope() as session:
             session.add(
                 AIUsageLog(
-                    model=model or policies.ai.OPENAI_MODEL,
+                    model=model or Config.ai.OPENAI_MODEL,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     cost_estimate=cost,
@@ -269,8 +269,8 @@ async def _get_instructor_client_async() -> instructor.Instructor:
         if _instructor_client is None:
             if _openai_client is None:
                 _openai_client = AsyncOpenAI(
-                    api_key=policies.ai.OPENAI_API_KEY,
-                    base_url=policies.ai.OPENAI_API_URL,
+                    api_key=Config.ai.OPENAI_API_KEY,
+                    base_url=Config.ai.OPENAI_API_URL,
                     http_client=get_http_client(),
                     timeout=httpx.Timeout(60.0, connect=10.0),
                 )
@@ -286,7 +286,7 @@ async def _create_with_completion(
         model=model,
         response_model=WebhookAnalysisResult,
         messages=[
-            {"role": "system", "content": policies.ai.AI_SYSTEM_PROMPT},
+            {"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
         temperature=Config.ai.OPENAI_TEMPERATURE,
@@ -306,17 +306,17 @@ async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tup
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
     user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
 
-    with otel_span("ai.openai_call", {"source": source, "model": policies.ai.OPENAI_MODEL}) as s:
-        res, completion = await _create_with_completion(client, model=policies.ai.OPENAI_MODEL, user_prompt=user_prompt)
+    with otel_span("ai.openai_call", {"source": source, "model": Config.ai.OPENAI_MODEL}) as s:
+        res, completion = await _create_with_completion(client, model=Config.ai.OPENAI_MODEL, user_prompt=user_prompt)
 
         t_in = completion.usage.prompt_tokens if completion.usage else 0
         t_out = completion.usage.completion_tokens if completion.usage else 0
         cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
             t_out / 1000
         ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
-        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="input").inc(t_in)
-        AI_TOKENS_TOTAL.labels(model=policies.ai.OPENAI_MODEL, token_type="output").inc(t_out)
-        AI_COST_USD_TOTAL.labels(model=policies.ai.OPENAI_MODEL).inc(cost)
+        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="input").inc(t_in)
+        AI_TOKENS_TOTAL.labels(model=Config.ai.OPENAI_MODEL, token_type="output").inc(t_out)
+        AI_COST_USD_TOTAL.labels(model=Config.ai.OPENAI_MODEL).inc(cost)
         if s:
             s.set_attribute("tokens_in", t_in)
             s.set_attribute("tokens_out", t_out)
@@ -347,7 +347,7 @@ async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple
 
 async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_degraded: bool = False) -> None:
     try:
-        if not policies.ai.ENABLE_FORWARD or not policies.ai.FORWARD_URL:
+        if not Config.ai.ENABLE_FORWARD or not Config.ai.FORWARD_URL:
             return
         import hashlib
 
@@ -379,7 +379,7 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
                 ],
             },
         }
-        await feishu_cb.call_async(get_http_client().post, policies.ai.FORWARD_URL, json=card, timeout=10)
+        await feishu_cb.call_async(get_http_client().post, Config.ai.FORWARD_URL, json=card, timeout=10)
     except Exception as e:
         logger.error(f"发送 AI 错误通知失败: {e}")
 
@@ -412,9 +412,9 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     def _split_keywords(v: str) -> list[str]:
         return [p.strip().lower() for p in str(v).split(",") if p.strip()]
 
-    high_kw = _split_keywords(policies.ai.RULE_HIGH_KEYWORDS)
-    warn_kw = _split_keywords(policies.ai.RULE_WARN_KEYWORDS)
-    metric_kw = _split_keywords(policies.ai.RULE_METRIC_KEYWORDS)
+    high_kw = _split_keywords(Config.ai.RULE_HIGH_KEYWORDS)
+    warn_kw = _split_keywords(Config.ai.RULE_WARN_KEYWORDS)
+    metric_kw = _split_keywords(Config.ai.RULE_METRIC_KEYWORDS)
 
     importance = "medium"
     if level in high_kw or any(k in level for k in high_kw) or any(k in name_l for k in high_kw):
@@ -426,7 +426,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 
     cur_val = data.get("CurrentValue") or data.get("current_value") or data.get("current") or data.get("value")
     thr_val = data.get("Threshold") or data.get("threshold") or data.get("limit")
-    multiplier = float(policies.ai.RULE_THRESHOLD_MULTIPLIER or 4.0)
+    multiplier = float(Config.ai.RULE_THRESHOLD_MULTIPLIER or 4.0)
 
     def _record_numeric_parse_failure(field: str, value: Any, reason: str) -> None:
         ALERT_NUMERIC_PARSE_FAILURE_TOTAL.labels(
@@ -512,8 +512,8 @@ async def analyze_webhook_with_ai(
             await log_ai_usage("cache", alert_hash, source, cache_hit=True)
             return {**cached, "_route_type": "cache"}
 
-    if not policies.ai.ENABLE_AI_ANALYSIS or not policies.ai.OPENAI_API_KEY:
-        reason = "disabled" if not policies.ai.ENABLE_AI_ANALYSIS else "no_api_key"
+    if not Config.ai.ENABLE_AI_ANALYSIS or not Config.ai.OPENAI_API_KEY:
+        reason = "disabled" if not Config.ai.ENABLE_AI_ANALYSIS else "no_api_key"
         logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
         res = analyze_with_rules(parsed, source)
         res.update({"_degraded": True, "_route_type": "rule"})
@@ -530,11 +530,11 @@ async def analyze_webhook_with_ai(
         return res
 
     try:
-        model_meta = policies.get_meta("OPENAI_MODEL")
+        model_meta = Config.get_meta("OPENAI_MODEL")
         logger.debug(
             "[AI] 发起 OpenAI 请求 source=%s model=%s model_source=%s model_updated_at=%s hash=%s...",
             source,
-            policies.ai.OPENAI_MODEL,
+            Config.ai.OPENAI_MODEL,
             _get_config_source("OPENAI_MODEL"),
             _format_meta_time(model_meta.get("updated_at") if isinstance(model_meta, dict) else None),
             alert_hash[:12],
@@ -543,14 +543,14 @@ async def analyze_webhook_with_ai(
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,
-            policies.ai.OPENAI_MODEL,
+            Config.ai.OPENAI_MODEL,
             t_in,
             t_out,
             str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
         if not analysis.get("_degraded"):
             await save_to_cache(alert_hash, analysis)
-        await log_ai_usage("ai", alert_hash, source, model=policies.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
+        await log_ai_usage("ai", alert_hash, source, model=Config.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
         return {**analysis, "_route_type": "ai"}
     except Exception as e:
         logger.error("[AI] 分析失败 source=%s error=%s", source, e)

@@ -938,15 +938,11 @@ const AlertsModule = {
      * 深度分析告警
      */
     async deepAnalyzeAlert(id) {
-        // 让用户选择分析引擎
-        const engineChoice = confirm('使用 OpenClaw Agent 深度分析？\n\n点击「确定」使用 OpenClaw（更深度）\n点击「取消」使用本地 AI');
-        const engine = engineChoice ? 'openclaw' : 'local';
-
         const question = prompt('请输入您想问的问题（可选）:', '');
         if (question === null) return;  // 用户取消
 
         try {
-            const result = await API.deepAnalyze(id, question, engine);
+            const result = await API.deepAnalyze(id, question, 'openclaw');
             if (result.success && result.data) {
                 const analysisResult = result.data.analysis || {};
 

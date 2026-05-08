@@ -85,6 +85,34 @@ async def _notify_feishu_deep_analysis(record_dict: WebhookData, source: str = "
         logger.warning(f"飞书深度分析通知失败: {e}")
 
 
+def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> WebhookData:
+    """将 OpenClaw 原文转换为可持久化的 analysis_result。"""
+    parsed_result = None
+    json_text = _extract_robust_json(text)
+    if json_text:
+        try:
+            parsed_result = json.loads(json_text)
+        except Exception:
+            parsed_result = None
+
+    if parsed_result and isinstance(parsed_result, dict):
+        parsed_result["_openclaw_run_id"] = run_id
+        parsed_result["_openclaw_text"] = text
+        return dict(parsed_result)
+    return {"root_cause": text, "_openclaw_text": text}
+
+
+async def notify_deep_analysis_success(record: Any, source: str = "") -> None:
+    record_dict = {
+        "id": record.id,
+        "webhook_event_id": record.webhook_event_id,
+        "engine": record.engine,
+        "analysis_result": record.analysis_result,
+        "duration_seconds": record.duration_seconds,
+    }
+    await _notify_feishu_deep_analysis(record_dict, source)
+
+
 async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: str = "") -> None:
     """发送深度分析失败的飞书通知（接受 dict）"""
     from adapters.ecosystem_adapters import send_feishu_deep_analysis
@@ -329,20 +357,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                         return {"id": record_id, "action": "skip"}
 
                     await _clear_poll_stability(record_id)
-                    parsed_result = None
-                    json_text = _extract_robust_json(text)
-                    if json_text:
-                        try:
-                            parsed_result = json.loads(json_text)
-                        except Exception:
-                            parsed_result = None
-
-                    if parsed_result and isinstance(parsed_result, dict):
-                        parsed_result["_openclaw_run_id"] = rec["openclaw_run_id"]
-                        parsed_result["_openclaw_text"] = text
-                        analysis_result = parsed_result
-                    else:
-                        analysis_result = {"root_cause": text, "_openclaw_text": text}
+                    analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
 
                     duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
                     update = {
@@ -384,19 +399,14 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                             "[Poller] 连续错误达阈值，降级使用首次结果: id=%s error_count=%d", record_id, error_count
                         )
                         await _clear_poll_stability(record_id)
-                        parsed_result = None
-                        json_text = _extract_robust_json(text)
-                        if json_text:
-                            try:
-                                parsed_result = json.loads(json_text)
-                            except Exception:
-                                parsed_result = None
                         DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=rec.get("engine", "openclaw")).inc()
                         return {
                             "id": record_id,
                             "action": "update",
                             "status": "completed",
-                            "analysis_result": parsed_result or {"root_cause": text},
+                            "analysis_result": build_analysis_result_from_openclaw_text(
+                                text, str(rec["openclaw_run_id"] or "")
+                            ),
                         }
                     # 更新 error_count 并继续等待
                     await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count})
