@@ -355,13 +355,19 @@ def _build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReduction
     return build_final_analysis(analysis_result, noise)
 
 
-async def _persist_analysis_and_forwarding_intents(
+async def _finalize_analysis_transaction(
     ctx: _PipelineContext,
     analysis_res: AnalysisResolution,
     final_analysis: dict[str, Any],
     noise: NoiseReductionContext,
 ) -> tuple[Any, ForwardDecision | None, list[int]]:
-    """Persist analysis and forwarding intents in one DB transaction."""
+    """Atomically persist the AI result, final event state and forwarding intents.
+
+    External AI calls intentionally happen before this point. Once a result is
+    available, the DB-facing finalization must be all-or-nothing: either the
+    webhook record is marked completed with its analysis and all outbox intents
+    exist, or none of those writes are committed.
+    """
     is_dup_for_save: bool | None = analysis_res.is_duplicate or analysis_res.beyond_window
     original_for_save = analysis_res.original_event
     beyond_for_save = analysis_res.beyond_window
@@ -570,7 +576,7 @@ async def _handle_webhook_process_inner(
                     )
 
                 final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
-                save_res, fwd_dec, outbox_ids = await _persist_analysis_and_forwarding_intents(
+                save_res, fwd_dec, outbox_ids = await _finalize_analysis_transaction(
                     ctx, analysis_res, final_analysis, noise
                 )
             await schedule_forward_outbox_many(outbox_ids)
