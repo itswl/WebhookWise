@@ -3,7 +3,7 @@ import os
 import urllib.request
 
 
-async def _check_worker() -> None:
+async def _check_background_process() -> None:
     from core.redis_client import dispose_redis, get_redis
     from db.session import dispose_engine, init_engine, test_db_connection
 
@@ -25,8 +25,10 @@ def _check_api() -> None:
 
 def main() -> int:
     run_mode = (os.getenv("RUN_MODE") or "").strip().lower()
-    if run_mode == "worker":
-        asyncio.run(_check_worker())
+    if run_mode in {"worker", "scheduler"}:
+        asyncio.run(_check_background_process())
+    elif run_mode == "migrate":
+        return 0
     else:
         _check_api()
     return 0
