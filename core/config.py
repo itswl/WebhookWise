@@ -219,9 +219,6 @@ class RetryConfig(BaseSettings):
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
     FORWARD_RETRY_MAX_DELAY: int = Field(default=3600)
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    FORWARD_RETRY_POLL_INTERVAL: int = Field(default=30)
-    FORWARD_RETRY_BATCH_SIZE: int = Field(default=100)
-    FORWARD_RETRY_CONCURRENCY: int = Field(default=10)
 
 
 # ── 顶层组合与统一管理器 ────────────────────────────────────────────────

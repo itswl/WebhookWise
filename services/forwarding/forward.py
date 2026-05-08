@@ -27,6 +27,17 @@ AnalysisResult = dict[str, Any]
 ForwardResult = dict[str, Any]
 
 
+async def _schedule_failed_forward_retry(record_id: int, delay_seconds: int) -> None:
+    if not Config.retry.ENABLE_FORWARD_RETRY:
+        return
+    try:
+        from services.operations.taskiq_retry_scheduler import schedule_forward_retry
+
+        await schedule_forward_retry(record_id, delay_seconds)
+    except Exception as e:
+        logger.warning("[ForwardRetry] TaskIQ 重试调度失败 record_id=%s error=%s", record_id, e)
+
+
 async def get_forward_rules(session: AsyncSession) -> list[ForwardRule]:
     stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
     result = await session.execute(stmt)
@@ -143,12 +154,14 @@ async def record_failed_forward(
         if session is not None:
             session.add(record)
             await session.flush()
+            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
             logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
             return record
 
         async with session_scope() as scoped_session:
             scoped_session.add(record)
             await scoped_session.flush()
+            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
             logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
             return record
     except Exception as e:
@@ -218,6 +231,7 @@ async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | Non
         record.status, record.retry_count, record.updated_at = "pending", 0, now
         record.next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         await sess.flush()
+        await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         return True
 
     if session:

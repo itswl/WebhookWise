@@ -12,7 +12,7 @@
 | **智能降噪去重** | Jaccard 相似度识别衍生告警，分布式去重 + 24h 时间窗口（可配置） |
 | **告警风暴背压** | 同一 `alert_hash` 并发激增时 Fail-Fast + 聚合写入，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
-| **转发失败重试** | 失败转发写入补偿队列，指数退避自动重试（最多 3 次） |
+| **转发失败重试** | 失败转发写入审计表，通过 TaskIQ 动态延迟任务指数退避重试（最多 3 次） |
 | **冷热数据归档** | 每日凌晨自动按重要性分级归档（high 90d / medium 30d / low 7d） |
 | **运行时策略热更新** | 配置写入 DB `system_configs`，Redis Pub/Sub 广播到所有进程 |
 | **全方位可观测性** | Prometheus 原生指标 + OpenTelemetry 链路追踪（可选） |
@@ -46,7 +46,8 @@
 
 **异步职责边界：**
 - TaskIQ：异步任务投递与 Worker 消费
-- Scheduler：周期性投递 recovery、metrics、OpenClaw poll、转发重试、数据维护等任务
+- Scheduler：周期性投递 recovery、metrics、OpenClaw poll、数据维护等任务
+- TaskIQ 动态调度：按事件投递 Webhook 处理重试和失败转发重试
 - PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
 - Redis：TaskIQ 队列、短期锁、缓存、运行时配置广播
 
@@ -314,7 +315,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `ai_cost_usd_total` | Counter | 累计 AI 成本（美元） |
 | `ai_analysis_duration_seconds` | Histogram | AI 分析耗时（按 source/engine） |
 | `db_queue_pending` | Gauge | 待处理事件数 |
-| `forward_retry_pending` | Gauge | DB 中待重试转发记录数 |
+| `forward_retry_pending` | Gauge | DB 中待重试转发审计记录数 |
 
 ## 🔒 安全说明
 

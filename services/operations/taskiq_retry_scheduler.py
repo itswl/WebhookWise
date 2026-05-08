@@ -37,3 +37,21 @@ async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
             client_ip="retry-schedule",
         )
     )
+
+
+async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> None:
+    """Schedule a single failed-forward retry through TaskIQ."""
+    from services.operations.tasks import retry_failed_forward_task
+
+    schedule_id = f"forward-retry:{failed_forward_id}"
+    await dynamic_schedule_source.delete_schedule(schedule_id)
+    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    await (
+        retry_failed_forward_task.kicker()
+        .with_schedule_id(schedule_id)
+        .schedule_by_time(
+            dynamic_schedule_source,
+            run_at,
+            failed_forward_id=failed_forward_id,
+        )
+    )
