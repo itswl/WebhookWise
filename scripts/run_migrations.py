@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
-import psycopg2
+import psycopg2  # type: ignore[import-untyped]
 
 from db.session import dispose_engine, init_engine, test_db_connection
 
