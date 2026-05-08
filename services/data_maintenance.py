@@ -153,9 +153,3 @@ async def archive_old_data_by_policy() -> int:
     except Exception as e:
         logger.error(f"[Maintenance] 归档任务失败: {e}", exc_info=True)
         return total_moved
-
-
-# 保留原函数名以便向后兼容，但内部调用新逻辑
-async def archive_old_data(archive_days: int = 30) -> int:
-    """[已废弃] 请使用 archive_old_data_by_policy()"""
-    return await archive_old_data_by_policy()

@@ -78,7 +78,7 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
 
 
 async def test_deep_analyses_list_fields(session, monkeypatch):
-    from api.analysis import list_all_deep_analyses
+    from api.deep_analysis import list_all_deep_analyses
     from models import DeepAnalysis, WebhookEvent
 
     event = WebhookEvent(
@@ -115,7 +115,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     session.add_all([r1, r2])
     await session.commit()
 
-    monkeypatch.setattr("api.analysis.MAX_PAGE", 2)
+    monkeypatch.setattr("api.deep_analysis.MAX_PAGE", 2)
 
     resp = await list_all_deep_analyses(page=1, per_page=20, cursor=None, status="", engine="", session=session)
     assert resp["success"] is True

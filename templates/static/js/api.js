@@ -228,7 +228,7 @@ const API = {
      * 执行深度分析
      * @param {number} id - 告警 ID
      * @param {string} question - 分析问题
-     * @param {string} engine - 分析引擎（'local'/'openclaw'/'auto'）
+     * @param {string} engine - 分析引擎（'openclaw'/'auto'）
      * @returns {Promise<object>} 分析结果
      */
     async deepAnalyze(id, question, engine = 'auto') {

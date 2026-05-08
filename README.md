@@ -102,8 +102,8 @@ curl -X POST http://localhost:8000/webhook \
 ├── api/               # API 路由 (webhook, admin, analysis, forwarding)
 ├── core/              # 基础设施 (config, auth, redis, logger, metrics, broker)
 ├── services/          # 业务逻辑 (pipeline, ai_analyzer, forward, tasks, ...)
-├── adapters/          # 生态适配器 (多格式归一化, 分析引擎插件)
-│   └── plugins/       # 分析引擎插件 (local, openclaw, feishu_card)
+├── adapters/          # 生态适配器 (多格式归一化)
+│   └── plugins/       # 生态适配器插件 (feishu_card)
 ├── models/            # SQLAlchemy ORM 模型
 ├── schemas/           # Pydantic 请求/响应 Schema
 ├── db/                # 数据库连接池与 session 管理
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8000/webhook \
 ### 分析
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
-| `POST` | `/api/deep-analyze/{webhook_id}` | 触发深度分析（local 或 openclaw 引擎） |
+| `POST` | `/api/deep-analyze/{webhook_id}` | 触发 OpenClaw 深度分析 |
 | `GET` | `/api/deep-analyses` | 分页列举深度分析记录 |
 | `GET` | `/api/deep-analyses/{webhook_id}` | 获取某事件的所有分析记录 |
 | `POST` | `/api/deep-analyses/{id}/retry` | 手动重拉 OpenClaw 分析结果 |
@@ -193,9 +193,7 @@ curl -X POST http://localhost:8000/webhook \
 | `ADMIN_WRITE_KEY` | — | 写操作单独 Key（为空则回退到 API_KEY） |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
-| `RUN_MODE` | `all` | `api` / `worker` / `all` |
-| `ENABLE_POLLERS` | `true` | 是否启用后台定时任务 |
-| `MAX_CONCURRENT_WEBHOOK_TASKS` | `30` | Webhook 后台处理最大并发数 |
+| `RUN_MODE` | `all` | `api` / `worker` / `scheduler` / `all` |
 | `DB_POOL_SIZE` | `20` | 数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
@@ -227,14 +225,6 @@ curl -X POST http://localhost:8000/webhook \
 | `NOISE_REDUCTION_WINDOW_MINUTES` | `5` | 相似度比对时间窗口（分钟） |
 | `ROOT_CAUSE_MIN_CONFIDENCE` | `0.65` | 根因判定置信度阈值 |
 | `SUPPRESS_DERIVED_ALERT_FORWARD` | `true` | 抑制衍生告警的转发 |
-
-### 告警风暴背压
-
-| 变量 | 默认值 | 说明 |
-|:---|:---|:---|
-| `PROCESSING_LOCK_FAILFAST_THRESHOLD` | `20` | 同一 hash 在窗口内超过该数量触发 Fail-Fast |
-| `PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS` | `10` | Fail-Fast 统计窗口（秒） |
-| `PROCESSING_LOCK_STORM_KEEP_LATEST_N` | `200` | 风暴期每个 hash 仅保留最新 N 条记录 |
 
 ### 转发与重试（`[runtime]` 可热更新）
 

@@ -6,7 +6,6 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.session import session_scope
 from models import WebhookEvent
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
@@ -101,15 +100,6 @@ async def list_webhook_summaries_cursor(
     has_more = len(rows) == limit
     items = [_row_to_summary_dict(r) for r in rows]
     return items, has_more, (rows[-1].id if has_more and rows else None)
-
-
-async def get_all_webhooks(
-    page: int = 1, page_size: int = 20, cursor_id: int | None = None, fields: str = "summary"
-) -> tuple[list[dict[str, Any]], int, int | None]:
-    """向后兼容接口：获取所有 webhooks。"""
-    async with session_scope() as session:
-        items, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=cursor_id, page_size=page_size)
-        return items, -1, next_cursor
 
 
 async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:

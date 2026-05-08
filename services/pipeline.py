@@ -423,7 +423,7 @@ async def _execute_forwarding(
     decision: ForwardDecision,
     full_data: dict[str, Any],
     analysis: dict[str, Any],
-    webhook_id: int | str,
+    webhook_id: int,
     orig_id: int | None,
 ) -> None:
     """执行转发"""
@@ -468,25 +468,22 @@ async def _execute_forwarding(
             logger.warning(
                 "[Forward] 转发失败 rule=%s target=%s event_id=%s error=%s", rule_name, target_url, webhook_id, res
             )
-            # webhook_id may be a file path string if save_webhook_data fell back to file storage
-            wh_id = webhook_id if isinstance(webhook_id, int) else None
-            if wh_id is not None:
-                raw_rule_id = rule.get("id")
-                rule_id: int | None = None
-                if isinstance(raw_rule_id, int):
-                    rule_id = raw_rule_id
-                elif isinstance(raw_rule_id, str):
-                    with contextlib.suppress(ValueError):
-                        rule_id = int(raw_rule_id)
-                await record_failed_forward(
-                    wh_id,
-                    rule_id,
-                    target_url,
-                    str(rule.get("target_type", "webhook") or "webhook"),
-                    "error",
-                    str(res),
-                    full_data,
-                )
+            raw_rule_id = rule.get("id")
+            rule_id: int | None = None
+            if isinstance(raw_rule_id, int):
+                rule_id = raw_rule_id
+            elif isinstance(raw_rule_id, str):
+                with contextlib.suppress(ValueError):
+                    rule_id = int(raw_rule_id)
+            await record_failed_forward(
+                webhook_id,
+                rule_id,
+                target_url,
+                str(rule.get("target_type", "webhook") or "webhook"),
+                "error",
+                str(res),
+                full_data,
+            )
         else:
             success = True
             if is_pending:
@@ -498,7 +495,7 @@ async def _execute_forwarding(
                 )
             else:
                 logger.info("[Forward] 转发成功 rule=%s target=%s event_id=%s", rule_name, target_url, webhook_id)
-            if rule.get("target_type") == "openclaw" and is_pending and isinstance(webhook_id, int):
+            if rule.get("target_type") == "openclaw" and is_pending:
                 # 深度分析记录挂在原始事件上，重复事件时用 orig_id
                 target_event_id = orig_id if orig_id else webhook_id
                 async with session_scope() as sess:
@@ -540,7 +537,9 @@ async def _transition_to_analyzing_and_load(event_id: int) -> _EventEnvelope | N
         payload, raw_text = await _load_event_payload(event)
         raw_body = raw_text.encode("utf-8") if raw_text else b""
         event_ts = event.timestamp.isoformat() if event.timestamp else None
-        return _EventEnvelope(headers=headers, payload=payload, raw_body=raw_body, source=event.source, event_ts=event_ts)
+        return _EventEnvelope(
+            headers=headers, payload=payload, raw_body=raw_body, source=event.source, event_ts=event_ts
+        )
 
 
 async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> bool:
@@ -627,7 +626,9 @@ async def _maybe_forward(
         analysis_res.original_event,
         ctx.req_ctx.source,
     )
-    await _execute_forwarding(fwd_dec, ctx.req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id)
+    await _execute_forwarding(
+        fwd_dec, ctx.req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id
+    )
     return fwd_dec
 
 
@@ -810,7 +811,9 @@ async def _handle_webhook_process_inner(
                     importance,
                     analysis_res.analysis_result.get("_degraded", False),
                 )
-                noise = await _compute_noise(alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result)
+                noise = await _compute_noise(
+                    alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result
+                )
 
             final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
             save_res = await _persist_analysis_result(ctx, analysis_res, final_analysis)

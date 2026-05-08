@@ -11,11 +11,11 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 # 必须导入任务以注册到 broker
 import services.tasks  # noqa: F401
-from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
-from adapters.registry import register_engine
 from api.admin import admin_router
-from api.analysis import analysis_router
+from api.ai_usage import ai_usage_router
+from api.deep_analysis import deep_analysis_router
 from api.forwarding import forwarding_router
+from api.reanalysis import reanalysis_router
 from api.webhook import webhook_router
 from core.auth import verify_api_key
 from core.config import Config
@@ -33,8 +33,6 @@ from services.pipeline import get_running_tasks
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # 注册深度分析引擎
-    register_engine(OpenClawAnalysisEngine())
     if not Config.security.API_KEY and not (Config.server.DEBUG or Config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
@@ -152,7 +150,9 @@ _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 logger.debug(f"worker_id={_WORKER_ID}")
 
 
-app.include_router(analysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
+app.include_router(ai_usage_router, dependencies=[Depends(verify_api_key)])
 app.include_router(forwarding_router, dependencies=[Depends(verify_api_key)])
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
 app.include_router(webhook_router)
