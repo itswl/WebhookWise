@@ -2,36 +2,34 @@
 测试分页查询功能
 """
 
+from collections.abc import AsyncIterator
+from typing import Any
+
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.ext.compiler import compiles
 
 from db.session import Base
 from models import WebhookEvent
-from services.webhook_query_service import get_all_webhooks
+from services.webhook_query_service import list_webhook_summaries
 
 
 # SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON
 @compiles(JSONB, "sqlite")
-def compile_jsonb_sqlite(type_, compiler, **kw):
+def compile_jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
     return "JSON"
 
 
 @pytest.fixture()
-async def mock_session_scope(monkeypatch):
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-
-    def _mock_session_scope():
-        return Session()
-
-    # 替换数据库连接
-    monkeypatch.setattr("services.webhook_query_service.session_scope", _mock_session_scope)
 
     # 插入一些测试数据
     async with Session() as session:
@@ -51,33 +49,33 @@ async def mock_session_scope(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_all_webhooks_pagination(mock_session_scope, monkeypatch):
-    # 注入 mock session
-    from db import session as db_session
-
-    def _mock_session_factory():
-        return mock_session_scope()
-
-    monkeypatch.setattr(db_session, "_session_factory", _mock_session_factory)
-
+async def test_list_webhook_summaries_pagination(
+    mock_session_scope: async_sessionmaker[AsyncSession],
+) -> None:
     # 测试第一页
-    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=None, page_size=5)
+    async with mock_session_scope() as session:
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=None, page_size=5)
     assert len(webhooks) == 5
-    assert next_cursor == 11  # 15, 14, 13, 12, 11 -> 下一个应该是 10?
-    # 注意：我们的 list_webhook_summaries 使用的是 WebhookEvent.id < cursor_id
-    # 15, 14, 13, 12, 11 (5条) -> rows[-1].id = 11
+    assert has_more is True
+    assert next_cursor == 11
 
     # 测试第二页
-    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=11, page_size=5)
+    async with mock_session_scope() as session:
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=11, page_size=5)
     assert len(webhooks) == 5
+    assert has_more is True
     assert next_cursor == 6
 
     # 测试第三页
-    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=6, page_size=5)
+    async with mock_session_scope() as session:
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=6, page_size=5)
     assert len(webhooks) == 5
+    assert has_more is False
     assert next_cursor is None  # 5, 4, 3, 2, 1 (没有更多了)
 
     # 验证最后一页
-    webhooks, total, next_cursor = await get_all_webhooks(cursor_id=1, page_size=5)
+    async with mock_session_scope() as session:
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=1, page_size=5)
     assert len(webhooks) == 0
+    assert has_more is False
     assert next_cursor is None

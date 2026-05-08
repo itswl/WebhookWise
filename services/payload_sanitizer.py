@@ -7,7 +7,7 @@ from typing import Any
 
 import orjson
 
-from core.config import Config, policies
+from core.config import Config
 from core.logger import get_logger
 
 logger = get_logger("payload_sanitizer")
@@ -73,11 +73,11 @@ def sanitize_for_ai(parsed_data: dict[str, Any]) -> dict[str, Any]:
         return parsed_data
 
     strip_keys = (
-        {k.strip().lower() for k in policies.ai.AI_PAYLOAD_STRIP_KEYS.split(",")}
-        if policies.ai.AI_PAYLOAD_STRIP_KEYS
+        {k.strip().lower() for k in Config.ai.AI_PAYLOAD_STRIP_KEYS.split(",")}
+        if Config.ai.AI_PAYLOAD_STRIP_KEYS
         else set()
     )
-    max_bytes = policies.ai.AI_PAYLOAD_MAX_BYTES
+    max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
     cleaned_obj = _strip_keys_recursive(parsed_data, strip_keys)

@@ -1,35 +1,18 @@
 """
 api/__init__.py
 =======================
-共享 dataclass 和响应工具，所有 route 模块共用。
+共享响应工具和异常类，所有 route 模块共用。
 """
 
 from typing import Any
 
 from fastapi.responses import JSONResponse
 
-# dataclass 定义已移到 services/types.py，此处重新导出保持兼容
-from services.types import (  # noqa: F401
-    AnalysisResolution,
-    ForwardDecision,
-    NoiseReductionContext,
-    PersistedEventContext,
-    WebhookRequestContext,
-)
-
 # ── 异常类 ──────────────────────────────────────────────────────────────────
 
 
-class WebhookRequestError(Exception):
-    """基类：Webhook 请求解析错误。"""
-
-
-class InvalidSignatureError(WebhookRequestError):
+class InvalidSignatureError(Exception):
     """签名校验失败。"""
-
-
-class InvalidJsonError(WebhookRequestError):
-    """JSON 解析失败。"""
 
 
 # ── 响应工具 ─────────────────────────────────────────────────────────────────

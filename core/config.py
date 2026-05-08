@@ -7,7 +7,7 @@ import socket
 import time
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Literal, TypeAlias, TypedDict, TypeVar
+from typing import Literal, TypeAlias, TypedDict, TypeVar
 
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
@@ -43,21 +43,14 @@ class ServerConfig(BaseSettings):
     METRICS_PORT: int = Field(default=0)
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="all")
-    ENABLE_POLLERS: bool = Field(default=True)
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
-    ENABLE_FILE_BACKUP: bool = Field(default=False)
-    JSON_SORT_KEYS: bool = Field(default=False)
-    JSONIFY_PRETTYPRINT_REGULAR: bool = Field(default=True)
-    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
-    WEBHOOK_SEMAPHORE_TIMEOUT_SECONDS: int = Field(default=30)
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
     OPENCLAW_POLL_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
-    RECOVERY_POLLER_CONCURRENCY: int = Field(default=5)
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
@@ -68,7 +61,6 @@ class ServerConfig(BaseSettings):
     WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000)
     WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS: int = Field(default=300000)
     WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000)
-    MQ_CONSUMER_CONCURRENCY: int = Field(default=10)
 
 
 class SecurityConfig(BaseSettings):
@@ -135,33 +127,16 @@ class AIConfig(BaseSettings):
 
     ENABLE_AI_DEGRADATION: bool = Field(default=False)
     OPENAI_TEMPERATURE: float = Field(default=0.2)
-    OPENAI_MAX_TOKENS: int = Field(default=1800)
-    OPENAI_TRUNCATION_RETRY_MAX_TOKENS: int = Field(default=2600)
-    AI_CONTINUATION_ENABLED: bool = Field(default=True)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")
 
     CACHE_ENABLED: bool = Field(default=True)
     ANALYSIS_CACHE_TTL: int = Field(default=21600)
-    SMART_ROUTING_ENABLED: bool = Field(default=True)
     AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003)
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
 
-    IMPORTANCE_CONFIG: dict[str, Any] = Field(
-        default={
-            "high": {"color": "red", "emoji": "🔴", "text": "高"},
-            "medium": {"color": "orange", "emoji": "🟠", "text": "中"},
-            "low": {"color": "green", "emoji": "🟢", "text": "低"},
-        }
-    )
-
-    CHATOPS_ENABLED: bool = Field(default=False)
-    FEISHU_BOT_APP_ID: str = Field(default="")
-    FEISHU_BOT_APP_SECRET: str = Field(default="")
-    DEEP_ANALYSIS_ENGINE: str = Field(default="local")
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
-    AI_API_TIMEOUT: int = Field(default=10)
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     FORWARD_TIMEOUT: int = Field(default=10)
 
@@ -183,7 +158,6 @@ class OpenClawConfig(BaseSettings):
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
     OPENCLAW_CONNECT_TIMEOUT: int = Field(default=10)
     OPENCLAW_HANDSHAKE_TIMEOUT: int = Field(default=5)
-    OPENCLAW_RECV_TIMEOUT: float = Field(default=1.0)
     OPENCLAW_NONCE_TIMEOUT: float = Field(default=2.0)
     OPENCLAW_POLL_TIMEOUT: int = Field(default=90)
     OPENCLAW_DEVICE_ID: str = Field(default="")
@@ -232,14 +206,10 @@ class RetryConfig(BaseSettings):
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=120)
     PROCESSING_LOCK_WAIT_SECONDS: int = Field(default=30)
-    PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=200)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
-    PROCESSING_LOCK_STORM_KEEP_LATEST_N: int = Field(default=200)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
-    SAVE_MAX_RETRIES: int = Field(default=3)
-    SAVE_RETRY_DELAY_SECONDS: float = Field(default=0.1)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)
     WEBHOOK_RETRY_MAX_DELAY: int = Field(default=900)
@@ -564,4 +534,3 @@ class _UnifiedConfigManager:
 
 
 Config = _UnifiedConfigManager()
-policies = Config  # 保持向下兼容

@@ -327,14 +327,18 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: Analys
         return {"status": "disabled"}
 
     async def _do_request() -> dict[str, Any]:
-        from adapters.plugins.openclaw_engine import OpenClawAnalysisEngine
+        from services.ai_analyzer import analyze_webhook_with_ai
 
-        engine = OpenClawAnalysisEngine()
-        return await engine.analyze(
-            webhook_data.get("parsed_data", {}),
-            source=webhook_data.get("source", "unknown"),
-            headers=webhook_data.get("headers", {}),
-        )
+        result = await analyze_with_openclaw(webhook_data)
+        if result.get("_degraded"):
+            logger.warning("[Forward] OpenClaw 降级，回退本地 AI: %s", result.get("_degraded_reason"))
+            local_data = {
+                "source": webhook_data.get("source", "unknown"),
+                "headers": webhook_data.get("headers", {}),
+                "parsed_data": webhook_data.get("parsed_data", {}),
+            }
+            return await analyze_webhook_with_ai(local_data)
+        return result
 
     try:
         res = await openclaw_cb.call_async(_do_request)

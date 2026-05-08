@@ -16,7 +16,6 @@ from core.config import Config
 from core.logger import logger
 from db.session import session_scope
 from models import WebhookEvent
-from services.file_backup import save_webhook_to_file
 
 HeadersDict = dict[str, str]
 AnalysisResult = dict[str, Any]
@@ -25,7 +24,7 @@ WebhookData = dict[str, Any]
 
 @dataclass(frozen=True)
 class SaveWebhookResult:
-    webhook_id: int | str
+    webhook_id: int
     is_duplicate: bool
     original_id: int | None
     beyond_window: bool
@@ -407,9 +406,6 @@ async def save_webhook_data(
                 forward_status=forward_status,
                 beyond_window=beyond_window,
             )
-    except Exception as e:
-        logger.error(f"保存失败: {e}")
-        file_id = await asyncio.to_thread(
-            save_webhook_to_file, data, source, raw_payload, headers, client_ip, ai_analysis
-        )
-        return SaveWebhookResult(file_id, False, None, False)
+    except Exception:
+        logger.exception("保存 webhook 事件失败")
+        raise
