@@ -49,6 +49,24 @@ services:
     networks:
       - e2e
 
+  migrate:
+    image: webhookwise-e2e:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      RUN_MODE: migrate
+      APP_ENV: test
+      LOG_LEVEL: INFO
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
+      DB_STATEMENT_TIMEOUT_MS: "30000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - e2e
+
   webhook-service:
     image: webhookwise-e2e:latest
     build:
@@ -77,6 +95,8 @@ services:
     ports:
       - "18080:8000"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -121,6 +141,8 @@ services:
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -153,6 +175,8 @@ services:
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

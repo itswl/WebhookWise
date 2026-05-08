@@ -39,6 +39,7 @@
 ```
 
 **进程模型：**
+- `migrate` 一次性任务：等待 PostgreSQL 就绪并执行 `alembic upgrade head`
 - `api` 进程：FastAPI HTTP 服务（Gunicorn 4 UvicornWorker）
 - `worker` 进程：TaskIQ Worker，消费异步业务任务和定时任务
 - `scheduler` 进程：TaskIQ Scheduler，只负责周期性投递任务，不执行业务逻辑
@@ -62,7 +63,7 @@
 | 监控 | Prometheus + prometheus-fastapi-instrumentator |
 | 链路追踪 | OpenTelemetry (可选，OTLP 导出) |
 | 数据迁移 | Alembic |
-| 容器化 | Docker + Docker Compose (5 服务) |
+| 容器化 | Docker + Docker Compose (6 服务，含一次性迁移任务) |
 
 ## 🚀 快速开始
 
@@ -73,14 +74,14 @@
 cp .env.example .env
 # 至少需要填写: OPENAI_API_KEY, API_KEY
 
-# 2. 一键启动（API + Worker + Scheduler + Redis + PostgreSQL）
+# 2. 一键启动（Migrate + API + Worker + Scheduler + Redis + PostgreSQL）
 docker-compose up -d --build
 
 # 3. 验证
 curl http://localhost:8000/health
 ```
 
-数据库 Schema 迁移在容器启动时通过 `entrypoint.sh` 自动执行（`alembic upgrade head`）。
+数据库 Schema 迁移由 Compose 中的一次性 `migrate` 服务执行（`alembic upgrade head`）。API、Worker 和 Scheduler 只在迁移成功后启动，`entrypoint.sh` 只负责按 `RUN_MODE` 分发进程。
 
 ### 本地开发
 
@@ -130,7 +131,7 @@ tests/e2e/run_webhook_to_feishu.sh
 
 1. 用 `tests/e2e/docker-compose.yml` 启动一次性环境；
 2. 从干净 PostgreSQL 执行 `alembic upgrade head`；
-3. 启动 API、Redis、TaskIQ Worker、TaskIQ Scheduler 和 fake Feishu；
+3. 等待一次性 `migrate` 任务完成后，启动 API、Redis、TaskIQ Worker、TaskIQ Scheduler 和 fake Feishu；
 4. 向 `/webhook/prometheus` 发送真实 HTTP 请求；
 5. 等待 Worker 从 Redis 消费任务；
 6. 断言 fake Feishu 收到飞书 `interactive` card。
@@ -165,7 +166,7 @@ tests/e2e/run_webhook_to_feishu.sh
 ├── main.py            # FastAPI 入口
 ├── worker.py          # TaskIQ Worker 入口
 ├── Dockerfile         # 多阶段构建 (jemalloc + 非 root)
-├── docker-compose.yml # 5 服务编排
+├── docker-compose.yml # 6 服务编排（含 migrate job）
 └── .env.example       # 配置模板
 ```
 

@@ -4,6 +4,7 @@
 
 ```text
 HTTP /webhook/prometheus
+  -> migrate job applies Alembic
   -> PostgreSQL quick receive
   -> Redis / TaskIQ
   -> Worker pipeline
@@ -22,6 +23,7 @@ tests/e2e/run_webhook_to_feishu.sh
 脚本会启动一次性 Docker Compose 环境：
 
 - `postgres`: 干净 PostgreSQL 15
+- `migrate`: 一次性 Alembic 迁移任务
 - `redis`: 真 Redis 7
 - `webhook-service`: API 容器
 - `worker`: TaskIQ Worker 容器
@@ -31,6 +33,7 @@ tests/e2e/run_webhook_to_feishu.sh
 通过条件：
 
 - API `/health` 可用；
+- migrate 任务成功退出；
 - scheduler 容器保持 running；
 - webhook 请求返回 `202`;
 - worker 从 Redis 消费并完成处理；

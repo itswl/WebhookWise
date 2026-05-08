@@ -2,6 +2,26 @@ networks:
   webhook_net:
 
 services:
+  migrate:
+    build: .
+    container_name: webhook-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      RUN_MODE: migrate
+      PYTHONPATH: /app
+      DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - webhook_net
+
   webhook-service:
     build: .
     container_name: webhook-receiver
@@ -54,6 +74,10 @@ services:
       - ./webhooks_data:/app/webhooks_data
 
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
 
@@ -101,6 +125,10 @@ services:
       - ./.env:/app/.env
       - ./logs:/app/logs
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       webhook-service:
@@ -132,6 +160,8 @@ services:
       - ./.env:/app/.env
       - ./logs:/app/logs
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       postgres:
