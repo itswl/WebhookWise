@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -34,6 +35,40 @@ class NoiseReductionDecision:
     reason: str
     related_alert_count: int
     related_alert_ids: list[int]
+
+
+@dataclass(frozen=True)
+class NoiseScoringConfig:
+    source_weight: float
+    resource_weight: float
+    semantic_weight: float
+    severity_weight: float
+    time_weight: float
+    severity_downgrade_score: float
+    related_min_confidence: float
+
+    @classmethod
+    def from_runtime_config(cls, config: Any) -> NoiseScoringConfig:
+        return cls(
+            source_weight=float(config.NOISE_SOURCE_WEIGHT),
+            resource_weight=float(config.NOISE_RESOURCE_WEIGHT),
+            semantic_weight=float(config.NOISE_SEMANTIC_WEIGHT),
+            severity_weight=float(config.NOISE_SEVERITY_WEIGHT),
+            time_weight=float(config.NOISE_TIME_WEIGHT),
+            severity_downgrade_score=float(config.NOISE_SEVERITY_DOWNGRADE_SCORE),
+            related_min_confidence=float(config.NOISE_RELATED_MIN_CONFIDENCE),
+        )
+
+
+DEFAULT_SCORING_CONFIG = NoiseScoringConfig(
+    source_weight=0.15,
+    resource_weight=0.45,
+    semantic_weight=0.25,
+    severity_weight=0.10,
+    time_weight=0.20,
+    severity_downgrade_score=0.03,
+    related_min_confidence=0.35,
+)
 
 
 def default_decision() -> NoiseReductionDecision:
@@ -165,12 +200,53 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / union_size
 
 
+def _extract_embedding(ctx: AlertContext) -> list[float] | None:
+    for container in (_safe_dict(ctx.analysis), _safe_dict(ctx.parsed_data)):
+        value = container.get("_embedding") or container.get("embedding")
+        if not isinstance(value, list) or not value:
+            continue
+        vector: list[float] = []
+        for item in value:
+            if not isinstance(item, (int, float)):
+                vector = []
+                break
+            vector.append(float(item))
+        if vector:
+            return vector
+    return None
+
+
+def _cosine_similarity(a: list[float] | None, b: list[float] | None) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    score = dot / (norm_a * norm_b)
+    return max(0.0, min(1.0, score))
+
+
+def _semantic_similarity(
+    current: AlertContext, candidate: AlertContext, current_tokens: set[str], candidate_tokens: set[str]
+) -> float:
+    embedding_score = _cosine_similarity(_extract_embedding(current), _extract_embedding(candidate))
+    token_score = _jaccard(current_tokens, candidate_tokens)
+    return max(embedding_score, token_score)
+
+
 def _importance_score(value: str) -> float:
     mapping = {"high": 1.0, "medium": 0.6, "low": 0.2}
     return mapping.get(str(value).lower(), 0.6)
 
 
-def score_candidate(current: AlertContext, candidate: AlertContext, window_minutes: int) -> float:
+def score_candidate(
+    current: AlertContext,
+    candidate: AlertContext,
+    window_minutes: int,
+    scoring_config: NoiseScoringConfig = DEFAULT_SCORING_CONFIG,
+) -> float:
     if candidate.timestamp > current.timestamp:
         return 0.0
 
@@ -182,17 +258,21 @@ def score_candidate(current: AlertContext, candidate: AlertContext, window_minut
     current_resources, current_tokens = _extract_features(current)
     candidate_resources, candidate_tokens = _extract_features(candidate)
 
-    source_score = 0.15 if current.source == candidate.source else 0.0
-    resource_score = 0.45 * _jaccard(current_resources, candidate_resources)
-    token_score = 0.25 * _jaccard(current_tokens, candidate_tokens)
+    source_score = scoring_config.source_weight if current.source == candidate.source else 0.0
+    resource_score = scoring_config.resource_weight * _jaccard(current_resources, candidate_resources)
+    semantic_score = scoring_config.semantic_weight * _semantic_similarity(
+        current, candidate, current_tokens, candidate_tokens
+    )
 
     candidate_level = _importance_score(candidate.importance)
     current_level = _importance_score(current.importance)
-    severity_score = 0.1 if candidate_level >= current_level else 0.03
+    severity_score = (
+        scoring_config.severity_weight if candidate_level >= current_level else scoring_config.severity_downgrade_score
+    )
 
-    time_score = 0.2 * (1 - (elapsed / window_seconds))
+    time_score = scoring_config.time_weight * (1 - (elapsed / window_seconds))
 
-    total = source_score + resource_score + token_score + severity_score + time_score
+    total = source_score + resource_score + semantic_score + severity_score + time_score
     if total < 0:
         return 0.0
     if total > 1:
@@ -204,10 +284,11 @@ def _collect_related(
     current: AlertContext,
     recent_alerts: Iterable[AlertContext],
     window_minutes: int,
+    scoring_config: NoiseScoringConfig,
 ) -> list[tuple[AlertContext, float]]:
     scored: list[tuple[AlertContext, float]] = []
     for alert in recent_alerts:
-        score = score_candidate(current, alert, window_minutes)
+        score = score_candidate(current, alert, window_minutes, scoring_config)
         if score > 0:
             scored.append((alert, score))
 
@@ -222,6 +303,7 @@ def analyze_noise_reduction(
     window_minutes: int,
     min_confidence: float,
     suppress_derived: bool,
+    scoring_config: NoiseScoringConfig = DEFAULT_SCORING_CONFIG,
 ) -> NoiseReductionDecision:
     """
     分析噪声降低
@@ -237,13 +319,13 @@ def analyze_noise_reduction(
 
     # 收集相关告警
     recent_alerts_list = list(recent_alerts)
-    scored = _collect_related(current, recent_alerts_list, window_minutes)
+    scored = _collect_related(current, recent_alerts_list, window_minutes, scoring_config)
 
     if not scored:
         logger.info("[Noise] 降噪决策: relation=standalone")
         return default_decision()
 
-    related = [(alert, score) for alert, score in scored if score >= 0.35]
+    related = [(alert, score) for alert, score in scored if score >= scoring_config.related_min_confidence]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
 
     best_alert, best_score = scored[0]

@@ -35,7 +35,7 @@ from core.trace import generate_trace_id, set_trace_id
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
-from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
+from services.analysis.noise_reduction import AlertContext, NoiseScoringConfig, analyze_noise_reduction
 from services.forwarding.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
 from services.webhooks.command_service import save_webhook_data
@@ -275,6 +275,7 @@ async def _compute_noise(
         window_minutes=window,
         min_confidence=Config.ai.ROOT_CAUSE_MIN_CONFIDENCE,
         suppress_derived=Config.ai.SUPPRESS_DERIVED_ALERT_FORWARD,
+        scoring_config=NoiseScoringConfig.from_runtime_config(Config.ai),
     )
     if dec.suppress_forward:
         logger.info(
