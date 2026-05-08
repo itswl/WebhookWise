@@ -5,9 +5,8 @@ tests/test_forwarding_decision.py
 这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
 """
 
-from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -30,21 +29,14 @@ class _Noise:
         self.reason = reason
 
 
-def _make_session_scope(rules: list):
-    """构造一个返回指定规则的 session_scope async context manager。"""
-    mock_sess = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = rules
-    mock_sess.execute = AsyncMock(return_value=mock_result)
+def _make_rules_loader(rules: list):
+    async def _loader():
+        return rules
 
-    @asynccontextmanager
-    async def _scope(*args, **kwargs):
-        yield mock_sess
-
-    return _scope
+    return _loader
 
 
-NO_RULES = _make_session_scope([])
+NO_RULES = _make_rules_loader([])
 
 
 # ── 新告警（非重复、非超窗）────────────────────────────────────────────────────
@@ -53,7 +45,7 @@ NO_RULES = _make_session_scope([])
 @pytest.mark.asyncio
 async def test_high_importance_new_alert_forwards():
     """高重要性新告警默认应该转发。"""
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("high", False, False, None, None, "prometheus")
     assert decision.should_forward is True
 
@@ -61,7 +53,7 @@ async def test_high_importance_new_alert_forwards():
 @pytest.mark.asyncio
 async def test_medium_importance_no_rules_does_not_forward():
     """无规则、medium 重要性不自动转发。"""
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("medium", False, False, None, None, "prometheus")
     assert decision.should_forward is False
     assert "非高风险" in (decision.skip_reason or "")
@@ -69,14 +61,14 @@ async def test_medium_importance_no_rules_does_not_forward():
 
 @pytest.mark.asyncio
 async def test_low_importance_no_rules_does_not_forward():
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("low", False, False, None, None, "prometheus")
     assert decision.should_forward is False
 
 
 @pytest.mark.asyncio
 async def test_unknown_importance_does_not_forward():
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("", False, False, None, None, "prometheus")
     assert decision.should_forward is False
 
@@ -88,7 +80,7 @@ async def test_unknown_importance_does_not_forward():
 async def test_noise_suppression_overrides_high_importance():
     """降噪决策抑制转发时，即使是 high 重要性也不转发。"""
     noise = _Noise(suppress=True, reason="衍生告警")
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("high", False, False, noise, None, "prometheus")
     assert decision.should_forward is False
     assert "智能降噪抑制转发" in (decision.skip_reason or "")
@@ -98,7 +90,7 @@ async def test_noise_suppression_overrides_high_importance():
 async def test_noise_no_suppress_allows_forward():
     """降噪不抑制时，high 告警正常转发。"""
     noise = _Noise(suppress=False)
-    with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
         decision = await _decide_forwarding("high", False, False, noise, None, "prometheus")
     assert decision.should_forward is True
 
@@ -113,7 +105,7 @@ async def test_duplicate_in_cooldown_skips():
     Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=10))
-        with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
             decision = await _decide_forwarding("high", True, False, None, event, "prometheus")
         assert decision.should_forward is False
         assert "刚刚已转发" in (decision.skip_reason or "")
@@ -130,7 +122,7 @@ async def test_duplicate_forward_disabled_skips():
     Config.set_override("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
-        with patch("services.webhooks.pipeline.session_scope", NO_RULES):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", NO_RULES):
             decision = await _decide_forwarding("high", True, False, None, event, "prometheus")
         assert decision.should_forward is False
         assert "跳过转发" in (decision.skip_reason or "")
@@ -149,7 +141,7 @@ async def test_duplicate_forward_enabled_forwards():
     Config.set_override("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
-        with patch("services.webhooks.pipeline.session_scope", _make_session_scope([])):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await _decide_forwarding("high", True, False, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
@@ -169,7 +161,7 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     Config.set_override("REMINDER_INTERVAL_HOURS", 6)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(hours=7))
-        with patch("services.webhooks.pipeline.session_scope", _make_session_scope([])):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await _decide_forwarding("high", True, False, None, event, "prometheus")
         assert decision.should_forward is True
         assert decision.is_periodic_reminder is True
@@ -188,7 +180,7 @@ async def test_beyond_window_forward_disabled_skips():
     """FORWARD_AFTER_TIME_WINDOW=False 时超窗告警不转发。"""
     Config.set_override("FORWARD_AFTER_TIME_WINDOW", False)
     try:
-        with patch("services.webhooks.pipeline.session_scope", _make_session_scope([])):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await _decide_forwarding("high", False, True, None, _Event(), "prometheus")
         assert decision.should_forward is False
         assert "不转发" in (decision.skip_reason or "")
@@ -204,7 +196,7 @@ async def test_beyond_window_forward_enabled_and_cooldown_expired_forwards():
     Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=60))
-        with patch("services.webhooks.pipeline.session_scope", _make_session_scope([])):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await _decide_forwarding("high", False, True, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
@@ -220,7 +212,7 @@ async def test_beyond_window_in_cooldown_skips():
     Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=10))
-        with patch("services.webhooks.pipeline.session_scope", _make_session_scope([])):
+        with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await _decide_forwarding("high", False, True, None, event, "prometheus")
         assert decision.should_forward is False
         assert "刚刚已转发" in (decision.skip_reason or "")
@@ -257,7 +249,7 @@ class _FakeRule:
 async def test_matched_rule_enables_medium_forward():
     """有匹配规则时，即使是 medium 重要性也应转发。"""
     rule = _FakeRule(1, importance="medium")
-    with patch("services.webhooks.pipeline.session_scope", _make_session_scope([rule])):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([rule])):
         decision = await _decide_forwarding("medium", False, False, None, None, "prometheus")
     assert decision.should_forward is True
     assert len(decision.matched_rules) == 1
@@ -268,7 +260,7 @@ async def test_stop_on_match_limits_rules():
     """stop_on_match=True 时只取第一条规则。"""
     rule1 = _FakeRule(1, importance="high", target_url="https://a.com", stop=True)
     rule2 = _FakeRule(2, importance="high", target_url="https://b.com", stop=False)
-    with patch("services.webhooks.pipeline.session_scope", _make_session_scope([rule1, rule2])):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([rule1, rule2])):
         decision = await _decide_forwarding("high", False, False, None, None, "prometheus")
     assert decision.should_forward is True
     assert len(decision.matched_rules) == 1
@@ -279,7 +271,7 @@ async def test_stop_on_match_limits_rules():
 async def test_source_filter_excludes_non_matching_source():
     """规则限定 source 时，不匹配的来源不触发规则。"""
     rule = _FakeRule(1, importance="medium", source="grafana")
-    with patch("services.webhooks.pipeline.session_scope", _make_session_scope([rule])):
+    with patch("services.webhooks.pipeline.list_enabled_forward_rules", _make_rules_loader([rule])):
         decision = await _decide_forwarding("medium", False, False, None, None, "prometheus")
     # prometheus 来源不匹配 grafana 规则，medium 无规则命中，不转发
     assert decision.should_forward is False

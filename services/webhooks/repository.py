@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, cast
+
+import orjson
+from sqlalchemy import select, update
+
+from core.compression import decompress_payload_async
+from db.session import session_scope
+from models import DeepAnalysis, ForwardRule, WebhookEvent
+from services.analysis.noise_reduction import AlertContext
+from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
+from services.webhooks.state_machine import allowed_sources
+from services.webhooks.types import WebhookProcessingStatus
+
+_ANALYZING_SOURCES = allowed_sources(WebhookProcessingStatus.ANALYZING)
+
+
+@dataclass(slots=True)
+class EventEnvelope:
+    headers: dict[str, Any]
+    payload: dict[str, Any] | None
+    raw_body: bytes
+    source: str | None
+    event_ts: str | None
+
+
+async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None, str]:
+    raw_text = await decompress_payload_async(event.raw_payload) or ""
+    parsed_data = event.parsed_data
+    if parsed_data is None and raw_text:
+        try:
+            loaded = orjson.loads(raw_text)
+            parsed_data = loaded if isinstance(loaded, dict) else None
+        except orjson.JSONDecodeError:
+            parsed_data = None
+    return parsed_data, raw_text
+
+
+async def transition_to_analyzing_and_load(event_id: int) -> EventEnvelope | None:
+    async with session_scope() as sess:
+        stmt = (
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .where(WebhookEvent.processing_status.in_(_ANALYZING_SOURCES))
+            .values(processing_status=WebhookProcessingStatus.ANALYZING.value, failure_reason=None, error_message=None)
+            .returning(WebhookEvent)
+        )
+        res = await sess.execute(stmt)
+        event = res.scalar_one_or_none()
+        if not event:
+            return None
+        headers = cast(dict[str, Any], event.headers or {})
+        payload, raw_text = await load_event_payload(event)
+        raw_body = raw_text.encode("utf-8") if raw_text else b""
+        event_ts = event.timestamp.isoformat() if event.timestamp else None
+        return EventEnvelope(
+            headers=headers, payload=payload, raw_body=raw_body, source=event.source, event_ts=event_ts
+        )
+
+
+async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minutes: int) -> list[AlertContext]:
+    async with session_scope() as session:
+        stmt = (
+            select(WebhookEvent)
+            .filter(WebhookEvent.timestamp >= now - timedelta(minutes=window_minutes), WebhookEvent.timestamp <= now)
+            .order_by(WebhookEvent.timestamp.desc())
+            .limit(100)
+        )
+        res = await session.execute(stmt)
+        return [
+            AlertContext(
+                e.id,
+                e.source,
+                normalize_importance(e.importance or "medium"),
+                cast(dict[str, Any], e.parsed_data or {}),
+                cast(dict[str, Any], e.ai_analysis or {}),
+                e.timestamp or now,
+                e.alert_hash,
+            )
+            for e in res.scalars().all()
+            if e.alert_hash != alert_hash
+        ]
+
+
+def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
+    raw = cast(dict[str, Any], rule.to_dict())
+    return ForwardRuleSnapshot(
+        id=rule.id,
+        name=rule.name,
+        match_importance=rule.match_importance,
+        match_source=rule.match_source,
+        match_duplicate=rule.match_duplicate,
+        target_type=rule.target_type,
+        target_url=rule.target_url,
+        stop_on_match=rule.stop_on_match,
+        extra=raw,
+    )
+
+
+async def list_enabled_forward_rules() -> list[ForwardRuleSnapshot]:
+    async with session_scope() as sess:
+        stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
+        return [_snapshot_forward_rule(rule) for rule in (await sess.execute(stmt)).scalars().all()]
+
+
+async def create_openclaw_analysis(
+    webhook_event_id: int,
+    *,
+    run_id: str,
+    session_key: str,
+) -> int:
+    async with session_scope() as sess:
+        record = DeepAnalysis(
+            webhook_event_id=webhook_event_id,
+            engine="openclaw",
+            openclaw_run_id=run_id,
+            openclaw_session_key=session_key,
+            status="pending",
+        )
+        sess.add(record)
+        await sess.flush()
+        return record.id
+
+
+async def mark_last_notified(event_id: int) -> None:
+    async with session_scope() as sess:
+        await sess.execute(
+            update(WebhookEvent).where(WebhookEvent.id == event_id).values(last_notified_at=datetime.now())
+        )
+
+
+async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> int | None:
+    async with session_scope() as sess:
+        res = await sess.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .where(WebhookEvent.retry_count < max_retries)
+            .values(
+                processing_status=WebhookProcessingStatus.RETRY.value,
+                retry_count=WebhookEvent.retry_count + 1,
+                failure_reason="retry_err",
+                error_message=error_message[:2000],
+            )
+            .returning(WebhookEvent.retry_count)
+        )
+        row = res.first()
+        return int(row[0] or 0) if row else None
+
+
+async def mark_retry_enqueue_failed(event_id: int, error_message: str) -> None:
+    async with session_scope() as sess:
+        await sess.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(
+                processing_status=WebhookProcessingStatus.RECEIVED.value,
+                failure_reason="retry_enqueue_failed",
+                error_message=error_message[:2000],
+            )
+        )
+
+
+async def mark_dead_letter(event_id: int, *, retryable: bool, error_message: str) -> None:
+    async with session_scope() as sess:
+        await sess.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(
+                processing_status=WebhookProcessingStatus.DEAD_LETTER.value,
+                failure_reason="retry_exhausted" if retryable else "fat_err",
+                error_message=error_message[:2000],
+            )
+        )
