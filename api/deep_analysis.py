@@ -50,6 +50,17 @@ async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAna
     await notify_deep_analysis_success(record, source)
 
 
+async def _schedule_openclaw_poll_if_pending(record: DeepAnalysis) -> None:
+    if record.status != "pending":
+        return
+    try:
+        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+
+        await schedule_openclaw_poll(record.id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+    except Exception as e:
+        logger.warning("[DeepAnalysis] OpenClaw poll 调度失败 analysis_id=%s error=%s", record.id, e)
+
+
 @deep_analysis_router.post("/api/deep-analyze/{webhook_id}", response_model=None)
 async def deep_analyze_webhook(
     webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
@@ -84,6 +95,7 @@ async def deep_analyze_webhook(
     )
     session.add(record)
     await session.flush()
+    await _schedule_openclaw_poll_if_pending(record)
     await session.commit()
     return {"success": True, "data": record.to_dict()}
 
@@ -141,6 +153,7 @@ async def retry_deep_analysis(
             record.openclaw_session_key = new_result.get("_openclaw_session_key", "")
             record.duration_seconds = 0
             await session.flush()
+            await _schedule_openclaw_poll_if_pending(record)
             await session.commit()
             return {"success": True, "message": "已重新发起分析任务，请等待结果"}
 
@@ -199,8 +212,9 @@ async def retry_deep_analysis(
     record.status = "pending"
     record.analysis_result = None
     await session.flush()
+    await _schedule_openclaw_poll_if_pending(record)
     await session.commit()
-    return {"success": True, "message": "已重置为待重试，将在下次轮询时拉取结果"}
+    return {"success": True, "message": "已重置为待重试，已调度下一次结果拉取"}
 
 
 @deep_analysis_router.post("/api/deep-analyses/{analysis_id}/forward", response_model=None)

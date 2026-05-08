@@ -55,3 +55,21 @@ async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> 
             failed_forward_id=failed_forward_id,
         )
     )
+
+
+async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
+    """Schedule a single OpenClaw result poll through TaskIQ."""
+    from services.operations.tasks import poll_openclaw_analysis_task
+
+    schedule_id = f"openclaw-poll:{analysis_id}"
+    await dynamic_schedule_source.delete_schedule(schedule_id)
+    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    await (
+        poll_openclaw_analysis_task.kicker()
+        .with_schedule_id(schedule_id)
+        .schedule_by_time(
+            dynamic_schedule_source,
+            run_at,
+            analysis_id=analysis_id,
+        )
+    )

@@ -70,6 +70,14 @@ async def retry_failed_forward_task(failed_forward_id: int) -> None:
     await retry_failed_forward_by_id(failed_forward_id)
 
 
+@broker.task(task_name="openclaw_poll_task")
+async def poll_openclaw_analysis_task(analysis_id: int) -> None:
+    """Poll one pending OpenClaw deep-analysis record."""
+    from services.analysis.openclaw_poller import poll_deep_analysis_once
+
+    await poll_deep_analysis_once(analysis_id)
+
+
 @broker.task(
     task_name="scheduled_recovery_scan",
     schedule=[
@@ -95,21 +103,6 @@ async def scheduled_metrics_refresh() -> None:
     from services.operations.metrics_poller import refresh_all_metrics
 
     await _run_scheduled("metrics_refresh", Config.server.METRICS_REFRESH_INTERVAL_SECONDS, refresh_all_metrics())
-
-
-@broker.task(
-    task_name="scheduled_openclaw_poll",
-    schedule=[
-        {
-            "interval": Config.server.OPENCLAW_POLL_INTERVAL_SECONDS,
-            "schedule_id": "openclaw_poll_interval_seconds",
-        }
-    ],
-)
-async def scheduled_openclaw_poll() -> None:
-    from services.analysis.openclaw_poller import poll_pending_analyses
-
-    await _run_scheduled("openclaw_poll", Config.server.OPENCLAW_POLL_INTERVAL_SECONDS, poll_pending_analyses())
 
 
 @broker.task(
