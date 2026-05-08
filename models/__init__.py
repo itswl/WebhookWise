@@ -4,7 +4,7 @@
 
 from models.analysis import AIUsageLog, DeepAnalysis
 from models.config import SystemConfig
-from models.forwarding import FailedForward, ForwardRule
+from models.forwarding import FailedForward, ForwardOutbox, ForwardRule
 from models.remediation import RemediationExecution
 from models.webhook import ArchivedWebhookEvent, WebhookEvent
 
@@ -14,6 +14,7 @@ __all__ = [
     "AIUsageLog",
     "RemediationExecution",
     "ForwardRule",
+    "ForwardOutbox",
     "DeepAnalysis",
     "FailedForward",
     "SystemConfig",

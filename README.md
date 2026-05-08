@@ -1,6 +1,6 @@
 # WebhookWise: 智能 Webhook 接收与 AI 运维分析服务
 
-一个面向生产运维场景的 Webhook 智能管家。基于 FastAPI 异步架构，具备 AI 根因分析、智能告警降噪、分布式去重、冷热数据归档以及可观测性能力。
+一个面向生产运维场景的 Webhook 智能管家。基于 FastAPI 异步架构，具备 AI 根因分析、智能告警降噪、缓存/数据库去重、冷热数据归档以及可观测性能力。
 
 ## ✨ 核心特性
 
@@ -9,9 +9,10 @@
 | **异步 Webhook 接收** | TaskIQ 异步任务队列，立即返回 202，后台并发处理 |
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
 | **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
-| **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，分布式去重 + 24h 时间窗口（可配置） |
-| **告警风暴背压** | 同一 `alert_hash` 并发激增时 Fail-Fast + 聚合写入，防资源耗尽 |
+| **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，缓存/数据库复用 + 24h 时间窗口（可配置） |
+| **告警风暴背压** | 同一 `alert_hash` 并发激增时本进程串行 + Redis 短窗口 Fail-Fast，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
+| **事务性转发 Outbox** | 处理结果与转发意图同事务落库，Worker 异步消费，避免 DB 状态与 HTTP 副作用脱节 |
 | **转发失败重试** | 失败转发写入审计表，通过 TaskIQ 动态延迟任务指数退避重试（最多 3 次） |
 | **冷热数据归档** | 每日凌晨自动按重要性分级归档（high 90d / medium 30d / low 7d） |
 | **运行时策略热更新** | 配置写入 DB `system_configs`，Redis Pub/Sub 广播到所有进程 |
@@ -34,7 +35,7 @@
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
                PostgreSQL        Redis          外部系统
-               (持久化)         (锁/缓存)     (飞书/Webhook/
+               (持久化)        (队列/缓存)    (飞书/Webhook/
                                               OpenClaw)
 ```
 
@@ -48,8 +49,9 @@
 - TaskIQ：异步任务投递与 Worker 消费
 - Scheduler：周期性投递 recovery、metrics、数据维护等任务
 - TaskIQ 动态调度：按事件投递 Webhook 处理重试、失败转发重试和 OpenClaw 结果拉取
+- Forward Outbox：Webhook 处理事务内只写入待发送意图，由 Worker 执行真实 HTTP/OpenClaw 转发
 - PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
-- Redis：TaskIQ 队列、短期锁、缓存、运行时配置广播
+- Redis：TaskIQ 队列、短窗口风暴计数、缓存、运行时配置广播
 
 ## 🛠️ 技术栈
 
@@ -58,7 +60,7 @@
 | Web 框架 | Python 3.12 + FastAPI + uvloop |
 | 任务队列 | TaskIQ + Redis ListQueueBroker |
 | 数据库 | PostgreSQL 15+ (asyncpg + SQLAlchemy 2.0) |
-| 缓存/锁 | Redis 7+ |
+| 队列/缓存 | Redis 7+ |
 | AI 调用 | AsyncOpenAI + Instructor (结构化输出) |
 | HTTP 客户端 | httpx 单例连接池 |
 | 监控 | Prometheus + prometheus-fastapi-instrumentator |

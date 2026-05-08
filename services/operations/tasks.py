@@ -70,6 +70,14 @@ async def retry_failed_forward_task(failed_forward_id: int) -> None:
     await retry_failed_forward_by_id(failed_forward_id)
 
 
+@broker.task(task_name="forward_outbox_task")
+async def process_forward_outbox_task(outbox_id: int) -> None:
+    """Execute one transactional forwarding outbox intent."""
+    from services.forwarding.outbox import process_forward_outbox_by_id
+
+    await process_forward_outbox_by_id(outbox_id)
+
+
 @broker.task(task_name="openclaw_poll_task")
 async def poll_openclaw_analysis_task(analysis_id: int) -> None:
     """Poll one pending OpenClaw deep-analysis record."""
@@ -103,6 +111,20 @@ async def scheduled_metrics_refresh() -> None:
     from services.operations.metrics_poller import refresh_all_metrics
 
     await _run_scheduled("metrics_refresh", Config.server.METRICS_REFRESH_INTERVAL_SECONDS, refresh_all_metrics())
+
+
+@broker.task(
+    task_name="scheduled_forward_outbox_scan",
+    schedule=[
+        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "forward_outbox_scan_interval"}
+    ],
+)
+async def scheduled_forward_outbox_scan() -> None:
+    from services.forwarding.outbox import run_forward_outbox_scan
+
+    await _run_scheduled(
+        "forward_outbox_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_forward_outbox_scan()
+    )
 
 
 @broker.task(
