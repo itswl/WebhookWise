@@ -208,7 +208,7 @@ redis-cli subscribe config:updates  # 应该能收到广播消息
      -d '{"key": "DUPLICATE_ALERT_TIME_WINDOW", "value": "1"}'
    ```
 
-2. 告警 hash 由 `source + alertname + 关键字段` 生成。如果两条告警 hash 相同但内容有差异，说明关键区分字段未被包含在 hash 计算中。查看 `models/webhook.py` 中的 `generate_hash` 方法。
+2. 告警 hash 优先由 adapter 产出的 `_alert_identity` 生成。如果两条告警 hash 相同但内容有差异，优先检查对应 adapter 是否把关键身份字段写进了 `_alert_identity`；未知来源缺少 identity 时会退回完整 payload hash 并记录 warning。
 
 3. 对于已被错误标记的事件，可强制重新分析：
    ```bash

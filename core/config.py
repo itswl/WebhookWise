@@ -116,6 +116,13 @@ class AIConfig(BaseSettings):
     ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
     NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
     ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
+    NOISE_RELATED_MIN_CONFIDENCE: float = Field(default=0.35)
+    NOISE_SOURCE_WEIGHT: float = Field(default=0.15)
+    NOISE_RESOURCE_WEIGHT: float = Field(default=0.45)
+    NOISE_SEMANTIC_WEIGHT: float = Field(default=0.25)
+    NOISE_SEVERITY_WEIGHT: float = Field(default=0.10)
+    NOISE_TIME_WEIGHT: float = Field(default=0.20)
+    NOISE_SEVERITY_DOWNGRADE_SCORE: float = Field(default=0.03)
     SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
     AI_PAYLOAD_MAX_BYTES: int = Field(default=32768)
     AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
@@ -288,6 +295,13 @@ class _UnifiedConfigManager:
         "ENABLE_ALERT_NOISE_REDUCTION": {"type": "bool", "sub": "ai"},
         "NOISE_REDUCTION_WINDOW_MINUTES": {"type": "int", "sub": "ai"},
         "ROOT_CAUSE_MIN_CONFIDENCE": {"type": "float", "sub": "ai"},
+        "NOISE_RELATED_MIN_CONFIDENCE": {"type": "float", "sub": "ai"},
+        "NOISE_SOURCE_WEIGHT": {"type": "float", "sub": "ai"},
+        "NOISE_RESOURCE_WEIGHT": {"type": "float", "sub": "ai"},
+        "NOISE_SEMANTIC_WEIGHT": {"type": "float", "sub": "ai"},
+        "NOISE_SEVERITY_WEIGHT": {"type": "float", "sub": "ai"},
+        "NOISE_TIME_WEIGHT": {"type": "float", "sub": "ai"},
+        "NOISE_SEVERITY_DOWNGRADE_SCORE": {"type": "float", "sub": "ai"},
         "SUPPRESS_DERIVED_ALERT_FORWARD": {"type": "bool", "sub": "ai"},
         "RULE_HIGH_KEYWORDS": {"type": "str", "sub": "ai"},
         "RULE_WARN_KEYWORDS": {"type": "str", "sub": "ai"},

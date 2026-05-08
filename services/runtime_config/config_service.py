@@ -21,6 +21,13 @@ _CONFIG_SCHEMA: dict[str, tuple[str, str, _Validator | None]] = {
     "enable_alert_noise_reduction": ("ENABLE_ALERT_NOISE_REDUCTION", "bool", None),
     "noise_reduction_window_minutes": ("NOISE_REDUCTION_WINDOW_MINUTES", "int", lambda x: 1 <= int(x) <= 60),
     "root_cause_min_confidence": ("ROOT_CAUSE_MIN_CONFIDENCE", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_related_min_confidence": ("NOISE_RELATED_MIN_CONFIDENCE", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_source_weight": ("NOISE_SOURCE_WEIGHT", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_resource_weight": ("NOISE_RESOURCE_WEIGHT", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_semantic_weight": ("NOISE_SEMANTIC_WEIGHT", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_severity_weight": ("NOISE_SEVERITY_WEIGHT", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_time_weight": ("NOISE_TIME_WEIGHT", "float", lambda x: 0 <= float(x) <= 1),
+    "noise_severity_downgrade_score": ("NOISE_SEVERITY_DOWNGRADE_SCORE", "float", lambda x: 0 <= float(x) <= 1),
     "suppress_derived_alert_forward": ("SUPPRESS_DERIVED_ALERT_FORWARD", "bool", None),
 }
 

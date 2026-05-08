@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from adapters.normalized import AlertIdentity, with_alert_identity
 from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
 from core.config import Config
 from core.http_client import get_http_client
@@ -97,6 +98,29 @@ def _extract_tag(tags: object, key: str) -> str | None:
     return None
 
 
+def _safe_resource_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _pick_first_resource(resources: list[dict[str, Any]]) -> str | None:
+    if not resources:
+        return None
+    first = resources[0]
+    resource = _pick_first(first.get("InstanceId"), first.get("ResourceID"), first.get("Id"), first.get("id"))
+    if resource:
+        return str(resource)
+    dimensions = first.get("Dimensions")
+    if not isinstance(dimensions, list):
+        return None
+    important = {"Node", "ResourceID", "Instance", "InstanceId", "Host", "Pod", "Container"}
+    for item in dimensions:
+        if isinstance(item, dict) and item.get("Name") in important and item.get("Value"):
+            return str(item["Value"])
+    return None
+
+
 # ── 统一适配器实现 (由插件发现机制调用) ──────────────────────────────────────────────
 
 
@@ -115,7 +139,19 @@ def register_simple_adapters() -> None:
 
     @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor", "volcengine_cloudmonitor"})
     def _norm_volc(data: WebhookData) -> WebhookData:
-        return dict(data)
+        resources = _safe_resource_list(data.get("Resources"))
+        resource = _pick_first_resource(resources)
+        name = _pick_first(data.get("RuleName"), data.get("AlertName"), data.get("MetricName"), data.get("Type"))
+        return with_alert_identity(
+            dict(data),
+            AlertIdentity(
+                source="volcengine",
+                name=str(name) if name else None,
+                resource=resource,
+                fingerprint=_pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID")),
+                severity=_normalize_level(data.get("Level") or data.get("Severity")),
+            ),
+        )
 
     # 2. Grafana
     @registry.register_detector("grafana")
@@ -132,7 +168,15 @@ def register_simple_adapters() -> None:
             res["summary"] = data["message"]
         if "ruleId" in data or "panelId" in data:
             res["Resources"] = [{"InstanceId": str(_pick_first(data.get("ruleId"), data.get("panelId")))}]
-        return res
+        return with_alert_identity(
+            res,
+            AlertIdentity(
+                source="grafana",
+                name=str(rule) if rule else None,
+                resource=str(_pick_first(data.get("ruleId"), data.get("panelId"), data.get("dashboardId")) or ""),
+                severity=_normalize_level(state),
+            ),
+        )
 
     # 3. Prometheus / Alertmanager
     @registry.register_detector("prometheus")
@@ -160,7 +204,17 @@ def register_simple_adapters() -> None:
         instance = _pick_first(labels.get("instance"), labels.get("pod"), labels.get("host"))
         if instance:
             res["Resources"] = [{"InstanceId": instance}]
-        return res
+        return with_alert_identity(
+            res,
+            AlertIdentity(
+                source="prometheus",
+                name=str(name) if name else None,
+                resource=str(instance or _pick_first(labels.get("namespace"), labels.get("service")) or ""),
+                service=str(labels.get("service")) if labels.get("service") else None,
+                fingerprint=first.get("fingerprint"),
+                severity=_normalize_level(labels.get("severity")),
+            ),
+        )
 
     # 4. Datadog
     @registry.register_detector("datadog")
@@ -179,7 +233,17 @@ def register_simple_adapters() -> None:
             res["Resources"] = [{"InstanceId": host}]
         if "text" in data or "body" in data:
             res["summary"] = _pick_first(data.get("text"), data.get("body"))
-        return res
+        return with_alert_identity(
+            res,
+            AlertIdentity(
+                source="datadog",
+                name=str(title) if title else None,
+                resource=str(host) if host else None,
+                service=_extract_tag(tags, "service"),
+                fingerprint=_pick_first(data.get("id"), data.get("event_id")),
+                severity=_normalize_level(level),
+            ),
+        )
 
     # 5. PagerDuty
     @registry.register_detector("pagerduty")
@@ -206,7 +270,16 @@ def register_simple_adapters() -> None:
                 "service": service,
             }
         )
-        return res
+        return with_alert_identity(
+            res,
+            AlertIdentity(
+                source="pagerduty",
+                name=str(title) if title else None,
+                service=str(service) if service else None,
+                fingerprint=str(alert_id) if alert_id else None,
+                severity=_normalize_level(inc.get("urgency") or evt.get("event_type")),
+            ),
+        )
 
 
 def initialize_adapters() -> None:
