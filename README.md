@@ -95,6 +95,43 @@ curl -X POST http://localhost:8000/webhook \
   -d '{"alertname": "TestAlert", "severity": "critical", "host": "prod-01"}'
 ```
 
+## ✅ 测试与验证
+
+项目目前分三层验证：
+
+| 层级 | 命令 | 覆盖内容 |
+|:---|:---|:---|
+| 静态检查 | `ruff check .` / `mypy .` | 代码风格、类型边界 |
+| 单元 + 进程内集成 | `pytest` | 纯函数、核心服务、FastAPI 路由到 pipeline 的进程内链路 |
+| Docker E2E | `tests/e2e/run_webhook_to_feishu.sh` | 真 PostgreSQL、真 Redis、API 容器、TaskIQ Worker、fake Feishu HTTP server |
+
+常规本地/CI 快速验证：
+
+```bash
+ruff check .
+mypy .
+pytest
+```
+
+核心链路 E2E 验证：
+
+```bash
+tests/e2e/run_webhook_to_feishu.sh
+```
+
+这条 E2E 会自动：
+
+1. 用 `tests/e2e/docker-compose.yml` 启动一次性环境；
+2. 从干净 PostgreSQL 执行 `alembic upgrade head`；
+3. 启动 API、Redis、TaskIQ Worker 和 fake Feishu；
+4. 向 `/webhook/prometheus` 发送真实 HTTP 请求；
+5. 等待 Worker 从 Redis 消费任务；
+6. 断言 fake Feishu 收到飞书 `interactive` card。
+
+脚本退出时会自动 `docker compose down -v --remove-orphans` 清理容器和数据卷。失败时会打印相关容器最近日志，优先看 `webhook-service` 和 `worker`。
+
+> Docker E2E 比普通 pytest 慢，默认不放进快速 CI。发版前、改动迁移/队列/转发链路时应手动跑一遍。
+
 ## 📁 目录结构
 
 ```
@@ -111,7 +148,7 @@ curl -X POST http://localhost:8000/webhook \
 ├── prompts/           # AI 提示词模板
 ├── templates/         # 前端 Dashboard HTML + 静态文件
 ├── scripts/           # 运维工具脚本
-├── tests/             # pytest 测试套件
+├── tests/             # pytest 测试套件 + Docker E2E
 ├── docs/              # 功能文档
 ├── main.py            # FastAPI 入口
 ├── worker.py          # TaskIQ Worker 入口

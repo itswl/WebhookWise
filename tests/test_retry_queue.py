@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,6 +10,25 @@ from services.retry_queue import (
 from services.taskiq_retry_scheduler import compute_backoff_delay
 
 
+class FakeRedis:
+    def __init__(self) -> None:
+        self.zsets: dict[str, dict[str, float]] = {}
+
+    async def zadd(self, key: str, mapping: dict[str, float]) -> None:
+        self.zsets.setdefault(key, {}).update(mapping)
+
+    async def eval(self, script: str, numkeys: int, zset_key: str, now: float, limit: int) -> str:
+        assert numkeys == 1
+        due = [
+            member
+            for member, score in sorted(self.zsets.get(zset_key, {}).items(), key=lambda item: item[1])
+            if score <= float(now)
+        ][: int(limit)]
+        for member in due:
+            self.zsets[zset_key].pop(member, None)
+        return ",".join(due)
+
+
 def test_compute_backoff_delay_is_bounded() -> None:
     assert compute_backoff_delay(1, initial_delay=30, max_delay=900, multiplier=2.0) == 30
     assert compute_backoff_delay(3, initial_delay=30, max_delay=900, multiplier=2.0) == 120
@@ -17,26 +36,28 @@ def test_compute_backoff_delay_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_forward_retry_id_uses_expected_zset() -> None:
-    redis = AsyncMock()
+async def test_forward_retry_queue_drains_only_due_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr("services.retry_queue.get_redis", lambda: redis)
+    monkeypatch.setattr("core.redis_client.get_redis", lambda: redis)
+    monkeypatch.setattr("services.retry_queue.time.time", lambda: 1000)
 
-    with patch("services.retry_queue.get_redis", return_value=redis), patch(
-        "services.retry_queue.time.time", return_value=1000
-    ):
-        await enqueue_forward_retry(456, 60)
+    await enqueue_forward_retry(456, 60)
+    await enqueue_forward_retry(789, 120)
 
-    redis.zadd.assert_any_await(FORWARD_RETRY_ZSET, {"456": 1060})
+    assert redis.zsets[FORWARD_RETRY_ZSET] == {"456": 1060, "789": 1120}
+    assert await drain_due_forward_retries(limit=10) == []
+    assert await drain_due_forward_retries(limit=10) == []
 
+    assert await drain_due_forward_retries(limit=1) == []
+    assert redis.zsets[FORWARD_RETRY_ZSET] == {"456": 1060, "789": 1120}
 
-@pytest.mark.asyncio
-async def test_drain_due_retry_ids_filters_invalid_members() -> None:
-    async def fake_eval(script: str, numkeys: int, zset: str, now: float, limit: int) -> str:
-        assert numkeys == 1
-        assert limit == 10
-        return "1,bad,2"
+    from services.retry_queue import drain_due_ids
 
-    with patch("services.retry_queue.redis_eval_str", side_effect=fake_eval):
-        assert await drain_due_forward_retries(limit=10) == [1, 2]
+    assert await drain_due_ids(FORWARD_RETRY_ZSET, limit=1, now=1060) == [456]
+    assert redis.zsets[FORWARD_RETRY_ZSET] == {"789": 1120}
+    assert await drain_due_ids(FORWARD_RETRY_ZSET, limit=10, now=1120) == [789]
+    assert redis.zsets[FORWARD_RETRY_ZSET] == {}
 
 
 @pytest.mark.asyncio
