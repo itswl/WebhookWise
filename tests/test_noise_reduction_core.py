@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from services.analysis.noise_reduction import (
     AlertContext,
+    NoiseScoringConfig,
     _extract_resource_ids,
     _jaccard,
     _tokenize_text,
@@ -193,6 +194,35 @@ def test_score_completely_different_alerts_low_score():
     )
     score = score_candidate(current, candidate, window_minutes=5)
     assert score < 0.3
+
+
+def test_score_uses_embedding_similarity_when_available():
+    current = _make_ctx(
+        event_id=2,
+        source="prometheus",
+        importance="medium",
+        parsed_data={"host": "api-01", "alertname": "Timeout"},
+        analysis={"_embedding": [1.0, 0.0, 0.0]},
+    )
+    candidate = _make_ctx(
+        event_id=1,
+        source="prometheus",
+        importance="medium",
+        parsed_data={"host": "api-02", "alertname": "Latency"},
+        analysis={"_embedding": [1.0, 0.0, 0.0]},
+        offset_seconds=30,
+    )
+    config = NoiseScoringConfig(
+        source_weight=0.0,
+        resource_weight=0.0,
+        semantic_weight=1.0,
+        severity_weight=0.0,
+        time_weight=0.0,
+        severity_downgrade_score=0.0,
+        related_min_confidence=0.35,
+    )
+
+    assert score_candidate(current, candidate, window_minutes=5, scoring_config=config) == 1.0
 
 
 # ── analyze_noise_reduction ───────────────────────────────────────────────────

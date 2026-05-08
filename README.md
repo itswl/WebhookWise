@@ -9,7 +9,7 @@
 | **异步 Webhook 接收** | TaskIQ 异步任务队列，立即返回 202，后台并发处理 |
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
 | **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
-| **智能降噪去重** | Jaccard 相似度识别衍生告警，分布式去重 + 24h 时间窗口（可配置） |
+| **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，分布式去重 + 24h 时间窗口（可配置） |
 | **告警风暴背压** | 同一 `alert_hash` 并发激增时 Fail-Fast + 聚合写入，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
 | **转发失败重试** | 失败转发写入审计表，通过 TaskIQ 动态延迟任务指数退避重试（最多 3 次） |
@@ -272,9 +272,11 @@ tests/e2e/run_webhook_to_feishu.sh
 | `DUPLICATE_ALERT_TIME_WINDOW` | `24` | 去重时间窗口（小时） |
 | `REANALYZE_AFTER_TIME_WINDOW` | `false` | 超窗后是否重新 AI 分析 |
 | `FORWARD_AFTER_TIME_WINDOW` | `false` | 超窗后是否重新转发 |
-| `ENABLE_ALERT_NOISE_REDUCTION` | `true` | 开启 Jaccard 降噪 |
+| `ENABLE_ALERT_NOISE_REDUCTION` | `true` | 开启混合相似度降噪 |
 | `NOISE_REDUCTION_WINDOW_MINUTES` | `5` | 相似度比对时间窗口（分钟） |
 | `ROOT_CAUSE_MIN_CONFIDENCE` | `0.65` | 根因判定置信度阈值 |
+| `NOISE_RELATED_MIN_CONFIDENCE` | `0.35` | 近邻告警纳入关联集合的最低置信度 |
+| `NOISE_*_WEIGHT` | 见 `core/config.py` | source/resource/semantic/severity/time 评分权重 |
 | `SUPPRESS_DERIVED_ALERT_FORWARD` | `true` | 抑制衍生告警的转发 |
 
 ### 转发与重试（`[runtime]` 可热更新）
