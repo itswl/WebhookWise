@@ -39,19 +39,27 @@ from services.analysis.noise_reduction import AlertContext, NoiseScoringConfig, 
 from services.forwarding.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
 from services.webhooks.command_service import save_webhook_data
+from services.webhooks.decisioning import (
+    ForwardingPolicy,
+    ForwardRuleSnapshot,
+    build_final_analysis,
+    decide_forwarding,
+    normalize_importance,
+)
+from services.webhooks.state_machine import allowed_sources
 from services.webhooks.types import (
     AnalysisResolution,
     ForwardDecision,
     NoiseReductionContext,
+    WebhookProcessingStatus,
     WebhookRequestContext,
 )
 
+_ANALYZING_SOURCES = allowed_sources(WebhookProcessingStatus.ANALYZING)
+
 
 def _normalize_importance(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    if "." in text:
-        text = text.rsplit(".", 1)[-1]
-    return text
+    return normalize_importance(value)
 
 
 _running_tasks: set[asyncio.Task[object]] = set()
@@ -303,6 +311,21 @@ async def _compute_noise(
     )
 
 
+def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
+    raw = cast(dict[str, Any], rule.to_dict())
+    return ForwardRuleSnapshot(
+        id=rule.id,
+        name=rule.name,
+        match_importance=rule.match_importance,
+        match_source=rule.match_source,
+        match_duplicate=rule.match_duplicate,
+        target_type=rule.target_type,
+        target_url=rule.target_url,
+        stop_on_match=rule.stop_on_match,
+        extra=raw,
+    )
+
+
 async def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
@@ -314,110 +337,42 @@ async def _decide_forwarding(
     """转发决策逻辑"""
     from core.config import Config
 
-    if noise and noise.suppress_forward:
-        logger.debug("[Forward] 决策=抑制 reason=noise_%s", getattr(noise, "relation", "suppressed"))
-        return ForwardDecision(False, f"智能降噪抑制转发: {noise.reason}", False)
-
-    # 1. 匹配规则
-    matched_rules: list[dict[str, Any]] = []
-    total_rules = 0
+    rules: list[ForwardRuleSnapshot] = []
     try:
         async with session_scope() as sess:
             rules_stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
-            rules = (await sess.execute(rules_stmt)).scalars().all()
-            total_rules = len(rules)
-            for r in rules:
-                if r.match_importance and importance not in [x.strip().lower() for x in r.match_importance.split(",")]:
-                    continue
-                if r.match_source and source.lower() not in [x.strip().lower() for x in r.match_source.split(",")]:
-                    continue
-
-                # 根据告警的新旧/重复状态匹配规则
-                if r.match_duplicate and r.match_duplicate != "all":
-                    if r.match_duplicate == "new" and (is_duplicate or beyond_window):
-                        continue
-                    if r.match_duplicate == "duplicate" and (not is_duplicate or beyond_window):
-                        continue
-                    if r.match_duplicate == "beyond_window" and not beyond_window:
-                        continue
-
-                matched_rules.append(cast(dict[str, Any], r.to_dict()))
-                if r.stop_on_match:
-                    break
-        logger.debug(
-            "[Forward] 规则匹配完成 total_rules=%d matched=%d importance=%s source=%s",
-            total_rules,
-            len(matched_rules),
-            importance,
-            source,
-        )
+            rules = [_snapshot_forward_rule(r) for r in (await sess.execute(rules_stmt)).scalars().all()]
     except Exception as e:
         logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
-    # 2. 组合决策
-    should_fwd, is_periodic, skip_reason = False, False, None
-    suppressed = False  # 去重/冷却期明确禁止推送
-    base_should_fwd = importance == "high" or bool(matched_rules)
+    decision = decide_forwarding(
+        importance=importance,
+        is_duplicate=is_duplicate,
+        beyond_window=beyond_window,
+        noise=noise,
+        original_event=orig,
+        source=source,
+        rules=rules,
+        policy=ForwardingPolicy(
+            notification_cooldown_seconds=Config.retry.NOTIFICATION_COOLDOWN_SECONDS,
+            enable_periodic_reminder=Config.retry.ENABLE_PERIODIC_REMINDER,
+            reminder_interval_hours=Config.retry.REMINDER_INTERVAL_HOURS,
+            forward_duplicate_alerts=Config.retry.FORWARD_DUPLICATE_ALERTS,
+            forward_after_time_window=Config.retry.FORWARD_AFTER_TIME_WINDOW,
+        ),
+    )
 
-    if is_duplicate:
-        if (
-            orig
-            and orig.last_notified_at
-            and (datetime.now() - orig.last_notified_at).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-        ):
-            suppressed, skip_reason = True, "窗口内重复告警，刚刚已转发"
-        elif (
-            Config.retry.ENABLE_PERIODIC_REMINDER
-            and orig
-            and orig.last_notified_at
-            and (datetime.now() - orig.last_notified_at).total_seconds() / 3600 >= Config.retry.REMINDER_INTERVAL_HOURS
-        ):
-            should_fwd, is_periodic = base_should_fwd, True
-            if not should_fwd:
-                skip_reason = f"定期提醒：重要性为 {importance}，非高风险事件不自动转发"
-        else:
-            if not Config.retry.FORWARD_DUPLICATE_ALERTS:
-                suppressed, skip_reason = True, "窗口内重复告警，配置跳过转发"
-            else:
-                should_fwd = base_should_fwd
-                if not should_fwd:
-                    skip_reason = f"窗口内重复告警：重要性为 {importance}，非高风险事件不自动转发"
-    elif beyond_window:
-        if not Config.retry.FORWARD_AFTER_TIME_WINDOW:
-            suppressed, skip_reason = True, "窗口外重复告警，配置不转发"
-        elif (
-            orig
-            and orig.last_notified_at
-            and (datetime.now() - orig.last_notified_at).total_seconds() < Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-        ):
-            suppressed, skip_reason = True, "窗口外重复告警，刚刚已转发"
-        else:
-            should_fwd = base_should_fwd
-            if not should_fwd:
-                skip_reason = f"窗口外重复告警：重要性为 {importance}，非高风险事件不自动转发"
-    else:
-        should_fwd = base_should_fwd
-        skip_reason = f"重要性为 {importance}，非高风险事件不自动转发" if not should_fwd else None
-
-    # 去重/冷却期明确禁止时，规则匹配不能覆盖
-    final_forward = False if suppressed else (should_fwd or bool(matched_rules))
-
-    if final_forward:
+    if decision.should_forward:
         logger.debug(
             "[Forward] 决策=转发 is_periodic=%s matched_rules=%d skip_reason=%s",
-            is_periodic,
-            len(matched_rules),
-            skip_reason,
+            decision.is_periodic_reminder,
+            len(decision.matched_rules),
+            decision.skip_reason,
         )
     else:
-        logger.debug("[Forward] 决策=跳过 reason=%s suppressed=%s", skip_reason or "no_match", suppressed)
+        logger.debug("[Forward] 决策=跳过 reason=%s", decision.skip_reason or "no_match")
 
-    return ForwardDecision(
-        should_forward=final_forward,
-        skip_reason=skip_reason if not final_forward else None,
-        is_periodic_reminder=is_periodic,
-        matched_rules=matched_rules if not suppressed else [],
-    )
+    return decision
 
 
 async def _execute_forwarding(
@@ -531,8 +486,8 @@ async def _transition_to_analyzing_and_load(event_id: int) -> _EventEnvelope | N
         stmt = (
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
-            .where(WebhookEvent.processing_status.in_(["received", "retry", "failed"]))
-            .values(processing_status="analyzing", failure_reason=None, error_message=None)
+            .where(WebhookEvent.processing_status.in_(_ANALYZING_SOURCES))
+            .values(processing_status=WebhookProcessingStatus.ANALYZING.value, failure_reason=None, error_message=None)
             .returning(WebhookEvent)
         )
         res = await sess.execute(stmt)
@@ -583,9 +538,7 @@ async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> 
 
 
 def _build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReductionContext) -> dict[str, Any]:
-    final_analysis = dict(analysis_result)
-    final_analysis["noise_reduction"] = noise.__dict__
-    return final_analysis
+    return build_final_analysis(analysis_result, noise)
 
 
 async def _persist_analysis_result(
@@ -651,7 +604,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                 .where(WebhookEvent.id == event_id)
                 .where(WebhookEvent.retry_count < max_retries)
                 .values(
-                    processing_status="retry",
+                    processing_status=WebhookProcessingStatus.RETRY.value,
                     retry_count=WebhookEvent.retry_count + 1,
                     failure_reason="retry_err",
                     error_message=str(err)[:2000],
@@ -678,7 +631,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                         update(WebhookEvent)
                         .where(WebhookEvent.id == event_id)
                         .values(
-                            processing_status="received",
+                            processing_status=WebhookProcessingStatus.RECEIVED.value,
                             failure_reason="retry_enqueue_failed",
                             error_message=str(enqueue_err)[:2000],
                         )
@@ -715,7 +668,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
             .values(
-                processing_status="dead_letter",
+                processing_status=WebhookProcessingStatus.DEAD_LETTER.value,
                 failure_reason="retry_exhausted" if retryable else "fat_err",
                 error_message=str(err)[:2000],
             )
@@ -865,7 +818,7 @@ async def _handle_webhook_process_inner(
             ).inc()
 
             outcome = "completed"
-            set_log_context(processing_status="completed")
+            set_log_context(processing_status=WebhookProcessingStatus.COMPLETED.value)
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
 
         except Exception as e:
