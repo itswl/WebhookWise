@@ -1,0 +1,131 @@
+name: webhookwise-e2e
+
+networks:
+  e2e:
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: webhooks
+      POSTGRES_USER: webhook_user
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook_user -d webhooks"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - e2e
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - e2e
+
+  fake-feishu:
+    image: python:3.12-slim
+    command: ["python", "/app/fake_feishu.py"]
+    volumes:
+      - ./fake_feishu.py:/app/fake_feishu.py:ro
+    ports:
+      - "19090:9000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9000/health').read()",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - e2e
+
+  webhook-service:
+    image: webhookwise-e2e:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      RUN_MODE: api
+      APP_ENV: test
+      PORT: "8000"
+      LOG_LEVEL: INFO
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
+      REDIS_URL: redis://redis:6379/0
+      WEBHOOK_SECRET: ""
+      API_KEY: ""
+      ADMIN_WRITE_KEY: ""
+      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      WEBHOOK_RATE_LIMIT_PER_MINUTE: "0"
+      OPENAI_API_KEY: ""
+      ENABLE_AI_ANALYSIS: "false"
+      CACHE_ENABLED: "false"
+      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      OTEL_ENABLED: "false"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+    ports:
+      - "18080:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fake-feishu:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    networks:
+      - e2e
+
+  worker:
+    image: webhookwise-e2e:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      RUN_MODE: worker
+      APP_ENV: test
+      LOG_LEVEL: INFO
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
+      REDIS_URL: redis://redis:6379/0
+      WEBHOOK_SECRET: ""
+      API_KEY: ""
+      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      OPENAI_API_KEY: ""
+      ENABLE_AI_ANALYSIS: "false"
+      CACHE_ENABLED: "false"
+      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      OTEL_ENABLED: "false"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      webhook-service:
+        condition: service_healthy
+    networks:
+      - e2e

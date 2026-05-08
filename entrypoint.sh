@@ -101,6 +101,12 @@ if not url:
 conn = psycopg2.connect(url)
 conn.autocommit = True
 cur = conn.cursor()
+cur.execute("select to_regclass('public.alembic_version')")
+if not cur.fetchone()[0]:
+    cur.close()
+    conn.close()
+    raise SystemExit(0)
+
 cur.execute("select version_num from public.alembic_version")
 current = cur.fetchone()[0]
 
