@@ -12,7 +12,7 @@ from sqlalchemy.ext.compiler import compiles
 
 from db.session import Base
 from models import WebhookEvent
-from services.webhook_query_service import list_webhook_summaries
+from services.webhooks.query_service import list_webhook_summaries
 
 
 # SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON

@@ -26,22 +26,22 @@ from schemas import (
     StuckEventListResponse,
     StuckEventRequeueResponse,
 )
-from services.ai_analyzer import (
+from services.analysis.ai_analyzer import (
     load_user_prompt_template,
     reload_user_prompt_template,
 )
-from services.config_service import (
+from services.operations.tasks import process_webhook_task
+from services.runtime_config.config_service import (
     build_prompt_source,
     collect_config_updates,
     get_config_sources,
     get_current_config,
 )
-from services.tasks import process_webhook_task
-from services.webhook_command_service import (
+from services.webhooks.command_service import (
     replay_dead_letter,
     requeue_stuck_event,
 )
-from services.webhook_query_service import count_dead_letters, list_dead_letters, list_stuck_events
+from services.webhooks.query_service import count_dead_letters, list_dead_letters, list_stuck_events
 
 admin_router = APIRouter()
 

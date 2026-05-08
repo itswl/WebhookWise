@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from models.webhook import WebhookEvent
-from services.webhook_command_service import SaveWebhookResult, save_webhook_data
+from services.webhooks.command_service import SaveWebhookResult, save_webhook_data
 
 
 def test_build_event_beyond_window_flag_can_be_persisted():
@@ -42,7 +42,7 @@ async def test_save_webhook_data_propagates_database_failures(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr("services.webhook_command_service.session_scope", FailingSessionScope)
+    monkeypatch.setattr("services.webhooks.command_service.session_scope", FailingSessionScope)
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         await save_webhook_data({"alert": "down"}, source="test", alert_hash="hash")

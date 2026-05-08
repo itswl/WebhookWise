@@ -32,7 +32,7 @@ async def session(monkeypatch):
 
 async def test_webhooks_cursor_prev_alert_timestamp(session):
     from models import WebhookEvent
-    from services.webhook_query_service import list_webhook_summaries_cursor
+    from services.webhooks.query_service import list_webhook_summaries_cursor
 
     t0 = datetime(2026, 1, 1, 0, 0, 0)
     t1 = datetime(2026, 1, 1, 0, 1, 0)

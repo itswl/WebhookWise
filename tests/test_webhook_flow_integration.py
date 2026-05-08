@@ -52,8 +52,8 @@ async def test_webhook_receive_to_feishu_card_flow(
     from core.app import app
     from core.config import Config, get_settings
     from models import WebhookEvent
-    from services.pipeline import handle_webhook_process
-    from services.tasks import process_webhook_task
+    from services.operations.tasks import process_webhook_task
+    from services.webhooks.pipeline import handle_webhook_process
 
     monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
     monkeypatch.setattr(Config, "_meta", dict(Config._meta))
@@ -74,7 +74,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             "event_type": "integration_test_alert",
         }
 
-    monkeypatch.setattr("services.pipeline.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
+    monkeypatch.setattr("services.webhooks.pipeline.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
 
     posted: list[dict[str, Any]] = []
 
@@ -93,7 +93,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             posted.append({"url": url, "json": json, "timeout": timeout})
             return FakeResponse()
 
-    monkeypatch.setattr("services.forward.get_http_client", lambda: FakeHttpClient())
+    monkeypatch.setattr("services.forwarding.forward.get_http_client", lambda: FakeHttpClient())
 
     async def run_task_inline(event_id: int, client_ip: str | None = None) -> None:
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")

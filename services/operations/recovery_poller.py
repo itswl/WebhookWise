@@ -56,7 +56,7 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
 async def _recover_single_event(e: WebhookEvent) -> None:
     """恢复单条事件，独立 try-except 避免影响循环"""
     try:
-        from services.tasks import process_webhook_task
+        from services.operations.tasks import process_webhook_task
 
         async with session_scope() as session:
             stmt = (
