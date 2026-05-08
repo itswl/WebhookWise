@@ -15,7 +15,7 @@ from schemas import (
     ForwardRuleDetailResponse,
     ForwardRuleListResponse,
 )
-from services.forward import (
+from services.forwarding.forward import (
     create_forward_rule,
     delete_failed_forward,
     delete_forward_rule,

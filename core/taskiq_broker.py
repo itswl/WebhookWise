@@ -53,7 +53,7 @@ scheduler = TaskiqScheduler(
     sources=[LabelScheduleSource(broker), dynamic_schedule_source],
 )
 
-import services.tasks  # noqa: E402,F401
+import services.operations.tasks  # noqa: E402,F401
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
@@ -76,7 +76,7 @@ async def worker_startup_event(state: object) -> None:
 
     setup_otel_worker()
     try:
-        from services.recovery_poller import run_recovery_scan
+        from services.operations.recovery_poller import run_recovery_scan
 
         await run_recovery_scan(stuck_threshold_seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
         logger.info("[TaskIQ] 启动恢复扫描完成")

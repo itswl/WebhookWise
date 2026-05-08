@@ -7,7 +7,7 @@ tests/test_noise_reduction_core.py
 
 from datetime import datetime, timedelta
 
-from services.alert_noise_reduction import (
+from services.analysis.noise_reduction import (
     AlertContext,
     _extract_resource_ids,
     _jaccard,
@@ -132,11 +132,15 @@ def test_extract_resource_ids_empty_data():
 def test_score_same_source_and_resources_high_score():
     """来源相同、资源相同的告警应该得高分。"""
     current = _make_ctx(
-        event_id=2, source="prometheus", importance="high",
+        event_id=2,
+        source="prometheus",
+        importance="high",
         parsed_data={"host": "prod-01", "alertname": "HighCPU"},
     )
     candidate = _make_ctx(
-        event_id=1, source="prometheus", importance="high",
+        event_id=1,
+        source="prometheus",
+        importance="high",
         parsed_data={"host": "prod-01", "alertname": "HighCPU"},
         offset_seconds=60,  # 1 分钟前
     )
@@ -175,11 +179,15 @@ def test_score_future_candidate_returns_zero():
 def test_score_completely_different_alerts_low_score():
     """完全不同的告警得分接近 0。"""
     current = _make_ctx(
-        event_id=2, source="github", importance="low",
+        event_id=2,
+        source="github",
+        importance="low",
         parsed_data={"repo": "my-app", "event": "push"},
     )
     candidate = _make_ctx(
-        event_id=1, source="prometheus", importance="high",
+        event_id=1,
+        source="prometheus",
+        importance="high",
         parsed_data={"host": "db-server", "alertname": "DiskFull"},
         offset_seconds=30,
     )
@@ -192,10 +200,10 @@ def test_score_completely_different_alerts_low_score():
 
 def test_analyze_standalone_no_related_alerts():
     """无历史告警时，结果应为 standalone，不抑制转发。"""
-    current = _make_ctx(event_id=10, source="prometheus", importance="high",
-                        parsed_data={"host": "prod-01", "alertname": "HighCPU"})
-    decision = analyze_noise_reduction(current, [], window_minutes=5,
-                                       min_confidence=0.4, suppress_derived=True)
+    current = _make_ctx(
+        event_id=10, source="prometheus", importance="high", parsed_data={"host": "prod-01", "alertname": "HighCPU"}
+    )
+    decision = analyze_noise_reduction(current, [], window_minutes=5, min_confidence=0.4, suppress_derived=True)
     assert decision.relation == "standalone"
     assert decision.suppress_forward is False
     assert decision.root_cause_event_id is None
@@ -206,11 +214,11 @@ def test_analyze_marks_derived_when_confidence_high():
     base_data = {"host": "prod-01", "alertname": "HighCPU", "labels": {"instance": "prod-01"}}
 
     current = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data)
-    root_cause = _make_ctx(event_id=1, source="prometheus", importance="high",
-                           parsed_data=base_data, offset_seconds=30)
+    root_cause = _make_ctx(event_id=1, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=30)
 
-    decision = analyze_noise_reduction(current, [root_cause], window_minutes=5,
-                                       min_confidence=0.3, suppress_derived=True)
+    decision = analyze_noise_reduction(
+        current, [root_cause], window_minutes=5, min_confidence=0.3, suppress_derived=True
+    )
 
     assert decision.relation == "derived"
     assert decision.root_cause_event_id == 1
@@ -221,25 +229,23 @@ def test_analyze_suppress_derived_false_allows_forward():
     """suppress_derived=False 时，即使衍生也不抑制转发。"""
     base_data = {"host": "prod-01", "alertname": "MemoryLeak"}
     current = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data)
-    root = _make_ctx(event_id=1, source="prometheus", importance="high",
-                     parsed_data=base_data, offset_seconds=10)
+    root = _make_ctx(event_id=1, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=10)
 
-    decision = analyze_noise_reduction(current, [root], window_minutes=5,
-                                       min_confidence=0.1, suppress_derived=False)
+    decision = analyze_noise_reduction(current, [root], window_minutes=5, min_confidence=0.1, suppress_derived=False)
     if decision.relation == "derived":
         assert decision.suppress_forward is False
 
 
 def test_analyze_standalone_when_outside_window():
     """超时间窗口的历史告警不参与评分，结果为 standalone。"""
-    current = _make_ctx(event_id=2, source="prometheus",
-                        parsed_data={"host": "prod-01", "alertname": "HighCPU"})
-    old_alert = _make_ctx(event_id=1, source="prometheus",
-                          parsed_data={"host": "prod-01", "alertname": "HighCPU"},
-                          offset_seconds=600)  # 10 分钟前，超出 5 分钟窗口
+    current = _make_ctx(event_id=2, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"})
+    old_alert = _make_ctx(
+        event_id=1, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"}, offset_seconds=600
+    )  # 10 分钟前，超出 5 分钟窗口
 
-    decision = analyze_noise_reduction(current, [old_alert], window_minutes=5,
-                                       min_confidence=0.4, suppress_derived=True)
+    decision = analyze_noise_reduction(
+        current, [old_alert], window_minutes=5, min_confidence=0.4, suppress_derived=True
+    )
     assert decision.relation == "standalone"
 
 
@@ -247,15 +253,14 @@ def test_analyze_alert_storm_detected():
     """高重要性告警有 >=2 个相关告警时，标记为 root_cause（告警风暴）。"""
     base_data = {"host": "prod-01", "alertname": "DBTimeout"}
     current = _make_ctx(event_id=10, source="prometheus", importance="high", parsed_data=base_data)
-    related_a = _make_ctx(event_id=1, source="prometheus", importance="high",
-                          parsed_data=base_data, offset_seconds=30)
-    related_b = _make_ctx(event_id=2, source="prometheus", importance="high",
-                          parsed_data=base_data, offset_seconds=60)
+    related_a = _make_ctx(event_id=1, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=30)
+    related_b = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=60)
 
     # 置信度设高 → 两个都是衍生 → 但当前是 high 且有 >=2 关联 → 触发 root_cause
     # 注意：root_cause 分支要求 best_score < min_confidence 但 related_ids >= 2
-    decision = analyze_noise_reduction(current, [related_a, related_b], window_minutes=5,
-                                       min_confidence=0.99, suppress_derived=True)
+    decision = analyze_noise_reduction(
+        current, [related_a, related_b], window_minutes=5, min_confidence=0.99, suppress_derived=True
+    )
     # 当 best_score 不够高时触发 root_cause 分支
     if decision.relation == "root_cause":
         assert decision.suppress_forward is False
@@ -267,13 +272,16 @@ def test_analyze_multiple_candidates_picks_highest_score():
     base_data = {"host": "prod-01", "alertname": "HighCPU"}
     current = _make_ctx(event_id=5, source="prometheus", importance="high", parsed_data=base_data)
 
-    candidate_a = _make_ctx(event_id=3, source="prometheus", importance="high",
-                            parsed_data=base_data, offset_seconds=10)
-    candidate_b = _make_ctx(event_id=2, source="github", importance="low",
-                            parsed_data={"repo": "app"}, offset_seconds=20)
+    candidate_a = _make_ctx(
+        event_id=3, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=10
+    )
+    candidate_b = _make_ctx(
+        event_id=2, source="github", importance="low", parsed_data={"repo": "app"}, offset_seconds=20
+    )
 
-    decision = analyze_noise_reduction(current, [candidate_a, candidate_b], window_minutes=5,
-                                       min_confidence=0.1, suppress_derived=True)
+    decision = analyze_noise_reduction(
+        current, [candidate_a, candidate_b], window_minutes=5, min_confidence=0.1, suppress_derived=True
+    )
 
     if decision.root_cause_event_id is not None:
         assert decision.root_cause_event_id == 3

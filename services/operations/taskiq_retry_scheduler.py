@@ -22,7 +22,7 @@ def compute_backoff_delay(
 
 async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
     """Schedule a single webhook retry through TaskIQ's dynamic scheduler."""
-    from services.tasks import process_webhook_task
+    from services.operations.tasks import process_webhook_task
 
     schedule_id = f"webhook-retry:{event_id}"
     await dynamic_schedule_source.delete_schedule(schedule_id)

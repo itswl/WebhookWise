@@ -145,7 +145,12 @@ tests/e2e/run_webhook_to_feishu.sh
 /
 ├── api/               # API 路由 (webhook, admin, analysis, forwarding)
 ├── core/              # 基础设施 (config, auth, redis, logger, metrics, broker)
-├── services/          # 业务逻辑 (pipeline, ai_analyzer, forward, tasks, ...)
+├── services/          # 业务逻辑，按能力分包
+│   ├── webhooks/      # 接收、持久化、查询、主处理 Pipeline
+│   ├── forwarding/    # 转发规则、外部投递、失败转发补偿
+│   ├── analysis/      # AI 分析、降噪、OpenClaw 集成
+│   ├── operations/    # TaskIQ 任务、调度入口、恢复/指标/维护任务
+│   └── runtime_config/# 运行时配置热更新服务
 ├── adapters/          # 生态适配器 (多格式归一化)
 │   └── plugins/       # 生态适配器插件 (feishu_card)
 ├── models/            # SQLAlchemy ORM 模型

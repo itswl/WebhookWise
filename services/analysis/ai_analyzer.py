@@ -45,7 +45,7 @@ from core.otel import span as otel_span
 from db.session import count_with_timeout, session_scope
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import WebhookAnalysisResult
-from services.payload_sanitizer import sanitize_for_ai_async
+from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 
 # 类型别名
 WebhookData = dict[str, Any]

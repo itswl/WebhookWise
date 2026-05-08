@@ -3,7 +3,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_sanitize_for_ai_async_offloads_large_payload(monkeypatch):
-    from services import payload_sanitizer
+    from services.webhooks import payload_sanitizer
 
     called = {"n": 0}
 
@@ -22,7 +22,7 @@ async def test_sanitize_for_ai_async_offloads_large_payload(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_sanitize_for_ai_async_does_not_offload_small_payload(monkeypatch):
-    from services import payload_sanitizer
+    from services.webhooks import payload_sanitizer
 
     called = {"n": 0}
 
@@ -40,7 +40,7 @@ async def test_sanitize_for_ai_async_does_not_offload_small_payload(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_sanitize_for_ai_async_offloads_deep_nested_large_string(monkeypatch):
-    from services import payload_sanitizer
+    from services.webhooks import payload_sanitizer
 
     called = {"n": 0}
 

@@ -19,12 +19,12 @@ from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
-from services.tasks import process_webhook_task
-from services.webhook_command_service import (
+from services.operations.tasks import process_webhook_task
+from services.webhooks.command_service import (
     get_client_ip,
     quick_receive_webhook,
 )
-from services.webhook_query_service import list_webhook_summaries
+from services.webhooks.query_service import list_webhook_summaries
 
 webhook_router = APIRouter()
 

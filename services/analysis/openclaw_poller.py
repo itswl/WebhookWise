@@ -59,7 +59,7 @@ async def _notify_feishu_deep_analysis(record_dict: WebhookData, source: str = "
         )
         if not success:
             try:
-                from services.forward import record_failed_forward
+                from services.forwarding.forward import record_failed_forward
 
                 await record_failed_forward(
                     webhook_event_id=record_dict["webhook_event_id"],
@@ -144,7 +144,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: 
             logger.info(f"深度分析失败通知已发送: id={record_dict['id']}, reason={reason}")
         else:
             try:
-                from services.forward import record_failed_forward
+                from services.forwarding.forward import record_failed_forward
 
                 await record_failed_forward(
                     webhook_event_id=record_dict["webhook_event_id"],
@@ -267,7 +267,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
         {"id": int, "action": "skip" | "update", ...更新字段}
     """
     from core.config import Config
-    from services.openclaw_ws_client import poll_session_result
+    from services.analysis.openclaw_ws_client import poll_session_result
 
     record_id = rec["id"]
 

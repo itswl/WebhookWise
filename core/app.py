@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # 必须导入任务以注册到 broker
-import services.tasks  # noqa: F401
+import services.operations.tasks  # noqa: F401
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
@@ -27,8 +27,8 @@ from core.redis_client import dispose_redis
 from core.taskiq_broker import broker
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
-from services.ai_analyzer import reset_openai_client
-from services.pipeline import get_running_tasks
+from services.analysis.ai_analyzer import reset_openai_client
+from services.webhooks.pipeline import get_running_tasks
 
 
 @asynccontextmanager

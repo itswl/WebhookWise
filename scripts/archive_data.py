@@ -5,7 +5,7 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).parent.parent))
 
-from services.data_maintenance import archive_old_data_by_policy
+from services.operations.data_maintenance import archive_old_data_by_policy
 
 if __name__ == "__main__":
     asyncio.run(archive_old_data_by_policy())

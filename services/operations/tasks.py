@@ -55,7 +55,7 @@ async def process_webhook_task(
     client_ip: str | None = None,
 ) -> None:
     """异步处理单条 Webhook 事件"""
-    from services.pipeline import handle_webhook_process
+    from services.webhooks.pipeline import handle_webhook_process
 
     logger.info(f"[Tasks] 异步处理 Webhook 事件: ID={event_id}")
     async with session_scope() as session:
@@ -69,7 +69,7 @@ async def process_webhook_task(
     ],
 )
 async def scheduled_recovery_scan() -> None:
-    from services.recovery_poller import run_recovery_scan
+    from services.operations.recovery_poller import run_recovery_scan
 
     await _run_scheduled("recovery_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_recovery_scan())
 
@@ -84,7 +84,7 @@ async def scheduled_recovery_scan() -> None:
     ],
 )
 async def scheduled_metrics_refresh() -> None:
-    from services.metrics_poller import refresh_all_metrics
+    from services.operations.metrics_poller import refresh_all_metrics
 
     await _run_scheduled("metrics_refresh", Config.server.METRICS_REFRESH_INTERVAL_SECONDS, refresh_all_metrics())
 
@@ -99,7 +99,7 @@ async def scheduled_metrics_refresh() -> None:
     ],
 )
 async def scheduled_openclaw_poll() -> None:
-    from services.openclaw_poller import poll_pending_analyses
+    from services.analysis.openclaw_poller import poll_pending_analyses
 
     await _run_scheduled("openclaw_poll", Config.server.OPENCLAW_POLL_INTERVAL_SECONDS, poll_pending_analyses())
 
@@ -113,7 +113,7 @@ async def scheduled_openclaw_poll() -> None:
 async def scheduled_forward_retry_poll() -> None:
     if not Config.retry.ENABLE_FORWARD_RETRY:
         return
-    from services.forward_retry_poller import poll_pending_retries
+    from services.forwarding.retry_poller import poll_pending_retries
 
     await _run_scheduled("forward_retry_poll", Config.retry.FORWARD_RETRY_POLL_INTERVAL, poll_pending_retries())
 
@@ -122,7 +122,7 @@ async def scheduled_forward_retry_poll() -> None:
     task_name="scheduled_data_maintenance", schedule=[{"cron": f"0 {Config.maintenance.MAINTENANCE_HOUR} * * *"}]
 )
 async def scheduled_data_maintenance() -> None:
-    from services.data_maintenance import archive_old_data_by_policy
+    from services.operations.data_maintenance import archive_old_data_by_policy
 
     start = time.time()
     try:

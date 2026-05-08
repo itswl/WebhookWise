@@ -34,17 +34,17 @@ from core.retry_policies import retry_policy
 from core.trace import generate_trace_id, set_trace_id
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
-from services.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
-from services.alert_noise_reduction import AlertContext, analyze_noise_reduction
-from services.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
-from services.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
-from services.types import (
+from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
+from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
+from services.forwarding.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
+from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
+from services.webhooks.command_service import save_webhook_data
+from services.webhooks.types import (
     AnalysisResolution,
     ForwardDecision,
     NoiseReductionContext,
     WebhookRequestContext,
 )
-from services.webhook_command_service import save_webhook_data
 
 
 def _normalize_importance(value: Any) -> str:
