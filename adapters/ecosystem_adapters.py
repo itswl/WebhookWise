@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from core.circuit_breaker import feishu_cb
+from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
 from core.config import Config
 from core.http_client import get_http_client
 
@@ -18,6 +18,7 @@ logger = logging.getLogger("webhook_service.ecosystem_adapters")
 
 WebhookData = dict[str, Any]
 HeadersLike = Mapping[str, Any]
+_adapters_initialized = False
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,24 @@ def register_simple_adapters() -> None:
         return res
 
 
+def initialize_adapters() -> None:
+    """Initialize built-in and plugin adapters during process startup."""
+    global _adapters_initialized
+    if _adapters_initialized:
+        return
+
+    from adapters.registry import registry
+
+    register_simple_adapters()
+    registry.auto_discover()
+    _adapters_initialized = True
+    logger.info("[Adapter] 适配器注册完成")
+
+
+def adapters_initialized() -> bool:
+    return _adapters_initialized
+
+
 def normalize_webhook_event(
     data: Any,
     source: str | None,
@@ -215,11 +234,6 @@ def normalize_webhook_event(
 ) -> NormalizedWebhook:
     """根据 source 或 payload 特征选择适配器，并输出标准化数据。"""
     from adapters.registry import registry
-
-    # 注册内置简单适配器
-    register_simple_adapters()
-    # 发现外部插件适配器
-    registry.auto_discover()
 
     if not isinstance(data, dict):
         resolved_source = str(source or _header_get(headers, "X-Webhook-Source") or "unknown").strip().lower()
@@ -309,5 +323,12 @@ async def send_feishu_deep_analysis(
         },
     }
     client = get_http_client()
-    resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT)
-    return resp is not None and resp.status_code == 200
+    try:
+        resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT)
+    except CircuitBreakerOpenException as e:
+        logger.warning("飞书深度分析通知被熔断器拦截: %s", e)
+        return False
+    except Exception as e:
+        logger.warning("飞书深度分析通知发送失败: %s", e)
+        return False
+    return resp.status_code == 200
