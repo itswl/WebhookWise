@@ -16,6 +16,14 @@ if _ps not in sys.path:
     sys.path.insert(0, _ps)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def initialize_adapter_registry():
+    """测试进程启动时注册 adapter，避免请求路径做动态注册。"""
+    from adapters.ecosystem_adapters import initialize_adapters
+
+    initialize_adapters()
+
+
 # ── 外部服务 Mock ─────────────────────────────────────────────────────────────
 
 

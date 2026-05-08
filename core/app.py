@@ -11,6 +11,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 # 必须导入任务以注册到 broker
 import services.operations.tasks  # noqa: F401
+from adapters.ecosystem_adapters import initialize_adapters
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
@@ -27,7 +28,7 @@ from core.redis_client import dispose_redis
 from core.taskiq_broker import broker
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
-from services.analysis.ai_analyzer import reset_openai_client
+from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
 from services.webhooks.pipeline import get_running_tasks
 
 
@@ -38,10 +39,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
         )
     get_http_client()
+    initialize_adapters()
     await init_engine()
     if Config.server.ENABLE_RUNTIME_CONFIG:
         await Config.load_from_db()
         await Config.start_subscriber()
+    if Config.ai.ENABLE_AI_ANALYSIS and Config.ai.OPENAI_API_KEY:
+        await initialize_openai_client()
 
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()

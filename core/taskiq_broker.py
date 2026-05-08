@@ -59,18 +59,23 @@ import services.operations.tasks  # noqa: E402,F401
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
+    from adapters.ecosystem_adapters import initialize_adapters
     from core.config import Config
     from core.http_client import get_http_client
     from core.logger import setup_logger
     from db.session import init_engine
+    from services.analysis.ai_analyzer import initialize_openai_client
 
     # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
     setup_logger()
+    initialize_adapters()
     await init_engine()
     get_http_client()
     if Config.server.ENABLE_RUNTIME_CONFIG:
         await Config.load_from_db()
         await Config.start_subscriber()
+    if Config.ai.ENABLE_AI_ANALYSIS and Config.ai.OPENAI_API_KEY:
+        await initialize_openai_client()
     # 初始化 worker 进程 OTEL（TracerProvider + httpx/redis instrumentation）
     from core.otel import setup_otel_worker
 
