@@ -186,3 +186,75 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     assert updated.forward_status == "skipped"
     assert updated.alert_hash == "same-hash"
     assert updated.is_duplicate == 1
+
+
+async def test_finalization_rolls_back_event_when_outbox_creation_fails(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from models import ForwardOutbox, WebhookEvent
+    from services.webhooks.pipeline import (
+        _finalize_analysis_transaction,
+        _parse_request,
+        _PipelineContext,
+    )
+    from services.webhooks.types import AnalysisResolution, NoiseReductionContext
+
+    payload = {
+        "alert_name": "checkout-5xx",
+        "event_type": "prometheus_alert",
+        "service": "checkout-api",
+    }
+    async with integration_session_factory.begin() as session:
+        event = WebhookEvent(source="prometheus", client_ip="127.0.0.1", processing_status="analyzing")
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    async def fail_create_outbox(*_: object, **__: object) -> list[int]:
+        raise RuntimeError("outbox insert failed")
+
+    monkeypatch.setattr("services.webhooks.pipeline.create_forward_outbox_records", fail_create_outbox)
+
+    req_ctx = _parse_request(
+        "127.0.0.1",
+        {},
+        payload,
+        b'{"alert_name":"checkout-5xx"}',
+        "prometheus",
+        None,
+    )
+    alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
+    ctx = _PipelineContext(
+        event_id=event_id,
+        client_ip="127.0.0.1",
+        metric_source="prometheus",
+        req_ctx=req_ctx,
+        alert_hash=alert_hash,
+    )
+    analysis_res = AnalysisResolution(
+        {"importance": "high", "summary": "should rollback", "event_type": "test"},
+        True,
+        False,
+        None,
+        False,
+    )
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
+
+    with pytest.raises(RuntimeError, match="outbox insert failed"):
+        await _finalize_analysis_transaction(
+            ctx,
+            analysis_res,
+            {"importance": "high", "summary": "should rollback"},
+            noise,
+        )
+
+    async with integration_session_factory() as session:
+        event = await session.get(WebhookEvent, event_id)
+        outboxes = (await session.execute(select(ForwardOutbox))).scalars().all()
+
+    assert event is not None
+    assert event.processing_status == "analyzing"
+    assert event.ai_analysis is None
+    assert event.forward_status is None
+    assert outboxes == []
