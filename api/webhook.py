@@ -14,6 +14,7 @@ from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
 from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+from core.sensitive_data import redact_event_dict
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
@@ -172,4 +173,4 @@ async def get_webhook_detail_endpoint(
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
-    return {"success": True, "data": event.to_dict()}
+    return {"success": True, "data": redact_event_dict(event.to_dict())}

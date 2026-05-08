@@ -319,7 +319,7 @@ const AlertsModule = {
             const importance = webhook.importance || 'low';
             const duplicateType = webhook.duplicate_type || 'new';
             const isDuplicate = duplicateType !== 'new' && !!webhook.is_duplicate;
-            // 兼容两种数据格式：完整模式(ai_analysis)和摘要模式(summary)
+            // 兼容两种数据格式：详情数据(ai_analysis)和摘要数据(summary)
             const analysis = webhook.ai_analysis || {};
             const summary = webhook.summary || analysis.summary || '';
 
@@ -404,7 +404,7 @@ const AlertsModule = {
                 });
                 html += '</div>';
                 html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整原始数据</p>';
+                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载脱敏后的原始数据</p>';
                 html += '</div>';
             } else {
                 html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';

@@ -9,12 +9,16 @@ var DeepAnalysesModule = (function() {
 
     function escapeHtml(unsafe) {
         if (!unsafe) return '';
-        return unsafe
+        return String(unsafe)
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    function renderPlainMarkdown(text) {
+        return `<pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${escapeHtml(text)}</pre>`;
     }
 
     function toggleExpand(id) {
@@ -133,12 +137,7 @@ var DeepAnalysesModule = (function() {
         } else {
             // Completed
             if (analysis._openclaw_text) {
-                let mdHtml = '';
-                if (typeof marked !== 'undefined') {
-                    mdHtml = marked.parse(analysis._openclaw_text);
-                } else {
-                    mdHtml = `<pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(analysis._openclaw_text)}</pre>`;
-                }
+                const mdHtml = renderPlainMarkdown(analysis._openclaw_text);
                 detailsHtml += `
                     <div style="background: #ffffff; padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.95rem; line-height: 1.6; color: var(--text-main);" class="markdown-body">
                         ${mdHtml}

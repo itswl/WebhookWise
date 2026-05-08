@@ -99,6 +99,14 @@ def get_prompt_source() -> str:
     return _user_prompt_source
 
 
+def _resolve_prompt_path(prompt_file: str) -> Path:
+    file_path = Path(prompt_file)
+    if file_path.is_absolute():
+        return file_path
+    project_root = Path(__file__).resolve().parents[2]
+    return project_root / file_path
+
+
 async def load_user_prompt_template() -> str:
     global _user_prompt_template, _user_prompt_source
     async with _prompt_template_lock:
@@ -111,9 +119,7 @@ async def load_user_prompt_template() -> str:
 
         prompt_file = Config.ai.AI_USER_PROMPT_FILE
         if prompt_file:
-            file_path = Path(prompt_file)
-            if not file_path.is_absolute():
-                file_path = Path(__file__).parent.parent / file_path
+            file_path = _resolve_prompt_path(prompt_file)
             if file_path.exists():
                 try:
                     with open(file_path, encoding="utf-8") as f:

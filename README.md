@@ -1,6 +1,6 @@
 # WebhookWise: 智能 Webhook 接收与 AI 运维分析服务
 
-一个工业级、高性能的 Webhook 智能管家。基于 FastAPI 异步架构，具备 AI 根因分析、智能告警降噪、分布式去重、冷热数据归档以及全方位可观测性。
+一个面向生产运维场景的 Webhook 智能管家。基于 FastAPI 异步架构，具备 AI 根因分析、智能告警降噪、分布式去重、冷热数据归档以及可观测性能力。
 
 ## ✨ 核心特性
 
@@ -73,7 +73,7 @@
 ```bash
 # 1. 复制并填写配置
 cp .env.example .env
-# 至少需要填写: OPENAI_API_KEY, API_KEY
+# 至少需要替换: API_KEY, ADMIN_WRITE_KEY, WEBHOOK_SECRET；需要 AI 分析时再填写 OPENAI_API_KEY
 
 # 2. 一键启动（Migrate + API + Worker + Scheduler + Redis + PostgreSQL）
 docker-compose up -d --build
@@ -87,7 +87,7 @@ curl http://localhost:8000/health
 ### 本地开发
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.lock
 
 # 启动 API
 uvicorn main:app --reload --port 8000
@@ -242,6 +242,9 @@ tests/e2e/run_webhook_to_feishu.sh
 |:---|:---|:---|
 | `API_KEY` | — | 管理 API 鉴权 Token（生产必须设置） |
 | `ADMIN_WRITE_KEY` | — | 写操作单独 Key（为空则回退到 API_KEY） |
+| `REQUIRE_WEBHOOK_AUTH` | `true` | 生产环境默认要求 Webhook 签名或 Token 鉴权 |
+| `ALLOW_UNAUTHENTICATED_WEBHOOK` | `false` | 显式允许生产环境公开接收 Webhook（不推荐） |
+| `WEBHOOK_RATE_LIMIT_PER_MINUTE` | `600` | 按客户端 IP 限流；设为 `0` 表示关闭 |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
 | `RUN_MODE` | `all` | `api` / `worker` / `scheduler` / `all` |

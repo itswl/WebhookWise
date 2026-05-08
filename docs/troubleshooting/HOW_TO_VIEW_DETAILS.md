@@ -1,4 +1,4 @@
-# 如何查看 AI 分析和原始数据
+# 如何查看 AI 分析和脱敏后的原始数据
 
 ## 新功能：智能按需加载 🚀
 
@@ -21,19 +21,19 @@
 
 3. **自动加载完整数据**
    - 首次展开时，系统会自动调用 `/api/webhooks/<id>` 接口
-   - 加载完整的原始数据和 AI 分析结果
+   - 加载脱敏后的原始数据和完整 AI 分析结果
    - 显示加载动画，几十毫秒后完成
 
 4. **切换标签页查看**
    - **概览**：基本信息（ID、来源、时间等）
-   - **原始数据**：完整的 JSON 数据
+   - **原始数据**：脱敏后的 JSON 数据
    - **AI 分析**：完整的智能分析结果
 
 ### 方法2：直接调用 API
 
-#### 查看单条完整数据
+#### 查看单条详情数据
 ```bash
-# 获取 ID=8265 的完整数据
+# 获取 ID=8265 的详情数据
 curl http://localhost:8000/api/webhooks/8265 | jq .
 
 # 响应示例
@@ -43,8 +43,8 @@ curl http://localhost:8000/api/webhooks/8265 | jq .
     "id": 8265,
     "source": "mongodb",
     "timestamp": "2026-02-27T17:50:00",
-    "raw_payload": { ... },        # 完整原始数据
-    "parsed_data": { ... },        # 解析后的数据
+    "raw_payload": "{...}",        # 脱敏后的原始 JSON 字符串
+    "parsed_data": { ... },        # 脱敏后的解析数据
     "ai_analysis": {               # 完整 AI 分析
       "summary": "MongoDB主机连接数异常...",
       "event_type": "资源耗尽",
@@ -83,13 +83,7 @@ curl "http://localhost:8000/api/webhooks?page=1&page_size=100" | jq .
 }
 ```
 
-#### 加载列表（完整模式）
-```bash
-# 加载完整数据（慢，数据量大）
-curl "http://localhost:8000/api/webhooks?page=1&page_size=50&fields=full" | jq .
-
-# 响应字段（16个，包含 raw_payload, ai_analysis 等）
-```
+列表接口始终返回摘要字段；需要某条事件的详情时，使用 `GET /api/webhooks/<id>` 按需加载。
 
 ## 数据结构对比
 
@@ -118,22 +112,23 @@ curl "http://localhost:8000/api/webhooks?page=1&page_size=50&fields=full" | jq .
 - ✅ 数据量小（~0.4 KB/条）
 - ✅ 加载速度快（200条 ~40ms）
 - ✅ 包含列表显示所需的所有信息
-- ❌ 没有完整的 `raw_payload` 和 `ai_analysis`
+- ❌ 没有 `raw_payload` 和完整 `ai_analysis`
 
-### 完整模式（详情查看）
+### 详情模式（按需查看）
 ```json
 {
   "id": 8265,
   "source": "mongodb",
   "client_ip": "180.184.79.11",
   "timestamp": "2026-02-27T17:50:00",
-  "raw_payload": "{\"监控项\":...}",  # 完整原始 JSON
+  "raw_payload": "{\"监控项\":...}",  # 脱敏后的原始 JSON
   "headers": {
     "Content-Type": "application/json",
     "User-Agent": "...",
+    "Authorization": "[REDACTED]",
     ...
   },
-  "parsed_data": {                   # 完整解析数据
+  "parsed_data": {                   # 脱敏后的解析数据
     "监控项": {
       "主机": "mongo-prod-01",
       "监控项": "连接数"
@@ -167,8 +162,8 @@ curl "http://localhost:8000/api/webhooks?page=1&page_size=50&fields=full" | jq .
 ```
 
 **特点**：
-- ✅ 包含所有字段（16个）
-- ✅ 适合详情查看、分析、导出
+- ✅ 包含详情排查所需字段（敏感 header 和常见 secret/token/password 字段会被脱敏）
+- ✅ 适合详情查看和分析
 - ❌ 数据量大（~15 KB/条）
 - ❌ 加载速度慢（50条 ~140ms）
 
@@ -191,7 +186,7 @@ curl "http://localhost:8000/api/webhooks?page=1&page_size=50&fields=full" | jq .
 │ metric: 连接数                              │
 │ value:  950/1000                            │
 │                                             │
-│ 💡 首次展开时会自动加载完整原始数据          │
+│ 💡 首次展开时会自动加载脱敏后的原始数据      │
 └─────────────────────────────────────────────┘
 
 [AI 分析] 标签页内容：
@@ -304,20 +299,11 @@ curl "http://localhost:8000/api/webhooks?page=1&page_size=50&fields=full" | jq .
 ### Q3: 可以强制刷新某条告警的数据吗？
 **A**: 可以使用"重新分析"按钮，这会重新调用 AI 分析并更新数据。
 
-### Q4: 导出数据时会包含完整信息吗？
-**A**: 如果需要导出完整数据，建议使用：
+### Q4: 导出数据时会包含详情信息吗？
+**A**: 列表接口导出的是摘要数据。如果需要详情，先分页拿到 ID，再逐条调用详情接口：
 ```bash
-# 分批导出完整数据
-curl "http://localhost:8000/api/webhooks?page=1&page_size=200&fields=full" > export_page1.json
-curl "http://localhost:8000/api/webhooks?page=2&page_size=200&fields=full" > export_page2.json
-# ...
-```
-
-或者通过游标分页：
-```bash
-curl "http://localhost:8000/api/webhooks?page=1&page_size=200&fields=full" > page1.json
-# 从 page1.json 获取 next_cursor
-curl "http://localhost:8000/api/webhooks?cursor=8147&page_size=200&fields=full" > page2.json
+curl "http://localhost:8000/api/webhooks?page_size=200" > page1.json
+curl "http://localhost:8000/api/webhooks/8265" > detail-8265.json
 ```
 
 ## 总结
@@ -325,8 +311,8 @@ curl "http://localhost:8000/api/webhooks?cursor=8147&page_size=200&fields=full" 
 **查看 AI 分析和原始数据的方式**：
 
 1. ✅ **最简单**：打开页面，点击告警项，自动加载并显示
-2. ✅ **API 调用**：`GET /api/webhooks/<id>` 获取单条完整数据
-3. ✅ **批量导出**：使用 `fields=full` 参数分批加载
+2. ✅ **API 调用**：`GET /api/webhooks/<id>` 获取单条详情数据
+3. ✅ **批量导出**：先用列表接口拿 ID，再逐条调用详情接口
 
 **优势**：
 - 🚀 页面加载快（提升20倍+）

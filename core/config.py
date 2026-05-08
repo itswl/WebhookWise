@@ -71,6 +71,7 @@ class SecurityConfig(BaseSettings):
     API_KEY: str = Field(default="")
     ADMIN_WRITE_KEY: str = Field(default="")
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
+    ALLOW_UNAUTHENTICATED_WEBHOOK: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
