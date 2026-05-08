@@ -8,7 +8,7 @@
 |:---|:---|
 | **异步 Webhook 接收** | TaskIQ 异步任务队列，立即返回 202，后台并发处理 |
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
-| **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，WebSocket 异步拉取结果 |
+| **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
 | **智能降噪去重** | Jaccard 相似度识别衍生告警，分布式去重 + 24h 时间窗口（可配置） |
 | **告警风暴背压** | 同一 `alert_hash` 并发激增时 Fail-Fast + 聚合写入，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
@@ -46,8 +46,8 @@
 
 **异步职责边界：**
 - TaskIQ：异步任务投递与 Worker 消费
-- Scheduler：周期性投递 recovery、metrics、OpenClaw poll、数据维护等任务
-- TaskIQ 动态调度：按事件投递 Webhook 处理重试和失败转发重试
+- Scheduler：周期性投递 recovery、metrics、数据维护等任务
+- TaskIQ 动态调度：按事件投递 Webhook 处理重试、失败转发重试和 OpenClaw 结果拉取
 - PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
 - Redis：TaskIQ 队列、短期锁、缓存、运行时配置广播
 

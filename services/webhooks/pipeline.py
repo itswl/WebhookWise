@@ -499,15 +499,21 @@ async def _execute_forwarding(
                 # 深度分析记录挂在原始事件上，重复事件时用 orig_id
                 target_event_id = orig_id if orig_id else webhook_id
                 async with session_scope() as sess:
-                    sess.add(
-                        DeepAnalysis(
-                            webhook_event_id=target_event_id,
-                            engine="openclaw",
-                            openclaw_run_id=str(cast(dict[str, Any], res).get("_openclaw_run_id", "")),
-                            openclaw_session_key=str(cast(dict[str, Any], res).get("_openclaw_session_key", "")),
-                            status="pending",
-                        )
+                    record = DeepAnalysis(
+                        webhook_event_id=target_event_id,
+                        engine="openclaw",
+                        openclaw_run_id=str(cast(dict[str, Any], res).get("_openclaw_run_id", "")),
+                        openclaw_session_key=str(cast(dict[str, Any], res).get("_openclaw_session_key", "")),
+                        status="pending",
                     )
+                    sess.add(record)
+                    await sess.flush()
+                    try:
+                        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+
+                        await schedule_openclaw_poll(record.id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+                    except Exception as e:
+                        logger.warning("[Forward] OpenClaw poll 调度失败 analysis_id=%s error=%s", record.id, e)
 
     if success and orig_id:
         async with session_scope() as sess:

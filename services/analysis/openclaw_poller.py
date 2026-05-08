@@ -1,14 +1,16 @@
-"""OpenClaw 分析结果后台轮询"""
+"""OpenClaw analysis result polling.
+
+Each pending DeepAnalysis record schedules its own TaskIQ one-shot poll. The DB
+stores audit state, while TaskIQ owns retry/poll timing.
+"""
 
 import asyncio
 import json
 import logging
-import uuid
 from datetime import datetime
 from typing import Any
 
 from core.config import Config
-from core.distributed_lock import DistributedLock
 from core.http_client import get_http_client
 from core.metrics import DEEP_ANALYSIS_TOTAL
 from core.trace import get_trace_id
@@ -162,19 +164,6 @@ async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: 
                 logger.warning(f"记录飞书通知失败异常: {rec_err}")
     except Exception as e:
         logger.warning(f"飞书深度分析失败通知失败: {e}")
-
-
-async def poll_pending_analyses() -> None:
-    """查询所有 status='pending' 的 DeepAnalysis 记录，逐一轮询结果"""
-    lock_key = "openclaw:poller:global_lock"
-    lock = DistributedLock(key=lock_key, ttl=60, lock_value=str(uuid.uuid4()))
-    async with lock as acquired:
-        if not acquired:
-            return
-        try:
-            await _poll_pending_analyses_inner()
-        except Exception as e:
-            logger.error(f"[Poller] 执行内部轮询逻辑时发生错误: {e}", exc_info=True)
 
 
 async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
@@ -450,14 +439,13 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
             }
 
 
-async def _poll_pending_analyses_inner() -> None:
-    """轮询逻辑主体 — 三阶段分离: 查询 → 并发 HTTP → 批量更新"""
+async def poll_deep_analysis_once(analysis_id: int) -> None:
+    """Poll one pending DeepAnalysis record and reschedule if it is still pending."""
     from db.session import session_scope
     from models import DeepAnalysis
 
     try:
-        # ── 阶段 1：查询 pending 列表（快速释放 DB 连接）──
-        pending_dicts: list[WebhookData] = []
+        record_dict: WebhookData | None = None
         async with session_scope() as session:
             from sqlalchemy import select
             from sqlalchemy.orm import defer
@@ -465,99 +453,74 @@ async def _poll_pending_analyses_inner() -> None:
             result = await session.execute(
                 select(DeepAnalysis)
                 .options(defer(DeepAnalysis.user_question))
-                .filter_by(status="pending")
-                .order_by(DeepAnalysis.created_at.asc())
-                .limit(10)
+                .where(DeepAnalysis.id == analysis_id)
+                .where(DeepAnalysis.status == "pending")
             )
-            pending = result.scalars().all()
-            if not pending:
+            record = result.scalar_one_or_none()
+            if not record:
                 return
-            # 提取所有字段到普通 dict，避免 detached 对象问题
-            pending_dicts.extend(
-                {
-                    "id": r.id,
-                    "webhook_event_id": r.webhook_event_id,
-                    "engine": r.engine,
-                    "openclaw_session_key": r.openclaw_session_key,
-                    "openclaw_run_id": r.openclaw_run_id,
-                    "created_at": r.created_at,
-                    "status": r.status,
-                    "analysis_result": r.analysis_result,
-                    "duration_seconds": r.duration_seconds,
-                }
-                for r in pending
-            )
-        # session_scope 结束，DB 连接已归还
+            record_dict = {
+                "id": record.id,
+                "webhook_event_id": record.webhook_event_id,
+                "engine": record.engine,
+                "openclaw_session_key": record.openclaw_session_key,
+                "openclaw_run_id": record.openclaw_run_id,
+                "created_at": record.created_at,
+                "status": record.status,
+                "analysis_result": record.analysis_result,
+                "duration_seconds": record.duration_seconds,
+            }
 
-        logger.info(f"[Poller] 扫描到待处理分析: count={len(pending_dicts)}")
+        logger.info("[Poller] 轮询 OpenClaw 分析: id=%s", analysis_id)
 
-        # ── 阶段 2：并发 HTTP 轮询（完全脱离 DB）──
         semaphore = asyncio.Semaphore(5)
-        coros = [_poll_single_record(rec, semaphore) for rec in pending_dicts]
-        poll_results: list[WebhookData | BaseException] = await asyncio.gather(*coros, return_exceptions=True)
+        poll_result = await _poll_single_record(record_dict, semaphore)
 
-        # 收集需要写回 DB 的结果
-        updates: list[WebhookData] = []
-        skips = 0
-        for pr in poll_results:
-            if isinstance(pr, BaseException):
-                logger.error(f"[Poller] 并发轮询协程异常: {pr}", exc_info=pr)
-                continue
-            if pr and pr.get("action") == "update":
-                updates.append(pr)
-            else:
-                skips += 1
-
-        logger.debug("[Poller] 轮询完成 total=%d update=%d skip=%d", len(pending_dicts), len(updates), skips)
-
-        if not updates:
+        if poll_result.get("action") != "update":
+            await _schedule_next_openclaw_poll(analysis_id)
             return
-
-        # ── 阶段 3：重新获取 DB 连接，批量更新 ──
-        update_ids = [u["id"] for u in updates]
-        update_map = {u["id"]: u for u in updates}
 
         async with session_scope() as session:
             from sqlalchemy import select
 
-            result = await session.execute(select(DeepAnalysis).filter(DeepAnalysis.id.in_(update_ids)))
-            records = result.scalars().all()
+            result = await session.execute(select(DeepAnalysis).where(DeepAnalysis.id == analysis_id))
+            record = result.scalar_one_or_none()
+            if not record:
+                return
 
-            for record in records:
-                upd = update_map.get(record.id)
-                if not upd:
-                    continue
-                if "status" in upd:
-                    record.status = upd["status"]
-                if "analysis_result" in upd:
-                    record.analysis_result = upd["analysis_result"]
-                if "duration_seconds" in upd:
-                    record.duration_seconds = upd["duration_seconds"]
+            if "status" in poll_result:
+                record.status = poll_result["status"]
+            if "analysis_result" in poll_result:
+                record.analysis_result = poll_result["analysis_result"]
+            if "duration_seconds" in poll_result:
+                record.duration_seconds = poll_result["duration_seconds"]
 
             await session.flush()
 
-            # 阶段 3 后置：对 completed 记录查 source 并发飞书通知
-            for upd in updates:
-                if not upd.get("_need_success_notify"):
-                    continue
+            if poll_result.get("_need_success_notify"):
                 try:
                     from models import WebhookEvent
 
-                    # 查关联的 webhook_event_id
-                    rec_dict = next((d for d in pending_dicts if d["id"] == upd["id"]), None)
-                    if not rec_dict:
-                        continue
-                    evt_stmt = select(WebhookEvent).filter_by(id=rec_dict["webhook_event_id"])
+                    evt_stmt = select(WebhookEvent).filter_by(id=record_dict["webhook_event_id"])
                     evt_result = await session.execute(evt_stmt)
                     event = evt_result.scalars().first()
                     source = event.source if event else ""
-                    notify_dict = {**rec_dict, **upd}
+                    notify_dict = {**record_dict, **poll_result}
                     asyncio.create_task(_notify_feishu_deep_analysis(notify_dict, source))
                 except Exception as e:
                     logger.debug("飞书深度分析通知失败: %s", e)
 
     except Exception as e:
-        logger.error(f"轮询任务异常: {e}")
+        logger.error("[Poller] 轮询任务异常 analysis_id=%s error=%s", analysis_id, e, exc_info=True)
+
+
+async def _schedule_next_openclaw_poll(analysis_id: int) -> None:
+    try:
+        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+
+        await schedule_openclaw_poll(analysis_id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+    except Exception as e:
+        logger.warning("[Poller] OpenClaw 下次轮询调度失败 analysis_id=%s error=%s", analysis_id, e)
 
 
 def _extract_robust_json(text: str) -> str | None:

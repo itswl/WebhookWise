@@ -49,7 +49,6 @@ class ServerConfig(BaseSettings):
     DATA_DIR: str = Field(default="webhooks_data")
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
-    OPENCLAW_POLL_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
