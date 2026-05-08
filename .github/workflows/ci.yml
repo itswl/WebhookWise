@@ -3,6 +3,7 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -21,3 +22,11 @@ jobs:
       - run: bandit -r core services adapters -x tests -q -s B106
       - run: pip-audit -r requirements.txt -r requirements-dev.txt
       - run: pytest -q
+
+  docker-e2e:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: tests/e2e/run_webhook_to_feishu.sh
