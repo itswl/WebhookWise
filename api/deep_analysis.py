@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -50,15 +50,23 @@ async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAna
     await notify_deep_analysis_success(record, source)
 
 
-async def _schedule_openclaw_poll_if_pending(record: DeepAnalysis) -> None:
+def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
     if record.status != "pending":
-        return
+        return None
+    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
+
+    delay = compute_openclaw_poll_delay(record.poll_attempts or 0)
+    record.next_poll_at = datetime.now() + timedelta(seconds=delay)
+    return delay
+
+
+async def _schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: int) -> None:
     try:
         from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
 
-        await schedule_openclaw_poll(record.id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+        await schedule_openclaw_poll(analysis_id, delay_seconds)
     except Exception as e:
-        logger.warning("[DeepAnalysis] OpenClaw poll 调度失败 analysis_id=%s error=%s", record.id, e)
+        logger.warning("[DeepAnalysis] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
 
 
 @deep_analysis_router.post("/api/deep-analyze/{webhook_id}", response_model=None)
@@ -95,8 +103,10 @@ async def deep_analyze_webhook(
     )
     session.add(record)
     await session.flush()
-    await _schedule_openclaw_poll_if_pending(record)
+    poll_delay = _prepare_openclaw_poll_if_pending(record)
     await session.commit()
+    if poll_delay is not None:
+        await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
     return {"success": True, "data": record.to_dict()}
 
 
@@ -152,9 +162,13 @@ async def retry_deep_analysis(
             record.openclaw_run_id = new_result.get("_openclaw_run_id", "")
             record.openclaw_session_key = new_result.get("_openclaw_session_key", "")
             record.duration_seconds = 0
+            record.poll_attempts = 0
+            record.last_polled_at = None
             await session.flush()
-            await _schedule_openclaw_poll_if_pending(record)
+            poll_delay = _prepare_openclaw_poll_if_pending(record)
             await session.commit()
+            if poll_delay is not None:
+                await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
             return {"success": True, "message": "已重新发起分析任务，请等待结果"}
 
         record.status = "completed"
@@ -211,9 +225,13 @@ async def retry_deep_analysis(
 
     record.status = "pending"
     record.analysis_result = None
+    record.poll_attempts = 0
+    record.last_polled_at = None
     await session.flush()
-    await _schedule_openclaw_poll_if_pending(record)
+    poll_delay = _prepare_openclaw_poll_if_pending(record)
     await session.commit()
+    if poll_delay is not None:
+        await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
     return {"success": True, "message": "已重置为待重试，已调度下一次结果拉取"}
 
 

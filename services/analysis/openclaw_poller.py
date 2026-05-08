@@ -7,7 +7,7 @@ stores audit state, while TaskIQ owns retry/poll timing.
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from core.config import Config
@@ -18,6 +18,20 @@ from core.trace import get_trace_id
 logger = logging.getLogger("webhook_service.openclaw_poller")
 
 WebhookData = dict[str, Any]
+
+
+def _seconds_until(target: datetime) -> int:
+    return max(1, int((target - datetime.now()).total_seconds()))
+
+
+def _clamp_poll_delay_to_timeout(delay_seconds: int, created_at: datetime | None) -> int:
+    if created_at is None:
+        return delay_seconds
+    elapsed = (datetime.now() - created_at).total_seconds()
+    remaining = int(Config.openclaw.OPENCLAW_TIMEOUT_SECONDS - elapsed)
+    if remaining <= 0:
+        return 1
+    return max(1, min(delay_seconds, remaining))
 
 
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
@@ -257,6 +271,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
     """
     from core.config import Config
     from services.analysis.openclaw_ws_client import poll_session_result
+    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
     record_id = rec["id"]
 
@@ -284,7 +299,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
             # --- session_key 缺失检查 ---
             if not rec["openclaw_session_key"]:
                 elapsed = (datetime.now() - created_dt).total_seconds() if created_dt else 999.0
-                if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
+                if elapsed < compute_openclaw_poll_delay(0):
                     return {"id": record_id, "action": "skip"}
                 logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
                 DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
@@ -300,11 +315,6 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                 notify_dict = {**rec, **update}
                 await _notify_feishu_deep_analysis_failed(notify_dict, "无 session_key - OpenClaw 触发失败")
                 return {"id": record_id, "action": "update", **update}
-
-            # --- 最小等待时间 ---
-            elapsed = (datetime.now() - created_dt).total_seconds() if created_dt else 999.0
-            if elapsed < Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS:
-                return {"id": record_id, "action": "skip"}
 
             # --- HTTP 轮询 ---
             if Config.openclaw.OPENCLAW_HTTP_API_URL:
@@ -446,6 +456,7 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
 
     try:
         record_dict: WebhookData | None = None
+        early_reschedule_delay: int | None = None
         async with session_scope() as session:
             from sqlalchemy import select
             from sqlalchemy.orm import defer
@@ -459,17 +470,37 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
             record = result.scalar_one_or_none()
             if not record:
                 return
-            record_dict = {
-                "id": record.id,
-                "webhook_event_id": record.webhook_event_id,
-                "engine": record.engine,
-                "openclaw_session_key": record.openclaw_session_key,
-                "openclaw_run_id": record.openclaw_run_id,
-                "created_at": record.created_at,
-                "status": record.status,
-                "analysis_result": record.analysis_result,
-                "duration_seconds": record.duration_seconds,
-            }
+            now = datetime.now()
+            if record.next_poll_at and record.next_poll_at > now:
+                early_reschedule_delay = _seconds_until(record.next_poll_at)
+                logger.debug(
+                    "[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss",
+                    analysis_id,
+                    early_reschedule_delay,
+                )
+            else:
+                record.poll_attempts = (record.poll_attempts or 0) + 1
+                record.last_polled_at = now
+                record.next_poll_at = None
+                record_dict = {
+                    "id": record.id,
+                    "webhook_event_id": record.webhook_event_id,
+                    "engine": record.engine,
+                    "openclaw_session_key": record.openclaw_session_key,
+                    "openclaw_run_id": record.openclaw_run_id,
+                    "created_at": record.created_at,
+                    "status": record.status,
+                    "analysis_result": record.analysis_result,
+                    "duration_seconds": record.duration_seconds,
+                    "poll_attempts": record.poll_attempts,
+                    "last_polled_at": record.last_polled_at,
+                }
+
+        if early_reschedule_delay is not None:
+            await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
+            return
+        if record_dict is None:
+            return
 
         logger.info("[Poller] 轮询 OpenClaw 分析: id=%s", analysis_id)
 
@@ -477,7 +508,11 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
         poll_result = await _poll_single_record(record_dict, semaphore)
 
         if poll_result.get("action") != "update":
-            await _schedule_next_openclaw_poll(analysis_id)
+            await _schedule_next_openclaw_poll(
+                analysis_id,
+                int(record_dict.get("poll_attempts") or 0),
+                record_dict.get("created_at") if isinstance(record_dict.get("created_at"), datetime) else None,
+            )
             return
 
         async with session_scope() as session:
@@ -494,6 +529,7 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
                 record.analysis_result = poll_result["analysis_result"]
             if "duration_seconds" in poll_result:
                 record.duration_seconds = poll_result["duration_seconds"]
+            record.next_poll_at = None
 
             await session.flush()
 
@@ -514,13 +550,52 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
         logger.error("[Poller] 轮询任务异常 analysis_id=%s error=%s", analysis_id, e, exc_info=True)
 
 
-async def _schedule_next_openclaw_poll(analysis_id: int) -> None:
+async def _schedule_next_openclaw_poll(analysis_id: int, poll_attempts: int, created_at: datetime | None) -> None:
+    from db.session import session_scope
+    from models import DeepAnalysis
+    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
+
+    delay = _clamp_poll_delay_to_timeout(compute_openclaw_poll_delay(poll_attempts), created_at)
+    next_poll_at = datetime.now() + timedelta(seconds=delay)
+    async with session_scope() as session:
+        record = await session.get(DeepAnalysis, analysis_id)
+        if not record or record.status != "pending":
+            return
+        record.next_poll_at = next_poll_at
+
+    await _schedule_openclaw_poll_task(analysis_id, delay)
+
+
+async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
     try:
         from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
 
-        await schedule_openclaw_poll(analysis_id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+        await schedule_openclaw_poll(analysis_id, delay_seconds)
     except Exception as e:
         logger.warning("[Poller] OpenClaw 下次轮询调度失败 analysis_id=%s error=%s", analysis_id, e)
+
+
+async def run_openclaw_poll_scan(limit: int = 100) -> int:
+    """Schedule due OpenClaw poll records from durable DB state."""
+    from sqlalchemy import select
+
+    from db.session import session_scope
+    from models import DeepAnalysis
+
+    now = datetime.now()
+    async with session_scope() as session:
+        stmt = (
+            select(DeepAnalysis.id)
+            .where(DeepAnalysis.status == "pending")
+            .where((DeepAnalysis.next_poll_at.is_(None)) | (DeepAnalysis.next_poll_at <= now))
+            .order_by(DeepAnalysis.next_poll_at.asc(), DeepAnalysis.id.asc())
+            .limit(limit)
+        )
+        ids = list((await session.execute(stmt)).scalars().all())
+
+    for analysis_id in ids:
+        await _schedule_openclaw_poll_task(analysis_id, 0)
+    return len(ids)
 
 
 def _extract_robust_json(text: str) -> str | None:

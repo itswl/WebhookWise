@@ -87,6 +87,18 @@ async def poll_openclaw_analysis_task(analysis_id: int) -> None:
 
 
 @broker.task(
+    task_name="scheduled_openclaw_poll_scan",
+    schedule=[
+        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "openclaw_poll_scan_interval"}
+    ],
+)
+async def scheduled_openclaw_poll_scan() -> None:
+    from services.analysis.openclaw_poller import run_openclaw_poll_scan
+
+    await _run_scheduled("openclaw_poll_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_openclaw_poll_scan())
+
+
+@broker.task(
     task_name="scheduled_recovery_scan",
     schedule=[
         {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "recovery_scan_interval_seconds"}
