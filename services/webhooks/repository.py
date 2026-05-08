@@ -100,10 +100,15 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
     )
 
 
-async def list_enabled_forward_rules() -> list[ForwardRuleSnapshot]:
-    async with session_scope() as sess:
+async def list_enabled_forward_rules(session: Any | None = None) -> list[ForwardRuleSnapshot]:
+    async def _list(sess: Any) -> list[ForwardRuleSnapshot]:
         stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
         return [_snapshot_forward_rule(rule) for rule in (await sess.execute(stmt)).scalars().all()]
+
+    if session is not None:
+        return await _list(session)
+    async with session_scope() as sess:
+        return await _list(sess)
 
 
 async def create_openclaw_analysis(
@@ -148,19 +153,6 @@ async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> 
         )
         row = res.first()
         return int(row[0] or 0) if row else None
-
-
-async def mark_retry_enqueue_failed(event_id: int, error_message: str) -> None:
-    async with session_scope() as sess:
-        await sess.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .values(
-                processing_status=WebhookProcessingStatus.RECEIVED.value,
-                failure_reason="retry_enqueue_failed",
-                error_message=error_message[:2000],
-            )
-        )
 
 
 async def mark_dead_letter(event_id: int, *, retryable: bool, error_message: str) -> None:

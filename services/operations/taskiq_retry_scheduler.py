@@ -57,6 +57,24 @@ async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> 
     )
 
 
+async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
+    """Schedule a single forwarding outbox attempt through TaskIQ."""
+    from services.operations.tasks import process_forward_outbox_task
+
+    schedule_id = f"forward-outbox:{outbox_id}"
+    await dynamic_schedule_source.delete_schedule(schedule_id)
+    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    await (
+        process_forward_outbox_task.kicker()
+        .with_schedule_id(schedule_id)
+        .schedule_by_time(
+            dynamic_schedule_source,
+            run_at,
+            outbox_id=outbox_id,
+        )
+    )
+
+
 async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
     """Schedule a single OpenClaw result poll through TaskIQ."""
     from services.operations.tasks import poll_openclaw_analysis_task

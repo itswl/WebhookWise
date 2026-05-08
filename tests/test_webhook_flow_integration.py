@@ -51,8 +51,9 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     from core.app import app
     from core.config import Config, get_settings
-    from models import WebhookEvent
-    from services.operations.tasks import process_webhook_task
+    from models import ForwardOutbox, WebhookEvent
+    from services.forwarding.outbox import process_forward_outbox_by_id
+    from services.operations.tasks import process_forward_outbox_task, process_webhook_task
     from services.webhooks.pipeline import handle_webhook_process
 
     monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
@@ -98,7 +99,11 @@ async def test_webhook_receive_to_feishu_card_flow(
     async def run_task_inline(event_id: int, client_ip: str | None = None) -> None:
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
 
+    async def run_outbox_inline(outbox_id: int) -> None:
+        await process_forward_outbox_by_id(outbox_id)
+
     monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
+    monkeypatch.setattr(cast(Any, process_forward_outbox_task), "kiq", run_outbox_inline)
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -124,9 +129,13 @@ async def test_webhook_receive_to_feishu_card_flow(
         assert event.ai_analysis["summary"] == "订单服务错误率升高: checkout-5xx"
         assert event.parsed_data is not None
         assert event.parsed_data["alert_name"] == "checkout-5xx"
+        assert event.last_notified_at is not None
 
         rows = (await session.execute(select(WebhookEvent))).scalars().all()
         assert len(rows) == 1
+        outbox_rows = (await session.execute(select(ForwardOutbox))).scalars().all()
+        assert len(outbox_rows) == 1
+        assert outbox_rows[0].status == "sent"
 
     assert len(posted) == 1
     outbound = posted[0]

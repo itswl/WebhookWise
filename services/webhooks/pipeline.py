@@ -7,14 +7,14 @@ import contextlib
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
 import orjson
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
+from core.alert_concurrency import alert_processing_gate
 from core.config import Config
-from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
@@ -32,11 +32,14 @@ from core.retry_policies import retry_policy
 from core.trace import generate_trace_id, set_trace_id
 from db.session import session_scope
 from models import WebhookEvent
-from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
+from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
 from services.analysis.noise_reduction import AlertContext, NoiseScoringConfig, analyze_noise_reduction
-from services.forwarding.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
+from services.forwarding.outbox import (
+    create_forward_outbox_records,
+    schedule_forward_outbox_many,
+)
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
-from services.webhooks.command_service import save_webhook_data
+from services.webhooks.command_service import save_webhook_data, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardingPolicy,
     ForwardRuleSnapshot,
@@ -45,13 +48,10 @@ from services.webhooks.decisioning import (
     normalize_importance,
 )
 from services.webhooks.repository import (
-    create_openclaw_analysis,
     list_enabled_forward_rules,
     list_recent_alert_contexts,
     mark_dead_letter,
-    mark_last_notified,
     mark_retry,
-    mark_retry_enqueue_failed,
     transition_to_analyzing_and_load,
 )
 from services.webhooks.types import (
@@ -143,40 +143,9 @@ def _parse_request(
     )
 
 
-async def _resolve_analysis(alert_hash: str, full_data: dict[str, Any], got_lock: bool) -> AnalysisResolution:
+async def _resolve_analysis(alert_hash: str, full_data: dict[str, Any]) -> AnalysisResolution:
     from core.config import Config
 
-    if not got_lock:
-        # 锁竞争逻辑：Pub/Sub 等待
-        from core.redis_client import redis_pubsub
-
-        channel = f"analysis_done:{alert_hash}"
-        pubsub = redis_pubsub()
-        try:
-            await pubsub.subscribe(channel)
-            cached = await get_cached_analysis(alert_hash)
-            if cached:
-                logger.debug("[Pipeline] 锁竞争立即命中缓存 hash=%s...", alert_hash[:12])
-                await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-                return AnalysisResolution(cached, False, False, None, False, is_reused=True)
-            deadline = time.monotonic() + Config.retry.PROCESSING_LOCK_WAIT_SECONDS
-            while time.monotonic() < deadline:
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(
-                        pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0),
-                        timeout=6.0,
-                    )
-                cached = await get_cached_analysis(alert_hash)
-                if cached:
-                    logger.debug("[Pipeline] 锁竞争 pub/sub 等待后命中缓存 hash=%s...", alert_hash[:12])
-                    await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-                    return AnalysisResolution(cached, False, False, None, False, is_reused=True)
-            logger.debug("[Pipeline] 锁竞争等待超时，降级为独立分析 hash=%s...", alert_hash[:12])
-        finally:
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
-
-    # 持锁或等待超时：正常检查/分析
     async with session_scope() as session:
         check = await WebhookEvent.check_duplicate(
             alert_hash, session=session, time_window_hours=Config.retry.DUPLICATE_ALERT_TIME_WINDOW
@@ -281,13 +250,18 @@ async def _decide_forwarding(
     noise: NoiseReductionContext | None,
     orig: WebhookEvent | None,
     source: str,
+    session: AsyncSession | None = None,
 ) -> ForwardDecision:
     """转发决策逻辑"""
     from core.config import Config
 
     rules: list[ForwardRuleSnapshot] = []
     try:
-        rules = await list_enabled_forward_rules()
+        rules = (
+            await list_enabled_forward_rules(session=session)
+            if session is not None
+            else await list_enabled_forward_rules()
+        )
     except Exception as e:
         logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
@@ -328,92 +302,17 @@ async def _execute_forwarding(
     webhook_id: int,
     orig_id: int | None,
 ) -> None:
-    """执行转发"""
-    from core.config import Config
-
-    if not decision.should_forward:
-        return
-
-    tasks: list[tuple[dict[str, Any], Any]] = []
-    if decision.matched_rules:
-        for r in decision.matched_rules:
-            if r.get("target_type") == "openclaw":
-                coro = forward_to_openclaw(full_data, analysis)
-            elif not r.get("target_url"):
-                logger.warning("[Pipeline] 转发规则 '%s' target_url 为空，跳过", r.get("name", r.get("id")))
-                continue
-            else:
-                coro = forward_to_remote(
-                    full_data,
-                    analysis,
-                    target_url=str(r.get("target_url") or ""),
-                    is_periodic_reminder=decision.is_periodic_reminder,
-                )
-            tasks.append((r, coro))
-    else:
-        tasks.append(
-            (
-                {"name": "default", "target_url": Config.ai.FORWARD_URL, "target_type": "webhook"},
-                forward_to_remote(full_data, analysis, is_periodic_reminder=decision.is_periodic_reminder),
-            )
+    """Compatibility wrapper: enqueue forwarding outbox intents."""
+    async with session_scope() as session:
+        outbox_ids = await create_forward_outbox_records(
+            session,
+            decision=decision,
+            full_data=full_data,
+            analysis=analysis,
+            webhook_id=webhook_id,
+            orig_id=orig_id,
         )
-
-    results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
-    success = False
-    for (rule, _), res in zip(tasks, results, strict=False):
-        res_dict = res if isinstance(res, dict) else None
-        is_pending = bool(res_dict and res_dict.get("_pending"))
-        is_success = bool(res_dict and (res_dict.get("status") == "success" or is_pending))
-        rule_name = rule.get("name") or rule.get("id", "default")
-        target_url = str(rule.get("target_url", "") or "")
-        if isinstance(res, Exception) or not is_success:
-            logger.warning(
-                "[Forward] 转发失败 rule=%s target=%s event_id=%s error=%s", rule_name, target_url, webhook_id, res
-            )
-            raw_rule_id = rule.get("id")
-            rule_id: int | None = None
-            if isinstance(raw_rule_id, int):
-                rule_id = raw_rule_id
-            elif isinstance(raw_rule_id, str):
-                with contextlib.suppress(ValueError):
-                    rule_id = int(raw_rule_id)
-            await record_failed_forward(
-                webhook_id,
-                rule_id,
-                target_url,
-                str(rule.get("target_type", "webhook") or "webhook"),
-                "error",
-                str(res),
-                full_data,
-            )
-        else:
-            success = True
-            if is_pending:
-                logger.info(
-                    "[Forward] 深度分析已提交 rule=%s event_id=%s run_id=%s",
-                    rule_name,
-                    webhook_id,
-                    (res_dict or {}).get("_openclaw_run_id", ""),
-                )
-            else:
-                logger.info("[Forward] 转发成功 rule=%s target=%s event_id=%s", rule_name, target_url, webhook_id)
-            if rule.get("target_type") == "openclaw" and is_pending:
-                # 深度分析记录挂在原始事件上，重复事件时用 orig_id
-                target_event_id = orig_id if orig_id else webhook_id
-                analysis_id = await create_openclaw_analysis(
-                    target_event_id,
-                    run_id=str(cast(dict[str, Any], res).get("_openclaw_run_id", "")),
-                    session_key=str(cast(dict[str, Any], res).get("_openclaw_session_key", "")),
-                )
-                try:
-                    from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
-
-                    await schedule_openclaw_poll(analysis_id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
-                except Exception as e:
-                    logger.warning("[Forward] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
-
-    if success and orig_id:
-        await mark_last_notified(orig_id)
+    await schedule_forward_outbox_many(outbox_ids)
 
 
 # ── 主入口 ───────────────────────────────────────────────────────────────────
@@ -456,11 +355,13 @@ def _build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReduction
     return build_final_analysis(analysis_result, noise)
 
 
-async def _persist_analysis_result(
+async def _persist_analysis_and_forwarding_intents(
     ctx: _PipelineContext,
     analysis_res: AnalysisResolution,
     final_analysis: dict[str, Any],
-) -> Any:
+    noise: NoiseReductionContext,
+) -> tuple[Any, ForwardDecision | None, list[int]]:
+    """Persist analysis and forwarding intents in one DB transaction."""
     is_dup_for_save: bool | None = analysis_res.is_duplicate or analysis_res.beyond_window
     original_for_save = analysis_res.original_event
     beyond_for_save = analysis_res.beyond_window
@@ -468,43 +369,44 @@ async def _persist_analysis_result(
         is_dup_for_save = None
         beyond_for_save = False
 
-    return await save_webhook_data(
-        data=ctx.req_ctx.parsed_data,
-        source=ctx.req_ctx.source,
-        raw_payload=ctx.req_ctx.payload,
-        headers=ctx.req_ctx.headers,
-        client_ip=ctx.req_ctx.client_ip,
-        ai_analysis=final_analysis,
-        alert_hash=ctx.alert_hash,
-        is_duplicate=is_dup_for_save,
-        original_event=original_for_save,
-        beyond_window=beyond_for_save,
-        reanalyzed=analysis_res.reanalyzed,
-        event_id=ctx.event_id,
-    )
+    async with session_scope() as session:
+        save_res = await save_webhook_data_in_session(
+            session,
+            data=ctx.req_ctx.parsed_data,
+            source=ctx.req_ctx.source,
+            raw_payload=ctx.req_ctx.payload,
+            headers=ctx.req_ctx.headers,
+            client_ip=ctx.req_ctx.client_ip,
+            ai_analysis=final_analysis,
+            alert_hash=ctx.alert_hash,
+            is_duplicate=is_dup_for_save,
+            original_event=original_for_save,
+            beyond_window=beyond_for_save,
+            reanalyzed=analysis_res.reanalyzed,
+            event_id=ctx.event_id,
+        )
 
+        if analysis_res.is_reused:
+            return save_res, None, []
 
-async def _maybe_forward(
-    ctx: _PipelineContext,
-    analysis_res: AnalysisResolution,
-    save_res: Any,
-    final_analysis: dict[str, Any],
-    noise: NoiseReductionContext,
-) -> ForwardDecision | None:
-    if analysis_res.is_reused:
-        return None
-    fwd_dec = await _decide_forwarding(
-        _normalize_importance(final_analysis.get("importance", "")),
-        bool(save_res.is_duplicate) and not bool(save_res.beyond_window),
-        bool(save_res.beyond_window),
-        noise,
-        analysis_res.original_event,
-        ctx.req_ctx.source,
-    )
-    await _execute_forwarding(
-        fwd_dec, ctx.req_ctx.webhook_full_data, final_analysis, save_res.webhook_id, save_res.original_id
-    )
-    return fwd_dec
+        fwd_dec = await _decide_forwarding(
+            _normalize_importance(final_analysis.get("importance", "")),
+            bool(save_res.is_duplicate) and not bool(save_res.beyond_window),
+            bool(save_res.beyond_window),
+            noise,
+            analysis_res.original_event,
+            ctx.req_ctx.source,
+            session=session,
+        )
+        outbox_ids = await create_forward_outbox_records(
+            session,
+            decision=fwd_dec,
+            full_data=ctx.req_ctx.webhook_full_data,
+            analysis=final_analysis,
+            webhook_id=save_res.webhook_id,
+            orig_id=save_res.original_id,
+        )
+        return save_res, fwd_dec, outbox_ids
 
 
 async def _handle_process_exception(event_id: int, err: Exception, span: Any | None) -> str:
@@ -528,14 +430,28 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
             try:
                 await schedule_webhook_retry(event_id, delay)
             except Exception as enqueue_err:
-                await mark_retry_enqueue_failed(event_id, str(enqueue_err))
-                logger.warning(
-                    "[Pipeline] TaskIQ 延迟重试调度失败，回落到 recovery 兜底 event_id=%s error=%s",
-                    event_id,
-                    enqueue_err,
+                fatal_error = (
+                    "retry enqueue failed after retryable processing error: "
+                    f"process_error={err}; enqueue_error={enqueue_err}"
                 )
-                outcome = "retry_enqueue_failed"
+                await mark_dead_letter(event_id, retryable=True, error_message=fatal_error)
+                await _send_dead_letter_alert(event_id, next_retry_count, enqueue_err)
+                WEBHOOK_DEAD_LETTER_TOTAL.inc()
+                outcome = "dead_letter"
                 WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
+                logger.critical(
+                    "[Pipeline] TaskIQ 延迟重试调度失败，事件直接进入 dead-letter event_id=%s retry=%s/%s error=%s",
+                    event_id,
+                    next_retry_count,
+                    max_retries,
+                    enqueue_err,
+                    exc_info=True,
+                )
+                if span:
+                    with contextlib.suppress(Exception):
+                        from opentelemetry.trace import StatusCode
+
+                        span.set_status(StatusCode.ERROR, fatal_error)
                 return outcome
 
             outcome = "retry"
@@ -628,18 +544,12 @@ async def _handle_webhook_process_inner(
                 _span.set_attribute("source", req_ctx.source or "unknown")
                 _span.set_attribute("alert_hash", alert_hash[:12])
 
-            async with processing_lock(alert_hash) as lock_res:
-                if await _handle_storm_suppression(ctx, lock_res):
+            async with alert_processing_gate(alert_hash) as gate_res:
+                if await _handle_storm_suppression(ctx, gate_res):
                     outcome = "suppressed"
                     return
 
-                analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data, lock_res.got_lock)
-                if not lock_res.got_lock:
-                    logger.debug(
-                        "[Pipeline] 锁竞争等待完成 event_id=%s got_cached=%s",
-                        event_id,
-                        bool(analysis_res.analysis_result),
-                    )
+                analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data)
 
             route_type = analysis_res.analysis_result.get("_route_type", "ai")
             importance = _normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
@@ -661,8 +571,10 @@ async def _handle_webhook_process_inner(
                 )
 
             final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
-            save_res = await _persist_analysis_result(ctx, analysis_res, final_analysis)
-            fwd_dec = await _maybe_forward(ctx, analysis_res, save_res, final_analysis, noise)
+            save_res, fwd_dec, outbox_ids = await _persist_analysis_and_forwarding_intents(
+                ctx, analysis_res, final_analysis, noise
+            )
+            await schedule_forward_outbox_many(outbox_ids)
 
             event_type = (
                 "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
@@ -674,7 +586,7 @@ async def _handle_webhook_process_inner(
             if analysis_res.is_reused or fwd_dec is None:
                 fwd_info = " forward=skipped(reused)"
             elif fwd_dec.should_forward:
-                fwd_info = f" forward=yes rules={len(fwd_dec.matched_rules)}"
+                fwd_info = f" forward=queued rules={len(fwd_dec.matched_rules)} outbox={len(outbox_ids)}"
                 if fwd_dec.is_periodic_reminder:
                     fwd_info += "(periodic)"
             else:

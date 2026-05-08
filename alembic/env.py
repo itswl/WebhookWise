@@ -22,6 +22,7 @@ from models import (  # noqa: E402, F401
     ArchivedWebhookEvent,
     DeepAnalysis,
     FailedForward,
+    ForwardOutbox,
     ForwardRule,
     RemediationExecution,
     SystemConfig,
