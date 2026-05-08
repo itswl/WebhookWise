@@ -10,17 +10,17 @@ curl http://localhost:8000/health
 
 正常响应：
 ```json
-{"status": "ok", "db": "ok", "timestamp": "..."}
+{"success": true, "data": {"status": "healthy", "database": "ok"}}
 ```
 
-如果 `db` 为 `error`，说明数据库连接失败，检查 `DATABASE_URL` 配置。
+如果 HTTP 状态为 `503` 或 `data.database` 为 `failed`，说明数据库连接失败，检查 `DATABASE_URL` 配置。
 
 ### 查看日志
 
 ```bash
 # Docker 模式
-docker logs webhookwise-api -f
-docker logs webhookwise-worker -f
+docker logs webhook-receiver -f
+docker compose logs worker -f
 
 # 本地模式
 tail -f logs/webhook.log
@@ -40,12 +40,12 @@ tail -f logs/webhook.log
 
 1. 确认 Worker 进程是否在运行：
    ```bash
-   docker ps  # 检查 webhook-worker 是否 Up
+   docker compose ps worker
    ```
 
 2. 检查 Worker 日志是否有报错：
    ```bash
-   docker logs webhookwise-worker --tail 50
+   docker compose logs worker --tail 50
    ```
 
 3. 检查 Redis 连接：
@@ -53,9 +53,9 @@ tail -f logs/webhook.log
    redis-cli -u $REDIS_URL ping  # 应返回 PONG
    ```
 
-4. 确认任务是否入队（TaskIQ 使用 Redis List）：
+4. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
    ```bash
-   redis-cli llen webhook:queue
+   redis-cli xinfo stream webhook:queue
    ```
 
 5. 如果是事件卡在 `analyzing` 状态超过 5 分钟，Recovery Poller 会自动重拾。也可手动触发：
@@ -103,7 +103,7 @@ curl http://localhost:8000/api/config/sources \
 
 如果来源是 `db` 但值仍为旧值，检查 Redis Pub/Sub 是否正常：
 ```bash
-redis-cli subscribe config:updates  # 应该能收到广播消息
+redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 ```
 
 ---

@@ -15,12 +15,12 @@ jobs:
           python-version: "3.12"
           cache: "pip"
       - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pip install -r requirements.lock -r requirements-dev.lock
       - run: python -m compileall -q .
       - run: ruff check .
       - run: mypy
       - run: bandit -r core services adapters -x tests -q -s B106
-      - run: pip-audit -r requirements.txt -r requirements-dev.txt
+      - run: pip-audit -r requirements.lock -r requirements-dev.lock
       - run: pytest -q
 
   docker-e2e:
