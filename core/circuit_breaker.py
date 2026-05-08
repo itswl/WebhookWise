@@ -19,6 +19,14 @@ class CircuitState(Enum):
     HALF_OPEN = "half_open"  # 半开，允许试探请求
 
 
+class CircuitBreakerOpenException(RuntimeError):
+    """Raised when a circuit breaker rejects a call before executing it."""
+
+    def __init__(self, breaker_name: str) -> None:
+        self.breaker_name = breaker_name
+        super().__init__(f"CircuitBreaker [{breaker_name}] is open")
+
+
 # ====== Lua 脚本：熔断器原子操作 ======
 
 # 记录失败并判断是否需要熔断
@@ -139,18 +147,18 @@ class CircuitBreaker:
     _P = ParamSpec("_P")
     _R = TypeVar("_R")
 
-    async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R | None:
+    async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
         if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
             except self.expected_exceptions as e:
                 logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
-                return None
+                raise
 
         current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
             logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
-            return None
+            raise CircuitBreakerOpenException(self.name)
 
         try:
             result = await func(*args, **kwargs)
@@ -164,7 +172,7 @@ class CircuitBreaker:
                     f"将在 {self.recovery_timeout}s 后恢复"
                 )
             logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
-            return None
+            raise
 
 
 # 预置熔断器实例

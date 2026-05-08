@@ -29,7 +29,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from core.circuit_breaker import feishu_cb
+from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
@@ -264,6 +264,15 @@ def _get_instructor_client() -> instructor.Instructor:
 
 
 async def _get_instructor_client_async() -> instructor.Instructor:
+    if _instructor_client is not None:
+        return _instructor_client
+    await initialize_openai_client()
+    if _instructor_client is None:
+        raise RuntimeError("OpenAI client initialization failed")
+    return _instructor_client
+
+
+async def initialize_openai_client() -> None:
     global _openai_client, _instructor_client
     async with _openai_client_lock:
         if _instructor_client is None:
@@ -275,7 +284,6 @@ async def _get_instructor_client_async() -> instructor.Instructor:
                     timeout=httpx.Timeout(60.0, connect=10.0),
                 )
             _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
-        return _instructor_client
 
 
 async def _create_with_completion(
@@ -380,6 +388,8 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
             },
         }
         await feishu_cb.call_async(get_http_client().post, Config.ai.FORWARD_URL, json=card, timeout=10)
+    except CircuitBreakerOpenException as e:
+        logger.warning("发送 AI 错误通知被熔断器拦截: %s", e)
     except Exception as e:
         logger.error(f"发送 AI 错误通知失败: {e}")
 

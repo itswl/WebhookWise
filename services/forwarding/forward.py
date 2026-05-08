@@ -14,7 +14,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.circuit_breaker import forward_cb, openclaw_cb
+from core.circuit_breaker import CircuitBreakerOpenException, forward_cb, openclaw_cb
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
@@ -306,10 +306,6 @@ async def forward_to_remote(
 
     try:
         response = await forward_cb.call_async(_do_post)
-        if response is None:
-            logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
-            return {"status": "circuit_broken", "message": "熔断器已开启"}
-
         resp_payload: dict[str, Any] = {}
         if response.content:
             raw_json = response.json()
@@ -319,6 +315,9 @@ async def forward_to_remote(
             "status_code": response.status_code,
             "response": resp_payload,
         }
+    except CircuitBreakerOpenException:
+        logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
+        return {"status": "circuit_broken", "message": "熔断器已开启"}
     except Exception as e:
         logger.error("[Forward] 转发失败 url=%s error=%s", url, e)
         return {"status": "failed", "message": str(e)}
@@ -346,9 +345,9 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: Analys
 
     try:
         res = await openclaw_cb.call_async(_do_request)
-        if res is None:
-            return {"status": "circuit_broken"}
         return res
+    except CircuitBreakerOpenException:
+        return {"status": "circuit_broken"}
     except Exception as e:
         logger.error(f"OpenClaw 转发异常: {e}")
         return {"status": "error", "message": str(e)}
@@ -415,7 +414,7 @@ async def analyze_with_openclaw(
 
     max_retries = 3
     last_error = None
-    response = None
+    response: httpx.Response | None = None
 
     for attempt in range(max_retries):
         try:
@@ -423,15 +422,14 @@ async def analyze_with_openclaw(
             response = await openclaw_cb.call_async(
                 client.post, target_url, headers=headers, timeout=httpx.Timeout(60.0, connect=10.0), **kwargs
             )
-            if response is None:
-                last_error = f"{platform.capitalize()} 请求被熔断器拦截"
-                if attempt < max_retries - 1:
-                    import asyncio
-
-                    await asyncio.sleep(2)
-                continue
             response.raise_for_status()
             break
+        except CircuitBreakerOpenException as e:
+            last_error = str(e)
+            logger.warning("%s 请求被熔断器拦截: %s", platform.capitalize(), e)
+            if Config.ai.ENABLE_AI_DEGRADATION:
+                return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
+            raise
         except Exception as e:
             last_error = str(e)
             logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
@@ -444,6 +442,9 @@ async def analyze_with_openclaw(
         if Config.ai.ENABLE_AI_DEGRADATION:
             return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
         raise Exception(f"{platform.capitalize()} 请求失败: {last_error}")
+
+    if response is None:
+        raise RuntimeError(f"{platform.capitalize()} 请求失败: empty response")
 
     try:
         raw = response.json()
