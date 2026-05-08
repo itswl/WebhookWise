@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.compression import COMPRESS_THRESHOLD_BYTES, compress_payload
 from core.config import Config
 from core.logger import logger
+from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 
@@ -78,7 +79,7 @@ async def quick_receive_webhook(
         insert(WebhookEvent)
         .values(
             source=source,
-            headers=raw_headers,
+            headers=redact_headers(raw_headers),
             raw_payload=compressed,
             parsed_data=parsed_data,
             processing_status="received",
@@ -351,6 +352,7 @@ async def save_webhook_data(
 ) -> SaveWebhookResult:
     if alert_hash is None:
         alert_hash = WebhookEvent.generate_hash(data, source)
+    safe_headers = redact_headers(headers)
     try:
         async with session_scope() as session:
             if is_duplicate is None:
@@ -368,7 +370,7 @@ async def save_webhook_data(
                     source=source,
                     client_ip=client_ip,
                     raw_payload=raw_payload,
-                    headers=headers,
+                    headers=safe_headers,
                     data=data,
                     alert_hash=alert_hash,
                     ai_analysis=ai_analysis,
@@ -387,7 +389,7 @@ async def save_webhook_data(
                     source=source,
                     client_ip=client_ip,
                     raw_payload=raw_payload,
-                    headers=headers,
+                    headers=safe_headers,
                     data=data,
                     alert_hash=alert_hash,
                     ai_analysis=ai_analysis,
@@ -398,7 +400,7 @@ async def save_webhook_data(
                 source=source,
                 client_ip=client_ip,
                 raw_payload=raw_payload,
-                headers=headers,
+                headers=safe_headers,
                 data=data,
                 alert_hash=alert_hash,
                 ai_analysis=ai_analysis,

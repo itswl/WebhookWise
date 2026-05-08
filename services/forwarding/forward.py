@@ -308,8 +308,11 @@ async def forward_to_remote(
         response = await forward_cb.call_async(_do_post)
         resp_payload: dict[str, Any] = {}
         if response.content:
-            raw_json = response.json()
-            resp_payload = raw_json if isinstance(raw_json, dict) else {"_raw": raw_json}
+            try:
+                raw_json = response.json()
+                resp_payload = raw_json if isinstance(raw_json, dict) else {"_raw": raw_json}
+            except ValueError:
+                resp_payload = {"_raw": response.text[:1000]}
         return {
             "status": "success",
             "status_code": response.status_code,

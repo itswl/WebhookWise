@@ -31,6 +31,13 @@ from db.session import dispose_engine, init_engine
 from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
 from services.webhooks.pipeline import get_running_tasks
 
+_PLACEHOLDER_SECRETS = {"change-me", "changeme", "replace-me", "please-change", "please-change-me"}
+
+
+def _looks_like_placeholder_secret(value: str) -> bool:
+    normalized = value.strip().lower()
+    return normalized in _PLACEHOLDER_SECRETS or normalized.startswith("please-change-")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -38,6 +45,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
         )
+    if os.getenv("APP_ENV", "production") == "production" and _looks_like_placeholder_secret(Config.security.API_KEY):
+        raise RuntimeError("API_KEY 仍是示例占位值，请替换为真实随机密钥")
+    if (
+        os.getenv("APP_ENV", "production") == "production"
+        and not Config.security.REQUIRE_WEBHOOK_AUTH
+        and not Config.security.ALLOW_UNAUTHENTICATED_WEBHOOK
+    ):
+        raise RuntimeError(
+            "生产环境未开启 Webhook 鉴权。请设置 REQUIRE_WEBHOOK_AUTH=true 和 WEBHOOK_SECRET，"
+            "或显式设置 ALLOW_UNAUTHENTICATED_WEBHOOK=true 承担公开接收风险"
+        )
+    if (
+        os.getenv("APP_ENV", "production") == "production"
+        and Config.security.REQUIRE_WEBHOOK_AUTH
+        and _looks_like_placeholder_secret(Config.security.WEBHOOK_SECRET)
+    ):
+        raise RuntimeError("WEBHOOK_SECRET 仍是示例占位值，请替换为真实随机密钥")
     get_http_client()
     initialize_adapters()
     await init_engine()
