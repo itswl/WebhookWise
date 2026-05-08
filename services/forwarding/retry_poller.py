@@ -98,7 +98,7 @@ async def _load_due_retry_ids(session: AsyncSession, *, limit: int, now: datetim
 
 async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
     """重试单条转发失败记录"""
-    from services.forward import forward_to_remote
+    from services.forwarding.forward import forward_to_remote
 
     logger.info(
         "[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",

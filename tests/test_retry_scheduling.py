@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.forward_retry_poller import _load_due_retry_ids
-from services.taskiq_retry_scheduler import compute_backoff_delay
+from services.forwarding.retry_poller import _load_due_retry_ids
+from services.operations.taskiq_retry_scheduler import compute_backoff_delay
 
 
 class FakeScalarResult:
@@ -54,8 +54,8 @@ async def test_forward_retry_due_scan_uses_db_query() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_webhook_retry_uses_taskiq_dynamic_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
-    import services.taskiq_retry_scheduler as scheduler
-    import services.tasks as tasks
+    import services.operations.taskiq_retry_scheduler as scheduler
+    import services.operations.tasks as tasks
 
     source = AsyncMock()
     captured: dict[str, object] = {}

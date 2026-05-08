@@ -14,20 +14,20 @@ import pytest
 
 
 def test_parse_request_uses_source_hint():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     payload = {
-        "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"},
-                    "annotations": {}}]
+        "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
     }
     ctx = _parse_request("1.2.3.4", {}, payload, b"", "prometheus", None)
     assert ctx.source == "prometheus"
 
 
 def test_parse_request_infers_source_from_header():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     payload = {
-        "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"},
-                    "annotations": {}}]
+        "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
     }
     ctx = _parse_request("1.2.3.4", {"x-webhook-source": "grafana"}, payload, b"", None, None)
     # grafana 格式不匹配 prometheus payload → fallback 到 header 提示
@@ -36,7 +36,8 @@ def test_parse_request_infers_source_from_header():
 
 
 def test_parse_request_parses_raw_body_when_no_payload():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     data = {"alertname": "MemHigh", "severity": "warning"}
     raw = orjson.dumps(data)
     ctx = _parse_request("1.2.3.4", {}, {}, raw, "unknown", None)
@@ -44,27 +45,31 @@ def test_parse_request_parses_raw_body_when_no_payload():
 
 
 def test_parse_request_sets_client_ip():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     ctx = _parse_request("10.0.0.1", {}, {"foo": "bar"}, b"", "unknown", None)
     assert ctx.client_ip == "10.0.0.1"
 
 
 def test_parse_request_sets_headers():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     headers = {"content-type": "application/json", "x-request-id": "abc123"}
     ctx = _parse_request("1.2.3.4", headers, {"foo": "bar"}, b"", "unknown", None)
     assert ctx.headers == headers
 
 
 def test_parse_request_full_data_contains_source():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     ctx = _parse_request("1.2.3.4", {}, {"foo": "bar"}, b"", "github", None)
     assert "source" in ctx.webhook_full_data
     assert ctx.webhook_full_data["source"] is not None
 
 
 def test_parse_request_timestamp_passed_through():
-    from services.pipeline import _parse_request
+    from services.webhooks.pipeline import _parse_request
+
     ts = "2025-01-01T12:00:00Z"
     ctx = _parse_request("1.2.3.4", {}, {}, b"", "unknown", ts)
     assert ctx.webhook_full_data.get("timestamp") == ts
@@ -76,13 +81,13 @@ def test_parse_request_timestamp_passed_through():
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_parsed_data_when_present():
     """parsed_data 已存在时直接返回，无需解压。"""
-    from services.pipeline import _load_event_payload
+    from services.webhooks.pipeline import _load_event_payload
 
     event = MagicMock()
     event.parsed_data = {"alertname": "CPUHigh", "host": "prod-01"}
     event.raw_payload = None
 
-    with patch("services.pipeline.decompress_payload_async", AsyncMock(return_value="")):
+    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="")):
         parsed, raw_text = await _load_event_payload(event)
 
     assert parsed == {"alertname": "CPUHigh", "host": "prod-01"}
@@ -91,7 +96,7 @@ async def test_load_event_payload_returns_parsed_data_when_present():
 @pytest.mark.asyncio
 async def test_load_event_payload_decompresses_when_parsed_data_none():
     """parsed_data 为 None 时，从 raw_payload 解压并解析 JSON。"""
-    from services.pipeline import _load_event_payload
+    from services.webhooks.pipeline import _load_event_payload
 
     data = {"alerts": [{"labels": {"alertname": "DiskFull"}}]}
     raw_json = orjson.dumps(data).decode()
@@ -100,7 +105,7 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
     event.parsed_data = None
     event.raw_payload = b"compressed"
 
-    with patch("services.pipeline.decompress_payload_async", AsyncMock(return_value=raw_json)):
+    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value=raw_json)):
         parsed, raw_text = await _load_event_payload(event)
 
     assert parsed is not None
@@ -111,13 +116,13 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_none_on_invalid_json():
     """解压后内容不是有效 JSON 时，parsed_data 应为 None（不抛异常）。"""
-    from services.pipeline import _load_event_payload
+    from services.webhooks.pipeline import _load_event_payload
 
     event = MagicMock()
     event.parsed_data = None
     event.raw_payload = b"something"
 
-    with patch("services.pipeline.decompress_payload_async", AsyncMock(return_value="not-json")):
+    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="not-json")):
         parsed, raw_text = await _load_event_payload(event)
 
     assert parsed is None
@@ -127,13 +132,13 @@ async def test_load_event_payload_returns_none_on_invalid_json():
 @pytest.mark.asyncio
 async def test_load_event_payload_handles_none_raw_payload():
     """raw_payload 为 None 时不崩溃，返回 None, ''。"""
-    from services.pipeline import _load_event_payload
+    from services.webhooks.pipeline import _load_event_payload
 
     event = MagicMock()
     event.parsed_data = None
     event.raw_payload = None
 
-    with patch("services.pipeline.decompress_payload_async", AsyncMock(return_value="")):
+    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="")):
         parsed, raw_text = await _load_event_payload(event)
 
     assert parsed is None

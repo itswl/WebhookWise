@@ -10,9 +10,9 @@ from core.logger import logger, mask_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
-from services.ai_analyzer import analyze_webhook_with_ai
-from services.forward import forward_to_remote
-from services.pipeline import _decide_forwarding, _execute_forwarding
+from services.analysis.ai_analyzer import analyze_webhook_with_ai
+from services.forwarding.forward import forward_to_remote
+from services.webhooks.pipeline import _decide_forwarding, _execute_forwarding
 
 reanalysis_router = APIRouter()
 

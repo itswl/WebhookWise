@@ -317,7 +317,7 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: Analys
         return {"status": "disabled"}
 
     async def _do_request() -> dict[str, Any]:
-        from services.ai_analyzer import analyze_webhook_with_ai
+        from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
         result = await analyze_with_openclaw(webhook_data)
         if result.get("_degraded"):

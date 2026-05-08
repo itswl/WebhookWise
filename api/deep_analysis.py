@@ -13,8 +13,8 @@ from core.logger import logger
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse
-from services.ai_analyzer import analyze_webhook_with_ai, get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.forward import record_failed_forward
+from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_deep_analyses_for_webhook, get_deep_analysis_list
+from services.forwarding.forward import record_failed_forward
 
 deep_analysis_router = APIRouter()
 
@@ -28,7 +28,7 @@ def _is_supported_deep_analysis_engine(requested: str) -> bool:
 async def _run_openclaw_deep_analysis(
     ctx: JSONDict, headers: dict[str, Any], user_question: str
 ) -> tuple[dict[str, Any], str]:
-    from services.forward import analyze_with_openclaw
+    from services.forwarding.forward import analyze_with_openclaw
 
     webhook_data: dict[str, Any] = {
         "source": ctx["source"],
@@ -43,7 +43,7 @@ async def _run_openclaw_deep_analysis(
 
 
 async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
-    from services.openclaw_poller import notify_deep_analysis_success
+    from services.analysis.openclaw_poller import notify_deep_analysis_success
 
     event = await session.get(WebhookEvent, record.webhook_event_id)
     source = event.source if event else ""
@@ -155,7 +155,7 @@ async def retry_deep_analysis(
         return {"success": True, "message": "分析已完成"}
 
     if Config.openclaw.OPENCLAW_HTTP_API_URL:
-        from services.openclaw_poller import (
+        from services.analysis.openclaw_poller import (
             _poll_via_http,
             build_analysis_result_from_openclaw_text,
         )
