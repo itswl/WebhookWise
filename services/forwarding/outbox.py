@@ -214,14 +214,18 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
 
         if current.target_type == "openclaw" and result.get("_pending"):
             from models import DeepAnalysis
+            from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
             target_event_id = current.original_event_id or current.webhook_event_id
+            initial_poll_delay = compute_openclaw_poll_delay(0)
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
                 engine="openclaw",
                 openclaw_run_id=str(result.get("_openclaw_run_id", "")),
                 openclaw_session_key=str(result.get("_openclaw_session_key", "")),
                 status="pending",
+                poll_attempts=0,
+                next_poll_at=now + timedelta(seconds=initial_poll_delay),
             )
             session.add(analysis_record)
             await session.flush()
@@ -245,9 +249,9 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
 
 async def _schedule_openclaw_poll_best_effort(analysis_id: int) -> None:
     try:
-        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+        from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay, schedule_openclaw_poll
 
-        await schedule_openclaw_poll(analysis_id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+        await schedule_openclaw_poll(analysis_id, compute_openclaw_poll_delay(0))
     except Exception as e:
         logger.warning("[ForwardOutbox] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
 

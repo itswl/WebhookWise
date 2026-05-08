@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -117,6 +118,10 @@ async def create_openclaw_analysis(
     run_id: str,
     session_key: str,
 ) -> int:
+    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay, schedule_openclaw_poll
+
+    initial_poll_delay = compute_openclaw_poll_delay(0)
+    analysis_id: int
     async with session_scope() as sess:
         record = DeepAnalysis(
             webhook_event_id=webhook_event_id,
@@ -124,10 +129,15 @@ async def create_openclaw_analysis(
             openclaw_run_id=run_id,
             openclaw_session_key=session_key,
             status="pending",
+            poll_attempts=0,
+            next_poll_at=datetime.now() + timedelta(seconds=initial_poll_delay),
         )
         sess.add(record)
         await sess.flush()
-        return record.id
+        analysis_id = record.id
+    with contextlib.suppress(Exception):
+        await schedule_openclaw_poll(analysis_id, initial_poll_delay)
+    return analysis_id
 
 
 async def mark_last_notified(event_id: int) -> None:

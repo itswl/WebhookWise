@@ -41,7 +41,10 @@ class DeepAnalysis(Base, SerializerMixin):
 
     __tablename__ = "deep_analyses"
 
-    __table_args__ = (Index("idx_deep_analyses_pending", "created_at", postgresql_where=text("status = 'pending'")),)
+    __table_args__ = (
+        Index("idx_deep_analyses_pending", "created_at", postgresql_where=text("status = 'pending'")),
+        Index("idx_deep_analyses_pending_next_poll", "next_poll_at", postgresql_where=text("status = 'pending'")),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     webhook_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
@@ -53,3 +56,6 @@ class DeepAnalysis(Base, SerializerMixin):
     openclaw_run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     openclaw_session_key: Mapped[str | None] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
+    poll_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime)
