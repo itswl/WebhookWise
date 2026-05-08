@@ -5,7 +5,8 @@ from sqlalchemy import text
 from db.session import get_db_session, init_engine
 
 
-async def test() -> None:
+async def main() -> None:
+    """Manually verify session usability after a PostgreSQL statement timeout."""
     await init_engine()
     async for session in get_db_session():
         try:
@@ -28,4 +29,4 @@ async def test() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    asyncio.run(main())

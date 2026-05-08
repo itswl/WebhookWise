@@ -328,13 +328,8 @@ tests/e2e/run_webhook_to_feishu.sh
 
 详细功能文档见 [docs/](docs/README.md)：
 
-- [部署说明](docs/setup/AUTO_MIGRATION.md) — 数据库迁移 & 自动化部署
-- [去重时间窗口](docs/features/DUPLICATE_TIME_WINDOW.md) — 去重机制详解
-- [降噪根因分析](docs/features/ALERT_NOISE_REDUCTION_ROOT_CAUSE.md) — Jaccard 算法说明
-- [告警风暴背压](docs/features/ALERT_STORM_BACKPRESSURE.md) — Fail-Fast 策略
-- [AI Prompt 配置](docs/features/PROMPT_CONFIG.md) — 自定义 LLM Prompt
-- [配置来源追踪](docs/features/CONFIG_PROVIDER.md) — 配置优先级 & 热更新
 - [故障排查](docs/troubleshooting/TROUBLESHOOTING.md) — 常见问题 & 解决方案
+- [查看详情](docs/troubleshooting/HOW_TO_VIEW_DETAILS.md) — Webhook 详情查看说明
 
 ## 📜 许可证
 
