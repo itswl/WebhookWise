@@ -9,7 +9,7 @@ import logging
 
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqScheduler
 from taskiq.schedule_sources import LabelScheduleSource
-from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
+from taskiq_redis import ListRedisScheduleSource, RedisAsyncResultBackend, RedisStreamBroker
 
 from core.config import Config
 
@@ -42,9 +42,15 @@ if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
 else:
     logger.info("[TaskIQ] 已初始化 Redis Broker: %s", REDIS_URL)
 
+dynamic_schedule_source = ListRedisScheduleSource(
+    url=REDIS_URL,
+    prefix="taskiq:schedule",
+    skip_past_schedules=False,
+)
+
 scheduler = TaskiqScheduler(
     broker=broker,
-    sources=[LabelScheduleSource(broker)],
+    sources=[LabelScheduleSource(broker), dynamic_schedule_source],
 )
 
 import services.tasks  # noqa: E402,F401

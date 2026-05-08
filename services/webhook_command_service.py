@@ -233,7 +233,6 @@ async def _update_existing_event(
         return SaveWebhookResult(event.id, False, None, False)
     except sqlalchemy.exc.IntegrityError as e:
         if "idx_unique_alert_hash_original" in str(e):
-            await session.rollback()
             session.expunge(event)
 
             stmt = sqlalchemy.select(WebhookEvent).filter(

@@ -45,7 +45,7 @@ fi
 # Scheduler 模式：启动 TaskIQ Scheduler（只负责投递定时任务）
 if [ "$RUN_MODE" = "scheduler" ]; then
     echo "Starting in TaskIQ Scheduler mode..."
-    exec taskiq scheduler core.taskiq_broker:scheduler
+    exec taskiq scheduler core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
 fi
 
 # 以下是 API / all 模式的启动流程

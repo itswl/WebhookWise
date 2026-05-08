@@ -236,7 +236,6 @@ curl -X POST http://localhost:8000/webhook \
 | `FORWARD_RETRY_MAX_RETRIES` | `3` | 最大重试次数 |
 | `FORWARD_RETRY_INITIAL_DELAY` | `60` | 初始重试延迟（秒） |
 | `WEBHOOK_RETRY_MAX_RETRIES` | `5` | Webhook 主处理最大重试次数 |
-| `WEBHOOK_RETRY_DRAIN_INTERVAL` | `10` | Redis 延迟重试队列投递间隔（秒） |
 
 ### OpenClaw 深度分析
 

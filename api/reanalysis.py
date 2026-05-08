@@ -57,6 +57,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     except Exception as e:
         logger.warning("reanalyze: 转发通知失败: %s", e)
 
+    await session.commit()
     return {
         "success": True,
         "status": "success",
@@ -81,5 +82,6 @@ async def manual_forward_webhook(
     url = data.get("target_url")
     fwd_res = await forward_to_remote(ctx, event.ai_analysis or {}, url)
     event.forward_status = fwd_res.get("status", "unknown")
+    await session.commit()
 
     return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(url or Config.ai.FORWARD_URL)}"}
