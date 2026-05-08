@@ -147,3 +147,42 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert "checkout-5xx" in elements_text
     assert "订单服务错误率升高" in elements_text
     assert "回滚最近发布" in elements_text
+
+
+async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from models import WebhookEvent
+    from services.webhooks.command_service import mark_webhook_suppressed
+
+    async with integration_session_factory.begin() as session:
+        event = WebhookEvent(source="prometheus", client_ip="127.0.0.1", processing_status="analyzing")
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    async def fail_check_duplicate(*_: object, **__: object) -> object:
+        raise AssertionError("storm suppression must not run duplicate queries")
+
+    monkeypatch.setattr(WebhookEvent, "check_duplicate", fail_check_duplicate)
+
+    await mark_webhook_suppressed(
+        event_id=event_id,
+        data={"alert_name": "storm"},
+        source="prometheus",
+        raw_payload=b'{"alert_name":"storm"}',
+        headers={"x-test": "1"},
+        client_ip="127.0.0.1",
+        ai_analysis={"noise_reduction": {"reason": "alert_processing_lock_timeout"}},
+        alert_hash="same-hash",
+    )
+
+    async with integration_session_factory() as session:
+        updated = await session.get(WebhookEvent, event_id)
+
+    assert updated is not None
+    assert updated.processing_status == "completed"
+    assert updated.forward_status == "skipped"
+    assert updated.alert_hash == "same-hash"
+    assert updated.is_duplicate == 1

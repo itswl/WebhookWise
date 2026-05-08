@@ -111,6 +111,42 @@ async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
     return bool(res.rowcount)
 
 
+async def mark_webhook_suppressed(
+    *,
+    event_id: int,
+    data: WebhookData,
+    source: str,
+    raw_payload: bytes | None,
+    headers: HeadersDict | None,
+    client_ip: str | None,
+    ai_analysis: AnalysisResult,
+    alert_hash: str,
+) -> None:
+    """Persist a storm-suppressed event without running duplicate queries."""
+    safe_headers = redact_headers(headers)
+    async with session_scope() as session:
+        event = await session.get(WebhookEvent, event_id)
+        if not event:
+            return
+        event.fill_fields(
+            source=source,
+            client_ip=client_ip,
+            parsed_data=data,
+            alert_hash=alert_hash,
+            ai_analysis=ai_analysis,
+            importance=ai_analysis.get("importance") if ai_analysis else None,
+            forward_status="skipped",
+            is_duplicate=1,
+            duplicate_of=None,
+            duplicate_count=1,
+            beyond_window=0,
+            headers=safe_headers,
+            raw_payload=raw_payload,
+            processing_status="completed",
+        )
+        await session.flush()
+
+
 async def _save_duplicate_event(
     session: AsyncSession,
     *,
