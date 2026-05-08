@@ -40,7 +40,14 @@
 
 **进程模型：**
 - `api` 进程：FastAPI HTTP 服务（Gunicorn 4 UvicornWorker）
-- `worker` 进程：TaskIQ Worker + 定时任务调度器
+- `worker` 进程：TaskIQ Worker，消费异步业务任务和定时任务
+- `scheduler` 进程：TaskIQ Scheduler，只负责周期性投递任务，不执行业务逻辑
+
+**异步职责边界：**
+- TaskIQ：异步任务投递与 Worker 消费
+- Scheduler：周期性投递 recovery、metrics、OpenClaw poll、转发重试、数据维护等任务
+- PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
+- Redis：TaskIQ 队列、短期锁、缓存、运行时配置广播
 
 ## 🛠️ 技术栈
 
@@ -55,7 +62,7 @@
 | 监控 | Prometheus + prometheus-fastapi-instrumentator |
 | 链路追踪 | OpenTelemetry (可选，OTLP 导出) |
 | 数据迁移 | Alembic |
-| 容器化 | Docker + Docker Compose (4 服务) |
+| 容器化 | Docker + Docker Compose (5 服务) |
 
 ## 🚀 快速开始
 
@@ -66,7 +73,7 @@
 cp .env.example .env
 # 至少需要填写: OPENAI_API_KEY, API_KEY
 
-# 2. 一键启动（API + Worker + Redis + PostgreSQL）
+# 2. 一键启动（API + Worker + Scheduler + Redis + PostgreSQL）
 docker-compose up -d --build
 
 # 3. 验证
@@ -103,7 +110,7 @@ curl -X POST http://localhost:8000/webhook \
 |:---|:---|:---|
 | 静态检查 | `ruff check .` / `mypy .` | 代码风格、类型边界 |
 | 单元 + 进程内集成 | `pytest` | 纯函数、核心服务、FastAPI 路由到 pipeline 的进程内链路 |
-| Docker E2E | `tests/e2e/run_webhook_to_feishu.sh` | 真 PostgreSQL、真 Redis、API 容器、TaskIQ Worker、fake Feishu HTTP server |
+| Docker E2E | `tests/e2e/run_webhook_to_feishu.sh` | 真 PostgreSQL、真 Redis、API 容器、TaskIQ Worker、TaskIQ Scheduler、fake Feishu HTTP server |
 
 常规本地/CI 快速验证：
 
@@ -123,12 +130,12 @@ tests/e2e/run_webhook_to_feishu.sh
 
 1. 用 `tests/e2e/docker-compose.yml` 启动一次性环境；
 2. 从干净 PostgreSQL 执行 `alembic upgrade head`；
-3. 启动 API、Redis、TaskIQ Worker 和 fake Feishu；
+3. 启动 API、Redis、TaskIQ Worker、TaskIQ Scheduler 和 fake Feishu；
 4. 向 `/webhook/prometheus` 发送真实 HTTP 请求；
 5. 等待 Worker 从 Redis 消费任务；
 6. 断言 fake Feishu 收到飞书 `interactive` card。
 
-脚本退出时会自动 `docker compose down -v --remove-orphans` 清理容器和数据卷。失败时会打印相关容器最近日志，优先看 `webhook-service` 和 `worker`。
+脚本退出时会自动 `docker compose down -v --remove-orphans` 清理容器和数据卷。失败时会打印相关容器最近日志，优先看 `webhook-service`、`worker` 和 `scheduler`。
 
 > Docker E2E 比普通 pytest 慢，默认不放进快速 CI。发版前、改动迁移/队列/转发链路时应手动跑一遍。
 
@@ -153,7 +160,7 @@ tests/e2e/run_webhook_to_feishu.sh
 ├── main.py            # FastAPI 入口
 ├── worker.py          # TaskIQ Worker 入口
 ├── Dockerfile         # 多阶段构建 (jemalloc + 非 root)
-├── docker-compose.yml # 4 服务编排
+├── docker-compose.yml # 5 服务编排
 └── .env.example       # 配置模板
 ```
 
@@ -301,7 +308,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `ai_cost_usd_total` | Counter | 累计 AI 成本（美元） |
 | `ai_analysis_duration_seconds` | Histogram | AI 分析耗时（按 source/engine） |
 | `db_queue_pending` | Gauge | 待处理事件数 |
-| `forward_retry_pending` | Gauge | 转发重试队列长度 |
+| `forward_retry_pending` | Gauge | DB 中待重试转发记录数 |
 
 ## 🔒 安全说明
 

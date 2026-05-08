@@ -7,6 +7,7 @@ HTTP /webhook/prometheus
   -> PostgreSQL quick receive
   -> Redis / TaskIQ
   -> Worker pipeline
+  -> Scheduler process starts
   -> rule analysis
   -> Feishu interactive card
   -> fake Feishu HTTP server
@@ -24,11 +25,13 @@ tests/e2e/run_webhook_to_feishu.sh
 - `redis`: 真 Redis 7
 - `webhook-service`: API 容器
 - `worker`: TaskIQ Worker 容器
+- `scheduler`: TaskIQ Scheduler 容器
 - `fake-feishu`: 本地 HTTP server，记录收到的 webhook payload
 
 通过条件：
 
 - API `/health` 可用；
+- scheduler 容器保持 running；
 - webhook 请求返回 `202`;
 - worker 从 Redis 消费并完成处理；
 - fake Feishu 收到 `msg_type=interactive` 的卡片 payload。
