@@ -22,6 +22,25 @@ trap dump_logs EXIT
 cleanup
 "${COMPOSE[@]}" up -d --build
 
+wait_container_running() {
+  local service="$1"
+  local deadline=$((SECONDS + 60))
+  local container_id=""
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    container_id="$("${COMPOSE[@]}" ps -q "$service")"
+    if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null)" = "true" ]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "$service did not reach running state" >&2
+  return 1
+}
+
+wait_container_running scheduler
+
 python - <<'PY'
 import json
 import time

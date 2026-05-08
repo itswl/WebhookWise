@@ -129,3 +129,35 @@ services:
         condition: service_healthy
     networks:
       - e2e
+
+  scheduler:
+    image: webhookwise-e2e:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      RUN_MODE: scheduler
+      APP_ENV: test
+      LOG_LEVEL: INFO
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
+      REDIS_URL: redis://redis:6379/0
+      WEBHOOK_SECRET: ""
+      API_KEY: ""
+      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      OPENAI_API_KEY: ""
+      ENABLE_AI_ANALYSIS: "false"
+      CACHE_ENABLED: "false"
+      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      OTEL_ENABLED: "false"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      webhook-service:
+        condition: service_healthy
+    networks:
+      - e2e
