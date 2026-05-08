@@ -7,9 +7,9 @@ JSONDict = dict[str, Any]
 
 
 async def build_webhook_context(event: WebhookEvent) -> JSONDict:
-    from services.webhooks.pipeline import _load_event_payload
+    from services.webhooks.repository import load_event_payload
 
-    parsed_data, _ = await _load_event_payload(event)
+    parsed_data, _ = await load_event_payload(event)
     source = event.source
     if (not source or source == "unknown") and isinstance(parsed_data, dict):
         normalized = normalize_webhook_event(parsed_data, None)

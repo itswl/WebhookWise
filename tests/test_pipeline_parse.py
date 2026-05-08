@@ -1,7 +1,7 @@
 """
 tests/test_pipeline_parse.py
 =============================
-测试 pipeline._parse_request() 和 _load_event_payload() 纯逻辑。
+测试 pipeline._parse_request() 和 load_event_payload() 纯逻辑。
 这两个函数处理进入系统的第一道数据解析，错误会导致事件完全丢失。
 """
 
@@ -81,14 +81,14 @@ def test_parse_request_timestamp_passed_through():
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_parsed_data_when_present():
     """parsed_data 已存在时直接返回，无需解压。"""
-    from services.webhooks.pipeline import _load_event_payload
+    from services.webhooks.repository import load_event_payload
 
     event = MagicMock()
     event.parsed_data = {"alertname": "CPUHigh", "host": "prod-01"}
     event.raw_payload = None
 
-    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="")):
-        parsed, raw_text = await _load_event_payload(event)
+    with patch("services.webhooks.repository.decompress_payload_async", AsyncMock(return_value="")):
+        parsed, raw_text = await load_event_payload(event)
 
     assert parsed == {"alertname": "CPUHigh", "host": "prod-01"}
 
@@ -96,7 +96,7 @@ async def test_load_event_payload_returns_parsed_data_when_present():
 @pytest.mark.asyncio
 async def test_load_event_payload_decompresses_when_parsed_data_none():
     """parsed_data 为 None 时，从 raw_payload 解压并解析 JSON。"""
-    from services.webhooks.pipeline import _load_event_payload
+    from services.webhooks.repository import load_event_payload
 
     data = {"alerts": [{"labels": {"alertname": "DiskFull"}}]}
     raw_json = orjson.dumps(data).decode()
@@ -105,8 +105,8 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
     event.parsed_data = None
     event.raw_payload = b"compressed"
 
-    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value=raw_json)):
-        parsed, raw_text = await _load_event_payload(event)
+    with patch("services.webhooks.repository.decompress_payload_async", AsyncMock(return_value=raw_json)):
+        parsed, raw_text = await load_event_payload(event)
 
     assert parsed is not None
     assert "alerts" in parsed
@@ -116,14 +116,14 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_none_on_invalid_json():
     """解压后内容不是有效 JSON 时，parsed_data 应为 None（不抛异常）。"""
-    from services.webhooks.pipeline import _load_event_payload
+    from services.webhooks.repository import load_event_payload
 
     event = MagicMock()
     event.parsed_data = None
     event.raw_payload = b"something"
 
-    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="not-json")):
-        parsed, raw_text = await _load_event_payload(event)
+    with patch("services.webhooks.repository.decompress_payload_async", AsyncMock(return_value="not-json")):
+        parsed, raw_text = await load_event_payload(event)
 
     assert parsed is None
     assert raw_text == "not-json"
@@ -132,14 +132,14 @@ async def test_load_event_payload_returns_none_on_invalid_json():
 @pytest.mark.asyncio
 async def test_load_event_payload_handles_none_raw_payload():
     """raw_payload 为 None 时不崩溃，返回 None, ''。"""
-    from services.webhooks.pipeline import _load_event_payload
+    from services.webhooks.repository import load_event_payload
 
     event = MagicMock()
     event.parsed_data = None
     event.raw_payload = None
 
-    with patch("services.webhooks.pipeline.decompress_payload_async", AsyncMock(return_value="")):
-        parsed, raw_text = await _load_event_payload(event)
+    with patch("services.webhooks.repository.decompress_payload_async", AsyncMock(return_value="")):
+        parsed, raw_text = await load_event_payload(event)
 
     assert parsed is None
     assert raw_text == ""
