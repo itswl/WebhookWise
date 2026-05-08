@@ -10,7 +10,7 @@
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
 | **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
 | **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，缓存/数据库复用 + 24h 时间窗口（可配置） |
-| **告警风暴背压** | 同一 `alert_hash` 并发激增时本进程串行 + Redis 短窗口 Fail-Fast，防资源耗尽 |
+| **告警风暴背压** | 同一 `alert_hash` 并发激增时 Redis 分布式 single-flight + 短窗口 Fail-Fast，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
 | **事务性转发 Outbox** | 处理结果与转发意图同事务落库，Worker 异步消费，避免 DB 状态与 HTTP 副作用脱节 |
 | **转发失败重试** | 失败转发写入审计表，通过 TaskIQ 动态延迟任务指数退避重试（最多 3 次） |
@@ -294,6 +294,10 @@ tests/e2e/run_webhook_to_feishu.sh
 | `FORWARD_RETRY_MAX_RETRIES` | `3` | 最大重试次数 |
 | `FORWARD_RETRY_INITIAL_DELAY` | `60` | 初始重试延迟（秒） |
 | `WEBHOOK_RETRY_MAX_RETRIES` | `5` | Webhook 主处理最大重试次数 |
+| `PROCESSING_LOCK_DISTRIBUTED_ENABLED` | `true` | 同一 `alert_hash` 跨 Worker 串行处理 |
+| `PROCESSING_LOCK_TTL_SECONDS` | `180` | 分布式处理锁 TTL，会自动续期 |
+| `PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS` | `15` | 等待同类告警处理锁的最长秒数 |
+| `PROCESSING_LOCK_FAILFAST_THRESHOLD` | `20` | 短窗口内同类告警超过阈值后直接背压 |
 
 ### OpenClaw 深度分析
 

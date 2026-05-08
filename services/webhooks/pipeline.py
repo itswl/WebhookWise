@@ -39,7 +39,7 @@ from services.forwarding.outbox import (
     schedule_forward_outbox_many,
 )
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
-from services.webhooks.command_service import save_webhook_data, save_webhook_data_in_session
+from services.webhooks.command_service import mark_webhook_suppressed, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardingPolicy,
     ForwardRuleSnapshot,
@@ -322,9 +322,10 @@ async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> 
     if not getattr(lock_res, "suppressed", False):
         return False
     logger.info(
-        "[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s",
+        "[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s reason=%s",
         ctx.event_id,
         getattr(lock_res, "queue_size", 0),
+        getattr(lock_res, "reason", "") or "alert_storm_backpressure",
     )
     WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
     WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
@@ -333,20 +334,19 @@ async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> 
         None,
         1.0,
         True,
-        "alert_storm_backpressure",
+        getattr(lock_res, "reason", "") or "alert_storm_backpressure",
         getattr(lock_res, "queue_size", 0),
         [],
     )
-    await save_webhook_data(
+    await mark_webhook_suppressed(
+        event_id=ctx.event_id,
         data=ctx.req_ctx.parsed_data,
         source=ctx.req_ctx.source,
         raw_payload=ctx.req_ctx.payload,
         headers=ctx.req_ctx.headers,
         client_ip=ctx.req_ctx.client_ip,
         ai_analysis={"noise_reduction": noise.__dict__},
-        forward_status="skipped",
         alert_hash=ctx.alert_hash,
-        event_id=ctx.event_id,
     )
     return True
 
@@ -550,30 +550,29 @@ async def _handle_webhook_process_inner(
                     return
 
                 analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data)
+                route_type = analysis_res.analysis_result.get("_route_type", "ai")
+                importance = _normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
+                if analysis_res.is_reused:
+                    set_log_context(route_type=route_type)
+                    logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
+                    noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
+                else:
+                    set_log_context(route_type=route_type)
+                    logger.info(
+                        "[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
+                        event_id,
+                        route_type,
+                        importance,
+                        analysis_res.analysis_result.get("_degraded", False),
+                    )
+                    noise = await _compute_noise(
+                        alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result
+                    )
 
-            route_type = analysis_res.analysis_result.get("_route_type", "ai")
-            importance = _normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
-            if analysis_res.is_reused:
-                set_log_context(route_type=route_type)
-                logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
-                noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
-            else:
-                set_log_context(route_type=route_type)
-                logger.info(
-                    "[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
-                    event_id,
-                    route_type,
-                    importance,
-                    analysis_res.analysis_result.get("_degraded", False),
+                final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
+                save_res, fwd_dec, outbox_ids = await _persist_analysis_and_forwarding_intents(
+                    ctx, analysis_res, final_analysis, noise
                 )
-                noise = await _compute_noise(
-                    alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result
-                )
-
-            final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
-            save_res, fwd_dec, outbox_ids = await _persist_analysis_and_forwarding_intents(
-                ctx, analysis_res, final_analysis, noise
-            )
             await schedule_forward_outbox_many(outbox_ids)
 
             event_type = (
