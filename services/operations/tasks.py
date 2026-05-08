@@ -62,6 +62,14 @@ async def process_webhook_task(
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)
 
 
+@broker.task(task_name="forward_retry_task")
+async def retry_failed_forward_task(failed_forward_id: int) -> None:
+    """Retry a single failed-forward audit record."""
+    from services.forwarding.retry import retry_failed_forward_by_id
+
+    await retry_failed_forward_by_id(failed_forward_id)
+
+
 @broker.task(
     task_name="scheduled_recovery_scan",
     schedule=[
@@ -102,20 +110,6 @@ async def scheduled_openclaw_poll() -> None:
     from services.analysis.openclaw_poller import poll_pending_analyses
 
     await _run_scheduled("openclaw_poll", Config.server.OPENCLAW_POLL_INTERVAL_SECONDS, poll_pending_analyses())
-
-
-@broker.task(
-    task_name="scheduled_forward_retry_poll",
-    schedule=[
-        {"interval": Config.retry.FORWARD_RETRY_POLL_INTERVAL, "schedule_id": "forward_retry_poll_interval_seconds"}
-    ],
-)
-async def scheduled_forward_retry_poll() -> None:
-    if not Config.retry.ENABLE_FORWARD_RETRY:
-        return
-    from services.forwarding.retry_poller import poll_pending_retries
-
-    await _run_scheduled("forward_retry_poll", Config.retry.FORWARD_RETRY_POLL_INTERVAL, poll_pending_retries())
 
 
 @broker.task(
