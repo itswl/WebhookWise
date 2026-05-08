@@ -164,25 +164,25 @@ def get_engine() -> AsyncEngine | None:
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI Depends 异步生成器：提供带自动 commit/rollback 的 session"""
+    """FastAPI Depends 异步生成器：只管理 session 生命周期。
+
+    HTTP 写接口需要显式提交。这样路由可以在提交成功后再触发 TaskIQ
+    或外部通知，避免依赖退出时才提交导致的事务/副作用顺序不清。
+    """
     if _session_factory is None:
         await init_engine()
     assert _session_factory is not None
     async with _session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+        yield session
 
 
 @asynccontextmanager
 async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIterator[AsyncSession]:
-    """异步数据库会话上下文管理器，自动处理提交和回滚。
+    """异步数据库事务上下文管理器。
 
-    如果传入了 existing_session，则直接使用它且不执行自动提交/回滚（由调用方负责）。
-    始终创建新 session（若未传入）。供 Poller、TaskIQ 等不通过路由的代码路径使用。
+    新建 session 时使用 SQLAlchemy 2.0 的 ``async_sessionmaker.begin()``，
+    由框架负责提交、回滚和关闭。传入 existing_session 时不接管事务边界，
+    由外层调用方负责提交或回滚。
     """
     if existing_session:
         yield existing_session
@@ -190,13 +190,8 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
         if _session_factory is None:
             await init_engine()
         assert _session_factory is not None
-        async with _session_factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
+        async with _session_factory.begin() as session:
+            yield session
 
 
 async def count_with_timeout(

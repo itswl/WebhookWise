@@ -214,8 +214,6 @@ class RetryConfig(BaseSettings):
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)
     WEBHOOK_RETRY_MAX_DELAY: int = Field(default=900)
     WEBHOOK_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    WEBHOOK_RETRY_DRAIN_INTERVAL: int = Field(default=10)
-    WEBHOOK_RETRY_DRAIN_BATCH_SIZE: int = Field(default=100)
     ENABLE_FORWARD_RETRY: bool = Field(default=True)
     FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)

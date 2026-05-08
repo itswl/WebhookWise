@@ -4,13 +4,10 @@ import pytest
 
 from services.retry_queue import (
     FORWARD_RETRY_ZSET,
-    WEBHOOK_RETRY_ZSET,
-    compute_backoff_delay,
     drain_due_forward_retries,
-    drain_due_webhook_retries,
     enqueue_forward_retry,
-    enqueue_webhook_retry,
 )
+from services.taskiq_retry_scheduler import compute_backoff_delay
 
 
 def test_compute_backoff_delay_is_bounded() -> None:
@@ -20,16 +17,14 @@ def test_compute_backoff_delay_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_retry_ids_use_expected_zsets() -> None:
+async def test_enqueue_forward_retry_id_uses_expected_zset() -> None:
     redis = AsyncMock()
 
     with patch("services.retry_queue.get_redis", return_value=redis), patch(
         "services.retry_queue.time.time", return_value=1000
     ):
-        await enqueue_webhook_retry(123, 30)
         await enqueue_forward_retry(456, 60)
 
-    redis.zadd.assert_any_await(WEBHOOK_RETRY_ZSET, {"123": 1030})
     redis.zadd.assert_any_await(FORWARD_RETRY_ZSET, {"456": 1060})
 
 
@@ -41,5 +36,37 @@ async def test_drain_due_retry_ids_filters_invalid_members() -> None:
         return "1,bad,2"
 
     with patch("services.retry_queue.redis_eval_str", side_effect=fake_eval):
-        assert await drain_due_webhook_retries(limit=10) == [1, 2]
         assert await drain_due_forward_retries(limit=10) == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_schedule_webhook_retry_uses_taskiq_dynamic_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
+    import services.taskiq_retry_scheduler as scheduler
+    import services.tasks as tasks
+
+    source = AsyncMock()
+    captured: dict[str, object] = {}
+
+    class FakeKicker:
+        def with_schedule_id(self, schedule_id: str) -> "FakeKicker":
+            captured["schedule_id"] = schedule_id
+            return self
+
+        async def schedule_by_time(self, schedule_source: object, run_at: object, **kwargs: object) -> None:
+            captured["schedule_source"] = schedule_source
+            captured["run_at"] = run_at
+            captured["kwargs"] = kwargs
+
+    class FakeTask:
+        def kicker(self) -> FakeKicker:
+            return FakeKicker()
+
+    monkeypatch.setattr(scheduler, "dynamic_schedule_source", source)
+    monkeypatch.setattr(tasks, "process_webhook_task", FakeTask())
+
+    await scheduler.schedule_webhook_retry(123, 30)
+
+    source.delete_schedule.assert_awaited_once_with("webhook-retry:123")
+    assert captured["schedule_id"] == "webhook-retry:123"
+    assert captured["schedule_source"] is source
+    assert captured["kwargs"] == {"event_id": 123, "client_ip": "retry-schedule"}

@@ -21,7 +21,7 @@ _MAX_RECOVER_BATCH = 50
 async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
     """扫描真正卡住的事件并重新处理（由 TaskIQ 驱动，不再自启动循环）。
 
-    常规可重试失败由 Redis 延迟重试队列推进；这里仅兜底 worker 崩溃、
+    常规可重试失败由 TaskIQ 延迟调度推进；这里仅兜底 worker 崩溃、
     入队后未消费等导致长期停留在 received/analyzing 的事件。
     """
     threshold_secs = (
