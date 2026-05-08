@@ -6,15 +6,13 @@ import asyncio
 import contextlib
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, cast
 
 import orjson
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
-from core.compression import decompress_payload_async
 from core.config import Config
 from core.distributed_lock import processing_lock
 from core.log_context import clear_log_context, set_log_context
@@ -33,7 +31,7 @@ from core.otel import span as otel_span
 from core.retry_policies import retry_policy
 from core.trace import generate_trace_id, set_trace_id
 from db.session import session_scope
-from models import DeepAnalysis, ForwardRule, WebhookEvent
+from models import WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_cached_analysis, log_ai_usage
 from services.analysis.noise_reduction import AlertContext, NoiseScoringConfig, analyze_noise_reduction
 from services.forwarding.forward import forward_to_openclaw, forward_to_remote, record_failed_forward
@@ -46,7 +44,16 @@ from services.webhooks.decisioning import (
     decide_forwarding,
     normalize_importance,
 )
-from services.webhooks.state_machine import allowed_sources
+from services.webhooks.repository import (
+    create_openclaw_analysis,
+    list_enabled_forward_rules,
+    list_recent_alert_contexts,
+    mark_dead_letter,
+    mark_last_notified,
+    mark_retry,
+    mark_retry_enqueue_failed,
+    transition_to_analyzing_and_load,
+)
 from services.webhooks.types import (
     AnalysisResolution,
     ForwardDecision,
@@ -54,8 +61,6 @@ from services.webhooks.types import (
     WebhookProcessingStatus,
     WebhookRequestContext,
 )
-
-_ANALYZING_SOURCES = allowed_sources(WebhookProcessingStatus.ANALYZING)
 
 
 def _normalize_importance(value: Any) -> str:
@@ -66,19 +71,6 @@ _running_tasks: set[asyncio.Task[object]] = set()
 
 
 # ── 核心辅助 ──────────────────────────────────────────────────────────────────
-
-
-async def _load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None, str]:
-    """从数据库记录中加载并解压 payload"""
-    raw_text = await decompress_payload_async(event.raw_payload) or ""
-    parsed_data = event.parsed_data
-    if parsed_data is None and raw_text:
-        try:
-            loaded = orjson.loads(raw_text)
-            parsed_data = loaded if isinstance(loaded, dict) else None
-        except orjson.JSONDecodeError:
-            parsed_data = None
-    return parsed_data, raw_text
 
 
 async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
@@ -111,15 +103,6 @@ async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Except
 
 
 # ── 阶段逻辑 ──────────────────────────────────────────────────────────────────
-
-
-@dataclass(slots=True)
-class _EventEnvelope:
-    headers: dict[str, Any]
-    payload: dict[str, Any] | None
-    raw_body: bytes
-    source: str | None
-    event_ts: str | None
 
 
 @dataclass(slots=True)
@@ -251,27 +234,7 @@ async def _compute_noise(
     now = datetime.now()
     window = max(1, Config.ai.NOISE_REDUCTION_WINDOW_MINUTES)
     try:
-        async with session_scope() as session:
-            stmt = (
-                select(WebhookEvent)
-                .filter(WebhookEvent.timestamp >= now - timedelta(minutes=window), WebhookEvent.timestamp <= now)
-                .order_by(WebhookEvent.timestamp.desc())
-                .limit(100)
-            )
-            res = await session.execute(stmt)
-            recent = [
-                AlertContext(
-                    e.id,
-                    e.source,
-                    _normalize_importance(e.importance or "medium"),
-                    cast(dict[str, Any], e.parsed_data or {}),
-                    cast(dict[str, Any], e.ai_analysis or {}),
-                    e.timestamp or now,
-                    e.alert_hash,
-                )
-                for e in res.scalars().all()
-                if e.alert_hash != alert_hash
-            ]
+        recent = await list_recent_alert_contexts(alert_hash, now, window)
     except Exception:
         recent = []
     curr = AlertContext(
@@ -311,21 +274,6 @@ async def _compute_noise(
     )
 
 
-def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
-    raw = cast(dict[str, Any], rule.to_dict())
-    return ForwardRuleSnapshot(
-        id=rule.id,
-        name=rule.name,
-        match_importance=rule.match_importance,
-        match_source=rule.match_source,
-        match_duplicate=rule.match_duplicate,
-        target_type=rule.target_type,
-        target_url=rule.target_url,
-        stop_on_match=rule.stop_on_match,
-        extra=raw,
-    )
-
-
 async def _decide_forwarding(
     importance: str,
     is_duplicate: bool,
@@ -339,9 +287,7 @@ async def _decide_forwarding(
 
     rules: list[ForwardRuleSnapshot] = []
     try:
-        async with session_scope() as sess:
-            rules_stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
-            rules = [_snapshot_forward_rule(r) for r in (await sess.execute(rules_stmt)).scalars().all()]
+        rules = await list_enabled_forward_rules()
     except Exception as e:
         logger.warning("[Pipeline] 匹配转发规则失败: %s", e)
 
@@ -454,54 +400,23 @@ async def _execute_forwarding(
             if rule.get("target_type") == "openclaw" and is_pending:
                 # 深度分析记录挂在原始事件上，重复事件时用 orig_id
                 target_event_id = orig_id if orig_id else webhook_id
-                async with session_scope() as sess:
-                    record = DeepAnalysis(
-                        webhook_event_id=target_event_id,
-                        engine="openclaw",
-                        openclaw_run_id=str(cast(dict[str, Any], res).get("_openclaw_run_id", "")),
-                        openclaw_session_key=str(cast(dict[str, Any], res).get("_openclaw_session_key", "")),
-                        status="pending",
-                    )
-                    sess.add(record)
-                    await sess.flush()
-                    try:
-                        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+                analysis_id = await create_openclaw_analysis(
+                    target_event_id,
+                    run_id=str(cast(dict[str, Any], res).get("_openclaw_run_id", "")),
+                    session_key=str(cast(dict[str, Any], res).get("_openclaw_session_key", "")),
+                )
+                try:
+                    from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
 
-                        await schedule_openclaw_poll(record.id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
-                    except Exception as e:
-                        logger.warning("[Forward] OpenClaw poll 调度失败 analysis_id=%s error=%s", record.id, e)
+                    await schedule_openclaw_poll(analysis_id, Config.openclaw.OPENCLAW_MIN_WAIT_SECONDS)
+                except Exception as e:
+                    logger.warning("[Forward] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
 
     if success and orig_id:
-        async with session_scope() as sess:
-            await sess.execute(
-                update(WebhookEvent).where(WebhookEvent.id == orig_id).values(last_notified_at=datetime.now())
-            )
+        await mark_last_notified(orig_id)
 
 
 # ── 主入口 ───────────────────────────────────────────────────────────────────
-
-
-async def _transition_to_analyzing_and_load(event_id: int) -> _EventEnvelope | None:
-    async with session_scope() as sess:
-        stmt = (
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .where(WebhookEvent.processing_status.in_(_ANALYZING_SOURCES))
-            .values(processing_status=WebhookProcessingStatus.ANALYZING.value, failure_reason=None, error_message=None)
-            .returning(WebhookEvent)
-        )
-        res = await sess.execute(stmt)
-        event = res.scalar_one_or_none()
-        if not event:
-            logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
-            return None
-        headers = cast(dict[str, Any], event.headers or {})
-        payload, raw_text = await _load_event_payload(event)
-        raw_body = raw_text.encode("utf-8") if raw_text else b""
-        event_ts = event.timestamp.isoformat() if event.timestamp else None
-        return _EventEnvelope(
-            headers=headers, payload=payload, raw_body=raw_body, source=event.source, event_ts=event_ts
-        )
 
 
 async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> bool:
@@ -598,23 +513,10 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
     next_retry_count = 0
     status = "dead_letter"
     if retryable:
-        async with session_scope() as sess:
-            retry_res = await sess.execute(
-                update(WebhookEvent)
-                .where(WebhookEvent.id == event_id)
-                .where(WebhookEvent.retry_count < max_retries)
-                .values(
-                    processing_status=WebhookProcessingStatus.RETRY.value,
-                    retry_count=WebhookEvent.retry_count + 1,
-                    failure_reason="retry_err",
-                    error_message=str(err)[:2000],
-                )
-                .returning(WebhookEvent.retry_count)
-            )
-            row = retry_res.first()
-            if row:
-                next_retry_count = int(row[0] or 0)
-                status = "retry"
+        marked_retry_count = await mark_retry(event_id, max_retries=max_retries, error_message=str(err))
+        if marked_retry_count is not None:
+            next_retry_count = marked_retry_count
+            status = "retry"
 
         if status == "retry":
             delay = compute_backoff_delay(
@@ -626,16 +528,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
             try:
                 await schedule_webhook_retry(event_id, delay)
             except Exception as enqueue_err:
-                async with session_scope() as sess:
-                    await sess.execute(
-                        update(WebhookEvent)
-                        .where(WebhookEvent.id == event_id)
-                        .values(
-                            processing_status=WebhookProcessingStatus.RECEIVED.value,
-                            failure_reason="retry_enqueue_failed",
-                            error_message=str(enqueue_err)[:2000],
-                        )
-                    )
+                await mark_retry_enqueue_failed(event_id, str(enqueue_err))
                 logger.warning(
                     "[Pipeline] TaskIQ 延迟重试调度失败，回落到 recovery 兜底 event_id=%s error=%s",
                     event_id,
@@ -663,16 +556,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                     span.set_status(StatusCode.ERROR, str(err))
             return outcome
 
-    async with session_scope() as sess:
-        await sess.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .values(
-                processing_status=WebhookProcessingStatus.DEAD_LETTER.value,
-                failure_reason="retry_exhausted" if retryable else "fat_err",
-                error_message=str(err)[:2000],
-            )
-        )
+    await mark_dead_letter(event_id, retryable=retryable, error_message=str(err))
     await _send_dead_letter_alert(event_id, next_retry_count, err)
     WEBHOOK_DEAD_LETTER_TOTAL.inc()
     outcome = "dead_letter"
@@ -715,8 +599,9 @@ async def _handle_webhook_process_inner(
     outcome, metric_source = "unknown", "unknown"
     with otel_span("webhook.process", {"event_id": event_id}) as _span:
         try:
-            env = await _transition_to_analyzing_and_load(event_id)
+            env = await transition_to_analyzing_and_load(event_id)
             if not env:
+                logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
                 return
 
             metric_source = sanitize_source(env.source or "")
