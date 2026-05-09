@@ -69,7 +69,7 @@ async def create_forward_rule_endpoint(
         stop_on_match=payload.get("stop_on_match", False),
     )
     await session.commit()
-    return {"success": True, "data": rule, "message": "规则创建成功"}
+    return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
 
 
 @forwarding_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
@@ -81,7 +81,7 @@ async def update_forward_rule_endpoint(
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
-    return {"success": True, "data": rule, "message": "规则更新成功"}
+    return {"success": True, "data": rule.to_dict(), "message": "规则更新成功"}
 
 
 @forwarding_router.delete("/api/forward-rules/{rule_id}", response_model=None)
