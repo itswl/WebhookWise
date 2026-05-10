@@ -30,13 +30,13 @@ def upgrade() -> None:
     # 1. 确保 webhook_events 字段完整 (来自 migrate_db.py)
     columns = [c["name"] for c in insp.get_columns("webhook_events")]
     if "is_duplicate" not in columns:
-        op.add_column("webhook_events", sa.Column("is_duplicate", sa.Integer(), server_default="0"))
+        op.add_column("webhook_events", sa.Column("is_duplicate", sa.Boolean(), server_default=sa.text("false")))
     if "duplicate_of" not in columns:
         op.add_column("webhook_events", sa.Column("duplicate_of", sa.Integer(), nullable=True))
     if "duplicate_count" not in columns:
         op.add_column("webhook_events", sa.Column("duplicate_count", sa.Integer(), server_default="1"))
     if "beyond_window" not in columns:
-        op.add_column("webhook_events", sa.Column("beyond_window", sa.Integer(), server_default="0"))
+        op.add_column("webhook_events", sa.Column("beyond_window", sa.Boolean(), server_default=sa.text("false")))
 
     # 2. 创建唯一索引 idx_unique_alert_hash_original (来自 apply_unique_constraint.py)
     # 必须先确保没有冲突数据（逻辑已在脚本中处理，这里假设用户已清理或在迁移中尝试）
@@ -45,7 +45,7 @@ def upgrade() -> None:
         sa.text(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original "
             "ON webhook_events (alert_hash) "
-            "WHERE is_duplicate = 0"
+            "WHERE NOT is_duplicate"
         )
     )
 

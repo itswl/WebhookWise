@@ -1,8 +1,6 @@
 import contextlib
-import inspect
 import json
-from collections.abc import Awaitable
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Protocol, cast
 
 import redis.asyncio as redis
 from redis.asyncio.client import PubSub
@@ -38,6 +36,8 @@ class _RedisClient(Protocol):
 
     async def xinfo_groups(self, stream: str) -> object: ...
 
+    async def aclose(self) -> None: ...
+
 
 def get_redis() -> _RedisClient:
     """获取全局 Redis 客户端单例"""
@@ -61,15 +61,6 @@ def init_redis() -> None:
     get_redis()
 
 
-_T = TypeVar("_T")
-
-
-async def _await_if_needed(value: _T | Awaitable[_T]) -> _T:
-    if inspect.isawaitable(value):
-        return await cast(Awaitable[_T], value)
-    return value
-
-
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 
@@ -77,7 +68,7 @@ def _to_int(raw: object) -> int:
     if raw is None:
         return 0
     try:
-        return int(cast(Any, raw))
+        return int(raw)  # type: ignore[call-overload,no-any-return]
     except (TypeError, ValueError):
         return 0
 
@@ -90,18 +81,16 @@ async def redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
 
 async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
     r = get_redis()
-    r_any = cast(Any, r)
-    raw = await _await_if_needed(r_any.eval(script, int(numkeys), *args))
+    raw = await r.eval(script, int(numkeys), *args)
     try:
-        return int(raw or 0)
+        return int(raw or 0)  # type: ignore[call-overload,no-any-return]
     except (TypeError, ValueError):
         return 0
 
 
 async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str | None:
     r = get_redis()
-    r_any = cast(Any, r)
-    raw = await _await_if_needed(r_any.eval(script, int(numkeys), *args))
+    raw = await r.eval(script, int(numkeys), *args)
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -215,8 +204,7 @@ async def redis_xlen(stream: str) -> int:
 
 async def redis_xpending_pending(stream: str, group: str) -> int:
     r = get_redis()
-    r_any = cast(Any, r)
-    raw = await r_any.xpending(stream, group)
+    raw = await r.xpending(stream, group)
     if isinstance(raw, dict):
         try:
             return int(raw.get("pending") or 0)
@@ -232,8 +220,7 @@ async def redis_xpending_pending(stream: str, group: str) -> int:
 
 async def redis_xinfo_group_lag(stream: str, group: str) -> int:
     r = get_redis()
-    r_any = cast(Any, r)
-    raw = await r_any.xinfo_groups(stream)
+    raw = await r.xinfo_groups(stream)
     if not isinstance(raw, list):
         return 0
     for item in raw:
@@ -253,17 +240,11 @@ async def dispose_redis() -> None:
     if _redis_client:
         client = _redis_client
         with contextlib.suppress(Exception):
-            close_fn = getattr(client, "aclose", None)
-            if callable(close_fn):
-                await _await_if_needed(close_fn())
-            else:
-                close_fn2 = getattr(client, "close", None)
-                if callable(close_fn2):
-                    await _await_if_needed(close_fn2())
+            await client.aclose()
         with contextlib.suppress(Exception):
             pool = getattr(client, "connection_pool", None)
             disconnect_fn = getattr(pool, "disconnect", None)
             if callable(disconnect_fn):
-                await _await_if_needed(disconnect_fn())
+                await disconnect_fn()
         _redis_client = None
     logger.info("[Redis] 当前连接池已关闭")

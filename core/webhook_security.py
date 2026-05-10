@@ -1,9 +1,11 @@
 import hashlib
 import hmac
+import math
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from api import InvalidSignatureError
 from core.config import Config
@@ -11,13 +13,41 @@ from core.logger import logger
 from core.redis_client import redis_eval_int
 from services.webhooks.command_service import get_client_ip
 
-_INCR_EXPIRE_IF_FIRST_LUA = """
-local c = redis.call("incr", KEYS[1])
-if c == 1 then
-    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
+# ── Sliding Window Counter (Lua) ─────────────────────────────────────────────
+#
+# 原理：加权当前窗口 + 前一窗口计数，O(1) Redis 操作。
+# 返回值：>= 0 = 剩余配额（放行），-1 = 超限（拒绝）
+#
+_SLIDING_WINDOW_LUA = """
+local prefix = KEYS[1]
+local window = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+
+local current_window = math.floor(now / window)
+local previous_window = current_window - 1
+
+local current_key = prefix .. ":" .. current_window
+local previous_key = prefix .. ":" .. previous_window
+
+local current_count = tonumber(redis.call("GET", current_key) or "0")
+local previous_count = tonumber(redis.call("GET", previous_key) or "0")
+
+local elapsed = now - current_window * window
+local weight = (window - elapsed) / window
+local estimated = math.floor(previous_count * weight + current_count)
+
+if estimated < limit then
+    redis.call("INCR", current_key)
+    redis.call("EXPIRE", current_key, window * 2)
+    return limit - estimated - 1
+else
+    return -1
 end
-return c
 """
+
+_BURST_WINDOW_SECONDS = 10
+_SUSTAINED_WINDOW_SECONDS = 60
 
 
 def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:
@@ -63,17 +93,59 @@ def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes) -> None:
             raise InvalidSignatureError()
 
 
-async def enforce_webhook_rate_limit(request: Request) -> str | None:
-    if not Config.security.WEBHOOK_RATE_LIMIT_PER_MINUTE or Config.security.WEBHOOK_RATE_LIMIT_PER_MINUTE <= 0:
-        return None
+@dataclass
+class _TierResult:
+    allowed: bool
+    remaining: int
+    limit: int
+    reset_at: float
+
+
+async def _check_tier(prefix: str, window: int, limit: int, now: float) -> _TierResult:
+    remaining = await redis_eval_int(_SLIDING_WINDOW_LUA, 1, prefix, window, limit, now)
+    allowed = remaining >= 0
+    reset_at = (math.floor(now / window) + 1) * window
+    return _TierResult(allowed=allowed, remaining=max(remaining, 0), limit=limit, reset_at=reset_at)
+
+
+async def enforce_webhook_rate_limit(request: Request) -> tuple[str | None, _TierResult | None]:
+    sec = Config.security
+    per_minute = sec.WEBHOOK_RATE_LIMIT_PER_MINUTE
+    burst = sec.WEBHOOK_RATE_LIMIT_BURST
+    global_per_minute = sec.WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE
+
+    if (per_minute <= 0 and burst <= 0 and global_per_minute <= 0):
+        return None, None
 
     client_ip = get_client_ip(request)
-    window = int(time.time() // 60)
-    key = f"rl:webhook:{client_ip}:{window}"
-    current = await redis_eval_int(_INCR_EXPIRE_IF_FIRST_LUA, 1, key, 70)
-    if current > Config.security.WEBHOOK_RATE_LIMIT_PER_MINUTE:
-        return client_ip
-    return None
+    now = time.time()
+    tightest: _TierResult | None = None
+
+    if burst > 0:
+        prefix = f"rl:b:{client_ip}"
+        res = await _check_tier(prefix, _BURST_WINDOW_SECONDS, burst, now)
+        if not res.allowed:
+            return client_ip, res
+        if tightest is None or res.remaining < tightest.remaining:
+            tightest = res
+
+    if per_minute > 0:
+        prefix = f"rl:s:{client_ip}"
+        res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, per_minute, now)
+        if not res.allowed:
+            return client_ip, res
+        if tightest is None or res.remaining < tightest.remaining:
+            tightest = res
+
+    if global_per_minute > 0:
+        prefix = "rl:g"
+        res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, global_per_minute, now)
+        if not res.allowed:
+            return client_ip, res
+        if tightest is None or res.remaining < tightest.remaining:
+            tightest = res
+
+    return None, tightest
 
 
 # ── FastAPI Depends ────────────────────────────────────────────────────────────
@@ -109,15 +181,21 @@ async def verify_webhook_auth_dep(request: Request) -> None:
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
-async def check_rate_limit_dep(request: Request) -> None:
-    """FastAPI Depends：检查速率限制"""
+async def check_rate_limit_dep(request: Request, response: Response) -> None:
+    """FastAPI Depends：检查速率限制（滑动窗口，三级限流）"""
     try:
-        limited_ip = await enforce_webhook_rate_limit(request)
+        limited_ip, tier = await enforce_webhook_rate_limit(request)
+        if tier:
+            response.headers["X-RateLimit-Limit"] = str(tier.limit)
+            response.headers["X-RateLimit-Remaining"] = str(tier.remaining)
+            response.headers["X-RateLimit-Reset"] = str(int(tier.reset_at))
         if limited_ip:
             from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 
             src = sanitize_source(request.path_params.get("source", request.query_params.get("source", "unknown")))
             WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rate_limited").inc()
+            retry_after = int(tier.reset_at - time.time()) if tier else 60
+            response.headers["Retry-After"] = str(max(retry_after, 1))
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
     except HTTPException:
         raise

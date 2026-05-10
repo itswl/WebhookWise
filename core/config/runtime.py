@@ -74,6 +74,9 @@ class UnifiedConfigManager:
         "NOTIFICATION_COOLDOWN_SECONDS": {"type": "int", "sub": "retry"},
         "ENABLE_PERIODIC_REMINDER": {"type": "bool", "sub": "retry"},
         "REMINDER_INTERVAL_HOURS": {"type": "int", "sub": "retry"},
+        "WEBHOOK_RATE_LIMIT_PER_MINUTE": {"type": "int", "sub": "security"},
+        "WEBHOOK_RATE_LIMIT_BURST": {"type": "int", "sub": "security"},
+        "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE": {"type": "int", "sub": "security"},
     }
 
     def __init__(self) -> None:
