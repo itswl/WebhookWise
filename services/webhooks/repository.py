@@ -66,7 +66,11 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
     async with session_scope() as session:
         stmt = (
             select(WebhookEvent)
-            .filter(WebhookEvent.timestamp >= now - timedelta(minutes=window_minutes), WebhookEvent.timestamp <= now)
+            .filter(
+                WebhookEvent.timestamp >= now - timedelta(minutes=window_minutes),
+                WebhookEvent.timestamp <= now,
+                WebhookEvent.alert_hash != alert_hash,
+            )
             .order_by(WebhookEvent.timestamp.desc())
             .limit(100)
         )
@@ -82,7 +86,6 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
                 e.alert_hash,
             )
             for e in res.scalars().all()
-            if e.alert_hash != alert_hash
         ]
 
 
