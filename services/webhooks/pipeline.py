@@ -69,7 +69,7 @@ _running_tasks: set[asyncio.Task[object]] = set()
 # ── 核心辅助 ──────────────────────────────────────────────────────────────────
 
 
-def _set_span_error(span: object, message: str) -> None:
+def _set_span_error(span: Any, message: str) -> None:
     if not span:
         return
     with contextlib.suppress(Exception):
