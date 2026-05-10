@@ -44,7 +44,7 @@ async def add_unique_constraint(verbose=True):
             result = await session.execute(
                 text("""
                 SELECT COUNT(*) FROM webhook_events
-                WHERE alert_hash IS NULL AND is_duplicate = 0
+                WHERE alert_hash IS NULL AND NOT is_duplicate
             """)
             )
             null_count = result.scalar()
@@ -55,7 +55,7 @@ async def add_unique_constraint(verbose=True):
                     text("""
                     UPDATE webhook_events
                     SET alert_hash = md5(id::text || timestamp::text)
-                    WHERE alert_hash IS NULL AND is_duplicate = 0
+                    WHERE alert_hash IS NULL AND NOT is_duplicate
                 """)
                 )
                 log(f"✅ 已修复 {null_count} 条记录")
@@ -68,7 +68,7 @@ async def add_unique_constraint(verbose=True):
                 text("""
                 SELECT alert_hash, COUNT(*) as cnt, array_agg(id ORDER BY timestamp) as ids
                 FROM webhook_events
-                WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
+                WHERE NOT is_duplicate AND alert_hash IS NOT NULL
                 GROUP BY alert_hash
                 HAVING COUNT(*) > 1
             """)
@@ -105,7 +105,7 @@ async def add_unique_constraint(verbose=True):
                         await session.execute(
                             text("""
                             UPDATE webhook_events
-                            SET is_duplicate = 1, duplicate_of = :original_id
+                            SET is_duplicate = TRUE, duplicate_of = :original_id
                             WHERE id = :dup_id
                         """),
                             {"original_id": original_id, "dup_id": dup_id},
@@ -134,7 +134,7 @@ async def add_unique_constraint(verbose=True):
                 text("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original
                 ON webhook_events(alert_hash)
-                WHERE is_duplicate = 0
+                WHERE NOT is_duplicate
             """)
             )
             await conn.commit()
@@ -157,7 +157,7 @@ async def add_unique_constraint(verbose=True):
         async with session_scope() as session:
             result = await session.execute(
                 text("""
-                SELECT COUNT(*) FROM webhook_events WHERE is_duplicate = 0
+                SELECT COUNT(*) FROM webhook_events WHERE NOT is_duplicate
             """)
             )
             original_count = result.scalar()
@@ -165,7 +165,7 @@ async def add_unique_constraint(verbose=True):
             result = await session.execute(
                 text("""
                 SELECT COUNT(DISTINCT alert_hash) FROM webhook_events
-                WHERE is_duplicate = 0 AND alert_hash IS NOT NULL
+                WHERE NOT is_duplicate AND alert_hash IS NOT NULL
             """)
             )
             unique_hash_count = result.scalar()
