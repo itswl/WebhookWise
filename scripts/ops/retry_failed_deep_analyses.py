@@ -89,7 +89,7 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
                 record.result = parsed
                 record.error_message = None
                 record.status = "completed"
-                logger.info(f"深度分析 #{record_id} 重试成功")
+                logger.info("深度分析 #%d 重试成功", record_id)
                 return True, "成功"
             except json.JSONDecodeError:
                 record.result = {"text": text}

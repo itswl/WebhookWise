@@ -111,7 +111,7 @@ class CircuitBreaker:
             )
             return CircuitState(state_str) if state_str else CircuitState.CLOSED
         except Exception as e:
-            logger.warning(f"CircuitBreaker [{self.name}] Redis 检查状态失败: {e}")
+            logger.warning("CircuitBreaker [%s] Redis 检查状态失败: %s", self.name, e)
             return CircuitState.CLOSED
 
     async def _record_failure(self) -> bool:
@@ -133,7 +133,7 @@ class CircuitBreaker:
             )
             return bool(tripped)
         except Exception as e:
-            logger.warning(f"CircuitBreaker [{self.name}] Redis 记录失败异常: {e}")
+            logger.warning("CircuitBreaker [%s] Redis 记录失败异常: %s", self.name, e)
             return False
 
     async def _record_success(self) -> None:
@@ -142,7 +142,7 @@ class CircuitBreaker:
 
             await redis_eval_int(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
         except Exception as e:
-            logger.warning(f"CircuitBreaker [{self.name}] Redis 记录成功异常: {e}")
+            logger.warning("CircuitBreaker [%s] Redis 记录成功异常: %s", self.name, e)
 
     _P = ParamSpec("_P")
     _R = TypeVar("_R")
@@ -152,12 +152,12 @@ class CircuitBreaker:
             try:
                 return await func(*args, **kwargs)
             except self.expected_exceptions as e:
-                logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
+                logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
                 raise
 
         current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
-            logger.warning(f"CircuitBreaker [{self.name}] OPEN — 请求被拒绝")
+            logger.warning("CircuitBreaker [%s] OPEN — 请求被拒绝", self.name)
             raise CircuitBreakerOpenException(self.name)
 
         try:
@@ -168,10 +168,13 @@ class CircuitBreaker:
             tripped = await self._record_failure()
             if tripped:
                 logger.error(
-                    f"CircuitBreaker [{self.name}] 触发熔断: 达到阈值 {self.failure_threshold} 次, "
-                    f"将在 {self.recovery_timeout}s 后恢复"
+                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, "
+                    "将在 %.1fs 后恢复",
+                    self.name,
+                    self.failure_threshold,
+                    self.recovery_timeout,
                 )
-            logger.warning(f"CircuitBreaker [{self.name}] 请求异常: {e}")
+            logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
             raise
 
 

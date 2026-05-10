@@ -110,7 +110,7 @@ def _tokenize_text(*values: Any) -> set[str]:
             tokens.add(token)
 
     if tokens:
-        logger.debug(f"[Noise] 文本分词结果: count={len(tokens)}, sample={list(tokens)[:5]}")
+        logger.debug("[Noise] 文本分词结果: count=%d, sample=%r", len(tokens), list(tokens)[:5])
     return tokens
 
 
@@ -316,7 +316,7 @@ def analyze_noise_reduction(
         min_confidence: 最小置信度阈值
         suppress_derived: 是否抑制衍生告警转发
     """
-    logger.debug(f"使用固定阈值: {min_confidence:.4f}")
+    logger.debug("使用固定阈值: %.4f", min_confidence)
 
     # 收集相关告警
     recent_alerts_list = list(recent_alerts)
@@ -335,7 +335,7 @@ def analyze_noise_reduction(
     if best_alert.event_id is not None and best_score >= min_confidence:
         reason = f"与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）"
 
-        logger.info(f"[Noise] 降噪决策: relation=derived, confidence={best_score:.2f}, suppress={suppress_derived}")
+        logger.info("[Noise] 降噪决策: relation=derived, confidence=%.2f, suppress=%s", best_score, suppress_derived)
         return NoiseReductionDecision(
             relation="derived",
             root_cause_event_id=best_alert.event_id,
@@ -350,7 +350,7 @@ def analyze_noise_reduction(
     if current.importance == "high" and len(related_ids) >= 2:
         reason = f"检测到告警风暴，已关联 {len(related_ids)} 条近邻告警"
 
-        logger.info(f"[Noise] 降噪决策: relation=root_cause, count={len(related_ids)}")
+        logger.info("[Noise] 降噪决策: relation=root_cause, count=%d", len(related_ids))
         return NoiseReductionDecision(
             relation="root_cause",
             root_cause_event_id=current.event_id,

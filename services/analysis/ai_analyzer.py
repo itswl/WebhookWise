@@ -123,7 +123,7 @@ async def load_user_prompt_template() -> str:
                     _user_prompt_source = f"file:{file_path}"
                     return _user_prompt_template
                 except Exception as e:
-                    logger.warning(f"从文件加载 prompt 模板失败: {e}")
+                    logger.warning("从文件加载 prompt 模板失败: %s", e)
 
         _user_prompt_source = "builtin:default"
         _user_prompt_template = """请分析以下 webhook 事件：
@@ -169,7 +169,7 @@ async def get_cached_analysis(alert_hash: str) -> AnalysisResult | None:
         res.update({"_cache_hit": True, "_cache_hit_count": hits})
         return res
     except Exception as e:
-        logger.warning(f"读取缓存失败: {e}")
+        logger.warning("读取缓存失败: %s", e)
         return None
 
 
@@ -187,7 +187,7 @@ async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> boo
         await redis_setex_str(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
         return True
     except Exception as e:
-        logger.warning(f"保存缓存失败: {e}")
+        logger.warning("保存缓存失败: %s", e)
         return False
 
 
@@ -220,7 +220,7 @@ async def log_ai_usage(
                 )
             )
     except Exception as e:
-        logger.warning(f"记录 AI 使用日志失败: {e}")
+        logger.warning("记录 AI 使用日志失败: %s", e)
 
 
 # ── LLM 调用 ─────────────────────────────────────────────────────────────
@@ -391,7 +391,7 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
     except CircuitBreakerOpenException as e:
         logger.warning("发送 AI 错误通知被熔断器拦截: %s", e)
     except Exception as e:
-        logger.error(f"发送 AI 错误通知失败: {e}")
+        logger.error("发送 AI 错误通知失败: %s", e)
 
 
 # ── 解析与规则分析 ─────────────────────────────────────────────────────────────
@@ -730,4 +730,4 @@ async def _send_openclaw_failure_notification(webhook_data: WebhookData, source:
             int(webhook_data.get("id", 0) or 0),
         )
     except Exception as e:
-        logger.error(f"发送失败通知失败: {e}")
+        logger.error("发送失败通知失败: %s", e)

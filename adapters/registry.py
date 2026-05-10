@@ -33,7 +33,7 @@ class AdapterRegistry:
             if aliases:
                 for alias in aliases:
                     self._aliases[alias.lower().replace(" ", "")] = source_name
-            logger.debug(f"[Adapter Registry] Registered normalizer for: {source_name}")
+            logger.debug("[Adapter Registry] Registered normalizer for: %s", source_name)
             return func
 
         return wrapper
@@ -43,7 +43,7 @@ class AdapterRegistry:
 
         def wrapper(func: _FDet) -> _FDet:
             self._detectors.append((source_name, func))
-            logger.debug(f"[Adapter Registry] Registered detector for: {source_name}")
+            logger.debug("[Adapter Registry] Registered detector for: %s", source_name)
             return func
 
         return wrapper
@@ -77,7 +77,7 @@ class AdapterRegistry:
         """
         normalizer = self.get_normalizer(adapter_name)
         if normalizer is None:
-            logger.warning(f"[Adapter Registry] No normalizer found for: {adapter_name}")
+            logger.warning("[Adapter Registry] No normalizer found for: %s", adapter_name)
             return data
         return normalizer(data)
 
@@ -102,9 +102,9 @@ class AdapterRegistry:
             module_full = f"{package_name}.{module_info.name}"
             try:
                 importlib.import_module(module_full)
-                logger.debug(f"[Adapter Registry] Auto-discovered: {module_full}")
+                logger.debug("[Adapter Registry] Auto-discovered: %s", module_full)
             except Exception as e:
-                logger.error(f"[Adapter Registry] Failed to import {module_full}: {e}")
+                logger.error("[Adapter Registry] Failed to import %s: %s", module_full, e)
 
         self._discovered = True
 

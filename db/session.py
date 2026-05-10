@@ -103,7 +103,7 @@ async def init_engine() -> None:
     global _engine, _session_factory
     if _session_factory is not None:
         return  # 已初始化，幂等
-    _logger.info(f"[DB] 正在初始化异步数据库连接池: {mask_url(Config.db.DATABASE_URL)}")
+    _logger.info("[DB] 正在初始化异步数据库连接池: %s", mask_url(Config.db.DATABASE_URL))
     _engine = create_async_engine(_async_url(), **_build_engine_kwargs())
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
     assert _engine is not None
@@ -248,5 +248,5 @@ async def test_db_connection() -> bool:
         _logger.info("数据库连接测试成功")
         return True
     except Exception as e:
-        _logger.error(f"数据库连接失败: {e}")
+        _logger.error("数据库连接失败: %s", e)
         return False
