@@ -5,9 +5,10 @@ Handles event forwarding to remote targets, retries, and rule management.
 
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from sqlalchemy import delete as sa_delete
@@ -18,9 +19,20 @@ from core.circuit_breaker import CircuitBreakerOpenException, forward_cb, opencl
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
+from core.utils import is_feishu_url
 from db.session import count_with_timeout, session_scope
 from models import FailedForward, ForwardRule
 from services.webhooks.types import AnalysisResult, FailedForwardStatus, ForwardResult, WebhookData
+
+_T = TypeVar("_T")
+
+
+async def _with_session(session: AsyncSession | None, fn: Callable[..., Awaitable[_T]], *args: Any, **kwargs: Any) -> _T:
+    """Run *fn* with either a provided session or a newly scoped one."""
+    if session is not None:
+        return await fn(session, *args, **kwargs)
+    async with session_scope() as scoped:
+        return await fn(scoped, *args, **kwargs)
 
 
 async def _schedule_failed_forward_retry(record_id: int, delay_seconds: int) -> None:
@@ -146,22 +158,18 @@ async def record_failed_forward(
         updated_at=now,
     )
 
-    try:
-        if session is not None:
-            session.add(record)
-            await session.flush()
-            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
-            logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
-            return record
+    async def _persist(sess: AsyncSession) -> FailedForward:
+        sess.add(record)
+        await sess.flush()
+        await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
+        return record
 
-        async with session_scope() as scoped_session:
-            scoped_session.add(record)
-            await scoped_session.flush()
-            await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
-            logger.info(f"转发失败记录已写入: ID={record.id}, target={target_url}")
-            return record
+    try:
+        persisted = await _with_session(session, _persist)
+        logger.info("转发失败记录已写入: ID=%s, target=%s", persisted.id, target_url)
+        return persisted
     except Exception as e:
-        logger.error(f"写入转发失败记录失败: {e!s}")
+        logger.error("写入转发失败记录失败: %s", e)
         return None
 
 
@@ -194,10 +202,7 @@ async def get_failed_forwards(
         records = result.scalars().all()
         return [r.to_dict() for r in records], total
 
-    if session:
-        return await _query(session)
-    async with session_scope() as scoped_session:
-        return await _query(scoped_session)
+    return await _with_session(session, _query)
 
 
 async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[str, int]:
@@ -212,10 +217,7 @@ async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[
             stats["total"] += count
         return stats
 
-    if session:
-        return await _query(session)
-    async with session_scope() as scoped_session:
-        return await _query(scoped_session)
+    return await _with_session(session, _query)
 
 
 async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | None = None) -> bool:
@@ -230,10 +232,7 @@ async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | Non
         await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         return True
 
-    if session:
-        return await _reset(session)
-    async with session_scope() as scoped_session:
-        return await _reset(scoped_session)
+    return await _with_session(session, _reset)
 
 
 async def delete_failed_forward(failed_forward_id: int, session: AsyncSession | None = None) -> bool:
@@ -245,10 +244,7 @@ async def delete_failed_forward(failed_forward_id: int, session: AsyncSession | 
         await sess.flush()
         return True
 
-    if session:
-        return await _delete(session)
-    async with session_scope() as scoped_session:
-        return await _delete(scoped_session)
+    return await _with_session(session, _delete)
 
 
 async def cleanup_old_success_records(days: int = 7, session: AsyncSession | None = None) -> int:
@@ -263,10 +259,7 @@ async def cleanup_old_success_records(days: int = 7, session: AsyncSession | Non
         await sess.flush()
         return count
 
-    if session:
-        return await _cleanup(session)
-    async with session_scope() as scoped_session:
-        return await _cleanup(scoped_session)
+    return await _with_session(session, _cleanup)
 
 
 # ── 转发执行 ─────────────────────────────────────────────────────────────
@@ -285,7 +278,7 @@ async def forward_to_remote(
         return {"status": "skipped", "reason": "no_forward_url"}
 
     # 飞书/Lark 自动格式化
-    is_feishu = "feishu.cn" in url or "larksuite.com" in url
+    is_feishu = is_feishu_url(url)
     if is_feishu:
         from adapters.plugins.feishu_card import build_feishu_card
 
@@ -348,7 +341,7 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: Analys
     except CircuitBreakerOpenException:
         return {"status": "circuit_broken"}
     except Exception as e:
-        logger.error(f"OpenClaw 转发异常: {e}")
+        logger.error("OpenClaw 转发异常: %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -371,7 +364,7 @@ async def analyze_with_openclaw(
             template = f.read()
     except FileNotFoundError:
         template = "请对以下告警进行深度根因分析：\n\n{source}\n{alert_data}\n"
-        logger.warning(f"未能找到深度分析模板文件: {prompt_path}")
+        logger.warning("未能找到深度分析模板文件: %s", prompt_path)
 
     message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}\n```"
     if user_question:
@@ -409,7 +402,7 @@ async def analyze_with_openclaw(
     if trace_id:
         headers["X-Trace-Id"] = trace_id
 
-    logger.info(f"[{platform.upper()}] 正在发起分析请求: target={target_url}")
+    logger.info("[%s] 正在发起分析请求: target=%s", platform.upper(), target_url)
 
     max_retries = 3
     last_error = None
@@ -431,13 +424,13 @@ async def analyze_with_openclaw(
             raise
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"{platform.capitalize()} 请求异常 (尝试 {attempt + 1}/{max_retries}): {e}")
+            logger.warning("%s 请求异常 (尝试 %d/%d): %s", platform.capitalize(), attempt + 1, max_retries, e)
             if attempt < max_retries - 1:
                 import asyncio
 
                 await asyncio.sleep(2)
     else:
-        logger.error(f"{platform.capitalize()} 请求失败，已重试 {max_retries} 次: {last_error}")
+        logger.error("%s 请求失败，已重试 %d 次: %s", platform.capitalize(), max_retries, last_error)
         if Config.ai.ENABLE_AI_DEGRADATION:
             return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
         raise Exception(f"{platform.capitalize()} 请求失败: {last_error}")
@@ -455,10 +448,10 @@ async def analyze_with_openclaw(
             session_key = run_id if run_id else session_key
         else:
             run_id = result.get("runId")
-        logger.info(f"[{platform.upper()}] 成功触发深度分析: ID={run_id}")
+        logger.info("[%s] 成功触发深度分析: ID=%s", platform.upper(), run_id)
         return {"_pending": True, "_openclaw_run_id": run_id, "_openclaw_session_key": session_key}
     except Exception as e:
-        logger.error(f"OpenClaw 响应解析失败: {e}")
+        logger.error("OpenClaw 响应解析失败: %s", e)
         if Config.ai.ENABLE_AI_DEGRADATION:
             return {"_degraded": True, "_degraded_reason": f"响应解析失败: {e!s}"}
         raise

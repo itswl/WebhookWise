@@ -51,7 +51,7 @@ async def get_config() -> JSONResponse:
     try:
         return _ok(get_current_config(), 200)
     except Exception as e:
-        logger.error(f"获取配置失败: {e!s}")
+        logger.error("获取配置失败: %s", e)
         return _fail(str(e), 500)
 
 
@@ -61,7 +61,7 @@ async def get_config_sources_endpoint() -> JSONResponse:
         items_data = get_config_sources()
         return _ok(items_data, 200)
     except Exception as e:
-        logger.error(f"获取配置来源失败: {e!s}", exc_info=True)
+        logger.error("获取配置来源失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -85,11 +85,11 @@ async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
         }
         await Config.save_batch(runtime_updates)
 
-        logger.info(f"配置已更新: {list(updates.keys())}")
+        logger.info("配置已更新: %s", list(updates.keys()))
         return _ok(status=200, message=f"配置更新成功，已保存 {len(runtime_updates)} 项")
 
     except Exception as e:
-        logger.error(f"更新配置失败: {e!s}", exc_info=True)
+        logger.error("更新配置失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -100,7 +100,7 @@ async def reload_prompt() -> JSONResponse:
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
         return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=preview)
     except Exception as e:
-        logger.error(f"重新加载 prompt 模板失败: {e!s}", exc_info=True)
+        logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -110,7 +110,7 @@ async def get_prompt() -> JSONResponse:
         template = await load_user_prompt_template()
         return _ok(status=200, template=template, source=build_prompt_source())
     except Exception as e:
-        logger.error(f"获取 prompt 模板失败: {e!s}", exc_info=True)
+        logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -128,7 +128,7 @@ async def get_dead_letters_endpoint(
         total = await count_dead_letters(session)
         return _ok(data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total})
     except Exception as e:
-        logger.error(f"查询 dead_letter 列表失败: {e!s}", exc_info=True)
+        logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -146,7 +146,7 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
         await process_webhook_task.kiq(event_id=event_id)
         return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
-        logger.error(f"重放 dead_letter 失败: {event_id=}, error={e!s}", exc_info=True)
+        logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -164,7 +164,7 @@ async def get_stuck_events_endpoint(
         )
         return _ok(items, 200)
     except Exception as e:
-        logger.error(f"查询 stuck-events 失败: {e!s}", exc_info=True)
+        logger.error("查询 stuck-events 失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -182,7 +182,7 @@ async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depe
         await process_webhook_task.kiq(event_id=event_id, client_ip="admin-requeue")
         return _ok(http_status=200, message=f"事件 {event_id} 已重新入队", event_id=event_id)
     except Exception as e:
-        logger.error(f"重放 stuck-event 失败: {event_id=}, error={e!s}", exc_info=True)
+        logger.error("重放 stuck-event 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -211,5 +211,5 @@ async def replay_all_dead_letters(
             event_ids=replayed_ids,
         )
     except Exception as e:
-        logger.error(f"批量重放 dead_letter 失败: {e!s}", exc_info=True)
+        logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
         return _fail(str(e), 500)

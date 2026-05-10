@@ -8,8 +8,8 @@ forwarding / rule-matching logic.
 from datetime import datetime, timedelta
 
 from services.webhooks.decisioning import (
-    ForwardRuleSnapshot,
     ForwardingPolicy,
+    ForwardRuleSnapshot,
     _rule_matches,
     _split_csv,
     build_final_analysis,
@@ -18,7 +18,6 @@ from services.webhooks.decisioning import (
     select_forward_rules,
 )
 from services.webhooks.types import ForwardDecision, NoiseReductionContext
-
 
 # ── helpers ──────────────────────────────────────────────────────────
 

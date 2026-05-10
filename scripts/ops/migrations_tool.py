@@ -77,7 +77,7 @@ async def add_unique_constraint(verbose=True):
             duplicates = result.fetchall()
 
             if duplicates:
-                logger.warning(f"发现 {len(duplicates)} 组重复的原始告警")
+                logger.warning("发现 %d 组重复的原始告警", len(duplicates))
                 for row in duplicates:
                     alert_hash, count, ids_data = row
 
@@ -89,16 +89,16 @@ async def add_unique_constraint(verbose=True):
                         # 字符串格式 "{1,2,3}"
                         ids = [int(x) for x in ids_data.strip("{}").split(",")]
                     else:
-                        logger.warning(f"  未知的数组格式: {type(ids_data)}, 跳过")
+                        logger.warning("  未知的数组格式: %s, 跳过", type(ids_data))
                         continue
 
-                    logger.info(f"  alert_hash={alert_hash[:16]}..., count={count}, ids={ids}")
+                    logger.info("  alert_hash=%s..., count=%s, ids=%s", alert_hash[:16], count, ids)
 
                     # 保留最早的一条，其他标记为重复
                     original_id = ids[0]
                     duplicate_ids = ids[1:]
 
-                    logger.info(f"  保留 ID={original_id}，将 {len(duplicate_ids)} 条标记为重复")
+                    logger.info("  保留 ID=%s，将 %d 条标记为重复", original_id, len(duplicate_ids))
 
                     # 更新重复记录
                     for dup_id in duplicate_ids:
@@ -170,19 +170,19 @@ async def add_unique_constraint(verbose=True):
             )
             unique_hash_count = result.scalar()
 
-            logger.info(f"  原始告警总数: {original_count}")
-            logger.info(f"  唯一 alert_hash 数: {unique_hash_count}")
+            logger.info("  原始告警总数: %s", original_count)
+            logger.info("  唯一 alert_hash 数: %s", unique_hash_count)
 
             if original_count == unique_hash_count:
                 logger.info("✅ 验证通过：每个 alert_hash 只有一个原始告警")
             else:
-                logger.warning(f"⚠️  验证异常：原始告警数({original_count}) ≠ 唯一哈希数({unique_hash_count})")
+                logger.warning("⚠️  验证异常：原始告警数(%s) ≠ 唯一哈希数(%s)", original_count, unique_hash_count)
 
         logger.info("🎉 数据库迁移完成！")
         return True
 
     except Exception as e:
-        logger.error(f"❌ 迁移失败: {e}")
+        logger.error("❌ 迁移失败: %s", e)
         import traceback
 
         traceback.print_exc()

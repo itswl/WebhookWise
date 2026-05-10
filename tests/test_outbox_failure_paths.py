@@ -5,7 +5,6 @@ Reuses the SQLite session-factory pattern from test_forward_outbox.py.
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
-from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -111,7 +110,6 @@ class TestClaimOutbox:
     async def test_claims_pending_with_past_attempt_at(
         self, session_factory: async_sessionmaker[AsyncSession]
     ) -> None:
-        from models import ForwardOutbox
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() - timedelta(seconds=10))
@@ -245,7 +243,7 @@ class TestFinalizeOutboxSuccess:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from models import DeepAnalysis, ForwardOutbox
+        from models import DeepAnalysis
         from services.forwarding.outbox import _claim_outbox, _finalize_outbox_success
 
         async def _noop(*_: object) -> None:

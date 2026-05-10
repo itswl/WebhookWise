@@ -27,7 +27,7 @@ def register_summary_extractor(source: str) -> Callable[[_F], _F]:
 
     def decorator(func: _F) -> _F:
         _SUMMARY_EXTRACTORS[source] = func
-        logger.debug(f"[Summary Extractor] Registered extractor for: {source}")
+        logger.debug("[Summary Extractor] Registered extractor for: %s", source)
         return func
 
     return decorator
@@ -44,7 +44,7 @@ def extract_summary_fields(source: str, parsed_data: WebhookData | None) -> Summ
     try:
         return _SUMMARY_EXTRACTORS[source](parsed_data)
     except Exception:
-        logger.warning(f"[Summary Extractor] Failed to extract for source={source}", exc_info=True)
+        logger.warning("[Summary Extractor] Failed to extract for source=%s", source, exc_info=True)
         return {}
 
 

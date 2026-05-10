@@ -21,3 +21,4 @@ opentelemetry-instrumentation-sqlalchemy>=0.48b0
 opentelemetry-exporter-otlp-proto-http>=1.27.0
 opentelemetry-exporter-otlp-proto-grpc>=1.27.0
 pytest-cov>=6.0.0
+fakeredis>=2.35.0

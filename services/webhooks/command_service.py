@@ -52,7 +52,7 @@ def _resolve_analysis_for_duplicate(
         final_analysis, final_importance = {}, None
 
     if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
-        logger.info(f"更新原始告警 ID={original.id} 的AI分析结果（之前缺失）")
+        logger.info("更新原始告警 ID=%d 的AI分析结果（之前缺失）", original.id)
         original.ai_analysis = ai_analysis
         original.importance = ai_analysis.get("importance")
 

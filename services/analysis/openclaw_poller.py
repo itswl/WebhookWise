@@ -89,7 +89,7 @@ async def _notify_feishu_deep_analysis(record_dict: WebhookData, source: str = "
                     },
                 )
             except Exception as rec_err:
-                logger.warning(f"记录飞书通知失败异常: {rec_err}")
+                logger.warning("记录飞书通知失败异常: %s", rec_err)
         else:
             logger.info(
                 "[Poller] 飞书深度分析通知已发送: id=%s event_id=%s",
@@ -97,7 +97,7 @@ async def _notify_feishu_deep_analysis(record_dict: WebhookData, source: str = "
                 record_dict["webhook_event_id"],
             )
     except Exception as e:
-        logger.warning(f"飞书深度分析通知失败: {e}")
+        logger.warning("飞书深度分析通知失败: %s", e)
 
 
 def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> WebhookData:
@@ -156,7 +156,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: 
             webhook_event_id=record_dict["webhook_event_id"],
         )
         if success:
-            logger.info(f"深度分析失败通知已发送: id={record_dict['id']}, reason={reason}")
+            logger.info("深度分析失败通知已发送: id=%s, reason=%s", record_dict['id'], reason)
         else:
             try:
                 from services.forwarding.forward import record_failed_forward
@@ -174,9 +174,9 @@ async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: 
                     },
                 )
             except Exception as rec_err:
-                logger.warning(f"记录飞书通知失败异常: {rec_err}")
+                logger.warning("记录飞书通知失败异常: %s", rec_err)
     except Exception as e:
-        logger.warning(f"飞书深度分析失败通知失败: {e}")
+        logger.warning("飞书深度分析失败通知失败: %s", e)
 
 
 async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
@@ -211,7 +211,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
 
             if response.status_code == 404:
                 last_error = "Session not found"
-                logger.warning(f"Session 未找到 (尝试 {attempt + 1}/{retry_count})")
+                logger.warning("Session 未找到 (尝试 %d/%d)", attempt + 1, retry_count)
                 continue
 
             if response.status_code == 204 or response.status_code == 202:
@@ -253,7 +253,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
 
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"HTTP 轮询异常: {e}")
+            logger.warning("HTTP 轮询异常: %s", e)
 
     if last_error == "分析进行中":
         return {"status": "pending"}
@@ -435,7 +435,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
             return {"id": record_id, "action": "skip"}
 
         except Exception as e:
-            logger.error(f"轮询记录 id={record_id} 失败: {e}", exc_info=True)
+            logger.error("轮询记录 id=%s 失败: %s", record_id, e, exc_info=True)
             return {
                 "id": record_id,
                 "action": "update",
