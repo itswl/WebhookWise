@@ -54,7 +54,7 @@ async def query_list(
         if importance:
             stmt = stmt.where(WebhookEvent.importance == importance)
         if duplicate_only:
-            stmt = stmt.where(WebhookEvent.is_duplicate == 1)
+            stmt = stmt.where(WebhookEvent.is_duplicate.is_(True))
 
         stmt = stmt.limit(limit)
         result = await session.execute(stmt)
@@ -109,7 +109,7 @@ async def query_stats():
         low = result.scalar()
 
         result = await session.execute(
-            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.is_duplicate == 1)
+            select(func.count()).select_from(WebhookEvent).where(WebhookEvent.is_duplicate.is_(True))
         )
         dup = result.scalar()
 

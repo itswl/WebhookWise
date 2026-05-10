@@ -136,10 +136,10 @@ def _make_row(
     client_ip="1.2.3.4",
     timestamp=None,
     importance="high",
-    is_duplicate=0,
+    is_duplicate=False,
     duplicate_of=None,
     duplicate_count=0,
-    beyond_window=0,
+    beyond_window=False,
     forward_status="success",
     ai_analysis=None,
     parsed_data=None,
@@ -193,7 +193,7 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
 def test_row_to_summary_dict_duplicate_within_window():
     from services.webhooks.query_service import _row_to_summary_dict
 
-    row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=0)
+    row = _make_row(is_duplicate=True, duplicate_of=5, beyond_window=False)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
     assert d["beyond_window"] is False
@@ -204,7 +204,7 @@ def test_row_to_summary_dict_duplicate_within_window():
 def test_row_to_summary_dict_duplicate_beyond_window():
     from services.webhooks.query_service import _row_to_summary_dict
 
-    row = _make_row(is_duplicate=1, duplicate_of=5, beyond_window=1)
+    row = _make_row(is_duplicate=True, duplicate_of=5, beyond_window=True)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
     assert d["beyond_window"] is True

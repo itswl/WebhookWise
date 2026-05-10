@@ -32,7 +32,7 @@ def instrument_httpx() -> None:
         return
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    except Exception:
+    except ImportError:
         return
     HTTPXClientInstrumentor().instrument()
     _httpx_instrumented = True
@@ -44,7 +44,7 @@ def instrument_redis() -> None:
         return
     try:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
-    except Exception:
+    except ImportError:
         return
     RedisInstrumentor().instrument()
     _redis_instrumented = True
@@ -56,7 +56,7 @@ def instrument_sqlalchemy(engine: Any) -> None:
         return
     try:
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-    except Exception:
+    except ImportError:
         return
     SQLAlchemyInstrumentor().instrument(engine=engine)
     _sqlalchemy_instrumented = True
@@ -103,7 +103,7 @@ def _setup_otlp_exporter(provider: Any) -> None:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
                 OTLPSpanExporter as HttpOTLPSpanExporter,
             )
-        except Exception:
+        except ImportError:
             exporter = None
         else:
             exporter = HttpOTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
@@ -112,7 +112,7 @@ def _setup_otlp_exporter(provider: Any) -> None:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
                 OTLPSpanExporter as GrpcOTLPSpanExporter,
             )
-        except Exception:
+        except ImportError:
             exporter = None
         else:
             insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -125,7 +125,7 @@ def _setup_otlp_exporter(provider: Any) -> None:
 
     try:
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    except Exception:
+    except ImportError:
         return
 
     provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -142,7 +142,7 @@ def _init_tracer_provider() -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
         from opentelemetry.trace import set_tracer_provider
-    except Exception:
+    except ImportError:
         return
 
     service_name = os.getenv("OTEL_SERVICE_NAME", "webhookwise").strip() or "webhookwise"
@@ -187,7 +187,7 @@ def span(name: str, attributes: dict[str, Any] | None = None) -> Iterator[SpanLi
         from opentelemetry import trace
 
         tracer = trace.get_tracer("webhookwise")
-    except Exception:
+    except ImportError:
         yield None
         return
     with tracer.start_as_current_span(name) as s:
@@ -237,7 +237,7 @@ def setup_otel(app: Any) -> None:
 
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    except Exception:
+    except ImportError:
         return
 
     exclude = os.getenv("OTEL_EXCLUDED_URLS", "/metrics,/static").strip()

@@ -37,9 +37,9 @@ async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]
             event = WebhookEvent(
                 source="test",
                 importance="high",
-                is_duplicate=0,
+                is_duplicate=False,
                 duplicate_count=1,
-                beyond_window=0,
+                beyond_window=False,
             )
             session.add(event)
         await session.commit()

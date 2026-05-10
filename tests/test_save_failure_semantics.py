@@ -18,13 +18,13 @@ def test_build_event_beyond_window_flag_can_be_persisted():
         ai_analysis={"importance": "high"},
         importance="high",
         forward_status="pending",
-        is_duplicate=1,
+        is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=1,
+        beyond_window=True,
         last_notified_at=datetime.now(),
     )
-    assert event.beyond_window == 1
+    assert event.beyond_window is True
 
 
 def test_save_result_uses_database_event_ids_only():

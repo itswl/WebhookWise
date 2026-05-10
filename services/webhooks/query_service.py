@@ -40,7 +40,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     from adapters.summary_extractors import extract_summary_fields
 
     ai_analysis = row.ai_analysis
-    beyond_window, is_dup = bool(row.beyond_window), bool(row.is_duplicate)
+    beyond_window, is_dup = row.beyond_window, row.is_duplicate
     prev_ts = getattr(row, "prev_alert_timestamp", None)
     return {
         "id": row.id,

@@ -693,8 +693,8 @@ async def get_deep_analysis_list(
     for rec, evt in rows:
         d = rec.to_dict()
         d["source"] = evt.source if evt else None
-        d["is_duplicate"] = bool(evt.is_duplicate) if evt else False
-        d["beyond_window"] = bool(evt.beyond_window) if evt else False
+        d["is_duplicate"] = evt.is_duplicate if evt else False
+        d["beyond_window"] = evt.beyond_window if evt else False
         items.append(d)
     next_cursor = items[-1]["id"] if items else None
     return {

@@ -31,7 +31,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     event.processing_status = "completed"
 
     updated_dups = 0
-    if event.is_duplicate == 0:
+    if event.is_duplicate is False:
         dups_stmt = select(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id)
         dups_res = await session.execute(dups_stmt)
         dups = dups_res.scalars().all()
@@ -44,8 +44,8 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         fwd_ctx = await build_webhook_context(event)
         decision = await _decide_forwarding(
             importance=new_imp or "medium",
-            is_duplicate=bool(event.is_duplicate),
-            beyond_window=bool(event.beyond_window),
+            is_duplicate=event.is_duplicate,
+            beyond_window=event.beyond_window,
             noise=None,
             orig=None,
             source=event.source or "unknown",
