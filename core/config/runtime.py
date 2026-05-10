@@ -8,13 +8,22 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import TypeVar
+from typing import TypedDict, TypeVar
 
 from pydantic_settings import BaseSettings
 
 from core.config.defaults import (
+    AIConfig,
+    CircuitBreakerConfig,
+    DBConfig,
+    MaintenanceConfig,
+    OpenClawConfig,
+    RedisConfig,
+    RetryConfig,
     RuntimeType,
     RuntimeValue,
+    SecurityConfig,
+    ServerConfig,
     get_settings,
 )
 
@@ -22,7 +31,9 @@ _config_logger = logging.getLogger("config")
 
 _TSubSettings = TypeVar("_TSubSettings", bound=BaseSettings)
 
-_RuntimeKeyMeta = dict[str, str]  # {"type": ..., "sub": ...}
+class _RuntimeKeyMeta(TypedDict):
+    type: RuntimeType
+    sub: str
 
 
 class UnifiedConfigManager:
@@ -89,39 +100,39 @@ class UnifiedConfigManager:
         return updated
 
     @property
-    def server(self):
+    def server(self) -> ServerConfig:
         return self._merged_sub("server", get_settings().server)
 
     @property
-    def security(self):
+    def security(self) -> SecurityConfig:
         return self._merged_sub("security", get_settings().security)
 
     @property
-    def db(self):
+    def db(self) -> DBConfig:
         return self._merged_sub("db", get_settings().db)
 
     @property
-    def redis(self):
+    def redis(self) -> RedisConfig:
         return self._merged_sub("redis", get_settings().redis)
 
     @property
-    def ai(self):
+    def ai(self) -> AIConfig:
         return self._merged_sub("ai", get_settings().ai)
 
     @property
-    def openclaw(self):
+    def openclaw(self) -> OpenClawConfig:
         return self._merged_sub("openclaw", get_settings().openclaw)
 
     @property
-    def circuit_breaker(self):
+    def circuit_breaker(self) -> CircuitBreakerConfig:
         return self._merged_sub("circuit_breaker", get_settings().circuit_breaker)
 
     @property
-    def retry(self):
+    def retry(self) -> RetryConfig:
         return self._merged_sub("retry", get_settings().retry)
 
     @property
-    def maintenance(self):
+    def maintenance(self) -> MaintenanceConfig:
         return self._merged_sub("maintenance", get_settings().maintenance)
 
     # ── 动态管理接口 ──
