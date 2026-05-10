@@ -16,6 +16,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Drop partial index first — its WHERE clause uses integer literal (is_duplicate = 0)
+    # which is incompatible with BOOLEAN column type.
+    op.execute("DROP INDEX IF EXISTS idx_unique_alert_hash_original")
+
     op.execute(
         """
         ALTER TABLE webhook_events
@@ -35,8 +39,19 @@ def upgrade() -> None:
         """
     )
 
+    # Recreate with boolean-compatible condition
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original
+        ON webhook_events (alert_hash)
+        WHERE NOT is_duplicate
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS idx_unique_alert_hash_original")
+
     op.execute(
         """
         ALTER TABLE webhook_events
@@ -53,5 +68,13 @@ def downgrade() -> None:
         ALTER TABLE archived_webhook_events
             ALTER COLUMN is_duplicate TYPE INTEGER USING (CASE WHEN is_duplicate THEN 1 ELSE 0 END),
             ALTER COLUMN beyond_window TYPE INTEGER USING (CASE WHEN beyond_window THEN 1 ELSE 0 END)
+        """
+    )
+
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original
+        ON webhook_events (alert_hash)
+        WHERE is_duplicate = 0
         """
     )
