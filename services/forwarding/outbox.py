@@ -20,7 +20,7 @@ from core.config import Config
 from db.session import session_scope
 from models import FailedForward, ForwardOutbox, WebhookEvent
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay
-from services.webhooks.types import ForwardDecision
+from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardDecision, ForwardOutboxStatus
 
 logger = logging.getLogger("webhook_service.forward_outbox")
 
@@ -102,7 +102,7 @@ async def create_forward_outbox_records(
             target_url=target_url,
             target_name=str(rule.get("target_name", "") or ""),
             is_periodic_reminder=decision.is_periodic_reminder,
-            status="pending",
+            status=ForwardOutboxStatus.PENDING,
             attempts=0,
             max_attempts=max_attempts,
             next_attempt_at=now,
@@ -148,10 +148,10 @@ async def _claim_outbox(outbox_id: int) -> ForwardOutbox | None:
         stmt = (
             update(ForwardOutbox)
             .where(ForwardOutbox.id == outbox_id)
-            .where(ForwardOutbox.status.in_(["pending", "retrying"]))
+            .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
             .where((ForwardOutbox.next_attempt_at.is_(None)) | (ForwardOutbox.next_attempt_at <= now))
             .values(
-                status="processing",
+                status=ForwardOutboxStatus.PROCESSING,
                 attempts=ForwardOutbox.attempts + 1,
                 last_attempt_at=now,
                 updated_at=now,
@@ -204,9 +204,9 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
     openclaw_analysis_id: int | None = None
     async with session_scope() as session:
         current = await session.get(ForwardOutbox, record.id)
-        if not current or current.status == "sent":
+        if not current or current.status == ForwardOutboxStatus.SENT:
             return
-        current.status = "sent"
+        current.status = ForwardOutboxStatus.SENT
         current.sent_at = now
         current.updated_at = now
         current.last_error = None
@@ -223,7 +223,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
                 engine="openclaw",
                 openclaw_run_id=str(result.get("_openclaw_run_id", "")),
                 openclaw_session_key=str(result.get("_openclaw_session_key", "")),
-                status="pending",
+                status=DeepAnalysisStatus.PENDING,
                 poll_attempts=0,
                 next_poll_at=now + timedelta(seconds=initial_poll_delay),
             )
@@ -262,12 +262,12 @@ async def _finalize_outbox_failure(outbox_id: int, error_msg: str) -> None:
     retry_delay: int | None = None
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
-        if not record or record.status == "sent":
+        if not record or record.status == ForwardOutboxStatus.SENT:
             return
         record.last_error = error_msg[:2000]
         record.updated_at = now
         if record.attempts >= record.max_attempts:
-            record.status = "exhausted"
+            record.status = ForwardOutboxStatus.EXHAUSTED
             await _record_exhausted_failed_forward(session, record)
             logger.warning(
                 "[ForwardOutbox] 转发耗尽 id=%s attempts=%s/%s error=%s",
@@ -284,7 +284,7 @@ async def _finalize_outbox_failure(outbox_id: int, error_msg: str) -> None:
             max_delay=Config.retry.FORWARD_RETRY_MAX_DELAY,
             multiplier=Config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER,
         )
-        record.status = "retrying"
+        record.status = ForwardOutboxStatus.RETRYING
         record.next_attempt_at = now + timedelta(seconds=delay)
         retry_outbox_id = record.id
         retry_delay = delay
@@ -299,7 +299,7 @@ async def _record_exhausted_failed_forward(session: AsyncSession, record: Forwar
         forward_rule_id=record.forward_rule_id,
         target_url=record.target_url,
         target_type=record.target_type,
-        status="exhausted",
+        status=FailedForwardStatus.EXHAUSTED,
         failure_reason="outbox_exhausted",
         error_message=record.last_error,
         retry_count=record.attempts,
@@ -321,13 +321,13 @@ async def run_forward_outbox_scan(limit: int = 100) -> int:
     async with session_scope() as session:
         await session.execute(
             update(ForwardOutbox)
-            .where(ForwardOutbox.status == "processing")
+            .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
             .where(ForwardOutbox.updated_at < stale_before)
-            .values(status="retrying", next_attempt_at=now, updated_at=now, last_error="recovered_stale_processing")
+            .values(status=ForwardOutboxStatus.RETRYING, next_attempt_at=now, updated_at=now, last_error="recovered_stale_processing")
         )
         stmt = (
             select(ForwardOutbox.id)
-            .where(ForwardOutbox.status.in_(["pending", "retrying"]))
+            .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
             .where((ForwardOutbox.next_attempt_at.is_(None)) | (ForwardOutbox.next_attempt_at <= now))
             .order_by(ForwardOutbox.next_attempt_at.asc(), ForwardOutbox.id.asc())
             .limit(limit)

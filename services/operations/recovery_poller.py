@@ -11,6 +11,7 @@ from core.config import Config
 from core.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
 from db.session import session_scope
 from models import WebhookEvent
+from services.webhooks.types import WebhookProcessingStatus
 
 logger = logging.getLogger("webhook_service.recovery")
 
@@ -35,7 +36,11 @@ async def run_recovery_scan(stuck_threshold_seconds: int | None = None) -> None:
     async with session_scope() as session:
         result = await session.execute(
             select(WebhookEvent)
-            .where(WebhookEvent.processing_status.in_(["received", "analyzing"]))
+            .where(
+                WebhookEvent.processing_status.in_(
+                    [WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING]
+                )
+            )
             .where(WebhookEvent.retry_count < Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
             .where(or_(WebhookEvent.updated_at < threshold, WebhookEvent.created_at < threshold))
             .limit(_MAX_RECOVER_BATCH)
@@ -62,10 +67,14 @@ async def _recover_single_event(e: WebhookEvent) -> None:
             stmt = (
                 update(WebhookEvent)
                 .where(WebhookEvent.id == e.id)
-                .where(WebhookEvent.processing_status.in_(["received", "analyzing"]))
+                .where(
+                    WebhookEvent.processing_status.in_(
+                        [WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING]
+                    )
+                )
                 .where(WebhookEvent.retry_count < Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
                 .values(
-                    processing_status="retry",
+                    processing_status=WebhookProcessingStatus.RETRY,
                     retry_count=WebhookEvent.retry_count + 1,
                     failure_reason="stuck_recovery",
                     error_message=f"recovered_by_poller at {datetime.now().isoformat(timespec='seconds')}",

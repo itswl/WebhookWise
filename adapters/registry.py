@@ -3,11 +3,12 @@ import logging
 import pkgutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
+
+from services.webhooks.types import WebhookData
 
 logger = logging.getLogger(__name__)
 
-WebhookData = dict[str, Any]
 _Normalizer = Callable[[WebhookData], WebhookData]
 _Detector = Callable[[WebhookData], bool]
 _FNorm = TypeVar("_FNorm", bound=_Normalizer)

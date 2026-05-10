@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from adapters.ecosystem_adapters import _normalize_level
 from adapters.registry import registry
+from services.webhooks.types import WebhookData
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {
@@ -14,9 +13,6 @@ _IMPORTANCE_LABEL = {
     "medium": "🟡 中",
     "low": "🟢 低",
 }
-
-
-WebhookData = dict[str, Any]
 
 
 def build_feishu_card(

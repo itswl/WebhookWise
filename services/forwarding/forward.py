@@ -20,11 +20,7 @@ from core.http_client import get_http_client
 from core.logger import logger
 from db.session import count_with_timeout, session_scope
 from models import FailedForward, ForwardRule
-
-# 类型别名
-WebhookData = dict[str, Any]
-AnalysisResult = dict[str, Any]
-ForwardResult = dict[str, Any]
+from services.webhooks.types import AnalysisResult, FailedForwardStatus, ForwardResult, WebhookData
 
 
 async def _schedule_failed_forward_retry(record_id: int, delay_seconds: int) -> None:
@@ -138,7 +134,7 @@ async def record_failed_forward(
         forward_rule_id=forward_rule_id,
         target_url=target_url,
         target_type=target_type,
-        status="pending",
+        status=FailedForwardStatus.PENDING,
         failure_reason=failure_reason,
         error_message=error_message,
         retry_count=0,
@@ -225,10 +221,10 @@ async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[
 async def manual_retry_reset(failed_forward_id: int, session: AsyncSession | None = None) -> bool:
     async def _reset(sess: AsyncSession) -> bool:
         record = await sess.get(FailedForward, failed_forward_id)
-        if not record or record.status != "exhausted":
+        if not record or record.status != FailedForwardStatus.EXHAUSTED:
             return False
         now = datetime.now()
-        record.status, record.retry_count, record.updated_at = "pending", 0, now
+        record.status, record.retry_count, record.updated_at = FailedForwardStatus.PENDING, 0, now
         record.next_retry_at = now + timedelta(seconds=Config.retry.FORWARD_RETRY_INITIAL_DELAY)
         await sess.flush()
         await _schedule_failed_forward_retry(record.id, Config.retry.FORWARD_RETRY_INITIAL_DELAY)
@@ -260,7 +256,7 @@ async def cleanup_old_success_records(days: int = 7, session: AsyncSession | Non
 
     async def _cleanup(sess: AsyncSession) -> int:
         stmt = (
-            sa_delete(FailedForward).where(FailedForward.status == "success").where(FailedForward.updated_at < cutoff)
+            sa_delete(FailedForward).where(FailedForward.status == FailedForwardStatus.SUCCESS).where(FailedForward.updated_at < cutoff)
         )
         result = await sess.execute(stmt)
         count = int(result.rowcount or 0)

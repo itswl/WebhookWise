@@ -14,10 +14,10 @@ from adapters.normalized import AlertIdentity, with_alert_identity
 from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
 from core.config import Config
 from core.http_client import get_http_client
+from services.webhooks.types import WebhookData
 
 logger = logging.getLogger("webhook_service.ecosystem_adapters")
 
-WebhookData = dict[str, Any]
 HeadersLike = Mapping[str, Any]
 _adapters_initialized = False
 

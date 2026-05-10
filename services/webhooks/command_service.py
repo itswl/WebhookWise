@@ -17,10 +17,9 @@ from core.logger import logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
+from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
 
 HeadersDict = dict[str, str]
-AnalysisResult = dict[str, Any]
-WebhookData = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -82,7 +81,7 @@ async def quick_receive_webhook(
             headers=redact_headers(raw_headers),
             raw_payload=compressed,
             parsed_data=parsed_data,
-            processing_status="received",
+            processing_status=WebhookProcessingStatus.RECEIVED,
         )
         .returning(WebhookEvent.id)
     )
@@ -93,8 +92,8 @@ async def quick_receive_webhook(
 async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
     stmt = (
         update(WebhookEvent)
-        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status == "dead_letter")
-        .values(processing_status="received", retry_count=0)
+        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status == WebhookProcessingStatus.DEAD_LETTER)
+        .values(processing_status=WebhookProcessingStatus.RECEIVED, retry_count=0)
         .returning(WebhookEvent.id)
     )
     res = await session.execute(stmt)
@@ -104,8 +103,8 @@ async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
 async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
     stmt = (
         update(WebhookEvent)
-        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status.in_(["received", "analyzing", "failed"]))
-        .values(processing_status="received")
+        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status.in_([WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING, WebhookProcessingStatus.FAILED]))
+        .values(processing_status=WebhookProcessingStatus.RECEIVED)
     )
     res = await session.execute(stmt)
     return bool(res.rowcount)
@@ -142,7 +141,7 @@ async def mark_webhook_suppressed(
             beyond_window=0,
             headers=safe_headers,
             raw_payload=raw_payload,
-            processing_status="completed",
+            processing_status=WebhookProcessingStatus.COMPLETED,
         )
         await session.flush()
 
@@ -187,7 +186,7 @@ async def _save_duplicate_event(
                 beyond_window=1 if beyond_window else 0,
                 headers=headers,
                 raw_payload=raw_payload,
-                processing_status="completed",
+                processing_status=WebhookProcessingStatus.COMPLETED,
             )
             await session.flush()
             return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
@@ -262,7 +261,7 @@ async def _update_existing_event(
         last_notified_at=None,
         headers=headers,
         raw_payload=raw_payload,
-        processing_status="completed",
+        processing_status=WebhookProcessingStatus.COMPLETED,
     )
     try:
         async with session.begin_nested():
@@ -298,7 +297,7 @@ async def _update_existing_event(
                     beyond_window=0,
                     headers=headers,
                     raw_payload=raw_payload,
-                    processing_status="completed",
+                    processing_status=WebhookProcessingStatus.COMPLETED,
                 )
                 await session.flush()
                 return SaveWebhookResult(event.id, True, original.id, False)
@@ -331,7 +330,7 @@ async def _upsert_new_event(
             alert_hash=alert_hash,
             ai_analysis=ai_analysis,
             importance=ai_analysis.get("importance") if ai_analysis else None,
-            processing_status="completed",
+            processing_status=WebhookProcessingStatus.COMPLETED,
             forward_status=forward_status,
             is_duplicate=0,
             duplicate_count=1,
