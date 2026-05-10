@@ -24,6 +24,8 @@ postgres_data/
 *.sh~
 *.bak
 *.tmp
+.coverage
+htmlcov/
 .DS_Store
 .qoder/
 openclaw-main/

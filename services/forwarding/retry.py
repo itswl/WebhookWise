@@ -56,7 +56,7 @@ async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
     # 从 DB 获取关联的 WebhookEvent（获取 ai_analysis 等信息）
     event = await session.get(WebhookEvent, record.webhook_event_id)
     if not event:
-        logger.warning(f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, 标记为 exhausted")
+        logger.warning("[ForwardRetry] 关联事件不存在: webhook_event_id=%s, 标记为 exhausted", record.webhook_event_id)
         record.status = FailedForwardStatus.EXHAUSTED
         record.updated_at = datetime.now()
         await session.flush()
@@ -87,7 +87,7 @@ async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
             record.last_retry_at = now
             record.updated_at = now
             FORWARD_RETRY_TOTAL.labels(status="success").inc()
-            logger.info(f"[ForwardRetry] 重试成功: ID={record.id}, webhook_event_id={record.webhook_event_id}")
+            logger.info("[ForwardRetry] 重试成功: ID=%s, webhook_event_id=%s", record.id, record.webhook_event_id)
         else:
             await _handle_retry_failure(record, now, f"forward status={status}: {result.get('message', '')}")
 
@@ -108,7 +108,10 @@ async def _handle_retry_failure(record: FailedForward, now: datetime, error_msg:
         record.status = FailedForwardStatus.EXHAUSTED
         FORWARD_RETRY_TOTAL.labels(status="exhausted").inc()
         logger.warning(
-            f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, retry_count={record.retry_count}/{record.max_retries}"
+            "[ForwardRetry] 重试次数已耗尽: ID=%s, retry_count=%d/%d",
+            record.id,
+            record.retry_count,
+            record.max_retries,
         )
     else:
         record.status = FailedForwardStatus.RETRYING
@@ -127,6 +130,9 @@ async def _handle_retry_failure(record: FailedForward, now: datetime, error_msg:
         except Exception as e:
             logger.warning("[ForwardRetry] TaskIQ 重试调度失败 ID=%s error=%s", record.id, e)
         logger.info(
-            f"[ForwardRetry] 记录 ID={record.id} 将在 {delay:.0f}s 后重试 "
-            f"(retry_count={record.retry_count}/{record.max_retries})"
+            "[ForwardRetry] 记录 ID=%s 将在 %.0fs 后重试 (retry_count=%d/%d)",
+            record.id,
+            delay,
+            record.retry_count,
+            record.max_retries,
         )

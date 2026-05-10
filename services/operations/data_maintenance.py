@@ -139,17 +139,17 @@ async def archive_old_data_by_policy() -> int:
                     moved_this_round += len(chunk_ids)
                     total_moved += len(chunk_ids)
 
-            logger.info(f"[Maintenance] 已搬迁 {total_moved} 条记录...")
+            logger.info("[Maintenance] 已搬迁 %d 条记录...", total_moved)
             if moved_this_round < batch_limit:
                 break
             await asyncio.sleep(0.5)
 
         if total_moved:
-            logger.info(f"[Maintenance] 归档任务完成！共处理 {total_moved} 条记录。")
+            logger.info("[Maintenance] 归档任务完成！共处理 %d 条记录。", total_moved)
         else:
             logger.info("[Maintenance] 没有需要归档的数据。")
         return total_moved
 
     except Exception as e:
-        logger.error(f"[Maintenance] 归档任务失败: {e}", exc_info=True)
+        logger.error("[Maintenance] 归档任务失败: %s", e, exc_info=True)
         return total_moved

@@ -175,7 +175,7 @@ app.add_middleware(TraceContextMiddleware)
 
 
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
-logger.debug(f"worker_id={_WORKER_ID}")
+logger.debug("worker_id=%s", _WORKER_ID)
 
 
 app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])

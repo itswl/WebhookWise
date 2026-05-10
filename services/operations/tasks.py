@@ -57,7 +57,7 @@ async def process_webhook_task(
     """异步处理单条 Webhook 事件"""
     from services.webhooks.pipeline import handle_webhook_process
 
-    logger.info(f"[Tasks] 异步处理 Webhook 事件: ID={event_id}")
+    logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s", event_id)
     async with session_scope() as session:
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)
 

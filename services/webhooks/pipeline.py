@@ -30,6 +30,7 @@ from core.metrics import (
 from core.otel import span as otel_span
 from core.retry_policies import retry_policy
 from core.trace import generate_trace_id, set_trace_id
+from core.utils import is_feishu_url
 from db.session import session_scope
 from models import WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
@@ -75,7 +76,7 @@ async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Except
         from core.http_client import get_http_client
 
         url = Config.ai.FORWARD_URL
-        if not url or "feishu.cn" not in url:
+        if not url or not is_feishu_url(url):
             return
         card = {
             "msg_type": "interactive",

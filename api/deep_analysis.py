@@ -10,6 +10,7 @@ from api.webhook_context import JSONDict, build_webhook_context
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
+from core.utils import is_feishu_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse
@@ -260,7 +261,7 @@ async def forward_deep_analysis(
         if event:
             source = event.source or "unknown"
 
-    is_feishu = "feishu.cn" in target_url or "larksuite.com" in target_url
+    is_feishu = is_feishu_url(target_url)
     if is_feishu:
         from adapters.ecosystem_adapters import send_feishu_deep_analysis
 

@@ -53,7 +53,7 @@ def get_redis() -> _RedisClient:
             health_check_interval=Config.redis.REDIS_HEALTH_CHECK_INTERVAL,
         )
         _redis_client = cast(_RedisClient, redis.Redis(connection_pool=pool))
-        logger.info(f"[Redis] 成功初始化连接池: {mask_url(Config.redis.REDIS_URL)}")
+        logger.info("[Redis] 成功初始化连接池: %s", mask_url(Config.redis.REDIS_URL))
     return _redis_client
 
 

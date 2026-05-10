@@ -31,7 +31,7 @@ if __name__ == "__main__":
         logger.error("数据库连接失败，请检查配置")
         sys.exit(1)
 
-    logger.info(f"启动 Webhook 服务: http://{Config.server.HOST}:{Config.server.PORT}")
+    logger.info("启动 Webhook 服务: http://%s:%s", Config.server.HOST, Config.server.PORT)
     import uvicorn
 
     uvicorn.run(

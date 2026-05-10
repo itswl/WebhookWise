@@ -332,7 +332,7 @@ def normalize_webhook_event(
     source_is_alias = registry.find_adapter_by_source(s_hint) == adapter_name if s_hint else False
     final_source = s_hint if (s_hint and not source_is_alias and s_hint not in placeholder_sources) else adapter_name
 
-    logger.info(f"[Adapter] 成功匹配适配器: name={adapter_name}, final_source={final_source}")
+    logger.info("[Adapter] 成功匹配适配器: name=%s, final_source=%s", adapter_name, final_source)
     return NormalizedWebhook(final_source, normalized, adapter_name)
 
 
