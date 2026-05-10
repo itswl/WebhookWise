@@ -202,24 +202,17 @@ async def count_with_timeout(
     """带 statement_timeout 兜底的 COUNT 查询（PostgreSQL-only）。
 
     超时返回 None，调用方应适配 None 场景。
+    使用 SAVEPOINT 隔离超时查询，避免 rollback 摧毁调用者事务。
     """
     try:
-        # Try to set statement_timeout (PostgreSQL-specific)
-        with contextlib.suppress(Exception):
-            await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
-
-        result = await session.execute(stmt)
-        return result.scalar() or 0
+        async with session.begin_nested():
+            with contextlib.suppress(Exception):
+                await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+            result = await session.execute(stmt)
+            return result.scalar() or 0
     except Exception as e:
         _logger.warning("COUNT query timeout (%dms): %s", timeout_ms, e)
-        # 关键：清理已中止的事务，避免后续查询连带失败
-        with contextlib.suppress(Exception):
-            await session.rollback()
         return None
-    finally:
-        # Try to reset statement_timeout (PostgreSQL-specific)
-        with contextlib.suppress(Exception):
-            await session.execute(text("RESET statement_timeout"))
 
 
 # ────────────────────────────────────────

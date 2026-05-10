@@ -43,10 +43,10 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
         timestamp=t0,
         importance="high",
         processing_status="completed",
-        is_duplicate=0,
+        is_duplicate=False,
         duplicate_of=None,
         duplicate_count=1,
-        beyond_window=0,
+        beyond_window=False,
         prev_alert_id=None,
     )
     e2 = WebhookEvent(
@@ -55,10 +55,10 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
         timestamp=t1,
         importance="high",
         processing_status="completed",
-        is_duplicate=1,
+        is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=0,
+        beyond_window=False,
         prev_alert_id=1,
     )
     session.add_all([e1, e2])
@@ -87,10 +87,10 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
         timestamp=datetime(2026, 1, 1, 0, 0, 0),
         importance="medium",
         processing_status="completed",
-        is_duplicate=1,
+        is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=1,
+        beyond_window=True,
         prev_alert_id=1,
     )
     session.add(event)

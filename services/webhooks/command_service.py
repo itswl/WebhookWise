@@ -135,10 +135,10 @@ async def mark_webhook_suppressed(
             ai_analysis=ai_analysis,
             importance=ai_analysis.get("importance") if ai_analysis else None,
             forward_status="skipped",
-            is_duplicate=1,
+            is_duplicate=True,
             duplicate_of=None,
             duplicate_count=1,
-            beyond_window=0,
+            beyond_window=False,
             headers=safe_headers,
             raw_payload=raw_payload,
             processing_status=WebhookProcessingStatus.COMPLETED,
@@ -180,10 +180,10 @@ async def _save_duplicate_event(
                 ai_analysis=final_ai_analysis,
                 importance=final_importance,
                 forward_status=forward_status,
-                is_duplicate=1,
+                is_duplicate=True,
                 duplicate_of=original.id,
                 duplicate_count=original.duplicate_count,
-                beyond_window=1 if beyond_window else 0,
+                beyond_window=beyond_window,
                 headers=headers,
                 raw_payload=raw_payload,
                 processing_status=WebhookProcessingStatus.COMPLETED,
@@ -200,10 +200,10 @@ async def _save_duplicate_event(
         ai_analysis=final_ai_analysis,
         importance=final_importance,
         forward_status=forward_status,
-        is_duplicate=1,
+        is_duplicate=True,
         duplicate_of=original.id,
         duplicate_count=original.duplicate_count,
-        beyond_window=1 if beyond_window else 0,
+        beyond_window=beyond_window,
         raw_payload=raw_payload,
         headers=headers,
     )
@@ -214,7 +214,7 @@ async def _save_duplicate_event(
 
 async def _save_new_event(session: AsyncSession, **kwargs: object) -> SaveWebhookResult:
     event = WebhookEvent()
-    event.fill_fields(**kwargs, is_duplicate=0, duplicate_count=1, beyond_window=0, last_notified_at=None)
+    event.fill_fields(**kwargs, is_duplicate=False, duplicate_count=1, beyond_window=False, last_notified_at=None)
     session.add(event)
     await session.flush()
     return SaveWebhookResult(event.id, False, None, False)
@@ -254,10 +254,10 @@ async def _update_existing_event(
         ai_analysis=ai_analysis,
         importance=ai_analysis.get("importance") if ai_analysis else None,
         forward_status=forward_status,
-        is_duplicate=0,
+        is_duplicate=False,
         duplicate_of=None,
         duplicate_count=1,
-        beyond_window=0,
+        beyond_window=False,
         last_notified_at=None,
         headers=headers,
         raw_payload=raw_payload,
@@ -272,7 +272,7 @@ async def _update_existing_event(
             session.expunge(event)
 
             stmt = sqlalchemy.select(WebhookEvent).filter(
-                WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate == 0
+                WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate.is_(False)
             )
             original = (await session.execute(stmt)).scalar_one_or_none()
 
@@ -291,10 +291,10 @@ async def _update_existing_event(
                     ai_analysis=ai_analysis,
                     importance=ai_analysis.get("importance") if ai_analysis else None,
                     forward_status=forward_status,
-                    is_duplicate=1,
+                    is_duplicate=True,
                     duplicate_of=original.id,
                     duplicate_count=original.duplicate_count,
-                    beyond_window=0,
+                    beyond_window=False,
                     headers=headers,
                     raw_payload=raw_payload,
                     processing_status=WebhookProcessingStatus.COMPLETED,
@@ -332,14 +332,14 @@ async def _upsert_new_event(
             importance=ai_analysis.get("importance") if ai_analysis else None,
             processing_status=WebhookProcessingStatus.COMPLETED,
             forward_status=forward_status,
-            is_duplicate=0,
+            is_duplicate=False,
             duplicate_count=1,
-            beyond_window=0,
+            beyond_window=False,
             last_notified_at=None,
         )
         .on_conflict_do_update(
             index_elements=["alert_hash"],
-            index_where=(WebhookEvent.is_duplicate == 0),
+            index_where=(WebhookEvent.is_duplicate.is_(False)),
             set_={"duplicate_count": WebhookEvent.duplicate_count + 1, "updated_at": now},
         )
         .returning(WebhookEvent.id, WebhookEvent.duplicate_count, column("xmax"))
@@ -360,10 +360,10 @@ async def _upsert_new_event(
         alert_hash=alert_hash,
         ai_analysis=ai_analysis,
         forward_status=forward_status,
-        is_duplicate=1,
+        is_duplicate=True,
         duplicate_of=row[0],
         duplicate_count=row[1],
-        beyond_window=1 if beyond_window else 0,
+        beyond_window=beyond_window,
     )
     session.add(dup)
     await session.flush()

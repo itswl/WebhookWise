@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 import orjson
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Index,
     Integer,
@@ -69,17 +70,17 @@ class WebhookEvent(Base, SerializerMixin):
 
     prev_alert_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
-    is_duplicate: Mapped[int] = mapped_column(Integer, default=0)
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
     duplicate_of: Mapped[int | None] = mapped_column(Integer)
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
-    beyond_window: Mapped[int] = mapped_column(Integer, default=0)
+    beyond_window: Mapped[bool] = mapped_column(Boolean, default=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
-        Index("idx_unique_alert_hash_original", "alert_hash", unique=True, postgresql_where=(is_duplicate == 0)),
+        Index("idx_unique_alert_hash_original", "alert_hash", unique=True, postgresql_where=(is_duplicate.is_(False))),
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
         Index("idx_importance_timestamp", "importance", "timestamp"),
         Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
@@ -121,7 +122,7 @@ class WebhookEvent(Base, SerializerMixin):
 
         last_beyond_stmt = (
             select(cls)
-            .filter(cls.alert_hash == alert_hash, cls.beyond_window == 1)
+            .filter(cls.alert_hash == alert_hash, cls.beyond_window.is_(True))
             .order_by(cls.timestamp.desc())
             .limit(1)
         )
@@ -140,7 +141,7 @@ class WebhookEvent(Base, SerializerMixin):
         # 查窗口外历史
         history_stmt = (
             select(cls)
-            .filter(cls.alert_hash == alert_hash, cls.is_duplicate == 0)
+            .filter(cls.alert_hash == alert_hash, cls.is_duplicate.is_(False))
             .order_by(cls.timestamp.desc())
             .limit(1)
         )
@@ -196,8 +197,8 @@ class WebhookEvent(Base, SerializerMixin):
                 res[k] = val.isoformat()
 
         # 计算字段
-        is_dup = bool(self.is_duplicate)
-        beyond = bool(self.beyond_window)
+        is_dup = self.is_duplicate
+        beyond = self.beyond_window
         res["duplicate_type"] = ("beyond_window" if beyond else "within_window") if is_dup else "new"
 
         return res
@@ -220,10 +221,10 @@ class ArchivedWebhookEvent(Base, SerializerMixin):
     ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     importance: Mapped[str | None] = mapped_column(String(20), index=True)
     forward_status: Mapped[str | None] = mapped_column(String(20))
-    is_duplicate: Mapped[int | None] = mapped_column(Integer)
+    is_duplicate: Mapped[bool | None] = mapped_column(Boolean)
     duplicate_of: Mapped[int | None] = mapped_column(Integer)
     duplicate_count: Mapped[int | None] = mapped_column(Integer)
-    beyond_window: Mapped[int | None] = mapped_column(Integer)
+    beyond_window: Mapped[bool | None] = mapped_column(Boolean)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
