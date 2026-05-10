@@ -14,10 +14,9 @@ from core.config import Config
 from core.http_client import get_http_client
 from core.metrics import DEEP_ANALYSIS_TOTAL
 from core.trace import get_trace_id
+from services.webhooks.types import DeepAnalysisStatus, WebhookData
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
-
-WebhookData = dict[str, Any]
 
 
 def _seconds_until(target: datetime) -> int:
@@ -289,7 +288,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                 await _clear_poll_stability(record_id)
                 DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
                 update: WebhookData = {
-                    "status": "failed",
+                    "status": DeepAnalysisStatus.FAILED,
                     "analysis_result": {"root_cause": "OpenClaw 分析超时"},
                 }
                 notify_dict = {**rec, **update}
@@ -304,7 +303,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                 logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
                 DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
                 update = {
-                    "status": "failed",
+                    "status": DeepAnalysisStatus.FAILED,
                     "analysis_result": {
                         "root_cause": "无法获取分析会话，OpenClaw 触发失败",
                         "error": "missing_session_key",
@@ -360,7 +359,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
 
                     duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
                     update = {
-                        "status": "completed",
+                        "status": DeepAnalysisStatus.COMPLETED,
                         "analysis_result": analysis_result,
                         "duration_seconds": duration,
                     }
@@ -402,7 +401,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                         return {
                             "id": record_id,
                             "action": "update",
-                            "status": "completed",
+                            "status": DeepAnalysisStatus.COMPLETED,
                             "analysis_result": build_analysis_result_from_openclaw_text(
                                 text, str(rec["openclaw_run_id"] or "")
                             ),
@@ -414,7 +413,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
                 await _clear_poll_stability(record_id)
                 error_msg = result.get("error", "OpenClaw 返回错误")
                 update = {
-                    "status": "failed",
+                    "status": DeepAnalysisStatus.FAILED,
                     "analysis_result": {
                         "root_cause": error_msg,
                         "error": error_msg,
@@ -440,7 +439,7 @@ async def _poll_single_record(rec: WebhookData, semaphore: asyncio.Semaphore) ->
             return {
                 "id": record_id,
                 "action": "update",
-                "status": "failed",
+                "status": DeepAnalysisStatus.FAILED,
                 "analysis_result": {
                     "root_cause": f"分析任务崩溃: {e}",
                     "error": str(e),
@@ -465,7 +464,7 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
                 select(DeepAnalysis)
                 .options(defer(DeepAnalysis.user_question))
                 .where(DeepAnalysis.id == analysis_id)
-                .where(DeepAnalysis.status == "pending")
+                .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
             )
             record = result.scalar_one_or_none()
             if not record:
@@ -559,7 +558,7 @@ async def _schedule_next_openclaw_poll(analysis_id: int, poll_attempts: int, cre
     next_poll_at = datetime.now() + timedelta(seconds=delay)
     async with session_scope() as session:
         record = await session.get(DeepAnalysis, analysis_id)
-        if not record or record.status != "pending":
+        if not record or record.status != DeepAnalysisStatus.PENDING:
             return
         record.next_poll_at = next_poll_at
 
@@ -586,7 +585,7 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     async with session_scope() as session:
         stmt = (
             select(DeepAnalysis.id)
-            .where(DeepAnalysis.status == "pending")
+            .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
             .where((DeepAnalysis.next_poll_at.is_(None)) | (DeepAnalysis.next_poll_at <= now))
             .order_by(DeepAnalysis.next_poll_at.asc(), DeepAnalysis.id.asc())
             .limit(limit)

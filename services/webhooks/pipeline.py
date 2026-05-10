@@ -62,11 +62,6 @@ from services.webhooks.types import (
     WebhookRequestContext,
 )
 
-
-def _normalize_importance(value: Any) -> str:
-    return normalize_importance(value)
-
-
 _running_tasks: set[asyncio.Task[object]] = set()
 
 
@@ -207,7 +202,7 @@ async def _compute_noise(
     except Exception:
         recent = []
     curr = AlertContext(
-        None, source, _normalize_importance(analysis.get("importance", "medium")), parsed, analysis, now, alert_hash
+        None, source, normalize_importance(analysis.get("importance", "medium")), parsed, analysis, now, alert_hash
     )
     dec = analyze_noise_reduction(
         curr,
@@ -351,10 +346,6 @@ async def _handle_storm_suppression(ctx: _PipelineContext, lock_res: object) -> 
     return True
 
 
-def _build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReductionContext) -> dict[str, Any]:
-    return build_final_analysis(analysis_result, noise)
-
-
 async def _finalize_analysis_transaction(
     ctx: _PipelineContext,
     analysis_res: AnalysisResolution,
@@ -396,7 +387,7 @@ async def _finalize_analysis_transaction(
             return save_res, None, []
 
         fwd_dec = await _decide_forwarding(
-            _normalize_importance(final_analysis.get("importance", "")),
+            normalize_importance(final_analysis.get("importance", "")),
             bool(save_res.is_duplicate) and not bool(save_res.beyond_window),
             bool(save_res.beyond_window),
             noise,
@@ -419,12 +410,12 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
     retryable = retry_policy.should_retry(err)
     max_retries = max(0, Config.retry.WEBHOOK_RETRY_MAX_RETRIES)
     next_retry_count = 0
-    status = "dead_letter"
+    status = WebhookProcessingStatus.DEAD_LETTER
     if retryable:
         marked_retry_count = await mark_retry(event_id, max_retries=max_retries, error_message=str(err))
         if marked_retry_count is not None:
             next_retry_count = marked_retry_count
-            status = "retry"
+            status = WebhookProcessingStatus.RETRY
 
         if status == "retry":
             delay = compute_backoff_delay(
@@ -557,7 +548,7 @@ async def _handle_webhook_process_inner(
 
                 analysis_res = await _resolve_analysis(alert_hash, req_ctx.webhook_full_data)
                 route_type = analysis_res.analysis_result.get("_route_type", "ai")
-                importance = _normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
+                importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
                 if analysis_res.is_reused:
                     set_log_context(route_type=route_type)
                     logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
@@ -575,7 +566,7 @@ async def _handle_webhook_process_inner(
                         alert_hash, req_ctx.source, req_ctx.parsed_data, analysis_res.analysis_result
                     )
 
-                final_analysis = _build_final_analysis(analysis_res.analysis_result, noise)
+                final_analysis = build_final_analysis(analysis_res.analysis_result, noise)
                 save_res, fwd_dec, outbox_ids = await _finalize_analysis_transaction(
                     ctx, analysis_res, final_analysis, noise
                 )
@@ -584,7 +575,7 @@ async def _handle_webhook_process_inner(
             event_type = (
                 "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
             )
-            importance = _normalize_importance(final_analysis.get("importance", "unknown"))
+            importance = normalize_importance(final_analysis.get("importance", "unknown"))
             route_label = final_analysis.get("_route_type", "ai")
             noise_relation = noise.relation if noise else "unknown"
             duration_ms = int((time.perf_counter() - start_perf) * 1000)

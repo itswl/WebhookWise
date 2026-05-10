@@ -45,7 +45,7 @@ async def _refresh_db_event_count() -> None:
 
 
 async def _refresh_db_status_counts() -> None:
-    known_statuses = ("received", "analyzing", "completed", "failed", "dead_letter")
+    known_statuses = ("received", "analyzing", "completed", "failed", "dead_letter")  # fmt: skip — corresponds to WebhookProcessingStatus values
     status_counts = dict.fromkeys(known_statuses, 0)
     stuck_counts = dict.fromkeys(known_statuses, 0)
 

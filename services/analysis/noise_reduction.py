@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from services.webhooks.types import AnalysisResult
+
 logger = logging.getLogger(__name__)
 
 
 AlertPayload = dict[str, Any]
-AnalysisResult = dict[str, Any]
 
 
 @dataclass(frozen=True)

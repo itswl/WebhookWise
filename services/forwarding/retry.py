@@ -16,6 +16,7 @@ from core.config import Config
 from core.metrics import FORWARD_RETRY_TOTAL
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
+from services.webhooks.types import FailedForwardStatus
 
 logger = logging.getLogger("webhook_service.forward_retry")
 
@@ -33,7 +34,7 @@ async def retry_failed_forward_by_id(failed_forward_id: int) -> None:
             record = result.scalar_one_or_none()
             if not record:
                 return
-            if record.status not in ("pending", "retrying"):
+            if record.status not in (FailedForwardStatus.PENDING, FailedForwardStatus.RETRYING):
                 return
             await _retry_forward(session, record)
     except Exception as e:
@@ -56,7 +57,7 @@ async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
     event = await session.get(WebhookEvent, record.webhook_event_id)
     if not event:
         logger.warning(f"[ForwardRetry] 关联事件不存在: webhook_event_id={record.webhook_event_id}, 标记为 exhausted")
-        record.status = "exhausted"
+        record.status = FailedForwardStatus.EXHAUSTED
         record.updated_at = datetime.now()
         await session.flush()
         return
@@ -82,7 +83,7 @@ async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
         # 判断转发结果
         status = result.get("status", "")
         if status in ("success", "disabled"):
-            record.status = "success"
+            record.status = FailedForwardStatus.SUCCESS
             record.last_retry_at = now
             record.updated_at = now
             FORWARD_RETRY_TOTAL.labels(status="success").inc()
@@ -104,13 +105,13 @@ async def _handle_retry_failure(record: FailedForward, now: datetime, error_msg:
     record.updated_at = now
 
     if record.retry_count >= record.max_retries:
-        record.status = "exhausted"
+        record.status = FailedForwardStatus.EXHAUSTED
         FORWARD_RETRY_TOTAL.labels(status="exhausted").inc()
         logger.warning(
             f"[ForwardRetry] 重试次数已耗尽: ID={record.id}, retry_count={record.retry_count}/{record.max_retries}"
         )
     else:
-        record.status = "retrying"
+        record.status = FailedForwardStatus.RETRYING
         FORWARD_RETRY_TOTAL.labels(status="failed").inc()
         # 指数退避：min(initial_delay * multiplier^(retry_count-1), max_delay)
         delay = min(

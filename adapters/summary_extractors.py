@@ -11,10 +11,11 @@ import logging
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from services.webhooks.types import WebhookData
+
 logger = logging.getLogger(__name__)
 
 # 注册表: source -> extractor function
-WebhookData = dict[str, Any]
 Summary = dict[str, Any]
 _Extractor = Callable[[WebhookData], Summary]
 _SUMMARY_EXTRACTORS: dict[str, _Extractor] = {}

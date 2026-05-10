@@ -15,6 +15,7 @@ from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.forwarding.forward import record_failed_forward
+from services.webhooks.types import DeepAnalysisStatus
 
 deep_analysis_router = APIRouter()
 
@@ -51,7 +52,7 @@ async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAna
 
 
 def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
-    if record.status != "pending":
+    if record.status != DeepAnalysisStatus.PENDING:
         return None
     from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
@@ -97,7 +98,7 @@ async def deep_analyze_webhook(
         engine=engine_name,
         user_question=payload.get("user_question", ""),
         analysis_result=res,
-        status="pending" if res.get("_pending") else "completed",
+        status=DeepAnalysisStatus.PENDING if res.get("_pending") else DeepAnalysisStatus.COMPLETED,
         openclaw_run_id=res.get("_openclaw_run_id", ""),
         openclaw_session_key=res.get("_openclaw_session_key", ""),
     )
@@ -140,7 +141,7 @@ async def retry_deep_analysis(
     if not record:
         return JSONResponse(status_code=404, content={"success": False, "error": "分析记录不存在"})
 
-    if record.status not in ("failed", "completed", "pending"):
+    if record.status not in (DeepAnalysisStatus.FAILED, DeepAnalysisStatus.COMPLETED, DeepAnalysisStatus.PENDING):
         return JSONResponse(
             status_code=400,
             content={"success": False, "error": f"只能在失败、已完成或待处理状态下重新拉取，当前状态: {record.status}"},
@@ -156,7 +157,7 @@ async def retry_deep_analysis(
             ctx, event.headers or {}, record.user_question or ""
         )
         if new_result.get("_pending"):
-            record.status = "pending"
+            record.status = DeepAnalysisStatus.PENDING
             record.created_at = datetime.now()
             record.analysis_result = new_result
             record.openclaw_run_id = new_result.get("_openclaw_run_id", "")
@@ -171,7 +172,7 @@ async def retry_deep_analysis(
                 await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
             return {"success": True, "message": "已重新发起分析任务，请等待结果"}
 
-        record.status = "completed"
+        record.status = DeepAnalysisStatus.COMPLETED
         record.engine = engine_name
         record.analysis_result = new_result
         record.duration_seconds = 0
@@ -200,7 +201,7 @@ async def retry_deep_analysis(
         record.analysis_result = build_analysis_result_from_openclaw_text(text, record.openclaw_run_id or "")
         record.analysis_result["_fetched_via"] = "http-retry"
 
-        record.status = "completed"
+        record.status = DeepAnalysisStatus.COMPLETED
         record.duration_seconds = (datetime.now() - record.created_at).total_seconds() if record.created_at else 0
         await session.flush()
 
@@ -215,7 +216,7 @@ async def retry_deep_analysis(
     timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
     elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else timeout_seconds + 1
     if elapsed > timeout_seconds:
-        record.status = "failed"
+        record.status = DeepAnalysisStatus.FAILED
         record.analysis_result = {"root_cause": f"OpenClaw 分析超时（已等待 {int(elapsed)}s）"}
         await session.flush()
         await session.commit()
@@ -223,7 +224,7 @@ async def retry_deep_analysis(
             status_code=400, content={"success": False, "error": f"分析已超时（{int(elapsed)}s），请重新发起深度分析"}
         )
 
-    record.status = "pending"
+    record.status = DeepAnalysisStatus.PENDING
     record.analysis_result = None
     record.poll_attempts = 0
     record.last_polled_at = None
@@ -250,7 +251,7 @@ async def forward_deep_analysis(
     analysis = await session.get(DeepAnalysis, analysis_id)
     if not analysis:
         return JSONResponse(status_code=404, content={"success": False, "error": "分析记录不存在"})
-    if analysis.status != "completed":
+    if analysis.status != DeepAnalysisStatus.COMPLETED:
         return JSONResponse(status_code=400, content={"success": False, "error": "分析尚未完成"})
 
     source = "unknown"
