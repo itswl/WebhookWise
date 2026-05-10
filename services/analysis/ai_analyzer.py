@@ -45,10 +45,7 @@ from db.session import count_with_timeout, session_scope
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import WebhookAnalysisResult
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
-
-# 类型别名
-WebhookData = dict[str, Any]
-AnalysisResult = dict[str, Any]
+from services.webhooks.types import AnalysisResult, WebhookData
 
 _last_policy_refresh_at: float = 0.0
 _policy_refresh_lock = asyncio.Lock()

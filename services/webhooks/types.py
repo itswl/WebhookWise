@@ -17,6 +17,30 @@ class WebhookProcessingStatus(StrEnum):
     DEAD_LETTER = "dead_letter"
 
 
+class ForwardOutboxStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    RETRYING = "retrying"
+    SENT = "sent"
+    EXHAUSTED = "exhausted"
+
+
+class FailedForwardStatus(StrEnum):
+    PENDING = "pending"
+    RETRYING = "retrying"
+    SUCCESS = "success"
+    EXHAUSTED = "exhausted"
+
+
+class DeepAnalysisStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    DEGRADED = "degraded"
+    ERROR = "error"
+
+
 @dataclass(frozen=True)
 class AnalysisResolution:
     analysis_result: dict[str, Any]
@@ -60,3 +84,9 @@ class NoiseReductionContext:
 class PersistedEventContext:
     save_result: object  # SaveWebhookResult
     noise_context: NoiseReductionContext
+
+
+# Unified type aliases — single source of truth
+WebhookData = dict[str, Any]
+AnalysisResult = dict[str, Any]
+ForwardResult = dict[str, Any]
