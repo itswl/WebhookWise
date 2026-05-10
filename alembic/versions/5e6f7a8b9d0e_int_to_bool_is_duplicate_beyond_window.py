@@ -18,20 +18,31 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.execute(
         """
-        ALTER TABLE webhook_events
-            ALTER COLUMN is_duplicate DROP DEFAULT,
-            ALTER COLUMN is_duplicate TYPE BOOLEAN USING (is_duplicate != 0),
-            ALTER COLUMN is_duplicate SET DEFAULT FALSE,
-            ALTER COLUMN beyond_window DROP DEFAULT,
-            ALTER COLUMN beyond_window TYPE BOOLEAN USING (beyond_window != 0),
-            ALTER COLUMN beyond_window SET DEFAULT FALSE
-        """
-    )
-    op.execute(
-        """
-        ALTER TABLE archived_webhook_events
-            ALTER COLUMN is_duplicate TYPE BOOLEAN USING (is_duplicate IS NOT NULL AND is_duplicate != 0),
-            ALTER COLUMN beyond_window TYPE BOOLEAN USING (beyond_window IS NOT NULL AND beyond_window != 0)
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'webhook_events'
+                  AND column_name = 'is_duplicate' AND data_type = 'integer'
+            ) THEN
+                ALTER TABLE webhook_events
+                    ALTER COLUMN is_duplicate DROP DEFAULT,
+                    ALTER COLUMN is_duplicate TYPE BOOLEAN USING (is_duplicate != 0),
+                    ALTER COLUMN is_duplicate SET DEFAULT FALSE,
+                    ALTER COLUMN beyond_window DROP DEFAULT,
+                    ALTER COLUMN beyond_window TYPE BOOLEAN USING (beyond_window != 0),
+                    ALTER COLUMN beyond_window SET DEFAULT FALSE;
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'archived_webhook_events'
+                  AND column_name = 'is_duplicate' AND data_type = 'integer'
+            ) THEN
+                ALTER TABLE archived_webhook_events
+                    ALTER COLUMN is_duplicate TYPE BOOLEAN USING (is_duplicate IS NOT NULL AND is_duplicate != 0),
+                    ALTER COLUMN beyond_window TYPE BOOLEAN USING (beyond_window IS NOT NULL AND beyond_window != 0);
+            END IF;
+        END $$;
         """
     )
 
@@ -39,19 +50,30 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
-        ALTER TABLE webhook_events
-            ALTER COLUMN is_duplicate DROP DEFAULT,
-            ALTER COLUMN is_duplicate TYPE INTEGER USING (is_duplicate::int),
-            ALTER COLUMN is_duplicate SET DEFAULT 0,
-            ALTER COLUMN beyond_window DROP DEFAULT,
-            ALTER COLUMN beyond_window TYPE INTEGER USING (beyond_window::int),
-            ALTER COLUMN beyond_window SET DEFAULT 0
-        """
-    )
-    op.execute(
-        """
-        ALTER TABLE archived_webhook_events
-            ALTER COLUMN is_duplicate TYPE INTEGER USING (CASE WHEN is_duplicate THEN 1 ELSE 0 END),
-            ALTER COLUMN beyond_window TYPE INTEGER USING (CASE WHEN beyond_window THEN 1 ELSE 0 END)
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'webhook_events'
+                  AND column_name = 'is_duplicate' AND data_type = 'boolean'
+            ) THEN
+                ALTER TABLE webhook_events
+                    ALTER COLUMN is_duplicate DROP DEFAULT,
+                    ALTER COLUMN is_duplicate TYPE INTEGER USING (is_duplicate::int),
+                    ALTER COLUMN is_duplicate SET DEFAULT 0,
+                    ALTER COLUMN beyond_window DROP DEFAULT,
+                    ALTER COLUMN beyond_window TYPE INTEGER USING (beyond_window::int),
+                    ALTER COLUMN beyond_window SET DEFAULT 0;
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'archived_webhook_events'
+                  AND column_name = 'is_duplicate' AND data_type = 'boolean'
+            ) THEN
+                ALTER TABLE archived_webhook_events
+                    ALTER COLUMN is_duplicate TYPE INTEGER USING (CASE WHEN is_duplicate THEN 1 ELSE 0 END),
+                    ALTER COLUMN beyond_window TYPE INTEGER USING (CASE WHEN beyond_window THEN 1 ELSE 0 END);
+            END IF;
+        END $$;
         """
     )
