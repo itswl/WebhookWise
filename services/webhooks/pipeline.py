@@ -69,6 +69,15 @@ _running_tasks: set[asyncio.Task[object]] = set()
 # ── 核心辅助 ──────────────────────────────────────────────────────────────────
 
 
+def _set_span_error(span: object, message: str) -> None:
+    if not span:
+        return
+    with contextlib.suppress(Exception):
+        from opentelemetry.trace import StatusCode
+
+        span.set_status(StatusCode.ERROR, message)
+
+
 async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Exception) -> None:
     """发送死信队列告警"""
     try:
@@ -200,7 +209,8 @@ async def _compute_noise(
     window = max(1, Config.ai.NOISE_REDUCTION_WINDOW_MINUTES)
     try:
         recent = await list_recent_alert_contexts(alert_hash, now, window)
-    except Exception:
+    except Exception as e:
+        logger.warning("[Pipeline] 加载近期告警上下文失败，降噪将跳过: %s", e)
         recent = []
     curr = AlertContext(
         None, source, normalize_importance(analysis.get("importance", "medium")), parsed, analysis, now, alert_hash
@@ -389,8 +399,8 @@ async def _finalize_analysis_transaction(
 
         fwd_dec = await _decide_forwarding(
             normalize_importance(final_analysis.get("importance", "")),
-            bool(save_res.is_duplicate) and not bool(save_res.beyond_window),
-            bool(save_res.beyond_window),
+            save_res.is_duplicate and not save_res.beyond_window,
+            save_res.beyond_window,
             noise,
             analysis_res.original_event,
             ctx.req_ctx.source,
@@ -418,7 +428,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
             next_retry_count = marked_retry_count
             status = WebhookProcessingStatus.RETRY
 
-        if status == "retry":
+        if status == WebhookProcessingStatus.RETRY:
             delay = compute_backoff_delay(
                 next_retry_count,
                 initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
@@ -446,10 +456,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                     exc_info=True,
                 )
                 if span:
-                    with contextlib.suppress(Exception):
-                        from opentelemetry.trace import StatusCode
-
-                        span.set_status(StatusCode.ERROR, fatal_error)
+                    _set_span_error(span, fatal_error)
                 return outcome
 
             outcome = "retry"
@@ -464,10 +471,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
                 exc_info=True,
             )
             if span:
-                with contextlib.suppress(Exception):
-                    from opentelemetry.trace import StatusCode
-
-                    span.set_status(StatusCode.ERROR, str(err))
+                _set_span_error(span, str(err))
             return outcome
 
     await mark_dead_letter(event_id, retryable=retryable, error_message=str(err))
@@ -476,11 +480,7 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
     outcome = "dead_letter"
     WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status=outcome).inc()
     logger.error("[Pipeline] 处理失败 event_id=%s retryable=%s error=%s", event_id, retryable, err, exc_info=True)
-    if span:
-        with contextlib.suppress(Exception):
-            from opentelemetry.trace import StatusCode
-
-            span.set_status(StatusCode.ERROR, str(err))
+    _set_span_error(span, str(err))
     return outcome
 
 

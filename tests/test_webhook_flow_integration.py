@@ -185,7 +185,7 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     assert updated.processing_status == "completed"
     assert updated.forward_status == "skipped"
     assert updated.alert_hash == "same-hash"
-    assert updated.is_duplicate == 1
+    assert updated.is_duplicate is True
 
 
 async def test_finalization_rolls_back_event_when_outbox_creation_fails(
