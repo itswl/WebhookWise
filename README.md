@@ -291,7 +291,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `ENABLE_AI_ANALYSIS` | `true` | `[runtime]` 开启 AI 分析 |
 | `OPENAI_API_KEY` | — | LLM 提供商 API Key；默认需重启生效 |
 | `OPENAI_API_URL` | OpenRouter | LLM API 基地址；默认需重启生效 |
-| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | 使用的模型；默认需重启生效 |
+| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | `[runtime]` 使用的模型 |
 | `AI_SYSTEM_PROMPT` | 内置 | `[runtime]` 系统级 Prompt |
 | `AI_USER_PROMPT_FILE` | `prompts/webhook_analysis_detailed.txt` | 用户 Prompt 模板文件路径 |
 | `CACHE_ENABLED` | `true` | 分析结果 Redis 缓存 |

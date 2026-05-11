@@ -45,7 +45,6 @@ class UnifiedConfigManager:
         {
             "OPENAI_API_KEY",
             "OPENAI_API_URL",
-            "OPENAI_MODEL",
             "OPENCLAW_GATEWAY_URL",
             "OPENCLAW_GATEWAY_TOKEN",
             "OPENCLAW_HOOKS_TOKEN",
