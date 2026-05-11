@@ -452,20 +452,19 @@ async def analyze_with_openclaw(
 
     platform = getattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
     hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
+    payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
     if platform == "hermes":
         import hashlib
         import hmac as hmac_mod
 
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/webhooks/agent"
-        payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         signature = hmac_mod.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
         headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
-        kwargs: dict[str, Any] = {"content": payload_bytes}
     else:
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
-        kwargs = {"json": payload}
+    kwargs: dict[str, Any] = {"content": payload_bytes}
 
     trace_id = get_trace_id()
     if trace_id:
