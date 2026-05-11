@@ -133,7 +133,7 @@ const API = {
         const response = await this.authenticatedFetch('/api/forward/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ forward_url: url })
+            body: JSON.stringify({ target_url: url })
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();

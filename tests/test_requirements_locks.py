@@ -15,6 +15,21 @@ def _locked_versions(path: Path) -> dict[str, str]:
     return versions
 
 
+def _declared_package_names(path: Path) -> set[str]:
+    names: set[str] = set()
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "-")):
+            continue
+        name = stripped.split(";", 1)[0]
+        for sep in ("[", "==", ">=", "<=", "~=", "!=", ">", "<"):
+            name = name.split(sep, 1)[0]
+        normalized = name.strip().lower().replace("_", "-").replace(".", "-")
+        if normalized:
+            names.add(normalized)
+    return names
+
+
 def test_runtime_and_dev_locks_do_not_pin_conflicting_versions() -> None:
     runtime = _locked_versions(PROJECT_ROOT / "requirements.lock")
     dev = _locked_versions(PROJECT_ROOT / "requirements-dev.lock")
@@ -24,3 +39,10 @@ def test_runtime_and_dev_locks_do_not_pin_conflicting_versions() -> None:
     }
 
     assert conflicts == {}
+
+
+def test_dev_lock_contains_all_direct_dev_requirements() -> None:
+    declared = _declared_package_names(PROJECT_ROOT / "requirements-dev.txt")
+    locked = set(_locked_versions(PROJECT_ROOT / "requirements-dev.lock"))
+
+    assert declared - locked == set()

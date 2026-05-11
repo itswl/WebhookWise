@@ -162,5 +162,5 @@ function renderJSONBlock(data, title = 'JSON') {
 function showError(message) {
     document.getElementById('alertList').innerHTML =
         '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' +
-        message + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">重试</button></div>';
+        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">重试</button></div>';
 }

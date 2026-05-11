@@ -24,6 +24,8 @@ charset-normalizer==3.4.7
     # via
     #   -c requirements.lock
     #   requests
+coverage==7.14.0
+    # via pytest-cov
 cryptography==47.0.0
     # via
     #   -c requirements.lock
@@ -33,6 +35,8 @@ cyclonedx-python-lib==8.9.0
     # via pip-audit
 defusedxml==0.7.1
     # via py-serializable
+fakeredis==2.35.1
+    # via -r requirements-dev.txt
 filelock==3.29.0
     # via cachecontrol
 googleapis-common-protos==1.74.0
@@ -181,7 +185,9 @@ pip-requirements-parser==32.0.1
 platformdirs==4.9.6
     # via pip-audit
 pluggy==1.6.0
-    # via pytest
+    # via
+    #   pytest
+    #   pytest-cov
 protobuf==6.33.6
     # via
     #   -c requirements.lock
@@ -204,13 +210,20 @@ pytest==9.0.3
     # via
     #   -r requirements-dev.txt
     #   pytest-asyncio
+    #   pytest-cov
 pytest-asyncio==1.3.0
+    # via -r requirements-dev.txt
+pytest-cov==7.1.0
     # via -r requirements-dev.txt
 pyyaml==6.0.1
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   bandit
+redis==7.4.0
+    # via
+    #   -c requirements.lock
+    #   fakeredis
 requests==2.33.1
     # via
     #   -c requirements.lock
@@ -226,7 +239,9 @@ rich==13.9.4
 ruff==0.6.9
     # via -r requirements-dev.txt
 sortedcontainers==2.4.0
-    # via cyclonedx-python-lib
+    # via
+    #   cyclonedx-python-lib
+    #   fakeredis
 stevedore==5.7.0
     # via bandit
 toml==0.10.2
