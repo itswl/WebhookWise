@@ -453,6 +453,7 @@ async def analyze_with_openclaw(
     platform = getattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw").lower()
     hooks_token = Config.openclaw.OPENCLAW_HOOKS_TOKEN or Config.openclaw.OPENCLAW_GATEWAY_TOKEN
     payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    connect_timeout = max(1.0, float(Config.openclaw.OPENCLAW_CONNECT_TIMEOUT))
 
     if platform == "hermes":
         import hashlib
@@ -470,7 +471,16 @@ async def analyze_with_openclaw(
     if trace_id:
         headers["X-Trace-Id"] = trace_id
 
-    logger.info("[%s] 正在发起分析请求: target=%s", platform.upper(), target_url)
+    if not hooks_token:
+        logger.warning("[%s] OpenClaw token 为空，将按当前配置继续发起请求", platform.upper())
+    logger.info(
+        "[%s] 正在发起分析请求: target=%s session_key=%s payload_bytes=%s trace_id=%s",
+        platform.upper(),
+        target_url,
+        session_key,
+        len(payload_bytes),
+        trace_id or "-",
+    )
 
     max_retries = 3
     last_error = None
@@ -480,7 +490,11 @@ async def analyze_with_openclaw(
         try:
             client = get_http_client()
             response = await openclaw_cb.call_async(
-                client.post, target_url, headers=headers, timeout=httpx.Timeout(60.0, connect=10.0), **kwargs
+                client.post,
+                target_url,
+                headers=headers,
+                timeout=httpx.Timeout(60.0, connect=connect_timeout),
+                **kwargs,
             )
             response.raise_for_status()
             break
