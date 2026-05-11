@@ -254,9 +254,9 @@ tests/e2e/run_webhook_to_feishu.sh
 
 ## ⚙️ 关键配置说明
 
-优先级（低 → 高）：内置默认值 < `.env` / 环境变量 < `system_configs` 数据库表（热更新）
+优先级（低 → 高）：内置默认值 < `.env` / 环境变量 < `system_configs` 数据库表（仅启用运行时配置后参与热更新）
 
-> 标记 `[runtime]` 的配置项支持通过 `POST /api/config` 或 Web 界面在线修改，无需重启。
+> 标记 `[runtime]` 的业务策略项支持通过 `POST /api/config` 或 Web 界面在线修改，无需重启。连接串、模型基地址、Token/API Key 默认要求通过环境变量或 ConfigMap 修改并滚动重启，避免多进程配置短暂不一致。
 
 ### 基础设施（启动时读取，修改后需重启）
 
@@ -270,24 +270,29 @@ tests/e2e/run_webhook_to_feishu.sh
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
 | `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all`；`all` 使用 supervisor 同容器启动 API、Worker、Scheduler |
+| `ENABLE_RUNTIME_CONFIG` | `false`（生产） | 启用 DB/Redis 运行时业务策略配置 |
+| `ALLOW_RUNTIME_CONNECTION_CONFIG` | `false` | 允许连接/密钥类配置热更新；生产不建议开启 |
 | `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |
 | `WORKER_METRICS_PORT` | `9001` | Compose 中独立 Worker 容器的后台任务指标端口 |
 | `DB_POOL_SIZE` | `5` | 单进程数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `LOG_FILE` | — | 日志文件路径（为空则仅控制台输出） |
+| `RECOVERY_SCAN_INTERVAL_SECONDS` | `300` | recovery-only DB 兜底扫描间隔；正常路径走 Redis/TaskIQ |
+| `MAX_CONCURRENT_WEBHOOK_TASKS` | `30` | 所有 Worker 全局 Webhook 处理并发上限（Redis 分布式令牌） |
+| `WEBHOOK_TASK_SLOT_LEASE_SECONDS` | `1800` | 全局并发令牌租约秒数，长任务会自动续期 |
 | `RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS` | `300` | 僵尸事件判定阈值（秒） |
 | `WEBHOOK_SECRET` | — | HMAC-SHA256 签名校验密钥 |
 
-### AI 分析（`[runtime]` 可热更新）
+### AI 分析
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `ENABLE_AI_ANALYSIS` | `true` | 开启 AI 分析 |
-| `OPENAI_API_KEY` | — | LLM 提供商 API Key |
-| `OPENAI_API_URL` | OpenRouter | LLM API 基地址 |
-| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | 使用的模型 |
-| `AI_SYSTEM_PROMPT` | 内置 | 系统级 Prompt |
+| `ENABLE_AI_ANALYSIS` | `true` | `[runtime]` 开启 AI 分析 |
+| `OPENAI_API_KEY` | — | LLM 提供商 API Key；默认需重启生效 |
+| `OPENAI_API_URL` | OpenRouter | LLM API 基地址；默认需重启生效 |
+| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | 使用的模型；默认需重启生效 |
+| `AI_SYSTEM_PROMPT` | 内置 | `[runtime]` 系统级 Prompt |
 | `AI_USER_PROMPT_FILE` | `prompts/webhook_analysis_detailed.txt` | 用户 Prompt 模板文件路径 |
 | `CACHE_ENABLED` | `true` | 分析结果 Redis 缓存 |
 | `ANALYSIS_CACHE_TTL` | `21600` | 缓存有效期（秒，默认 6h） |
@@ -325,13 +330,16 @@ tests/e2e/run_webhook_to_feishu.sh
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `OPENCLAW_ENABLED` | `false` | 启用 OpenClaw 引擎 |
-| `OPENCLAW_GATEWAY_URL` | — | OpenClaw 网关地址 |
-| `OPENCLAW_GATEWAY_TOKEN` | — | 认证 Token |
-| `OPENCLAW_TIMEOUT_SECONDS` | `900` | 分析超时（秒） |
-| `OPENCLAW_POLL_INITIAL_DELAY_SECONDS` | `10` | OpenClaw 首次结果拉取延迟 |
-| `OPENCLAW_POLL_MAX_DELAY_SECONDS` | `120` | OpenClaw 轮询指数退避最大延迟 |
-| `OPENCLAW_POLL_BACKOFF_MULTIPLIER` | `2.0` | OpenClaw 轮询退避倍率 |
+| `OPENCLAW_ENABLED` | `false` | `[runtime]` 启用 OpenClaw 引擎 |
+| `OPENCLAW_GATEWAY_URL` | — | OpenClaw 网关地址；默认需重启生效 |
+| `OPENCLAW_GATEWAY_TOKEN` | — | 认证 Token；默认需重启生效 |
+| `OPENCLAW_HOOKS_TOKEN` | — | Hook 认证 Token；默认需重启生效 |
+| `OPENCLAW_HTTP_API_URL` | `http://127.0.0.1:8085` | OpenClaw HTTP 查询地址；默认需重启生效 |
+| `OPENCLAW_TIMEOUT_SECONDS` | `900` | `[runtime]` 分析超时（秒） |
+| `OPENCLAW_POLL_INITIAL_DELAY_SECONDS` | `10` | `[runtime]` OpenClaw 首次结果拉取延迟 |
+| `OPENCLAW_POLL_MAX_DELAY_SECONDS` | `120` | `[runtime]` OpenClaw 轮询指数退避最大延迟 |
+| `OPENCLAW_POLL_BACKOFF_MULTIPLIER` | `2.0` | `[runtime]` OpenClaw 轮询退避倍率 |
+| `OPENCLAW_POLL_TIMEOUT` | `180` | `[runtime]` 单次轮询请求超时 |
 | `DEEP_ANALYSIS_FEISHU_WEBHOOK` | — | 深度分析完成后推送的飞书 Webhook URL |
 
 ## 📊 Prometheus 指标

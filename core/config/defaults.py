@@ -27,16 +27,19 @@ class ServerConfig(BaseSettings):
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="api")
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
+    ALLOW_RUNTIME_CONNECTION_CONFIG: bool = Field(default=False)
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
+    RECOVERY_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
+    WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
 
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")

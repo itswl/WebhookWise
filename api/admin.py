@@ -88,6 +88,9 @@ async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
         logger.info("配置已更新: %s", list(updates.keys()))
         return _ok(status=200, message=f"配置更新成功，已保存 {len(runtime_updates)} 项")
 
+    except ValueError as e:
+        logger.warning("更新配置被拒绝: %s", e)
+        return _fail(str(e), 400)
     except Exception as e:
         logger.error("更新配置失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
