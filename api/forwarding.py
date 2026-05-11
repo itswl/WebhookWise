@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
+from core.auth import verify_admin_write
+from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from schemas import (
     ForwardRuleDetailResponse,
@@ -33,6 +35,14 @@ forwarding_router = APIRouter()
 JSONDict = dict[str, Any]
 
 
+async def _validated_target_url(target_type: str, target_url: object) -> str:
+    if target_type == "openclaw":
+        return str(target_url or "").strip()
+    if not isinstance(target_url, str) or not target_url.strip():
+        raise UnsafeTargetUrlError("目标 URL 不能为空")
+    return await validate_outbound_url(target_url)
+
+
 # ── Forwarding Rules ─────────────────────────────────────────────────────────
 
 
@@ -42,7 +52,11 @@ async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_sess
     return {"success": True, "data": [r.to_dict() for r in rules]}
 
 
-@forwarding_router.post("/api/forward-rules", response_model=ForwardRuleDetailResponse)
+@forwarding_router.post(
+    "/api/forward-rules",
+    response_model=ForwardRuleDetailResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def create_forward_rule_endpoint(
     payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
@@ -54,6 +68,10 @@ async def create_forward_rule_endpoint(
         return JSONResponse(status_code=400, content={"success": False, "error": "规则名称不能为空"})
     if target_type not in ("feishu", "openclaw", "webhook"):
         return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
+    try:
+        target_url = await _validated_target_url(target_type, payload.get("target_url", ""))
+    except UnsafeTargetUrlError as e:
+        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     rule = await create_forward_rule(
         session=session,
@@ -64,7 +82,7 @@ async def create_forward_rule_endpoint(
         match_importance=payload.get("match_importance", ""),
         match_duplicate=payload.get("match_duplicate", "all"),
         match_source=payload.get("match_source", ""),
-        target_url=payload.get("target_url", ""),
+        target_url=target_url,
         target_name=payload.get("target_name", ""),
         stop_on_match=payload.get("stop_on_match", False),
     )
@@ -72,19 +90,41 @@ async def create_forward_rule_endpoint(
     return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
 
 
-@forwarding_router.put("/api/forward-rules/{rule_id}", response_model=ForwardRuleDetailResponse)
+@forwarding_router.put(
+    "/api/forward-rules/{rule_id}",
+    response_model=ForwardRuleDetailResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def update_forward_rule_endpoint(
     rule_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
     payload = payload or {}
+    existing = await get_forward_rule(session=session, rule_id=rule_id)
+    if not existing:
+        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+    target_type = payload.get("target_type", existing.target_type)
+    if not isinstance(target_type, str) or target_type not in ("feishu", "openclaw", "webhook"):
+        return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
+    if "target_url" in payload or "target_type" in payload:
+        try:
+            payload = dict(payload)
+            payload["target_url"] = await _validated_target_url(
+                target_type, payload.get("target_url", existing.target_url)
+            )
+        except UnsafeTargetUrlError as e:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
-    if not rule:
+    if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
     return {"success": True, "data": rule.to_dict(), "message": "规则更新成功"}
 
 
-@forwarding_router.delete("/api/forward-rules/{rule_id}", response_model=None)
+@forwarding_router.delete(
+    "/api/forward-rules/{rule_id}",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def delete_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
@@ -94,7 +134,11 @@ async def delete_forward_rule_endpoint(
     return {"success": True, "message": "规则已删除"}
 
 
-@forwarding_router.post("/api/forward-rules/{rule_id}/test", response_model=None)
+@forwarding_router.post(
+    "/api/forward-rules/{rule_id}/test",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def test_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
@@ -105,10 +149,18 @@ async def test_forward_rule_endpoint(
     test_webhook = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
     test_analysis = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
 
-    target_url = rule.target_url if rule.target_type != "openclaw" else None
-    result = await forward_to_remote(test_webhook, test_analysis, target_url=target_url)
+    if rule.target_type == "openclaw":
+        from services.forwarding.forward import forward_to_openclaw
 
-    if result.get("status") == "success":
+        result = await forward_to_openclaw(test_webhook, test_analysis)
+    else:
+        try:
+            target_url = await _validated_target_url(rule.target_type, rule.target_url)
+        except UnsafeTargetUrlError as e:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+        result = await forward_to_remote(test_webhook, test_analysis, target_url=target_url)
+
+    if result.get("status") == "success" or result.get("_pending"):
         return {"success": True, "message": "测试消息已发送", "detail": result}
     elif result.get("status") == "skipped":
         return JSONResponse(status_code=400, content={"success": False, "error": "目标 URL 未配置"})
@@ -137,7 +189,11 @@ async def get_retry_stats(session: AsyncSession = Depends(get_db_session)) -> JS
 
 
 @forwarding_router.post("/api/failed-forwards/{failed_forward_id}/retry")
-async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
+async def retry_forward(
+    failed_forward_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    _admin: bool = Depends(verify_admin_write),
+) -> JSONResponse:
     if await manual_retry_reset(failed_forward_id, session):
         await session.commit()
         return _ok(message="已重置为待重试")
@@ -145,7 +201,11 @@ async def retry_forward(failed_forward_id: int, session: AsyncSession = Depends(
 
 
 @forwarding_router.delete("/api/failed-forwards/{failed_forward_id}")
-async def delete_record(failed_forward_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
+async def delete_record(
+    failed_forward_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    _admin: bool = Depends(verify_admin_write),
+) -> JSONResponse:
     if await delete_failed_forward(failed_forward_id, session):
         await session.commit()
         return _ok(message="记录已删除")

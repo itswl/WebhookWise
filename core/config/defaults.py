@@ -25,7 +25,7 @@ class ServerConfig(BaseSettings):
     HOST: str = Field(default="127.0.0.1")
     METRICS_PORT: int = Field(default=0)
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
-    RUN_MODE: str = Field(default="all")
+    RUN_MODE: str = Field(default="api")
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
     LOG_LEVEL: str = Field(default="INFO")
     LOG_FILE: str = Field(default="logs/webhook.log")
@@ -36,6 +36,7 @@ class ServerConfig(BaseSettings):
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
     FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
+    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
 
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")
@@ -60,6 +61,10 @@ class SecurityConfig(BaseSettings):
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
+    TRUST_PROXY_HEADERS: bool = Field(default=False)
+    TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
+    ALLOW_PRIVATE_FORWARD_URLS: bool = Field(default=False)
+    FORWARD_TARGET_ALLOWLIST: str = Field(default="")
 
 
 class DBConfig(BaseSettings):
@@ -68,8 +73,8 @@ class DBConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
-    DB_POOL_SIZE: int = Field(default=20)
-    DB_MAX_OVERFLOW: int = Field(default=30)
+    DB_POOL_SIZE: int = Field(default=5)
+    DB_MAX_OVERFLOW: int = Field(default=5)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)

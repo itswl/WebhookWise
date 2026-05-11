@@ -9,6 +9,7 @@ import orjson
 from sqlalchemy import select, update
 
 from core.compression import decompress_payload_async
+from core.config import Config
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
@@ -46,7 +47,12 @@ async def transition_to_analyzing_and_load(event_id: int) -> EventEnvelope | Non
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
             .where(WebhookEvent.processing_status.in_(_ANALYZING_SOURCES))
-            .values(processing_status=WebhookProcessingStatus.ANALYZING.value, failure_reason=None, error_message=None)
+            .values(
+                processing_status=WebhookProcessingStatus.ANALYZING.value,
+                failure_reason=None,
+                error_message=None,
+                next_retry_at=None,
+            )
             .returning(WebhookEvent)
         )
         res = await sess.execute(stmt)
@@ -150,7 +156,9 @@ async def mark_last_notified(event_id: int) -> None:
         )
 
 
-async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> int | None:
+async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> tuple[int, int] | None:
+    from services.operations.taskiq_retry_scheduler import compute_backoff_delay
+
     async with session_scope() as sess:
         res = await sess.execute(
             update(WebhookEvent)
@@ -165,7 +173,21 @@ async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> 
             .returning(WebhookEvent.retry_count)
         )
         row = res.first()
-        return int(row[0] or 0) if row else None
+        if not row:
+            return None
+        retry_count = int(row[0] or 0)
+        delay = compute_backoff_delay(
+            retry_count,
+            initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
+            max_delay=Config.retry.WEBHOOK_RETRY_MAX_DELAY,
+            multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
+        )
+        await sess.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(next_retry_at=datetime.now() + timedelta(seconds=delay))
+        )
+        return retry_count, delay
 
 
 async def mark_dead_letter(event_id: int, *, retryable: bool, error_message: str) -> None:
@@ -177,5 +199,6 @@ async def mark_dead_letter(event_id: int, *, retryable: bool, error_message: str
                 processing_status=WebhookProcessingStatus.DEAD_LETTER.value,
                 failure_reason="retry_exhausted" if retryable else "fat_err",
                 error_message=error_message[:2000],
+                next_retry_at=None,
             )
         )

@@ -1,6 +1,7 @@
 """Webhook 命令服务：接收、保存与状态重放。"""
 
 import asyncio
+import ipaddress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -32,13 +33,47 @@ class SaveWebhookResult:
 
 def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址。"""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip
+    if _is_trusted_proxy(request.client.host if request.client else None):
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for and (ip := _first_valid_header_ip(forwarded_for)):
+            return ip
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip and (ip := _first_valid_header_ip(real_ip)):
+            return ip
     return request.client.host if request.client else "unknown"
+
+
+def _first_valid_header_ip(value: str) -> str | None:
+    for raw in value.split(","):
+        candidate = raw.strip()
+        if not candidate:
+            continue
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return None
+
+
+def _is_trusted_proxy(client_host: str | None) -> bool:
+    if not client_host or not Config.security.TRUST_PROXY_HEADERS:
+        return False
+    try:
+        client_ip = ipaddress.ip_address(client_host)
+    except ValueError:
+        return client_host in {item.strip() for item in Config.security.TRUSTED_PROXY_CIDRS.split(",") if item.strip()}
+
+    for raw in Config.security.TRUSTED_PROXY_CIDRS.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        try:
+            if client_ip in ipaddress.ip_network(item, strict=False):
+                return True
+        except ValueError:
+            if item == client_host:
+                return True
+    return False
 
 
 def _resolve_analysis_for_duplicate(
@@ -103,7 +138,12 @@ async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
 async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
     stmt = (
         update(WebhookEvent)
-        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status.in_([WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING, WebhookProcessingStatus.FAILED]))
+        .where(
+            WebhookEvent.id == event_id,
+            WebhookEvent.processing_status.in_(
+                [WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING, WebhookProcessingStatus.FAILED]
+            ),
+        )
         .values(processing_status=WebhookProcessingStatus.RECEIVED)
     )
     res = await session.execute(stmt)
@@ -142,6 +182,7 @@ async def mark_webhook_suppressed(
             headers=safe_headers,
             raw_payload=raw_payload,
             processing_status=WebhookProcessingStatus.COMPLETED,
+            next_retry_at=None,
         )
         await session.flush()
 
@@ -187,6 +228,7 @@ async def _save_duplicate_event(
                 headers=headers,
                 raw_payload=raw_payload,
                 processing_status=WebhookProcessingStatus.COMPLETED,
+                next_retry_at=None,
             )
             await session.flush()
             return SaveWebhookResult(dup_event.id, True, original.id, beyond_window)
@@ -206,6 +248,8 @@ async def _save_duplicate_event(
         beyond_window=beyond_window,
         raw_payload=raw_payload,
         headers=headers,
+        processing_status=WebhookProcessingStatus.COMPLETED,
+        next_retry_at=None,
     )
     session.add(duplicate_event)
     await session.flush()
@@ -262,6 +306,7 @@ async def _update_existing_event(
         headers=headers,
         raw_payload=raw_payload,
         processing_status=WebhookProcessingStatus.COMPLETED,
+        next_retry_at=None,
     )
     try:
         async with session.begin_nested():
@@ -298,6 +343,7 @@ async def _update_existing_event(
                     headers=headers,
                     raw_payload=raw_payload,
                     processing_status=WebhookProcessingStatus.COMPLETED,
+                    next_retry_at=None,
                 )
                 await session.flush()
                 return SaveWebhookResult(event.id, True, original.id, False)
@@ -331,6 +377,7 @@ async def _upsert_new_event(
             ai_analysis=ai_analysis,
             importance=ai_analysis.get("importance") if ai_analysis else None,
             processing_status=WebhookProcessingStatus.COMPLETED,
+            next_retry_at=None,
             forward_status=forward_status,
             is_duplicate=False,
             duplicate_count=1,
@@ -359,11 +406,14 @@ async def _upsert_new_event(
         parsed_data=data,
         alert_hash=alert_hash,
         ai_analysis=ai_analysis,
+        importance=ai_analysis.get("importance") if ai_analysis else None,
         forward_status=forward_status,
         is_duplicate=True,
         duplicate_of=row[0],
         duplicate_count=row[1],
         beyond_window=beyond_window,
+        processing_status=WebhookProcessingStatus.COMPLETED,
+        next_retry_at=None,
     )
     session.add(dup)
     await session.flush()

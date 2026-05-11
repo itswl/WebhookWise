@@ -19,6 +19,7 @@ from core.circuit_breaker import CircuitBreakerOpenException, forward_cb, opencl
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
+from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from core.utils import is_feishu_url
 from db.session import count_with_timeout, session_scope
 from models import FailedForward, ForwardRule
@@ -27,7 +28,9 @@ from services.webhooks.types import AnalysisResult, FailedForwardStatus, Forward
 _T = TypeVar("_T")
 
 
-async def _with_session(session: AsyncSession | None, fn: Callable[..., Awaitable[_T]], *args: Any, **kwargs: Any) -> _T:
+async def _with_session(
+    session: AsyncSession | None, fn: Callable[..., Awaitable[_T]], *args: Any, **kwargs: Any
+) -> _T:
     """Run *fn* with either a provided session or a newly scoped one."""
     if session is not None:
         return await fn(session, *args, **kwargs)
@@ -252,7 +255,9 @@ async def cleanup_old_success_records(days: int = 7, session: AsyncSession | Non
 
     async def _cleanup(sess: AsyncSession) -> int:
         stmt = (
-            sa_delete(FailedForward).where(FailedForward.status == FailedForwardStatus.SUCCESS).where(FailedForward.updated_at < cutoff)
+            sa_delete(FailedForward)
+            .where(FailedForward.status == FailedForwardStatus.SUCCESS)
+            .where(FailedForward.updated_at < cutoff)
         )
         result = await sess.execute(stmt)
         count = int(result.rowcount or 0)
@@ -276,6 +281,11 @@ async def forward_to_remote(
     if not url:
         logger.debug("[Forward] 无转发 URL，跳过")
         return {"status": "skipped", "reason": "no_forward_url"}
+    try:
+        url = await validate_outbound_url(url)
+    except UnsafeTargetUrlError as e:
+        logger.warning("[Forward] 目标 URL 安全校验失败 url=%s error=%s", url, e)
+        return {"status": "invalid_target", "message": str(e)}
 
     # 飞书/Lark 自动格式化
     is_feishu = is_feishu_url(url)

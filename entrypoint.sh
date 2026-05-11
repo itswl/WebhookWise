@@ -14,6 +14,8 @@ if [ -n "$PROMETHEUS_MULTIPROC_DIR" ] && [ -d "$PROMETHEUS_MULTIPROC_DIR" ]; the
     rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"/*
 fi
 
+export API_WORKERS="${API_WORKERS:-4}"
+
 case "${RUN_MODE:-api}" in
     migrate)
         echo "Starting in migration job mode..."
@@ -21,13 +23,18 @@ case "${RUN_MODE:-api}" in
         ;;
     worker)
         echo "Starting in TaskIQ Worker mode..."
-        exec taskiq worker core.taskiq_broker:broker services.operations.tasks
+        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq worker core.taskiq_broker:broker services.operations.tasks
         ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."
-        exec taskiq scheduler core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
+        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq scheduler core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
         ;;
-    api|all|"")
+    all)
+        echo "Starting in all-in-one supervisor mode..."
+        export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources is deprecated as an API:UserWarning}"
+        exec supervisord -c /app/supervisord.conf
+        ;;
+    api|"")
         echo "Starting in API mode..."
         exec "$@"
         ;;

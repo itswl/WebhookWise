@@ -9,6 +9,7 @@ import orjson
 
 from core.config import Config
 from core.logger import get_logger
+from core.sensitive_data import redact_nested
 
 logger = get_logger("payload_sanitizer")
 
@@ -80,7 +81,7 @@ def sanitize_for_ai(parsed_data: dict[str, Any]) -> dict[str, Any]:
     max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
-    cleaned_obj = _strip_keys_recursive(parsed_data, strip_keys)
+    cleaned_obj = redact_nested(_strip_keys_recursive(parsed_data, strip_keys))
     cleaned: dict[str, Any] = cleaned_obj if isinstance(cleaned_obj, dict) else parsed_data
 
     # Phase 2: 检查大小，超限则截断

@@ -31,7 +31,9 @@ WORKDIR /app
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    HOST=0.0.0.0 \
     PORT=8000 \
+    API_WORKERS=4 \
     PYTHONPATH=/app \
     PATH=/home/appuser/.local/bin:$PATH
 
@@ -44,6 +46,7 @@ COPY main.py .
 COPY worker.py .
 COPY entrypoint.sh .
 COPY gunicorn_config.py .
+COPY supervisord.conf .
 COPY core/ ./core/
 COPY api/ ./api/
 COPY models/ ./models/
@@ -62,7 +65,7 @@ COPY alembic/ ./alembic/
 
 # 创建必要的目录并设置权限
 RUN mkdir -p logs webhooks_data /tmp/prometheus_multiproc && \
-    chmod +x entrypoint.sh && \
+    chmod +x entrypoint.sh scripts/run_api.sh scripts/run_with_prometheus_cleanup.sh && \
     chown -R appuser:appuser /app /tmp/prometheus_multiproc
 
 # 切换到非 root 用户
@@ -72,7 +75,7 @@ USER appuser
 EXPOSE 8000
 
 # 健康检查（使用 Python 原生方式，无需 curl）
-# - api/all 模式：探测 HTTP /health
+# - api/all 模式：探测 HTTP /ready
 # - worker 模式：探测 Redis/DB 连通性（worker 不监听 8000，避免误判为 unhealthy）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD ["python3", "-m", "scripts.healthcheck"]
@@ -87,4 +90,4 @@ ENTRYPOINT ["./entrypoint.sh"]
 #   - 如果只需单 Worker 且不需要进程管理，可直接使用：
 #     CMD ["uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["gunicorn", "-c", "gunicorn_config.py", "--bind", "0.0.0.0:8000", "--workers", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--graceful-timeout", "30", "-e", "UVICORN_LOOP=uvloop", "-e", "UVICORN_HTTP=httptools", "core.app:app"]
+CMD ["scripts/run_api.sh"]

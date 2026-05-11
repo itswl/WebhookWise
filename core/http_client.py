@@ -21,7 +21,7 @@ def _build_async_client(transport: httpx.AsyncBaseTransport | None = None) -> ht
     return httpx.AsyncClient(
         timeout=httpx.Timeout(Config.ai.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
-        follow_redirects=True,
+        follow_redirects=False,
         transport=transport,
         event_hooks={"request": [_inject_trace_headers]},
     )

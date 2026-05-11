@@ -5,9 +5,14 @@
 - 定时轮询任务：由 TaskIQ Scheduler 触发入队，由 Worker 执行
 """
 
+import asyncio
+import contextlib
+import inspect
 import logging
 import time
-from collections.abc import Awaitable
+import uuid
+from collections.abc import AsyncIterator, Awaitable
+from contextlib import asynccontextmanager
 
 from core.config import Config
 from core.metrics import (
@@ -17,14 +22,69 @@ from core.metrics import (
     SCHEDULED_TASK_RUNS_TOTAL,
 )
 from core.taskiq_broker import broker
-from db.session import session_scope
 
 logger = logging.getLogger("webhook_service.tasks")
 
 _last_success_by_name: dict[str, float] = {}
+_webhook_task_semaphore: asyncio.Semaphore | None = None
+_webhook_task_semaphore_limit = 0
+
+_RELEASE_IF_OWNER_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
+
+
+@asynccontextmanager
+async def _webhook_task_slot() -> AsyncIterator[None]:
+    global _webhook_task_semaphore, _webhook_task_semaphore_limit
+    limit = int(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS or 0)
+    if limit <= 0:
+        yield
+        return
+    if _webhook_task_semaphore is None or _webhook_task_semaphore_limit != limit:
+        _webhook_task_semaphore = asyncio.Semaphore(limit)
+        _webhook_task_semaphore_limit = limit
+    async with _webhook_task_semaphore:
+        yield
+
+
+@asynccontextmanager
+async def _scheduled_task_leader(name: str, interval_seconds: int) -> AsyncIterator[bool]:
+    """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
+    key = f"scheduled-task-lock:{name}"
+    token = f"{Config.server.WORKER_ID}:{uuid.uuid4().hex}"
+    ttl = max(30, int(interval_seconds) * 2)
+    try:
+        from core.redis_client import redis_eval_int, redis_set_nx_ex
+
+        acquired = await redis_set_nx_ex(key, token, ttl)
+    except Exception as e:
+        logger.warning("[ScheduledTask] 单实例锁异常，降级执行 name=%s error=%s", name, e)
+        yield True
+        return
+
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            with contextlib.suppress(Exception):
+                await redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
 
 
 async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
+    async with _scheduled_task_leader(name, interval_seconds) as is_leader:
+        if not is_leader:
+            logger.debug("[ScheduledTask] 跳过重复调度 name=%s", name)
+            if inspect.iscoroutine(fn):
+                fn.close()
+            return
+        await _run_scheduled_locked(name, interval_seconds, fn)
+
+
+async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     start = time.time()
     try:
         await fn
@@ -58,8 +118,8 @@ async def process_webhook_task(
     from services.webhooks.pipeline import handle_webhook_process
 
     logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s", event_id)
-    async with session_scope() as session:
-        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "", session=session)
+    async with _webhook_task_slot():
+        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
 
 
 @broker.task(task_name="forward_retry_task")
@@ -145,9 +205,17 @@ async def scheduled_forward_outbox_scan() -> None:
 async def scheduled_data_maintenance() -> None:
     from services.operations.data_maintenance import archive_old_data_by_policy
 
+    async with _scheduled_task_leader("data_maintenance", 86400) as is_leader:
+        if not is_leader:
+            logger.debug("[ScheduledTask] 跳过重复调度 name=data_maintenance")
+            return
+        await _run_data_maintenance_locked(archive_old_data_by_policy())
+
+
+async def _run_data_maintenance_locked(fn: Awaitable[object]) -> None:
     start = time.time()
     try:
-        await archive_old_data_by_policy()
+        await fn
         SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="success").inc()
         SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name="data_maintenance").set(time.time())
         SCHEDULED_TASK_LAG_SECONDS.labels(name="data_maintenance").set(0.0)

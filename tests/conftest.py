@@ -4,6 +4,7 @@ tests/conftest.py
 pytest 全局 fixtures：外部服务 mock、测试数据库 session。
 """
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,6 +15,18 @@ _ROOT = Path(__file__).resolve().parents[1]
 _ps = str(_ROOT)
 if _ps not in sys.path:
     sys.path.insert(0, _ps)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_otel_for_tests():
+    """Keep local pytest runs from starting background OTEL exporters from .env."""
+    old_enabled = os.environ.get("OTEL_ENABLED")
+    os.environ["OTEL_ENABLED"] = "false"
+    yield
+    if old_enabled is None:
+        os.environ.pop("OTEL_ENABLED", None)
+    else:
+        os.environ["OTEL_ENABLED"] = old_enabled
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -139,6 +139,69 @@ class SecurityHeadersMiddleware:
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+class RequestBodyLimitExceeded(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        max_bytes = int(Config.security.MAX_WEBHOOK_BODY_BYTES or 0)
+        if max_bytes <= 0:
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+        content_length = headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > max_bytes:
+                    await self._send_413(send, max_bytes)
+                    return
+            except ValueError:
+                pass
+
+        seen = 0
+
+        async def limited_receive() -> MutableMapping[str, Any]:
+            nonlocal seen
+            message = await receive()
+            if message["type"] == "http.request":
+                body = message.get("body", b"")
+                seen += len(body) if isinstance(body, bytes) else 0
+                if seen > max_bytes:
+                    raise RequestBodyLimitExceeded
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except RequestBodyLimitExceeded:
+            await self._send_413(send, max_bytes)
+
+    async def _send_413(self, send: Send, max_bytes: int) -> None:
+        body = f'{{"success":false,"error":"Payload too large","max_bytes":{max_bytes}}}'.encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("latin1")),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(RequestBodyLimitMiddleware)
+
+
 class TraceContextMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
