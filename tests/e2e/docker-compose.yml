@@ -90,6 +90,8 @@ services:
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
       FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      FORWARD_TARGET_ALLOWLIST: fake-feishu
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     ports:
@@ -138,6 +140,8 @@ services:
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
       FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      FORWARD_TARGET_ALLOWLIST: fake-feishu
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
@@ -172,6 +176,8 @@ services:
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
       FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      FORWARD_TARGET_ALLOWLIST: fake-feishu
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
