@@ -10,6 +10,7 @@ from api.webhook_context import JSONDict, build_webhook_context
 from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
+from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from core.utils import is_feishu_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
@@ -248,6 +249,10 @@ async def forward_deep_analysis(
         return JSONResponse(status_code=400, content={"success": False, "error": "转发 URL 不能为空"})
     if not target_url.startswith(("http://", "https://")):
         return JSONResponse(status_code=400, content={"success": False, "error": "URL 格式无效"})
+    try:
+        target_url = await validate_outbound_url(target_url)
+    except UnsafeTargetUrlError as e:
+        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     analysis = await session.get(DeepAnalysis, analysis_id)
     if not analysis:

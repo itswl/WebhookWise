@@ -31,6 +31,7 @@ _config_logger = logging.getLogger("config")
 
 _TSubSettings = TypeVar("_TSubSettings", bound=BaseSettings)
 
+
 class _RuntimeKeyMeta(TypedDict):
     type: RuntimeType
     sub: str
@@ -77,6 +78,22 @@ class UnifiedConfigManager:
         "WEBHOOK_RATE_LIMIT_PER_MINUTE": {"type": "int", "sub": "security"},
         "WEBHOOK_RATE_LIMIT_BURST": {"type": "int", "sub": "security"},
         "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE": {"type": "int", "sub": "security"},
+        "OPENCLAW_ENABLED": {"type": "bool", "sub": "openclaw"},
+        "OPENCLAW_GATEWAY_URL": {"type": "str", "sub": "openclaw"},
+        "OPENCLAW_GATEWAY_TOKEN": {"type": "str", "sub": "openclaw"},
+        "OPENCLAW_HOOKS_TOKEN": {"type": "str", "sub": "openclaw"},
+        "OPENCLAW_HTTP_API_URL": {"type": "str", "sub": "openclaw"},
+        "OPENCLAW_TIMEOUT_SECONDS": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_STABILITY_REQUIRED_HITS": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_POLL_INITIAL_DELAY_SECONDS": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_POLL_MAX_DELAY_SECONDS": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_POLL_BACKOFF_MULTIPLIER": {"type": "float", "sub": "openclaw"},
+        "OPENCLAW_MAX_CONSECUTIVE_ERRORS": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_ENABLE_DEGRADATION": {"type": "bool", "sub": "openclaw"},
+        "OPENCLAW_CONNECT_TIMEOUT": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_HANDSHAKE_TIMEOUT": {"type": "int", "sub": "openclaw"},
+        "OPENCLAW_NONCE_TIMEOUT": {"type": "float", "sub": "openclaw"},
+        "OPENCLAW_POLL_TIMEOUT": {"type": "int", "sub": "openclaw"},
     }
 
     def __init__(self) -> None:

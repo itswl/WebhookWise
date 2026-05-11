@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
-from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
+from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardOutboxStatus
 
 
 @compiles(JSONB, "sqlite")
@@ -78,6 +78,30 @@ async def _insert_outbox(
         return record.id
 
 
+async def _insert_failed_forward(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    status: str = FailedForwardStatus.PENDING,
+    next_retry_at: datetime | None = None,
+) -> int:
+    from models import FailedForward
+
+    async with session_factory.begin() as session:
+        record = FailedForward(
+            webhook_event_id=1,
+            target_url="https://example.test/hook",
+            target_type="webhook",
+            status=status,
+            failure_reason="test",
+            retry_count=0,
+            max_retries=3,
+            next_retry_at=next_retry_at or datetime.now(),
+        )
+        session.add(record)
+        await session.flush()
+        return record.id
+
+
 # ── _is_forward_success ──────────────────────────────────────────────
 
 
@@ -107,9 +131,7 @@ class TestIsForwardSuccess:
 
 
 class TestClaimOutbox:
-    async def test_claims_pending_with_past_attempt_at(
-        self, session_factory: async_sessionmaker[AsyncSession]
-    ) -> None:
+    async def test_claims_pending_with_past_attempt_at(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() - timedelta(seconds=10))
@@ -118,27 +140,21 @@ class TestClaimOutbox:
         assert record.status == ForwardOutboxStatus.PROCESSING
         assert record.attempts == 1
 
-    async def test_returns_none_for_sent_status(
-        self, session_factory: async_sessionmaker[AsyncSession]
-    ) -> None:
+    async def test_returns_none_for_sent_status(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(session_factory, status=ForwardOutboxStatus.SENT)
         record = await _claim_outbox(outbox_id)
         assert record is None
 
-    async def test_returns_none_for_future_attempt_at(
-        self, session_factory: async_sessionmaker[AsyncSession]
-    ) -> None:
+    async def test_returns_none_for_future_attempt_at(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() + timedelta(hours=1))
         record = await _claim_outbox(outbox_id)
         assert record is None
 
-    async def test_claims_retrying_status(
-        self, session_factory: async_sessionmaker[AsyncSession]
-    ) -> None:
+    async def test_claims_retrying_status(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(
@@ -225,9 +241,7 @@ class TestFinalizeOutboxSuccess:
 
         monkeypatch.setattr("services.forwarding.outbox._schedule_openclaw_poll_best_effort", _noop)
 
-        outbox_id = await _insert_outbox(
-            session_factory, next_attempt_at=datetime.now() - timedelta(seconds=1)
-        )
+        outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() - timedelta(seconds=1))
         record = await _claim_outbox(outbox_id)
         assert record is not None
         await _finalize_outbox_success(record, {"status": "success", "status_code": 200})
@@ -324,3 +338,106 @@ class TestRunForwardOutboxScan:
 
         assert scheduled_ids
         assert len(scheduled_ids[0]) == 1
+
+
+# ── FailedForward scan fallback ───────────────────────────────────────
+
+
+class TestRunFailedForwardScan:
+    async def test_selects_due_failed_forward_rows(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from services.forwarding.retry import run_failed_forward_scan
+
+        scheduled_ids: list[list[int]] = []
+
+        async def _fake_schedule(ids: list[int]) -> None:
+            scheduled_ids.append(ids)
+
+        monkeypatch.setattr("services.forwarding.retry.schedule_failed_forward_many", _fake_schedule)
+
+        due_id = await _insert_failed_forward(session_factory, next_retry_at=datetime.now() - timedelta(seconds=10))
+        await _insert_failed_forward(session_factory, next_retry_at=datetime.now() + timedelta(hours=1))
+
+        count = await run_failed_forward_scan()
+
+        assert count == 1
+        assert scheduled_ids == [[due_id]]
+
+
+# ── OpenClaw poll claim / stability ───────────────────────────────────
+
+
+class TestOpenClawPoller:
+    async def test_claim_openclaw_poll_sets_inflight_lease(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        from models import DeepAnalysis
+        from services.analysis.openclaw_poller import _claim_openclaw_poll
+
+        async with session_factory.begin() as session:
+            record = DeepAnalysis(
+                webhook_event_id=1,
+                engine="openclaw",
+                status=DeepAnalysisStatus.PENDING,
+                openclaw_session_key="session-1",
+                openclaw_run_id="run-1",
+                next_poll_at=datetime.now() - timedelta(seconds=1),
+                poll_attempts=0,
+            )
+            session.add(record)
+            await session.flush()
+            analysis_id = record.id
+
+        claimed, early_delay = await _claim_openclaw_poll(analysis_id)
+        assert claimed is not None
+        assert early_delay is None
+        assert claimed["poll_attempts"] == 1
+
+        claimed_again, second_delay = await _claim_openclaw_poll(analysis_id)
+        assert claimed_again is None
+        assert second_delay is not None
+        assert second_delay > 0
+
+        async with session_factory() as session:
+            updated = await session.get(DeepAnalysis, analysis_id)
+        assert updated is not None
+        assert updated.next_poll_at is not None
+        assert updated.next_poll_at > datetime.now()
+
+    async def test_poll_single_record_completes_immediately_when_stability_hits_is_one(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+
+        async def _completed(*_: object, **__: object) -> dict[str, object]:
+            return {"status": "completed", "text": "root cause ready", "msg_count": 2}
+
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+
+        result = await openclaw_poller._poll_single_record(
+            {
+                "id": 1,
+                "webhook_event_id": 1,
+                "engine": "openclaw",
+                "openclaw_session_key": "session-1",
+                "openclaw_run_id": "run-1",
+                "created_at": datetime.now(),
+                "status": DeepAnalysisStatus.PENDING,
+                "analysis_result": None,
+                "duration_seconds": 0,
+            }
+        )
+
+        assert result["action"] == "update"
+        assert result["status"] == DeepAnalysisStatus.COMPLETED
+        assert result["_need_success_notify"] is True
+        assert result["analysis_result"]["root_cause"] == "root cause ready"

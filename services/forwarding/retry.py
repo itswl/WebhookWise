@@ -41,6 +41,35 @@ async def retry_failed_forward_by_id(failed_forward_id: int) -> None:
         logger.error("[ForwardRetry] 重试记录 ID=%s 异常: %s", failed_forward_id, e)
 
 
+async def schedule_failed_forward_many(failed_forward_ids: list[int]) -> None:
+    """Best-effort immediate dispatch for due failed-forward retry rows."""
+    if not failed_forward_ids:
+        return
+    from services.operations.tasks import retry_failed_forward_task
+
+    for failed_forward_id in failed_forward_ids:
+        try:
+            await retry_failed_forward_task.kiq(failed_forward_id=failed_forward_id)
+        except Exception as e:  # noqa: PERF203
+            logger.warning("[ForwardRetry] 即时调度失败 ID=%s error=%s，将由扫描任务兜底", failed_forward_id, e)
+
+
+async def run_failed_forward_scan(limit: int = 100) -> int:
+    """Queue due FailedForward records when dynamic schedules were missed."""
+    now = datetime.now()
+    async with session_scope() as session:
+        stmt = (
+            select(FailedForward.id)
+            .where(FailedForward.status.in_([FailedForwardStatus.PENDING, FailedForwardStatus.RETRYING]))
+            .where((FailedForward.next_retry_at.is_(None)) | (FailedForward.next_retry_at <= now))
+            .order_by(FailedForward.next_retry_at.asc(), FailedForward.id.asc())
+            .limit(limit)
+        )
+        ids = list((await session.execute(stmt)).scalars().all())
+    await schedule_failed_forward_many(ids)
+    return len(ids)
+
+
 async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
     """重试单条转发失败记录"""
     from services.forwarding.forward import forward_to_remote

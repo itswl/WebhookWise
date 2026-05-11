@@ -200,6 +200,20 @@ async def scheduled_forward_outbox_scan() -> None:
 
 
 @broker.task(
+    task_name="scheduled_failed_forward_scan",
+    schedule=[
+        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "failed_forward_scan_interval"}
+    ],
+)
+async def scheduled_failed_forward_scan() -> None:
+    from services.forwarding.retry import run_failed_forward_scan
+
+    await _run_scheduled(
+        "failed_forward_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_failed_forward_scan()
+    )
+
+
+@broker.task(
     task_name="scheduled_data_maintenance", schedule=[{"cron": f"0 {Config.maintenance.MAINTENANCE_HOUR} * * *"}]
 )
 async def scheduled_data_maintenance() -> None:
