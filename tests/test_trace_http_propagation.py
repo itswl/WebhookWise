@@ -30,6 +30,20 @@ async def test_http_client_injects_trace_headers(monkeypatch):
     assert captured["traceparent"] and captured["traceparent"].startswith("00-")
 
 
+@pytest.mark.asyncio
+async def test_http_client_ignores_proxy_environment(monkeypatch):
+    from core.http_client import _build_async_client
+
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9999")
+    monkeypatch.setenv("NO_PROXY", "fd00:b51a:cc66:f0::/64")
+
+    client = _build_async_client()
+    try:
+        assert client.trust_env is False
+    finally:
+        await client.aclose()
+
+
 def test_extract_trace_id_from_headers_prefers_x_request_id():
     from core.trace import extract_trace_id_from_headers
 
