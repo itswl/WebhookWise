@@ -34,6 +34,7 @@ def test_connection_runtime_keys_require_restart_by_default(monkeypatch: pytest.
 
     assert Config.runtime_key_requires_restart("OPENAI_API_KEY") is True
     assert Config.runtime_key_requires_restart("OPENCLAW_GATEWAY_TOKEN") is True
+    assert Config.runtime_key_requires_restart("OPENAI_MODEL") is False
     assert Config.runtime_key_requires_restart("OPENCLAW_TIMEOUT_SECONDS") is False
     Config._ensure_runtime_key_mutable("OPENAI_API_KEY", "")
 
