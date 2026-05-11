@@ -132,6 +132,41 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     assert by_id[999]["beyond_window"] is False
 
 
+async def test_get_deep_analyses_returns_serializable_dicts(session):
+    from api.deep_analysis import get_deep_analyses
+    from models import DeepAnalysis, WebhookEvent
+
+    event = WebhookEvent(
+        source="prometheus",
+        client_ip="127.0.0.1",
+        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+        importance="high",
+        processing_status="completed",
+        is_duplicate=False,
+        duplicate_count=1,
+        beyond_window=False,
+    )
+    session.add(event)
+    await session.flush()
+
+    record = DeepAnalysis(
+        webhook_event_id=event.id,
+        engine="openclaw",
+        user_question="",
+        analysis_result={"root_cause": "x"},
+        status="completed",
+        created_at=datetime(2026, 1, 1, 0, 1, 0),
+    )
+    session.add(record)
+    await session.commit()
+
+    resp = await get_deep_analyses(webhook_id=event.id, session=session)
+    assert resp["success"] is True
+    assert isinstance(resp["data"][0], dict)
+    assert resp["data"][0]["webhook_event_id"] == event.id
+    assert resp["data"][0]["analysis_result"] == {"root_cause": "x"}
+
+
 def test_webhook_analysis_result_to_dict_dumps_enum_to_string():
     from schemas import Importance, WebhookAnalysisResult
 

@@ -216,7 +216,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
             from models import DeepAnalysis
             from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
-            target_event_id = current.original_event_id or current.webhook_event_id
+            target_event_id = current.webhook_event_id
             initial_poll_delay = compute_openclaw_poll_delay(0)
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
@@ -323,7 +323,12 @@ async def run_forward_outbox_scan(limit: int = 100) -> int:
             update(ForwardOutbox)
             .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
             .where(ForwardOutbox.updated_at < stale_before)
-            .values(status=ForwardOutboxStatus.RETRYING, next_attempt_at=now, updated_at=now, last_error="recovered_stale_processing")
+            .values(
+                status=ForwardOutboxStatus.RETRYING,
+                next_attempt_at=now,
+                updated_at=now,
+                last_error="recovered_stale_processing",
+            )
         )
         stmt = (
             select(ForwardOutbox.id)

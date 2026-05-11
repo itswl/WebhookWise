@@ -107,10 +107,12 @@ async def deep_analyze_webhook(
     session.add(record)
     await session.flush()
     poll_delay = _prepare_openclaw_poll_if_pending(record)
+    analysis_id = int(record.id)
+    record_data = record.to_dict()
     await session.commit()
     if poll_delay is not None:
-        await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
-    return {"success": True, "data": record.to_dict()}
+        await _schedule_openclaw_poll_best_effort(analysis_id, poll_delay)
+    return {"success": True, "data": record_data}
 
 
 @deep_analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
@@ -131,7 +133,8 @@ async def list_all_deep_analyses(
 
 @deep_analysis_router.get("/api/deep-analyses/{webhook_id}")
 async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
-    return {"success": True, "data": await get_deep_analyses_for_webhook(session, webhook_id)}
+    records = await get_deep_analyses_for_webhook(session, webhook_id)
+    return {"success": True, "data": [record.to_dict() for record in records]}
 
 
 @deep_analysis_router.post("/api/deep-analyses/{analysis_id}/retry", response_model=None)
