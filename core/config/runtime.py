@@ -41,6 +41,17 @@ class UnifiedConfigManager:
     """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
 
     RUNTIME_CONFIG_CHANNEL = "webhook:config:updated"
+    RESTART_REQUIRED_RUNTIME_KEYS = frozenset(
+        {
+            "OPENAI_API_KEY",
+            "OPENAI_API_URL",
+            "OPENAI_MODEL",
+            "OPENCLAW_GATEWAY_URL",
+            "OPENCLAW_GATEWAY_TOKEN",
+            "OPENCLAW_HOOKS_TOKEN",
+            "OPENCLAW_HTTP_API_URL",
+        }
+    )
 
     RUNTIME_KEYS: dict[str, _RuntimeKeyMeta] = {
         "FORWARD_URL": {"type": "str", "sub": "ai"},
@@ -179,6 +190,18 @@ class UnifiedConfigManager:
     def get_meta(self, key: str) -> dict[str, object]:
         return self._meta.get(key, {})
 
+    def runtime_key_requires_restart(self, key: str) -> bool:
+        return key in self.RESTART_REQUIRED_RUNTIME_KEYS and not self.server.ALLOW_RUNTIME_CONNECTION_CONFIG
+
+    def _ensure_runtime_key_mutable(self, key: str, str_value: str) -> None:
+        if str_value == "":
+            return
+        if self.runtime_key_requires_restart(key):
+            raise ValueError(
+                f"{key} 属于连接/密钥类配置，默认禁止热更新；请通过环境变量或 ConfigMap 修改并滚动重启。"
+                "如确认要承担多进程配置短暂不一致风险，可设置 ALLOW_RUNTIME_CONNECTION_CONFIG=true。"
+            )
+
     # ── 运行时持久化与同步 ──
 
     async def load_from_db(self) -> bool:
@@ -194,12 +217,19 @@ class UnifiedConfigManager:
                 configs = {row.key: row for row in result.scalars().all()}
 
             count = 0
+            skipped_restart_required = 0
             for key, row in configs.items():
                 if key in self.RUNTIME_KEYS:
+                    if self.runtime_key_requires_restart(key):
+                        self.set_override(key, None, source="db", updated_by=row.updated_by)
+                        skipped_restart_required += 1
+                        continue
                     val = self._deserialize(row.value, self.RUNTIME_KEYS[key]["type"])
                     self.set_override(key, val, source="db", updated_by=row.updated_by)
                     count += 1
             self._db_loaded_once = True
+            if skipped_restart_required:
+                _config_logger.warning("[Config] 已忽略 %d 个需重启生效的 DB 配置", skipped_restart_required)
             _config_logger.info("[Config] 从数据库加载 %d 个热更新配置", count)
             return True
         except Exception as e:
@@ -212,6 +242,7 @@ class UnifiedConfigManager:
 
         v_type = self.RUNTIME_KEYS[key]["type"]
         str_val = self._serialize(value, v_type)
+        self._ensure_runtime_key_mutable(key, str_val)
 
         from sqlalchemy import delete, select
 
@@ -237,6 +268,11 @@ class UnifiedConfigManager:
         await self._publish_change([key])
 
     async def save_batch(self, updates: dict[str, RuntimeValue], updated_by: str = "api") -> None:
+        for key, value in updates.items():
+            if key in self.RUNTIME_KEYS:
+                v_type = self.RUNTIME_KEYS[key]["type"]
+                self._ensure_runtime_key_mutable(key, self._serialize(value, v_type))
+
         changed_keys = []
         for key, value in updates.items():
             if key in self.RUNTIME_KEYS:

@@ -32,7 +32,19 @@ def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> N
 
 
 @pytest.mark.asyncio
-async def test_analyze_with_openclaw_sends_utf8_json_body(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("platform", "response_payload", "expected_url"),
+    [
+        ("openclaw", {"runId": "run-1"}, "http://openclaw.test/hooks/agent"),
+        ("hermes", {"delivery_id": "run-1"}, "http://openclaw.test/webhooks/agent"),
+    ],
+)
+async def test_analyze_with_openclaw_sends_utf8_json_body(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    response_payload: dict[str, str],
+    expected_url: str,
+) -> None:
     from core.config import Config
     from services.forwarding import forward
 
@@ -41,10 +53,10 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(monkeypatch: pytest.Mo
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_TOKEN", "token")
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_HOOKS_TOKEN", "")
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 13)
-    monkeypatch.setattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw")
+    monkeypatch.setattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", platform)
 
     response = MagicMock()
-    response.json.return_value = {"runId": "run-1"}
+    response.json.return_value = response_payload
     response.raise_for_status = MagicMock()
     client = MagicMock()
     client.post = AsyncMock(return_value=response)
@@ -60,11 +72,15 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(monkeypatch: pytest.Mo
     )
 
     assert result["_openclaw_run_id"] == "run-1"
+    post_args = client.post.await_args.args
     post_kwargs = client.post.await_args.kwargs
     body = post_kwargs["content"]
+    headers = post_kwargs["headers"]
     timeout = post_kwargs["timeout"]
+    assert post_args[0] == expected_url
     assert "json" not in post_kwargs
     assert isinstance(body, bytes)
+    assert headers["Content-Type"] == "application/json; charset=utf-8"
     assert "中文告警".encode() in body
     assert b"\\u4e2d\\u6587" not in body
     assert b"[REDACTED]" in body

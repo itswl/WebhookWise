@@ -26,6 +26,7 @@ from models import FailedForward, ForwardRule
 from services.webhooks.types import AnalysisResult, FailedForwardStatus, ForwardResult, WebhookData
 
 _T = TypeVar("_T")
+_JSON_UTF8_CONTENT_TYPE = "application/json; charset=utf-8"
 
 
 async def _with_session(
@@ -461,10 +462,10 @@ async def analyze_with_openclaw(
 
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/webhooks/agent"
         signature = hmac_mod.new(hooks_token.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
-        headers = {"Content-Type": "application/json", "X-Webhook-Signature": signature}
+        headers = {"Content-Type": _JSON_UTF8_CONTENT_TYPE, "X-Webhook-Signature": signature}
     else:
         target_url = f"{Config.openclaw.OPENCLAW_GATEWAY_URL}/hooks/agent"
-        headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": _JSON_UTF8_CONTENT_TYPE}
     kwargs: dict[str, Any] = {"content": payload_bytes}
 
     trace_id = get_trace_id()
