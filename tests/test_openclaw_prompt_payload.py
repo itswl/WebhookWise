@@ -1,5 +1,5 @@
-def test_openclaw_prompt_payload_keeps_key_fields_when_payload_is_large() -> None:
-    from services.forwarding.forward import _build_openclaw_prompt_payload, _json_size_bytes
+def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
+    from services.forwarding.forward import _build_openclaw_prompt_payload
 
     payload = {
         "alerts": [
@@ -22,5 +22,5 @@ def test_openclaw_prompt_payload_keeps_key_fields_when_payload_is_large() -> Non
 
     assert result["overview"]["labels"]["internal_label_service"] == "ai-router"
     assert result["overview"]["annotations"]["summary"] == "OpenRouter success rate is 0%"
-    assert "payload_note" in result
-    assert _json_size_bytes(result) <= 16 * 1024
+    assert result["payload"]["raw_debug_blob"] == "x" * 100_000
+    assert "payload_note" not in result

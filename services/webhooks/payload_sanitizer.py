@@ -55,38 +55,52 @@ def _should_offload(data: object, depth: int = 0) -> bool:
     return False
 
 
-async def sanitize_for_ai_async(parsed_data: dict[str, Any]) -> dict[str, Any]:
+async def sanitize_for_ai_async(
+    parsed_data: dict[str, Any], *, strip_configured_keys: bool = True, truncate: bool = True
+) -> dict[str, Any]:
     if not parsed_data:
         return parsed_data
     if _should_offload(parsed_data):
-        res = await asyncio.to_thread(sanitize_for_ai, parsed_data)
+        res = await asyncio.to_thread(
+            sanitize_for_ai,
+            parsed_data,
+            strip_configured_keys=strip_configured_keys,
+            truncate=truncate,
+        )
         return res
-    return sanitize_for_ai(parsed_data)
+    return sanitize_for_ai(parsed_data, strip_configured_keys=strip_configured_keys, truncate=truncate)
 
 
-def sanitize_for_ai(parsed_data: dict[str, Any]) -> dict[str, Any]:
+def sanitize_for_ai(
+    parsed_data: dict[str, Any], *, strip_configured_keys: bool = True, truncate: bool = True
+) -> dict[str, Any]:
     """清洗 parsed_data，移除噪音字段并截断过大内容。
 
     1. 递归移除 AI_PAYLOAD_STRIP_KEYS 指定的键
     2. 序列化后超过 AI_PAYLOAD_MAX_BYTES 则截断大值字段
+
+    OpenClaw 深度分析可关闭 strip/truncate，仅保留敏感字段脱敏。
     """
     if not parsed_data:
         return parsed_data
 
     strip_keys = (
         {k.strip().lower() for k in Config.ai.AI_PAYLOAD_STRIP_KEYS.split(",")}
-        if Config.ai.AI_PAYLOAD_STRIP_KEYS
+        if strip_configured_keys and Config.ai.AI_PAYLOAD_STRIP_KEYS
         else set()
     )
-    max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
     cleaned_obj = redact_nested(_strip_keys_recursive(parsed_data, strip_keys))
     cleaned: dict[str, Any] = cleaned_obj if isinstance(cleaned_obj, dict) else parsed_data
 
     # Phase 2: 检查大小，超限则截断
+    if not truncate:
+        return cleaned
+
+    max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
     serialized = orjson.dumps(cleaned)
-    if len(serialized) > max_bytes:
+    if max_bytes > 0 and len(serialized) > max_bytes:
         logger.info(
             "Payload 超过 AI 输入限制 (%d > %d bytes)，执行截断",
             len(serialized),
