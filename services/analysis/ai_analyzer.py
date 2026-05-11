@@ -52,6 +52,16 @@ _policy_refresh_lock = asyncio.Lock()
 _prompt_template_lock = asyncio.Lock()
 _openai_client_lock = asyncio.Lock()
 
+_AI_POLICY_REFUSAL_MARKERS = (
+    "terms of service",
+    "content_policy",
+    "content policy",
+    "content filter",
+    "prohibited",
+    "policy violation",
+    "violation of provider",
+)
+
 
 def _get_config_source(key: str) -> str:
     meta = Config.get_meta(key)
@@ -353,6 +363,67 @@ async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple
         raise
 
 
+def _iter_exception_chain(root: BaseException) -> list[BaseException]:
+    visited: set[int] = set()
+    out: list[BaseException] = []
+    curr: BaseException | None = root
+    while curr is not None and id(curr) not in visited:
+        visited.add(id(curr))
+        out.append(curr)
+        curr = curr.__cause__ or curr.__context__
+    return out
+
+
+def _extract_ai_error_message(exc: BaseException) -> str:
+    for curr in _iter_exception_chain(exc):
+        body = getattr(curr, "body", None)
+        if isinstance(body, dict):
+            err = body.get("error")
+            if isinstance(err, dict):
+                message = err.get("message")
+                if isinstance(message, str) and message.strip():
+                    return message.strip()
+        text = str(curr).strip()
+        if text:
+            return text[:500]
+    return type(exc).__name__
+
+
+def _is_ai_policy_refusal(exc: BaseException) -> bool:
+    for curr in _iter_exception_chain(exc):
+        error_text = str(curr).lower()
+        body = getattr(curr, "body", None)
+        if isinstance(body, dict):
+            error_text += f" {body!s}".lower()
+
+        if any(marker in error_text for marker in _AI_POLICY_REFUSAL_MARKERS):
+            return True
+
+        status_code = getattr(curr, "status_code", None)
+        if type(curr).__name__ == "PermissionDeniedError" and status_code == 403:
+            return True
+
+    return False
+
+
+async def _degrade_to_rules(
+    webhook_data: WebhookData,
+    parsed: dict[str, Any],
+    source: str,
+    alert_hash: str,
+    reason: str,
+    *,
+    notify: bool,
+) -> AnalysisResult:
+    logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
+    res = analyze_with_rules(parsed, source)
+    res.update({"_degraded": True, "_route_type": "rule", "_degraded_reason": reason})
+    await log_ai_usage("rule", alert_hash, source)
+    if notify:
+        await _send_ai_error_alert(webhook_data, reason, is_degraded=True)
+    return res
+
+
 async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_degraded: bool = False) -> None:
     try:
         if not Config.ai.ENABLE_FORWARD or not Config.ai.FORWARD_URL:
@@ -524,20 +595,14 @@ async def analyze_webhook_with_ai(
 
     if not Config.ai.ENABLE_AI_ANALYSIS or not Config.ai.OPENAI_API_KEY:
         reason = "disabled" if not Config.ai.ENABLE_AI_ANALYSIS else "no_api_key"
-        logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
-        res = analyze_with_rules(parsed, source)
-        res.update({"_degraded": True, "_route_type": "rule"})
-        await log_ai_usage("rule", alert_hash, source)
+        notify = Config.ai.ENABLE_AI_DEGRADATION and reason == "no_api_key"
+        notify_reason = (
+            "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。"
+            if notify
+            else reason
+        )
 
-        # 触发降级通知
-        if Config.ai.ENABLE_AI_DEGRADATION and reason == "no_api_key":
-            await _send_ai_error_alert(
-                webhook_data,
-                "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。",
-                is_degraded=True,
-            )
-
-        return res
+        return await _degrade_to_rules(webhook_data, parsed, source, alert_hash, notify_reason, notify=notify)
 
     try:
         model_meta = Config.get_meta("OPENAI_MODEL")
@@ -563,16 +628,30 @@ async def analyze_webhook_with_ai(
         await log_ai_usage("ai", alert_hash, source, model=Config.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
         return {**analysis, "_route_type": "ai"}
     except Exception as e:
-        logger.error("[AI] 分析失败 source=%s error=%s", source, e)
+        error_reason = _extract_ai_error_message(e)
+        logger.error("[AI] 分析失败 source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)
+        if _is_ai_policy_refusal(e):
+            return await _degrade_to_rules(
+                webhook_data,
+                parsed,
+                source,
+                alert_hash,
+                f"llm_policy_refusal: {error_reason}",
+                notify=True,
+            )
+
         if Config.ai.ENABLE_AI_DEGRADATION:
-            logger.info("[AI] 降级为规则分析 source=%s reason=ai_error", source)
-            res = analyze_with_rules(parsed, source)
-            res.update({"_degraded": True, "_route_type": "rule"})
-            await _send_ai_error_alert(webhook_data, str(e), is_degraded=True)
-            return res
+            return await _degrade_to_rules(
+                webhook_data,
+                parsed,
+                source,
+                alert_hash,
+                f"ai_error: {error_reason}",
+                notify=True,
+            )
         else:
             # 即使不降级，也要发送错误通知
-            await _send_ai_error_alert(webhook_data, str(e), is_degraded=False)
+            await _send_ai_error_alert(webhook_data, error_reason, is_degraded=False)
             raise
 
 
