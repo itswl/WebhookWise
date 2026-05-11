@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -47,8 +48,12 @@ class FailedForward(Base, SerializerMixin):
     __tablename__ = "failed_forwards"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    webhook_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    forward_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    webhook_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    forward_rule_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("forward_rules.id", ondelete="SET NULL"), nullable=True
+    )
     target_url: Mapped[str] = mapped_column(String(500), nullable=False)
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
@@ -83,9 +88,15 @@ class ForwardOutbox(Base, SerializerMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
-    webhook_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    original_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    forward_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    webhook_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True
+    )
+    forward_rule_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("forward_rules.id", ondelete="SET NULL"), nullable=True
+    )
 
     rule_name: Mapped[str] = mapped_column(String(100), default="")
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)

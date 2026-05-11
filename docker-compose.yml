@@ -65,8 +65,8 @@ services:
       ALLOW_UNAUTHENTICATED_WEBHOOK: ${ALLOW_UNAUTHENTICATED_WEBHOOK:-false}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
-      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
       MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
 
@@ -89,7 +89,7 @@ services:
           "CMD",
           "python3",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready').read()"
         ]
       interval: 30s
       timeout: 10s
@@ -119,10 +119,14 @@ services:
       PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
-      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      HOST: 0.0.0.0
+      METRICS_PORT: ${WORKER_METRICS_PORT:-9001}
       MAX_CONCURRENT_WEBHOOK_TASKS: ${MAX_CONCURRENT_WEBHOOK_TASKS:-30}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+    expose:
+      - "${WORKER_METRICS_PORT:-9001}"
     volumes:
       - ./.env:/app/.env
       - ./logs:/app/logs

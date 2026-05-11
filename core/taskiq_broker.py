@@ -63,11 +63,14 @@ async def worker_startup_event(state: object) -> None:
     from core.config import Config
     from core.http_client import get_http_client
     from core.logger import setup_logger
+    from core.metrics import start_background_metrics_server
     from db.session import init_engine
     from services.analysis.ai_analyzer import initialize_openai_client
 
     # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
     setup_logger()
+    if Config.server.RUN_MODE == "worker":
+        start_background_metrics_server()
     initialize_adapters()
     await init_engine()
     get_http_client()

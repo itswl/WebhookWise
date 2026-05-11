@@ -14,6 +14,7 @@ from core.auth import verify_api_key
 from core.config import Config
 from core.logger import logger
 from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+from core.redis_client import redis_ping
 from core.sensitive_data import redact_event_dict
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
@@ -37,13 +38,31 @@ JSONDict = dict[str, Any]
 
 @webhook_router.get("/health", response_model=HealthResponse)
 async def health_check() -> JSONResponse:
-    """健康检查接口。"""
+    """兼容性健康检查：等同 readiness。"""
+    return await readiness_check()
+
+
+@webhook_router.get("/live", response_model=HealthResponse)
+async def liveness_check() -> JSONResponse:
+    """进程存活检查，不触碰外部依赖。"""
+    return JSONResponse(content={"success": True, "data": {"status": "alive"}}, status_code=200)
+
+
+@webhook_router.get("/ready", response_model=HealthResponse)
+async def readiness_check() -> JSONResponse:
+    """就绪检查：接收链路依赖 DB 与 Redis 队列。"""
     db_ok = await test_db_connection()
+    redis_ok = await redis_ping()
+    ready = db_ok and redis_ok
     content = {
         "success": True,
-        "data": {"status": "healthy" if db_ok else "unhealthy", "database": "ok" if db_ok else "failed"},
+        "data": {
+            "status": "ready" if ready else "unready",
+            "database": "ok" if db_ok else "failed",
+            "redis": "ok" if redis_ok else "failed",
+        },
     }
-    return JSONResponse(content=content, status_code=200 if db_ok else 503)
+    return JSONResponse(content=content, status_code=200 if ready else 503)
 
 
 @webhook_router.get("/")

@@ -12,6 +12,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     LargeBinary,
@@ -63,15 +64,18 @@ class WebhookEvent(Base, SerializerMixin):
 
     processing_status: Mapped[str] = mapped_column(String(20), default="received", nullable=False, index=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime)
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     forward_status: Mapped[str | None] = mapped_column(String(20))
 
-    prev_alert_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    prev_alert_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True
+    )
 
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
-    duplicate_of: Mapped[int | None] = mapped_column(Integer)
+    duplicate_of: Mapped[int | None] = mapped_column(Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"))
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     beyond_window: Mapped[bool] = mapped_column(Boolean, default=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -85,6 +89,7 @@ class WebhookEvent(Base, SerializerMixin):
         Index("idx_importance_timestamp", "importance", "timestamp"),
         Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
         Index("idx_status_created", "processing_status", "created_at"),
+        Index("idx_retry_due", "next_retry_at", postgresql_where=(processing_status == "retry")),
         Index("idx_source_timestamp_id", "source", "timestamp", "id"),
     )
 
@@ -191,7 +196,7 @@ class WebhookEvent(Base, SerializerMixin):
         res = super().to_dict()
         res["raw_payload"] = decompress_payload(self.raw_payload)
 
-        for k in ["timestamp", "created_at", "updated_at", "last_notified_at"]:
+        for k in ["timestamp", "created_at", "updated_at", "last_notified_at", "next_retry_at"]:
             val = getattr(self, k, None)
             if isinstance(val, datetime):
                 res[k] = val.isoformat()

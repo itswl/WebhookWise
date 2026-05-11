@@ -394,9 +394,6 @@ async def _finalize_analysis_transaction(
             event_id=ctx.event_id,
         )
 
-        if analysis_res.is_reused:
-            return save_res, None, []
-
         fwd_dec = await _decide_forwarding(
             normalize_importance(final_analysis.get("importance", "")),
             save_res.is_duplicate and not save_res.beyond_window,
@@ -423,17 +420,21 @@ async def _handle_process_exception(event_id: int, err: Exception, span: Any | N
     next_retry_count = 0
     status = WebhookProcessingStatus.DEAD_LETTER
     if retryable:
-        marked_retry_count = await mark_retry(event_id, max_retries=max_retries, error_message=str(err))
-        if marked_retry_count is not None:
-            next_retry_count = marked_retry_count
+        marked_retry = await mark_retry(event_id, max_retries=max_retries, error_message=str(err))
+        retry_delay: int | None = None
+        if marked_retry is not None:
+            next_retry_count, retry_delay = marked_retry
             status = WebhookProcessingStatus.RETRY
 
         if status == WebhookProcessingStatus.RETRY:
-            delay = compute_backoff_delay(
-                next_retry_count,
-                initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
-                max_delay=Config.retry.WEBHOOK_RETRY_MAX_DELAY,
-                multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
+            delay = int(
+                retry_delay
+                or compute_backoff_delay(
+                    next_retry_count,
+                    initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
+                    max_delay=Config.retry.WEBHOOK_RETRY_MAX_DELAY,
+                    multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
+                )
             )
             try:
                 await schedule_webhook_retry(event_id, delay)
@@ -580,8 +581,8 @@ async def _handle_webhook_process_inner(
             route_label = final_analysis.get("_route_type", "ai")
             noise_relation = noise.relation if noise else "unknown"
             duration_ms = int((time.perf_counter() - start_perf) * 1000)
-            if analysis_res.is_reused or fwd_dec is None:
-                fwd_info = " forward=skipped(reused)"
+            if fwd_dec is None:
+                fwd_info = " forward=unknown"
             elif fwd_dec.should_forward:
                 fwd_info = f" forward=queued rules={len(fwd_dec.matched_rules)} outbox={len(outbox_ids)}"
                 if fwd_dec.is_periodic_reminder:

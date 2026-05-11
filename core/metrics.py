@@ -220,6 +220,8 @@ DB_POOL_SIZE = Gauge(
     multiprocess_mode="liveall",
 )
 
+_background_metrics_started = False
+
 
 def update_db_pool_metrics() -> None:
     """更新数据库连接池容量指标。
@@ -238,6 +240,33 @@ def update_db_pool_metrics() -> None:
             DB_POOL_SIZE.set(cap)
     except (AttributeError, RuntimeError) as e:
         logger.warning("[Metrics] 无法获取 DB 连接池容量: %s", e)
+
+
+def start_background_metrics_server() -> None:
+    """Expose metrics for non-HTTP processes such as TaskIQ workers."""
+    global _background_metrics_started
+    if _background_metrics_started or Config.server.METRICS_PORT <= 0:
+        return
+    bind_host = Config.server.HOST or "0.0.0.0"
+    try:
+        multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+        if multiproc_dir:
+            from prometheus_client import CollectorRegistry, multiprocess
+
+            registry = CollectorRegistry()
+            mp_collector = cast(Callable[[CollectorRegistry], object], multiprocess.MultiProcessCollector)
+            mp_collector(registry)
+            prometheus_client.start_http_server(port=Config.server.METRICS_PORT, addr=bind_host, registry=registry)
+        else:
+            prometheus_client.start_http_server(port=Config.server.METRICS_PORT, addr=bind_host)
+        _background_metrics_started = True
+        logger.info("[Metrics] 后台进程指标端口已启动: %s:%d", bind_host, Config.server.METRICS_PORT)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            logger.debug("[Metrics] 后台指标端口 %d 已被绑定", Config.server.METRICS_PORT)
+            _background_metrics_started = True
+            return
+        logger.error("[Metrics] 后台指标端口启动失败: %s", e)
 
 
 def setup_metrics(app: FastAPI) -> Instrumentator:
@@ -282,17 +311,7 @@ def setup_metrics(app: FastAPI) -> Instrumentator:
         app.add_route("/metrics", metrics_endpoint, methods=["GET"])
     elif Config.server.METRICS_PORT > 0 and Config.server.METRICS_PORT != Config.server.PORT:
         # ── 单进程 + 独立端口模式 ──
-        try:
-            prometheus_client.start_http_server(port=Config.server.METRICS_PORT, addr=Config.server.HOST)
-            logger.info("[Metrics] 成功启动独立的 Prometheus 监控端口: %d", Config.server.METRICS_PORT)
-        except OSError as e:
-            if "Address already in use" in str(e):
-                logger.debug(
-                    "[Metrics] 独立监控端口 %d 已被其他 Worker 绑定，复用该指标服务。",
-                    Config.server.METRICS_PORT,
-                )
-            else:
-                logger.error("[Metrics] 启动独立监控端口失败: %s", e)
+        start_background_metrics_server()
         # 注意：无论是否绑定成功，都不向主 FastAPI 挂载 /metrics 路由，实现端口隔离。
     else:
         # ── 单进程 + 复用主端口模式 ──

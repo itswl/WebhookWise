@@ -36,6 +36,8 @@ class _RedisClient(Protocol):
 
     async def xinfo_groups(self, stream: str) -> object: ...
 
+    async def ping(self) -> object: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -232,6 +234,15 @@ async def redis_xinfo_group_lag(stream: str, group: str) -> int:
             except (TypeError, ValueError):
                 return 0
     return 0
+
+
+async def redis_ping() -> bool:
+    try:
+        raw = await get_redis().ping()
+        return bool(raw)
+    except Exception as e:
+        logger.warning("[Redis] ping 失败: %s", e)
+        return False
 
 
 async def dispose_redis() -> None:
