@@ -76,7 +76,7 @@ async def _recover_single_event(e: WebhookEvent, threshold_secs: int) -> None:
         from services.operations.tasks import process_webhook_task
 
         now = datetime.now()
-        retry_next_at = now + timedelta(seconds=max(1, Config.server.RECOVERY_POLLER_INTERVAL_SECONDS))
+        retry_next_at = now + timedelta(seconds=max(1, Config.server.RECOVERY_SCAN_INTERVAL_SECONDS))
         stale_threshold = now - timedelta(seconds=threshold_secs)
         async with session_scope() as session:
             current = await session.get(WebhookEvent, e.id)

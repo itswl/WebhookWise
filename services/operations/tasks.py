@@ -21,6 +21,7 @@ from core.metrics import (
     SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME,
     SCHEDULED_TASK_RUNS_TOTAL,
 )
+from core.redis_client import RedisEvalArg
 from core.taskiq_broker import broker
 
 logger = logging.getLogger("webhook_service.tasks")
@@ -28,6 +29,31 @@ logger = logging.getLogger("webhook_service.tasks")
 _last_success_by_name: dict[str, float] = {}
 _webhook_task_semaphore: asyncio.Semaphore | None = None
 _webhook_task_semaphore_limit = 0
+
+_WEBHOOK_TASK_SLOT_KEY = "webhook:global-task-slots"
+
+_ACQUIRE_WEBHOOK_SLOT_LUA = """
+redis.call("zremrangebyscore", KEYS[1], "-inf", ARGV[1])
+if redis.call("zcard", KEYS[1]) >= tonumber(ARGV[2]) then
+    return 0
+end
+redis.call("zadd", KEYS[1], ARGV[3], ARGV[4])
+redis.call("pexpire", KEYS[1], ARGV[5])
+return 1
+"""
+
+_RENEW_WEBHOOK_SLOT_LUA = """
+if redis.call("zscore", KEYS[1], ARGV[1]) then
+    redis.call("zadd", KEYS[1], ARGV[2], ARGV[1])
+    redis.call("pexpire", KEYS[1], ARGV[3])
+    return 1
+end
+return 0
+"""
+
+_RELEASE_WEBHOOK_SLOT_LUA = """
+return redis.call("zrem", KEYS[1], ARGV[1])
+"""
 
 _RELEASE_IF_OWNER_LUA = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -38,17 +64,107 @@ return 0
 
 
 @asynccontextmanager
-async def _webhook_task_slot() -> AsyncIterator[None]:
+async def _local_webhook_task_slot(limit: int) -> AsyncIterator[None]:
     global _webhook_task_semaphore, _webhook_task_semaphore_limit
-    limit = int(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS or 0)
-    if limit <= 0:
-        yield
-        return
     if _webhook_task_semaphore is None or _webhook_task_semaphore_limit != limit:
         _webhook_task_semaphore = asyncio.Semaphore(limit)
         _webhook_task_semaphore_limit = limit
     async with _webhook_task_semaphore:
         yield
+
+
+async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
+    from core.redis_client import redis_eval_int
+
+    return await redis_eval_int(script, numkeys, *args)
+
+
+def _webhook_slot_lease_seconds() -> int:
+    return max(30, int(Config.server.WEBHOOK_TASK_SLOT_LEASE_SECONDS or 0))
+
+
+def _slot_times(lease_seconds: int) -> tuple[int, int, int]:
+    now_ms = int(time.time() * 1000)
+    lease_ms = int(lease_seconds * 1000)
+    # Keep the key slightly longer than one member lease so Redis can clean old slots on the next acquire.
+    key_ttl_ms = lease_ms + 30_000
+    return now_ms, now_ms + lease_ms, key_ttl_ms
+
+
+async def _try_acquire_webhook_slot(token: str, limit: int, lease_seconds: int) -> bool:
+    now_ms, expires_at_ms, key_ttl_ms = _slot_times(lease_seconds)
+    acquired = await _redis_eval_int(
+        _ACQUIRE_WEBHOOK_SLOT_LUA,
+        1,
+        _WEBHOOK_TASK_SLOT_KEY,
+        now_ms,
+        limit,
+        expires_at_ms,
+        token,
+        key_ttl_ms,
+    )
+    return bool(acquired)
+
+
+async def _renew_webhook_slot_until_cancelled(token: str, lease_seconds: int) -> None:
+    interval = max(1.0, lease_seconds / 3)
+    while True:
+        await asyncio.sleep(interval)
+        _now_ms, expires_at_ms, key_ttl_ms = _slot_times(lease_seconds)
+        renewed = await _redis_eval_int(
+            _RENEW_WEBHOOK_SLOT_LUA,
+            1,
+            _WEBHOOK_TASK_SLOT_KEY,
+            token,
+            expires_at_ms,
+            key_ttl_ms,
+        )
+        if not renewed:
+            logger.warning("[Tasks] Redis 全局并发令牌续期失败，可能已失去 slot token=%s", token)
+            return
+
+
+@asynccontextmanager
+async def _distributed_webhook_task_slot(limit: int) -> AsyncIterator[None]:
+    token = f"{Config.server.WORKER_ID}:{uuid.uuid4().hex}"
+    lease_seconds = _webhook_slot_lease_seconds()
+    poll_interval = max(0.05, float(Config.retry.PROCESSING_LOCK_POLL_INTERVAL_MS or 100) / 1000)
+    renew_task: asyncio.Task[None] | None = None
+    try:
+        while True:
+            try:
+                if await _try_acquire_webhook_slot(token, limit, lease_seconds):
+                    renew_task = asyncio.create_task(_renew_webhook_slot_until_cancelled(token, lease_seconds))
+                    break
+            except Exception as e:
+                logger.warning("[Tasks] Redis 全局并发令牌异常，降级为本进程限流: %s", e)
+                async with _local_webhook_task_slot(limit):
+                    yield
+                return
+            await asyncio.sleep(poll_interval)
+
+        yield
+    finally:
+        if renew_task is not None:
+            renew_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await renew_task
+        with contextlib.suppress(Exception):
+            await _redis_eval_int(_RELEASE_WEBHOOK_SLOT_LUA, 1, _WEBHOOK_TASK_SLOT_KEY, token)
+
+
+@asynccontextmanager
+async def _webhook_task_slot() -> AsyncIterator[None]:
+    limit = int(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS or 0)
+    if limit <= 0:
+        yield
+        return
+    async with _distributed_webhook_task_slot(limit):
+        yield
+
+
+def _recovery_scan_interval_seconds() -> int:
+    return max(30, int(Config.server.RECOVERY_SCAN_INTERVAL_SECONDS or Config.server.RECOVERY_POLLER_INTERVAL_SECONDS))
 
 
 @asynccontextmanager
@@ -148,26 +264,22 @@ async def poll_openclaw_analysis_task(analysis_id: int) -> None:
 
 @broker.task(
     task_name="scheduled_openclaw_poll_scan",
-    schedule=[
-        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "openclaw_poll_scan_interval"}
-    ],
+    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
 )
 async def scheduled_openclaw_poll_scan() -> None:
     from services.analysis.openclaw_poller import run_openclaw_poll_scan
 
-    await _run_scheduled("openclaw_poll_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_openclaw_poll_scan())
+    await _run_scheduled("openclaw_poll_scan", _recovery_scan_interval_seconds(), run_openclaw_poll_scan())
 
 
 @broker.task(
     task_name="scheduled_recovery_scan",
-    schedule=[
-        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "recovery_scan_interval_seconds"}
-    ],
+    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "recovery_scan_interval_seconds"}],
 )
 async def scheduled_recovery_scan() -> None:
     from services.operations.recovery_poller import run_recovery_scan
 
-    await _run_scheduled("recovery_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_recovery_scan())
+    await _run_scheduled("recovery_scan", _recovery_scan_interval_seconds(), run_recovery_scan())
 
 
 @broker.task(
@@ -187,30 +299,22 @@ async def scheduled_metrics_refresh() -> None:
 
 @broker.task(
     task_name="scheduled_forward_outbox_scan",
-    schedule=[
-        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "forward_outbox_scan_interval"}
-    ],
+    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
 )
 async def scheduled_forward_outbox_scan() -> None:
     from services.forwarding.outbox import run_forward_outbox_scan
 
-    await _run_scheduled(
-        "forward_outbox_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_forward_outbox_scan()
-    )
+    await _run_scheduled("forward_outbox_scan", _recovery_scan_interval_seconds(), run_forward_outbox_scan())
 
 
 @broker.task(
     task_name="scheduled_failed_forward_scan",
-    schedule=[
-        {"interval": Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, "schedule_id": "failed_forward_scan_interval"}
-    ],
+    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "failed_forward_scan_interval"}],
 )
 async def scheduled_failed_forward_scan() -> None:
     from services.forwarding.retry import run_failed_forward_scan
 
-    await _run_scheduled(
-        "failed_forward_scan", Config.server.RECOVERY_POLLER_INTERVAL_SECONDS, run_failed_forward_scan()
-    )
+    await _run_scheduled("failed_forward_scan", _recovery_scan_interval_seconds(), run_failed_forward_scan())
 
 
 @broker.task(

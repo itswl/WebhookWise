@@ -113,6 +113,7 @@ def get_config_sources() -> list[dict[str, object]]:
                 "source": str(source),
                 "updated_at": updated_at,
                 "updated_by": meta.get("updated_by"),
+                "requires_restart": Config.runtime_key_requires_restart(key),
             }
         )
     return items

@@ -85,6 +85,7 @@ class ConfigSourceItem(BaseModel):
     source: str
     updated_at: str | None = None
     updated_by: str | None = None
+    requires_restart: bool = False
 
 
 class ConfigSourcesResponse(APIResponse[list[ConfigSourceItem]]):
