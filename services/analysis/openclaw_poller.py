@@ -40,6 +40,12 @@ def _clamp_poll_delay_to_timeout(delay_seconds: int, created_at: datetime | None
     return max(1, min(delay_seconds, remaining))
 
 
+def _poll_claim_lease_seconds() -> int:
+    """How long a claimed poll stays hidden from scanner fallback."""
+    # HTTP polling can do three 30s attempts; WS polling is bounded by OPENCLAW_POLL_TIMEOUT.
+    return max(30, int(Config.openclaw.OPENCLAW_POLL_TIMEOUT), 90) + 30
+
+
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
     from core.redis_client import redis_get_json_dict
 
@@ -163,7 +169,7 @@ async def _notify_feishu_deep_analysis_failed(record_dict: WebhookData, reason: 
             webhook_event_id=record_dict["webhook_event_id"],
         )
         if success:
-            logger.info("深度分析失败通知已发送: id=%s, reason=%s", record_dict['id'], reason)
+            logger.info("深度分析失败通知已发送: id=%s, reason=%s", record_dict["id"], reason)
         else:
             try:
                 from services.forwarding.forward import record_failed_forward
@@ -288,9 +294,7 @@ async def _poll_single_record(rec: WebhookData) -> WebhookData:
         timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
         elapsed_total = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
         if created_dt and elapsed_total > timeout_seconds:
-            logger.info(
-                "[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds
-            )
+            logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds)
             await _clear_poll_stability(record_id)
             DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
             update: WebhookData = {
@@ -336,6 +340,25 @@ async def _poll_single_record(rec: WebhookData) -> WebhookData:
         if result.get("status") == "completed":
             text = result.get("text", "")
             msg_count = int(result.get("msg_count", 0) or 0)
+            required_hits = max(1, int(Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS))
+
+            def _completed_update() -> WebhookData:
+                analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
+                duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
+                DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
+                return {
+                    "id": record_id,
+                    "action": "update",
+                    "_need_success_notify": True,
+                    "status": DeepAnalysisStatus.COMPLETED,
+                    "analysis_result": analysis_result,
+                    "duration_seconds": duration,
+                }
+
+            if required_hits <= 1:
+                logger.info("[Poller] 分析完成，稳定命中阈值为 1，直接写库: id=%s", record_id)
+                await _clear_poll_stability(record_id)
+                return _completed_update()
 
             current_snapshot = {"msg_count": msg_count, "text_len": len(text)}
             prev_snapshot = await _get_poll_stability(record_id)
@@ -350,33 +373,18 @@ async def _poll_single_record(rec: WebhookData) -> WebhookData:
                     "[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
                     record_id,
                     hit_count,
-                    Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS,
+                    required_hits,
                     msg_count,
                     len(text),
                 )
-                if hit_count >= Config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS:
+                if hit_count >= required_hits:
                     logger.info("[Poller] 分析稳定确认，准备写库: id=%s", record_id)
                 else:
                     await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
                     return {"id": record_id, "action": "skip"}
 
                 await _clear_poll_stability(record_id)
-                analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
-
-                duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
-                update = {
-                    "status": DeepAnalysisStatus.COMPLETED,
-                    "analysis_result": analysis_result,
-                    "duration_seconds": duration,
-                }
-                DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
-                # 标记需要查 source 并发飞书通知
-                return {
-                    "id": record_id,
-                    "action": "update",
-                    "_need_success_notify": True,
-                    **update,
-                }
+                return _completed_update()
             else:
                 logger.info(
                     "[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s",
@@ -454,54 +462,73 @@ async def _poll_single_record(rec: WebhookData) -> WebhookData:
         }
 
 
+def _record_to_poll_dict(record: Any) -> WebhookData:
+    return {
+        "id": record.id,
+        "webhook_event_id": record.webhook_event_id,
+        "engine": record.engine,
+        "openclaw_session_key": record.openclaw_session_key,
+        "openclaw_run_id": record.openclaw_run_id,
+        "created_at": record.created_at,
+        "status": record.status,
+        "analysis_result": record.analysis_result,
+        "duration_seconds": record.duration_seconds,
+        "poll_attempts": record.poll_attempts,
+        "last_polled_at": record.last_polled_at,
+    }
+
+
+async def _claim_openclaw_poll(analysis_id: int) -> tuple[WebhookData | None, int | None]:
+    """Atomically claim a due pending analysis and hide it from scanner fallback."""
+    from sqlalchemy import select, update
+
+    from db.session import session_scope
+    from models import DeepAnalysis
+
+    now = datetime.now()
+    lease_until = now + timedelta(seconds=_poll_claim_lease_seconds())
+    async with session_scope() as session:
+        result = await session.execute(
+            update(DeepAnalysis)
+            .where(DeepAnalysis.id == analysis_id)
+            .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
+            .where((DeepAnalysis.next_poll_at.is_(None)) | (DeepAnalysis.next_poll_at <= now))
+            .values(
+                poll_attempts=DeepAnalysis.poll_attempts + 1,
+                last_polled_at=now,
+                next_poll_at=lease_until,
+            )
+            .returning(DeepAnalysis)
+        )
+        record = result.scalar_one_or_none()
+        if record:
+            return _record_to_poll_dict(record), None
+
+        next_poll_at = (
+            await session.execute(
+                select(DeepAnalysis.next_poll_at)
+                .where(DeepAnalysis.id == analysis_id)
+                .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
+            )
+        ).scalar_one_or_none()
+        if next_poll_at and next_poll_at > now:
+            return None, _seconds_until(next_poll_at)
+    return None, None
+
+
 async def poll_deep_analysis_once(analysis_id: int) -> None:
     """Poll one pending DeepAnalysis record and reschedule if it is still pending."""
     from db.session import session_scope
     from models import DeepAnalysis
 
     try:
-        record_dict: WebhookData | None = None
-        early_reschedule_delay: int | None = None
-        async with session_scope() as session:
-            from sqlalchemy import select
-            from sqlalchemy.orm import defer
-
-            result = await session.execute(
-                select(DeepAnalysis)
-                .options(defer(DeepAnalysis.user_question))
-                .where(DeepAnalysis.id == analysis_id)
-                .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
-            )
-            record = result.scalar_one_or_none()
-            if not record:
-                return
-            now = datetime.now()
-            if record.next_poll_at and record.next_poll_at > now:
-                early_reschedule_delay = _seconds_until(record.next_poll_at)
-                logger.debug(
-                    "[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss",
-                    analysis_id,
-                    early_reschedule_delay,
-                )
-            else:
-                record.poll_attempts = (record.poll_attempts or 0) + 1
-                record.last_polled_at = now
-                record.next_poll_at = None
-                record_dict = {
-                    "id": record.id,
-                    "webhook_event_id": record.webhook_event_id,
-                    "engine": record.engine,
-                    "openclaw_session_key": record.openclaw_session_key,
-                    "openclaw_run_id": record.openclaw_run_id,
-                    "created_at": record.created_at,
-                    "status": record.status,
-                    "analysis_result": record.analysis_result,
-                    "duration_seconds": record.duration_seconds,
-                    "poll_attempts": record.poll_attempts,
-                    "last_polled_at": record.last_polled_at,
-                }
-
+        record_dict, early_reschedule_delay = await _claim_openclaw_poll(analysis_id)
         if early_reschedule_delay is not None:
+            logger.debug(
+                "[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss",
+                analysis_id,
+                early_reschedule_delay,
+            )
             await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
             return
         if record_dict is None:
@@ -522,7 +549,11 @@ async def poll_deep_analysis_once(analysis_id: int) -> None:
         async with session_scope() as session:
             from sqlalchemy import select
 
-            result = await session.execute(select(DeepAnalysis).where(DeepAnalysis.id == analysis_id))
+            result = await session.execute(
+                select(DeepAnalysis)
+                .where(DeepAnalysis.id == analysis_id)
+                .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
+            )
             record = result.scalar_one_or_none()
             if not record:
                 return
