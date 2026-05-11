@@ -49,6 +49,8 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
 async def _insert_outbox(
     session_factory: async_sessionmaker[AsyncSession],
     *,
+    webhook_event_id: int = 1,
+    original_event_id: int | None = None,
     status: str = ForwardOutboxStatus.PENDING,
     attempts: int = 0,
     max_attempts: int = 3,
@@ -62,7 +64,8 @@ async def _insert_outbox(
     async with session_factory.begin() as session:
         record = ForwardOutbox(
             idempotency_key=f"forward:test-{now.timestamp()}",
-            webhook_event_id=1,
+            webhook_event_id=webhook_event_id,
+            original_event_id=original_event_id,
             target_type=target_type,
             target_url="https://example.test/hook",
             status=status,
@@ -267,6 +270,8 @@ class TestFinalizeOutboxSuccess:
 
         outbox_id = await _insert_outbox(
             session_factory,
+            webhook_event_id=37769,
+            original_event_id=37291,
             target_type="openclaw",
             next_attempt_at=datetime.now() - timedelta(seconds=1),
         )
@@ -278,6 +283,7 @@ class TestFinalizeOutboxSuccess:
         async with session_factory() as session:
             deep = (await session.execute(select(DeepAnalysis))).scalars().first()
         assert deep is not None
+        assert deep.webhook_event_id == 37769
         assert deep.status == DeepAnalysisStatus.PENDING
         assert deep.openclaw_run_id == "run-1"
 
