@@ -40,6 +40,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(monkeypatch: pytest.Mo
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw.test")
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_TOKEN", "token")
     monkeypatch.setattr(Config.openclaw, "OPENCLAW_HOOKS_TOKEN", "")
+    monkeypatch.setattr(Config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 13)
     monkeypatch.setattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw")
 
     response = MagicMock()
@@ -61,8 +62,10 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(monkeypatch: pytest.Mo
     assert result["_openclaw_run_id"] == "run-1"
     post_kwargs = client.post.await_args.kwargs
     body = post_kwargs["content"]
+    timeout = post_kwargs["timeout"]
     assert "json" not in post_kwargs
     assert isinstance(body, bytes)
     assert "中文告警".encode() in body
     assert b"\\u4e2d\\u6587" not in body
     assert b"[REDACTED]" in body
+    assert timeout.connect == 13.0

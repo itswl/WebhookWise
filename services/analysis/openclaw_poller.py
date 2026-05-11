@@ -5,6 +5,7 @@ stores audit state, while TaskIQ owns retry/poll timing.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from datetime import datetime, timedelta
@@ -42,8 +43,17 @@ def _clamp_poll_delay_to_timeout(delay_seconds: int, created_at: datetime | None
 
 def _poll_claim_lease_seconds() -> int:
     """How long a claimed poll stays hidden from scanner fallback."""
-    # HTTP polling can do three 30s attempts; WS polling is bounded by OPENCLAW_POLL_TIMEOUT.
-    return max(30, int(Config.openclaw.OPENCLAW_POLL_TIMEOUT), 90) + 30
+    # HTTP polling can do three attempts; WS polling is bounded by OPENCLAW_POLL_TIMEOUT.
+    poll_timeout = max(1, int(Config.openclaw.OPENCLAW_POLL_TIMEOUT))
+    return max(30, poll_timeout * 3, 90) + 30
+
+
+def _openclaw_http_poll_timeout() -> float:
+    return float(max(1, int(Config.openclaw.OPENCLAW_POLL_TIMEOUT)))
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
@@ -220,7 +230,7 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
             url = f"{base_url}/sessions/{session_key}/final"
             logger.debug("HTTP /final 请求 (尝试 %s/%s): %s", attempt + 1, retry_count, url)
 
-            response = await client.get(url, headers=headers, timeout=30.0)
+            response = await client.get(url, headers=headers, timeout=_openclaw_http_poll_timeout())
 
             if response.status_code == 404:
                 last_error = "Session not found"
@@ -244,20 +254,20 @@ async def _poll_via_http(session_key: str, retry_count: int = 3) -> WebhookData:
             data: WebhookData = raw
 
             # 根据 /final 接口返回的字段判断状态
-            is_final = data.get("isFinal", False)
+            is_final = data.get("isFinal")
             is_processing = data.get("isProcessing", False)
             text = data.get("text", "")
             msg_count = int(data.get("messageCount", 0) or 0)
 
             # 判断是否完成
-            if is_processing and not text:
+            if is_processing is True:
                 last_error = "分析进行中"
                 continue
 
-            if text:
+            if text and is_final is not False:
                 return {"status": "completed", "text": text, "msg_count": msg_count}
 
-            if not is_final:
+            if is_final is False or not is_final:
                 last_error = "分析进行中"
                 continue
 
@@ -360,13 +370,14 @@ async def _poll_single_record(rec: WebhookData) -> WebhookData:
                 await _clear_poll_stability(record_id)
                 return _completed_update()
 
-            current_snapshot = {"msg_count": msg_count, "text_len": len(text)}
+            current_snapshot = {"msg_count": msg_count, "text_len": len(text), "text_hash": _text_hash(text)}
             prev_snapshot = await _get_poll_stability(record_id)
 
             if (
                 prev_snapshot
-                and prev_snapshot["msg_count"] == current_snapshot["msg_count"]
-                and prev_snapshot["text_len"] == current_snapshot["text_len"]
+                and prev_snapshot.get("msg_count") == current_snapshot["msg_count"]
+                and prev_snapshot.get("text_len") == current_snapshot["text_len"]
+                and prev_snapshot.get("text_hash") == current_snapshot["text_hash"]
             ):
                 hit_count = prev_snapshot.get("hit_count", 1) + 1
                 logger.info(

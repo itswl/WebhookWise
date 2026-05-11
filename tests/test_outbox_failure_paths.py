@@ -377,6 +377,48 @@ class TestRunFailedForwardScan:
 
 
 class TestOpenClawPoller:
+    async def test_poll_via_http_uses_configured_timeout_and_waits_for_final_text(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        seen_timeouts: list[float] = []
+
+        class _Response:
+            status_code = 200
+
+            def json(self) -> dict[str, object]:
+                return {
+                    "isProcessing": False,
+                    "isFinal": False,
+                    "text": "partial result",
+                    "messageCount": 1,
+                }
+
+        class _Client:
+            async def get(self, *_: object, **kwargs: object) -> _Response:
+                seen_timeouts.append(float(kwargs["timeout"]))
+                return _Response()
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
+
+        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+
+        assert result["status"] == "pending"
+        assert seen_timeouts == [7.0]
+
+    def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from core.config import Config
+        from services.analysis.openclaw_poller import _poll_claim_lease_seconds
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 120)
+
+        assert _poll_claim_lease_seconds() == 390
+
     async def test_claim_openclaw_poll_sets_inflight_lease(
         self,
         session_factory: async_sessionmaker[AsyncSession],
@@ -447,3 +489,56 @@ class TestOpenClawPoller:
         assert result["status"] == DeepAnalysisStatus.COMPLETED
         assert result["_need_success_notify"] is True
         assert result["analysis_result"]["root_cause"] == "root cause ready"
+
+    async def test_poll_single_record_treats_same_length_different_text_as_changed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        stability_state: dict[str, object] = {
+            "msg_count": 2,
+            "text_len": 4,
+            "text_hash": openclaw_poller._text_hash("aaaa"),
+            "hit_count": 1,
+        }
+        saved_states: list[dict[str, object]] = []
+        cleared = {"value": False}
+
+        async def _completed(*_: object, **__: object) -> dict[str, object]:
+            return {"status": "completed", "text": "bbbb", "msg_count": 2}
+
+        async def _get_stability(_: int) -> dict[str, object]:
+            return stability_state
+
+        async def _set_stability(_: int, data: dict[str, object]) -> None:
+            saved_states.append(data)
+
+        async def _clear(_: int) -> None:
+            cleared["value"] = True
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "_get_poll_stability", _get_stability)
+        monkeypatch.setattr(openclaw_poller, "_set_poll_stability", _set_stability)
+        monkeypatch.setattr(openclaw_poller, "_clear_poll_stability", _clear)
+
+        result = await openclaw_poller._poll_single_record(
+            {
+                "id": 1,
+                "webhook_event_id": 1,
+                "engine": "openclaw",
+                "openclaw_session_key": "session-1",
+                "openclaw_run_id": "run-1",
+                "created_at": datetime.now(),
+                "status": DeepAnalysisStatus.PENDING,
+                "analysis_result": None,
+                "duration_seconds": 0,
+            }
+        )
+
+        assert result["action"] == "skip"
+        assert saved_states[0]["text_hash"] == openclaw_poller._text_hash("bbbb")
+        assert cleared["value"] is False
