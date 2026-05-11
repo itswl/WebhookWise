@@ -247,7 +247,7 @@ def start_background_metrics_server() -> None:
     global _background_metrics_started
     if _background_metrics_started or Config.server.METRICS_PORT <= 0:
         return
-    bind_host = Config.server.HOST or "0.0.0.0"
+    bind_host = Config.server.HOST or "127.0.0.1"
     try:
         multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
         if multiproc_dir:
