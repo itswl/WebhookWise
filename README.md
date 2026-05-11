@@ -44,6 +44,7 @@
 - `api` 进程：FastAPI HTTP 服务（Gunicorn 4 UvicornWorker）
 - `worker` 进程：TaskIQ Worker，消费异步业务任务和定时任务
 - `scheduler` 进程：TaskIQ Scheduler，只负责周期性投递任务，不执行业务逻辑
+- `RUN_MODE=all`：通过 `supervisord` 在同一个容器内同时拉起 `api` / `worker` / `scheduler`，适合单机小部署或演示；需要横向扩容 Worker 时仍推荐独立进程/独立容器。
 
 **异步职责边界：**
 - TaskIQ：异步任务投递与 Worker 消费
@@ -86,6 +87,25 @@ curl http://localhost:8000/health
 
 数据库 Schema 迁移由 Compose 中的一次性 `migrate` 服务执行（`alembic upgrade head`）。API、Worker 和 Scheduler 只在迁移成功后启动，`entrypoint.sh` 只负责按 `RUN_MODE` 分发进程。
 
+### Supervisor all-in-one 模式
+
+默认 Compose 是三容器进程模型。如果想用 supervisor 在一个应用容器里同时拉起 API、Worker、Scheduler：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.supervisor.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.supervisor.yml exec webhook-service supervisorctl -c /app/supervisord.conf status
+```
+
+`RUN_MODE=all` 时容器 PID 1 是 `supervisord`，它会管理三个子进程：
+
+- `api`：Gunicorn + UvicornWorker，监听 `:8000`
+- `worker`：`taskiq worker core.taskiq_broker:broker services.operations.tasks`
+- `scheduler`：`taskiq scheduler core.taskiq_broker:scheduler`
+
+健康检查会同时校验 supervisor 中三个 program 均为 `RUNNING`，并探测 API `/ready`。
+
+默认三容器模式下，API 指标从 `webhook-service:8000/metrics` 暴露；Worker 会在容器网络内额外 expose `${WORKER_METRICS_PORT:-9001}`，用于抓取 TaskIQ 后台任务、recovery、重试等指标。all-in-one 模式下这些进程共享 `PROMETHEUS_MULTIPROC_DIR`，统一从 API `/metrics` 聚合暴露。
+
 ### 本地开发
 
 ```bash
@@ -95,7 +115,7 @@ pip install -r requirements.lock
 uvicorn main:app --reload --port 8000
 
 # 启动 Worker（另一个终端）
-python worker.py
+taskiq worker core.taskiq_broker:broker services.operations.tasks
 ```
 
 ### 发送测试 Webhook
@@ -249,8 +269,10 @@ tests/e2e/run_webhook_to_feishu.sh
 | `WEBHOOK_RATE_LIMIT_PER_MINUTE` | `600` | 按客户端 IP 限流；设为 `0` 表示关闭 |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
-| `RUN_MODE` | `all` | `api` / `worker` / `scheduler` / `all` |
-| `DB_POOL_SIZE` | `20` | 数据库连接池大小 |
+| `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all`；`all` 使用 supervisor 同容器启动 API、Worker、Scheduler |
+| `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |
+| `WORKER_METRICS_PORT` | `9001` | Compose 中独立 Worker 容器的后台任务指标端口 |
+| `DB_POOL_SIZE` | `5` | 单进程数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `LOG_FILE` | — | 日志文件路径（为空则仅控制台输出） |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import httpx
@@ -95,6 +96,11 @@ async def test_webhook_receive_to_feishu_card_flow(
             return FakeResponse()
 
     monkeypatch.setattr("services.forwarding.forward.get_http_client", lambda: FakeHttpClient())
+
+    async def accept_url(url: str) -> str:
+        return url
+
+    monkeypatch.setattr("services.forwarding.forward.validate_outbound_url", accept_url)
 
     async def run_task_inline(event_id: int, client_ip: str | None = None) -> None:
         await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
@@ -258,3 +264,157 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
     assert event.ai_analysis is None
     assert event.forward_status is None
     assert outboxes == []
+
+
+async def test_reused_analysis_still_runs_forwarding_decision(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import Config
+    from models import ForwardOutbox, WebhookEvent
+    from services.webhooks.pipeline import (
+        _finalize_analysis_transaction,
+        _parse_request,
+        _PipelineContext,
+    )
+    from services.webhooks.types import AnalysisResolution, NoiseReductionContext
+
+    monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
+    monkeypatch.setattr(Config, "_meta", dict(Config._meta))
+    Config.set_override("FORWARD_URL", "https://example.com/hook", source="test")
+    Config.set_override("ENABLE_PERIODIC_REMINDER", True, source="test")
+    Config.set_override("REMINDER_INTERVAL_HOURS", 1, source="test")
+    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1, source="test")
+    Config.set_override("FORWARD_DUPLICATE_ALERTS", False, source="test")
+
+    async with integration_session_factory.begin() as session:
+        original = WebhookEvent(
+            source="prometheus",
+            client_ip="127.0.0.1",
+            processing_status="completed",
+            alert_hash="original-reuse-hash",
+            ai_analysis={"importance": "high", "summary": "reused"},
+            importance="high",
+            is_duplicate=False,
+            duplicate_count=1,
+            last_notified_at=datetime.now() - timedelta(hours=2),
+        )
+        event = WebhookEvent(source="prometheus", client_ip="127.0.0.1", processing_status="analyzing")
+        session.add_all([original, event])
+        await session.flush()
+        event_id = event.id
+
+    payload = {"alert_name": "checkout-5xx", "event_type": "prometheus_alert", "service": "checkout-api"}
+    req_ctx = _parse_request("127.0.0.1", {}, payload, b'{"alert_name":"checkout-5xx"}', "prometheus", None)
+    ctx = _PipelineContext(
+        event_id=event_id,
+        client_ip="127.0.0.1",
+        metric_source="prometheus",
+        req_ctx=req_ctx,
+        alert_hash="reuse-hash",
+    )
+    analysis_res = AnalysisResolution(
+        {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
+        reanalyzed=False,
+        is_duplicate=True,
+        original_event=original,
+        beyond_window=False,
+        is_reused=True,
+    )
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
+
+    save_res, fwd_dec, outbox_ids = await _finalize_analysis_transaction(
+        ctx,
+        analysis_res,
+        {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
+        noise,
+    )
+
+    async with integration_session_factory() as session:
+        outboxes = (await session.execute(select(ForwardOutbox))).scalars().all()
+
+    assert save_res.is_duplicate is True
+    assert fwd_dec is not None
+    assert fwd_dec.should_forward is True
+    assert fwd_dec.is_periodic_reminder is True
+    assert len(outbox_ids) == 1
+    assert len(outboxes) == 1
+
+
+async def test_recovery_scan_requeues_due_retry_without_incrementing_retry_count(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from models import WebhookEvent
+    from services.operations.recovery_poller import run_recovery_scan
+    from services.operations.tasks import process_webhook_task
+
+    async with integration_session_factory.begin() as session:
+        event = WebhookEvent(
+            source="prometheus",
+            client_ip="127.0.0.1",
+            processing_status="retry",
+            retry_count=2,
+            next_retry_at=datetime.now() - timedelta(seconds=5),
+        )
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    enqueued: list[dict[str, object]] = []
+
+    async def fake_kiq(event_id: int, client_ip: str | None = None) -> None:
+        enqueued.append({"event_id": event_id, "client_ip": client_ip})
+
+    monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", fake_kiq)
+
+    await run_recovery_scan(stuck_threshold_seconds=300)
+
+    async with integration_session_factory() as session:
+        updated = await session.get(WebhookEvent, event_id)
+
+    assert enqueued == [{"event_id": event_id, "client_ip": "recovery"}]
+    assert updated is not None
+    assert updated.processing_status == "retry"
+    assert updated.retry_count == 2
+    assert updated.next_retry_at is not None
+    assert updated.next_retry_at > datetime.now()
+
+
+async def test_recovery_scan_does_not_requeue_recently_updated_old_event(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from models import WebhookEvent
+    from services.operations.recovery_poller import run_recovery_scan
+    from services.operations.tasks import process_webhook_task
+
+    async with integration_session_factory.begin() as session:
+        event = WebhookEvent(
+            source="prometheus",
+            client_ip="127.0.0.1",
+            processing_status="analyzing",
+            retry_count=0,
+            created_at=datetime.now() - timedelta(hours=2),
+            updated_at=datetime.now(),
+        )
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    enqueued: list[dict[str, object]] = []
+
+    async def fake_kiq(event_id: int, client_ip: str | None = None) -> None:
+        enqueued.append({"event_id": event_id, "client_ip": client_ip})
+
+    monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", fake_kiq)
+
+    await run_recovery_scan(stuck_threshold_seconds=300)
+
+    async with integration_session_factory() as session:
+        updated = await session.get(WebhookEvent, event_id)
+
+    assert enqueued == []
+    assert updated is not None
+    assert updated.processing_status == "analyzing"
+    assert updated.retry_count == 0

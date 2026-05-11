@@ -22,32 +22,53 @@ def _make_request(headers: dict, client_host: str | None = "127.0.0.1"):
     return req
 
 
-def test_get_client_ip_from_x_forwarded_for():
+def _trust_local_proxy(monkeypatch):
+    from core.config import Config
+
+    monkeypatch.setattr(Config.security, "TRUST_PROXY_HEADERS", True)
+    monkeypatch.setattr(Config.security, "TRUSTED_PROXY_CIDRS", "127.0.0.1/32")
+
+
+def test_get_client_ip_from_x_forwarded_for(monkeypatch):
     from services.webhooks.command_service import get_client_ip
 
+    _trust_local_proxy(monkeypatch)
     req = _make_request({"x-forwarded-for": "1.2.3.4, 10.0.0.1"})
     assert get_client_ip(req) == "1.2.3.4"
 
 
-def test_get_client_ip_strips_whitespace():
+def test_get_client_ip_strips_whitespace(monkeypatch):
     from services.webhooks.command_service import get_client_ip
 
+    _trust_local_proxy(monkeypatch)
     req = _make_request({"x-forwarded-for": "  5.6.7.8 , 192.168.1.1"})
     assert get_client_ip(req) == "5.6.7.8"
 
 
-def test_get_client_ip_from_x_real_ip():
+def test_get_client_ip_from_x_real_ip(monkeypatch):
     from services.webhooks.command_service import get_client_ip
 
+    _trust_local_proxy(monkeypatch)
     req = _make_request({"x-real-ip": "9.10.11.12"})
     assert get_client_ip(req) == "9.10.11.12"
 
 
-def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip():
+def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip(monkeypatch):
     from services.webhooks.command_service import get_client_ip
 
+    _trust_local_proxy(monkeypatch)
     req = _make_request({"x-forwarded-for": "1.1.1.1", "x-real-ip": "2.2.2.2"})
     assert get_client_ip(req) == "1.1.1.1"
+
+
+def test_get_client_ip_ignores_proxy_headers_from_untrusted_peer(monkeypatch):
+    from core.config import Config
+    from services.webhooks.command_service import get_client_ip
+
+    monkeypatch.setattr(Config.security, "TRUST_PROXY_HEADERS", True)
+    monkeypatch.setattr(Config.security, "TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    req = _make_request({"x-forwarded-for": "1.1.1.1"}, client_host="203.0.113.10")
+    assert get_client_ip(req) == "203.0.113.10"
 
 
 def test_get_client_ip_falls_back_to_client_host():

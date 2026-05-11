@@ -15,9 +15,9 @@ async def test_retry_enqueue_failure_goes_dead_letter(
 
     calls: dict[str, object] = {}
 
-    async def fake_mark_retry(event_id: int, *, max_retries: int, error_message: str) -> int:
+    async def fake_mark_retry(event_id: int, *, max_retries: int, error_message: str) -> tuple[int, int]:
         calls["mark_retry"] = (event_id, max_retries, error_message)
-        return 1
+        return 1, 30
 
     async def fake_schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
         calls["schedule"] = (event_id, delay_seconds)

@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -47,7 +48,9 @@ class DeepAnalysis(Base, SerializerMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    webhook_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    webhook_event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     engine: Mapped[str] = mapped_column(String(20), default="local")
     user_question: Mapped[str] = mapped_column(Text, default="")
     analysis_result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
