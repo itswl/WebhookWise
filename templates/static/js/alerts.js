@@ -853,7 +853,7 @@ const AlertsModule = {
                 // \u7528\u6237\u95ee\u9898\uff08\u5982\u679c\u6709\uff09
                 if (record.user_question) {
                     html += '<div style="margin-bottom:10px; padding:8px 12px; background:#e8f4fd; border-radius:4px; font-size:0.9em;">';
-                    html += '<strong>\u7528\u6237\u95ee\u9898\uff1a</strong>' + record.user_question;
+                    html += '<strong>\u7528\u6237\u95ee\u9898\uff1a</strong>' + escapeHtml(String(record.user_question));
                     html += '</div>';
                 }
 
@@ -864,7 +864,7 @@ const AlertsModule = {
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw 正在分析中...</div>';
                     if (record.openclaw_run_id) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + record.openclaw_run_id + '</div>';
+                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
                     }
                     html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
                     html += '</div>';
@@ -874,7 +874,7 @@ const AlertsModule = {
                     html += '<div style="font-size:2em; margin-bottom:12px;">\ud83d\ude80</div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">\u5df2\u89e6\u53d1 OpenClaw \u5206\u6790</div>';
                     if (analysis.runId) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + analysis.runId + '</div>';
+                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + escapeHtml(String(analysis.runId)) + '</div>';
                     }
                     html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">\u5206\u6790\u7ed3\u679c\u8bf7\u5728 OpenClaw \u63a7\u5236\u53f0\u67e5\u770b</div>';
                     html += '</div>';
@@ -1012,7 +1012,7 @@ const AlertsModule = {
             <div style="font-size:0.9em; color:rgba(255,255,255,0.9); margin-bottom:8px;">
                 分析请求已发送，结果将在 OpenClaw 控制台展示
             </div>
-            ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${runId}</div>` : ''}
+            ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${escapeHtml(String(runId))}</div>` : ''}
         `;
 
         // 添加动画样式

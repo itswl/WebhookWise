@@ -83,9 +83,13 @@ async def _send_dead_letter_alert(event_id: int, retry_count: int, error: Except
     try:
         from core.config import Config
         from core.http_client import get_http_client
+        from core.url_security import validate_outbound_url
 
         url = Config.ai.FORWARD_URL
-        if not url or not is_feishu_url(url):
+        if not url:
+            return
+        url = await validate_outbound_url(url)
+        if not is_feishu_url(url):
             return
         card = {
             "msg_type": "interactive",

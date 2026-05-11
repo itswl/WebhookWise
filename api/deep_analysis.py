@@ -117,8 +117,8 @@ async def deep_analyze_webhook(
 
 @deep_analysis_router.get("/api/deep-analyses", response_model=DeepAnalysisListResponse)
 async def list_all_deep_analyses(
-    page: int = Query(1),
-    per_page: int = Query(20),
+    page: int = Query(1, ge=1, le=MAX_PAGE),
+    per_page: int = Query(20, ge=1, le=MAX_PAGE),
     cursor: int | None = Query(None),
     status: str = Query(""),
     engine: str = Query(""),

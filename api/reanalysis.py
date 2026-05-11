@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,19 +70,31 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     }
 
 
-@reanalysis_router.post("/api/forward/{webhook_id}")
+@reanalysis_router.post("/api/forward/{webhook_id}", response_model=None)
 async def manual_forward_webhook(
     webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
-) -> JSONDict:
+) -> JSONDict | JSONResponse:
     data = data or {}
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
-    url = data.get("target_url")
+    url = data.get("target_url") or data.get("forward_url")
     fwd_res = await forward_to_remote(ctx, event.ai_analysis or {}, url)
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
+
+    status = str(fwd_res.get("status", "unknown"))
+    if status != "success":
+        http_status = 400 if status in {"invalid_target", "skipped"} else 502
+        return JSONResponse(
+            status_code=http_status,
+            content={
+                "success": False,
+                "data": fwd_res,
+                "error": fwd_res.get("message") or fwd_res.get("reason") or f"转发失败: {status}",
+            },
+        )
 
     return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(url or Config.ai.FORWARD_URL)}"}
