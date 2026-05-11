@@ -328,10 +328,10 @@ tests/e2e/run_webhook_to_feishu.sh
 | `OPENCLAW_ENABLED` | `false` | 启用 OpenClaw 引擎 |
 | `OPENCLAW_GATEWAY_URL` | — | OpenClaw 网关地址 |
 | `OPENCLAW_GATEWAY_TOKEN` | — | 认证 Token |
-| `OPENCLAW_TIMEOUT_SECONDS` | `300` | 分析超时（秒） |
+| `OPENCLAW_TIMEOUT_SECONDS` | `900` | 分析超时（秒） |
 | `OPENCLAW_POLL_INITIAL_DELAY_SECONDS` | `10` | OpenClaw 首次结果拉取延迟 |
-| `OPENCLAW_POLL_MAX_DELAY_SECONDS` | `300` | OpenClaw 轮询指数退避最大延迟 |
-| `OPENCLAW_POLL_BACKOFF_MULTIPLIER` | `3.0` | OpenClaw 轮询退避倍率 |
+| `OPENCLAW_POLL_MAX_DELAY_SECONDS` | `120` | OpenClaw 轮询指数退避最大延迟 |
+| `OPENCLAW_POLL_BACKOFF_MULTIPLIER` | `2.0` | OpenClaw 轮询退避倍率 |
 | `DEEP_ANALYSIS_FEISHU_WEBHOOK` | — | 深度分析完成后推送的飞书 Webhook URL |
 
 ## 📊 Prometheus 指标
