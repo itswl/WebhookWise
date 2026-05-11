@@ -49,6 +49,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError("API_KEY 仍是示例占位值，请替换为真实随机密钥")
     if (
         os.getenv("APP_ENV", "production") == "production"
+        and Config.security.ADMIN_WRITE_KEY
+        and _looks_like_placeholder_secret(Config.security.ADMIN_WRITE_KEY)
+    ):
+        raise RuntimeError("ADMIN_WRITE_KEY 仍是示例占位值，请替换为真实随机密钥")
+    if (
+        os.getenv("APP_ENV", "production") == "production"
         and not Config.security.REQUIRE_WEBHOOK_AUTH
         and not Config.security.ALLOW_UNAUTHENTICATED_WEBHOOK
     ):

@@ -6,7 +6,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,14 @@ from services.webhooks.query_service import list_webhook_summaries
 webhook_router = APIRouter()
 
 JSONDict = dict[str, Any]
+MAX_SOURCE_LENGTH = 100
+
+
+def _normalize_source_hint(value: str | None) -> str:
+    source = str(value or "").strip() or "unknown"
+    if len(source) > MAX_SOURCE_LENGTH:
+        raise HTTPException(status_code=400, detail=f"source must be at most {MAX_SOURCE_LENGTH} characters")
+    return source
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
@@ -83,16 +91,17 @@ async def dashboard() -> FileResponse:
 )
 async def receive_webhook(
     request: Request,
-    source: str | None = Query(None),
+    source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
+    source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
 
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
-        src = sanitize_source(source or request.headers.get("x-webhook-source", "unknown"))
+        src = sanitize_source(source_hint)
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rejected_size").inc()
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
 
@@ -102,7 +111,7 @@ async def receive_webhook(
 
     event_id = await quick_receive_webhook(
         session=session,
-        source=source or headers.get("x-webhook-source", "unknown"),
+        source=source_hint,
         raw_headers=headers,
         raw_body=raw_body_str,
     )
@@ -111,7 +120,7 @@ async def receive_webhook(
     logger.info(
         "[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
         event_id,
-        source or headers.get("x-webhook-source", "unknown"),
+        source_hint,
         client_ip,
         len(raw_body),
     )
@@ -128,17 +137,18 @@ async def receive_webhook(
     status_code=202,
 )
 async def receive_webhook_with_source(
-    source: str,
     request: Request,
+    source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
+    source_hint = _normalize_source_hint(source)
 
     raw_body = await request.body()
     if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
-        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source), status="rejected_size").inc()
+        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source_hint), status="rejected_size").inc()
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
 
     client_ip = get_client_ip(request)
@@ -147,13 +157,13 @@ async def receive_webhook_with_source(
 
     event_id = await quick_receive_webhook(
         session=session,
-        source=source,
+        source=source_hint,
         raw_headers=headers,
         raw_body=raw_body_str,
     )
     await session.commit()
     set_trace_id(generate_trace_id(event_id=event_id))
-    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d", event_id, source, client_ip, len(raw_body))
+    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d", event_id, source_hint, client_ip, len(raw_body))
 
     await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
 

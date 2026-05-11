@@ -47,7 +47,9 @@ services:
       timeout: 3s
       retries: 30
     networks:
-      - e2e
+      e2e:
+        aliases:
+          - open.feishu.cn
 
   migrate:
     image: webhookwise-e2e:latest
@@ -89,9 +91,9 @@ services:
       ENABLE_AI_ANALYSIS: "false"
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
-      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
-      FORWARD_TARGET_ALLOWLIST: fake-feishu
+      FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     ports:
@@ -139,9 +141,9 @@ services:
       ENABLE_AI_ANALYSIS: "false"
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
-      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
-      FORWARD_TARGET_ALLOWLIST: fake-feishu
+      FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
@@ -175,9 +177,9 @@ services:
       ENABLE_AI_ANALYSIS: "false"
       CACHE_ENABLED: "false"
       ENABLE_ALERT_NOISE_REDUCTION: "false"
-      FORWARD_URL: http://fake-feishu:9000/open.feishu.cn/hook
+      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
-      FORWARD_TARGET_ALLOWLIST: fake-feishu
+      FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:

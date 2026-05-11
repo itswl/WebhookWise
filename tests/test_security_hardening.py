@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -142,3 +143,88 @@ def test_deep_analysis_view_does_not_render_unsanitized_marked_html() -> None:
 
     assert "marked.parse" not in js
     assert "marked.min.js" not in html
+
+
+@pytest.mark.asyncio
+async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.app import app, lifespan
+    from core.config import Config
+
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setattr(Config.security, "API_KEY", "real-api-key")
+    monkeypatch.setattr(Config.security, "ADMIN_WRITE_KEY", "please-change-admin-write-key")
+    monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "real-webhook-secret")
+    monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", True)
+
+    with pytest.raises(RuntimeError, match="ADMIN_WRITE_KEY"):
+        async with lifespan(app):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_manual_forward_accepts_legacy_forward_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import reanalysis
+
+    event = SimpleNamespace(id=1, ai_analysis={"summary": "ok"}, forward_status=None)
+
+    class FakeSession:
+        committed = False
+
+        async def get(self, model: object, item_id: int) -> object:
+            return event
+
+        async def commit(self) -> None:
+            self.committed = True
+
+    captured: dict[str, object] = {}
+
+    async def fake_context(item: object) -> dict[str, object]:
+        return {"source": "test", "parsed_data": {}}
+
+    async def fake_forward(webhook_data: object, analysis: object, target_url: str | None) -> dict[str, object]:
+        captured["target_url"] = target_url
+        return {"status": "success"}
+
+    fake_session = FakeSession()
+    monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
+    monkeypatch.setattr(reanalysis, "forward_to_remote", fake_forward)
+
+    result = await reanalysis.manual_forward_webhook(
+        1,
+        {"forward_url": "https://example.com/hook"},
+        session=fake_session,  # type: ignore[arg-type]
+    )
+
+    assert result["success"] is True
+    assert captured["target_url"] == "https://example.com/hook"
+    assert event.forward_status == "success"
+    assert fake_session.committed is True
+
+
+def test_dashboard_deep_analysis_fields_are_escaped() -> None:
+    root = Path(__file__).resolve().parents[1]
+    alerts_js = (root / "templates/static/js/alerts.js").read_text()
+
+    assert "record.user_question;" not in alerts_js
+    assert "' + record.openclaw_run_id + '" not in alerts_js
+    assert "' + analysis.runId + '" not in alerts_js
+    assert "Run ID: ${runId}" not in alerts_js
+
+
+def test_is_feishu_url_requires_hostname_match() -> None:
+    from core.utils import is_feishu_url
+
+    assert is_feishu_url("https://open.feishu.cn/open-apis/bot/v2/hook/token")
+    assert is_feishu_url("https://tenant.larksuite.com/hook")
+    assert not is_feishu_url("https://feishu.cn.evil.example/hook")
+    assert not is_feishu_url("https://example.com/?next=feishu.cn")
+
+
+def test_source_hint_is_bounded() -> None:
+    from fastapi import HTTPException
+
+    from api.webhook import _normalize_source_hint
+
+    assert _normalize_source_hint(" prometheus ") == "prometheus"
+    with pytest.raises(HTTPException):
+        _normalize_source_hint("x" * 101)

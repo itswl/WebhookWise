@@ -41,6 +41,7 @@ from core.metrics import (
     sanitize_source,
 )
 from core.otel import span as otel_span
+from core.url_security import validate_outbound_url
 from db.session import count_with_timeout, session_scope
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import WebhookAnalysisResult
@@ -458,7 +459,8 @@ async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_
                 ],
             },
         }
-        await feishu_cb.call_async(get_http_client().post, Config.ai.FORWARD_URL, json=card, timeout=10)
+        target_url = await validate_outbound_url(Config.ai.FORWARD_URL)
+        await feishu_cb.call_async(get_http_client().post, target_url, json=card, timeout=10)
     except CircuitBreakerOpenException as e:
         logger.warning("发送 AI 错误通知被熔断器拦截: %s", e)
     except Exception as e:
@@ -735,6 +737,9 @@ async def get_deep_analysis_list(
     max_page: int = 500,
 ) -> dict[str, Any]:
     from sqlalchemy import func
+
+    page = max(1, min(page, max_page))
+    per_page = max(1, min(per_page, max_page))
 
     # 基础过滤条件
     filters = []
