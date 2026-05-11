@@ -72,6 +72,35 @@ def test_prometheus_explicit_source():
     assert result.data["Resources"][0]["InstanceId"] == "prod-01:9100"
 
 
+def test_prometheus_identity_uses_internal_service_labels():
+    from adapters.normalized import extract_alert_identity
+
+    payload = {
+        "alerts": [
+            {
+                "labels": {
+                    "alertname": "4fe6502e-587e-43a1-860f-bb575ab8476b",
+                    "internal_label_alert_id": "6a0142e48f78951ec14b1fa4",
+                    "internal_label_alert_level": "warning",
+                    "internal_label_namespace": "eve-cn-prod",
+                    "internal_label_service": "ai-router",
+                },
+                "annotations": {"summary": "OpenRouter success rate is 0%"},
+            }
+        ],
+        "status": "firing",
+    }
+
+    result = normalize_webhook_event(payload, "prometheus", {})
+    identity = extract_alert_identity(result.data)
+
+    assert identity is not None
+    assert identity["service"] == "ai-router"
+    assert identity["resource"] == "ai-router"
+    assert identity["fingerprint"] == "6a0142e48f78951ec14b1fa4"
+    assert identity["severity"] == "warning"
+
+
 # ── Grafana ───────────────────────────────────────────────────────────────
 
 
@@ -228,19 +257,22 @@ def test_empty_payload_passes_through():
 # ── Level normalization edge cases ────────────────────────────────────────
 
 
-@pytest.mark.parametrize("val,expected", [
-    ("resolved", "info"),
-    ("ok", "info"),
-    ("normal", "info"),
-    ("critical", "critical"),
-    ("fatal", "critical"),
-    ("p0", "critical"),
-    ("error", "critical"),
-    ("firing", "critical"),
-    ("triggered", "critical"),
-    ("warning", "warning"),
-    ("warn", "warning"),
-    ("p1", "warning"),
-])
+@pytest.mark.parametrize(
+    "val,expected",
+    [
+        ("resolved", "info"),
+        ("ok", "info"),
+        ("normal", "info"),
+        ("critical", "critical"),
+        ("fatal", "critical"),
+        ("p0", "critical"),
+        ("error", "critical"),
+        ("firing", "critical"),
+        ("triggered", "critical"),
+        ("warning", "warning"),
+        ("warn", "warning"),
+        ("p1", "warning"),
+    ],
+)
 def test_normalize_level_mapping(val, expected):
     assert _normalize_level(val) == expected, f"_normalize_level({val!r}) should be {expected!r}"

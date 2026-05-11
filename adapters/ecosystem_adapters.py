@@ -88,6 +88,15 @@ def _pick_first(*values: _T | None) -> _T | None:
     return None
 
 
+def _pick_label(labels: Mapping[str, Any], *keys: str) -> Any | None:
+    lower_map = {str(k).lower(): v for k, v in labels.items()}
+    for key in keys:
+        value = lower_map.get(key.lower())
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
 def _extract_tag(tags: object, key: str) -> str | None:
     if not isinstance(tags, list):
         return None
@@ -187,21 +196,43 @@ def register_simple_adapters() -> None:
     def _norm_prom(data: WebhookData) -> WebhookData:
         first = data.get("alerts", [{}])[0]
         labels = first.get("labels", {})
+        labels = labels if isinstance(labels, Mapping) else {}
         annotations = first.get("annotations", {})
-        name = _pick_first(labels.get("alertname"), data.get("alertingRuleName"), "prometheus_alert")
+        annotations = annotations if isinstance(annotations, Mapping) else {}
+        name = _pick_first(
+            _pick_label(labels, "alertname", "alert_name", "internal_label_alertname"),
+            data.get("alertingRuleName"),
+            "prometheus_alert",
+        )
         res = dict(data)
         res.update(
             {
                 "Type": "PrometheusAlert",
                 "RuleName": name,
-                "Level": _normalize_level(labels.get("severity")),
+                "Level": _normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
                 "event": "alert",
             }
         )
         summary = _pick_first(annotations.get("summary"), annotations.get("description"))
         if summary:
             res["summary"] = summary
-        instance = _pick_first(labels.get("instance"), labels.get("pod"), labels.get("host"))
+        instance = _pick_first(
+            _pick_label(labels, "instance", "pod", "host", "node", "container", "deployment"),
+            _pick_label(labels, "resource", "resource_id", "internal_label_resource"),
+        )
+        namespace = _pick_first(_pick_label(labels, "namespace", "internal_label_namespace", "kubernetes_namespace"))
+        service = _pick_first(
+            _pick_label(
+                labels,
+                "service",
+                "internal_label_service",
+                "app",
+                "app_kubernetes_io_name",
+                "app.kubernetes.io/name",
+                "k8s_app",
+                "job",
+            )
+        )
         if instance:
             res["Resources"] = [{"InstanceId": instance}]
         return with_alert_identity(
@@ -209,10 +240,13 @@ def register_simple_adapters() -> None:
             AlertIdentity(
                 source="prometheus",
                 name=str(name) if name else None,
-                resource=str(instance or _pick_first(labels.get("namespace"), labels.get("service")) or ""),
-                service=str(labels.get("service")) if labels.get("service") else None,
-                fingerprint=first.get("fingerprint"),
-                severity=_normalize_level(labels.get("severity")),
+                resource=str(instance or service or namespace or ""),
+                service=str(service) if service else None,
+                fingerprint=_pick_first(
+                    first.get("fingerprint"),
+                    _pick_label(labels, "fingerprint", "internal_label_alert_id", "alert_id", "rule_id"),
+                ),
+                severity=_normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
             ),
         )
 

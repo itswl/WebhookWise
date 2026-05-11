@@ -26,6 +26,7 @@ from models import FailedForward, ForwardRule
 from services.webhooks.types import AnalysisResult, FailedForwardStatus, ForwardResult, WebhookData
 
 _T = TypeVar("_T")
+_OPENCLAW_PROMPT_PAYLOAD_MAX_BYTES = 16 * 1024
 
 
 async def _with_session(
@@ -355,6 +356,102 @@ async def forward_to_openclaw(webhook_data: WebhookData, analysis_result: Analys
         return {"status": "error", "message": str(e)}
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _select_scalar_fields(data: dict[str, Any], max_items: int = 30) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    for key, value in data.items():
+        if len(selected) >= max_items:
+            break
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            selected[str(key)] = value
+    return selected
+
+
+def _extract_openclaw_overview(source: str, alert_data: dict[str, Any]) -> dict[str, Any]:
+    first_alert: dict[str, Any] = {}
+    alerts = alert_data.get("alerts")
+    if isinstance(alerts, list) and alerts and isinstance(alerts[0], dict):
+        first_alert = alerts[0]
+
+    labels = _dict_or_empty(first_alert.get("labels"))
+    annotations = _dict_or_empty(first_alert.get("annotations"))
+    overview: dict[str, Any] = {
+        "source": source,
+        "type": alert_data.get("Type"),
+        "rule_name": alert_data.get("RuleName") or labels.get("alertname") or alert_data.get("alertingRuleName"),
+        "level": alert_data.get("Level") or labels.get("severity") or labels.get("internal_label_alert_level"),
+        "summary": alert_data.get("summary") or annotations.get("summary") or annotations.get("description"),
+    }
+    if labels:
+        overview["labels"] = labels
+    if annotations:
+        overview["annotations"] = annotations
+    if first_alert:
+        overview["prometheus_alert"] = {
+            "status": first_alert.get("status"),
+            "startsAt": first_alert.get("startsAt"),
+            "endsAt": first_alert.get("endsAt"),
+            "generatorURL": first_alert.get("generatorURL"),
+            "fingerprint": first_alert.get("fingerprint") or labels.get("internal_label_alert_id"),
+        }
+    return {k: v for k, v in overview.items() if v not in (None, "", {}, [])}
+
+
+def _compact_openclaw_payload(alert_data: dict[str, Any]) -> dict[str, Any]:
+    compact = _select_scalar_fields(alert_data)
+    for key in ("groupLabels", "commonLabels", "commonAnnotations", "externalURL", "status", "receiver"):
+        if key in alert_data:
+            compact[key] = alert_data[key]
+
+    alerts = alert_data.get("alerts")
+    if isinstance(alerts, list) and alerts:
+        compact["alerts"] = []
+        for item in alerts[:3]:
+            if not isinstance(item, dict):
+                continue
+            compact["alerts"].append(
+                {
+                    "status": item.get("status"),
+                    "labels": _dict_or_empty(item.get("labels")),
+                    "annotations": _dict_or_empty(item.get("annotations")),
+                    "startsAt": item.get("startsAt"),
+                    "endsAt": item.get("endsAt"),
+                    "fingerprint": item.get("fingerprint"),
+                    "generatorURL": item.get("generatorURL"),
+                }
+            )
+        if len(alerts) > 3:
+            compact["alerts_truncated"] = {"shown": 3, "total": len(alerts)}
+    return compact
+
+
+def _json_size_bytes(data: Any) -> int:
+    return len(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _build_openclaw_prompt_payload(source: str, alert_data: dict[str, Any]) -> dict[str, Any]:
+    overview = _extract_openclaw_overview(source, alert_data)
+    payload: dict[str, Any] = {"overview": overview, "payload": alert_data}
+    if _json_size_bytes(payload) <= _OPENCLAW_PROMPT_PAYLOAD_MAX_BYTES:
+        return payload
+
+    payload = {
+        "overview": overview,
+        "payload": _compact_openclaw_payload(alert_data),
+        "payload_note": "原始 payload 过大，已保留关键 labels/annotations/时间/fingerprint；请优先依据 overview 排查。",
+    }
+    if _json_size_bytes(payload) <= _OPENCLAW_PROMPT_PAYLOAD_MAX_BYTES:
+        return payload
+
+    return {
+        "overview": overview,
+        "payload_note": "原始 payload 过大且 compact 后仍超限，已省略完整 payload；overview 中保留了排查所需关键字段。",
+    }
+
+
 async def analyze_with_openclaw(
     webhook_data: WebhookData, user_question: str = "", thinking_level: str = "high"
 ) -> dict[str, Any]:
@@ -367,6 +464,12 @@ async def analyze_with_openclaw(
 
     alert_data = webhook_data.get("parsed_data", {})
     source = webhook_data.get("source", "unknown")
+    if not isinstance(alert_data, dict):
+        alert_data = {"raw": alert_data}
+    from services.webhooks.payload_sanitizer import sanitize_for_ai_async
+
+    alert_data = await sanitize_for_ai_async(alert_data)
+    prompt_payload = _build_openclaw_prompt_payload(str(source), alert_data)
 
     prompt_path = Path(Config.server.DATA_DIR).parent / "prompts" / "deep_analysis.txt"
     try:
@@ -376,7 +479,21 @@ async def analyze_with_openclaw(
         template = "请对以下告警进行深度根因分析：\n\n{source}\n{alert_data}\n"
         logger.warning("未能找到深度分析模板文件: %s", prompt_path)
 
-    message = f"{template}\n\n## 当前告警数据\n告警来源: {source}\n```json\n{json.dumps(alert_data, ensure_ascii=False, separators=(',', ':'))}\n```"
+    overview_json = json.dumps(prompt_payload.get("overview", {}), ensure_ascii=False, separators=(",", ":"))
+    payload_json = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
+    message = (
+        f"{template}\n\n"
+        "## 当前告警关键字段（优先使用）\n"
+        f"告警来源: {source}\n"
+        "```json\n"
+        f"{overview_json}\n"
+        "```\n\n"
+        "## 当前告警数据\n"
+        "下面的 payload 可能经过大小裁剪；即使裁剪，也请基于上方关键字段继续排查，不要要求用户重新粘贴。\n"
+        "```json\n"
+        f"{payload_json}\n"
+        "```"
+    )
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
 
