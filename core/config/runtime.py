@@ -113,6 +113,7 @@ class UnifiedConfigManager:
         self._subscriber_task: asyncio.Task[object] | None = None
         self._running = False
         self._db_loaded_once = False
+        self._last_restart_required_skipped_keys: frozenset[str] = frozenset()
 
     def _merged_sub(self, sub_name: str, base: _TSubSettings) -> _TSubSettings:
         updates: dict[str, RuntimeValue] = {}
@@ -217,19 +218,27 @@ class UnifiedConfigManager:
                 configs = {row.key: row for row in result.scalars().all()}
 
             count = 0
-            skipped_restart_required = 0
+            skipped_restart_required_keys: set[str] = set()
             for key, row in configs.items():
                 if key in self.RUNTIME_KEYS:
                     if self.runtime_key_requires_restart(key):
                         self.set_override(key, None, source="db", updated_by=row.updated_by)
-                        skipped_restart_required += 1
+                        skipped_restart_required_keys.add(key)
                         continue
                     val = self._deserialize(row.value, self.RUNTIME_KEYS[key]["type"])
                     self.set_override(key, val, source="db", updated_by=row.updated_by)
                     count += 1
             self._db_loaded_once = True
-            if skipped_restart_required:
-                _config_logger.warning("[Config] 已忽略 %d 个需重启生效的 DB 配置", skipped_restart_required)
+            skipped_keys = frozenset(skipped_restart_required_keys)
+            if skipped_keys and skipped_keys != self._last_restart_required_skipped_keys:
+                _config_logger.warning(
+                    "[Config] 已忽略 %d 个需重启生效的 DB 配置: %s",
+                    len(skipped_keys),
+                    ",".join(sorted(skipped_keys)),
+                )
+            elif skipped_keys:
+                _config_logger.debug("[Config] 已忽略 %d 个需重启生效的 DB 配置", len(skipped_keys))
+            self._last_restart_required_skipped_keys = skipped_keys
             _config_logger.info("[Config] 从数据库加载 %d 个热更新配置", count)
             return True
         except Exception as e:
