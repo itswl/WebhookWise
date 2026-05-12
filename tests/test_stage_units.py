@@ -163,3 +163,75 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
     assert result["status"] == "success"
     assert breaker.called is True
     assert client.urls == ["https://example.test/hook"]
+
+
+@pytest.mark.asyncio
+async def test_ingress_backpressure_suppresses_after_threshold() -> None:
+    from services.webhooks.ingress_backpressure import check_ingress_backpressure
+    from services.webhooks.policies import WebhookReceivePolicy
+
+    calls = 0
+
+    async def fake_eval(*_: object) -> int:
+        nonlocal calls
+        calls += 1
+        return calls
+
+    policy = WebhookReceivePolicy(
+        max_body_bytes=1024,
+        ingress_backpressure_threshold=1,
+        ingress_backpressure_window_seconds=60,
+    )
+
+    first = await check_ingress_backpressure(
+        source_hint="prometheus",
+        raw_body=b'{"alertname":"HighCPU","instance":"pod-a"}',
+        policy=policy,
+        redis_eval_int_func=fake_eval,
+    )
+    second = await check_ingress_backpressure(
+        source_hint="prometheus",
+        raw_body=b'{"alertname":"HighCPU","instance":"pod-a"}',
+        policy=policy,
+        redis_eval_int_func=fake_eval,
+    )
+
+    assert first.suppressed is False
+    assert second.suppressed is True
+    assert second.reason == "ingress_storm_backpressure"
+
+
+@pytest.mark.asyncio
+async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import webhook
+    from services.webhooks.ingress_backpressure import IngressBackpressureResult
+
+    class Request:
+        headers: dict[str, str] = {}
+
+        async def body(self) -> bytes:
+            return b'{"alertname":"HighCPU"}'
+
+    async def suppressed(*_: object, **__: object) -> IngressBackpressureResult:
+        return IngressBackpressureResult(
+            suppressed=True,
+            key="ingress:webhook:test",
+            count=2,
+            threshold=1,
+            reason="ingress_storm_backpressure",
+        )
+
+    async def fail_write(*_: object, **__: object) -> int:
+        raise AssertionError("suppressed ingress request must not write PostgreSQL")
+
+    monkeypatch.setattr(webhook, "check_ingress_backpressure", suppressed)
+    monkeypatch.setattr(webhook, "quick_receive_webhook", fail_write)
+
+    result = await webhook._receive_and_enqueue_webhook(
+        request=Request(),  # type: ignore[arg-type]
+        source_hint="prometheus",
+        session=object(),  # type: ignore[arg-type]
+    )
+
+    assert result["event_id"] == 0
+    assert "suppressed" in result["message"]

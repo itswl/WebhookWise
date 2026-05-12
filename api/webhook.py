@@ -25,6 +25,7 @@ from services.webhooks.command_service import (
     get_client_ip,
     quick_receive_webhook,
 )
+from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import WebhookReceivePolicy
 from services.webhooks.query_service import list_webhook_summaries
 
@@ -49,6 +50,58 @@ def _payload_too_large_response(
         WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source_hint), status="rejected_size").inc()
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     return None
+
+
+async def _receive_and_enqueue_webhook(
+    *,
+    request: Request,
+    source_hint: str,
+    session: AsyncSession,
+) -> JSONDict | JSONResponse:
+    raw_body = await request.body()
+    if too_large_response := _payload_too_large_response(raw_body, source_hint):
+        return too_large_response
+
+    backpressure = await check_ingress_backpressure(source_hint=source_hint, raw_body=raw_body)
+    if backpressure.suppressed:
+        src = sanitize_source(source_hint)
+        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
+        logger.warning(
+            "[Webhook] ingress 背压抑制 source=%s count=%s threshold=%s key=%s",
+            source_hint,
+            backpressure.count,
+            backpressure.threshold,
+            backpressure.key,
+        )
+        return {
+            "success": True,
+            "message": "Webhook suppressed by ingress backpressure",
+            "event_id": 0,
+        }
+
+    client_ip = get_client_ip(request)
+    headers = dict(request.headers)
+    raw_body_str = raw_body.decode("utf-8", errors="replace")
+
+    event_id = await quick_receive_webhook(
+        session=session,
+        source=source_hint,
+        raw_headers=headers,
+        raw_body=raw_body_str,
+    )
+    await session.commit()
+    set_trace_id(generate_trace_id(event_id=event_id))
+    logger.info(
+        "[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
+        event_id,
+        source_hint,
+        client_ip,
+        len(raw_body),
+    )
+
+    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
+
+    return {"success": True, "message": "Webhook received and queued for processing", "event_id": event_id}
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
@@ -109,33 +162,7 @@ async def receive_webhook(
     set_trace_id(tid)
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
 
-    raw_body = await request.body()
-    if too_large_response := _payload_too_large_response(raw_body, source_hint):
-        return too_large_response
-
-    client_ip = get_client_ip(request)
-    headers = dict(request.headers)
-    raw_body_str = raw_body.decode("utf-8", errors="replace")
-
-    event_id = await quick_receive_webhook(
-        session=session,
-        source=source_hint,
-        raw_headers=headers,
-        raw_body=raw_body_str,
-    )
-    await session.commit()
-    set_trace_id(generate_trace_id(event_id=event_id))
-    logger.info(
-        "[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
-        event_id,
-        source_hint,
-        client_ip,
-        len(raw_body),
-    )
-
-    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
-
-    return {"success": True, "message": "Webhook received and queued for processing", "event_id": event_id}
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, session=session)
 
 
 @webhook_router.post(
@@ -154,27 +181,7 @@ async def receive_webhook_with_source(
     set_trace_id(tid)
     source_hint = _normalize_source_hint(source)
 
-    raw_body = await request.body()
-    if too_large_response := _payload_too_large_response(raw_body, source_hint):
-        return too_large_response
-
-    client_ip = get_client_ip(request)
-    headers = dict(request.headers)
-    raw_body_str = raw_body.decode("utf-8", errors="replace")
-
-    event_id = await quick_receive_webhook(
-        session=session,
-        source=source_hint,
-        raw_headers=headers,
-        raw_body=raw_body_str,
-    )
-    await session.commit()
-    set_trace_id(generate_trace_id(event_id=event_id))
-    logger.info("[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d", event_id, source_hint, client_ip, len(raw_body))
-
-    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
-
-    return {"success": True, "message": "Webhook received and queued for processing", "event_id": event_id}
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, session=session)
 
 
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
