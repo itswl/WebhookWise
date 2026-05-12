@@ -353,7 +353,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `webhook_processing_duration_seconds` | Histogram | Pipeline 处理耗时分布 |
 | `webhook_noise_reduced_total` | Counter | 降噪告警数（按 source/relation_type/suppressed） |
 | `webhook_storm_suppressed_total` | Counter | 告警风暴触发抑制/聚合次数 |
-| `webhook_running_tasks` | Gauge | 当前活跃处理任务数 |
+| `webhook_running_tasks` | Gauge | Worker 中当前活跃的 Webhook TaskIQ 处理任务数 |
 | `webhook_recovery_polled_total` | Counter | Recovery 扫描处理的僵尸事件数 |
 | `ai_tokens_total` | Counter | Token 消耗量（按 model/token_type） |
 | `ai_cost_usd_total` | Counter | 累计 AI 成本（美元） |

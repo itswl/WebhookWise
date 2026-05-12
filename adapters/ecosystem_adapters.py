@@ -11,9 +11,6 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from adapters.normalized import AlertIdentity, with_alert_identity
-from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
-from core.config import Config
-from core.http_client import get_http_client
 from services.webhooks.types import WebhookData
 
 logger = logging.getLogger("webhook_service.ecosystem_adapters")
@@ -368,74 +365,3 @@ def normalize_webhook_event(
 
     logger.info("[Adapter] 成功匹配适配器: name=%s, final_source=%s", adapter_name, final_source)
     return NormalizedWebhook(final_source, normalized, adapter_name)
-
-
-# ========== 飞书深度分析通知 ==========
-
-
-def _truncate_text(text: str, max_len: int) -> str:
-    if not text:
-        return ""
-    text = str(text)
-    return text if len(text) <= max_len else text[: max_len - 3] + "..."
-
-
-async def send_feishu_deep_analysis(
-    webhook_url: str, analysis_record: dict[str, Any], source: str = "", webhook_event_id: int = 0
-) -> bool:
-    if not webhook_url:
-        return False
-    res = analysis_record.get("analysis_result", {})
-    engine = analysis_record.get("engine", "uk")
-    duration = analysis_record.get("duration_seconds") or 0
-    conf = round(res.get("confidence", 0) * 100) if isinstance(res.get("confidence"), (int, float)) else 0
-
-    card = {
-        "msg_type": "interactive",
-        "card": {
-            "header": {
-                "title": {
-                    "tag": "plain_text",
-                    "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成",
-                },
-                "template": "blue",
-            },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**🔍 根因分析：**\n{_truncate_text(res.get('root_cause', '无'), 500)}",
-                    },
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**💥 影响范围：**\n{_truncate_text(res.get('impact', '无'), 500)}",
-                    },
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "note",
-                    "elements": [
-                        {
-                            "tag": "plain_text",
-                            "content": f"引擎: {engine} | 置信度: {conf}% | 耗时: {duration:.1f}s | ID: {webhook_event_id}",
-                        }
-                    ],
-                },
-            ],
-        },
-    }
-    client = get_http_client()
-    try:
-        resp = await feishu_cb.call_async(client.post, webhook_url, json=card, timeout=Config.ai.FEISHU_WEBHOOK_TIMEOUT)
-    except CircuitBreakerOpenException as e:
-        logger.warning("飞书深度分析通知被熔断器拦截: %s", e)
-        return False
-    except Exception as e:
-        logger.warning("飞书深度分析通知发送失败: %s", e)
-        return False
-    return resp.status_code == 200

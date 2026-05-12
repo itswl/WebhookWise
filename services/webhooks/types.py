@@ -61,6 +61,15 @@ class WebhookRequestContext:
     headers: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class WebhookProcessContext:
+    event_id: int
+    client_ip: str
+    metric_source: str
+    req_ctx: WebhookRequestContext
+    alert_hash: str
+
+
 @dataclass
 class ForwardDecision:
     should_forward: bool

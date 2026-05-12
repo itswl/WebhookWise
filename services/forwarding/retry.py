@@ -12,17 +12,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from core.config import Config
 from core.metrics import FORWARD_RETRY_TOTAL
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
+from services.forwarding.policies import ForwardRetryPolicy
 from services.webhooks.types import FailedForwardStatus
 
 logger = logging.getLogger("webhook_service.forward_retry")
 
 
-async def retry_failed_forward_by_id(failed_forward_id: int) -> None:
+async def retry_failed_forward_by_id(failed_forward_id: int, *, retry_policy: ForwardRetryPolicy | None = None) -> None:
     """Execute one failed-forward retry scheduled by TaskIQ."""
+    policy = retry_policy or ForwardRetryPolicy.from_config()
     try:
         async with session_scope() as session:
             stmt = (
@@ -36,7 +37,7 @@ async def retry_failed_forward_by_id(failed_forward_id: int) -> None:
                 return
             if record.status not in (FailedForwardStatus.PENDING, FailedForwardStatus.RETRYING):
                 return
-            await _retry_forward(session, record)
+            await _retry_forward(session, record, retry_policy=policy)
     except Exception as e:
         logger.error("[ForwardRetry] 重试记录 ID=%s 异常: %s", failed_forward_id, e)
 
@@ -70,9 +71,13 @@ async def run_failed_forward_scan(limit: int = 100) -> int:
     return len(ids)
 
 
-async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
+async def _retry_forward(
+    session: AsyncSession, record: FailedForward, *, retry_policy: ForwardRetryPolicy | None = None
+) -> None:
     """重试单条转发失败记录"""
     from services.forwarding.forward import forward_to_remote
+
+    policy = retry_policy or ForwardRetryPolicy.from_config()
 
     logger.info(
         "[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",
@@ -118,16 +123,21 @@ async def _retry_forward(session: AsyncSession, record: FailedForward) -> None:
             FORWARD_RETRY_TOTAL.labels(status="success").inc()
             logger.info("[ForwardRetry] 重试成功: ID=%s, webhook_event_id=%s", record.id, record.webhook_event_id)
         else:
-            await _handle_retry_failure(record, now, f"forward status={status}: {result.get('message', '')}")
+            await _handle_retry_failure(
+                record, now, f"forward status={status}: {result.get('message', '')}", retry_policy=policy
+            )
 
     except Exception as e:
-        await _handle_retry_failure(record, now, str(e))
+        await _handle_retry_failure(record, now, str(e), retry_policy=policy)
 
     await session.flush()
 
 
-async def _handle_retry_failure(record: FailedForward, now: datetime, error_msg: str) -> None:
+async def _handle_retry_failure(
+    record: FailedForward, now: datetime, error_msg: str, *, retry_policy: ForwardRetryPolicy | None = None
+) -> None:
     """处理重试失败：更新计数、计算下次重试时间或标记为 exhausted"""
+    policy = retry_policy or ForwardRetryPolicy.from_config()
     record.retry_count += 1
     record.last_retry_at = now
     record.error_message = error_msg
@@ -145,12 +155,7 @@ async def _handle_retry_failure(record: FailedForward, now: datetime, error_msg:
     else:
         record.status = FailedForwardStatus.RETRYING
         FORWARD_RETRY_TOTAL.labels(status="failed").inc()
-        # 指数退避：min(initial_delay * multiplier^(retry_count-1), max_delay)
-        delay = min(
-            Config.retry.FORWARD_RETRY_INITIAL_DELAY
-            * Config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER ** (record.retry_count - 1),
-            Config.retry.FORWARD_RETRY_MAX_DELAY,
-        )
+        delay = policy.delay_for_attempt(record.retry_count)
         record.next_retry_at = now + timedelta(seconds=delay)
         try:
             from services.operations.taskiq_retry_scheduler import schedule_forward_retry

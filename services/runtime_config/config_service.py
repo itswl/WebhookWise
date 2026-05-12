@@ -1,8 +1,8 @@
-import os
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
-from core.config import Config
+from core.config import Config, RuntimeValue
+from services.runtime_config.runtime_access import get_runtime_config_meta, get_runtime_config_source
 
 _Validator = Callable[[Any], bool]
 _CONFIG_SCHEMA: dict[str, tuple[str, str, _Validator | None]] = {
@@ -100,10 +100,8 @@ def get_config_sources() -> list[dict[str, object]]:
     keys = sorted(set(Config.RUNTIME_KEYS.keys()))
     items: list[dict[str, object]] = []
     for key in keys:
-        meta = Config.get_meta(key)
-        source = meta.get("source")
-        if not source:
-            source = "env" if os.getenv(key) is not None else "default"
+        meta = get_runtime_config_meta(key)
+        source = get_runtime_config_source(key)
         updated_at = meta.get("updated_at")
         if updated_at is not None:
             updated_at = updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at)
@@ -125,3 +123,15 @@ def build_prompt_source() -> str:
     if Config.ai.AI_USER_PROMPT_FILE:
         return "file"
     return "default"
+
+
+def runtime_config_enabled() -> bool:
+    return bool(Config.server.ENABLE_RUNTIME_CONFIG)
+
+
+async def save_config_updates(updates: Mapping[str, tuple[str, object]]) -> int:
+    runtime_updates: dict[str, RuntimeValue] = {
+        var_name: cast(RuntimeValue, typed_value) for var_name, (_str_val, typed_value) in updates.items()
+    }
+    await Config.save_batch(runtime_updates)
+    return len(runtime_updates)

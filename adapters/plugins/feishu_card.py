@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from adapters.ecosystem_adapters import _normalize_level
 from adapters.registry import registry
 from services.webhooks.types import WebhookData
@@ -85,6 +87,117 @@ def build_feishu_card(
         "card": {
             "header": {"title": {"tag": "plain_text", "content": title}, "template": template},
             "elements": elements,
+        },
+    }
+
+
+def build_dead_letter_card(event_id: int, retry_count: int, error: Exception) -> WebhookData:
+    """Build a Feishu/Lark interactive card for dead-letter notifications."""
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": "🚨 Dead Letter 告警"}, "template": "red"},
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**event_id**: {event_id}\n**重试**: {retry_count}\n**详情**: {str(error)[:200]}",
+                    },
+                }
+            ],
+        },
+    }
+
+
+def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degraded: bool = False) -> WebhookData:
+    """Build a Feishu/Lark interactive card for AI error/degradation alerts."""
+    title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
+    template = "orange" if is_degraded else "red"
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": title}, "template": template},
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**来源**: {webhook_data.get('source', 'uk')}\n**原因**: {error_reason}",
+                    },
+                }
+            ],
+        },
+    }
+
+
+def _truncate_text(text: object, max_len: int) -> str:
+    if not text:
+        return ""
+    normalized = str(text)
+    return normalized if len(normalized) <= max_len else normalized[: max_len - 3] + "..."
+
+
+def _float_or_zero(value: object) -> float:
+    if isinstance(value, (int, float, str, bytes)):
+        try:
+            return float(value or 0)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def build_deep_analysis_card(
+    analysis_record: dict[str, Any], source: str = "", webhook_event_id: int = 0
+) -> WebhookData:
+    """Build a Feishu/Lark interactive card for completed deep analysis."""
+    result = analysis_record.get("analysis_result", {})
+    result = result if isinstance(result, dict) else {}
+    engine = analysis_record.get("engine", "uk")
+    duration = analysis_record.get("duration_seconds") or 0
+    confidence = result.get("confidence", 0)
+    confidence_percent = round(confidence * 100) if isinstance(confidence, (int, float)) else 0
+
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成",
+                },
+                "template": "blue",
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**🔍 根因分析：**\n{_truncate_text(result.get('root_cause', '无'), 500)}",
+                    },
+                },
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**💥 影响范围：**\n{_truncate_text(result.get('impact', '无'), 500)}",
+                    },
+                },
+                {"tag": "hr"},
+                {
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "plain_text",
+                            "content": (
+                                f"引擎: {engine} | 置信度: {confidence_percent}% | "
+                                f"耗时: {_float_or_zero(duration):.1f}s | ID: {webhook_event_id}"
+                            ),
+                        }
+                    ],
+                },
+            ],
         },
     }
 

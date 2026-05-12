@@ -9,7 +9,6 @@ import orjson
 from sqlalchemy import select, update
 
 from core.compression import decompress_payload_async
-from core.config import Config
 from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
@@ -156,7 +155,15 @@ async def mark_last_notified(event_id: int) -> None:
         )
 
 
-async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> tuple[int, int] | None:
+async def mark_retry(
+    event_id: int,
+    *,
+    max_retries: int,
+    error_message: str,
+    initial_delay: int,
+    max_delay: int,
+    multiplier: float,
+) -> tuple[int, int] | None:
     from services.operations.taskiq_retry_scheduler import compute_backoff_delay
 
     async with session_scope() as sess:
@@ -178,9 +185,9 @@ async def mark_retry(event_id: int, *, max_retries: int, error_message: str) -> 
         retry_count = int(row[0] or 0)
         delay = compute_backoff_delay(
             retry_count,
-            initial_delay=Config.retry.WEBHOOK_RETRY_INITIAL_DELAY,
-            max_delay=Config.retry.WEBHOOK_RETRY_MAX_DELAY,
-            multiplier=Config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER,
+            initial_delay=initial_delay,
+            max_delay=max_delay,
+            multiplier=multiplier,
         )
         await sess.execute(
             update(WebhookEvent)

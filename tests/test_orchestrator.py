@@ -270,6 +270,23 @@ def test_analyze_with_rules_metric_threshold_promotes_to_high():
     assert res["importance"] == "high"
 
 
+def test_analyze_with_rules_accepts_explicit_policy():
+    from services.analysis.ai_analyzer import analyze_with_rules
+    from services.analysis.ai_policies import RuleAnalysisPolicy
+
+    res = analyze_with_rules(
+        {"RuleName": "QueueDepth", "CurrentValue": 31, "Threshold": 10},
+        "custom",
+        policy=RuleAnalysisPolicy(
+            high_keywords=("urgent",),
+            warning_keywords=("warn",),
+            metric_keywords=("queue",),
+            threshold_multiplier=3.0,
+        ),
+    )
+    assert res["importance"] == "high"
+
+
 def test_analyze_with_rules_records_non_numeric_metric_value(monkeypatch):
     from services.analysis import ai_analyzer
 

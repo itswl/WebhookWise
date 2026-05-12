@@ -14,15 +14,16 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 
-from core.config import Config
 from core.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
     SCHEDULED_TASK_LAG_SECONDS,
     SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME,
     SCHEDULED_TASK_RUNS_TOTAL,
+    WEBHOOK_RUNNING_TASKS,
 )
 from core.redis_client import RedisEvalArg
 from core.taskiq_broker import broker
+from services.operations.policies import TaskRuntimePolicy
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -79,8 +80,12 @@ async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int
     return await redis_eval_int(script, numkeys, *args)
 
 
-def _webhook_slot_lease_seconds() -> int:
-    return max(30, int(Config.server.WEBHOOK_TASK_SLOT_LEASE_SECONDS or 0))
+def _task_policy(policy: TaskRuntimePolicy | None = None) -> TaskRuntimePolicy:
+    return policy or TaskRuntimePolicy.from_config()
+
+
+def _webhook_slot_lease_seconds(policy: TaskRuntimePolicy | None = None) -> int:
+    return _task_policy(policy).webhook_task_slot_lease_seconds
 
 
 def _slot_times(lease_seconds: int) -> tuple[int, int, int]:
@@ -125,10 +130,11 @@ async def _renew_webhook_slot_until_cancelled(token: str, lease_seconds: int) ->
 
 
 @asynccontextmanager
-async def _distributed_webhook_task_slot(limit: int) -> AsyncIterator[None]:
-    token = f"{Config.server.WORKER_ID}:{uuid.uuid4().hex}"
-    lease_seconds = _webhook_slot_lease_seconds()
-    poll_interval = max(0.05, float(Config.retry.PROCESSING_LOCK_POLL_INTERVAL_MS or 100) / 1000)
+async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
+    runtime_policy = _task_policy(policy)
+    token = f"{runtime_policy.worker_id}:{uuid.uuid4().hex}"
+    lease_seconds = _webhook_slot_lease_seconds(runtime_policy)
+    poll_interval = runtime_policy.webhook_task_poll_interval_seconds
     renew_task: asyncio.Task[None] | None = None
     try:
         while True:
@@ -154,24 +160,35 @@ async def _distributed_webhook_task_slot(limit: int) -> AsyncIterator[None]:
 
 
 @asynccontextmanager
-async def _webhook_task_slot() -> AsyncIterator[None]:
-    limit = int(Config.server.MAX_CONCURRENT_WEBHOOK_TASKS or 0)
+async def _webhook_task_slot(*, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
+    runtime_policy = _task_policy(policy)
+    limit = runtime_policy.max_concurrent_webhook_tasks
     if limit <= 0:
         yield
         return
-    async with _distributed_webhook_task_slot(limit):
+    async with _distributed_webhook_task_slot(limit, policy=runtime_policy):
         yield
 
 
-def _recovery_scan_interval_seconds() -> int:
-    return max(30, int(Config.server.RECOVERY_SCAN_INTERVAL_SECONDS or Config.server.RECOVERY_POLLER_INTERVAL_SECONDS))
+def _recovery_scan_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
+    return _task_policy(policy).recovery_scan_interval_seconds
+
+
+def _metrics_refresh_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
+    return _task_policy(policy).metrics_refresh_interval_seconds
+
+
+def _maintenance_cron(policy: TaskRuntimePolicy | None = None) -> str:
+    return f"0 {_task_policy(policy).maintenance_hour} * * *"
 
 
 @asynccontextmanager
-async def _scheduled_task_leader(name: str, interval_seconds: int) -> AsyncIterator[bool]:
+async def _scheduled_task_leader(
+    name: str, interval_seconds: int, *, policy: TaskRuntimePolicy | None = None
+) -> AsyncIterator[bool]:
     """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
     key = f"scheduled-task-lock:{name}"
-    token = f"{Config.server.WORKER_ID}:{uuid.uuid4().hex}"
+    token = f"{_task_policy(policy).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
     try:
         from core.redis_client import redis_eval_int, redis_set_nx_ex
@@ -235,7 +252,11 @@ async def process_webhook_task(
 
     logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s", event_id)
     async with _webhook_task_slot():
-        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+        WEBHOOK_RUNNING_TASKS.inc()
+        try:
+            await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+        finally:
+            WEBHOOK_RUNNING_TASKS.dec()
 
 
 @broker.task(task_name="forward_retry_task")
@@ -286,7 +307,7 @@ async def scheduled_recovery_scan() -> None:
     task_name="scheduled_metrics_refresh",
     schedule=[
         {
-            "interval": Config.server.METRICS_REFRESH_INTERVAL_SECONDS,
+            "interval": _metrics_refresh_interval_seconds(),
             "schedule_id": "metrics_refresh_interval_seconds",
         }
     ],
@@ -294,7 +315,7 @@ async def scheduled_recovery_scan() -> None:
 async def scheduled_metrics_refresh() -> None:
     from services.operations.metrics_poller import refresh_all_metrics
 
-    await _run_scheduled("metrics_refresh", Config.server.METRICS_REFRESH_INTERVAL_SECONDS, refresh_all_metrics())
+    await _run_scheduled("metrics_refresh", _metrics_refresh_interval_seconds(), refresh_all_metrics())
 
 
 @broker.task(
@@ -317,9 +338,7 @@ async def scheduled_failed_forward_scan() -> None:
     await _run_scheduled("failed_forward_scan", _recovery_scan_interval_seconds(), run_failed_forward_scan())
 
 
-@broker.task(
-    task_name="scheduled_data_maintenance", schedule=[{"cron": f"0 {Config.maintenance.MAINTENANCE_HOUR} * * *"}]
-)
+@broker.task(task_name="scheduled_data_maintenance", schedule=[{"cron": _maintenance_cron()}])
 async def scheduled_data_maintenance() -> None:
     from services.operations.data_maintenance import archive_old_data_by_policy
 

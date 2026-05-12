@@ -45,15 +45,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     response_payload: dict[str, str],
     expected_url: str,
 ) -> None:
-    from core.config import Config
     from services.forwarding import forward
-
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_ENABLED", True)
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw.test")
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_TOKEN", "token")
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_HOOKS_TOKEN", "")
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 13)
-    monkeypatch.setattr(Config.ai, "DEEP_ANALYSIS_PLATFORM", platform)
 
     response = MagicMock()
     response.json.return_value = response_payload
@@ -64,11 +56,21 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     async def _call_direct(fn, *args, **kwargs):
         return await fn(*args, **kwargs)
 
-    monkeypatch.setattr(forward, "get_http_client", lambda: client)
     monkeypatch.setattr(forward.openclaw_cb, "call_async", _call_direct)
 
     result = await forward.analyze_with_openclaw(
-        {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}}
+        {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
+        policy=forward.OpenClawTriggerPolicy(
+            enabled=True,
+            data_dir="webhooks_data",
+            timeout_seconds=900,
+            platform=platform,
+            gateway_url="http://openclaw.test",
+            hooks_token="token",
+            connect_timeout=13.0,
+            enable_degradation=False,
+        ),
+        http_client=client,
     )
 
     assert result["_openclaw_run_id"] == "run-1"

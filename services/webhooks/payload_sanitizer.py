@@ -7,21 +7,19 @@ from typing import Any
 
 import orjson
 
-from core.config import Config
 from core.logger import get_logger
 from core.sensitive_data import redact_nested
+from services.webhooks.policies import PayloadSanitizerPolicy
 
 logger = get_logger("payload_sanitizer")
 
 
-def _get_offload_threshold_bytes() -> int:
-    v = int(getattr(Config.server, "PAYLOAD_OFFLOAD_THRESHOLD_BYTES", 0) or 0)
-    if v <= 0:
-        return 512 * 1024
-    return v
+def _get_offload_threshold_bytes(policy: PayloadSanitizerPolicy | None = None) -> int:
+    """Compatibility helper for callers that inspect the offload threshold."""
+    return (policy or PayloadSanitizerPolicy.from_config()).offload_threshold_bytes
 
 
-def _should_offload(data: object, depth: int = 0) -> bool:
+def _should_offload(data: object, policy: PayloadSanitizerPolicy, depth: int = 0) -> bool:
     if depth > 2:
         return False
     if data is None:
@@ -29,17 +27,17 @@ def _should_offload(data: object, depth: int = 0) -> bool:
     if isinstance(data, dict):
         if len(data) > 2000:
             return True
-        threshold = _get_offload_threshold_bytes()
+        threshold = policy.offload_threshold_bytes
         for n, v in enumerate(data.values()):
             if isinstance(v, (str, bytes, bytearray)) and len(v) >= threshold:
                 return True
             if isinstance(v, list) and len(v) > 5000:
                 return True
-            if isinstance(v, dict) and (len(v) > 2000 or _should_offload(v, depth + 1)):
+            if isinstance(v, dict) and (len(v) > 2000 or _should_offload(v, policy, depth + 1)):
                 return True
             if isinstance(v, list) and depth < 2:
                 for item in v[:2000]:
-                    if isinstance(item, (dict, list)) and _should_offload(item, depth + 1):
+                    if isinstance(item, (dict, list)) and _should_offload(item, policy, depth + 1):
                         return True
             if n >= 2000:
                 break
@@ -49,7 +47,7 @@ def _should_offload(data: object, depth: int = 0) -> bool:
             return True
         if depth < 2:
             for item in data[:2000]:
-                if isinstance(item, (dict, list)) and _should_offload(item, depth + 1):
+                if isinstance(item, (dict, list)) and _should_offload(item, policy, depth + 1):
                     return True
         return False
     return False
@@ -60,19 +58,25 @@ async def sanitize_for_ai_async(
 ) -> dict[str, Any]:
     if not parsed_data:
         return parsed_data
-    if _should_offload(parsed_data):
+    policy = PayloadSanitizerPolicy.from_config()
+    if _should_offload(parsed_data, policy):
         res = await asyncio.to_thread(
             sanitize_for_ai,
             parsed_data,
             strip_configured_keys=strip_configured_keys,
             truncate=truncate,
+            policy=policy,
         )
         return res
-    return sanitize_for_ai(parsed_data, strip_configured_keys=strip_configured_keys, truncate=truncate)
+    return sanitize_for_ai(parsed_data, strip_configured_keys=strip_configured_keys, truncate=truncate, policy=policy)
 
 
 def sanitize_for_ai(
-    parsed_data: dict[str, Any], *, strip_configured_keys: bool = True, truncate: bool = True
+    parsed_data: dict[str, Any],
+    *,
+    strip_configured_keys: bool = True,
+    truncate: bool = True,
+    policy: PayloadSanitizerPolicy | None = None,
 ) -> dict[str, Any]:
     """清洗 parsed_data，移除噪音字段并截断过大内容。
 
@@ -84,11 +88,8 @@ def sanitize_for_ai(
     if not parsed_data:
         return parsed_data
 
-    strip_keys = (
-        {k.strip().lower() for k in Config.ai.AI_PAYLOAD_STRIP_KEYS.split(",")}
-        if strip_configured_keys and Config.ai.AI_PAYLOAD_STRIP_KEYS
-        else set()
-    )
+    policy = policy or PayloadSanitizerPolicy.from_config()
+    strip_keys = set(policy.strip_keys) if strip_configured_keys else set()
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
     cleaned_obj = redact_nested(_strip_keys_recursive(parsed_data, strip_keys))
@@ -98,7 +99,7 @@ def sanitize_for_ai(
     if not truncate:
         return cleaned
 
-    max_bytes = Config.ai.AI_PAYLOAD_MAX_BYTES
+    max_bytes = policy.max_bytes
     serialized = orjson.dumps(cleaned)
     if max_bytes > 0 and len(serialized) > max_bytes:
         logger.info(

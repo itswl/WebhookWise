@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from core.taskiq_broker import dynamic_schedule_source
+
+if TYPE_CHECKING:
+    from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 
 
 def compute_backoff_delay(
@@ -20,20 +24,12 @@ def compute_backoff_delay(
     return max(0, int(min(delay, max_delay)))
 
 
-def compute_openclaw_poll_delay(poll_attempts: int) -> int:
+def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolicy | None = None) -> int:
     """Return the next OpenClaw poll delay using bounded exponential backoff."""
-    from core.config import Config
+    from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 
-    normalized_attempts = max(0, int(poll_attempts))
-    initial_delay = max(1, int(Config.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS))
-    max_delay = max(initial_delay, int(Config.openclaw.OPENCLAW_POLL_MAX_DELAY_SECONDS))
-    multiplier = max(1.0, float(Config.openclaw.OPENCLAW_POLL_BACKOFF_MULTIPLIER))
-    delay = float(initial_delay)
-    for _ in range(normalized_attempts):
-        delay *= multiplier
-        if delay >= max_delay:
-            return max_delay
-    return max(1, int(delay))
+    poll_policy = policy or OpenClawPollPolicy.from_config()
+    return poll_policy.delay_for_attempt(poll_attempts)
 
 
 async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
