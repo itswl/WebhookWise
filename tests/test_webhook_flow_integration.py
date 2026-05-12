@@ -160,6 +160,7 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from models import WebhookEvent
+    from services.webhooks import command_service
     from services.webhooks.command_service import mark_webhook_suppressed
 
     async with integration_session_factory.begin() as session:
@@ -171,7 +172,7 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     async def fail_check_duplicate(*_: object, **__: object) -> object:
         raise AssertionError("storm suppression must not run duplicate queries")
 
-    monkeypatch.setattr(WebhookEvent, "check_duplicate", fail_check_duplicate)
+    monkeypatch.setattr(command_service, "check_duplicate_event", fail_check_duplicate)
 
     await mark_webhook_suppressed(
         event_id=event_id,
