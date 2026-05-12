@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
@@ -166,6 +166,74 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
     assert isinstance(resp["data"][0], dict)
     assert resp["data"][0]["webhook_event_id"] == event.id
     assert resp["data"][0]["analysis_result"] == {"root_cause": "x"}
+
+
+async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatch):
+    from api import deep_analysis
+    from models import DeepAnalysis, WebhookEvent
+    from services.webhooks.types import DeepAnalysisStatus
+
+    event = WebhookEvent(
+        source="volcengine",
+        client_ip="127.0.0.1",
+        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+        importance="high",
+        processing_status="completed",
+        is_duplicate=False,
+        duplicate_count=1,
+        beyond_window=False,
+    )
+    session.add(event)
+    await session.flush()
+
+    old_created_at = datetime.now() - timedelta(hours=2)
+    record = DeepAnalysis(
+        webhook_event_id=event.id,
+        engine="openclaw",
+        user_question="",
+        analysis_result={"root_cause": "old timeout"},
+        status=DeepAnalysisStatus.TIMEOUT,
+        created_at=old_created_at,
+        openclaw_run_id="run-1",
+        openclaw_session_key="session-1",
+        poll_attempts=4,
+        last_polled_at=old_created_at,
+        next_poll_at=old_created_at,
+    )
+    session.add(record)
+    await session.commit()
+
+    scheduled: list[tuple[int, int]] = []
+    cleared: list[int] = []
+
+    async def fake_schedule(analysis_id: int, delay_seconds: int) -> None:
+        scheduled.append((analysis_id, delay_seconds))
+
+    async def fake_clear(record_id: int) -> None:
+        cleared.append(record_id)
+
+    async def fail_if_called(*_: object, **__: object) -> tuple[dict[str, object], str]:
+        raise AssertionError("retry with an existing session_key should not block on remote analysis")
+
+    monkeypatch.setattr(deep_analysis, "_schedule_openclaw_poll_best_effort", fake_schedule)
+    monkeypatch.setattr("services.analysis.openclaw_poller.clear_openclaw_poll_state", fake_clear)
+    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_if_called)
+
+    started = datetime.now()
+    resp = await deep_analysis.retry_deep_analysis(record.id, session=session)
+
+    assert resp["success"] is True
+    assert scheduled == [(record.id, 0)]
+    assert cleared == [record.id]
+
+    await session.refresh(record)
+    assert record.status == DeepAnalysisStatus.PENDING
+    assert record.analysis_result is None
+    assert record.duration_seconds == 0
+    assert record.poll_attempts == 0
+    assert record.last_polled_at is None
+    assert record.created_at is not None and record.created_at >= started
+    assert record.next_poll_at is not None and record.next_poll_at >= started
 
 
 def test_webhook_analysis_result_to_dict_dumps_enum_to_string():

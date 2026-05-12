@@ -76,6 +76,11 @@ async def _clear_poll_stability(record_id: int) -> None:
     await redis_delete(f"openclaw:poller:stability:{record_id}")
 
 
+async def clear_openclaw_poll_state(record_id: int) -> None:
+    """Clear transient poller cache before a manual retry."""
+    await _clear_poll_stability(record_id)
+
+
 async def _notify_feishu_deep_analysis(
     record_dict: WebhookData, source: str = "", *, policy: OpenClawPollPolicy | None = None
 ) -> None:
