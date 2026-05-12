@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -61,8 +61,8 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
 
     assert ok is True
     assert client.calls[0]["timeout"] == 3
-    assert client.calls[0]["json"]["msg_type"] == "interactive"  # type: ignore[index]
-    assert "ID: 42" in client.calls[0]["json"]["card"]["elements"][-1]["elements"][0]["content"]  # type: ignore[index]
+    assert client.calls[0]["json"]["msg_type"] == "interactive"
+    assert "ID: 42" in client.calls[0]["json"]["card"]["elements"][-1]["elements"][0]["content"]
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
         policy=RemoteForwardPolicy(forward_url="", timeout_seconds=2),
         dependencies=RemoteForwardDependencies(
             http_client=client,
-            circuit_breaker=breaker,
+            circuit_breaker=cast(Any, breaker),
             validate_url=accept_url,
         ),
     )
@@ -204,6 +204,7 @@ async def test_ingress_backpressure_suppresses_after_threshold() -> None:
 @pytest.mark.asyncio
 async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import webhook
+    from services.operations.tasks import process_webhook_task
     from services.webhooks.ingress_backpressure import IngressBackpressureResult
 
     class Request:
@@ -221,17 +222,48 @@ async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest
             reason="ingress_storm_backpressure",
         )
 
-    async def fail_write(*_: object, **__: object) -> int:
-        raise AssertionError("suppressed ingress request must not write PostgreSQL")
+    async def fail_enqueue(*_: object, **__: object) -> None:
+        raise AssertionError("suppressed ingress request must not enqueue work")
 
     monkeypatch.setattr(webhook, "check_ingress_backpressure", suppressed)
-    monkeypatch.setattr(webhook, "quick_receive_webhook", fail_write)
+    monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", fail_enqueue)
 
     result = await webhook._receive_and_enqueue_webhook(
         request=Request(),  # type: ignore[arg-type]
         source_hint="prometheus",
-        session=object(),  # type: ignore[arg-type]
     )
 
+    assert isinstance(result, dict)
     assert result["event_id"] == 0
     assert "suppressed" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_analysis_reuses_redis_dedup_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    import services.webhooks.analysis_resolution as analysis_resolution
+    from services.webhooks.deduplication import CachedDuplicate
+
+    async def cached_duplicate(_: str) -> CachedDuplicate:
+        return CachedDuplicate(123, {"importance": "high", "summary": "cached"})
+
+    async def fail_db_lookup(*_: object, **__: object) -> object:
+        raise AssertionError("cached duplicate should not query PostgreSQL")
+
+    async def fail_ai(*_: object, **__: object) -> object:
+        raise AssertionError("cached duplicate should not invoke AI")
+
+    async def noop_usage(*_: object, **__: object) -> None:
+        return None
+
+    monkeypatch.setattr(analysis_resolution, "get_cached_duplicate", cached_duplicate)
+    monkeypatch.setattr(analysis_resolution, "check_duplicate_event", fail_db_lookup)
+    monkeypatch.setattr(analysis_resolution, "analyze_webhook_with_ai", fail_ai)
+    monkeypatch.setattr(analysis_resolution, "log_ai_usage", noop_usage)
+
+    result = await analysis_resolution.resolve_analysis("same-hash", {"source": "prometheus"})
+
+    assert result.is_duplicate is True
+    assert result.is_reused is True
+    assert result.original_event is None
+    assert result.original_event_id == 123
+    assert result.analysis_result["_route_type"] == "redis_reuse"

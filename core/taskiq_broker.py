@@ -83,13 +83,6 @@ async def worker_startup_event(state: object) -> None:
     from core.otel import setup_otel_worker
 
     setup_otel_worker()
-    try:
-        from services.operations.recovery_poller import run_recovery_scan
-
-        await run_recovery_scan(stuck_threshold_seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
-        logger.info("[TaskIQ] 启动恢复扫描完成")
-    except Exception as _e:
-        logger.warning("[TaskIQ] 启动恢复扫描失败: %s", _e)
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)

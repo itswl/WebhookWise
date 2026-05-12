@@ -244,17 +244,28 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
 
 @broker.task(task_name="webhook_process_task")
 async def process_webhook_task(
-    event_id: int,
+    event_id: int | None = None,
     client_ip: str | None = None,
+    source: str | None = None,
+    raw_headers: dict[str, str] | None = None,
+    raw_body: str | None = None,
 ) -> None:
-    """异步处理单条 Webhook 事件"""
-    from services.webhooks.pipeline import handle_webhook_process
+    """Process either a legacy DB event or a raw ingested webhook."""
+    from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
 
-    logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s", event_id)
+    logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s source=%s", event_id, source or "")
     async with _webhook_task_slot():
         WEBHOOK_RUNNING_TASKS.inc()
         try:
-            await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+            if event_id is not None:
+                await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+            else:
+                await handle_webhook_ingest(
+                    source=source or "unknown",
+                    raw_headers=raw_headers or {},
+                    raw_body=raw_body or "",
+                    client_ip=client_ip or "",
+                )
         finally:
             WEBHOOK_RUNNING_TASKS.dec()
 
@@ -294,16 +305,6 @@ async def scheduled_openclaw_poll_scan() -> None:
 
 
 @broker.task(
-    task_name="scheduled_recovery_scan",
-    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "recovery_scan_interval_seconds"}],
-)
-async def scheduled_recovery_scan() -> None:
-    from services.operations.recovery_poller import run_recovery_scan
-
-    await _run_scheduled("recovery_scan", _recovery_scan_interval_seconds(), run_recovery_scan())
-
-
-@broker.task(
     task_name="scheduled_metrics_refresh",
     schedule=[
         {
@@ -316,16 +317,6 @@ async def scheduled_metrics_refresh() -> None:
     from services.operations.metrics_poller import refresh_all_metrics
 
     await _run_scheduled("metrics_refresh", _metrics_refresh_interval_seconds(), refresh_all_metrics())
-
-
-@broker.task(
-    task_name="scheduled_forward_outbox_scan",
-    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
-)
-async def scheduled_forward_outbox_scan() -> None:
-    from services.forwarding.outbox import run_forward_outbox_scan
-
-    await _run_scheduled("forward_outbox_scan", _recovery_scan_interval_seconds(), run_forward_outbox_scan())
 
 
 @broker.task(

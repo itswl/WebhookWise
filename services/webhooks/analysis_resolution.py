@@ -6,6 +6,7 @@ from typing import Any
 from core.logger import logger
 from db.session import session_scope
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
+from services.webhooks.deduplication import get_cached_duplicate
 from services.webhooks.policies import AnalysisResolutionPolicy
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResolution
@@ -19,6 +20,24 @@ async def resolve_analysis(
     http_client: Any | None = None,
 ) -> AnalysisResolution:
     policy = policy or AnalysisResolutionPolicy.from_config()
+    cached = await get_cached_duplicate(alert_hash)
+    if cached and cached.analysis and not cached.analysis.get("_degraded"):
+        logger.debug(
+            "[Pipeline] 窗口内复用 Redis 去重缓存 orig_id=%s hash=%s...",
+            cached.original_event_id,
+            alert_hash[:12],
+        )
+        await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+        return AnalysisResolution(
+            {**cached.analysis, "_route_type": "redis_reuse"},
+            False,
+            True,
+            None,
+            False,
+            True,
+            cached.original_event_id,
+        )
+
     async with session_scope() as session:
         check = await check_duplicate_event(
             alert_hash, session=session, time_window_hours=policy.duplicate_window_hours
@@ -37,12 +56,24 @@ async def resolve_analysis(
             )
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution(
-                {**(last_beyond.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True
+                {**(last_beyond.ai_analysis or {}), "_route_type": "db_reuse"},
+                False,
+                True,
+                orig,
+                True,
+                original_event_id=orig.id,
             )
         if not policy.reanalyze_after_time_window and not (orig.ai_analysis or {}).get("_degraded"):
             logger.debug("[Pipeline] 窗口外复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-            return AnalysisResolution({**(orig.ai_analysis or {}), "_route_type": "db_reuse"}, False, True, orig, True)
+            return AnalysisResolution(
+                {**(orig.ai_analysis or {}), "_route_type": "db_reuse"},
+                False,
+                True,
+                orig,
+                True,
+                original_event_id=orig.id,
+            )
         logger.debug(
             "[Pipeline] 窗口外重新分析 orig_id=%s reason=%s hash=%s...",
             orig.id,
@@ -55,11 +86,20 @@ async def resolve_analysis(
         if target.ai_analysis and not target.ai_analysis.get("_degraded"):
             logger.debug("[Pipeline] 窗口内复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-            return AnalysisResolution({**target.ai_analysis, "_route_type": "db_reuse"}, False, True, orig, False)
+            return AnalysisResolution(
+                {**target.ai_analysis, "_route_type": "db_reuse"},
+                False,
+                True,
+                orig,
+                False,
+                original_event_id=orig.id,
+            )
         logger.debug("[Pipeline] 窗口内重新分析 orig_id=%s reason=prev_degraded hash=%s...", orig.id, alert_hash[:12])
         res, rean = await analyze_webhook_with_ai(full_data, http_client=http_client), True
     else:
         logger.debug("[Pipeline] 新事件，发起 AI 分析 hash=%s...", alert_hash[:12])
         res, rean = await analyze_webhook_with_ai(full_data, http_client=http_client), True
 
-    return AnalysisResolution(res, rean, check.is_duplicate, orig, check.beyond_window)
+    return AnalysisResolution(
+        res, rean, check.is_duplicate, orig, check.beyond_window, original_event_id=orig.id if orig else None
+    )

@@ -38,7 +38,7 @@ class WebhookEvent(Base, SerializerMixin):
     __tablename__ = "webhook_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
     client_ip: Mapped[str | None] = mapped_column(String(50))
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
 
@@ -49,9 +49,9 @@ class WebhookEvent(Base, SerializerMixin):
     alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
 
     ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
-    importance: Mapped[str | None] = mapped_column(String(20), index=True)
+    importance: Mapped[str | None] = mapped_column(String(20))
 
-    processing_status: Mapped[str] = mapped_column(String(20), default="received", nullable=False, index=True)
+    processing_status: Mapped[str] = mapped_column(String(20), default="received", nullable=False)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime)
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -72,15 +72,7 @@ class WebhookEvent(Base, SerializerMixin):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    __table_args__ = (
-        Index("idx_unique_alert_hash_original", "alert_hash", unique=True, postgresql_where=(is_duplicate.is_(False))),
-        Index("idx_hash_timestamp", "alert_hash", "timestamp"),
-        Index("idx_importance_timestamp", "importance", "timestamp"),
-        Index("idx_duplicate_lookup", "alert_hash", "is_duplicate", "timestamp"),
-        Index("idx_status_created", "processing_status", "created_at"),
-        Index("idx_retry_due", "next_retry_at", postgresql_where=(processing_status == "retry")),
-        Index("idx_source_timestamp_id", "source", "timestamp", "id"),
-    )
+    __table_args__ = (Index("idx_hash_timestamp", "alert_hash", "timestamp"),)
 
     @staticmethod
     def generate_hash(data: dict[str, Any], source: str) -> str:
