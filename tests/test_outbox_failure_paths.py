@@ -522,7 +522,42 @@ class TestOpenClawPoller:
         assert result["_need_success_notify"] is True
         assert result["analysis_result"]["root_cause"] == "root cause ready"
 
-    async def test_poll_single_record_falls_back_to_gateway_when_http_api_is_unreachable(
+    async def test_poll_single_record_keeps_pending_and_does_not_use_gateway_when_http_api_is_configured(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller, openclaw_ws_client
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
+
+        async def _http_error(*_: object, **__: object) -> dict[str, object]:
+            return {"status": "error", "error": "All connection attempts failed", "retryable": True}
+
+        async def _gateway_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
+            raise AssertionError("configured OPENCLAW_HTTP_API_URL must be the only poll transport")
+
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_error)
+        monkeypatch.setattr(openclaw_ws_client, "poll_session_result", _gateway_should_not_be_called)
+
+        result = await openclaw_poller._poll_single_record(
+            {
+                "id": 1,
+                "webhook_event_id": 1,
+                "engine": "openclaw",
+                "openclaw_session_key": "session-1",
+                "openclaw_run_id": "run-1",
+                "created_at": datetime.now(),
+                "status": DeepAnalysisStatus.PENDING,
+                "analysis_result": None,
+                "duration_seconds": 0,
+            }
+        )
+
+        assert result == {"id": 1, "action": "skip"}
+
+    async def test_poll_single_record_uses_gateway_when_http_api_is_not_configured(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -530,16 +565,16 @@ class TestOpenClawPoller:
         from services.analysis import openclaw_poller, openclaw_ws_client
 
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "")
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
 
-        async def _http_error(*_: object, **__: object) -> dict[str, object]:
-            return {"status": "error", "error": "All connection attempts failed", "retryable": True}
+        async def _http_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
+            raise AssertionError("HTTP poll should be skipped when OPENCLAW_HTTP_API_URL is empty")
 
         async def _gateway_completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "gateway result", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_error)
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_should_not_be_called)
         monkeypatch.setattr(openclaw_ws_client, "poll_session_result", _gateway_completed)
 
         result = await openclaw_poller._poll_single_record(
@@ -559,41 +594,6 @@ class TestOpenClawPoller:
         assert result["action"] == "update"
         assert result["status"] == DeepAnalysisStatus.COMPLETED
         assert result["analysis_result"]["root_cause"] == "gateway result"
-
-    async def test_poll_single_record_keeps_pending_when_all_poll_channels_have_transient_errors(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from core.config import Config
-        from services.analysis import openclaw_poller, openclaw_ws_client
-
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
-
-        async def _http_error(*_: object, **__: object) -> dict[str, object]:
-            return {"status": "error", "error": "All connection attempts failed", "retryable": True}
-
-        async def _gateway_error(*_: object, **__: object) -> dict[str, object]:
-            return {"status": "error", "error": "Timeout (180s)"}
-
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_error)
-        monkeypatch.setattr(openclaw_ws_client, "poll_session_result", _gateway_error)
-
-        result = await openclaw_poller._poll_single_record(
-            {
-                "id": 1,
-                "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
-                "created_at": datetime.now(),
-                "status": DeepAnalysisStatus.PENDING,
-                "analysis_result": None,
-                "duration_seconds": 0,
-            }
-        )
-
-        assert result == {"id": 1, "action": "skip"}
 
     async def test_poll_single_record_treats_same_length_different_text_as_changed(
         self,
