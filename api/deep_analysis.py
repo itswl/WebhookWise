@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.notification_targets import is_feishu_url
 from api.webhook_context import JSONDict, build_webhook_context
+from core.dependencies import get_http_client_dependency
 from core.logger import logger
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
@@ -251,7 +252,10 @@ async def retry_deep_analysis(
 
 @deep_analysis_router.post("/api/deep-analyses/{analysis_id}/forward", response_model=None)
 async def forward_deep_analysis(
-    analysis_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+    analysis_id: int,
+    payload: dict[str, Any] | None = None,
+    session: AsyncSession = Depends(get_db_session),
+    http_client: Any = Depends(get_http_client_dependency),
 ) -> JSONResponse | JSONDict:
     """转发深度分析结果到指定 URL（飞书卡片或通用 Webhook）"""
     payload = payload or {}
@@ -290,6 +294,7 @@ async def forward_deep_analysis(
             },
             source=source,
             webhook_event_id=analysis.webhook_event_id or 0,
+            http_client=http_client,
         )
         if ok:
             return {"success": True, "message": "已发送到飞书"}

@@ -9,8 +9,6 @@ import uvloop
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-import sys
-
 from core.config import Config
 from core.logger import logger
 from db.session import init_engine, test_db_connection
@@ -25,7 +23,7 @@ if __name__ == "__main__":
     # 启动前验证（model_validator 在 Config 实例化时已自动执行）
     if not asyncio.run(_check_db()):
         logger.error("数据库连接失败，请检查配置")
-        sys.exit(1)
+        raise SystemExit(1)
 
     logger.info("启动 Webhook 服务: http://%s:%s", Config.server.HOST, Config.server.PORT)
     import uvicorn
