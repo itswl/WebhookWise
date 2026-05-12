@@ -15,6 +15,7 @@ class WebhookEventFull(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    request_id: str | None = None
     source: str
     client_ip: str | None = None
     timestamp: str | None = None
@@ -42,6 +43,7 @@ class WebhookEventSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    request_id: str | None = None
     source: str
     client_ip: str | None = None
     timestamp: str | None = None
@@ -64,6 +66,7 @@ class WebhookReceiveResponse(BaseModel):
     success: bool
     message: str
     event_id: int
+    request_id: str
 
 
 class WebhookListResponse(BaseModel):
