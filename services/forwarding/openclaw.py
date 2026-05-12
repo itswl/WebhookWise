@@ -4,13 +4,13 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
-from core.circuit_breaker import CircuitBreakerOpenException, openclaw_cb
-from core.http_client import get_http_client
+from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import logger
+from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import ForwardResult, WebhookData
 
@@ -23,9 +23,16 @@ async def forward_to_openclaw(
     *,
     policy: OpenClawTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
+    dependencies: OpenClawForwardDependencies | None = None,
 ) -> ForwardResult:
     """推送任务到 OpenClaw 进行深度分析。"""
     policy = policy or OpenClawTriggerPolicy.from_config()
+    dependencies = dependencies or build_openclaw_forward_dependencies()
+    if http_client is not None:
+        dependencies = OpenClawForwardDependencies(
+            http_client=http_client,
+            circuit_breaker=dependencies.circuit_breaker,
+        )
     if not policy.enabled:
         logger.debug("[Forward] OpenClaw 未启用，跳过深度分析")
         return {"status": "disabled"}
@@ -33,7 +40,7 @@ async def forward_to_openclaw(
     async def _do_request() -> dict[str, Any]:
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
-        result = await analyze_with_openclaw(webhook_data, policy=policy, http_client=http_client)
+        result = await analyze_with_openclaw(webhook_data, policy=policy, dependencies=dependencies)
         if result.get("_degraded"):
             logger.warning("[Forward] OpenClaw 降级，回退本地 AI: %s", result.get("_degraded_reason"))
             local_data = {
@@ -45,7 +52,7 @@ async def forward_to_openclaw(
         return result
 
     try:
-        res = await openclaw_cb.call_async(_do_request)
+        res = await dependencies.circuit_breaker.call_async(_do_request)
         return res
     except CircuitBreakerOpenException:
         return {"status": "circuit_broken"}
@@ -100,12 +107,19 @@ async def analyze_with_openclaw(
     *,
     policy: OpenClawTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
+    dependencies: OpenClawForwardDependencies | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.trace import get_trace_id
 
     policy = policy or OpenClawTriggerPolicy.from_config()
+    dependencies = dependencies or build_openclaw_forward_dependencies()
+    if http_client is not None:
+        dependencies = OpenClawForwardDependencies(
+            http_client=http_client,
+            circuit_breaker=dependencies.circuit_breaker,
+        )
     if not policy.enabled:
         logger.warning("OpenClaw 未启用")
         return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
@@ -194,13 +208,15 @@ async def analyze_with_openclaw(
 
     for attempt in range(max_retries):
         try:
-            client = http_client or get_http_client()
-            response = await openclaw_cb.call_async(
-                client.post,
-                target_url,
-                headers=headers,
-                timeout=httpx.Timeout(60.0, connect=connect_timeout),
-                **kwargs,
+            response = cast(
+                httpx.Response,
+                await dependencies.circuit_breaker.call_async(
+                    dependencies.http_client.post,
+                    target_url,
+                    headers=headers,
+                    timeout=httpx.Timeout(60.0, connect=connect_timeout),
+                    **kwargs,
+                ),
             )
             response.raise_for_status()
             break

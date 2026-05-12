@@ -10,6 +10,7 @@ from adapters.notification_targets import is_feishu_url
 from adapters.plugins.feishu_card import build_deep_analysis_card
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
 from core.url_security import validate_outbound_url
+from services.forwarding.dependencies import ValidateURL
 from services.notifications.channels import AsyncJsonPoster
 from services.operations.policies import FeishuNotificationPolicy
 
@@ -21,6 +22,7 @@ class FeishuNotificationChannel:
     http_client: AsyncJsonPoster
     circuit_breaker: CircuitBreaker
     policy: FeishuNotificationPolicy
+    validate_url: ValidateURL = validate_outbound_url
     name: str = "feishu"
 
     def supports(self, target_url: str) -> bool:
@@ -30,7 +32,7 @@ class FeishuNotificationChannel:
         if not target_url or not self.supports(target_url):
             return False
         try:
-            validated_url = await validate_outbound_url(target_url)
+            validated_url = await self.validate_url(target_url)
             response = await self.circuit_breaker.call_async(
                 self.http_client.post,
                 validated_url,

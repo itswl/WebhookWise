@@ -276,16 +276,18 @@ def _get_instructor_client() -> instructor.Instructor:
     raise RuntimeError("_get_instructor_client 已弃用，请使用 _get_instructor_client_async")
 
 
-async def _get_instructor_client_async() -> instructor.Instructor:
+async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None = None) -> instructor.Instructor:
     if _instructor_client is not None:
         return _instructor_client
-    await initialize_openai_client()
+    await initialize_openai_client(http_client=http_client)
     if _instructor_client is None:
         raise RuntimeError("OpenAI client initialization failed")
     return _instructor_client
 
 
-async def initialize_openai_client(policy: AIProviderPolicy | None = None) -> None:
+async def initialize_openai_client(
+    policy: AIProviderPolicy | None = None, *, http_client: httpx.AsyncClient | None = None
+) -> None:
     global _openai_client, _instructor_client
     policy = policy or AIProviderPolicy.from_config()
     async with _openai_client_lock:
@@ -294,7 +296,7 @@ async def initialize_openai_client(policy: AIProviderPolicy | None = None) -> No
                 _openai_client = AsyncOpenAI(
                     api_key=policy.api_key,
                     base_url=policy.api_url,
-                    http_client=get_http_client(),
+                    http_client=http_client or get_http_client(),
                     timeout=httpx.Timeout(60.0, connect=10.0),
                 )
             _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
@@ -324,10 +326,14 @@ async def reset_openai_client() -> None:
 
 
 async def _analyze_with_openai_tracked(
-    data: dict[str, Any], source: str, *, policy: AIProviderPolicy | None = None
+    data: dict[str, Any],
+    source: str,
+    *,
+    policy: AIProviderPolicy | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> tuple[AnalysisResult, int, int]:
     policy = policy or AIProviderPolicy.from_config()
-    client = await _get_instructor_client_async()
+    client = await _get_instructor_client_async(http_client=http_client)
     cleaned_data = await sanitize_for_ai_async(data)
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
     user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
@@ -358,10 +364,12 @@ async def _analyze_with_openai_tracked(
     ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
-async def _call_ai_with_retry(parsed_data: dict[str, Any], source: str) -> tuple[dict[str, Any], int, int]:
+async def _call_ai_with_retry(
+    parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
+) -> tuple[dict[str, Any], int, int]:
     start = time.time()
     try:
-        res, t_in, t_out = await _analyze_with_openai_tracked(parsed_data, source)
+        res, t_in, t_out = await _analyze_with_openai_tracked(parsed_data, source, http_client=http_client)
         AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="openai").observe(
             time.time() - start
         )
@@ -551,7 +559,11 @@ def analyze_with_rules(
 
 
 async def analyze_webhook_with_ai(
-    webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
+    webhook_data: WebhookData,
+    alert_hash: str | None = None,
+    skip_cache: bool = False,
+    *,
+    http_client: httpx.AsyncClient | None = None,
 ) -> AnalysisResult:
     await _maybe_refresh_runtime_policies(("OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_API_URL"), min_interval_seconds=60)
     cache_policy = AICachePolicy.from_config()
@@ -589,7 +601,10 @@ async def analyze_webhook_with_ai(
             format_runtime_meta_time(model_meta.get("updated_at")),
             alert_hash[:12],
         )
-        analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
+        if http_client is not None:
+            analysis, t_in, t_out = await _call_ai_with_retry(parsed, source, http_client=http_client)
+        else:
+            analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,

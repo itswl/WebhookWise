@@ -29,8 +29,6 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
     async def fake_validate(url: str) -> str:
         return url
 
-    monkeypatch.setattr("services.notifications.feishu.validate_outbound_url", fake_validate)
-
     class Response:
         status_code = 200
 
@@ -51,6 +49,7 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
         http_client=client,
         circuit_breaker=Breaker(),  # type: ignore[arg-type]
         policy=FeishuNotificationPolicy(timeout_seconds=3),
+        validate_url=fake_validate,
     )
 
     ok = await channel.send_deep_analysis(
@@ -108,3 +107,59 @@ async def test_feishu_facade_uses_supplied_notification_channel() -> None:
 
     assert ok is True
     assert channel.called is True
+
+
+@pytest.mark.asyncio
+async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
+    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.remote import forward_to_remote
+
+    async def accept_url(url: str) -> str:
+        return url
+
+    class Response:
+        status_code = 200
+        content = b'{"ok":true}'
+        text = '{"ok":true}'
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class Client:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        async def post(self, url: str, **_: Any) -> Response:
+            self.urls.append(url)
+            return Response()
+
+    class Breaker:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> object:
+            self.called = True
+            return await func(*args, **kwargs)
+
+    client = Client()
+    breaker = Breaker()
+
+    result = await forward_to_remote(
+        {"source": "unit", "parsed_data": {}},
+        {"summary": "ok"},
+        target_url="https://example.test/hook",
+        policy=RemoteForwardPolicy(forward_url="", timeout_seconds=2),
+        dependencies=RemoteForwardDependencies(
+            http_client=client,
+            circuit_breaker=breaker,
+            validate_url=accept_url,
+        ),
+    )
+
+    assert result["status"] == "success"
+    assert breaker.called is True
+    assert client.urls == ["https://example.test/hook"]
