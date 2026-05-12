@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+import httpx
+
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.webhooks.types import WebhookData
 
@@ -27,6 +29,12 @@ async def poll_openclaw_final(
     """
     base_url = policy.http_api_url.rstrip("/")
     headers = policy.http_auth_headers(trace_id)
+    timeout = httpx.Timeout(
+        connect=policy.http_connect_timeout,
+        read=policy.http_poll_timeout,
+        write=policy.http_connect_timeout,
+        pool=policy.http_connect_timeout,
+    )
     last_error = None
     transport_error = False
 
@@ -35,7 +43,7 @@ async def poll_openclaw_final(
             url = f"{base_url}/sessions/{session_key}/final"
             logger.debug("HTTP /final 请求 (尝试 %s/%s): %s", attempt + 1, retry_count, url)
 
-            response = await http_client.get(url, headers=headers, timeout=policy.http_poll_timeout)
+            response = await http_client.get(url, headers=headers, timeout=timeout)
 
             if response.status_code == 404:
                 last_error = "Session not found"

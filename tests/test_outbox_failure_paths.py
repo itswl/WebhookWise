@@ -394,7 +394,7 @@ class TestOpenClawPoller:
         from core.config import Config
         from services.analysis import openclaw_poller
 
-        seen_timeouts: list[float] = []
+        seen_timeouts: list[tuple[float, float]] = []
 
         class _Response:
             status_code = 200
@@ -410,18 +410,18 @@ class TestOpenClawPoller:
         class _Client:
             async def get(self, *_: object, **kwargs: object) -> _Response:
                 timeout = kwargs["timeout"]
-                assert isinstance(timeout, (int, float))
-                seen_timeouts.append(float(timeout))
+                seen_timeouts.append((float(timeout.connect), float(timeout.read)))
                 return _Response()
 
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 3)
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
         result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
 
         assert result["status"] == "pending"
-        assert seen_timeouts == [7.0]
+        assert seen_timeouts == [(3.0, 7.0)]
 
     async def test_poll_via_http_marks_transport_errors_retryable(
         self,
