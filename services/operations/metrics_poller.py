@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
-from core.config import Config
 from core.metrics import (
     DATABASE_EVENTS_COUNT,
     WEBHOOK_MQ_GROUP_LAG,
@@ -20,23 +19,21 @@ from core.metrics import (
 from core.redis_client import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
+from services.operations.policies import MetricsPollPolicy
 
 logger = logging.getLogger("webhook_service.metrics")
 
 
-async def refresh_all_metrics() -> None:
+async def refresh_all_metrics(*, policy: MetricsPollPolicy | None = None) -> None:
     """刷新系统指标（由 TaskIQ 驱动）"""
-    await _refresh_db_status_counts()
-    await _refresh_mq_stats()
+    policy = policy or MetricsPollPolicy.from_config()
+    await _refresh_db_status_counts(policy=policy)
+    await _refresh_mq_stats(policy=policy)
     await _refresh_db_event_count()
 
 
 async def _refresh_db_event_count() -> None:
     try:
-        from sqlalchemy import func, select
-
-        from models import WebhookEvent
-
         async with session_scope() as session:
             count = (await session.execute(select(func.count()).select_from(WebhookEvent))).scalar() or 0
         DATABASE_EVENTS_COUNT.set(count)
@@ -44,12 +41,19 @@ async def _refresh_db_event_count() -> None:
         logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)
 
 
-async def _refresh_db_status_counts() -> None:
-    known_statuses = ("received", "analyzing", "completed", "failed", "dead_letter")  # fmt: skip — corresponds to WebhookProcessingStatus values
+async def _refresh_db_status_counts(*, policy: MetricsPollPolicy | None = None) -> None:
+    policy = policy or MetricsPollPolicy.from_config()
+    known_statuses = (
+        "received",
+        "analyzing",
+        "completed",
+        "failed",
+        "dead_letter",
+    )  # fmt: skip — corresponds to WebhookProcessingStatus values
     status_counts = dict.fromkeys(known_statuses, 0)
     stuck_counts = dict.fromkeys(known_statuses, 0)
 
-    threshold = datetime.now() - timedelta(seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
+    threshold = datetime.now() - timedelta(seconds=policy.stuck_threshold_seconds)
 
     async with session_scope() as session:
         result = await session.execute(
@@ -77,12 +81,13 @@ async def _refresh_db_status_counts() -> None:
         WEBHOOK_STUCK_STATUS_COUNT.labels(status=status).set(count)
 
 
-async def _refresh_mq_stats() -> None:
+async def _refresh_mq_stats(*, policy: MetricsPollPolicy | None = None) -> None:
     """MQ 指标刷新 — TaskIQ 使用 Redis Stream (RedisStreamBroker)。"""
+    policy = policy or MetricsPollPolicy.from_config()
     from core.taskiq_broker import broker
 
-    queue_name = getattr(broker, "queue_name", None) or Config.server.WEBHOOK_MQ_QUEUE
-    group_name = getattr(broker, "consumer_group_name", None) or Config.server.WEBHOOK_MQ_CONSUMER_GROUP
+    queue_name = getattr(broker, "queue_name", None) or policy.webhook_mq_queue
+    group_name = getattr(broker, "consumer_group_name", None) or policy.webhook_mq_consumer_group
 
     try:
         stream_len = await redis_xlen(queue_name)

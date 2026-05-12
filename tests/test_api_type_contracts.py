@@ -17,6 +17,7 @@ async def session(monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     # Import models to register them with Base.metadata
+    import models  # noqa: F401
     from db.session import Base
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)

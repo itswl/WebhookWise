@@ -1,4 +1,4 @@
-"""Shared utility functions."""
+"""Notification target detection helpers owned by the adapter boundary."""
 
 from urllib.parse import urlsplit
 

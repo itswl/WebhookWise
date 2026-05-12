@@ -6,10 +6,8 @@
 import asyncio
 import logging
 import math
-import os
 import time
 from collections.abc import Sequence
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -18,8 +16,6 @@ import instructor
 import orjson
 import yaml
 from openai import AsyncOpenAI
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import (
     before_sleep_log,
     retry,
@@ -28,8 +24,6 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
-from core.config import Config
 from core.http_client import get_http_client
 from core.logger import logger
 from core.metrics import (
@@ -41,12 +35,37 @@ from core.metrics import (
     sanitize_source,
 )
 from core.otel import span as otel_span
-from core.url_security import validate_outbound_url
-from db.session import count_with_timeout, session_scope
-from models import AIUsageLog, DeepAnalysis, WebhookEvent
+from db.session import session_scope
+from models import AIUsageLog, WebhookEvent
 from schemas import WebhookAnalysisResult
+from services.analysis.ai_policies import AICachePolicy, AIPromptPolicy, AIProviderPolicy, RuleAnalysisPolicy
+from services.analysis.analysis_queries import (
+    get_ai_usage_stats,
+    get_deep_analyses_for_webhook,
+    get_deep_analysis_list,
+)
+from services.runtime_config.runtime_access import (
+    RuntimeConfigRefreshPolicy,
+    format_runtime_meta_time,
+    get_runtime_config_meta,
+    get_runtime_config_source,
+    reload_runtime_config,
+)
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult, WebhookData
+
+__all__ = [
+    "analyze_webhook_with_ai",
+    "analyze_with_rules",
+    "get_ai_usage_stats",
+    "get_cached_analysis",
+    "get_deep_analyses_for_webhook",
+    "get_deep_analysis_list",
+    "initialize_openai_client",
+    "log_ai_usage",
+    "reset_openai_client",
+    "save_to_cache",
+]
 
 _last_policy_refresh_at: float = 0.0
 _policy_refresh_lock = asyncio.Lock()
@@ -64,34 +83,18 @@ _AI_POLICY_REFUSAL_MARKERS = (
 )
 
 
-def _get_config_source(key: str) -> str:
-    meta = Config.get_meta(key)
-    source = meta.get("source")
-    if source:
-        return str(source)
-    return "env" if os.getenv(key) is not None else "default"
-
-
-def _format_meta_time(value: Any) -> str | None:
-    if value is None:
-        return None
-    if hasattr(value, "isoformat"):
-        return str(value.isoformat())
-    return str(value)
-
-
 async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_seconds: int = 30) -> None:
     global _last_policy_refresh_at
-    if not Config.server.ENABLE_RUNTIME_CONFIG:
+    if not RuntimeConfigRefreshPolicy.from_config().enabled:
         return
     async with _policy_refresh_lock:
         now = time.time()
         if now - _last_policy_refresh_at < min_interval_seconds:
             return
-        before_url = Config.ai.OPENAI_API_URL
-        before_key = Config.ai.OPENAI_API_KEY
-        await Config.load_from_db()
-        if before_url != Config.ai.OPENAI_API_URL or before_key != Config.ai.OPENAI_API_KEY:
+        before_policy = AIProviderPolicy.from_config()
+        await reload_runtime_config()
+        after_policy = AIProviderPolicy.from_config()
+        if before_policy.api_url != after_policy.api_url or before_policy.api_key != after_policy.api_key:
             await reset_openai_client()
         _last_policy_refresh_at = now
 
@@ -114,17 +117,18 @@ def _resolve_prompt_path(prompt_file: str) -> Path:
     return project_root / file_path
 
 
-async def load_user_prompt_template() -> str:
+async def load_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
     global _user_prompt_template, _user_prompt_source
+    policy = policy or AIPromptPolicy.from_config()
     async with _prompt_template_lock:
         if _user_prompt_template is not None:
             return _user_prompt_template
 
-        if Config.ai.AI_USER_PROMPT:
-            _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", Config.ai.AI_USER_PROMPT
+        if policy.inline_prompt:
+            _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", policy.inline_prompt
             return _user_prompt_template
 
-        prompt_file = Config.ai.AI_USER_PROMPT_FILE
+        prompt_file = policy.prompt_file
         if prompt_file:
             file_path = _resolve_prompt_path(prompt_file)
             if file_path.exists():
@@ -137,21 +141,15 @@ async def load_user_prompt_template() -> str:
                     logger.warning("从文件加载 prompt 模板失败: %s", e)
 
         _user_prompt_source = "builtin:default"
-        _user_prompt_template = """请分析以下 webhook 事件：
-**来源**: {source}
-**数据内容**:
-```yaml
-{data_json}
-```
-请识别事件的类型、严重程度，并提供摘要、影响评估和处理建议。"""
+        _user_prompt_template = policy.builtin_prompt
         return _user_prompt_template
 
 
-async def reload_user_prompt_template() -> str:
+async def reload_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
     global _user_prompt_template
     async with _prompt_template_lock:
         _user_prompt_template = None
-    return await load_user_prompt_template()
+    return await load_user_prompt_template(policy=policy)
 
 
 # ── 缓存管理 ─────────────────────────────────────────────────────────────
@@ -161,8 +159,9 @@ def get_cache_key(alert_hash: str) -> str:
     return f"analysis_{alert_hash}"
 
 
-async def get_cached_analysis(alert_hash: str) -> AnalysisResult | None:
-    if not Config.ai.CACHE_ENABLED:
+async def get_cached_analysis(alert_hash: str, *, policy: AICachePolicy | None = None) -> AnalysisResult | None:
+    policy = policy or AICachePolicy.from_config()
+    if not policy.enabled:
         return None
     try:
         from core.redis_client import redis_get_str, redis_incr_with_expire
@@ -176,7 +175,7 @@ async def get_cached_analysis(alert_hash: str) -> AnalysisResult | None:
             return None
         res: AnalysisResult = dict(parsed)
         counter_key = f"{ck}:hits"
-        hits = await redis_incr_with_expire(counter_key, Config.ai.ANALYSIS_CACHE_TTL)
+        hits = await redis_incr_with_expire(counter_key, policy.ttl_seconds)
         res.update({"_cache_hit": True, "_cache_hit_count": hits})
         return res
     except Exception as e:
@@ -184,8 +183,11 @@ async def get_cached_analysis(alert_hash: str) -> AnalysisResult | None:
         return None
 
 
-async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> bool:
-    if not Config.ai.CACHE_ENABLED:
+async def save_to_cache(
+    alert_hash: str, analysis_result: AnalysisResult, *, policy: AICachePolicy | None = None
+) -> bool:
+    policy = policy or AICachePolicy.from_config()
+    if not policy.enabled:
         return False
     try:
         from core.redis_client import redis_setex_bytes, redis_setex_str
@@ -194,8 +196,8 @@ async def save_to_cache(alert_hash: str, analysis_result: AnalysisResult) -> boo
         res_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
         cached_bytes = orjson.dumps(res_to_cache)
         counter_key = f"{ck}:hits"
-        await redis_setex_bytes(ck, Config.ai.ANALYSIS_CACHE_TTL, cached_bytes)
-        await redis_setex_str(counter_key, Config.ai.ANALYSIS_CACHE_TTL, "0")
+        await redis_setex_bytes(ck, policy.ttl_seconds, cached_bytes)
+        await redis_setex_str(counter_key, policy.ttl_seconds, "0")
         return True
     except Exception as e:
         logger.warning("保存缓存失败: %s", e)
@@ -210,17 +212,17 @@ async def log_ai_usage(
     tokens_in: int = 0,
     tokens_out: int = 0,
     cache_hit: bool = False,
+    policy: AIProviderPolicy | None = None,
 ) -> None:
     try:
+        policy = policy or AIProviderPolicy.from_config()
         cost = 0.0
         if route_type == "ai" and tokens_in > 0:
-            cost = (tokens_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
-                tokens_out / 1000
-            ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
+            cost = policy.cost_for_tokens(tokens_in, tokens_out)
         async with session_scope() as session:
             session.add(
                 AIUsageLog(
-                    model=model or Config.ai.OPENAI_MODEL,
+                    model=model or policy.model,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     cost_estimate=cost,
@@ -283,14 +285,15 @@ async def _get_instructor_client_async() -> instructor.Instructor:
     return _instructor_client
 
 
-async def initialize_openai_client() -> None:
+async def initialize_openai_client(policy: AIProviderPolicy | None = None) -> None:
     global _openai_client, _instructor_client
+    policy = policy or AIProviderPolicy.from_config()
     async with _openai_client_lock:
         if _instructor_client is None:
             if _openai_client is None:
                 _openai_client = AsyncOpenAI(
-                    api_key=Config.ai.OPENAI_API_KEY,
-                    base_url=Config.ai.OPENAI_API_URL,
+                    api_key=policy.api_key,
+                    base_url=policy.api_url,
                     http_client=get_http_client(),
                     timeout=httpx.Timeout(60.0, connect=10.0),
                 )
@@ -298,17 +301,18 @@ async def initialize_openai_client() -> None:
 
 
 async def _create_with_completion(
-    client: instructor.Instructor, *, model: str, user_prompt: str
+    client: instructor.Instructor, *, model: str, user_prompt: str, policy: AIProviderPolicy | None = None
 ) -> tuple[WebhookAnalysisResult, _Completion]:
+    policy = policy or AIProviderPolicy.from_config()
     typed = cast(_InstructorClient, client)
     return await typed.chat.completions.create_with_completion(
         model=model,
         response_model=WebhookAnalysisResult,
         messages=[
-            {"role": "system", "content": Config.ai.AI_SYSTEM_PROMPT},
+            {"role": "system", "content": policy.system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=Config.ai.OPENAI_TEMPERATURE,
+        temperature=policy.temperature,
         max_retries=2,
     )
 
@@ -319,23 +323,26 @@ async def reset_openai_client() -> None:
         _openai_client = _instructor_client = None
 
 
-async def _analyze_with_openai_tracked(data: dict[str, Any], source: str) -> tuple[AnalysisResult, int, int]:
+async def _analyze_with_openai_tracked(
+    data: dict[str, Any], source: str, *, policy: AIProviderPolicy | None = None
+) -> tuple[AnalysisResult, int, int]:
+    policy = policy or AIProviderPolicy.from_config()
     client = await _get_instructor_client_async()
     cleaned_data = await sanitize_for_ai_async(data)
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
     user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
 
-    with otel_span("ai.openai_call", {"source": source, "model": Config.ai.OPENAI_MODEL}) as s:
-        res, completion = await _create_with_completion(client, model=Config.ai.OPENAI_MODEL, user_prompt=user_prompt)
+    with otel_span("ai.openai_call", {"source": source, "model": policy.model}) as s:
+        res, completion = await _create_with_completion(
+            client, model=policy.model, user_prompt=user_prompt, policy=policy
+        )
 
         t_in = completion.usage.prompt_tokens if completion.usage else 0
         t_out = completion.usage.completion_tokens if completion.usage else 0
-        cost = (t_in / 1000) * Config.ai.AI_COST_PER_1K_INPUT_TOKENS + (
-            t_out / 1000
-        ) * Config.ai.AI_COST_PER_1K_OUTPUT_TOKENS
-        AI_TOKENS_TOTAL.labels(Config.ai.OPENAI_MODEL, "input").inc(t_in)
-        AI_TOKENS_TOTAL.labels(Config.ai.OPENAI_MODEL, "output").inc(t_out)
-        AI_COST_USD_TOTAL.labels(model=Config.ai.OPENAI_MODEL).inc(cost)
+        cost = policy.cost_for_tokens(t_in, t_out)
+        AI_TOKENS_TOTAL.labels(policy.model, "input").inc(t_in)
+        AI_TOKENS_TOTAL.labels(policy.model, "output").inc(t_out)
+        AI_COST_USD_TOTAL.labels(model=policy.model).inc(cost)
         if s:
             s.set_attribute("tokens_in", t_in)
             s.set_attribute("tokens_out", t_out)
@@ -426,51 +433,18 @@ async def _degrade_to_rules(
 
 
 async def _send_ai_error_alert(webhook_data: WebhookData, error_reason: str, is_degraded: bool = False) -> None:
-    try:
-        if not Config.ai.ENABLE_FORWARD or not Config.ai.FORWARD_URL:
-            return
-        import hashlib
+    from services.operations.ai_error_notifications import send_ai_error_alert
 
-        from core.redis_client import redis_set_nx_ex
-
-        # 根据错误内容生成短 hash，不同类型的错误不会互相阻塞，但同一种错误 1 小时内只报一次
-        error_hash = hashlib.md5(error_reason[:100].encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
-        lock_key = f"ai_error_alert_lock:{error_hash}"
-
-        # 冷却时间：3600 秒 (1 小时)
-        if not await redis_set_nx_ex(lock_key, "1", 3600):
-            return
-
-        title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
-        template = "orange" if is_degraded else "red"
-
-        card = {
-            "msg_type": "interactive",
-            "card": {
-                "header": {"title": {"tag": "plain_text", "content": title}, "template": template},
-                "elements": [
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**来源**: {webhook_data.get('source', 'uk')}\n**原因**: {error_reason}",
-                        },
-                    }
-                ],
-            },
-        }
-        target_url = await validate_outbound_url(Config.ai.FORWARD_URL)
-        await feishu_cb.call_async(get_http_client().post, target_url, json=card, timeout=10)
-    except CircuitBreakerOpenException as e:
-        logger.warning("发送 AI 错误通知被熔断器拦截: %s", e)
-    except Exception as e:
-        logger.error("发送 AI 错误通知失败: %s", e)
+    await send_ai_error_alert(webhook_data, error_reason, is_degraded=is_degraded)
 
 
 # ── 解析与规则分析 ─────────────────────────────────────────────────────────────
 
 
-def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
+def analyze_with_rules(
+    data: dict[str, Any], source: str, *, policy: RuleAnalysisPolicy | None = None
+) -> AnalysisResult:
+    policy = policy or RuleAnalysisPolicy.from_config()
     start_time = time.time()
     res = {
         "source": source,
@@ -492,12 +466,9 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
     level = str(level_raw).strip().lower()
     name_l = rule_name.lower()
 
-    def _split_keywords(v: str) -> list[str]:
-        return [p.strip().lower() for p in str(v).split(",") if p.strip()]
-
-    high_kw = _split_keywords(Config.ai.RULE_HIGH_KEYWORDS)
-    warn_kw = _split_keywords(Config.ai.RULE_WARN_KEYWORDS)
-    metric_kw = _split_keywords(Config.ai.RULE_METRIC_KEYWORDS)
+    high_kw = policy.high_keywords
+    warn_kw = policy.warning_keywords
+    metric_kw = policy.metric_keywords
 
     importance = "medium"
     if level in high_kw or any(k in level for k in high_kw) or any(k in name_l for k in high_kw):
@@ -509,7 +480,7 @@ def analyze_with_rules(data: dict[str, Any], source: str) -> AnalysisResult:
 
     cur_val = data.get("CurrentValue") or data.get("current_value") or data.get("current") or data.get("value")
     thr_val = data.get("Threshold") or data.get("threshold") or data.get("limit")
-    multiplier = float(Config.ai.RULE_THRESHOLD_MULTIPLIER or 4.0)
+    multiplier = policy.threshold_multiplier
 
     def _record_numeric_parse_failure(field: str, value: Any, reason: str) -> None:
         ALERT_NUMERIC_PARSE_FAILURE_TOTAL.labels(
@@ -583,21 +554,23 @@ async def analyze_webhook_with_ai(
     webhook_data: WebhookData, alert_hash: str | None = None, skip_cache: bool = False
 ) -> AnalysisResult:
     await _maybe_refresh_runtime_policies(("OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_API_URL"), min_interval_seconds=60)
+    cache_policy = AICachePolicy.from_config()
+    provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
         alert_hash = WebhookEvent.generate_hash(parsed, source)
 
-    if Config.ai.CACHE_ENABLED and not skip_cache:
-        cached = await get_cached_analysis(alert_hash)
+    if cache_policy.enabled and not skip_cache:
+        cached = await get_cached_analysis(alert_hash, policy=cache_policy)
         if cached:
             hits = cached.get("_cache_hit_count", 1)
             logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
-            await log_ai_usage("cache", alert_hash, source, cache_hit=True)
+            await log_ai_usage("cache", alert_hash, source, cache_hit=True, policy=provider_policy)
             return {**cached, "_route_type": "cache"}
 
-    if not Config.ai.ENABLE_AI_ANALYSIS or not Config.ai.OPENAI_API_KEY:
-        reason = "disabled" if not Config.ai.ENABLE_AI_ANALYSIS else "no_api_key"
-        notify = Config.ai.ENABLE_AI_DEGRADATION and reason == "no_api_key"
+    if not provider_policy.available:
+        reason = "disabled" if not provider_policy.enabled else "no_api_key"
+        notify = provider_policy.degradation_enabled and reason == "no_api_key"
         notify_reason = (
             "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。"
             if notify
@@ -607,27 +580,35 @@ async def analyze_webhook_with_ai(
         return await _degrade_to_rules(webhook_data, parsed, source, alert_hash, notify_reason, notify=notify)
 
     try:
-        model_meta = Config.get_meta("OPENAI_MODEL")
+        model_meta = get_runtime_config_meta("OPENAI_MODEL")
         logger.debug(
             "[AI] 发起 OpenAI 请求 source=%s model=%s model_source=%s model_updated_at=%s hash=%s...",
             source,
-            Config.ai.OPENAI_MODEL,
-            _get_config_source("OPENAI_MODEL"),
-            _format_meta_time(model_meta.get("updated_at") if isinstance(model_meta, dict) else None),
+            provider_policy.model,
+            get_runtime_config_source("OPENAI_MODEL"),
+            format_runtime_meta_time(model_meta.get("updated_at")),
             alert_hash[:12],
         )
         analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,
-            Config.ai.OPENAI_MODEL,
+            provider_policy.model,
             t_in,
             t_out,
             str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
         if not analysis.get("_degraded"):
-            await save_to_cache(alert_hash, analysis)
-        await log_ai_usage("ai", alert_hash, source, model=Config.ai.OPENAI_MODEL, tokens_in=t_in, tokens_out=t_out)
+            await save_to_cache(alert_hash, analysis, policy=cache_policy)
+        await log_ai_usage(
+            "ai",
+            alert_hash,
+            source,
+            model=provider_policy.model,
+            tokens_in=t_in,
+            tokens_out=t_out,
+            policy=provider_policy,
+        )
         return {**analysis, "_route_type": "ai"}
     except Exception as e:
         error_reason = _extract_ai_error_message(e)
@@ -642,7 +623,7 @@ async def analyze_webhook_with_ai(
                 notify=True,
             )
 
-        if Config.ai.ENABLE_AI_DEGRADATION:
+        if provider_policy.degradation_enabled:
             return await _degrade_to_rules(
                 webhook_data,
                 parsed,
@@ -657,161 +638,17 @@ async def analyze_webhook_with_ai(
             raise
 
 
-# ── 统计与列表查询 ─────────────────────────────────────────────────────────────
-
-
-async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
-    now = datetime.now()
-    if period == "day":
-        delta = timedelta(days=1)
-    elif period == "week":
-        delta = timedelta(days=7)
-    elif period == "month":
-        delta = timedelta(days=30)
-    else:
-        delta = timedelta(days=365)
-
-    start_time = now - delta
-
-    total_stmt = select(func.count(AIUsageLog.id)).filter(AIUsageLog.timestamp >= start_time)
-    total = await count_with_timeout(session, total_stmt) or 0
-
-    route_stmt = (
-        select(AIUsageLog.route_type, func.count(AIUsageLog.id))
-        .filter(AIUsageLog.timestamp >= start_time)
-        .group_by(AIUsageLog.route_type)
-    )
-    route_stats = (await session.execute(route_stmt)).all()
-    route_breakdown = {r[0]: r[1] for r in route_stats}
-
-    stats_stmt = select(
-        func.sum(AIUsageLog.tokens_in), func.sum(AIUsageLog.tokens_out), func.sum(AIUsageLog.cost_estimate)
-    ).filter(AIUsageLog.timestamp >= start_time)
-    stats = (await session.execute(stats_stmt)).first()
-    tokens_in = int(stats[0] or 0) if stats is not None else 0
-    tokens_out = int(stats[1] or 0) if stats is not None else 0
-    total_cost = float(stats[2] or 0.0) if stats is not None else 0.0
-
-    # 查询缓存条目数（曾产生 AI 调用的唯一 alert_hash 数）
-    cache_entries_stmt = select(func.count(func.distinct(AIUsageLog.alert_hash))).filter(
-        AIUsageLog.timestamp >= start_time,
-        AIUsageLog.route_type == "ai",
-        AIUsageLog.alert_hash.isnot(None),
-    )
-    cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
-
-    cache_hits = route_breakdown.get("cache", 0)
-    reuse_hits = route_breakdown.get("reuse", 0)
-    total_hits = cache_hits + reuse_hits
-    avg_hits = round(reuse_hits / cache_entries, 2) if cache_entries > 0 else 0.0
-    hit_rate = round(total_hits / max(total, 1) * 100, 2)
-
-    ai_calls = route_breakdown.get("ai", 0)
-    avg_cost_per_ai_call = total_cost / ai_calls if ai_calls > 0 else 0.0
-    saved_estimate = round(total_hits * avg_cost_per_ai_call, 6)
-
-    return {
-        "total_calls": total,
-        "route_breakdown": route_breakdown,
-        "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
-        "tokens": {"input": tokens_in, "output": tokens_out, "total": tokens_in + tokens_out},
-        "cost": {"total": total_cost, "saved_estimate": saved_estimate},
-        "cache_statistics": {
-            "total_cache_entries": cache_entries,
-            "total_hits": total_hits,
-            "avg_hits_per_entry": avg_hits,
-            "cache_hit_rate": hit_rate,
-            "saved_calls": total_hits,
-        },
-        "trend": [],
-    }
-
-
-async def get_deep_analysis_list(
-    session: AsyncSession,
-    page: int = 1,
-    per_page: int = 20,
-    cursor: int | None = None,
-    status_filter: str = "",
-    engine_filter: str = "",
-    max_page: int = 500,
-) -> dict[str, Any]:
-    from sqlalchemy import func
-
-    page = max(1, min(page, max_page))
-    per_page = max(1, min(per_page, max_page))
-
-    # 基础过滤条件
-    filters = []
-    if cursor:
-        filters.append(DeepAnalysis.id < cursor)
-    if status_filter:
-        filters.append(DeepAnalysis.status == status_filter)
-    if engine_filter:
-        filters.append(DeepAnalysis.engine == engine_filter)
-
-    # COUNT 查询
-    count_query = select(func.count()).select_from(DeepAnalysis)
-    if status_filter:
-        count_query = count_query.where(DeepAnalysis.status == status_filter)
-    if engine_filter:
-        count_query = count_query.where(DeepAnalysis.engine == engine_filter)
-    total = (await session.execute(count_query)).scalar() or 0
-    total_pages = max(1, (total + per_page - 1) // per_page)
-
-    # 数据查询（游标或页码 offset）
-    query = (
-        select(DeepAnalysis, WebhookEvent)
-        .outerjoin(WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id)
-        .order_by(DeepAnalysis.id.desc())
-    )
-    for f in filters:
-        query = query.where(f)
-    if not cursor:
-        query = query.offset((page - 1) * per_page)
-    query = query.limit(per_page)
-
-    res = await session.execute(query)
-    rows = res.all()
-    items = []
-    for rec, evt in rows:
-        d = rec.to_dict()
-        d["source"] = evt.source if evt else None
-        d["is_duplicate"] = evt.is_duplicate if evt else False
-        d["beyond_window"] = evt.beyond_window if evt else False
-        items.append(d)
-    next_cursor = items[-1]["id"] if items else None
-    return {
-        "items": items,
-        "per_page": per_page,
-        "page": page,
-        "total": total,
-        "total_pages": total_pages,
-        "next_cursor": next_cursor,
-    }
-
-
-async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int) -> list[DeepAnalysis]:
-    stmt = select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
-    res = await session.execute(stmt)
-    return list(res.scalars().all())
-
-
 async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
-    try:
-        from adapters.ecosystem_adapters import send_feishu_deep_analysis
+    from services.operations.deep_analysis_notifications import send_deep_analysis_failure_notification
 
-        if not Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK:
-            return
-        await send_feishu_deep_analysis(
-            Config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK,
-            {
-                "analysis_result": {"root_cause": error, "impact": "分析失败，无法评估影响范围"},
-                "engine": "openclaw",
-                "duration_seconds": 0,
-            },
-            source,
-            int(webhook_data.get("id", 0) or 0),
-        )
-    except Exception as e:
-        logger.error("发送失败通知失败: %s", e)
+    await send_deep_analysis_failure_notification(
+        {
+            "id": webhook_data.get("id", 0) or 0,
+            "webhook_event_id": int(webhook_data.get("id", 0) or 0),
+            "engine": "openclaw",
+            "analysis_result": {"root_cause": error, "impact": "分析失败，无法评估影响范围"},
+            "duration_seconds": 0,
+            "source": source,
+        },
+        error,
+    )

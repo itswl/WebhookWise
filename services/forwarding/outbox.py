@@ -16,10 +16,9 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import Config
 from db.session import session_scope
 from models import FailedForward, ForwardOutbox, WebhookEvent
-from services.operations.taskiq_retry_scheduler import compute_backoff_delay
+from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardDecision, ForwardOutboxStatus
 
 logger = logging.getLogger("webhook_service.forward_outbox")
@@ -48,10 +47,10 @@ def _idempotency_key(
     return f"forward:{webhook_id}:{digest[:32]}"
 
 
-def _iter_target_rules(decision: ForwardDecision) -> list[dict[str, Any]]:
+def _iter_target_rules(decision: ForwardDecision, policy: ForwardOutboxPolicy) -> list[dict[str, Any]]:
     if decision.matched_rules:
         return [dict(r) for r in decision.matched_rules]
-    return [{"name": "default", "target_url": Config.ai.FORWARD_URL, "target_type": "webhook"}]
+    return [policy.default_rule()]
 
 
 async def create_forward_outbox_records(
@@ -62,15 +61,17 @@ async def create_forward_outbox_records(
     analysis: dict[str, Any],
     webhook_id: int,
     orig_id: int | None,
+    policy: ForwardOutboxPolicy | None = None,
 ) -> list[int]:
     """Create forwarding intents inside the caller's DB transaction."""
     if not decision.should_forward:
         return []
 
+    policy = policy or ForwardOutboxPolicy.from_config()
     created_ids: list[int] = []
     now = datetime.now()
-    max_attempts = max(1, Config.retry.FORWARD_RETRY_MAX_RETRIES + 1)
-    for rule in _iter_target_rules(decision):
+    max_attempts = policy.max_attempts
+    for rule in _iter_target_rules(decision, policy):
         target_type = str(rule.get("target_type", "webhook") or "webhook")
         target_url = str(rule.get("target_url", "") or "")
         if target_type != "openclaw" and not target_url:
@@ -256,10 +257,13 @@ async def _schedule_openclaw_poll_best_effort(analysis_id: int) -> None:
         logger.warning("[ForwardOutbox] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
 
 
-async def _finalize_outbox_failure(outbox_id: int, error_msg: str) -> None:
+async def _finalize_outbox_failure(
+    outbox_id: int, error_msg: str, *, policy: ForwardOutboxPolicy | None = None
+) -> None:
     now = datetime.now()
     retry_outbox_id: int | None = None
     retry_delay: int | None = None
+    policy = policy or ForwardOutboxPolicy.from_config()
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
         if not record or record.status == ForwardOutboxStatus.SENT:
@@ -278,12 +282,7 @@ async def _finalize_outbox_failure(outbox_id: int, error_msg: str) -> None:
             )
             return
 
-        delay = compute_backoff_delay(
-            record.attempts,
-            initial_delay=Config.retry.FORWARD_RETRY_INITIAL_DELAY,
-            max_delay=Config.retry.FORWARD_RETRY_MAX_DELAY,
-            multiplier=Config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER,
-        )
+        delay = policy.delay_for_attempt(record.attempts)
         record.status = ForwardOutboxStatus.RETRYING
         record.next_attempt_at = now + timedelta(seconds=delay)
         retry_outbox_id = record.id
@@ -314,10 +313,11 @@ async def _record_exhausted_failed_forward(session: AsyncSession, record: Forwar
     session.add(failed)
 
 
-async def run_forward_outbox_scan(limit: int = 100) -> int:
+async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPolicy | None = None) -> int:
     """Queue due outbox records and recover stale processing rows."""
     now = datetime.now()
-    stale_before = now - timedelta(seconds=Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS)
+    policy = policy or ForwardOutboxPolicy.from_config()
+    stale_before = now - timedelta(seconds=policy.stale_processing_threshold_seconds)
     async with session_scope() as session:
         await session.execute(
             update(ForwardOutbox)

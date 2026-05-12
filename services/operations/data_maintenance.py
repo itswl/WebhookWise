@@ -7,19 +7,20 @@ from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql.base import Executable
 
-from core.config import Config
 from db.session import session_scope
 from models import ArchivedWebhookEvent, WebhookEvent
+from services.operations.policies import DataMaintenancePolicy
 
 logger = logging.getLogger("webhook_service.maintenance")
 
 
-async def archive_old_data_by_policy() -> int:
+async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
-    根据 Config.maintenance 中的保留策略，归档清理过期 webhook 记录。
+    根据数据保留策略归档清理过期 webhook 记录。
     整合了之前 cleanup_alerts.py 的细粒度过滤逻辑。
     """
-    if not Config.maintenance.ENABLE_ARCHIVE_CLEANUP:
+    policy = policy or DataMaintenancePolicy.from_config()
+    if not policy.enabled:
         logger.info("[Maintenance] 数据归档已禁用，跳过。")
         return 0
 
@@ -36,17 +37,17 @@ async def archive_old_data_by_policy() -> int:
         conditions: list[sa.ColumnElement[bool]] = []
 
         # 按重要性策略
-        for importance, days in Config.maintenance.RETENTION_POLICIES.items():
+        for importance, days in policy.retention_policies.items():
             threshold = now - timedelta(days=days)
             conditions.append((WebhookEvent.importance == importance) & (WebhookEvent.timestamp < threshold))
 
         # 按来源策略
-        for source, days in Config.maintenance.SOURCE_RETENTION_POLICIES.items():
+        for source, days in policy.source_retention_policies.items():
             threshold = now - timedelta(days=days)
             conditions.append((WebhookEvent.source == source) & (WebhookEvent.timestamp < threshold))
 
         # 按关键字匹配策略 (来自 cleanup_general_events.py)
-        for field, keywords in Config.maintenance.CLEANUP_KEYWORDS.items():
+        for field, keywords in policy.cleanup_keywords.items():
             for kw in keywords:
                 if field == "summary":
                     conditions.append(WebhookEvent.ai_analysis["summary"].astext.like(f"%{kw}%"))
@@ -54,7 +55,7 @@ async def archive_old_data_by_policy() -> int:
                     conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{kw}%"))
 
         # 默认兜底策略
-        default_threshold = now - timedelta(days=Config.maintenance.ARCHIVE_DAYS_DEFAULT)
+        default_threshold = now - timedelta(days=policy.archive_days_default)
         # 如果既不在重要性策略里，也不在来源策略里，且超过默认天数，也清理
         # 但为了简单，我们直接加一个全局阈值作为主要判断逻辑之一
         conditions.append(WebhookEvent.timestamp < default_threshold)

@@ -6,17 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.notification_targets import is_feishu_url
 from api.webhook_context import JSONDict, build_webhook_context
-from core.config import Config
-from core.http_client import get_http_client
 from core.logger import logger
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
-from core.utils import is_feishu_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse
-from services.analysis.ai_analyzer import analyze_webhook_with_ai, get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.forwarding.forward import record_failed_forward
+from services.analysis.ai_analyzer import analyze_webhook_with_ai
+from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
+from services.forwarding.forward import post_json_to_remote, record_failed_forward
+from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
 from services.webhooks.types import DeepAnalysisStatus
 
 deep_analysis_router = APIRouter()
@@ -46,11 +46,20 @@ async def _run_openclaw_deep_analysis(
 
 
 async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
-    from services.analysis.openclaw_poller import notify_deep_analysis_success
+    from services.operations.deep_analysis_notifications import send_deep_analysis_success_notification
 
     event = await session.get(WebhookEvent, record.webhook_event_id)
     source = event.source if event else ""
-    await notify_deep_analysis_success(record, source)
+    await send_deep_analysis_success_notification(
+        {
+            "id": record.id,
+            "webhook_event_id": record.webhook_event_id,
+            "engine": record.engine,
+            "analysis_result": record.analysis_result,
+            "duration_seconds": record.duration_seconds,
+        },
+        source,
+    )
 
 
 def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
@@ -85,7 +94,7 @@ async def deep_analyze_webhook(
     requested_engine = str(payload.get("engine", "auto")).strip().lower()
     if not _is_supported_deep_analysis_engine(requested_engine):
         return JSONResponse(status_code=400, content={"success": False, "error": "Unsupported engine"})
-    if not Config.openclaw.OPENCLAW_ENABLED:
+    if not OpenClawTriggerPolicy.from_config().enabled:
         return JSONResponse(status_code=503, content={"success": False, "error": "No engine available"})
 
     try:
@@ -187,11 +196,10 @@ async def retry_deep_analysis(
         await session.commit()
         return {"success": True, "message": "分析已完成"}
 
-    if Config.openclaw.OPENCLAW_HTTP_API_URL:
-        from services.analysis.openclaw_poller import (
-            _poll_via_http,
-            build_analysis_result_from_openclaw_text,
-        )
+    openclaw_policy = OpenClawTriggerPolicy.from_config()
+    if openclaw_policy.http_api_url:
+        from services.analysis.openclaw_poller import _poll_via_http
+        from services.analysis.openclaw_result_parser import build_analysis_result_from_openclaw_text
 
         result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
 
@@ -218,7 +226,7 @@ async def retry_deep_analysis(
         await session.commit()
         return {"success": True, "message": f"获取成功！通过 HTTP API 获取了 {len(text)} 字符的分析结果"}
 
-    timeout_seconds = Config.openclaw.OPENCLAW_TIMEOUT_SECONDS
+    timeout_seconds = openclaw_policy.timeout_seconds
     elapsed = (datetime.now() - record.created_at).total_seconds() if record.created_at else timeout_seconds + 1
     if elapsed > timeout_seconds:
         record.status = DeepAnalysisStatus.FAILED
@@ -271,7 +279,7 @@ async def forward_deep_analysis(
 
     is_feishu = is_feishu_url(target_url)
     if is_feishu:
-        from adapters.ecosystem_adapters import send_feishu_deep_analysis
+        from services.operations.feishu_notifications import send_feishu_deep_analysis
 
         ok = await send_feishu_deep_analysis(
             webhook_url=target_url,
@@ -310,10 +318,18 @@ async def forward_deep_analysis(
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
     }
     try:
-        client = get_http_client()
-        resp = await client.post(target_url, json=fwd_payload, timeout=Config.ai.FORWARD_TIMEOUT)
-        resp.raise_for_status()
-        return {"success": True, "message": f"已转发 (HTTP {resp.status_code})"}
+        result = await post_json_to_remote(
+            target_url,
+            fwd_payload,
+            policy=RemoteForwardPolicy.from_config(),
+            validate_target=False,
+        )
+        if result.get("status") == "success":
+            return {"success": True, "message": f"已转发 (HTTP {result.get('status_code')})"}
+        return JSONResponse(
+            status_code=502,
+            content={"success": False, "error": result.get("message") or f"转发失败: {result.get('status')}"},
+        )
     except Exception as e:
         logger.error("转发深度分析失败: %s", e)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

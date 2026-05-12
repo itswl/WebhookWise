@@ -1,4 +1,3 @@
-import asyncio
 import os
 import socket
 from collections.abc import AsyncIterator, MutableMapping
@@ -29,7 +28,6 @@ from core.taskiq_broker import broker
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
 from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
-from services.webhooks.pipeline import get_running_tasks
 
 _PLACEHOLDER_SECRETS = {"change-me", "changeme", "replace-me", "please-change", "please-change-me"}
 
@@ -84,17 +82,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await Config.stop_subscriber()
     await broker.shutdown()
-
-    # 优雅等待正在运行的任务
-    running = get_running_tasks()
-    if running:
-        grace_timeout = Config.server.GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-        logger.info(
-            "优雅停机：等待 %d 个正在运行的任务完成 (超时 %ds)",
-            len(running),
-            grace_timeout,
-        )
-        await asyncio.wait(running, timeout=grace_timeout)
 
     await dispose_engine()
     await dispose_redis()
