@@ -18,6 +18,7 @@ class OpenClawPollPolicy:
     gateway_url: str
     gateway_token: str
     hooks_token: str
+    connect_timeout_seconds: float
     stability_required_hits: int
     max_consecutive_errors: int
     enable_degradation: bool
@@ -38,6 +39,7 @@ class OpenClawPollPolicy:
             gateway_url=str(config.openclaw.OPENCLAW_GATEWAY_URL),
             gateway_token=str(config.openclaw.OPENCLAW_GATEWAY_TOKEN),
             hooks_token=str(config.openclaw.OPENCLAW_HOOKS_TOKEN or config.openclaw.OPENCLAW_GATEWAY_TOKEN),
+            connect_timeout_seconds=max(1.0, float(config.openclaw.OPENCLAW_CONNECT_TIMEOUT)),
             stability_required_hits=max(1, int(config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS)),
             max_consecutive_errors=int(config.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS),
             enable_degradation=bool(config.openclaw.OPENCLAW_ENABLE_DEGRADATION),
@@ -51,6 +53,10 @@ class OpenClawPollPolicy:
     @property
     def http_poll_timeout(self) -> float:
         return float(self.poll_timeout_seconds)
+
+    @property
+    def http_connect_timeout(self) -> float:
+        return max(1.0, min(float(self.connect_timeout_seconds), self.http_poll_timeout))
 
     @property
     def poll_claim_lease_seconds(self) -> int:
