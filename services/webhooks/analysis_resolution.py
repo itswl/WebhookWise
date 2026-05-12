@@ -12,7 +12,11 @@ from services.webhooks.types import AnalysisResolution
 
 
 async def resolve_analysis(
-    alert_hash: str, full_data: dict[str, Any], *, policy: AnalysisResolutionPolicy | None = None
+    alert_hash: str,
+    full_data: dict[str, Any],
+    *,
+    policy: AnalysisResolutionPolicy | None = None,
+    http_client: Any | None = None,
 ) -> AnalysisResolution:
     policy = policy or AnalysisResolutionPolicy.from_config()
     async with session_scope() as session:
@@ -45,7 +49,7 @@ async def resolve_analysis(
             "reanalyze_enabled" if policy.reanalyze_after_time_window else "prev_degraded",
             alert_hash[:12],
         )
-        res, rean = await analyze_webhook_with_ai(full_data), True
+        res, rean = await analyze_webhook_with_ai(full_data, http_client=http_client), True
     elif check.is_duplicate and orig:
         target = last_beyond if last_beyond and last_beyond.ai_analysis else orig
         if target.ai_analysis and not target.ai_analysis.get("_degraded"):
@@ -53,9 +57,9 @@ async def resolve_analysis(
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution({**target.ai_analysis, "_route_type": "db_reuse"}, False, True, orig, False)
         logger.debug("[Pipeline] 窗口内重新分析 orig_id=%s reason=prev_degraded hash=%s...", orig.id, alert_hash[:12])
-        res, rean = await analyze_webhook_with_ai(full_data), True
+        res, rean = await analyze_webhook_with_ai(full_data, http_client=http_client), True
     else:
         logger.debug("[Pipeline] 新事件，发起 AI 分析 hash=%s...", alert_hash[:12])
-        res, rean = await analyze_webhook_with_ai(full_data), True
+        res, rean = await analyze_webhook_with_ai(full_data, http_client=http_client), True
 
     return AnalysisResolution(res, rean, check.is_duplicate, orig, check.beyond_window)

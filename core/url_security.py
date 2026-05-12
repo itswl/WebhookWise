@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
+from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from core.config import Config
@@ -20,6 +22,19 @@ class UnsafeTargetUrlError(ValueError):
 
 _BLOCKED_HOSTNAMES = {"localhost", "localhost.localdomain"}
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
+
+
+@dataclass(frozen=True, slots=True)
+class OutboundURLPolicy:
+    allow_private_forward_urls: bool
+    target_allowlist: tuple[str, ...]
+
+    @classmethod
+    def from_config(cls, config: Any = Config.security) -> OutboundURLPolicy:
+        return cls(
+            allow_private_forward_urls=bool(config.ALLOW_PRIVATE_FORWARD_URLS),
+            target_allowlist=tuple(_split_csv(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
+        )
 
 
 def _split_csv(value: str) -> list[str]:
@@ -39,11 +54,10 @@ def _host_matches_pattern(host: str, pattern: str) -> bool:
     return host == normalized
 
 
-def _require_allowlisted_host(host: str) -> None:
-    allowlist = _split_csv(Config.security.FORWARD_TARGET_ALLOWLIST)
-    if not allowlist:
+def _require_allowlisted_host(host: str, policy: OutboundURLPolicy) -> None:
+    if not policy.target_allowlist:
         return
-    if not any(_host_matches_pattern(host, pattern) for pattern in allowlist):
+    if not any(_host_matches_pattern(host, pattern) for pattern in policy.target_allowlist):
         raise UnsafeTargetUrlError("target host is not in FORWARD_TARGET_ALLOWLIST")
 
 
@@ -52,8 +66,8 @@ def _reject_blocked_hostname(host: str) -> None:
         raise UnsafeTargetUrlError("target host points to a local/private name")
 
 
-def _reject_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
-    if Config.security.ALLOW_PRIVATE_FORWARD_URLS:
+def _reject_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, policy: OutboundURLPolicy) -> None:
+    if policy.allow_private_forward_urls:
         return
     if not ip.is_global:
         raise UnsafeTargetUrlError("target host resolves to a non-public IP")
@@ -82,8 +96,9 @@ def _resolved_ips(host: str, port: int | None) -> list[ipaddress.IPv4Address | i
     return ips
 
 
-async def validate_outbound_url(url: str) -> str:
+async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = None) -> str:
     """Return a normalized URL if it is safe for server-side outbound calls."""
+    policy = policy or OutboundURLPolicy.from_config()
     candidate = str(url or "").strip()
     if not candidate:
         raise UnsafeTargetUrlError("target URL is empty")
@@ -97,8 +112,8 @@ async def validate_outbound_url(url: str) -> str:
         raise UnsafeTargetUrlError("target URL must not include credentials")
 
     host = parts.hostname.lower().rstrip(".")
-    _require_allowlisted_host(host)
-    if not Config.security.ALLOW_PRIVATE_FORWARD_URLS:
+    _require_allowlisted_host(host, policy)
+    if not policy.allow_private_forward_urls:
         _reject_blocked_hostname(host)
 
     try:
@@ -106,8 +121,8 @@ async def validate_outbound_url(url: str) -> str:
     except ValueError:
         ips = await asyncio.to_thread(_resolved_ips, host, parts.port)
         for ip in ips:
-            _reject_private_ip(ip)
+            _reject_private_ip(ip, policy)
     else:
-        _reject_private_ip(literal_ip)
+        _reject_private_ip(literal_ip, policy)
 
     return urlunsplit((parts.scheme.lower(), parts.netloc, parts.path or "", parts.query, ""))
