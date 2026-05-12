@@ -17,8 +17,8 @@ from typing import Any
 
 import websockets
 
-from core.config import Config
 from core.logger import get_logger
+from services.analysis.openclaw_poll_policy import OpenClawWsPolicy
 
 logger = get_logger("openclaw_ws")
 
@@ -72,10 +72,13 @@ def _build_connect_frame(token: str, device_auth: dict[str, Any] | None = None) 
     return frame
 
 
-def _build_device_auth(nonce: str) -> dict[str, Any] | None:
-    device_id = Config.openclaw.OPENCLAW_DEVICE_ID
-    private_key_b64 = Config.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM
-    device_token = Config.openclaw.OPENCLAW_DEVICE_TOKEN
+def _build_device_auth(
+    nonce: str, *, gateway_token: str = "", policy: OpenClawWsPolicy | None = None
+) -> dict[str, Any] | None:
+    policy = policy or OpenClawWsPolicy.from_config()
+    device_id = policy.device_id
+    private_key_b64 = policy.device_private_key_b64
+    device_token = policy.device_token
 
     if not device_id or not private_key_b64:
         return None
@@ -99,9 +102,11 @@ def _build_device_auth(nonce: str) -> dict[str, Any] | None:
         pub_b64url = base64.urlsafe_b64encode(pub_bytes).decode().rstrip("=")
 
         signed_at = int(time.time() * 1000)
-        gateway_token = Config.openclaw.OPENCLAW_GATEWAY_TOKEN
+        signature_gateway_token = gateway_token or policy.gateway_token
         scopes_str = "operator.read"
-        payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{gateway_token}|{nonce}"
+        payload = (
+            f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|" f"{signed_at}|{signature_gateway_token}|{nonce}"
+        )
 
         signature = private_key.sign(payload.encode())
         sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
@@ -123,9 +128,11 @@ def _build_device_auth(nonce: str) -> dict[str, Any] | None:
         return None
 
 
-async def _try_recv_challenge(ws: Any, timeout: float | None = None) -> str | None:
+async def _try_recv_challenge(
+    ws: Any, timeout: float | None = None, *, policy: OpenClawWsPolicy | None = None
+) -> str | None:
     if timeout is None:
-        timeout = Config.openclaw.OPENCLAW_NONCE_TIMEOUT
+        timeout = (policy or OpenClawWsPolicy.from_config()).nonce_timeout
     try:
         raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
         frame = _loads_dict(raw)
@@ -143,10 +150,13 @@ async def _try_recv_challenge(ws: Any, timeout: float | None = None) -> str | No
     return None
 
 
-async def _handshake(ws: Any, gateway_token: str, timeout: float) -> tuple[bool, str | None]:
+async def _handshake(
+    ws: Any, gateway_token: str, timeout: float, *, policy: OpenClawWsPolicy | None = None
+) -> tuple[bool, str | None]:
     try:
-        nonce = await _try_recv_challenge(ws)
-        device_auth = _build_device_auth(nonce) if nonce else None
+        policy = policy or OpenClawWsPolicy.from_config()
+        nonce = await _try_recv_challenge(ws, policy=policy)
+        device_auth = _build_device_auth(nonce, gateway_token=gateway_token, policy=policy) if nonce else None
         connect_frame = _build_connect_frame(gateway_token, device_auth=device_auth)
         await ws.send(json.dumps(connect_frame))
 
@@ -214,10 +224,16 @@ def _parse_history_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def poll_session_result(
-    gateway_url: str, gateway_token: str, session_key: str, timeout: int = 30
+    gateway_url: str,
+    gateway_token: str,
+    session_key: str,
+    timeout: int = 30,
+    *,
+    policy: OpenClawWsPolicy | None = None,
 ) -> dict[str, Any]:
     ws_url = _http_to_ws_url(gateway_url)
     start = time.monotonic()
+    policy = policy or OpenClawWsPolicy.from_config()
 
     connect_timeout = min(5, max(1, timeout // 3))
     handshake_timeout = min(15, max(3, timeout // 2))
@@ -229,7 +245,7 @@ async def poll_session_result(
             close_timeout=1,
             max_size=None,
         ) as ws:
-            ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout)
+            ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout, policy=policy)
             if not ok:
                 return {"status": "error", "error": err_type or "handshake_failed"}
 
@@ -275,11 +291,18 @@ async def poll_session_result(
 
 
 async def wait_for_result(
-    gateway_url: str, gateway_token: str, run_id: str, timeout: int = 300, connect_timeout: int | None = None
+    gateway_url: str,
+    gateway_token: str,
+    run_id: str,
+    timeout: int = 300,
+    connect_timeout: int | None = None,
+    *,
+    policy: OpenClawWsPolicy | None = None,
 ) -> dict[str, Any]:
     ws_url = _http_to_ws_url(gateway_url)
-    connect_timeout = connect_timeout or Config.openclaw.OPENCLAW_CONNECT_TIMEOUT
-    handshake_timeout = Config.openclaw.OPENCLAW_HANDSHAKE_TIMEOUT
+    policy = policy or OpenClawWsPolicy.from_config()
+    connect_timeout = connect_timeout or policy.connect_timeout
+    handshake_timeout = policy.handshake_timeout
 
     text_fragments: list[str] = []
 
@@ -290,7 +313,7 @@ async def wait_for_result(
             close_timeout=1,
             max_size=None,
         ) as ws:
-            ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout)
+            ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout, policy=policy)
             if not ok:
                 return {"status": "error", "run_id": run_id, "error": err_type or "handshake_failed"}
 

@@ -118,7 +118,6 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
     async def call_async(fn: Any) -> Any:
         return await fn()
 
-    monkeypatch.setattr(forward_mod, "get_http_client", lambda: FakeHttpClient())
     monkeypatch.setattr(forward_mod.forward_cb, "call_async", call_async)
 
     async def accept_url(url: str) -> str:
@@ -130,6 +129,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
+        http_client=FakeHttpClient(),  # type: ignore[arg-type]
     )
 
     assert result["status"] == "success"
@@ -212,7 +212,7 @@ def test_dashboard_deep_analysis_fields_are_escaped() -> None:
 
 
 def test_is_feishu_url_requires_hostname_match() -> None:
-    from core.utils import is_feishu_url
+    from adapters.notification_targets import is_feishu_url
 
     assert is_feishu_url("https://open.feishu.cn/open-apis/bot/v2/hook/token")
     assert is_feishu_url("https://tenant.larksuite.com/hook")

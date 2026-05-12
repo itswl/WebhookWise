@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
+from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardOutboxStatus
 
 
@@ -44,6 +45,17 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
 
 
 # ── helpers ──────────────────────────────────────────────────────────
+
+
+def _outbox_policy(*, stale_processing_threshold_seconds: int = 60) -> ForwardOutboxPolicy:
+    return ForwardOutboxPolicy(
+        default_target_url="https://example.test/hook",
+        max_attempts=3,
+        retry_initial_delay=1,
+        retry_max_delay=10,
+        retry_backoff_multiplier=2.0,
+        stale_processing_threshold_seconds=stale_processing_threshold_seconds,
+    )
 
 
 async def _insert_outbox(
@@ -315,8 +327,7 @@ class TestRunForwardOutboxScan:
             next_attempt_at=stale_time,
         )
 
-        monkeypatch.setattr("services.forwarding.outbox.Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS", 60)
-        await run_forward_outbox_scan()
+        await run_forward_outbox_scan(policy=_outbox_policy(stale_processing_threshold_seconds=60))
 
         async with session_factory() as session:
             record = (await session.execute(select(ForwardOutbox))).scalar_one()
@@ -339,8 +350,7 @@ class TestRunForwardOutboxScan:
 
         await _insert_outbox(session_factory, next_attempt_at=datetime.now() - timedelta(seconds=10))
 
-        monkeypatch.setattr("services.forwarding.outbox.Config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS", 60)
-        await run_forward_outbox_scan()
+        await run_forward_outbox_scan(policy=_outbox_policy(stale_processing_threshold_seconds=60))
 
         assert scheduled_ids
         assert len(scheduled_ids[0]) == 1
@@ -399,7 +409,9 @@ class TestOpenClawPoller:
 
         class _Client:
             async def get(self, *_: object, **kwargs: object) -> _Response:
-                seen_timeouts.append(float(kwargs["timeout"]))
+                timeout = kwargs["timeout"]
+                assert isinstance(timeout, (int, float))
+                seen_timeouts.append(float(timeout))
                 return _Response()
 
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)

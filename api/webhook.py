@@ -11,7 +11,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
-from core.config import Config
 from core.logger import logger
 from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.redis_client import redis_ping
@@ -26,6 +25,7 @@ from services.webhooks.command_service import (
     get_client_ip,
     quick_receive_webhook,
 )
+from services.webhooks.policies import WebhookReceivePolicy
 from services.webhooks.query_service import list_webhook_summaries
 
 webhook_router = APIRouter()
@@ -39,6 +39,16 @@ def _normalize_source_hint(value: str | None) -> str:
     if len(source) > MAX_SOURCE_LENGTH:
         raise HTTPException(status_code=400, detail=f"source must be at most {MAX_SOURCE_LENGTH} characters")
     return source
+
+
+def _payload_too_large_response(
+    raw_body: bytes, source_hint: str, *, policy: WebhookReceivePolicy | None = None
+) -> JSONResponse | None:
+    policy = policy or WebhookReceivePolicy.from_config()
+    if policy.max_body_bytes and len(raw_body) > policy.max_body_bytes:
+        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source_hint), status="rejected_size").inc()
+        return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
+    return None
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
@@ -100,10 +110,8 @@ async def receive_webhook(
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
 
     raw_body = await request.body()
-    if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
-        src = sanitize_source(source_hint)
-        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rejected_size").inc()
-        return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
+    if too_large_response := _payload_too_large_response(raw_body, source_hint):
+        return too_large_response
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
@@ -147,9 +155,8 @@ async def receive_webhook_with_source(
     source_hint = _normalize_source_hint(source)
 
     raw_body = await request.body()
-    if Config.security.MAX_WEBHOOK_BODY_BYTES and len(raw_body) > Config.security.MAX_WEBHOOK_BODY_BYTES:
-        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source_hint), status="rejected_size").inc()
-        return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
+    if too_large_response := _payload_too_large_response(raw_body, source_hint):
+        return too_large_response
 
     client_ip = get_client_ip(request)
     headers = dict(request.headers)

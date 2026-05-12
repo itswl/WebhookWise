@@ -1,7 +1,7 @@
 """
 tests/test_pipeline_parse.py
 =============================
-测试 pipeline._parse_request() 和 load_event_payload() 纯逻辑。
+测试 request_parser.parse_request() 和 load_event_payload() 纯逻辑。
 这两个函数处理进入系统的第一道数据解析，错误会导致事件完全丢失。
 """
 
@@ -10,68 +10,68 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
-# ── _parse_request ─────────────────────────────────────────────────────────
+# ── parse_request ──────────────────────────────────────────────────────────
 
 
 def test_parse_request_uses_source_hint():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
     payload = {
         "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
     }
-    ctx = _parse_request("1.2.3.4", {}, payload, b"", "prometheus", None)
+    ctx = parse_request("1.2.3.4", {}, payload, b"", "prometheus", None)
     assert ctx.source == "prometheus"
 
 
 def test_parse_request_infers_source_from_header():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
     payload = {
         "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
     }
-    ctx = _parse_request("1.2.3.4", {"x-webhook-source": "grafana"}, payload, b"", None, None)
+    ctx = parse_request("1.2.3.4", {"x-webhook-source": "grafana"}, payload, b"", None, None)
     # grafana 格式不匹配 prometheus payload → fallback 到 header 提示
     # 实际取决于适配器检测，header source 作为 hint
     assert ctx.source is not None
 
 
 def test_parse_request_parses_raw_body_when_no_payload():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
     data = {"alertname": "MemHigh", "severity": "warning"}
     raw = orjson.dumps(data)
-    ctx = _parse_request("1.2.3.4", {}, {}, raw, "unknown", None)
+    ctx = parse_request("1.2.3.4", {}, {}, raw, "unknown", None)
     assert isinstance(ctx.parsed_data, dict)
 
 
 def test_parse_request_sets_client_ip():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
-    ctx = _parse_request("10.0.0.1", {}, {"foo": "bar"}, b"", "unknown", None)
+    ctx = parse_request("10.0.0.1", {}, {"foo": "bar"}, b"", "unknown", None)
     assert ctx.client_ip == "10.0.0.1"
 
 
 def test_parse_request_sets_headers():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
     headers = {"content-type": "application/json", "x-request-id": "abc123"}
-    ctx = _parse_request("1.2.3.4", headers, {"foo": "bar"}, b"", "unknown", None)
+    ctx = parse_request("1.2.3.4", headers, {"foo": "bar"}, b"", "unknown", None)
     assert ctx.headers == headers
 
 
 def test_parse_request_full_data_contains_source():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
-    ctx = _parse_request("1.2.3.4", {}, {"foo": "bar"}, b"", "github", None)
+    ctx = parse_request("1.2.3.4", {}, {"foo": "bar"}, b"", "github", None)
     assert "source" in ctx.webhook_full_data
     assert ctx.webhook_full_data["source"] is not None
 
 
 def test_parse_request_timestamp_passed_through():
-    from services.webhooks.pipeline import _parse_request
+    from services.webhooks.request_parser import parse_request
 
     ts = "2025-01-01T12:00:00Z"
-    ctx = _parse_request("1.2.3.4", {}, {}, b"", "unknown", ts)
+    ctx = parse_request("1.2.3.4", {}, {}, b"", "unknown", ts)
     assert ctx.webhook_full_data.get("timestamp") == ts
 
 

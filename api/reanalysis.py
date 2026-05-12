@@ -6,14 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook_context import JSONDict, build_webhook_context
-from core.config import Config
 from core.logger import logger, mask_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.forward import forward_to_remote
-from services.webhooks.pipeline import _decide_forwarding, _execute_forwarding
+from services.forwarding.policies import RemoteForwardPolicy
+from services.webhooks.forwarding_stage import execute_forwarding, resolve_forward_decision
 
 reanalysis_router = APIRouter()
 
@@ -43,7 +43,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
     try:
         fwd_ctx = await build_webhook_context(event)
-        decision = await _decide_forwarding(
+        decision = await resolve_forward_decision(
             importance=new_imp or "medium",
             is_duplicate=event.is_duplicate,
             beyond_window=event.beyond_window,
@@ -52,7 +52,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
             source=event.source or "unknown",
         )
         if decision.should_forward:
-            await _execute_forwarding(decision, fwd_ctx, res, event.id, orig_id=None)
+            await execute_forwarding(decision, fwd_ctx, res, event.id, orig_id=None)
         else:
             logger.info("reanalyze: 根据规则跳过转发 reason=%s", decision.skip_reason)
     except Exception as e:
@@ -97,4 +97,5 @@ async def manual_forward_webhook(
             },
         )
 
-    return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(url or Config.ai.FORWARD_URL)}"}
+    target_url = url or RemoteForwardPolicy.from_config().forward_url
+    return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(target_url)}"}

@@ -76,7 +76,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             "event_type": "integration_test_alert",
         }
 
-    monkeypatch.setattr("services.webhooks.pipeline.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
+    monkeypatch.setattr("services.webhooks.analysis_resolution.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
 
     posted: list[dict[str, Any]] = []
 
@@ -199,12 +199,9 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from models import ForwardOutbox, WebhookEvent
-    from services.webhooks.pipeline import (
-        _finalize_analysis_transaction,
-        _parse_request,
-        _PipelineContext,
-    )
-    from services.webhooks.types import AnalysisResolution, NoiseReductionContext
+    from services.webhooks.forwarding_stage import finalize_analysis_transaction
+    from services.webhooks.request_parser import parse_request
+    from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -220,9 +217,9 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
     async def fail_create_outbox(*_: object, **__: object) -> list[int]:
         raise RuntimeError("outbox insert failed")
 
-    monkeypatch.setattr("services.webhooks.pipeline.create_forward_outbox_records", fail_create_outbox)
+    monkeypatch.setattr("services.webhooks.forwarding_stage.create_forward_outbox_records", fail_create_outbox)
 
-    req_ctx = _parse_request(
+    req_ctx = parse_request(
         "127.0.0.1",
         {},
         payload,
@@ -231,7 +228,7 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
         None,
     )
     alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
-    ctx = _PipelineContext(
+    ctx = WebhookProcessContext(
         event_id=event_id,
         client_ip="127.0.0.1",
         metric_source="prometheus",
@@ -248,7 +245,7 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
     noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
 
     with pytest.raises(RuntimeError, match="outbox insert failed"):
-        await _finalize_analysis_transaction(
+        await finalize_analysis_transaction(
             ctx,
             analysis_res,
             {"importance": "high", "summary": "should rollback"},
@@ -272,12 +269,9 @@ async def test_reused_analysis_still_runs_forwarding_decision(
 ) -> None:
     from core.config import Config
     from models import ForwardOutbox, WebhookEvent
-    from services.webhooks.pipeline import (
-        _finalize_analysis_transaction,
-        _parse_request,
-        _PipelineContext,
-    )
-    from services.webhooks.types import AnalysisResolution, NoiseReductionContext
+    from services.webhooks.forwarding_stage import finalize_analysis_transaction
+    from services.webhooks.request_parser import parse_request
+    from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
     monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
     monkeypatch.setattr(Config, "_meta", dict(Config._meta))
@@ -305,8 +299,8 @@ async def test_reused_analysis_still_runs_forwarding_decision(
         event_id = event.id
 
     payload = {"alert_name": "checkout-5xx", "event_type": "prometheus_alert", "service": "checkout-api"}
-    req_ctx = _parse_request("127.0.0.1", {}, payload, b'{"alert_name":"checkout-5xx"}', "prometheus", None)
-    ctx = _PipelineContext(
+    req_ctx = parse_request("127.0.0.1", {}, payload, b'{"alert_name":"checkout-5xx"}', "prometheus", None)
+    ctx = WebhookProcessContext(
         event_id=event_id,
         client_ip="127.0.0.1",
         metric_source="prometheus",
@@ -323,7 +317,7 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
 
-    save_res, fwd_dec, outbox_ids = await _finalize_analysis_transaction(
+    save_res, fwd_dec, outbox_ids = await finalize_analysis_transaction(
         ctx,
         analysis_res,
         {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
@@ -377,6 +371,48 @@ async def test_recovery_scan_requeues_due_retry_without_incrementing_retry_count
     assert updated is not None
     assert updated.processing_status == "retry"
     assert updated.retry_count == 2
+    assert updated.next_retry_at is not None
+    assert updated.next_retry_at > datetime.now()
+
+
+async def test_recovery_scan_claims_stale_analyzing_event(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from models import WebhookEvent
+    from services.operations.recovery_poller import run_recovery_scan
+    from services.operations.tasks import process_webhook_task
+
+    async with integration_session_factory.begin() as session:
+        event = WebhookEvent(
+            source="prometheus",
+            client_ip="127.0.0.1",
+            processing_status="analyzing",
+            retry_count=0,
+            created_at=datetime.now() - timedelta(hours=2),
+            updated_at=datetime.now() - timedelta(hours=2),
+        )
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    enqueued: list[dict[str, object]] = []
+
+    async def fake_kiq(event_id: int, client_ip: str | None = None) -> None:
+        enqueued.append({"event_id": event_id, "client_ip": client_ip})
+
+    monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", fake_kiq)
+
+    await run_recovery_scan(stuck_threshold_seconds=300)
+
+    async with integration_session_factory() as session:
+        updated = await session.get(WebhookEvent, event_id)
+
+    assert enqueued == [{"event_id": event_id, "client_ip": "recovery"}]
+    assert updated is not None
+    assert updated.processing_status == "retry"
+    assert updated.retry_count == 1
+    assert updated.failure_reason == "stuck_recovery"
     assert updated.next_retry_at is not None
     assert updated.next_retry_at > datetime.now()
 
