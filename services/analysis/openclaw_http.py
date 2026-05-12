@@ -28,7 +28,7 @@ async def poll_openclaw_final(
         - {"status": "error", "error": "..."}
     """
     base_url = policy.http_api_url.rstrip("/")
-    headers = policy.http_auth_headers(trace_id)
+    headers = {**policy.http_auth_headers(trace_id), "Connection": "close"}
     timeout = httpx.Timeout(
         connect=policy.http_connect_timeout,
         read=policy.http_poll_timeout,
