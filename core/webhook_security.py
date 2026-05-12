@@ -5,10 +5,11 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 
 from api import InvalidSignatureError
-from core.config import Config
+from core.config import SecurityConfig, UnifiedConfigManager
+from core.dependencies import get_config_manager
 from core.logger import logger
 from core.redis_client import redis_eval_int
 from services.webhooks.command_service import get_client_ip
@@ -48,12 +49,13 @@ end
 
 _BURST_WINDOW_SECONDS = 10
 _SUSTAINED_WINDOW_SECONDS = 60
+_CONFIG_DEPENDENCY = Depends(get_config_manager)
 
 
 def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:
     """验证 webhook 签名"""
     if secret is None:
-        secret = Config.security.WEBHOOK_SECRET
+        secret = get_config_manager().security.WEBHOOK_SECRET
 
     if not secret:
         return False
@@ -75,21 +77,22 @@ def extract_token(headers: Mapping[str, str]) -> str:
     return token
 
 
-def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes) -> None:
+def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes, *, secret: str | None = None) -> None:
     signature = headers.get("x-webhook-signature", "")
     token = extract_token(headers)
+    resolved_secret = get_config_manager().security.WEBHOOK_SECRET if secret is None else secret
 
     if signature:
-        if not Config.security.WEBHOOK_SECRET:
+        if not resolved_secret:
             raise InvalidSignatureError()
-        if not verify_signature(raw_body, signature):
+        if not verify_signature(raw_body, signature, resolved_secret):
             raise InvalidSignatureError()
         return
 
-    if Config.security.WEBHOOK_SECRET:
+    if resolved_secret:
         if not token:
             raise InvalidSignatureError()
-        if not hmac.compare_digest(token, Config.security.WEBHOOK_SECRET):
+        if not hmac.compare_digest(token, resolved_secret):
             raise InvalidSignatureError()
 
 
@@ -108,13 +111,15 @@ async def _check_tier(prefix: str, window: int, limit: int, now: float) -> _Tier
     return _TierResult(allowed=allowed, remaining=max(remaining, 0), limit=limit, reset_at=reset_at)
 
 
-async def enforce_webhook_rate_limit(request: Request) -> tuple[str | None, _TierResult | None]:
-    sec = Config.security
+async def enforce_webhook_rate_limit(
+    request: Request, *, security_config: SecurityConfig | None = None
+) -> tuple[str | None, _TierResult | None]:
+    sec = security_config or get_config_manager().security
     per_minute = sec.WEBHOOK_RATE_LIMIT_PER_MINUTE
     burst = sec.WEBHOOK_RATE_LIMIT_BURST
     global_per_minute = sec.WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE
 
-    if (per_minute <= 0 and burst <= 0 and global_per_minute <= 0):
+    if per_minute <= 0 and burst <= 0 and global_per_minute <= 0:
         return None, None
 
     client_ip = get_client_ip(request)
@@ -151,17 +156,21 @@ async def enforce_webhook_rate_limit(request: Request) -> tuple[str | None, _Tie
 # ── FastAPI Depends ────────────────────────────────────────────────────────────
 
 
-async def verify_webhook_auth_dep(request: Request) -> None:
+async def verify_webhook_auth_dep(
+    request: Request,
+    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+) -> None:
     """FastAPI Depends：校验 webhook 认证（含 Content-Length 前置 DoS 防御）"""
     # 1. Content-Length 前置检查（在读取 body 之前拦截超大请求）
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
             length = int(content_length)
-            if length > Config.security.MAX_WEBHOOK_BODY_BYTES:
+            max_body_bytes = config.security.MAX_WEBHOOK_BODY_BYTES
+            if max_body_bytes and length > max_body_bytes:
                 raise HTTPException(
                     status_code=413,
-                    detail=f"Request body too large: {length} bytes (max {Config.security.MAX_WEBHOOK_BODY_BYTES})",
+                    detail=f"Request body too large: {length} bytes (max {max_body_bytes})",
                 )
         except ValueError:
             logger.debug("无效的 Content-Length 头: %s", content_length)
@@ -170,7 +179,7 @@ async def verify_webhook_auth_dep(request: Request) -> None:
     raw_body = await request.body()
     headers: dict[str, str] = dict(request.headers)
     try:
-        ensure_webhook_auth(headers, raw_body)
+        ensure_webhook_auth(headers, raw_body, secret=config.security.WEBHOOK_SECRET)
     except InvalidSignatureError:
         raise HTTPException(status_code=401, detail="Unauthorized") from None
     except ValueError as e:
@@ -181,10 +190,14 @@ async def verify_webhook_auth_dep(request: Request) -> None:
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
-async def check_rate_limit_dep(request: Request, response: Response) -> None:
+async def check_rate_limit_dep(
+    request: Request,
+    response: Response,
+    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+) -> None:
     """FastAPI Depends：检查速率限制（滑动窗口，三级限流）"""
     try:
-        limited_ip, tier = await enforce_webhook_rate_limit(request)
+        limited_ip, tier = await enforce_webhook_rate_limit(request, security_config=config.security)
         if tier:
             response.headers["X-RateLimit-Limit"] = str(tier.limit)
             response.headers["X-RateLimit-Remaining"] = str(tier.remaining)

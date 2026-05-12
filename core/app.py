@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         and _looks_like_placeholder_secret(Config.security.WEBHOOK_SECRET)
     ):
         raise RuntimeError("WEBHOOK_SECRET 仍是示例占位值，请替换为真实随机密钥")
-    get_http_client()
+    app.state.http_client = get_http_client()
     initialize_adapters()
     await init_engine()
     if Config.server.ENABLE_RUNTIME_CONFIG:
@@ -137,15 +137,16 @@ class RequestBodyLimitExceeded(Exception):
 
 
 class RequestBodyLimitMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
         self.app = app
+        self.max_body_bytes = max(0, int(max_body_bytes))
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        max_bytes = int(Config.security.MAX_WEBHOOK_BODY_BYTES or 0)
+        max_bytes = self.max_body_bytes
         if max_bytes <= 0:
             await self.app(scope, receive, send)
             return
@@ -192,7 +193,7 @@ class RequestBodyLimitMiddleware:
         await send({"type": "http.response.body", "body": body})
 
 
-app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware, max_body_bytes=int(Config.security.MAX_WEBHOOK_BODY_BYTES or 0))
 
 
 class TraceContextMiddleware:
