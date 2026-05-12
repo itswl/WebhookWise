@@ -21,10 +21,7 @@ from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from services.operations.tasks import process_webhook_task
-from services.webhooks.command_service import (
-    get_client_ip,
-    quick_receive_webhook,
-)
+from services.webhooks.command_service import get_client_ip
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import WebhookReceivePolicy
 from services.webhooks.query_service import list_webhook_summaries
@@ -56,7 +53,6 @@ async def _receive_and_enqueue_webhook(
     *,
     request: Request,
     source_hint: str,
-    session: AsyncSession,
 ) -> JSONDict | JSONResponse:
     raw_body = await request.body()
     if too_large_response := _payload_too_large_response(raw_body, source_hint):
@@ -83,25 +79,20 @@ async def _receive_and_enqueue_webhook(
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
 
-    event_id = await quick_receive_webhook(
-        session=session,
+    await process_webhook_task.kiq(
         source=source_hint,
         raw_headers=headers,
         raw_body=raw_body_str,
+        client_ip=client_ip or "",
     )
-    await session.commit()
-    set_trace_id(generate_trace_id(event_id=event_id))
     logger.info(
-        "[Webhook] 已接收 event_id=%s source=%s ip=%s size=%d",
-        event_id,
+        "[Webhook] 已接收并入队 source=%s ip=%s size=%d",
         source_hint,
         client_ip,
         len(raw_body),
     )
 
-    await process_webhook_task.kiq(event_id=event_id, client_ip=client_ip or "")
-
-    return {"success": True, "message": "Webhook received and queued for processing", "event_id": event_id}
+    return {"success": True, "message": "Webhook received and queued for processing", "event_id": 0}
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
@@ -155,14 +146,13 @@ async def dashboard() -> FileResponse:
 async def receive_webhook(
     request: Request,
     source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
-    session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
 
-    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, session=session)
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint)
 
 
 @webhook_router.post(
@@ -174,14 +164,13 @@ async def receive_webhook(
 async def receive_webhook_with_source(
     request: Request,
     source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
-    session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
     tid = generate_trace_id()
     set_trace_id(tid)
     source_hint = _normalize_source_hint(source)
 
-    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, session=session)
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint)
 
 
 # ── 查询路由 ───────────────────────────────────────────────────────────────────

@@ -49,6 +49,7 @@ class AnalysisResolution:
     original_event: "WebhookEvent | None"
     beyond_window: bool
     is_reused: bool = False  # True 表示从 Redis 缓存复用其他 Worker 的分析结果
+    original_event_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ class WebhookRequestContext:
 
 @dataclass(frozen=True, slots=True)
 class WebhookProcessContext:
-    event_id: int
+    event_id: int | None
     client_ip: str
     metric_source: str
     req_ctx: WebhookRequestContext
