@@ -200,18 +200,6 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
         # --- HTTP 轮询 ---
         if policy.has_http_api:
             result = await _poll_via_http(rec["openclaw_session_key"], policy=policy)
-            if result.get("status") == "error" and result.get("retryable") and policy.gateway_url:
-                logger.warning(
-                    "[Poller] HTTP final API 暂不可用，回退 gateway 轮询: id=%s error=%s",
-                    record_id,
-                    result.get("error"),
-                )
-                result = await poll_session_result(
-                    gateway_url=policy.gateway_url,
-                    gateway_token=policy.gateway_token,
-                    session_key=rec["openclaw_session_key"],
-                    timeout=policy.poll_timeout_seconds,
-                )
         else:
             result = await poll_session_result(
                 gateway_url=policy.gateway_url,
