@@ -52,10 +52,9 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     from core.app import app
     from core.config import Config, get_settings
-    from models import ForwardOutbox, WebhookEvent
-    from services.forwarding.outbox import process_forward_outbox_by_id
-    from services.operations.tasks import process_forward_outbox_task, process_webhook_task
-    from services.webhooks.pipeline import handle_webhook_process
+    from models import WebhookEvent
+    from services.operations.tasks import process_webhook_task
+    from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
 
     monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
     monkeypatch.setattr(Config, "_meta", dict(Config._meta))
@@ -102,14 +101,24 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     monkeypatch.setattr("services.forwarding.forward.validate_outbound_url", accept_url)
 
-    async def run_task_inline(event_id: int, client_ip: str | None = None) -> None:
-        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
-
-    async def run_outbox_inline(outbox_id: int) -> None:
-        await process_forward_outbox_by_id(outbox_id)
+    async def run_task_inline(
+        event_id: int | None = None,
+        client_ip: str | None = None,
+        source: str | None = None,
+        raw_headers: dict[str, str] | None = None,
+        raw_body: str | None = None,
+    ) -> None:
+        if event_id is not None:
+            await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+            return
+        await handle_webhook_ingest(
+            source=source or "unknown",
+            raw_headers=raw_headers or {},
+            raw_body=raw_body or "",
+            client_ip=client_ip or "",
+        )
 
     monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
-    monkeypatch.setattr(cast(Any, process_forward_outbox_task), "kiq", run_outbox_inline)
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -124,10 +133,10 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert response.status_code == 202
     body = response.json()
     assert body["success"] is True
-    event_id = body["event_id"]
+    assert body["event_id"] == 0
 
     async with integration_session_factory() as session:
-        event = await session.get(WebhookEvent, event_id)
+        event = (await session.execute(select(WebhookEvent))).scalar_one_or_none()
         assert event is not None
         assert event.processing_status == "completed"
         assert event.importance == "high"
@@ -139,9 +148,6 @@ async def test_webhook_receive_to_feishu_card_flow(
 
         rows = (await session.execute(select(WebhookEvent))).scalars().all()
         assert len(rows) == 1
-        outbox_rows = (await session.execute(select(ForwardOutbox))).scalars().all()
-        assert len(outbox_rows) == 1
-        assert outbox_rows[0].status == "sent"
 
     assert len(posted) == 1
     outbound = posted[0]
@@ -195,9 +201,8 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     assert updated.is_duplicate is True
 
 
-async def test_finalization_rolls_back_event_when_outbox_creation_fails(
+async def test_finalization_persists_event_without_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from models import ForwardOutbox, WebhookEvent
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
@@ -214,11 +219,6 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
         session.add(event)
         await session.flush()
         event_id = event.id
-
-    async def fail_create_outbox(*_: object, **__: object) -> list[int]:
-        raise RuntimeError("outbox insert failed")
-
-    monkeypatch.setattr("services.webhooks.forwarding_stage.create_forward_outbox_records", fail_create_outbox)
 
     req_ctx = parse_request(
         "127.0.0.1",
@@ -245,22 +245,23 @@ async def test_finalization_rolls_back_event_when_outbox_creation_fails(
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
 
-    with pytest.raises(RuntimeError, match="outbox insert failed"):
-        await finalize_analysis_transaction(
-            ctx,
-            analysis_res,
-            {"importance": "high", "summary": "should rollback"},
-            noise,
-        )
+    save_res, fwd_dec = await finalize_analysis_transaction(
+        ctx,
+        analysis_res,
+        {"importance": "high", "summary": "should persist"},
+        noise,
+    )
 
     async with integration_session_factory() as session:
-        event = await session.get(WebhookEvent, event_id)
+        updated_event = await session.get(WebhookEvent, event_id)
         outboxes = (await session.execute(select(ForwardOutbox))).scalars().all()
 
-    assert event is not None
-    assert event.processing_status == "analyzing"
-    assert event.ai_analysis is None
-    assert event.forward_status is None
+    assert save_res.webhook_id == event_id
+    assert fwd_dec is not None
+    assert updated_event is not None
+    assert updated_event.processing_status == "completed"
+    assert updated_event.ai_analysis is not None
+    assert updated_event.ai_analysis["summary"] == "should persist"
     assert outboxes == []
 
 
@@ -318,7 +319,7 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
 
-    save_res, fwd_dec, outbox_ids = await finalize_analysis_transaction(
+    save_res, fwd_dec = await finalize_analysis_transaction(
         ctx,
         analysis_res,
         {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
@@ -332,8 +333,7 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     assert fwd_dec is not None
     assert fwd_dec.should_forward is True
     assert fwd_dec.is_periodic_reminder is True
-    assert len(outbox_ids) == 1
-    assert len(outboxes) == 1
+    assert outboxes == []
 
 
 async def test_recovery_scan_requeues_due_retry_without_incrementing_retry_count(
