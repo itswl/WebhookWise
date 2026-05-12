@@ -18,6 +18,7 @@ from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.webhooks.policies import ClientIPPolicy, WebhookSavePolicy
+from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
 
 HeadersDict = dict[str, str]
@@ -486,7 +487,7 @@ async def save_webhook_data_in_session(
         alert_hash = WebhookEvent.generate_hash(data, source)
     safe_headers = redact_headers(headers)
     if is_duplicate is None:
-        check = await WebhookEvent.check_duplicate(
+        check = await check_duplicate_event(
             alert_hash, session=session, time_window_hours=policy.duplicate_window_hours
         )
         is_duplicate, original_event, beyond_window = (

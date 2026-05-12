@@ -3,8 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import orjson
@@ -18,10 +17,8 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
-    select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from adapters.normalized import extract_alert_identity
@@ -33,14 +30,6 @@ _logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
-
-
-@dataclass(frozen=True)
-class DuplicateCheckResult:
-    is_duplicate: bool
-    original_event: WebhookEvent | None
-    beyond_window: bool
-    last_beyond_window_event: WebhookEvent | None
 
 
 class WebhookEvent(Base, SerializerMixin):
@@ -106,56 +95,6 @@ class WebhookEvent(Base, SerializerMixin):
             key_fields = {"source": source.strip().lower(), "payload": data}
 
         return hashlib.sha256(orjson.dumps(key_fields, option=orjson.OPT_SORT_KEYS)).hexdigest()
-
-    @classmethod
-    async def check_duplicate(
-        cls, alert_hash: str, session: AsyncSession, time_window_hours: int = 24
-    ) -> DuplicateCheckResult:
-        """检查重复告警"""
-        now = datetime.now()
-        threshold = now - timedelta(hours=time_window_hours)
-
-        # 查窗口内最新记录
-        stmt = (
-            select(cls)
-            .filter(cls.alert_hash == alert_hash, cls.timestamp >= threshold)
-            .order_by(cls.timestamp.desc())
-            .limit(1)
-        )
-        res = await session.execute(stmt)
-        any_event = res.scalar_one_or_none()
-
-        last_beyond_stmt = (
-            select(cls)
-            .filter(cls.alert_hash == alert_hash, cls.beyond_window.is_(True))
-            .order_by(cls.timestamp.desc())
-            .limit(1)
-        )
-        last_beyond_res = await session.execute(last_beyond_stmt)
-        last_beyond = last_beyond_res.scalar_one_or_none()
-
-        if any_event:
-            original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
-            orig = await session.get(cls, original_id) if original_id else any_event
-            if orig is None:
-                orig = any_event
-            window_start = last_beyond.timestamp if last_beyond else orig.timestamp
-            is_within = (now - window_start).total_seconds() / 3600 <= time_window_hours
-            return DuplicateCheckResult(True, orig, not is_within, last_beyond)
-
-        # 查窗口外历史
-        history_stmt = (
-            select(cls)
-            .filter(cls.alert_hash == alert_hash, cls.is_duplicate.is_(False))
-            .order_by(cls.timestamp.desc())
-            .limit(1)
-        )
-        history_res = await session.execute(history_stmt)
-        history = history_res.scalar_one_or_none()
-
-        if history:
-            return DuplicateCheckResult(False, history, True, last_beyond)
-        return DuplicateCheckResult(False, None, False, None)
 
     def fill_fields(self, **kwargs: object) -> None:
         """统一填充字段"""

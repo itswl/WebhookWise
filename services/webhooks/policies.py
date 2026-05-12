@@ -96,10 +96,16 @@ class ClientIPPolicy:
 @dataclass(frozen=True, slots=True)
 class WebhookReceivePolicy:
     max_body_bytes: int
+    ingress_backpressure_threshold: int
+    ingress_backpressure_window_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any = Config.security) -> "WebhookReceivePolicy":
-        return cls(max_body_bytes=max(0, int(config.MAX_WEBHOOK_BODY_BYTES or 0)))
+    def from_config(cls, config: Any = Config) -> "WebhookReceivePolicy":
+        return cls(
+            max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
+            ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
+            ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
+        )
 
 
 @dataclass(frozen=True, slots=True)

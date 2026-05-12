@@ -5,9 +5,9 @@ from typing import Any
 
 from core.logger import logger
 from db.session import session_scope
-from models import WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
 from services.webhooks.policies import AnalysisResolutionPolicy
+from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResolution
 
 
@@ -20,7 +20,7 @@ async def resolve_analysis(
 ) -> AnalysisResolution:
     policy = policy or AnalysisResolutionPolicy.from_config()
     async with session_scope() as session:
-        check = await WebhookEvent.check_duplicate(
+        check = await check_duplicate_event(
             alert_hash, session=session, time_window_hours=policy.duplicate_window_hours
         )
     orig, last_beyond = check.original_event, check.last_beyond_window_event
