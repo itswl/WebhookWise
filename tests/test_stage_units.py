@@ -166,6 +166,75 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_forwarding_uses_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    import services.webhooks.forwarding_stage as forwarding_stage
+    from services.webhooks.forwarding_stage import dispatch_forwarding_decision
+    from services.webhooks.types import ForwardDecision
+
+    class Client:
+        def __init__(self) -> None:
+            self.remote_calls: list[dict[str, Any]] = []
+
+        async def forward_to_remote(
+            self,
+            *,
+            webhook_data: dict[str, Any],
+            analysis_result: dict[str, Any],
+            target_url: str,
+            is_periodic_reminder: bool,
+        ) -> dict[str, Any]:
+            self.remote_calls.append(
+                {
+                    "webhook_data": webhook_data,
+                    "analysis_result": analysis_result,
+                    "target_url": target_url,
+                    "is_periodic_reminder": is_periodic_reminder,
+                }
+            )
+            return {"status": "success"}
+
+        async def forward_to_openclaw(
+            self,
+            *,
+            webhook_data: dict[str, Any],
+            analysis_result: dict[str, Any],
+        ) -> dict[str, Any]:
+            raise AssertionError("remote rule should not call openclaw")
+
+    async def noop_mark_last_notified(_: int) -> None:
+        return None
+
+    monkeypatch.setattr(forwarding_stage, "mark_last_notified", noop_mark_last_notified)
+
+    client = Client()
+    decision = ForwardDecision(
+        should_forward=True,
+        skip_reason=None,
+        is_periodic_reminder=True,
+        matched_rules=[{"target_type": "webhook", "target_url": "https://example.test/hook"}],
+    )
+
+    results = await dispatch_forwarding_decision(
+        decision,
+        full_data={"source": "unit"},
+        analysis={"summary": "ok"},
+        webhook_id=1,
+        orig_id=None,
+        forwarding_client=client,
+    )
+
+    assert results == [{"status": "success"}]
+    assert client.remote_calls == [
+        {
+            "webhook_data": {"source": "unit"},
+            "analysis_result": {"summary": "ok"},
+            "target_url": "https://example.test/hook",
+            "is_periodic_reminder": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_ingress_backpressure_suppresses_after_threshold() -> None:
     from services.webhooks.ingress_backpressure import check_ingress_backpressure
     from services.webhooks.policies import WebhookReceivePolicy
@@ -231,10 +300,12 @@ async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest
     result = await webhook._receive_and_enqueue_webhook(
         request=Request(),  # type: ignore[arg-type]
         source_hint="prometheus",
+        request_id="req-suppressed",
     )
 
     assert isinstance(result, dict)
     assert result["event_id"] == 0
+    assert result["request_id"] == "req-suppressed"
     assert "suppressed" in result["message"]
 
 

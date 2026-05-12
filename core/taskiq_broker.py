@@ -24,6 +24,11 @@ result_backend: RedisAsyncResultBackend[object] = RedisAsyncResultBackend(
 )
 
 # 2. 异步任务代理
+# RedisStreamBroker uses XREADGROUP with noack=False and exposes XACK to TaskIQ.
+# With TaskIQ's default WHEN_SAVED ACK policy, a hard worker crash before result
+# persistence leaves the message pending for xautoclaim redelivery. Python task
+# exceptions are saved as failed results and ACKed, so domain retries must be
+# explicit in task code.
 broker: AsyncBroker = RedisStreamBroker(
     url=REDIS_URL,
     queue_name=Config.server.WEBHOOK_MQ_QUEUE,
@@ -32,6 +37,7 @@ broker: AsyncBroker = RedisStreamBroker(
     xread_count=Config.server.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
     xread_block=Config.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
     idle_timeout=Config.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
+    unacknowledged_lock_timeout=max(30.0, Config.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS / 1000 * 2),
     maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
 ).with_result_backend(result_backend)
 

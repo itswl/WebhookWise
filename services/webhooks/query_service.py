@@ -19,6 +19,7 @@ _prev_ts_subq = (
 
 _SUMMARY_COLUMNS = [
     WebhookEvent.id,
+    WebhookEvent.request_id,
     WebhookEvent.source,
     WebhookEvent.client_ip,
     WebhookEvent.timestamp,
@@ -44,6 +45,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     prev_ts = getattr(row, "prev_alert_timestamp", None)
     return {
         "id": row.id,
+        "request_id": row.request_id,
         "source": row.source,
         "client_ip": row.client_ip,
         "timestamp": row.timestamp.isoformat() if row.timestamp else None,

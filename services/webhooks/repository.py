@@ -26,6 +26,7 @@ class EventEnvelope:
     raw_body: bytes
     source: str | None
     event_ts: str | None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,12 @@ async def transition_to_analyzing_and_load(event_id: int) -> EventEnvelope | Non
         raw_body = raw_text.encode("utf-8") if raw_text else b""
         event_ts = event.timestamp.isoformat() if event.timestamp else None
         return EventEnvelope(
-            headers=headers, payload=payload, raw_body=raw_body, source=event.source, event_ts=event_ts
+            headers=headers,
+            payload=payload,
+            raw_body=raw_body,
+            source=event.source,
+            event_ts=event_ts,
+            request_id=event.request_id,
         )
 
 

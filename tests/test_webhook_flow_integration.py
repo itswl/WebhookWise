@@ -107,6 +107,7 @@ async def test_webhook_receive_to_feishu_card_flow(
         source: str | None = None,
         raw_headers: dict[str, str] | None = None,
         raw_body: str | None = None,
+        request_id: str | None = None,
     ) -> None:
         if event_id is not None:
             await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
@@ -116,6 +117,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             raw_headers=raw_headers or {},
             raw_body=raw_body or "",
             client_ip=client_ip or "",
+            request_id=request_id,
         )
 
     monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
@@ -134,10 +136,12 @@ async def test_webhook_receive_to_feishu_card_flow(
     body = response.json()
     assert body["success"] is True
     assert body["event_id"] == 0
+    assert body["request_id"]
 
     async with integration_session_factory() as session:
         event = (await session.execute(select(WebhookEvent))).scalar_one_or_none()
         assert event is not None
+        assert event.request_id == body["request_id"]
         assert event.processing_status == "completed"
         assert event.importance == "high"
         assert event.ai_analysis is not None
@@ -148,6 +152,13 @@ async def test_webhook_receive_to_feishu_card_flow(
 
         rows = (await session.execute(select(WebhookEvent))).scalars().all()
         assert len(rows) == 1
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        detail = await client.get(f"/api/webhooks/by-request/{body['request_id']}")
+    assert detail.status_code == 200
+    detail_body = detail.json()
+    assert detail_body["success"] is True
+    assert detail_body["data"]["request_id"] == body["request_id"]
 
     assert len(posted) == 1
     outbound = posted[0]
@@ -231,6 +242,7 @@ async def test_finalization_persists_event_without_forward_outbox(
     alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
     ctx = WebhookProcessContext(
         event_id=event_id,
+        request_id="req-finalize-test",
         client_ip="127.0.0.1",
         metric_source="prometheus",
         req_ctx=req_ctx,
@@ -304,6 +316,7 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     req_ctx = parse_request("127.0.0.1", {}, payload, b'{"alert_name":"checkout-5xx"}', "prometheus", None)
     ctx = WebhookProcessContext(
         event_id=event_id,
+        request_id="req-reuse-test",
         client_ip="127.0.0.1",
         metric_source="prometheus",
         req_ctx=req_ctx,
