@@ -1,13 +1,15 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import logger
 from db.session import session_scope
 from models import WebhookEvent
-from services.forwarding.forward import forward_to_openclaw, forward_to_remote
+from services.forwarding.forward import forward_to_openclaw as default_forward_to_openclaw
+from services.forwarding.forward import forward_to_remote as default_forward_to_remote
 from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.command_service import save_webhook_data_in_session
 from services.webhooks.decisioning import (
@@ -25,6 +27,50 @@ from services.webhooks.types import (
     NoiseReductionContext,
     WebhookProcessContext,
 )
+
+
+class ForwardingClient(Protocol):
+    async def forward_to_remote(
+        self,
+        *,
+        webhook_data: dict[str, Any],
+        analysis_result: dict[str, Any],
+        target_url: str,
+        is_periodic_reminder: bool,
+    ) -> dict[str, Any]: ...
+
+    async def forward_to_openclaw(
+        self,
+        *,
+        webhook_data: dict[str, Any],
+        analysis_result: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultForwardingClient:
+    async def forward_to_remote(
+        self,
+        *,
+        webhook_data: dict[str, Any],
+        analysis_result: dict[str, Any],
+        target_url: str,
+        is_periodic_reminder: bool,
+    ) -> dict[str, Any]:
+        return await default_forward_to_remote(
+            webhook_data=webhook_data,
+            analysis_result=analysis_result,
+            target_url=target_url,
+            is_periodic_reminder=is_periodic_reminder,
+        )
+
+    async def forward_to_openclaw(
+        self,
+        *,
+        webhook_data: dict[str, Any],
+        analysis_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await default_forward_to_openclaw(webhook_data, analysis_result)
 
 
 async def resolve_forward_decision(
@@ -78,6 +124,7 @@ async def execute_forwarding(
     analysis: dict[str, Any],
     webhook_id: int,
     orig_id: int | None,
+    forwarding_client: ForwardingClient | None = None,
 ) -> None:
     """Compatibility wrapper: directly dispatch forwarding in the worker."""
     await dispatch_forwarding_decision(
@@ -86,6 +133,7 @@ async def execute_forwarding(
         analysis=analysis,
         webhook_id=webhook_id,
         orig_id=orig_id,
+        forwarding_client=forwarding_client,
     )
 
 
@@ -106,11 +154,12 @@ async def _dispatch_one_target(
     analysis: dict[str, Any],
     webhook_id: int,
     is_periodic_reminder: bool,
+    forwarding_client: ForwardingClient,
 ) -> dict[str, Any] | None:
     target_type = str(rule.get("target_type", "webhook") or "webhook")
     target_url = str(rule.get("target_url", "") or "")
     if target_type == "openclaw":
-        result = await forward_to_openclaw(full_data, analysis)
+        result = await forwarding_client.forward_to_openclaw(webhook_data=full_data, analysis_result=analysis)
         if result.get("_pending"):
             await create_openclaw_analysis(
                 webhook_id,
@@ -121,7 +170,7 @@ async def _dispatch_one_target(
         if not target_url:
             logger.warning("[Forward] 规则 '%s' target_url 为空，跳过直接转发", rule.get("name", rule.get("id")))
             return None
-        result = await forward_to_remote(
+        result = await forwarding_client.forward_to_remote(
             webhook_data=full_data,
             analysis_result=analysis,
             target_url=target_url,
@@ -140,6 +189,7 @@ async def dispatch_forwarding_decision(
     analysis: dict[str, Any],
     webhook_id: int,
     orig_id: int | None,
+    forwarding_client: ForwardingClient | None = None,
 ) -> list[dict[str, Any]]:
     """Execute forwarding directly in the webhook worker.
 
@@ -150,6 +200,7 @@ async def dispatch_forwarding_decision(
     if not decision or not decision.should_forward:
         return []
 
+    client = forwarding_client or DefaultForwardingClient()
     results: list[dict[str, Any]] = []
     for rule in _target_rules(decision):
         result = await _dispatch_one_target(
@@ -158,6 +209,7 @@ async def dispatch_forwarding_decision(
             analysis=analysis,
             webhook_id=webhook_id,
             is_periodic_reminder=decision.is_periodic_reminder,
+            forwarding_client=client,
         )
         if result is not None:
             results.append(result)
@@ -197,6 +249,7 @@ async def finalize_analysis_transaction(
             raw_payload=ctx.req_ctx.payload,
             headers=ctx.req_ctx.headers,
             client_ip=ctx.req_ctx.client_ip,
+            request_id=ctx.request_id,
             ai_analysis=final_analysis,
             alert_hash=ctx.alert_hash,
             is_duplicate=is_dup_for_save,

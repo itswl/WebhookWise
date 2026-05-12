@@ -38,6 +38,7 @@ class WebhookEvent(Base, SerializerMixin):
     __tablename__ = "webhook_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     client_ip: Mapped[str | None] = mapped_column(String(50))
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)

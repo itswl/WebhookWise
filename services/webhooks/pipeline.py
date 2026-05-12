@@ -6,7 +6,7 @@ reduction, final state transition and forwarding intent creation.
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,9 @@ from services.webhooks.types import (
     WebhookProcessingStatus,
 )
 
+if TYPE_CHECKING:
+    from services.webhooks.forwarding_stage import ForwardingClient
+
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 
 
@@ -50,6 +53,7 @@ class WebhookPipelineDependencies:
     failure_policy: WebhookFailurePolicy | None = None
     dead_letter_notifier: DeadLetterNotifier | None = None
     http_client: Any | None = None
+    forwarding_client: "ForwardingClient | None" = None
 
 
 async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object) -> bool:
@@ -75,6 +79,7 @@ async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object
     if ctx.event_id is not None:
         await mark_webhook_suppressed(
             event_id=ctx.event_id,
+            request_id=ctx.request_id,
             data=ctx.req_ctx.parsed_data,
             source=ctx.req_ctx.source,
             raw_payload=ctx.req_ctx.payload,
@@ -116,10 +121,11 @@ async def handle_webhook_ingest(
     raw_headers: dict[str, Any],
     raw_body: str,
     client_ip: str = "",
+    request_id: str | None = None,
     dependencies: WebhookPipelineDependencies | None = None,
 ) -> None:
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
-    set_trace_id(generate_trace_id())
+    set_trace_id(request_id or generate_trace_id())
     clear_log_context()
     set_log_context(source=source)
     env = EventEnvelope(
@@ -128,6 +134,7 @@ async def handle_webhook_ingest(
         raw_body=raw_body.encode("utf-8"),
         source=source,
         event_ts=None,
+        request_id=request_id,
     )
     await _handle_webhook_process_inner(
         None,
@@ -161,6 +168,7 @@ async def _handle_webhook_process_inner(
                 return
 
             metric_source = sanitize_source(env.source or "")
+            request_id = env.request_id
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
@@ -169,6 +177,7 @@ async def _handle_webhook_process_inner(
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
             ctx = WebhookProcessContext(
                 event_id=event_id,
+                request_id=request_id,
                 client_ip=client_ip,
                 metric_source=metric_source,
                 req_ctx=req_ctx,
@@ -234,6 +243,7 @@ async def _handle_webhook_process_inner(
                 analysis=final_analysis,
                 webhook_id=save_res.webhook_id,
                 orig_id=save_res.original_id,
+                forwarding_client=dependencies.forwarding_client,
             )
 
             event_type = (

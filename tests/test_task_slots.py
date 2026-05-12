@@ -48,3 +48,16 @@ def test_recovery_scan_interval_is_recovery_only_floor(monkeypatch: pytest.Monke
     monkeypatch.setattr(Config.server, "RECOVERY_SCAN_INTERVAL_SECONDS", 10)
 
     assert tasks._recovery_scan_interval_seconds() == 30
+
+
+def test_redis_stream_broker_has_pending_reclaim_timeout() -> None:
+    from typing import Any, cast
+
+    from core.taskiq_broker import broker
+
+    if not hasattr(broker, "unacknowledged_lock_timeout"):
+        pytest.skip("In-memory broker does not expose Redis Stream pending reclaim settings")
+
+    redis_broker = cast(Any, broker)
+    assert redis_broker.unacknowledged_lock_timeout is not None
+    assert redis_broker.idle_timeout > 0

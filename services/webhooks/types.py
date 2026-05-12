@@ -65,6 +65,7 @@ class WebhookRequestContext:
 @dataclass(frozen=True, slots=True)
 class WebhookProcessContext:
     event_id: int | None
+    request_id: str | None
     client_ip: str
     metric_source: str
     req_ctx: WebhookRequestContext

@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
@@ -53,6 +54,7 @@ async def _receive_and_enqueue_webhook(
     *,
     request: Request,
     source_hint: str,
+    request_id: str,
 ) -> JSONDict | JSONResponse:
     raw_body = await request.body()
     if too_large_response := _payload_too_large_response(raw_body, source_hint):
@@ -73,6 +75,7 @@ async def _receive_and_enqueue_webhook(
             "success": True,
             "message": "Webhook suppressed by ingress backpressure",
             "event_id": 0,
+            "request_id": request_id,
         }
 
     client_ip = get_client_ip(request)
@@ -84,6 +87,7 @@ async def _receive_and_enqueue_webhook(
         raw_headers=headers,
         raw_body=raw_body_str,
         client_ip=client_ip or "",
+        request_id=request_id,
     )
     logger.info(
         "[Webhook] 已接收并入队 source=%s ip=%s size=%d",
@@ -92,7 +96,12 @@ async def _receive_and_enqueue_webhook(
         len(raw_body),
     )
 
-    return {"success": True, "message": "Webhook received and queued for processing", "event_id": 0}
+    return {
+        "success": True,
+        "message": "Webhook received and queued for processing",
+        "event_id": 0,
+        "request_id": request_id,
+    }
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
@@ -148,11 +157,11 @@ async def receive_webhook(
     source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
-    tid = generate_trace_id()
-    set_trace_id(tid)
+    request_id = generate_trace_id()
+    set_trace_id(request_id)
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
 
-    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint)
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
 
 
 @webhook_router.post(
@@ -166,11 +175,11 @@ async def receive_webhook_with_source(
     source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
-    tid = generate_trace_id()
-    set_trace_id(tid)
+    request_id = generate_trace_id()
+    set_trace_id(request_id)
     source_hint = _normalize_source_hint(source)
 
-    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint)
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
 
 
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
@@ -194,6 +203,24 @@ async def get_webhooks_endpoint(
         "data": items,
         "pagination": {"next_cursor": next_cursor, "has_more": has_more, "page_size": page_size},
     }
+
+
+@webhook_router.get(
+    "/api/webhooks/by-request/{request_id}",
+    dependencies=[Depends(verify_api_key)],
+    response_model=None,
+)
+async def get_webhook_by_request_id_endpoint(
+    request_id: str = Path(..., min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict | JSONResponse:
+    """按异步接收 request_id 查询最终持久化事件。"""
+    stmt = select(WebhookEvent).where(WebhookEvent.request_id == request_id)
+    event = (await session.execute(stmt)).scalar_one_or_none()
+    if not event:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
+
+    return {"success": True, "data": redact_event_dict(event.to_dict())}
 
 
 @webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)

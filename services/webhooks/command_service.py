@@ -121,6 +121,7 @@ async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
 async def mark_webhook_suppressed(
     *,
     event_id: int,
+    request_id: str | None = None,
     data: WebhookData,
     source: str,
     raw_payload: bytes | None,
@@ -137,6 +138,7 @@ async def mark_webhook_suppressed(
             return
         event.fill_fields(
             source=source,
+            request_id=request_id,
             client_ip=client_ip,
             parsed_data=data,
             alert_hash=alert_hash,
@@ -159,6 +161,7 @@ async def _save_duplicate_event(
     session: AsyncSession,
     *,
     source: str,
+    request_id: str | None,
     client_ip: str | None,
     raw_payload: bytes | None,
     headers: HeadersDict | None,
@@ -199,6 +202,7 @@ async def _save_duplicate_event(
         if dup_event:
             dup_event.fill_fields(
                 source=source,
+                request_id=request_id,
                 client_ip=client_ip,
                 parsed_data=data,
                 alert_hash=alert_hash,
@@ -220,6 +224,7 @@ async def _save_duplicate_event(
     duplicate_event = WebhookEvent()
     duplicate_event.fill_fields(
         source=source,
+        request_id=request_id,
         client_ip=client_ip,
         parsed_data=data,
         alert_hash=alert_hash,
@@ -258,6 +263,7 @@ async def _update_existing_event(
     *,
     event_id: int,
     source: str,
+    request_id: str | None,
     client_ip: str | None,
     raw_payload: bytes | None,
     headers: HeadersDict | None,
@@ -271,6 +277,7 @@ async def _update_existing_event(
         return await _save_new_event(
             session,
             source=source,
+            request_id=request_id,
             client_ip=client_ip,
             raw_payload=raw_payload,
             headers=headers,
@@ -281,6 +288,7 @@ async def _update_existing_event(
         )
     event.fill_fields(
         source=source,
+        request_id=request_id,
         client_ip=client_ip,
         parsed_data=data,
         alert_hash=alert_hash,
@@ -319,6 +327,7 @@ async def _update_existing_event(
 
                 event.fill_fields(
                     source=source,
+                    request_id=request_id,
                     client_ip=client_ip,
                     parsed_data=data,
                     alert_hash=alert_hash,
@@ -345,6 +354,7 @@ async def save_webhook_data(
     raw_payload: bytes | None = None,
     headers: HeadersDict | None = None,
     client_ip: str | None = None,
+    request_id: str | None = None,
     ai_analysis: AnalysisResult | None = None,
     forward_status: str = "pending",
     alert_hash: str | None = None,
@@ -368,6 +378,7 @@ async def save_webhook_data(
                 raw_payload=raw_payload,
                 headers=headers,
                 client_ip=client_ip,
+                request_id=request_id,
                 ai_analysis=ai_analysis,
                 forward_status=forward_status,
                 alert_hash=alert_hash,
@@ -392,6 +403,7 @@ async def save_webhook_data_in_session(
     raw_payload: bytes | None = None,
     headers: HeadersDict | None = None,
     client_ip: str | None = None,
+    request_id: str | None = None,
     ai_analysis: AnalysisResult | None = None,
     forward_status: str = "pending",
     alert_hash: str | None = None,
@@ -423,6 +435,7 @@ async def save_webhook_data_in_session(
         saved = await _save_duplicate_event(
             session,
             source=source,
+            request_id=request_id,
             client_ip=client_ip,
             raw_payload=raw_payload,
             headers=safe_headers,
@@ -443,6 +456,7 @@ async def save_webhook_data_in_session(
             session,
             event_id=event_id,
             source=source,
+            request_id=request_id,
             client_ip=client_ip,
             raw_payload=raw_payload,
             headers=safe_headers,
@@ -454,6 +468,7 @@ async def save_webhook_data_in_session(
     return await _save_new_event(
         session,
         source=source,
+        request_id=request_id,
         client_ip=client_ip,
         raw_payload=raw_payload,
         headers=safe_headers,
