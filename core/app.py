@@ -1,8 +1,8 @@
 import os
 import socket
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Callable, MutableMapping
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +18,8 @@ from api.forwarding import forwarding_router
 from api.reanalysis import reanalysis_router
 from api.webhook import webhook_router
 from core.auth import verify_api_key
-from core.config import Config
+from core.config import UnifiedConfigManager
+from core.dependencies import get_config_manager
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
@@ -32,6 +33,11 @@ from services.analysis.ai_analyzer import initialize_openai_client, reset_openai
 _PLACEHOLDER_SECRETS = {"change-me", "changeme", "replace-me", "please-change", "please-change-me"}
 
 
+def _app_config(app: FastAPI) -> UnifiedConfigManager:
+    config = getattr(app.state, "config_manager", None)
+    return cast(UnifiedConfigManager, config) if config is not None else get_config_manager()
+
+
 def _looks_like_placeholder_secret(value: str) -> bool:
     normalized = value.strip().lower()
     return normalized in _PLACEHOLDER_SECRETS or normalized.startswith("please-change-")
@@ -39,22 +45,23 @@ def _looks_like_placeholder_secret(value: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    if not Config.security.API_KEY and not (Config.server.DEBUG or Config.security.ALLOW_UNAUTHENTICATED_ADMIN):
+    config = _app_config(app)
+    if not config.security.API_KEY and not (config.server.DEBUG or config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
         )
-    if os.getenv("APP_ENV", "production") == "production" and _looks_like_placeholder_secret(Config.security.API_KEY):
+    if os.getenv("APP_ENV", "production") == "production" and _looks_like_placeholder_secret(config.security.API_KEY):
         raise RuntimeError("API_KEY 仍是示例占位值，请替换为真实随机密钥")
     if (
         os.getenv("APP_ENV", "production") == "production"
-        and Config.security.ADMIN_WRITE_KEY
-        and _looks_like_placeholder_secret(Config.security.ADMIN_WRITE_KEY)
+        and config.security.ADMIN_WRITE_KEY
+        and _looks_like_placeholder_secret(config.security.ADMIN_WRITE_KEY)
     ):
         raise RuntimeError("ADMIN_WRITE_KEY 仍是示例占位值，请替换为真实随机密钥")
     if (
         os.getenv("APP_ENV", "production") == "production"
-        and not Config.security.REQUIRE_WEBHOOK_AUTH
-        and not Config.security.ALLOW_UNAUTHENTICATED_WEBHOOK
+        and not config.security.REQUIRE_WEBHOOK_AUTH
+        and not config.security.ALLOW_UNAUTHENTICATED_WEBHOOK
     ):
         raise RuntimeError(
             "生产环境未开启 Webhook 鉴权。请设置 REQUIRE_WEBHOOK_AUTH=true 和 WEBHOOK_SECRET，"
@@ -62,25 +69,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     if (
         os.getenv("APP_ENV", "production") == "production"
-        and Config.security.REQUIRE_WEBHOOK_AUTH
-        and _looks_like_placeholder_secret(Config.security.WEBHOOK_SECRET)
+        and config.security.REQUIRE_WEBHOOK_AUTH
+        and _looks_like_placeholder_secret(config.security.WEBHOOK_SECRET)
     ):
         raise RuntimeError("WEBHOOK_SECRET 仍是示例占位值，请替换为真实随机密钥")
     app.state.http_client = get_http_client()
     initialize_adapters()
     await init_engine()
-    if Config.server.ENABLE_RUNTIME_CONFIG:
-        await Config.load_from_db()
-        await Config.start_subscriber()
-    if Config.ai.ENABLE_AI_ANALYSIS and Config.ai.OPENAI_API_KEY:
-        await initialize_openai_client()
+    if config.server.ENABLE_RUNTIME_CONFIG:
+        await config.load_from_db()
+        await config.start_subscriber()
+    if config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
+        await initialize_openai_client(http_client=app.state.http_client)
 
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
 
     yield
 
-    await Config.stop_subscriber()
+    await config.stop_subscriber()
     await broker.shutdown()
 
     await dispose_engine()
@@ -91,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
+app.state.config_manager = get_config_manager()
 
 
 setup_metrics(app)
@@ -137,16 +145,16 @@ class RequestBodyLimitExceeded(Exception):
 
 
 class RequestBodyLimitMiddleware:
-    def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
+    def __init__(self, app: ASGIApp, max_body_bytes_provider: Callable[[], int]) -> None:
         self.app = app
-        self.max_body_bytes = max(0, int(max_body_bytes))
+        self.max_body_bytes_provider = max_body_bytes_provider
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        max_bytes = self.max_body_bytes
+        max_bytes = max(0, int(self.max_body_bytes_provider() or 0))
         if max_bytes <= 0:
             await self.app(scope, receive, send)
             return
@@ -193,7 +201,10 @@ class RequestBodyLimitMiddleware:
         await send({"type": "http.response.body", "body": body})
 
 
-app.add_middleware(RequestBodyLimitMiddleware, max_body_bytes=int(Config.security.MAX_WEBHOOK_BODY_BYTES or 0))
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    max_body_bytes_provider=lambda: _app_config(app).security.MAX_WEBHOOK_BODY_BYTES,
+)
 
 
 class TraceContextMiddleware:

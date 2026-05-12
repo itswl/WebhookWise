@@ -14,6 +14,7 @@ import httpx
 from core.circuit_breaker import forward_cb, openclaw_cb
 from core.http_client import get_http_client
 from core.url_security import validate_outbound_url
+from services.forwarding.dependencies import OpenClawForwardDependencies, RemoteForwardDependencies
 from services.forwarding.failed_records import (
     cleanup_old_success_records,
     delete_failed_forward,
@@ -52,9 +53,11 @@ async def forward_to_remote(
     """Compatibility wrapper that preserves historical monkeypatch points."""
     from services.forwarding import remote
 
-    remote.get_http_client = get_http_client  # type: ignore[attr-defined]
-    remote.validate_outbound_url = validate_outbound_url  # type: ignore[attr-defined]
-    remote.forward_cb = forward_cb  # type: ignore[attr-defined]
+    dependencies = RemoteForwardDependencies(
+        http_client=http_client or get_http_client(),
+        circuit_breaker=forward_cb,
+        validate_url=validate_outbound_url,
+    )
     return await remote.forward_to_remote(
         webhook_data=webhook_data,
         analysis_result=analysis_result,
@@ -62,6 +65,7 @@ async def forward_to_remote(
         is_periodic_reminder=is_periodic_reminder,
         http_client=http_client,
         policy=policy,
+        dependencies=dependencies,
     )
 
 
@@ -76,15 +80,18 @@ async def post_json_to_remote(
     """Compatibility wrapper for raw JSON forwarding."""
     from services.forwarding import remote
 
-    remote.get_http_client = get_http_client  # type: ignore[attr-defined]
-    remote.validate_outbound_url = validate_outbound_url  # type: ignore[attr-defined]
-    remote.forward_cb = forward_cb  # type: ignore[attr-defined]
+    dependencies = RemoteForwardDependencies(
+        http_client=http_client or get_http_client(),
+        circuit_breaker=forward_cb,
+        validate_url=validate_outbound_url,
+    )
     return await remote.post_json_to_remote(
         target_url,
         payload,
         http_client=http_client,
         policy=policy,
         validate_target=validate_target,
+        dependencies=dependencies,
     )
 
 
@@ -98,13 +105,16 @@ async def forward_to_openclaw(
     """Compatibility wrapper that preserves historical monkeypatch points."""
     from services.forwarding import openclaw
 
-    openclaw.openclaw_cb = openclaw_cb  # type: ignore[attr-defined]
-    openclaw.get_http_client = get_http_client  # type: ignore[attr-defined]
+    dependencies = OpenClawForwardDependencies(
+        http_client=http_client or get_http_client(),
+        circuit_breaker=openclaw_cb,
+    )
     return await openclaw.forward_to_openclaw(
         webhook_data,
         analysis_result,
         policy=policy,
         http_client=http_client,
+        dependencies=dependencies,
     )
 
 
@@ -120,14 +130,17 @@ async def analyze_with_openclaw(
     """Compatibility wrapper that preserves historical monkeypatch points."""
     from services.forwarding import openclaw
 
-    openclaw.openclaw_cb = openclaw_cb  # type: ignore[attr-defined]
-    openclaw.get_http_client = get_http_client  # type: ignore[attr-defined]
+    dependencies = OpenClawForwardDependencies(
+        http_client=http_client or get_http_client(),
+        circuit_breaker=openclaw_cb,
+    )
     return await openclaw.analyze_with_openclaw(
         webhook_data,
         user_question=user_question,
         thinking_level=thinking_level,
         policy=policy,
         http_client=http_client,
+        dependencies=dependencies,
         sleep=sleep,
     )
 

@@ -6,6 +6,7 @@ reduction, final state transition and forwarding intent creation.
 
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +50,7 @@ class WebhookPipelineDependencies:
     forwarding_policy: ForwardingPolicy | None = None
     failure_policy: WebhookFailurePolicy | None = None
     dead_letter_notifier: DeadLetterNotifier | None = None
+    http_client: Any | None = None
 
 
 async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object) -> bool:
@@ -154,7 +156,10 @@ async def _handle_webhook_process_inner(
                     return
 
                 analysis_res = await resolve_analysis(
-                    alert_hash, req_ctx.webhook_full_data, policy=dependencies.analysis_policy
+                    alert_hash,
+                    req_ctx.webhook_full_data,
+                    policy=dependencies.analysis_policy,
+                    http_client=dependencies.http_client,
                 )
                 route_type = analysis_res.analysis_result.get("_route_type", "ai")
                 importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
