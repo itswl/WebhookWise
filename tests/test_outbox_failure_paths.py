@@ -411,6 +411,7 @@ class TestOpenClawPoller:
             async def get(self, *_: object, **kwargs: object) -> _Response:
                 timeout = kwargs["timeout"]
                 seen_timeouts.append((float(timeout.connect), float(timeout.read)))
+                assert kwargs["headers"]["Connection"] == "close"
                 return _Response()
 
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
