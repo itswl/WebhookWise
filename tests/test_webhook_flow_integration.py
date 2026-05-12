@@ -108,6 +108,7 @@ async def test_webhook_receive_to_feishu_card_flow(
         raw_headers: dict[str, str] | None = None,
         raw_body: str | None = None,
         request_id: str | None = None,
+        received_at: str | None = None,
     ) -> None:
         if event_id is not None:
             await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
@@ -118,6 +119,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             raw_body=raw_body or "",
             client_ip=client_ip or "",
             request_id=request_id,
+            received_at=received_at,
         )
 
     monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
@@ -167,6 +169,7 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "red"
     elements_text = str(card["card"]["elements"])
+    assert "**时间**\\n—" not in elements_text
     assert "checkout-5xx" in elements_text
     assert "订单服务错误率升高" in elements_text
     assert "回滚最近发布" in elements_text

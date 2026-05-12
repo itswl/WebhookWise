@@ -6,6 +6,7 @@ reduction, final state transition and forwarding intent creation.
 
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,6 +123,7 @@ async def handle_webhook_ingest(
     raw_body: str,
     client_ip: str = "",
     request_id: str | None = None,
+    received_at: str | None = None,
     dependencies: WebhookPipelineDependencies | None = None,
 ) -> None:
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
@@ -133,7 +135,7 @@ async def handle_webhook_ingest(
         payload=None,
         raw_body=raw_body.encode("utf-8"),
         source=source,
-        event_ts=None,
+        event_ts=received_at or datetime.now().astimezone().isoformat(timespec="seconds"),
         request_id=request_id,
     )
     await _handle_webhook_process_inner(
