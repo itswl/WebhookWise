@@ -250,6 +250,7 @@ async def process_webhook_task(
     raw_headers: dict[str, str] | None = None,
     raw_body: str | None = None,
     request_id: str | None = None,
+    received_at: str | None = None,
 ) -> None:
     """Process either a legacy DB event or a raw ingested webhook."""
     from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
@@ -267,6 +268,7 @@ async def process_webhook_task(
                     raw_body=raw_body or "",
                     client_ip=client_ip or "",
                     request_id=request_id,
+                    received_at=received_at,
                 )
         finally:
             WEBHOOK_RUNNING_TASKS.dec()

@@ -4,6 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -81,6 +82,7 @@ async def _receive_and_enqueue_webhook(
     client_ip = get_client_ip(request)
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
+    received_at = datetime.now().astimezone().isoformat(timespec="seconds")
 
     await process_webhook_task.kiq(
         source=source_hint,
@@ -88,6 +90,7 @@ async def _receive_and_enqueue_webhook(
         raw_body=raw_body_str,
         client_ip=client_ip or "",
         request_id=request_id,
+        received_at=received_at,
     )
     logger.info(
         "[Webhook] 已接收并入队 source=%s ip=%s size=%d",
