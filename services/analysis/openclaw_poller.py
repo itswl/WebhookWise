@@ -58,6 +58,25 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _is_transient_poll_error(error: object) -> bool:
+    if not error:
+        return False
+    text = str(error).lower()
+    transient_markers = (
+        "all connection attempts failed",
+        "connection refused",
+        "connection reset",
+        "connect call failed",
+        "network is unreachable",
+        "no route to host",
+        "name or service not known",
+        "temporary failure",
+        "timed out",
+        "timeout",
+    )
+    return any(marker in text for marker in transient_markers)
+
+
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
     from core.redis_client import redis_get_json_dict
 
@@ -181,6 +200,18 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
         # --- HTTP 轮询 ---
         if policy.has_http_api:
             result = await _poll_via_http(rec["openclaw_session_key"], policy=policy)
+            if result.get("status") == "error" and result.get("retryable") and policy.gateway_url:
+                logger.warning(
+                    "[Poller] HTTP final API 暂不可用，回退 gateway 轮询: id=%s error=%s",
+                    record_id,
+                    result.get("error"),
+                )
+                result = await poll_session_result(
+                    gateway_url=policy.gateway_url,
+                    gateway_token=policy.gateway_token,
+                    session_key=rec["openclaw_session_key"],
+                    timeout=policy.poll_timeout_seconds,
+                )
         else:
             result = await poll_session_result(
                 gateway_url=policy.gateway_url,
@@ -275,8 +306,16 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
                 await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count})
                 return {"id": record_id, "action": "skip"}
 
-            await _clear_poll_stability(record_id)
             error_msg = result.get("error", "OpenClaw 返回错误")
+            if bool(result.get("retryable")) or _is_transient_poll_error(error_msg):
+                logger.warning(
+                    "[Poller] OpenClaw 轮询遇到临时错误，保留 pending 等待下轮重试: id=%s error=%s",
+                    record_id,
+                    error_msg,
+                )
+                return {"id": record_id, "action": "skip"}
+
+            await _clear_poll_stability(record_id)
             update = {
                 "status": DeepAnalysisStatus.FAILED,
                 "analysis_result": {

@@ -28,6 +28,7 @@ async def poll_openclaw_final(
     base_url = policy.http_api_url.rstrip("/")
     headers = policy.http_auth_headers(trace_id)
     last_error = None
+    transport_error = False
 
     for attempt in range(retry_count):
         try:
@@ -74,9 +75,12 @@ async def poll_openclaw_final(
 
             last_error = "No text content"
         except Exception as e:
+            transport_error = True
             last_error = str(e)
             logger.warning("HTTP 轮询异常: %s", e)
 
     if last_error == "分析进行中":
         return {"status": "pending"}
+    if transport_error:
+        return {"status": "error", "error": last_error or "HTTP transport error", "retryable": True}
     return {"status": "error", "error": last_error}
