@@ -5,10 +5,9 @@ import logging
 from typing import Any
 
 from adapters.plugins.feishu_card import build_ai_error_card
-from core.circuit_breaker import CircuitBreakerOpenException, feishu_cb
-from core.http_client import get_http_client
-from core.url_security import validate_outbound_url
 from services.analysis.ai_policies import AIErrorNotificationPolicy
+from services.notifications.factory import build_notification_channels, find_notification_channel
+from services.operations.policies import FeishuNotificationPolicy
 from services.webhooks.types import WebhookData
 
 logger = logging.getLogger("webhook_service.ai_error_notifications")
@@ -35,15 +34,17 @@ async def send_ai_error_alert(
         if not await redis_set_nx_ex(lock_key, "1", policy.cooldown_seconds):
             return
 
-        target_url = await validate_outbound_url(policy.target_url)
-        client = http_client or get_http_client()
-        await feishu_cb.call_async(
-            client.post,
-            target_url,
-            json=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
-            timeout=policy.timeout_seconds,
+        channels = build_notification_channels(
+            http_client=http_client,
+            feishu_policy=FeishuNotificationPolicy(timeout_seconds=policy.timeout_seconds),
         )
-    except CircuitBreakerOpenException as e:
-        logger.warning("发送 AI 错误通知被熔断器拦截: %s", e)
+        channel = find_notification_channel(policy.target_url, channels)
+        if channel is None:
+            logger.debug("AI 错误通知目标没有匹配的通知渠道: %s", policy.target_url)
+            return
+        await channel.send_card(
+            policy.target_url,
+            build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
+        )
     except Exception as e:
         logger.error("发送 AI 错误通知失败: %s", e)

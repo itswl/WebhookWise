@@ -1,13 +1,15 @@
 import hashlib
 
-from fastapi import HTTPException, Request, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.config import Config
+from core.config import UnifiedConfigManager
+from core.dependencies import get_config_manager
 from core.logger import logger
 
 security = HTTPBearer(auto_error=False)
 _AUTH_DEPENDENCY = Security(security)
+_CONFIG_DEPENDENCY = Depends(get_config_manager)
 
 
 def _redact_headers(headers: dict[str, object]) -> dict[str, object]:
@@ -28,15 +30,20 @@ def _body_meta(body: bytes) -> dict[str, object]:
     return {"size": len(body), "sha256": digest}
 
 
-async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY) -> bool:
+async def verify_api_key(
+    request: Request,
+    auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
+    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+) -> bool:
     """
     验证 API Key (Bearer Token)
-    如果 Config.security.API_KEY 未配置，则跳过验证（兼容模式）
+    如果 API_KEY 未配置，则跳过验证（兼容模式）
     """
-    if not Config.security.API_KEY:
+    api_key = config.security.API_KEY
+    if not api_key:
         return True
 
-    if not auth or auth.credentials != Config.security.API_KEY:
+    if not auth or auth.credentials != api_key:
         client_ip = request.client.host if request.client else "unknown"
 
         try:
@@ -60,13 +67,14 @@ async def verify_api_key(request: Request, auth: HTTPAuthorizationCredentials | 
 async def verify_admin_write(
     request: Request,
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
+    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
 ) -> bool:
     """
     验证 Admin 写操作权限。
     如果配置了 ADMIN_WRITE_KEY，则要求 Bearer token 必须匹配此 key；
     否则退回到普通 verify_api_key 行为（向后兼容）。
     """
-    admin_write_key = Config.security.ADMIN_WRITE_KEY
+    admin_write_key = config.security.ADMIN_WRITE_KEY
 
     # 情况 1：配置了单独的 ADMIN_WRITE_KEY → 只校验它
     if admin_write_key:
@@ -84,4 +92,4 @@ async def verify_admin_write(
         return True
 
     # 情况 2：未配置 ADMIN_WRITE_KEY → 回退到普通 API_KEY 逻辑
-    return await verify_api_key(request, auth)
+    return await verify_api_key(request, auth, config)
