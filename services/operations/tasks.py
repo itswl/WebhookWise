@@ -14,6 +14,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 
+from core.log_context import clear_log_context, set_log_context
 from core.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
     SCHEDULED_TASK_LAG_SECONDS,
@@ -343,39 +344,71 @@ async def process_webhook_task(
     from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
 
     source = source or webhook_source
-    logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s source=%s", event_id, source or "")
-    async with _webhook_task_slot():
-        WEBHOOK_RUNNING_TASKS.inc()
-        try:
-            if event_id is not None:
-                await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
-            else:
-                normalized_source = source or "unknown"
-                normalized_headers = raw_headers or {}
-                normalized_body = raw_body or ""
-                normalized_client_ip = client_ip or ""
-                try:
-                    await handle_webhook_ingest(
-                        source=normalized_source,
-                        raw_headers=normalized_headers,
-                        raw_body=normalized_body,
-                        client_ip=normalized_client_ip,
-                        request_id=request_id,
-                        received_at=received_at,
-                    )
-                except Exception as e:
-                    await _handle_raw_webhook_failure(
-                        source=normalized_source,
-                        raw_headers=normalized_headers,
-                        raw_body=normalized_body,
-                        client_ip=normalized_client_ip,
-                        request_id=request_id,
-                        received_at=received_at,
-                        ingest_retry_count=ingest_retry_count,
-                        err=e,
-                    )
-        finally:
-            WEBHOOK_RUNNING_TASKS.dec()
+    clear_log_context()
+    set_log_context(event_id=event_id, request_id=request_id, source=source)
+    task_start = time.perf_counter()
+    outcome = "completed"
+    logger.info(
+        "[Tasks] Webhook 任务开始 event_id=%s request_id=%s source=%s raw_ingest=%s retry=%s",
+        event_id,
+        request_id,
+        source or "",
+        event_id is None,
+        ingest_retry_count,
+    )
+    try:
+        async with _webhook_task_slot():
+            WEBHOOK_RUNNING_TASKS.inc()
+            try:
+                if event_id is not None:
+                    await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+                else:
+                    normalized_source = source or "unknown"
+                    normalized_headers = raw_headers or {}
+                    normalized_body = raw_body or ""
+                    normalized_client_ip = client_ip or ""
+                    try:
+                        await handle_webhook_ingest(
+                            source=normalized_source,
+                            raw_headers=normalized_headers,
+                            raw_body=normalized_body,
+                            client_ip=normalized_client_ip,
+                            request_id=request_id,
+                            received_at=received_at,
+                        )
+                    except Exception as e:
+                        outcome = "raw_failure_handled"
+                        await _handle_raw_webhook_failure(
+                            source=normalized_source,
+                            raw_headers=normalized_headers,
+                            raw_body=normalized_body,
+                            client_ip=normalized_client_ip,
+                            request_id=request_id,
+                            received_at=received_at,
+                            ingest_retry_count=ingest_retry_count,
+                            err=e,
+                        )
+            finally:
+                WEBHOOK_RUNNING_TASKS.dec()
+    except Exception:
+        outcome = "error"
+        logger.exception(
+            "[Tasks] Webhook 任务异常退出 event_id=%s request_id=%s source=%s",
+            event_id,
+            request_id,
+            source or "",
+        )
+        raise
+    finally:
+        duration_ms = int((time.perf_counter() - task_start) * 1000)
+        logger.info(
+            "[Tasks] Webhook 任务结束 event_id=%s request_id=%s source=%s outcome=%s duration=%dms",
+            event_id,
+            request_id,
+            source or "",
+            outcome,
+            duration_ms,
+        )
 
 
 @broker.task(task_name="forward_retry_task")

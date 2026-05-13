@@ -5,7 +5,6 @@ tests/test_log_context.py
 关键：空值不应出现在日志输出中（避免噪音日志）。
 """
 
-
 from core.log_context import (
     clear_log_context,
     get_log_context,
@@ -34,6 +33,12 @@ def test_set_event_id_appears_in_context():
     assert ctx.get("event_id") == 12345
 
 
+def test_set_request_id_appears_in_context():
+    set_log_context(request_id="req-123")
+    ctx = get_log_context()
+    assert ctx.get("request_id") == "req-123"
+
+
 def test_set_source_appears_in_context():
     set_log_context(source="prometheus")
     ctx = get_log_context()
@@ -41,9 +46,16 @@ def test_set_source_appears_in_context():
 
 
 def test_set_multiple_fields():
-    set_log_context(event_id=1, alert_hash="abc123", source="grafana", processing_status="analyzing")
+    set_log_context(
+        event_id=1,
+        request_id="req-abc",
+        alert_hash="abc123",
+        source="grafana",
+        processing_status="analyzing",
+    )
     ctx = get_log_context()
     assert ctx["event_id"] == 1
+    assert ctx["request_id"] == "req-abc"
     assert ctx["alert_hash"] == "abc123"
     assert ctx["source"] == "grafana"
     assert ctx["processing_status"] == "analyzing"
@@ -64,6 +76,7 @@ def test_clear_removes_all_fields():
     clear_log_context()
     ctx = get_log_context()
     assert "event_id" not in ctx
+    assert "request_id" not in ctx
     assert "source" not in ctx or not ctx["source"]
     assert "alert_hash" not in ctx or not ctx["alert_hash"]
 
