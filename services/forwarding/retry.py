@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
+from core.logger import mask_url
 from core.metrics import FORWARD_RETRY_TOTAL
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
@@ -82,7 +83,7 @@ async def _retry_forward(
     logger.info(
         "[ForwardRetry] 开始重试: ID=%s target=%s attempt=%d/%d",
         record.id,
-        record.target_url,
+        mask_url(record.target_url),
         record.retry_count + 1,
         record.max_retries,
     )

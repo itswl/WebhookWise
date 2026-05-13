@@ -14,12 +14,17 @@ from core.trace import get_trace_id
 
 
 def mask_url(url: str) -> str:
-    """安全脱敏 URL，移除用户名和密码。"""
+    """安全脱敏 URL，移除用户名、密码、query 以及可能包含 token 的 path 尾部。"""
     try:
         parsed = urlparse(url)
         if parsed.hostname:
             port = f":{parsed.port}" if parsed.port else ""
-            return f"{parsed.scheme}://***@{parsed.hostname}{port}{parsed.path}"
+            path = parsed.path or ""
+            safe_path = ""
+            if path and path != "/":
+                parts = [p for p in path.split("/") if p]
+                safe_path = f"/{parts[0]}/..." if parts else ""
+            return f"{parsed.scheme}://***@{parsed.hostname}{port}{safe_path}"
         return "***"
     except Exception:
         return "***"

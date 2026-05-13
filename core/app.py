@@ -1,5 +1,6 @@
 import os
 import socket
+import time
 from collections.abc import AsyncIterator, Callable, MutableMapping
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -21,6 +22,7 @@ from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
 from core.dependencies import get_config_manager
 from core.http_client import close_http_client, get_http_client
+from core.log_context import clear_log_context, set_log_context
 from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.otel import setup_otel
@@ -46,6 +48,13 @@ def _looks_like_placeholder_secret(value: str) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     config = _app_config(app)
+    logger.info(
+        "[App] 启动中 env=%s debug=%s runtime_config=%s ai_enabled=%s",
+        os.getenv("APP_ENV", "production"),
+        config.server.DEBUG,
+        config.server.ENABLE_RUNTIME_CONFIG,
+        config.ai.ENABLE_AI_ANALYSIS,
+    )
     if not config.security.API_KEY and not (config.server.DEBUG or config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"
@@ -84,17 +93,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 启动 TaskIQ Broker (API 侧只需 startup)
     await broker.startup()
+    logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
-    yield
+    try:
+        yield
+    finally:
+        logger.info("[App] 正在关闭 worker_id=%s", _WORKER_ID)
 
-    await config.stop_subscriber()
-    await broker.shutdown()
+        await config.stop_subscriber()
+        await broker.shutdown()
 
-    await dispose_engine()
-    await dispose_redis()
-    await reset_openai_client()
-    await close_http_client()
-    stop_log_listener()
+        await dispose_engine()
+        await dispose_redis()
+        await reset_openai_client()
+        await close_http_client()
+        logger.info("[App] 关闭完成 worker_id=%s", _WORKER_ID)
+        stop_log_listener()
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
@@ -217,6 +231,11 @@ class TraceContextMiddleware:
             return
 
         headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+        method = str(scope.get("method") or "")
+        path = str(scope.get("path") or "")
+        client = scope.get("client")
+        client_ip = client[0] if isinstance(client, tuple) and client else ""
+        content_length = headers.get("content-length", "")
         incoming = extract_trace_id_from_headers(headers)
         if incoming and "traceparent" not in headers:
             raw_headers = list(scope.get("headers") or [])
@@ -229,13 +248,48 @@ class TraceContextMiddleware:
 
         otel_tid = get_otel_trace_id()
         token = set_trace_id(otel_tid or incoming or generate_trace_id())
+        clear_log_context()
+        set_log_context(request_id=trace_id_var.get())
+        started_at = time.perf_counter()
+        status_code = 500
+
+        async def send_with_status(message: MutableMapping[str, Any]) -> None:
+            nonlocal status_code
+            if message.get("type") == "http.response.start":
+                status_code = int(message.get("status") or 0)
+            await send(message)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, receive, send_with_status)
             # 请求处理完成后，OTEL span 已激活，同步 trace_id 到日志上下文
             otel_tid = get_otel_trace_id()
             if otel_tid:
                 set_trace_id(otel_tid)
+        except Exception:
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            logger.exception(
+                "[HTTP] 请求异常 method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
+                method,
+                path,
+                status_code,
+                duration_ms,
+                client_ip,
+                content_length,
+            )
+            raise
         finally:
+            if path not in {"/live", "/ready", "/health", "/metrics"} and not path.startswith("/static/"):
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                logger.info(
+                    "[HTTP] 请求完成 method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
+                    method,
+                    path,
+                    status_code,
+                    duration_ms,
+                    client_ip,
+                    content_length,
+                )
+            clear_log_context()
             trace_id_var.reset(token)
 
 

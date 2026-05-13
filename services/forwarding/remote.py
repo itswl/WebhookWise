@@ -6,7 +6,7 @@ import httpx
 
 from adapters.notification_targets import is_feishu_url
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.logger import logger
+from core.logger import logger, mask_url
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import RemoteForwardPolicy
@@ -33,12 +33,12 @@ async def forward_to_remote(
         )
     url = target_url or policy.forward_url
     if not url:
-        logger.debug("[Forward] 无转发 URL，跳过")
+        logger.info("[Forward] 无转发 URL，跳过")
         return {"status": "skipped", "reason": "no_forward_url"}
     try:
         url = await dependencies.validate_url(url)
     except UnsafeTargetUrlError as e:
-        logger.warning("[Forward] 目标 URL 安全校验失败 url=%s error=%s", url, e)
+        logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
         return {"status": "invalid_target", "message": str(e)}
 
     is_feishu = is_feishu_url(url)
@@ -50,13 +50,19 @@ async def forward_to_remote(
         payload = {"webhook": webhook_data, "analysis": analysis_result, "is_periodic_reminder": is_periodic_reminder}
 
     async def _do_post() -> httpx.Response:
-        logger.debug("[Forward] POST %s is_feishu=%s periodic=%s", url, is_feishu, is_periodic_reminder)
+        logger.info(
+            "[Forward] 开始转发 target=%s target_type=%s periodic=%s",
+            mask_url(url),
+            "feishu" if is_feishu else "webhook",
+            is_periodic_reminder,
+        )
         resp = cast(
             httpx.Response, await dependencies.http_client.post(url, json=payload, timeout=policy.timeout_seconds)
         )
         resp.raise_for_status()
         return resp
 
+    response: httpx.Response | None = None
     try:
         response = await dependencies.circuit_breaker.call_async(_do_post)
         resp_payload: dict[str, Any] = {}
@@ -72,11 +78,18 @@ async def forward_to_remote(
             "response": resp_payload,
         }
     except CircuitBreakerOpenException:
-        logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
+        logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
         return {"status": "circuit_broken", "message": "熔断器已开启"}
     except Exception as e:
-        logger.error("[Forward] 转发失败 url=%s error=%s", url, e)
+        logger.error("[Forward] 转发失败 target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
         return {"status": "failed", "message": str(e)}
+    finally:
+        if response is not None:
+            logger.info(
+                "[Forward] 转发完成 target=%s status_code=%s",
+                mask_url(url),
+                response.status_code,
+            )
 
 
 async def post_json_to_remote(
@@ -102,11 +115,11 @@ async def post_json_to_remote(
         try:
             url = await dependencies.validate_url(url)
         except UnsafeTargetUrlError as e:
-            logger.warning("[Forward] 目标 URL 安全校验失败 url=%s error=%s", url, e)
+            logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
-        logger.debug("[Forward] POST raw-json %s", url)
+        logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(url))
         resp = cast(
             httpx.Response, await dependencies.http_client.post(url, json=payload, timeout=policy.timeout_seconds)
         )
@@ -115,10 +128,11 @@ async def post_json_to_remote(
 
     try:
         response = await dependencies.circuit_breaker.call_async(_do_post)
+        logger.info("[Forward] raw-json 转发完成 target=%s status_code=%s", mask_url(url), response.status_code)
         return {"status": "success", "status_code": response.status_code}
     except CircuitBreakerOpenException:
-        logger.warning("[Forward] 熔断器已开启，转发被拦截 url=%s", url)
+        logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
         return {"status": "circuit_broken", "message": "熔断器已开启"}
     except Exception as e:
-        logger.error("[Forward] 转发失败 url=%s error=%s", url, e)
+        logger.error("[Forward] raw-json 转发失败 target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
         return {"status": "failed", "message": str(e)}

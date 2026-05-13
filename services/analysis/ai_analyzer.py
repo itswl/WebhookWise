@@ -25,7 +25,7 @@ from tenacity import (
 )
 
 from core.http_client import get_http_client
-from core.logger import logger
+from core.logger import logger, mask_url
 from core.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_COST_USD_TOTAL,
@@ -94,8 +94,20 @@ async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_se
         before_policy = AIProviderPolicy.from_config()
         await reload_runtime_config()
         after_policy = AIProviderPolicy.from_config()
-        if before_policy.api_url != after_policy.api_url or before_policy.api_key != after_policy.api_key:
+        api_url_changed = before_policy.api_url != after_policy.api_url
+        api_key_changed = before_policy.api_key != after_policy.api_key
+        if api_url_changed or api_key_changed:
+            logger.info(
+                "[AI] 运行时配置刷新触发客户端重建 changed_api_url=%s changed_api_key=%s old_api_url=%s new_api_url=%s keys=%s",
+                api_url_changed,
+                api_key_changed,
+                mask_url(before_policy.api_url),
+                mask_url(after_policy.api_url),
+                ",".join(keys),
+            )
             await reset_openai_client()
+        else:
+            logger.debug("[AI] 运行时配置刷新完成 keys=%s", ",".join(keys))
         _last_policy_refresh_at = now
 
 
@@ -293,6 +305,12 @@ async def initialize_openai_client(
     async with _openai_client_lock:
         if _instructor_client is None:
             if _openai_client is None:
+                logger.info(
+                    "[AI] 初始化 OpenAI 客户端 model=%s api_url=%s injected_http_client=%s",
+                    policy.model,
+                    mask_url(policy.api_url),
+                    http_client is not None,
+                )
                 _openai_client = AsyncOpenAI(
                     api_key=policy.api_key,
                     base_url=policy.api_url,
@@ -300,6 +318,7 @@ async def initialize_openai_client(
                     timeout=httpx.Timeout(60.0, connect=10.0),
                 )
             _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
+            logger.info("[AI] OpenAI 客户端初始化完成 model=%s", policy.model)
 
 
 async def _create_with_completion(
@@ -322,6 +341,8 @@ async def _create_with_completion(
 async def reset_openai_client() -> None:
     global _openai_client, _instructor_client
     async with _openai_client_lock:
+        if _openai_client is not None or _instructor_client is not None:
+            logger.info("[AI] 重置 OpenAI 客户端")
         _openai_client = _instructor_client = None
 
 
@@ -337,6 +358,14 @@ async def _analyze_with_openai_tracked(
     cleaned_data = await sanitize_for_ai_async(data)
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
     user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
+    logger.info(
+        "[AI] 开始 LLM 分析 source=%s model=%s sanitized_fields=%s prompt_bytes=%s prompt_source=%s",
+        source,
+        policy.model,
+        len(cleaned_data),
+        len(user_prompt.encode("utf-8")),
+        get_prompt_source(),
+    )
 
     with otel_span("ai.openai_call", {"source": source, "model": policy.model}) as s:
         res, completion = await _create_with_completion(
@@ -352,6 +381,14 @@ async def _analyze_with_openai_tracked(
         if s:
             s.set_attribute("tokens_in", t_in)
             s.set_attribute("tokens_out", t_out)
+    logger.info(
+        "[AI] LLM 分析完成 source=%s model=%s tokens_in=%s tokens_out=%s cost_usd=%.6f",
+        source,
+        policy.model,
+        t_in,
+        t_out,
+        cost,
+    )
     return res.to_dict(), t_in, t_out
 
 
@@ -376,6 +413,7 @@ async def _call_ai_with_retry(
         return res, t_in, t_out
     except Exception as e:
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
+        logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)
         raise
 
 
