@@ -2,6 +2,7 @@
 
 import logging
 
+from core.logger import mask_url
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.webhooks.types import WebhookData
 
@@ -24,6 +25,12 @@ async def send_deep_analysis_success_notification(
 
     try:
         event_id = int(record_dict["webhook_event_id"])
+        logger.info(
+            "[DeepAnalysisNotify] 准备发送成功通知 id=%s event_id=%s target=%s",
+            record_dict.get("id"),
+            event_id,
+            mask_url(webhook_url),
+        )
         analysis_data = {
             "analysis_result": record_dict["analysis_result"],
             "engine": record_dict["engine"],
@@ -50,6 +57,12 @@ async def send_deep_analysis_success_notification(
             error_message="深度分析飞书通知发送失败",
             analysis_type="deep_analysis",
         )
+        logger.warning(
+            "[DeepAnalysisNotify] 成功通知发送失败 id=%s event_id=%s target=%s",
+            record_dict.get("id"),
+            event_id,
+            mask_url(webhook_url),
+        )
     except Exception as e:
         logger.warning("深度分析通知失败: %s", e)
 
@@ -70,6 +83,12 @@ async def send_deep_analysis_failure_notification(
 
     try:
         event_id = int(record_dict["webhook_event_id"])
+        logger.info(
+            "[DeepAnalysisNotify] 准备发送失败通知 id=%s event_id=%s target=%s",
+            record_dict.get("id"),
+            event_id,
+            mask_url(webhook_url),
+        )
         analysis_result = record_dict.get("analysis_result")
         failed_result = dict(analysis_result) if isinstance(analysis_result, dict) else {}
         failed_result["analysis_failed"] = True
@@ -86,7 +105,7 @@ async def send_deep_analysis_failure_notification(
             webhook_event_id=event_id,
         )
         if success:
-            logger.info("深度分析失败通知已发送: id=%s reason=%s", record_dict["id"], reason)
+            logger.info("[DeepAnalysisNotify] 失败通知已发送: id=%s reason=%s", record_dict["id"], reason)
             return
 
         await _record_notification_failure(
@@ -96,8 +115,14 @@ async def send_deep_analysis_failure_notification(
             error_message=f"深度分析失败飞书通知发送失败: {reason}",
             analysis_type="deep_analysis_failed",
         )
+        logger.warning(
+            "[DeepAnalysisNotify] 失败通知发送失败 id=%s event_id=%s target=%s",
+            record_dict.get("id"),
+            event_id,
+            mask_url(webhook_url),
+        )
     except Exception as e:
-        logger.warning("深度分析失败通知失败: %s", e)
+        logger.warning("[DeepAnalysisNotify] 失败通知异常: %s", e)
 
 
 async def _record_notification_failure(

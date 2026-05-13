@@ -414,9 +414,15 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
             return
         if record_dict is None:
+            logger.debug("[Poller] 没有可领取的 pending 分析: id=%s", analysis_id)
             return
 
-        logger.info("[Poller] 轮询 OpenClaw 分析: id=%s", analysis_id)
+        logger.info(
+            "[Poller] 轮询 OpenClaw 分析: id=%s webhook_id=%s attempt=%s",
+            analysis_id,
+            record_dict.get("webhook_event_id"),
+            record_dict.get("poll_attempts"),
+        )
 
         poll_result = await _poll_single_record(record_dict, policy=policy)
 
@@ -490,6 +496,7 @@ async def _schedule_next_openclaw_poll(
         record.next_poll_at = next_poll_at
 
     await _schedule_openclaw_poll_task(analysis_id, delay)
+    logger.info("[Poller] 已调度下次 OpenClaw 轮询 analysis_id=%s delay=%ss", analysis_id, delay)
 
 
 async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
@@ -521,6 +528,10 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
 
     for analysis_id in ids:
         await _schedule_openclaw_poll_task(analysis_id, 0)
+    if ids:
+        logger.info("[Poller] 扫描调度 pending OpenClaw 分析 count=%s ids=%s", len(ids), ids)
+    else:
+        logger.debug("[Poller] 扫描未发现待调度 OpenClaw 分析")
     return len(ids)
 
 

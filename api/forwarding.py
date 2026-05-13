@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
+from core.logger import logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from schemas import (
@@ -71,6 +72,7 @@ async def create_forward_rule_endpoint(
     try:
         target_url = await _validated_target_url(target_type, payload.get("target_url", ""))
     except UnsafeTargetUrlError as e:
+        logger.warning("[ForwardAPI] 创建转发规则被拒绝 name=%s target_type=%s error=%s", name, target_type, e)
         return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     rule = await create_forward_rule(
@@ -87,6 +89,14 @@ async def create_forward_rule_endpoint(
         stop_on_match=payload.get("stop_on_match", False),
     )
     await session.commit()
+    logger.info(
+        "[ForwardAPI] 转发规则已创建 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
+        rule.id,
+        rule.name,
+        rule.target_type,
+        rule.enabled,
+        mask_url(rule.target_url) if rule.target_url else "",
+    )
     return {"success": True, "data": rule.to_dict(), "message": "规则创建成功"}
 
 
@@ -112,11 +122,22 @@ async def update_forward_rule_endpoint(
                 target_type, payload.get("target_url", existing.target_url)
             )
         except UnsafeTargetUrlError as e:
+            logger.warning(
+                "[ForwardAPI] 更新转发规则被拒绝 rule_id=%s target_type=%s error=%s", rule_id, target_type, e
+            )
             return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
+    logger.info(
+        "[ForwardAPI] 转发规则已更新 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
+        rule.id,
+        rule.name,
+        rule.target_type,
+        rule.enabled,
+        mask_url(rule.target_url) if rule.target_url else "",
+    )
     return {"success": True, "data": rule.to_dict(), "message": "规则更新成功"}
 
 
@@ -131,6 +152,7 @@ async def delete_forward_rule_endpoint(
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
+    logger.info("[ForwardAPI] 转发规则已删除 rule_id=%s", rule_id)
     return {"success": True, "message": "规则已删除"}
 
 
@@ -152,12 +174,20 @@ async def test_forward_rule_endpoint(
     if rule.target_type == "openclaw":
         from services.forwarding.forward import forward_to_openclaw
 
+        logger.info("[ForwardAPI] 测试 OpenClaw 转发规则 rule_id=%s name=%s", rule.id, rule.name)
         result = await forward_to_openclaw(test_webhook, test_analysis)
     else:
         try:
             target_url = await _validated_target_url(rule.target_type, rule.target_url)
         except UnsafeTargetUrlError as e:
             return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+        logger.info(
+            "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s target=%s",
+            rule.id,
+            rule.name,
+            rule.target_type,
+            mask_url(target_url),
+        )
         result = await forward_to_remote(test_webhook, test_analysis, target_url=target_url)
 
     if result.get("status") == "success" or result.get("_pending"):
@@ -196,6 +226,7 @@ async def retry_forward(
 ) -> JSONResponse:
     if await manual_retry_reset(failed_forward_id, session):
         await session.commit()
+        logger.info("[ForwardAPI] 失败转发记录已手动重试 failed_forward_id=%s", failed_forward_id)
         return _ok(message="已重置为待重试")
     return _fail("记录不存在或状态不是 exhausted", 400)
 
@@ -208,5 +239,6 @@ async def delete_record(
 ) -> JSONResponse:
     if await delete_failed_forward(failed_forward_id, session):
         await session.commit()
+        logger.info("[ForwardAPI] 失败转发记录已删除 failed_forward_id=%s", failed_forward_id)
         return _ok(message="记录已删除")
     return _fail("记录不存在", 404)

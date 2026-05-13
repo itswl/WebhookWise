@@ -9,7 +9,7 @@ from typing import Any, cast
 import httpx
 
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.logger import logger
+from core.logger import logger, mask_url
 from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import ForwardResult, WebhookData
@@ -121,7 +121,7 @@ async def analyze_with_openclaw(
             circuit_breaker=dependencies.circuit_breaker,
         )
     if not policy.enabled:
-        logger.warning("OpenClaw 未启用")
+        logger.warning("[OpenClaw] 未启用，跳过深度分析")
         return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
 
     alert_data = webhook_data.get("parsed_data", {})
@@ -196,7 +196,7 @@ async def analyze_with_openclaw(
     logger.info(
         "[%s] 正在发起分析请求: target=%s session_key=%s payload_bytes=%s trace_id=%s",
         platform.upper(),
-        target_url,
+        mask_url(target_url),
         session_key,
         len(payload_bytes),
         trace_id or "-",
@@ -222,19 +222,27 @@ async def analyze_with_openclaw(
             break
         except CircuitBreakerOpenException as e:
             last_error = str(e)
-            logger.warning("%s 请求被熔断器拦截: %s", platform.capitalize(), e)
+            logger.warning("[%s] 请求被熔断器拦截 target=%s error=%s", platform.upper(), mask_url(target_url), e)
             if policy.enable_degradation:
                 return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
             raise
         except Exception as e:
             last_error = str(e)
-            logger.warning("%s 请求异常 (尝试 %d/%d): %s", platform.capitalize(), attempt + 1, max_retries, e)
+            logger.warning(
+                "[%s] 请求异常 target=%s attempt=%d/%d error_type=%s error=%s",
+                platform.upper(),
+                mask_url(target_url),
+                attempt + 1,
+                max_retries,
+                type(e).__name__,
+                e,
+            )
             if attempt < max_retries - 1:
                 import asyncio
 
                 await (sleep or asyncio.sleep)(policy.retry_sleep_seconds)
     else:
-        logger.error("%s 请求失败，已重试 %d 次: %s", platform.capitalize(), max_retries, last_error)
+        logger.error("[%s] 请求失败，已重试 %d 次: %s", platform.upper(), max_retries, last_error)
         if policy.enable_degradation:
             return {"_degraded": True, "_degraded_reason": f"{platform.capitalize()} 请求失败: {last_error}"}
         raise Exception(f"{platform.capitalize()} 请求失败: {last_error}")
@@ -252,10 +260,16 @@ async def analyze_with_openclaw(
             session_key = run_id if run_id else session_key
         else:
             run_id = result.get("runId")
-        logger.info("[%s] 成功触发深度分析: ID=%s", platform.upper(), run_id)
+        logger.info(
+            "[%s] 成功触发深度分析 run_id=%s session_key=%s status_code=%s",
+            platform.upper(),
+            run_id,
+            session_key,
+            response.status_code,
+        )
         return {"_pending": True, "_openclaw_run_id": run_id, "_openclaw_session_key": session_key}
     except Exception as e:
-        logger.error("OpenClaw 响应解析失败: %s", e)
+        logger.error("[OpenClaw] 响应解析失败 status_code=%s error=%s", response.status_code, e)
         if policy.enable_degradation:
             return {"_degraded": True, "_degraded_reason": f"响应解析失败: {e!s}"}
         raise
