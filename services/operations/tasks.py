@@ -182,6 +182,91 @@ def _maintenance_cron(policy: TaskRuntimePolicy | None = None) -> str:
     return f"0 {_task_policy(policy).maintenance_hour} * * *"
 
 
+async def _handle_raw_webhook_failure(
+    *,
+    source: str,
+    raw_headers: dict[str, str],
+    raw_body: str,
+    client_ip: str,
+    request_id: str | None,
+    received_at: str | None,
+    ingest_retry_count: int,
+    err: Exception,
+) -> None:
+    from core.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
+    from core.retry_policies import retry_policy
+    from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_ingest_retry
+    from services.webhooks.ingest_failure import record_raw_ingest_dead_letter
+    from services.webhooks.policies import WebhookFailurePolicy
+
+    policy = WebhookFailurePolicy.from_config()
+    retryable = retry_policy.should_retry(err)
+    next_retry_count = max(0, int(ingest_retry_count)) + 1
+
+    if retryable and ingest_retry_count < policy.max_retries:
+        delay = compute_backoff_delay(
+            next_retry_count,
+            initial_delay=policy.initial_delay,
+            max_delay=policy.max_delay,
+            multiplier=policy.backoff_multiplier,
+        )
+        try:
+            await schedule_webhook_ingest_retry(
+                delay_seconds=delay,
+                source=source,
+                raw_headers=raw_headers,
+                raw_body=raw_body,
+                client_ip=client_ip,
+                request_id=request_id,
+                received_at=received_at,
+                ingest_retry_count=next_retry_count,
+            )
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
+            logger.error(
+                "[Tasks] raw webhook 处理失败，已调度重试 request_id=%s source=%s retry=%s/%s delay=%ss error=%s",
+                request_id,
+                source,
+                next_retry_count,
+                policy.max_retries,
+                delay,
+                err,
+                exc_info=True,
+            )
+            return
+        except Exception as schedule_err:
+            err = RuntimeError(f"raw ingest retry schedule failed: {schedule_err}; process_error={err}")
+            logger.critical(
+                "[Tasks] raw webhook 重试调度失败，将写入 dead-letter request_id=%s source=%s error=%s",
+                request_id,
+                source,
+                schedule_err,
+                exc_info=True,
+            )
+
+    event_id = await record_raw_ingest_dead_letter(
+        source=source,
+        raw_headers=raw_headers,
+        raw_body=raw_body,
+        client_ip=client_ip,
+        request_id=request_id,
+        received_at=received_at,
+        retry_count=ingest_retry_count,
+        retryable=retryable,
+        err=err,
+    )
+    WEBHOOK_DEAD_LETTER_TOTAL.inc()
+    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
+    logger.error(
+        "[Tasks] raw webhook 处理失败，已进入 dead-letter event_id=%s request_id=%s source=%s retryable=%s error=%s",
+        event_id,
+        request_id,
+        source,
+        retryable,
+        err,
+        exc_info=True,
+    )
+
+
 @asynccontextmanager
 async def _scheduled_task_leader(
     name: str, interval_seconds: int, *, policy: TaskRuntimePolicy | None = None
@@ -247,14 +332,17 @@ async def process_webhook_task(
     event_id: int | None = None,
     client_ip: str | None = None,
     source: str | None = None,
+    webhook_source: str | None = None,
     raw_headers: dict[str, str] | None = None,
     raw_body: str | None = None,
     request_id: str | None = None,
     received_at: str | None = None,
+    ingest_retry_count: int = 0,
 ) -> None:
     """Process either a legacy DB event or a raw ingested webhook."""
     from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
 
+    source = source or webhook_source
     logger.info("[Tasks] 异步处理 Webhook 事件: ID=%s source=%s", event_id, source or "")
     async with _webhook_task_slot():
         WEBHOOK_RUNNING_TASKS.inc()
@@ -262,14 +350,30 @@ async def process_webhook_task(
             if event_id is not None:
                 await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
             else:
-                await handle_webhook_ingest(
-                    source=source or "unknown",
-                    raw_headers=raw_headers or {},
-                    raw_body=raw_body or "",
-                    client_ip=client_ip or "",
-                    request_id=request_id,
-                    received_at=received_at,
-                )
+                normalized_source = source or "unknown"
+                normalized_headers = raw_headers or {}
+                normalized_body = raw_body or ""
+                normalized_client_ip = client_ip or ""
+                try:
+                    await handle_webhook_ingest(
+                        source=normalized_source,
+                        raw_headers=normalized_headers,
+                        raw_body=normalized_body,
+                        client_ip=normalized_client_ip,
+                        request_id=request_id,
+                        received_at=received_at,
+                    )
+                except Exception as e:
+                    await _handle_raw_webhook_failure(
+                        source=normalized_source,
+                        raw_headers=normalized_headers,
+                        raw_body=normalized_body,
+                        client_ip=normalized_client_ip,
+                        request_id=request_id,
+                        received_at=received_at,
+                        ingest_retry_count=ingest_retry_count,
+                        err=e,
+                    )
         finally:
             WEBHOOK_RUNNING_TASKS.dec()
 
