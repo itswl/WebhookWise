@@ -304,7 +304,7 @@ async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest
     )
 
     assert isinstance(result, dict)
-    assert result["event_id"] == 0
+    assert result["event_id"] is None
     assert result["request_id"] == "req-suppressed"
     assert "suppressed" in result["message"]
 

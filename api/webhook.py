@@ -75,7 +75,7 @@ async def _receive_and_enqueue_webhook(
         return {
             "success": True,
             "message": "Webhook suppressed by ingress backpressure",
-            "event_id": 0,
+            "event_id": None,
             "request_id": request_id,
         }
 
@@ -102,7 +102,7 @@ async def _receive_and_enqueue_webhook(
     return {
         "success": True,
         "message": "Webhook received and queued for processing",
-        "event_id": 0,
+        "event_id": None,
         "request_id": request_id,
     }
 

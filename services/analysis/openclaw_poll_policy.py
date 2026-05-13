@@ -35,8 +35,8 @@ class OpenClawPollPolicy:
                 int(config.openclaw.OPENCLAW_POLL_MAX_DELAY_SECONDS),
             ),
             poll_backoff_multiplier=max(1.0, float(config.openclaw.OPENCLAW_POLL_BACKOFF_MULTIPLIER)),
-            http_api_url=str(config.openclaw.OPENCLAW_HTTP_API_URL),
-            gateway_url=str(config.openclaw.OPENCLAW_GATEWAY_URL),
+            http_api_url=str(config.openclaw.OPENCLAW_HTTP_API_URL).strip(),
+            gateway_url=str(config.openclaw.OPENCLAW_GATEWAY_URL).strip(),
             gateway_token=str(config.openclaw.OPENCLAW_GATEWAY_TOKEN),
             hooks_token=str(config.openclaw.OPENCLAW_HOOKS_TOKEN or config.openclaw.OPENCLAW_GATEWAY_TOKEN),
             connect_timeout_seconds=max(1.0, float(config.openclaw.OPENCLAW_CONNECT_TIMEOUT)),
@@ -48,7 +48,7 @@ class OpenClawPollPolicy:
 
     @property
     def has_http_api(self) -> bool:
-        return bool(self.http_api_url)
+        return bool(self.http_api_url.strip())
 
     @property
     def http_poll_timeout(self) -> float:

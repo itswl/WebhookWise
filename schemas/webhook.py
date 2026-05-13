@@ -65,7 +65,7 @@ class WebhookReceiveResponse(BaseModel):
 
     success: bool
     message: str
-    event_id: int
+    event_id: int | None = None
     request_id: str
 
 

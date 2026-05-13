@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -47,6 +48,49 @@ async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
             run_at,
             event_id=event_id,
             client_ip="retry-schedule",
+        )
+    )
+
+
+def _raw_ingest_schedule_id(request_id: str | None, source: str | None, raw_body: str | None) -> str:
+    if request_id:
+        identifier = request_id
+    else:
+        seed = f"{source or 'unknown'}\0{raw_body or ''}".encode("utf-8", errors="replace")
+        identifier = hashlib.sha256(seed).hexdigest()[:32]
+    return f"webhook-ingest-retry:{identifier}"
+
+
+async def schedule_webhook_ingest_retry(
+    *,
+    delay_seconds: int,
+    source: str,
+    raw_headers: dict[str, str],
+    raw_body: str,
+    client_ip: str,
+    request_id: str | None,
+    received_at: str | None,
+    ingest_retry_count: int,
+) -> None:
+    """Schedule a raw webhook retry without requiring a pre-existing DB event."""
+    from services.operations.tasks import process_webhook_task
+
+    schedule_id = _raw_ingest_schedule_id(request_id, source, raw_body)
+    await dynamic_schedule_source.delete_schedule(schedule_id)
+    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    await (
+        process_webhook_task.kicker()
+        .with_schedule_id(schedule_id)
+        .schedule_by_time(
+            dynamic_schedule_source,
+            run_at,
+            webhook_source=source,
+            raw_headers=raw_headers,
+            raw_body=raw_body,
+            client_ip=client_ip,
+            request_id=request_id,
+            received_at=received_at,
+            ingest_retry_count=ingest_retry_count,
         )
     )
 

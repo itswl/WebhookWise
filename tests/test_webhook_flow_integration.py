@@ -109,6 +109,7 @@ async def test_webhook_receive_to_feishu_card_flow(
         raw_body: str | None = None,
         request_id: str | None = None,
         received_at: str | None = None,
+        ingest_retry_count: int = 0,
     ) -> None:
         if event_id is not None:
             await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
@@ -137,7 +138,7 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert response.status_code == 202
     body = response.json()
     assert body["success"] is True
-    assert body["event_id"] == 0
+    assert body["event_id"] is None
     assert body["request_id"]
 
     async with integration_session_factory() as session:
@@ -278,6 +279,49 @@ async def test_finalization_persists_event_without_forward_outbox(
     assert updated_event.ai_analysis is not None
     assert updated_event.ai_analysis["summary"] == "should persist"
     assert outboxes == []
+
+
+async def test_save_webhook_is_idempotent_for_existing_request_id(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from models import WebhookEvent
+    from services.webhooks.command_service import save_webhook_data_in_session
+
+    async with integration_session_factory.begin() as session:
+        existing = WebhookEvent(
+            source="prometheus",
+            request_id="req-idempotent",
+            client_ip="127.0.0.1",
+            processing_status="completed",
+            parsed_data={"alert_name": "checkout-5xx"},
+            ai_analysis={"importance": "high", "summary": "already persisted"},
+            importance="high",
+            is_duplicate=False,
+            duplicate_count=1,
+            beyond_window=False,
+        )
+        session.add(existing)
+        await session.flush()
+        existing_id = existing.id
+
+        saved = await save_webhook_data_in_session(
+            session,
+            data={"alert_name": "checkout-5xx"},
+            source="prometheus",
+            request_id="req-idempotent",
+            ai_analysis={"importance": "low", "summary": "should not overwrite"},
+            alert_hash="same-hash",
+        )
+
+    async with integration_session_factory() as session:
+        rows = (await session.execute(select(WebhookEvent))).scalars().all()
+        persisted = await session.get(WebhookEvent, existing_id)
+
+    assert saved.webhook_id == existing_id
+    assert len(rows) == 1
+    assert persisted is not None
+    assert persisted.ai_analysis is not None
+    assert persisted.ai_analysis["summary"] == "already persisted"
 
 
 async def test_reused_analysis_still_runs_forwarding_decision(
