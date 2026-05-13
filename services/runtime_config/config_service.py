@@ -14,6 +14,11 @@ _CONFIG_SCHEMA: dict[str, tuple[str, str, _Validator | None]] = {
     "openai_model": ("OPENAI_MODEL", "str", lambda x: len(str(x)) > 0),
     "ai_system_prompt": ("AI_SYSTEM_PROMPT", "str", None),
     "log_level": ("LOG_LEVEL", "str", lambda x: str(x).upper() in ["DEBUG", "INFO", "WARNING", "ERROR"]),
+    "third_party_log_level": (
+        "THIRD_PARTY_LOG_LEVEL",
+        "str",
+        lambda x: str(x).upper() in ["DEBUG", "INFO", "WARNING", "ERROR"],
+    ),
     "duplicate_alert_time_window": ("DUPLICATE_ALERT_TIME_WINDOW", "int", lambda x: 1 <= int(x) <= 168),
     "forward_duplicate_alerts": ("FORWARD_DUPLICATE_ALERTS", "bool", None),
     "reanalyze_after_time_window": ("REANALYZE_AFTER_TIME_WINDOW", "bool", None),

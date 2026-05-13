@@ -61,6 +61,7 @@ class UnifiedConfigManager:
         "OPENAI_MODEL": {"type": "str", "sub": "ai"},
         "AI_SYSTEM_PROMPT": {"type": "str", "sub": "ai"},
         "LOG_LEVEL": {"type": "str", "sub": "server"},
+        "THIRD_PARTY_LOG_LEVEL": {"type": "str", "sub": "server"},
         "DUPLICATE_ALERT_TIME_WINDOW": {"type": "int", "sub": "retry"},
         "FORWARD_DUPLICATE_ALERTS": {"type": "bool", "sub": "retry"},
         "REANALYZE_AFTER_TIME_WINDOW": {"type": "bool", "sub": "retry"},
@@ -181,11 +182,10 @@ class UnifiedConfigManager:
         else:
             self._overrides[key] = value
             self._meta[key] = {"source": source, "updated_at": datetime.now(), "updated_by": updated_by}
-        if key == "LOG_LEVEL":
-            import logging
+        if key in {"LOG_LEVEL", "THIRD_PARTY_LOG_LEVEL"}:
+            from core.logging_levels import apply_log_levels
 
-            level = getattr(logging, str(value or "INFO").upper(), logging.INFO)
-            logging.getLogger("webhook_service").setLevel(level)
+            apply_log_levels(self.server.LOG_LEVEL, self.server.THIRD_PARTY_LOG_LEVEL)
 
     def get_meta(self, key: str) -> dict[str, object]:
         return self._meta.get(key, {})

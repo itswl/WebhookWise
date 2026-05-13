@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from core.config import Config
 from core.log_context import get_log_context
+from core.logging_levels import apply_log_levels
 from core.trace import get_trace_id
 
 
@@ -89,9 +90,8 @@ class JsonFormatter(logging.Formatter):
 def setup_logger() -> logging.Logger:
     """初始化全局日志系统"""
     global _log_listener, _logger_pid
-    log_level = getattr(logging, Config.server.LOG_LEVEL.upper(), logging.INFO)
+    apply_log_levels(Config.server.LOG_LEVEL, Config.server.THIRD_PARTY_LOG_LEVEL)
     logger = logging.getLogger("webhook_service")
-    logger.setLevel(log_level)
 
     if logger.handlers:
         current_pid = os.getpid()
