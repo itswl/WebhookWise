@@ -13,10 +13,13 @@ from db.session import session_scope
 from models import DeepAnalysis, ForwardRule, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
-from services.webhooks.state_machine import allowed_sources
 from services.webhooks.types import WebhookProcessingStatus
 
-_ANALYZING_SOURCES = allowed_sources(WebhookProcessingStatus.ANALYZING)
+LEGACY_EVENT_CLAIM_STATUSES = (
+    WebhookProcessingStatus.RECEIVED.value,
+    WebhookProcessingStatus.RETRY.value,
+    WebhookProcessingStatus.FAILED.value,
+)
 
 
 @dataclass(slots=True)
@@ -100,12 +103,18 @@ async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None
     return parsed_data, raw_text
 
 
-async def transition_to_analyzing_and_load(event_id: int) -> EventEnvelope | None:
+async def claim_legacy_event_for_processing(event_id: int) -> EventEnvelope | None:
+    """Claim a legacy DB-backed event and return its payload.
+
+    The primary ingest path no longer writes a DB row before analysis. This
+    exists for old rows, manual replay, and recovery paths that still carry an
+    ``event_id``.
+    """
     async with session_scope() as sess:
         stmt = (
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
-            .where(WebhookEvent.processing_status.in_(_ANALYZING_SOURCES))
+            .where(WebhookEvent.processing_status.in_(LEGACY_EVENT_CLAIM_STATUSES))
             .values(
                 processing_status=WebhookProcessingStatus.ANALYZING.value,
                 failure_reason=None,

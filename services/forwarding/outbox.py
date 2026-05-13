@@ -125,6 +125,16 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
     """Best-effort immediate dispatch; scheduled scanner is the durable fallback."""
     if not outbox_ids:
         return
+    from core.runtime_mode import is_lite_mode
+
+    if is_lite_mode():
+        for outbox_id in outbox_ids:
+            try:
+                await process_forward_outbox_by_id(outbox_id)
+            except Exception as e:  # noqa: PERF203
+                logger.warning("[ForwardOutbox] lite 即时转发失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
+        return
+
     from services.operations.tasks import process_forward_outbox_task
 
     for outbox_id in outbox_ids:
@@ -143,9 +153,59 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
         logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
 
 
-async def _claim_outbox(outbox_id: int) -> ForwardOutbox | None:
+def _expires_before(now: datetime, policy: ForwardOutboxPolicy) -> datetime | None:
+    if policy.max_delivery_age_seconds <= 0:
+        return None
+    return now - timedelta(seconds=policy.max_delivery_age_seconds)
+
+
+async def _expire_outbox_if_old(
+    session: AsyncSession,
+    outbox_id: int,
+    *,
+    now: datetime,
+    policy: ForwardOutboxPolicy,
+) -> bool:
+    cutoff = _expires_before(now, policy)
+    if cutoff is None:
+        return False
+    stmt = (
+        update(ForwardOutbox)
+        .where(ForwardOutbox.id == outbox_id)
+        .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
+        .where(ForwardOutbox.created_at < cutoff)
+        .values(
+            status=ForwardOutboxStatus.EXPIRED,
+            next_attempt_at=None,
+            updated_at=now,
+            last_error=f"forward delivery expired after {policy.max_delivery_age_seconds}s",
+        )
+        .returning(ForwardOutbox)
+    )
+    expired = (await session.execute(stmt)).scalar_one_or_none()
+    if not expired:
+        return False
+    await _record_terminal_failed_forward(
+        session,
+        expired,
+        status=FailedForwardStatus.EXPIRED,
+        failure_reason="outbox_expired",
+    )
+    logger.warning(
+        "[ForwardOutbox] 转发意图已过期 id=%s event_id=%s age_limit=%ss",
+        expired.id,
+        expired.webhook_event_id,
+        policy.max_delivery_age_seconds,
+    )
+    return True
+
+
+async def _claim_outbox(outbox_id: int, *, policy: ForwardOutboxPolicy | None = None) -> ForwardOutbox | None:
     now = datetime.now()
+    policy = policy or ForwardOutboxPolicy.from_config()
     async with session_scope() as session:
+        if await _expire_outbox_if_old(session, outbox_id, now=now, policy=policy):
+            return None
         stmt = (
             update(ForwardOutbox)
             .where(ForwardOutbox.id == outbox_id)
@@ -205,7 +265,11 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
     openclaw_analysis_id: int | None = None
     async with session_scope() as session:
         current = await session.get(ForwardOutbox, record.id)
-        if not current or current.status == ForwardOutboxStatus.SENT:
+        if not current or current.status in (
+            ForwardOutboxStatus.SENT,
+            ForwardOutboxStatus.EXPIRED,
+            ForwardOutboxStatus.EXHAUSTED,
+        ):
             return
         current.status = ForwardOutboxStatus.SENT
         current.sent_at = now
@@ -266,13 +330,22 @@ async def _finalize_outbox_failure(
     policy = policy or ForwardOutboxPolicy.from_config()
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
-        if not record or record.status == ForwardOutboxStatus.SENT:
+        if not record or record.status in (
+            ForwardOutboxStatus.SENT,
+            ForwardOutboxStatus.EXPIRED,
+            ForwardOutboxStatus.EXHAUSTED,
+        ):
             return
         record.last_error = error_msg[:2000]
         record.updated_at = now
         if record.attempts >= record.max_attempts:
             record.status = ForwardOutboxStatus.EXHAUSTED
-            await _record_exhausted_failed_forward(session, record)
+            await _record_terminal_failed_forward(
+                session,
+                record,
+                status=FailedForwardStatus.EXHAUSTED,
+                failure_reason="outbox_exhausted",
+            )
             logger.warning(
                 "[ForwardOutbox] 转发耗尽 id=%s attempts=%s/%s error=%s",
                 record.id,
@@ -292,14 +365,20 @@ async def _finalize_outbox_failure(
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 
 
-async def _record_exhausted_failed_forward(session: AsyncSession, record: ForwardOutbox) -> None:
+async def _record_terminal_failed_forward(
+    session: AsyncSession,
+    record: ForwardOutbox,
+    *,
+    status: FailedForwardStatus,
+    failure_reason: str,
+) -> None:
     failed = FailedForward(
         webhook_event_id=record.webhook_event_id,
         forward_rule_id=record.forward_rule_id,
         target_url=record.target_url,
         target_type=record.target_type,
-        status=FailedForwardStatus.EXHAUSTED,
-        failure_reason="outbox_exhausted",
+        status=status,
+        failure_reason=failure_reason,
         error_message=record.last_error,
         retry_count=record.attempts,
         max_retries=record.max_attempts,
@@ -313,12 +392,53 @@ async def _record_exhausted_failed_forward(session: AsyncSession, record: Forwar
     session.add(failed)
 
 
+async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardOutboxPolicy, limit: int) -> int:
+    cutoff = _expires_before(now, policy)
+    if cutoff is None or limit <= 0:
+        return 0
+    stmt = (
+        update(ForwardOutbox)
+        .where(
+            ForwardOutbox.id.in_(
+                select(ForwardOutbox.id)
+                .where(
+                    ForwardOutbox.status.in_(
+                        [ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING, ForwardOutboxStatus.PROCESSING]
+                    )
+                )
+                .where(ForwardOutbox.created_at < cutoff)
+                .order_by(ForwardOutbox.created_at.asc(), ForwardOutbox.id.asc())
+                .limit(limit)
+            )
+        )
+        .values(
+            status=ForwardOutboxStatus.EXPIRED,
+            next_attempt_at=None,
+            updated_at=now,
+            last_error=f"forward delivery expired after {policy.max_delivery_age_seconds}s",
+        )
+        .returning(ForwardOutbox)
+    )
+    expired_records = list((await session.execute(stmt)).scalars().all())
+    for record in expired_records:
+        await _record_terminal_failed_forward(
+            session,
+            record,
+            status=FailedForwardStatus.EXPIRED,
+            failure_reason="outbox_expired",
+        )
+    if expired_records:
+        logger.warning("[ForwardOutbox] 批量过期转发意图 count=%s", len(expired_records))
+    return len(expired_records)
+
+
 async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPolicy | None = None) -> int:
     """Queue due outbox records and recover stale processing rows."""
     now = datetime.now()
     policy = policy or ForwardOutboxPolicy.from_config()
     stale_before = now - timedelta(seconds=policy.stale_processing_threshold_seconds)
     async with session_scope() as session:
+        expired_count = await _expire_due_outboxes(session, now=now, policy=policy, limit=limit)
         await session.execute(
             update(ForwardOutbox)
             .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
@@ -339,4 +459,4 @@ async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPoli
         )
         ids = list((await session.execute(stmt)).scalars().all())
     await schedule_forward_outbox_many(ids)
-    return len(ids)
+    return expired_count + len(ids)

@@ -6,19 +6,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook_context import JSONDict, build_webhook_context
+from core.auth import verify_admin_write
 from core.logger import logger, mask_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.forward import forward_to_remote
+from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
 from services.forwarding.policies import RemoteForwardPolicy
-from services.webhooks.forwarding_stage import execute_forwarding, resolve_forward_decision
+from services.webhooks.forwarding_stage import resolve_forward_decision
 
 reanalysis_router = APIRouter()
 
 
-@reanalysis_router.post("/api/reanalyze/{webhook_id}", response_model=ReanalysisResponse)
+@reanalysis_router.post(
+    "/api/reanalyze/{webhook_id}",
+    response_model=ReanalysisResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     logger.info("[Reanalysis] 重新分析请求 webhook_id=%s", webhook_id)
     event = await session.get(WebhookEvent, webhook_id)
@@ -43,31 +49,39 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
             d.processing_status = "completed"
         updated_dups = len(dups)
 
-    try:
-        fwd_ctx = await build_webhook_context(event)
-        decision = await resolve_forward_decision(
-            importance=new_imp or "medium",
-            is_duplicate=event.is_duplicate,
-            beyond_window=event.beyond_window,
-            noise=None,
-            orig=None,
-            source=event.source or "unknown",
+    fwd_ctx = await build_webhook_context(event)
+    decision = await resolve_forward_decision(
+        importance=new_imp or "medium",
+        is_duplicate=bool(event.is_duplicate),
+        beyond_window=bool(event.beyond_window),
+        noise=None,
+        orig=None,
+        source=event.source or "unknown",
+        session=session,
+    )
+    outbox_ids: list[int] = []
+    if decision.should_forward:
+        outbox_ids = await create_forward_outbox_records(
+            session,
+            decision=decision,
+            full_data=fwd_ctx,
+            analysis=res,
+            webhook_id=event.id,
+            orig_id=None,
         )
-        if decision.should_forward:
-            await execute_forwarding(decision, fwd_ctx, res, event.id, orig_id=None)
-        else:
-            logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
-    except Exception as e:
-        logger.warning("[Reanalysis] 转发通知失败 webhook_id=%s error=%s", webhook_id, e)
+    else:
+        logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
 
     await session.commit()
+    await schedule_forward_outbox_many(outbox_ids)
     logger.info(
-        "[Reanalysis] 重新分析完成 webhook_id=%s source=%s old_importance=%s new_importance=%s updated_duplicates=%s",
+        "[Reanalysis] 重新分析完成 webhook_id=%s source=%s old_importance=%s new_importance=%s updated_duplicates=%s outboxes=%s",
         webhook_id,
         event.source,
         old_imp,
         new_imp,
         updated_dups,
+        len(outbox_ids),
     )
     return {
         "success": True,
@@ -76,11 +90,17 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         "original_importance": old_imp,
         "new_importance": new_imp,
         "updated_duplicates": updated_dups,
+        "forward_status": "queued" if outbox_ids else ("skipped" if not decision.should_forward else "no_target"),
+        "forward_outbox_ids": outbox_ids,
         "message": "重新分析完成",
     }
 
 
-@reanalysis_router.post("/api/forward/{webhook_id}", response_model=None)
+@reanalysis_router.post(
+    "/api/forward/{webhook_id}",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def manual_forward_webhook(
     webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:

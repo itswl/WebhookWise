@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.notification_targets import is_feishu_url
 from api.webhook_context import JSONDict, build_webhook_context
+from core.auth import verify_admin_write
 from core.dependencies import get_http_client_dependency
 from core.logger import logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -92,7 +93,11 @@ def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime
     record.next_poll_at = now
 
 
-@deep_analysis_router.post("/api/deep-analyze/{webhook_id}", response_model=None)
+@deep_analysis_router.post(
+    "/api/deep-analyze/{webhook_id}",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def deep_analyze_webhook(
     webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONResponse | JSONDict:
@@ -170,7 +175,11 @@ async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get
     return {"success": True, "data": [record.to_dict() for record in records]}
 
 
-@deep_analysis_router.post("/api/deep-analyses/{analysis_id}/retry", response_model=None)
+@deep_analysis_router.post(
+    "/api/deep-analyses/{analysis_id}/retry",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def retry_deep_analysis(
     analysis_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONResponse | JSONDict:
@@ -251,7 +260,11 @@ async def retry_deep_analysis(
     return {"success": True, "message": "已提交后台拉取，请稍后刷新查看结果", "data": record_data}
 
 
-@deep_analysis_router.post("/api/deep-analyses/{analysis_id}/forward", response_model=None)
+@deep_analysis_router.post(
+    "/api/deep-analyses/{analysis_id}/forward",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def forward_deep_analysis(
     analysis_id: int,
     payload: dict[str, Any] | None = None,

@@ -17,6 +17,8 @@ _prev_ts_subq = (
     .label("prev_alert_timestamp")
 )
 
+LEGACY_STUCK_STATUSES = ["received", "analyzing", "retry", "failed"]
+
 _SUMMARY_COLUMNS = [
     WebhookEvent.id,
     WebhookEvent.request_id,
@@ -67,7 +69,13 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
 
 
 async def list_webhook_summaries(
-    session: AsyncSession, *, cursor_id: int | None = None, importance: str = "", source: str = "", page_size: int = 20
+    session: AsyncSession,
+    *,
+    cursor_id: int | None = None,
+    importance: str = "",
+    source: str = "",
+    page: int = 1,
+    page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
     query = select(*_SUMMARY_COLUMNS)
     if cursor_id is not None:
@@ -76,6 +84,8 @@ async def list_webhook_summaries(
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
+    if cursor_id is None and page > 1:
+        query = query.offset((page - 1) * page_size)
     query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
     result = await session.execute(query)
     rows = result.all()
@@ -153,7 +163,7 @@ async def list_stuck_events(
             WebhookEvent.processing_status,
         )
         .where(
-            WebhookEvent.processing_status.in_(statuses or ["received", "analyzing", "failed"]),
+            WebhookEvent.processing_status.in_(statuses or LEGACY_STUCK_STATUSES),
             WebhookEvent.created_at < threshold,
         )
         .order_by(WebhookEvent.created_at.asc())

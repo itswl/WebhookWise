@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -228,3 +229,136 @@ def test_source_hint_is_bounded() -> None:
     assert _normalize_source_hint(" prometheus ") == "prometheus"
     with pytest.raises(HTTPException):
         _normalize_source_hint("x" * 101)
+
+
+@pytest.mark.asyncio
+async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from core.app import app
+    from core.config import Config
+
+    monkeypatch.setattr(Config.security, "API_KEY", "api-key")
+    monkeypatch.setattr(Config.security, "ADMIN_WRITE_KEY", "admin-key")
+
+    async def fake_reload() -> str:
+        return "test prompt"
+
+    monkeypatch.setattr("api.admin.reload_user_prompt_template", fake_reload)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        read_with_admin = await client.get("/api/config", headers={"Authorization": "Bearer admin-key"})
+        write_with_api = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer api-key"})
+        write_with_admin = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer admin-key"})
+
+    assert read_with_admin.status_code == 200
+    assert write_with_api.status_code == 403
+    assert write_with_api.json()["detail"] == "Admin write permission required"
+    assert write_with_admin.status_code == 200
+    assert write_with_admin.json()["template_length"] == len("test prompt")
+
+
+@pytest.mark.asyncio
+async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from core.app import app
+    from core.config import Config
+    from services.operations.tasks import process_webhook_task
+
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
+
+    enqueued: list[str] = []
+
+    async def fake_kiq(**kwargs: object) -> None:
+        enqueued.append(str(kwargs.get("request_id") or ""))
+
+    monkeypatch.setattr(process_webhook_task, "kiq", fake_kiq)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", False)
+        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "configured-but-disabled")
+        disabled = await client.post("/webhook/prometheus", json={"alertname": "no-auth"})
+
+        monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", True)
+        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "")
+        missing_secret = await client.post("/webhook/prometheus", json={"alertname": "missing-secret"})
+
+        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "real-secret")
+        missing_token = await client.post("/webhook/prometheus", json={"alertname": "missing-token"})
+        valid_token = await client.post(
+            "/webhook/prometheus",
+            json={"alertname": "valid-token"},
+            headers={"token": "real-secret"},
+        )
+
+    assert disabled.status_code == 202
+    assert missing_secret.status_code == 401
+    assert missing_token.status_code == 401
+    assert valid_token.status_code == 202
+    assert len(enqueued) == 2
+
+
+@pytest.mark.asyncio
+async def test_lite_mode_processes_webhook_without_taskiq_or_ingress_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from core.app import app
+    from core.config import Config
+
+    monkeypatch.setattr(Config.server, "RUN_MODE", "lite")
+    monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", False)
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
+
+    async def fail_backpressure(**_: object) -> object:
+        raise AssertionError("lite mode should not call Redis ingress backpressure")
+
+    processed: list[dict[str, object]] = []
+
+    async def fake_run_webhook_task(**kwargs: object) -> None:
+        processed.append(kwargs)
+
+    monkeypatch.setattr("api.webhook.check_ingress_backpressure", fail_backpressure)
+    monkeypatch.setattr("api.webhook.run_webhook_task", fake_run_webhook_task)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/webhook/prometheus", json={"alertname": "lite"})
+
+    assert response.status_code == 202
+    assert response.json()["message"] == "Webhook received for lite processing"
+    assert len(processed) == 1
+    assert processed[0]["source"] == "prometheus"
+    assert json.loads(str(processed[0]["raw_body"])) == {"alertname": "lite"}
+
+
+@pytest.mark.asyncio
+async def test_lite_readiness_skips_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api.webhook import readiness_check
+    from core.config import Config
+
+    monkeypatch.setattr(Config.server, "RUN_MODE", "lite")
+
+    async def db_ok() -> bool:
+        return True
+
+    async def redis_should_not_run() -> bool:
+        raise AssertionError("lite readiness should not ping Redis")
+
+    monkeypatch.setattr("api.webhook.test_db_connection", db_ok)
+    monkeypatch.setattr("api.webhook.redis_ping", redis_should_not_run)
+
+    response = await readiness_check()
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "skipped_lite" in body
+    assert "inline" in body

@@ -22,6 +22,7 @@ class ForwardOutboxStatus(StrEnum):
     PROCESSING = "processing"
     RETRYING = "retrying"
     SENT = "sent"
+    EXPIRED = "expired"
     EXHAUSTED = "exhausted"
 
 
@@ -29,6 +30,7 @@ class FailedForwardStatus(StrEnum):
     PENDING = "pending"
     RETRYING = "retrying"
     SUCCESS = "success"
+    EXPIRED = "expired"
     EXHAUSTED = "exhausted"
 
 

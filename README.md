@@ -6,14 +6,14 @@
 
 | 能力 | 说明 |
 |:---|:---|
-| **异步 Webhook 接收** | TaskIQ 异步任务队列，立即返回 202，后台并发处理 |
+| **异步 Webhook 接收** | Full 模式走 TaskIQ/Redis Stream；Lite 模式走 API 进程内后台任务，均立即返回 202 |
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
 | **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
 | **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，缓存/数据库复用 + 24h 时间窗口（可配置） |
-| **告警风暴背压** | 同一 `alert_hash` 并发激增时 Redis 分布式 single-flight + 短窗口 Fail-Fast，防资源耗尽 |
+| **告警风暴背压** | Full 模式同一 `alert_hash` Redis 分布式 single-flight + 短窗口 Fail-Fast，防资源耗尽；Lite 模式使用进程内同类告警串行 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
 | **事务性转发 Outbox** | 处理结果与转发意图同事务落库，Worker 异步消费，避免 DB 状态与 HTTP 副作用脱节 |
-| **转发失败重试** | 失败转发写入审计表，通过 TaskIQ 动态延迟任务指数退避重试（最多 3 次） |
+| **转发失败重试** | Outbox 投递失败后指数退避重试；超过最大投递年龄会标记 `expired`，避免旧告警误发 |
 | **冷热数据归档** | 每日凌晨自动按重要性分级归档（high 90d / medium 30d / low 7d） |
 | **运行时策略热更新** | 配置写入 DB `system_configs`，Redis Pub/Sub 广播到所有进程 |
 | **全方位可观测性** | Prometheus 原生指标 + OpenTelemetry 链路追踪（可选） |
@@ -45,21 +45,27 @@
 - `worker` 进程：TaskIQ Worker，消费异步业务任务和定时任务
 - `scheduler` 进程：TaskIQ Scheduler，只负责周期性投递任务，不执行业务逻辑
 - `RUN_MODE=all`：通过 `supervisord` 在同一个容器内同时拉起 `api` / `worker` / `scheduler`，适合单机小部署或演示；需要横向扩容 Worker 时仍推荐独立进程/独立容器。
+- `RUN_MODE=lite`：单 API 进程内完成接收、分析、Outbox 投递和兜底扫描，不依赖 Redis/TaskIQ；适合小团队、演示和低 QPS 告警转发。
 
 **异步职责边界：**
-- TaskIQ：异步任务投递与 Worker 消费
+- TaskIQ：基于 Redis Stream 的异步任务投递与 Worker 消费
 - Scheduler：周期性投递 recovery、metrics、数据维护等任务
-- TaskIQ 动态调度：按事件投递 Webhook 处理重试、失败转发重试和 OpenClaw 结果拉取
+- TaskIQ 动态调度：按事件投递 Webhook 处理重试、Forward Outbox 重试和 OpenClaw 结果拉取
 - Forward Outbox：Webhook 处理事务内只写入待发送意图，由 Worker 执行真实 HTTP/OpenClaw 转发
 - PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
 - Redis：TaskIQ 队列、短窗口风暴计数、缓存、运行时配置广播
+
+**Lite 模式边界：**
+- 只启动 API + PostgreSQL，后台处理在 API 进程内执行。
+- 不使用 Redis Stream、Redis 缓存、Redis Pub/Sub 或跨进程分布式锁。
+- 适合单实例/小流量；需要横向扩容、强隔离 Worker、跨实例 single-flight 时使用默认 Full 模式。
 
 ## 🛠️ 技术栈
 
 | 组件 | 技术选型 |
 |:---|:---|
 | Web 框架 | Python 3.12 + FastAPI + uvloop |
-| 任务队列 | TaskIQ + Redis ListQueueBroker |
+| 任务队列 | TaskIQ + Redis Stream Broker |
 | 数据库 | PostgreSQL 15+ (asyncpg + SQLAlchemy 2.0) |
 | 队列/缓存 | Redis 7+ |
 | AI 调用 | AsyncOpenAI + Instructor (结构化输出) |
@@ -67,7 +73,7 @@
 | 监控 | Prometheus + prometheus-fastapi-instrumentator |
 | 链路追踪 | OpenTelemetry (可选，OTLP 导出) |
 | 数据迁移 | Alembic |
-| 容器化 | Docker + Docker Compose (6 服务，含一次性迁移任务) |
+| 容器化 | Docker + Docker Compose；Full 模式 6 服务，Lite 模式 3 服务（migrate/API/PostgreSQL） |
 
 ## 🚀 快速开始
 
@@ -86,6 +92,19 @@ curl http://localhost:8000/health
 ```
 
 数据库 Schema 迁移由 Compose 中的一次性 `migrate` 服务执行（`alembic upgrade head`）。API、Worker 和 Scheduler 只在迁移成功后启动，`entrypoint.sh` 只负责按 `RUN_MODE` 分发进程。
+
+### Lite 模式（小团队/演示）
+
+只想把 Prometheus/Grafana 告警处理后转发到飞书，可以先用 Lite 模式：
+
+```bash
+cp .env.example .env
+# 至少替换 API_KEY、ADMIN_WRITE_KEY、WEBHOOK_SECRET；如果只是内网测试，可显式设置 ALLOW_UNAUTHENTICATED_WEBHOOK=true
+docker compose -f docker-compose.lite.yml up -d --build
+curl http://localhost:8000/ready
+```
+
+Lite 模式不启动 Redis、Worker、Scheduler。Webhook 入站、AI 分析、Outbox 投递和补偿扫描都在 API 进程内完成；`/ready` 只检查 PostgreSQL。生产高流量或多实例部署仍建议使用默认 Full 模式。
 
 ### Supervisor all-in-one 模式
 
@@ -195,7 +214,7 @@ tests/e2e/run_webhook_to_feishu.sh
 
 ## 📡 API 端点速览
 
-> 所有 `/api/*` 端点需要 `Authorization: Bearer <API_KEY>` Header。
+> 所有 `/api/*` 端点需要 `Authorization: Bearer <API_KEY>` Header；会修改状态、触发 AI/OpenClaw 或发起外部转发的写接口需要 `Authorization: Bearer <ADMIN_WRITE_KEY>`（未配置时回退到 `API_KEY`）。
 > `/webhook` 端点默认无需鉴权（可通过 `REQUIRE_WEBHOOK_AUTH=true` 开启）。
 
 ### Webhook 接收
@@ -215,37 +234,38 @@ tests/e2e/run_webhook_to_feishu.sh
 ### 分析
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
-| `POST` | `/api/deep-analyze/{webhook_id}` | 触发 OpenClaw 深度分析 |
+| `POST` | `/api/deep-analyze/{webhook_id}` | 触发 OpenClaw 深度分析（写权限） |
 | `GET` | `/api/deep-analyses` | 分页列举深度分析记录 |
 | `GET` | `/api/deep-analyses/{webhook_id}` | 获取某事件的所有分析记录 |
-| `POST` | `/api/deep-analyses/{id}/retry` | 手动重拉 OpenClaw 分析结果 |
-| `POST` | `/api/deep-analyses/{id}/forward` | 手动转发分析结果到指定 URL |
-| `POST` | `/api/reanalyze/{webhook_id}` | 强制重新 AI 分析 |
-| `POST` | `/api/forward/{webhook_id}` | 手动触发转发 |
+| `POST` | `/api/deep-analyses/{id}/retry` | 手动重拉 OpenClaw 分析结果（写权限） |
+| `POST` | `/api/deep-analyses/{id}/forward` | 手动转发分析结果到指定 URL（写权限） |
+| `POST` | `/api/reanalyze/{webhook_id}` | 强制重新 AI 分析（写权限） |
+| `POST` | `/api/forward/{webhook_id}` | 手动触发转发（写权限） |
 | `GET` | `/api/ai-usage` | AI 用量 & 成本统计 |
 
 ### 转发规则
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | `GET` | `/api/forward-rules` | 列举所有转发规则 |
-| `POST` | `/api/forward-rules` | 创建转发规则 |
-| `PUT` | `/api/forward-rules/{id}` | 更新转发规则 |
-| `DELETE` | `/api/forward-rules/{id}` | 删除转发规则 |
-| `GET` | `/api/failed-forwards` | 失败转发补偿队列 |
-| `DELETE` | `/api/failed-forwards/{id}` | 删除补偿记录 |
+| `POST` | `/api/forward-rules` | 创建转发规则（写权限） |
+| `PUT` | `/api/forward-rules/{id}` | 更新转发规则（写权限） |
+| `DELETE` | `/api/forward-rules/{id}` | 删除转发规则（写权限） |
+| `GET` | `/api/failed-forwards` | 失败转发审计记录 |
+| `POST` | `/api/failed-forwards/{id}/retry` | 重置失败转发重试（写权限） |
+| `DELETE` | `/api/failed-forwards/{id}` | 删除补偿记录（写权限） |
 
 ### 运维管理
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | `GET` | `/api/config` | 查看当前有效配置 |
 | `GET` | `/api/config/sources` | 查看每个配置 key 的来源（db/env/default）及更新时间 |
-| `POST` | `/api/config` | 热更新运行时配置（需要 `ADMIN_WRITE_KEY`） |
+| `POST` | `/api/config` | 热更新运行时配置（写权限） |
 | `GET` | `/api/prompt` | 查看当前 AI Prompt |
-| `POST` | `/api/prompt/reload` | 热重载 Prompt 文件 |
-| `GET` | `/api/dead-letters` | 死信队列列表 |
-| `POST` | `/api/dead-letters/{id}/replay` | 重放单条死信事件 |
-| `GET` | `/api/stuck-events` | 列举僵尸事件 |
-| `POST` | `/api/stuck-events/{id}/requeue` | 重新入队单条僵尸事件 |
+| `POST` | `/api/prompt/reload` | 热重载 Prompt 文件（写权限） |
+| `GET` | `/api/admin/dead-letters` | 死信队列列表 |
+| `POST` | `/api/admin/dead-letters/{id}/replay` | 重放单条死信事件（写权限） |
+| `GET` | `/api/admin/stuck-events` | 列举僵尸事件 |
+| `POST` | `/api/admin/stuck-events/{id}/requeue` | 重新入队单条僵尸事件（写权限） |
 
 ### 监控
 | 方法 | 路径 | 说明 |
@@ -269,7 +289,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `WEBHOOK_RATE_LIMIT_PER_MINUTE` | `600` | 按客户端 IP 限流；设为 `0` 表示关闭 |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
-| `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all`；`all` 使用 supervisor 同容器启动 API、Worker、Scheduler |
+| `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all` / `lite`；`lite` 单 API 进程内处理，不依赖 Redis/TaskIQ |
 | `ENABLE_RUNTIME_CONFIG` | `false`（生产） | 启用 DB/Redis 运行时业务策略配置 |
 | `ALLOW_RUNTIME_CONNECTION_CONFIG` | `false` | 允许连接/密钥类配置热更新；生产不建议开启 |
 | `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |
@@ -321,6 +341,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `ENABLE_FORWARD_RETRY` | `true` | 失败转发自动重试 |
 | `FORWARD_RETRY_MAX_RETRIES` | `3` | 最大重试次数 |
 | `FORWARD_RETRY_INITIAL_DELAY` | `60` | 初始重试延迟（秒） |
+| `FORWARD_MAX_DELIVERY_AGE_SECONDS` | `1800` | Outbox 最大投递年龄；超龄标记 `expired` 不再发送，`0` 表示关闭 |
 | `WEBHOOK_RETRY_MAX_RETRIES` | `5` | Webhook 主处理最大重试次数 |
 | `PROCESSING_LOCK_DISTRIBUTED_ENABLED` | `true` | 同一 `alert_hash` 跨 Worker 串行处理 |
 | `PROCESSING_LOCK_TTL_SECONDS` | `180` | 分布式处理锁 TTL，会自动续期 |
@@ -350,16 +371,16 @@ tests/e2e/run_webhook_to_feishu.sh
 | 指标名 | 类型 | 说明 |
 |:---|:---|:---|
 | `webhook_received_total` | Counter | 接收 Webhook 总量（按 source/status） |
-| `webhook_processing_status_total` | Counter | 处理状态转换次数 |
+| `webhook_processing_status_total` | Counter | Pipeline 处理结果计数 |
 | `webhook_processing_duration_seconds` | Histogram | Pipeline 处理耗时分布 |
 | `webhook_noise_reduced_total` | Counter | 降噪告警数（按 source/relation_type/suppressed） |
 | `webhook_storm_suppressed_total` | Counter | 告警风暴触发抑制/聚合次数 |
-| `webhook_running_tasks` | Gauge | Worker 中当前活跃的 Webhook TaskIQ 处理任务数 |
+| `webhook_running_tasks` | Gauge | 当前活跃的 Webhook 后台处理任务数 |
 | `webhook_recovery_polled_total` | Counter | Recovery 扫描处理的僵尸事件数 |
 | `ai_tokens_total` | Counter | Token 消耗量（按 model/token_type） |
 | `ai_cost_usd_total` | Counter | 累计 AI 成本（美元） |
 | `ai_analysis_duration_seconds` | Histogram | AI 分析耗时（按 source/engine） |
-| `db_queue_pending` | Gauge | 待处理事件数 |
+| `db_queue_pending` | Gauge | legacy DB 事件路径待恢复记录数 |
 | `forward_retry_pending` | Gauge | DB 中待重试转发审计记录数 |
 
 ## 🔒 安全说明

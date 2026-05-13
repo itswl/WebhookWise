@@ -78,4 +78,6 @@ class ReanalysisResponse(BaseModel):
     original_importance: str | None = None
     new_importance: str | None = None
     updated_duplicates: int | None = None
+    forward_status: str | None = None
+    forward_outbox_ids: list[int] = Field(default_factory=list)
     message: str | None = None
