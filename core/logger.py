@@ -88,12 +88,21 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logger() -> logging.Logger:
     """初始化全局日志系统"""
+    global _log_listener, _logger_pid
     log_level = getattr(logging, Config.server.LOG_LEVEL.upper(), logging.INFO)
     logger = logging.getLogger("webhook_service")
     logger.setLevel(log_level)
 
     if logger.handlers:
-        return logger
+        current_pid = os.getpid()
+        if _logger_pid == current_pid:
+            return logger
+        # TaskIQ/worker 子进程会继承父进程的 QueueHandler，但 QueueListener
+        # 线程不会跨 fork 存活。必须在当前 PID 重新安装 handler/listener，
+        # 否则 webhook_service.* 业务日志会被写入无人消费的队列。
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+        _log_listener = None
 
     logger.propagate = False
 
@@ -126,22 +135,24 @@ def setup_logger() -> logging.Logger:
     queue_handler.addFilter(TraceIdFilter())
 
     # 启动后台监听线程
-    global _log_listener
     _log_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
     _log_listener.start()
+    _logger_pid = os.getpid()
 
     return logger
 
 
 _log_listener: QueueListener | None = None
+_logger_pid: int | None = None
 
 
 def stop_log_listener() -> None:
     """停止日志后台线程（供应用关闭时调用）"""
-    global _log_listener
+    global _log_listener, _logger_pid
     if _log_listener:
         _log_listener.stop()
         _log_listener = None
+        _logger_pid = None
 
 
 def get_logger(name: str) -> logging.Logger:
