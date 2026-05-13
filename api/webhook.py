@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
+from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.redis_client import redis_ping
@@ -57,8 +58,34 @@ async def _receive_and_enqueue_webhook(
     source_hint: str,
     request_id: str,
 ) -> JSONDict | JSONResponse:
+    try:
+        client_ip = get_client_ip(request)
+    except Exception:
+        client_ip = "unknown"
     raw_body = await request.body()
+    content_length = request.headers.get("content-length", "")
+    content_type = request.headers.get("content-type", "")
+    method = str(getattr(request, "method", ""))
+    path = str(getattr(getattr(request, "url", None), "path", ""))
+    logger.info(
+        "[Webhook] 收到告警 request_id=%s source=%s method=%s path=%s ip=%s content_length=%s body_size=%d content_type=%s",
+        request_id,
+        source_hint,
+        method,
+        path,
+        client_ip,
+        content_length,
+        len(raw_body),
+        content_type,
+    )
     if too_large_response := _payload_too_large_response(raw_body, source_hint):
+        logger.warning(
+            "[Webhook] 拒绝超大 payload request_id=%s source=%s ip=%s body_size=%d",
+            request_id,
+            source_hint,
+            client_ip,
+            len(raw_body),
+        )
         return too_large_response
 
     backpressure = await check_ingress_backpressure(source_hint=source_hint, raw_body=raw_body)
@@ -66,8 +93,11 @@ async def _receive_and_enqueue_webhook(
         src = sanitize_source(source_hint)
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
         logger.warning(
-            "[Webhook] ingress 背压抑制 source=%s count=%s threshold=%s key=%s",
+            "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s",
+            request_id,
             source_hint,
+            client_ip,
+            len(raw_body),
             backpressure.count,
             backpressure.threshold,
             backpressure.key,
@@ -79,24 +109,35 @@ async def _receive_and_enqueue_webhook(
             "request_id": request_id,
         }
 
-    client_ip = get_client_ip(request)
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
     received_at = datetime.now().astimezone().isoformat(timespec="seconds")
 
-    await process_webhook_task.kiq(
-        source=source_hint,
-        raw_headers=headers,
-        raw_body=raw_body_str,
-        client_ip=client_ip or "",
-        request_id=request_id,
-        received_at=received_at,
-    )
+    try:
+        await process_webhook_task.kiq(
+            source=source_hint,
+            raw_headers=headers,
+            raw_body=raw_body_str,
+            client_ip=client_ip or "",
+            request_id=request_id,
+            received_at=received_at,
+        )
+    except Exception:
+        logger.exception(
+            "[Webhook] 告警入队失败 request_id=%s source=%s ip=%s body_size=%d",
+            request_id,
+            source_hint,
+            client_ip,
+            len(raw_body),
+        )
+        raise
     logger.info(
-        "[Webhook] 已接收并入队 source=%s ip=%s size=%d",
+        "[Webhook] 告警已入队 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
+        request_id,
         source_hint,
         client_ip,
         len(raw_body),
+        received_at,
     )
 
     return {
@@ -163,6 +204,8 @@ async def receive_webhook(
     request_id = generate_trace_id()
     set_trace_id(request_id)
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
+    clear_log_context()
+    set_log_context(request_id=request_id, source=source_hint)
 
     return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
 
@@ -181,6 +224,8 @@ async def receive_webhook_with_source(
     request_id = generate_trace_id()
     set_trace_id(request_id)
     source_hint = _normalize_source_hint(source)
+    clear_log_context()
+    set_log_context(request_id=request_id, source=source_hint)
 
     return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
 
