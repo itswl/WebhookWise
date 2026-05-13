@@ -142,7 +142,7 @@ async def get_failed_forward_stats(session: AsyncSession | None = None) -> dict[
         stmt = select(FailedForward.status, func.count()).group_by(FailedForward.status)
         result = await sess.execute(stmt)
         rows = result.all()
-        stats = {"pending": 0, "retrying": 0, "success": 0, "exhausted": 0, "total": 0}
+        stats = {"pending": 0, "retrying": 0, "success": 0, "expired": 0, "exhausted": 0, "total": 0}
         for status_val, count in rows:
             if status_val in stats:
                 stats[status_val] = count
@@ -159,7 +159,7 @@ async def manual_retry_reset(
 
     async def _reset(sess: AsyncSession) -> bool:
         record = await sess.get(FailedForward, failed_forward_id)
-        if not record or record.status != FailedForwardStatus.EXHAUSTED:
+        if not record or record.status not in (FailedForwardStatus.EXHAUSTED, FailedForwardStatus.EXPIRED):
             return False
         now = datetime.now()
         record.status, record.retry_count, record.updated_at = FailedForwardStatus.PENDING, 0, now

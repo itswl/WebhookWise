@@ -98,7 +98,11 @@ async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
         return _fail(str(e), 500)
 
 
-@admin_router.post("/api/prompt/reload", response_model=PromptReloadResponse)
+@admin_router.post(
+    "/api/prompt/reload",
+    response_model=PromptReloadResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def reload_prompt() -> JSONResponse:
     try:
         new_template = await reload_user_prompt_template()

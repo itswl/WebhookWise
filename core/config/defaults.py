@@ -224,6 +224,7 @@ class RetryConfig(BaseSettings):
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
     FORWARD_RETRY_MAX_DELAY: int = Field(default=3600)
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
+    FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800)
 
 
 class AppConfig(BaseSettings):

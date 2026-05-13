@@ -10,10 +10,10 @@ curl http://localhost:8000/health
 
 正常响应：
 ```json
-{"success": true, "data": {"status": "healthy", "database": "ok"}}
+{"success": true, "data": {"status": "ready", "database": "ok", "redis": "ok", "queue": "redis_stream"}}
 ```
 
-如果 HTTP 状态为 `503` 或 `data.database` 为 `failed`，说明数据库连接失败，检查 `DATABASE_URL` 配置。
+Lite 模式下 `redis` 会显示 `skipped_lite`、`queue` 会显示 `inline`。如果 HTTP 状态为 `503` 或 `data.database` 为 `failed`，说明数据库连接失败，检查 `DATABASE_URL` 配置。
 
 ### 查看日志
 
@@ -34,34 +34,43 @@ tail -f logs/webhook.log
 
 ### 1. Webhook 接收后无分析结果
 
-**症状：** POST `/webhook` 返回 202，但事件一直处于 `received` 状态。
+**症状：** POST `/webhook` 返回 202，但按 `request_id` 查不到最终事件，或 legacy 事件一直处于 `received/analyzing/retry`。
 
 **排查步骤：**
 
-1. 确认 Worker 进程是否在运行：
+1. 先确认运行模式：
+   ```bash
+   curl http://localhost:8000/ready
+   ```
+   如果 `queue=inline`，说明是 Lite 模式，跳过 Worker/Redis 检查，直接看 API 日志。
+
+2. Full 模式下确认 Worker 进程是否在运行：
    ```bash
    docker compose ps worker
    ```
 
-2. 检查 Worker 日志是否有报错：
+3. 检查 Worker 日志是否有报错：
    ```bash
    docker compose logs worker --tail 50
    ```
 
-3. 检查 Redis 连接：
+4. 检查 Redis 连接：
    ```bash
    redis-cli -u $REDIS_URL ping  # 应返回 PONG
    ```
 
-4. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
+5. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
    ```bash
    redis-cli xinfo stream webhook:queue
    ```
 
-5. 如果是事件卡在 `analyzing` 状态超过 5 分钟，Recovery Poller 会自动重拾。也可手动触发：
+6. 如果是 legacy DB 事件卡在 `received/analyzing/retry` 超过 5 分钟，Recovery Poller 会自动重拾。也可先查询僵尸事件，再按事件 ID 手动重放：
    ```bash
-   curl -X POST http://localhost:8000/api/stuck-events/requeue-all \
+   curl http://localhost:8000/api/admin/stuck-events \
      -H "Authorization: Bearer $API_KEY"
+
+   curl -X POST http://localhost:8000/api/admin/stuck-events/{event_id}/requeue \
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
 ---
@@ -171,7 +180,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查步骤：**
 
-1. 查看失败转发队列：
+1. 查看失败转发审计记录：
    ```bash
    curl http://localhost:8000/api/failed-forwards \
      -H "Authorization: Bearer $API_KEY"
@@ -183,13 +192,15 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
      -H "Authorization: Bearer $API_KEY"
    ```
 
-3. 手动触发转发：
+3. 手动触发转发（写操作需要 `ADMIN_WRITE_KEY`）：
    ```bash
    curl -X POST http://localhost:8000/api/forward/{webhook_id} \
-     -H "Authorization: Bearer $API_KEY"
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-4. 检查 Worker 日志中是否有转发相关的 HTTP 错误。
+4. 检查日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误。Lite 模式看 API 容器日志；Full 模式看 Worker 日志。
+
+5. 如果失败转发状态为 `expired`，表示 Outbox 已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免旧告警误发而停止自动投递。确认仍需发送后，可以在失败转发页面手动重试。
 
 ---
 
@@ -202,8 +213,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 1. 检查 `DUPLICATE_ALERT_TIME_WINDOW`（默认 24 小时）。如需缩短去重窗口：
    ```bash
    curl -X POST http://localhost:8000/api/config \
-     -H "Authorization: Bearer $API_KEY" \
-     -H "X-Admin-Key: $ADMIN_WRITE_KEY" \
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
      -H "Content-Type: application/json" \
      -d '{"key": "DUPLICATE_ALERT_TIME_WINDOW", "value": "1"}'
    ```
@@ -213,7 +223,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 3. 对于已被错误标记的事件，可强制重新分析：
    ```bash
    curl -X POST http://localhost:8000/api/reanalyze/{webhook_id} \
-     -H "Authorization: Bearer $API_KEY"
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
 ---
@@ -238,19 +248,14 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查：**
 
-1. 检查 `db_queue_pending` 指标（`/metrics`）是否持续增长，说明有事件积压未处理。
+1. 检查 `db_queue_pending` 指标（`/metrics`）是否持续增长。该指标只代表 legacy DB 事件路径待恢复记录，不代表主 Webhook 队列。
 
 2. 检查 Redis 内存：
    ```bash
    redis-cli info memory | grep used_memory_human
    ```
 
-3. 检查主表 `webhook_events` 行数：如果很大，说明数据归档未正常执行。手动触发归档：
-   ```bash
-   curl -X POST http://localhost:8000/api/maintenance/run \
-     -H "Authorization: Bearer $API_KEY" \
-     -H "X-Admin-Key: $ADMIN_WRITE_KEY"
-   ```
+3. 检查主表 `webhook_events` 行数：如果很大，说明数据归档未正常执行。归档由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduled_task_*` 指标。
 
 4. Docker 内存问题：`docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
 
@@ -265,8 +270,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 **修复：** 请求时添加 Header：
 ```bash
 curl -X POST http://localhost:8000/api/config \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "X-Admin-Key: $ADMIN_WRITE_KEY" \
+  -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"key": "LOG_LEVEL", "value": "DEBUG"}'
 ```
@@ -280,8 +284,7 @@ curl -X POST http://localhost:8000/api/config \
 ```bash
 # 热更新，无需重启
 curl -X POST http://localhost:8000/api/config \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "X-Admin-Key: $ADMIN_WRITE_KEY" \
+  -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"key": "LOG_LEVEL", "value": "DEBUG"}'
 ```

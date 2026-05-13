@@ -55,6 +55,7 @@ def _outbox_policy(*, stale_processing_threshold_seconds: int = 60) -> ForwardOu
         retry_max_delay=10,
         retry_backoff_multiplier=2.0,
         stale_processing_threshold_seconds=stale_processing_threshold_seconds,
+        max_delivery_age_seconds=1800,
     )
 
 
@@ -69,6 +70,7 @@ async def _insert_outbox(
     target_type: str = "webhook",
     next_attempt_at: datetime | None = None,
     updated_at: datetime | None = None,
+    created_at: datetime | None = None,
 ) -> int:
     from models import ForwardOutbox
 
@@ -86,6 +88,7 @@ async def _insert_outbox(
             next_attempt_at=next_attempt_at or now,
             forward_data={"source": "test"},
             analysis_result={"summary": "x"},
+            created_at=created_at or now,
             updated_at=updated_at or now,
         )
         session.add(record)
@@ -168,6 +171,29 @@ class TestClaimOutbox:
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() + timedelta(hours=1))
         record = await _claim_outbox(outbox_id)
         assert record is None
+
+    async def test_expires_old_pending_record(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        from models import FailedForward, ForwardOutbox
+        from services.forwarding.outbox import _claim_outbox
+
+        created_at = datetime.now() - timedelta(minutes=31)
+        outbox_id = await _insert_outbox(
+            session_factory,
+            next_attempt_at=datetime.now() - timedelta(seconds=1),
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        record = await _claim_outbox(outbox_id, policy=_outbox_policy(stale_processing_threshold_seconds=60))
+
+        async with session_factory() as session:
+            updated = await session.get(ForwardOutbox, outbox_id)
+            failed = (await session.execute(select(FailedForward))).scalars().first()
+        assert record is None
+        assert updated is not None
+        assert updated.status == ForwardOutboxStatus.EXPIRED
+        assert failed is not None
+        assert failed.status == FailedForwardStatus.EXPIRED
 
     async def test_claims_retrying_status(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
@@ -354,6 +380,40 @@ class TestRunForwardOutboxScan:
 
         assert scheduled_ids
         assert len(scheduled_ids[0]) == 1
+
+    async def test_expires_old_rows_before_scheduling(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from models import FailedForward, ForwardOutbox
+        from services.forwarding.outbox import run_forward_outbox_scan
+
+        scheduled_ids: list[list[int]] = []
+
+        async def _fake_schedule(ids: list[int]) -> None:
+            scheduled_ids.append(ids)
+
+        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
+
+        old = datetime.now() - timedelta(hours=1)
+        await _insert_outbox(
+            session_factory,
+            next_attempt_at=datetime.now() - timedelta(seconds=10),
+            created_at=old,
+            updated_at=old,
+        )
+
+        count = await run_forward_outbox_scan(policy=_outbox_policy(stale_processing_threshold_seconds=60))
+
+        async with session_factory() as session:
+            record = (await session.execute(select(ForwardOutbox))).scalar_one()
+            failed = (await session.execute(select(FailedForward))).scalars().first()
+        assert count == 1
+        assert scheduled_ids == [[]]
+        assert record.status == ForwardOutboxStatus.EXPIRED
+        assert failed is not None
+        assert failed.failure_reason == "outbox_expired"
 
 
 # ── FailedForward scan fallback ───────────────────────────────────────

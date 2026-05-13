@@ -47,6 +47,7 @@ class ForwardOutboxPolicy:
     retry_max_delay: int
     retry_backoff_multiplier: float
     stale_processing_threshold_seconds: int
+    max_delivery_age_seconds: int
 
     @classmethod
     def from_config(cls, config: Any = Config) -> "ForwardOutboxPolicy":
@@ -57,6 +58,7 @@ class ForwardOutboxPolicy:
             retry_max_delay=int(config.retry.FORWARD_RETRY_MAX_DELAY),
             retry_backoff_multiplier=float(config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
             stale_processing_threshold_seconds=int(config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
+            max_delivery_age_seconds=max(0, int(config.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS)),
         )
 
     def delay_for_attempt(self, attempts: int) -> int:

@@ -1,17 +1,20 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import logger, mask_url
+from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.forwarding.forward import forward_to_openclaw as default_forward_to_openclaw
 from services.forwarding.forward import forward_to_remote as default_forward_to_remote
+from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
 from services.forwarding.policies import ForwardOutboxPolicy
-from services.webhooks.command_service import save_webhook_data_in_session
+from services.webhooks.command_service import SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardingPolicy,
     ForwardRuleSnapshot,
@@ -71,6 +74,18 @@ class DefaultForwardingClient:
         analysis_result: dict[str, Any],
     ) -> dict[str, Any]:
         return await default_forward_to_openclaw(webhook_data, analysis_result)
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizeAnalysisResult:
+    save_result: SaveWebhookResult
+    forward_decision: ForwardDecision | None
+    outbox_ids: list[int]
+
+    def __iter__(self) -> Iterator[Any]:
+        # Backward-compatible two-value unpacking for existing tests/callers.
+        yield self.save_result
+        yield self.forward_decision
 
 
 async def resolve_forward_decision(
@@ -218,12 +233,7 @@ async def dispatch_forwarding_decision(
     orig_id: int | None,
     forwarding_client: ForwardingClient | None = None,
 ) -> list[dict[str, Any]]:
-    """Execute forwarding directly in the webhook worker.
-
-    The DB no longer acts as a forwarding queue. TaskIQ/Redis owns retry of the
-    worker message; PostgreSQL only records the final event and notification
-    timestamp.
-    """
+    """Legacy compatibility wrapper for tests/manual callers that need direct forwarding."""
     if not decision or not decision.should_forward:
         logger.info(
             "[Forward] 无需转发 event_id=%s reason=%s", webhook_id, getattr(decision, "skip_reason", "no_decision")
@@ -261,12 +271,11 @@ async def finalize_analysis_transaction(
     noise: NoiseReductionContext,
     *,
     forwarding_policy: ForwardingPolicy | None = None,
-) -> tuple[Any, ForwardDecision | None]:
+) -> FinalizeAnalysisResult:
     """Persist the AI result and final event state.
 
-    PostgreSQL is no longer used as a forwarding queue here. External forwarding
-    happens after this transaction in the worker, letting TaskIQ/Redis own retry
-    semantics and keeping the DB write path short.
+    Forwarding intents are persisted in the same transaction as the processed
+    webhook state. The network side effect happens later in an outbox worker.
     """
     is_dup_for_save: bool | None = analysis_res.is_duplicate or analysis_res.beyond_window
     original_for_save = analysis_res.original_event
@@ -277,6 +286,7 @@ async def finalize_analysis_transaction(
         is_dup_for_save = None
         beyond_for_save = False
 
+    outbox_ids: list[int] = []
     async with session_scope() as session:
         save_res = await save_webhook_data_in_session(
             session,
@@ -307,9 +317,22 @@ async def finalize_analysis_transaction(
             session=session,
             policy=forwarding_policy,
         )
+        if fwd_dec.should_forward:
+            forward_data = dict(ctx.req_ctx.webhook_full_data)
+            if isinstance(forward_data.get("headers"), dict):
+                forward_data["headers"] = redact_headers(forward_data["headers"])
+            outbox_ids = await create_forward_outbox_records(
+                session,
+                decision=fwd_dec,
+                full_data=forward_data,
+                analysis=final_analysis,
+                webhook_id=save_res.webhook_id,
+                orig_id=save_res.original_id,
+            )
     await remember_duplicate_source(
         ctx.alert_hash,
         original_event_id=save_res.original_id or save_res.webhook_id,
         analysis=final_analysis,
     )
-    return save_res, fwd_dec
+    await schedule_forward_outbox_many(outbox_ids)
+    return FinalizeAnalysisResult(save_res, fwd_dec, outbox_ids)

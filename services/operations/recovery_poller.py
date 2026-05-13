@@ -1,4 +1,4 @@
-"""Recovery逻辑 — 扫描僵尸事件并重新分发。"""
+"""Recovery logic for legacy DB-backed webhook rows."""
 
 from __future__ import annotations
 
@@ -34,10 +34,10 @@ def _event_age_expr() -> Any:
 async def run_recovery_scan(
     stuck_threshold_seconds: int | None = None, *, policy: RecoveryScanPolicy | None = None
 ) -> None:
-    """扫描真正卡住的事件并重新处理（由 TaskIQ 驱动，不再自启动循环）。
+    """扫描旧版 DB 事件路径中真正卡住的记录并重新处理。
 
-    常规可重试失败由 TaskIQ 延迟调度推进；这里仅兜底 worker 崩溃、
-    入队后未消费等导致长期停留在 received/analyzing 的事件。
+    raw ingest 主路径不会在分析前写入 ``webhook_events``。这里仅兜底
+    legacy event_id 重放、手动 replay、worker 崩溃后遗留的 received/analyzing/retry 行。
     """
     policy = policy or RecoveryScanPolicy.from_config(
         stuck_threshold_seconds=stuck_threshold_seconds,

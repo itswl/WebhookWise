@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -30,6 +31,12 @@ def _body_meta(body: bytes) -> dict[str, object]:
     return {"size": len(body), "sha256": digest}
 
 
+def _matches_any_configured_token(credentials: str | None, *tokens: str) -> bool:
+    if credentials is None:
+        return False
+    return any(token and hmac.compare_digest(credentials, token) for token in tokens)
+
+
 async def verify_api_key(
     request: Request,
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
@@ -43,7 +50,7 @@ async def verify_api_key(
     if not api_key:
         return True
 
-    if not auth or auth.credentials != api_key:
+    if not auth or not _matches_any_configured_token(auth.credentials, api_key, config.security.ADMIN_WRITE_KEY):
         client_ip = request.client.host if request.client else "unknown"
 
         try:
@@ -78,7 +85,7 @@ async def verify_admin_write(
 
     # 情况 1：配置了单独的 ADMIN_WRITE_KEY → 只校验它
     if admin_write_key:
-        if not auth or auth.credentials != admin_write_key:
+        if not auth or not _matches_any_configured_token(auth.credentials, admin_write_key):
             client_ip = request.client.host if request.client else "unknown"
             logger.warning(
                 "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",

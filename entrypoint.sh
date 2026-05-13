@@ -34,6 +34,10 @@ case "${RUN_MODE:-api}" in
         export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources is deprecated as an API:UserWarning}"
         exec supervisord -c /app/supervisord.conf
         ;;
+    lite)
+        echo "Starting in lite API mode..."
+        exec "$@"
+        ;;
     api|"")
         echo "Starting in API mode..."
         exec "$@"
