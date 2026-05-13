@@ -79,3 +79,15 @@ async def test_list_webhook_summaries_pagination(
     assert len(webhooks) == 0
     assert has_more is False
     assert next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_list_webhook_summaries_page_offset_without_cursor(
+    mock_session_scope: async_sessionmaker[AsyncSession],
+) -> None:
+    async with mock_session_scope() as session:
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, page=2, page_size=5)
+
+    assert [item["id"] for item in webhooks] == [10, 9, 8, 7, 6]
+    assert has_more is True
+    assert next_cursor == 6

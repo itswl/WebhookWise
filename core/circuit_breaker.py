@@ -148,7 +148,9 @@ class CircuitBreaker:
     _R = TypeVar("_R")
 
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
-        if self.failure_threshold == 0:
+        from core.runtime_mode import is_lite_mode
+
+        if self.failure_threshold == 0 or is_lite_mode():
             try:
                 return await func(*args, **kwargs)
             except self.expected_exceptions as e:
@@ -168,8 +170,7 @@ class CircuitBreaker:
             tripped = await self._record_failure()
             if tripped:
                 logger.error(
-                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, "
-                    "将在 %.1fs 后恢复",
+                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, " "将在 %.1fs 后恢复",
                     self.name,
                     self.failure_threshold,
                     self.recovery_timeout,

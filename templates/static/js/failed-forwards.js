@@ -175,6 +175,7 @@ function formatFFStatus(status) {
         'pending': '<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #dbeafe; color: #1d4ed8;">待重试</span>',
         'retrying': '<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #ffedd5; color: #c2410c;">重试中</span>',
         'success': '<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #dcfce7; color: #15803d;">已成功</span>',
+        'expired': '<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #f3f4f6; color: #4b5563;">已过期</span>',
         'exhausted': '<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #fee2e2; color: #dc2626;">已耗尽</span>'
     };
     return map[status] || `<span style="padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #f1f5f9; color: #64748b;">${status || '未知'}</span>`;

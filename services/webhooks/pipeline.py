@@ -1,7 +1,7 @@
 """Webhook 处理主管线。
 
-Coordinates persisted webhook events through parsing, analysis, noise
-reduction, final state transition and forwarding intent creation.
+Coordinates raw webhook envelopes through parsing, analysis, noise reduction,
+final persistence and forwarding intent creation.
 """
 
 import time
@@ -29,10 +29,10 @@ from services.webhooks.analysis_resolution import resolve_analysis
 from services.webhooks.command_service import mark_webhook_suppressed
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
 from services.webhooks.failure_handling import DeadLetterNotifier, handle_process_exception
-from services.webhooks.forwarding_stage import dispatch_forwarding_decision, finalize_analysis_transaction
+from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.noise_stage import compute_noise
 from services.webhooks.policies import AnalysisResolutionPolicy, NoiseReductionPolicy, WebhookFailurePolicy
-from services.webhooks.repository import EventEnvelope, transition_to_analyzing_and_load
+from services.webhooks.repository import EventEnvelope, claim_legacy_event_for_processing
 from services.webhooks.request_parser import parse_request
 from services.webhooks.types import (
     NoiseReductionContext,
@@ -173,7 +173,7 @@ async def _handle_webhook_process_inner(
             if env is None:
                 if event_id is None:
                     raise ValueError("event_id is required when no raw envelope is provided")
-                env = await transition_to_analyzing_and_load(event_id)
+                env = await claim_legacy_event_for_processing(event_id)
             if env is None:
                 logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
                 return
@@ -181,7 +181,7 @@ async def _handle_webhook_process_inner(
             metric_source = sanitize_source(env.source or "")
             request_id = env.request_id
             set_log_context(request_id=request_id, source=env.source or "unknown")
-            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
             req_ctx = parse_request(client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts)
@@ -248,13 +248,16 @@ async def _handle_webhook_process_inner(
                     )
 
                 final_analysis = build_final_analysis(analysis_res.analysis_result, noise)
-                save_res, fwd_dec = await finalize_analysis_transaction(
+                finalize_res = await finalize_analysis_transaction(
                     ctx,
                     analysis_res,
                     final_analysis,
                     noise,
                     forwarding_policy=dependencies.forwarding_policy,
                 )
+                save_res = finalize_res.save_result
+                fwd_dec = finalize_res.forward_decision
+                outbox_count = len(finalize_res.outbox_ids)
             if ctx.event_id is None:
                 set_log_context(event_id=save_res.webhook_id)
             logger.info(
@@ -265,15 +268,6 @@ async def _handle_webhook_process_inner(
                 save_res.original_id,
                 save_res.beyond_window,
             )
-            forward_results = await dispatch_forwarding_decision(
-                fwd_dec,
-                full_data=ctx.req_ctx.webhook_full_data,
-                analysis=final_analysis,
-                webhook_id=save_res.webhook_id,
-                orig_id=save_res.original_id,
-                forwarding_client=dependencies.forwarding_client,
-            )
-
             event_type = (
                 "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
             )
@@ -284,7 +278,9 @@ async def _handle_webhook_process_inner(
             if fwd_dec is None:
                 fwd_info = " forward=unknown"
             elif fwd_dec.should_forward:
-                fwd_info = f" forward=sent rules={len(fwd_dec.matched_rules)} targets={len(forward_results)}"
+                fwd_info = f" forward=queued rules={len(fwd_dec.matched_rules)} targets={outbox_count}"
+                if outbox_count == 0:
+                    fwd_info = f" forward=no_target rules={len(fwd_dec.matched_rules)} targets=0"
                 if fwd_dec.is_periodic_reminder:
                     fwd_info += "(periodic)"
             else:

@@ -228,7 +228,7 @@ async def retry_forward(
         await session.commit()
         logger.info("[ForwardAPI] 失败转发记录已手动重试 failed_forward_id=%s", failed_forward_id)
         return _ok(message="已重置为待重试")
-    return _fail("记录不存在或状态不是 exhausted", 400)
+    return _fail("记录不存在或状态不是 exhausted/expired", 400)
 
 
 @forwarding_router.delete("/api/failed-forwards/{failed_forward_id}")

@@ -23,6 +23,7 @@ from core.metrics import (
     WEBHOOK_RUNNING_TASKS,
 )
 from core.redis_client import RedisEvalArg
+from core.runtime_mode import is_lite_mode
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
 
@@ -166,6 +167,10 @@ async def _webhook_task_slot(*, policy: TaskRuntimePolicy | None = None) -> Asyn
     limit = runtime_policy.max_concurrent_webhook_tasks
     if limit <= 0:
         yield
+        return
+    if is_lite_mode():
+        async with _local_webhook_task_slot(limit):
+            yield
         return
     async with _distributed_webhook_task_slot(limit, policy=runtime_policy):
         yield
@@ -328,8 +333,7 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
         SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
 
 
-@broker.task(task_name="webhook_process_task")
-async def process_webhook_task(
+async def run_webhook_task(
     event_id: int | None = None,
     client_ip: str | None = None,
     source: str | None = None,
@@ -411,6 +415,31 @@ async def process_webhook_task(
         )
 
 
+@broker.task(task_name="webhook_process_task")
+async def process_webhook_task(
+    event_id: int | None = None,
+    client_ip: str | None = None,
+    source: str | None = None,
+    webhook_source: str | None = None,
+    raw_headers: dict[str, str] | None = None,
+    raw_body: str | None = None,
+    request_id: str | None = None,
+    received_at: str | None = None,
+    ingest_retry_count: int = 0,
+) -> None:
+    await run_webhook_task(
+        event_id=event_id,
+        client_ip=client_ip,
+        source=source,
+        webhook_source=webhook_source,
+        raw_headers=raw_headers,
+        raw_body=raw_body,
+        request_id=request_id,
+        received_at=received_at,
+        ingest_retry_count=ingest_retry_count,
+    )
+
+
 @broker.task(task_name="forward_retry_task")
 async def retry_failed_forward_task(failed_forward_id: int) -> None:
     """Retry a single failed-forward audit record."""
@@ -419,12 +448,16 @@ async def retry_failed_forward_task(failed_forward_id: int) -> None:
     await retry_failed_forward_by_id(failed_forward_id)
 
 
-@broker.task(task_name="forward_outbox_task")
-async def process_forward_outbox_task(outbox_id: int) -> None:
+async def run_forward_outbox_task(outbox_id: int) -> None:
     """Execute one transactional forwarding outbox intent."""
     from services.forwarding.outbox import process_forward_outbox_by_id
 
     await process_forward_outbox_by_id(outbox_id)
+
+
+@broker.task(task_name="forward_outbox_task")
+async def process_forward_outbox_task(outbox_id: int) -> None:
+    await run_forward_outbox_task(outbox_id)
 
 
 @broker.task(task_name="openclaw_poll_task")
@@ -468,6 +501,16 @@ async def scheduled_failed_forward_scan() -> None:
     from services.forwarding.retry import run_failed_forward_scan
 
     await _run_scheduled("failed_forward_scan", _recovery_scan_interval_seconds(), run_failed_forward_scan())
+
+
+@broker.task(
+    task_name="scheduled_forward_outbox_scan",
+    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
+)
+async def scheduled_forward_outbox_scan() -> None:
+    from services.forwarding.outbox import run_forward_outbox_scan
+
+    await _run_scheduled("forward_outbox_scan", _recovery_scan_interval_seconds(), run_forward_outbox_scan())
 
 
 @broker.task(task_name="scheduled_data_maintenance", schedule=[{"cron": _maintenance_cron()}])

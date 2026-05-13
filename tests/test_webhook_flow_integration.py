@@ -53,13 +53,15 @@ async def test_webhook_receive_to_feishu_card_flow(
     from core.app import app
     from core.config import Config, get_settings
     from models import WebhookEvent
-    from services.operations.tasks import process_webhook_task
+    from services.forwarding.outbox import process_forward_outbox_by_id
+    from services.operations.tasks import process_forward_outbox_task, process_webhook_task
     from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
 
     monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
     monkeypatch.setattr(Config, "_meta", dict(Config._meta))
     settings = get_settings()
     monkeypatch.setattr(settings.security, "WEBHOOK_SECRET", "")
+    monkeypatch.setattr(settings.security, "REQUIRE_WEBHOOK_AUTH", False)
     monkeypatch.setattr(settings.security, "API_KEY", "")
     monkeypatch.setattr(settings.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
     Config.set_override("FORWARD_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token", source="test")
@@ -124,6 +126,11 @@ async def test_webhook_receive_to_feishu_card_flow(
         )
 
     monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
+
+    async def run_outbox_inline(outbox_id: int) -> None:
+        await process_forward_outbox_by_id(outbox_id)
+
+    monkeypatch.setattr(cast(Any, process_forward_outbox_task), "kiq", run_outbox_inline)
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -216,13 +223,18 @@ async def test_mark_webhook_suppressed_does_not_run_duplicate_query(
     assert updated.is_duplicate is True
 
 
-async def test_finalization_persists_event_without_forward_outbox(
+async def test_finalization_skips_outbox_without_target(
     integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from core.config import get_settings
     from models import ForwardOutbox, WebhookEvent
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.request_parser import parse_request
     from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
+
+    settings = get_settings()
+    monkeypatch.setattr(settings.ai, "FORWARD_URL", "")
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -261,12 +273,13 @@ async def test_finalization_persists_event_without_forward_outbox(
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
 
-    save_res, fwd_dec = await finalize_analysis_transaction(
+    finalize_res = await finalize_analysis_transaction(
         ctx,
         analysis_res,
         {"importance": "high", "summary": "should persist"},
         noise,
     )
+    save_res, fwd_dec = finalize_res.save_result, finalize_res.forward_decision
 
     async with integration_session_factory() as session:
         updated_event = await session.get(WebhookEvent, event_id)
@@ -274,6 +287,8 @@ async def test_finalization_persists_event_without_forward_outbox(
 
     assert save_res.webhook_id == event_id
     assert fwd_dec is not None
+    assert fwd_dec.should_forward is True
+    assert finalize_res.outbox_ids == []
     assert updated_event is not None
     assert updated_event.processing_status == "completed"
     assert updated_event.ai_analysis is not None
@@ -324,7 +339,7 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
     assert persisted.ai_analysis["summary"] == "already persisted"
 
 
-async def test_reused_analysis_still_runs_forwarding_decision(
+async def test_reused_analysis_queues_periodic_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -379,12 +394,13 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
 
-    save_res, fwd_dec = await finalize_analysis_transaction(
+    finalize_res = await finalize_analysis_transaction(
         ctx,
         analysis_res,
         {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
         noise,
     )
+    save_res, fwd_dec = finalize_res.save_result, finalize_res.forward_decision
 
     async with integration_session_factory() as session:
         outboxes = (await session.execute(select(ForwardOutbox))).scalars().all()
@@ -393,7 +409,10 @@ async def test_reused_analysis_still_runs_forwarding_decision(
     assert fwd_dec is not None
     assert fwd_dec.should_forward is True
     assert fwd_dec.is_periodic_reminder is True
-    assert outboxes == []
+    assert len(outboxes) == 1
+    assert finalize_res.outbox_ids == [outboxes[0].id]
+    assert outboxes[0].webhook_event_id == save_res.webhook_id
+    assert outboxes[0].target_url == "https://example.com/hook"
 
 
 async def test_recovery_scan_requeues_due_retry_without_incrementing_retry_count(

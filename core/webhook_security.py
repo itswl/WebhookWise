@@ -175,6 +175,13 @@ async def verify_webhook_auth_dep(
         except ValueError:
             logger.debug("无效的 Content-Length 头: %s", content_length)
 
+    if not config.security.REQUIRE_WEBHOOK_AUTH:
+        return
+
+    if not config.security.WEBHOOK_SECRET:
+        logger.warning("Webhook 鉴权已启用但 WEBHOOK_SECRET 为空")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # 2. 读取 body 并验证签名
     raw_body = await request.body()
     headers: dict[str, str] = dict(request.headers)

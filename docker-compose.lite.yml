@@ -1,0 +1,93 @@
+networks:
+  webhook_lite_net:
+
+services:
+  migrate:
+    build: .
+    container_name: webhook-lite-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      RUN_MODE: migrate
+      PYTHONPATH: /app
+      DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - webhook_lite_net
+
+  webhook-service:
+    build: .
+    container_name: webhook-lite
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      RUN_MODE: lite
+      PORT: ${PORT:-8000}
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      THIRD_PARTY_LOG_LEVEL: ${THIRD_PARTY_LOG_LEVEL:-WARNING}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://webhook_user:postgres@postgres:5432/webhooks}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      ENABLE_RUNTIME_CONFIG: "false"
+      WEBHOOK_RATE_LIMIT_PER_MINUTE: ${WEBHOOK_RATE_LIMIT_PER_MINUTE:-0}
+      WEBHOOK_RATE_LIMIT_BURST: ${WEBHOOK_RATE_LIMIT_BURST:-0}
+      WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: ${WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE:-0}
+      PROCESSING_LOCK_DISTRIBUTED_ENABLED: "false"
+      CACHE_ENABLED: "false"
+      RECOVERY_SCAN_INTERVAL_SECONDS: ${RECOVERY_SCAN_INTERVAL_SECONDS:-60}
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+      - ./webhooks_data:/app/webhooks_data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready').read()"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - webhook_lite_net
+
+  postgres:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:15-alpine
+    container_name: webhook-lite-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: webhook_user
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: webhooks
+    volumes:
+      - postgres_lite_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook_user -d webhooks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webhook_lite_net
+
+volumes:
+  postgres_lite_data:

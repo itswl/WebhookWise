@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-# 必须导入任务以注册到 broker
+# Full 模式需要导入任务以注册到 broker；Lite 模式复用其中的纯函数处理入口。
 import services.operations.tasks  # noqa: F401
 from adapters.ecosystem_adapters import initialize_adapters
 from api.admin import admin_router
@@ -27,6 +27,7 @@ from core.logger import logger, stop_log_listener
 from core.metrics import setup_metrics
 from core.otel import setup_otel
 from core.redis_client import dispose_redis
+from core.runtime_mode import is_lite_mode, uses_taskiq_broker
 from core.taskiq_broker import broker
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
 from db.session import dispose_engine, init_engine
@@ -48,10 +49,12 @@ def _looks_like_placeholder_secret(value: str) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     config = _app_config(app)
+    lite_mode = is_lite_mode(config)
     logger.info(
-        "[App] 启动中 env=%s debug=%s runtime_config=%s ai_enabled=%s",
+        "[App] 启动中 env=%s debug=%s run_mode=%s runtime_config=%s ai_enabled=%s",
         os.getenv("APP_ENV", "production"),
         config.server.DEBUG,
+        config.server.RUN_MODE,
         config.server.ENABLE_RUNTIME_CONFIG,
         config.ai.ENABLE_AI_ANALYSIS,
     )
@@ -87,12 +90,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_engine()
     if config.server.ENABLE_RUNTIME_CONFIG:
         await config.load_from_db()
-        await config.start_subscriber()
+        if not lite_mode:
+            await config.start_subscriber()
+        else:
+            logger.info("[App] lite 模式跳过 Redis Pub/Sub 配置同步")
     if config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
         await initialize_openai_client(http_client=app.state.http_client)
 
-    # 启动 TaskIQ Broker (API 侧只需 startup)
-    await broker.startup()
+    if uses_taskiq_broker(config):
+        # 启动 TaskIQ Broker (API 侧只需 startup)
+        await broker.startup()
+    else:
+        from services.operations.lite_runtime import start_lite_runtime
+
+        app.state.lite_runtime = start_lite_runtime()
     logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
     try:
@@ -101,7 +112,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("[App] 正在关闭 worker_id=%s", _WORKER_ID)
 
         await config.stop_subscriber()
-        await broker.shutdown()
+        if uses_taskiq_broker(config):
+            await broker.shutdown()
+        else:
+            from services.operations.lite_runtime import stop_lite_runtime
+
+            lite_runtime = getattr(app.state, "lite_runtime", None)
+            if lite_runtime is not None:
+                stop_event, tasks = lite_runtime
+                await stop_lite_runtime(stop_event, tasks)
 
         await dispose_engine()
         await dispose_redis()

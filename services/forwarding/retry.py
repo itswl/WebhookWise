@@ -47,6 +47,13 @@ async def schedule_failed_forward_many(failed_forward_ids: list[int]) -> None:
     """Best-effort immediate dispatch for due failed-forward retry rows."""
     if not failed_forward_ids:
         return
+    from core.runtime_mode import is_lite_mode
+
+    if is_lite_mode():
+        for failed_forward_id in failed_forward_ids:
+            await retry_failed_forward_by_id(failed_forward_id)
+        return
+
     from services.operations.tasks import retry_failed_forward_task
 
     for failed_forward_id in failed_forward_ids:
