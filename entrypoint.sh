@@ -23,11 +23,11 @@ case "${RUN_MODE:-api}" in
         ;;
     worker)
         echo "Starting in TaskIQ Worker mode..."
-        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq worker core.taskiq_broker:broker services.operations.tasks
+        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:broker services.operations.tasks
         ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."
-        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq scheduler core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
+        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq scheduler --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
         ;;
     all)
         echo "Starting in all-in-one supervisor mode..."
