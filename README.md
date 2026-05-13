@@ -276,7 +276,8 @@ tests/e2e/run_webhook_to_feishu.sh
 | `WORKER_METRICS_PORT` | `9001` | Compose 中独立 Worker 容器的后台任务指标端口 |
 | `DB_POOL_SIZE` | `5` | 单进程数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `LOG_LEVEL` | `INFO` | 项目业务日志级别（`webhook_service`、`config`、`db`、`models` 等） |
+| `THIRD_PARTY_LOG_LEVEL` | `WARNING` | 第三方/框架日志级别（TaskIQ、httpx、uvicorn、gunicorn 等） |
 | `LOG_FILE` | — | 日志文件路径（为空则仅控制台输出） |
 | `RECOVERY_SCAN_INTERVAL_SECONDS` | `300` | recovery-only DB 兜底扫描间隔；正常路径走 Redis/TaskIQ |
 | `MAX_CONCURRENT_WEBHOOK_TASKS` | `30` | 所有 Worker 全局 Webhook 处理并发上限（Redis 分布式令牌） |
