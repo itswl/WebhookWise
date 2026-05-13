@@ -421,6 +421,20 @@ async def save_webhook_data_in_session(
     if alert_hash is None:
         alert_hash = WebhookEvent.generate_hash(data, source)
     safe_headers = redact_headers(headers)
+    if event_id is None and request_id:
+        existing = (
+            await session.execute(sqlalchemy.select(WebhookEvent).where(WebhookEvent.request_id == request_id))
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.processing_status == WebhookProcessingStatus.COMPLETED:
+                return SaveWebhookResult(
+                    existing.id,
+                    bool(existing.is_duplicate),
+                    existing.duplicate_of,
+                    bool(existing.beyond_window),
+                )
+            event_id = existing.id
+            skip_duplicate_lookup = True
     if is_duplicate is None and not skip_duplicate_lookup:
         check = await check_duplicate_event(
             alert_hash, session=session, time_window_hours=policy.duplicate_window_hours

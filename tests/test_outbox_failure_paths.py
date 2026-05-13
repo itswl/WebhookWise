@@ -444,6 +444,32 @@ class TestOpenClawPoller:
         assert result["retryable"] is True
         assert "connection attempts" in str(result["error"]).lower()
 
+    async def test_poll_via_http_invalid_json_is_terminal_upstream_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        class _Response:
+            status_code = 200
+
+            def json(self) -> dict[str, object]:
+                raise ValueError("not json")
+
+        class _Client:
+            async def get(self, *_: object, **__: object) -> _Response:
+                return _Response()
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
+
+        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+
+        assert result["status"] == "error"
+        assert result.get("retryable") is not True
+        assert result["error"] == "Invalid JSON response"
+
     def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from core.config import Config
         from services.analysis.openclaw_poller import _poll_claim_lease_seconds
