@@ -47,6 +47,12 @@ async def run_recovery_scan(
     now = datetime.now()
     threshold = now - timedelta(seconds=threshold_secs)
     retry_next_at = now + timedelta(seconds=policy.scan_interval_seconds)
+    logger.debug(
+        "[Recovery] 开始扫描 threshold_secs=%s batch_size=%s max_retries=%s",
+        threshold_secs,
+        policy.batch_size,
+        policy.max_retries,
+    )
 
     recovered_ids = await _claim_recoverable_events(
         now=now,
@@ -57,6 +63,7 @@ async def run_recovery_scan(
     )
 
     if not recovered_ids:
+        logger.debug("[Recovery] 本轮没有可恢复事件 threshold_secs=%s", threshold_secs)
         return
 
     logger.info("[Recovery] 发现 %d 条僵尸事件，开始恢复处理", len(recovered_ids))

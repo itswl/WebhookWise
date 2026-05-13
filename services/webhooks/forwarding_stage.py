@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.logger import logger
+from core.logger import logger, mask_url
 from db.session import session_scope
 from models import WebhookEvent
 from services.forwarding.forward import forward_to_openclaw as default_forward_to_openclaw
@@ -106,14 +106,24 @@ async def resolve_forward_decision(
     )
 
     if decision.should_forward:
-        logger.debug(
-            "[Forward] 决策=转发 is_periodic=%s matched_rules=%d skip_reason=%s",
+        logger.info(
+            "[Forward] 决策=转发 source=%s importance=%s duplicate=%s beyond_window=%s is_periodic=%s matched_rules=%d",
+            source,
+            importance,
+            is_duplicate,
+            beyond_window,
             decision.is_periodic_reminder,
             len(decision.matched_rules),
-            decision.skip_reason,
         )
     else:
-        logger.debug("[Forward] 决策=跳过 reason=%s", decision.skip_reason or "no_match")
+        logger.info(
+            "[Forward] 决策=跳过 source=%s importance=%s duplicate=%s beyond_window=%s reason=%s",
+            source,
+            importance,
+            is_duplicate,
+            beyond_window,
+            decision.skip_reason or "no_match",
+        )
 
     return decision
 
@@ -158,14 +168,24 @@ async def _dispatch_one_target(
 ) -> dict[str, Any] | None:
     target_type = str(rule.get("target_type", "webhook") or "webhook")
     target_url = str(rule.get("target_url", "") or "")
+    rule_label = rule.get("name") or rule.get("id") or "default"
+    logger.info(
+        "[Forward] 开始执行目标 event_id=%s rule=%s target_type=%s target=%s periodic=%s",
+        webhook_id,
+        rule_label,
+        target_type,
+        mask_url(target_url) if target_url else "",
+        is_periodic_reminder,
+    )
     if target_type == "openclaw":
         result = await forwarding_client.forward_to_openclaw(webhook_data=full_data, analysis_result=analysis)
         if result.get("_pending"):
-            await create_openclaw_analysis(
+            analysis_id = await create_openclaw_analysis(
                 webhook_id,
                 run_id=str(result.get("_openclaw_run_id", "")),
                 session_key=str(result.get("_openclaw_session_key", "")),
             )
+            logger.info("[Forward] OpenClaw 分析记录已创建 event_id=%s analysis_id=%s", webhook_id, analysis_id)
     else:
         if not target_url:
             logger.warning("[Forward] 规则 '%s' target_url 为空，跳过直接转发", rule.get("name", rule.get("id")))
@@ -179,6 +199,13 @@ async def _dispatch_one_target(
 
     if not _is_forward_success(result):
         raise RuntimeError(f"forward status={result.get('status')}: {result.get('message', '')}")
+    logger.info(
+        "[Forward] 目标执行完成 event_id=%s rule=%s target_type=%s status=%s",
+        webhook_id,
+        rule_label,
+        target_type,
+        result.get("status") or ("pending" if result.get("_pending") else "unknown"),
+    )
     return result
 
 
@@ -198,6 +225,9 @@ async def dispatch_forwarding_decision(
     timestamp.
     """
     if not decision or not decision.should_forward:
+        logger.info(
+            "[Forward] 无需转发 event_id=%s reason=%s", webhook_id, getattr(decision, "skip_reason", "no_decision")
+        )
         return []
 
     client = forwarding_client or DefaultForwardingClient()
@@ -215,6 +245,12 @@ async def dispatch_forwarding_decision(
             results.append(result)
     if results:
         await mark_last_notified(orig_id or webhook_id)
+        logger.info(
+            "[Forward] 转发批次完成 event_id=%s notified_event_id=%s target_count=%d",
+            webhook_id,
+            orig_id or webhook_id,
+            len(results),
+        )
     return results
 
 

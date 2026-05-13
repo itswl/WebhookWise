@@ -20,8 +20,10 @@ reanalysis_router = APIRouter()
 
 @reanalysis_router.post("/api/reanalyze/{webhook_id}", response_model=ReanalysisResponse)
 async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
+    logger.info("[Reanalysis] 重新分析请求 webhook_id=%s", webhook_id)
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
+        logger.warning("[Reanalysis] 重新分析失败，事件不存在 webhook_id=%s", webhook_id)
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
@@ -54,11 +56,19 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         if decision.should_forward:
             await execute_forwarding(decision, fwd_ctx, res, event.id, orig_id=None)
         else:
-            logger.info("reanalyze: 根据规则跳过转发 reason=%s", decision.skip_reason)
+            logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
     except Exception as e:
-        logger.warning("reanalyze: 转发通知失败: %s", e)
+        logger.warning("[Reanalysis] 转发通知失败 webhook_id=%s error=%s", webhook_id, e)
 
     await session.commit()
+    logger.info(
+        "[Reanalysis] 重新分析完成 webhook_id=%s source=%s old_importance=%s new_importance=%s updated_duplicates=%s",
+        webhook_id,
+        event.source,
+        old_imp,
+        new_imp,
+        updated_dups,
+    )
     return {
         "success": True,
         "status": "success",
@@ -75,8 +85,10 @@ async def manual_forward_webhook(
     webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
     data = data or {}
+    logger.info("[Reanalysis] 手动转发请求 webhook_id=%s", webhook_id)
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
+        logger.warning("[Reanalysis] 手动转发失败，事件不存在 webhook_id=%s", webhook_id)
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
@@ -87,6 +99,9 @@ async def manual_forward_webhook(
 
     status = str(fwd_res.get("status", "unknown"))
     if status != "success":
+        logger.warning(
+            "[Reanalysis] 手动转发失败 webhook_id=%s status=%s message=%s", webhook_id, status, fwd_res.get("message")
+        )
         http_status = 400 if status in {"invalid_target", "skipped"} else 502
         return JSONResponse(
             status_code=http_status,
@@ -98,4 +113,5 @@ async def manual_forward_webhook(
         )
 
     target_url = url or RemoteForwardPolicy.from_config().forward_url
+    logger.info("[Reanalysis] 手动转发完成 webhook_id=%s target=%s", webhook_id, mask_url(target_url))
     return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(target_url)}"}

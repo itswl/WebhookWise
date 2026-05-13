@@ -8,7 +8,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.logger import logger
+from core.logger import logger, mask_url
 from db.session import count_with_timeout, session_scope
 from models import FailedForward
 from services.forwarding.policies import ForwardRetryPolicy
@@ -87,10 +87,21 @@ async def record_failed_forward(
 
     try:
         persisted = await _with_session(session, _persist)
-        logger.info("转发失败记录已写入: ID=%s, target=%s", persisted.id, target_url)
+        logger.info(
+            "[ForwardRetry] 转发失败记录已写入 id=%s event_id=%s target=%s status=%s",
+            persisted.id,
+            webhook_event_id,
+            mask_url(target_url),
+            persisted.status,
+        )
         return persisted
     except Exception as e:
-        logger.error("写入转发失败记录失败: %s", e)
+        logger.error(
+            "[ForwardRetry] 写入转发失败记录失败 event_id=%s target=%s error=%s",
+            webhook_event_id,
+            mask_url(target_url),
+            e,
+        )
         return None
 
 
@@ -155,6 +166,7 @@ async def manual_retry_reset(
         record.next_retry_at = now + timedelta(seconds=retry_policy.initial_delay)
         await sess.flush()
         await _schedule_failed_forward_retry(record.id, retry_policy.initial_delay, policy=retry_policy)
+        logger.info("[ForwardRetry] 手动重置失败转发 id=%s event_id=%s", record.id, record.webhook_event_id)
         return True
 
     return await _with_session(session, _reset)

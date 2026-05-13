@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from adapters.plugins.feishu_card import build_ai_error_card
+from core.logger import mask_url
 from services.analysis.ai_policies import AIErrorNotificationPolicy
 from services.notifications.factory import build_notification_channels, find_notification_channel
 from services.operations.policies import FeishuNotificationPolicy
@@ -40,11 +41,13 @@ async def send_ai_error_alert(
         )
         channel = find_notification_channel(policy.target_url, channels)
         if channel is None:
-            logger.debug("AI 错误通知目标没有匹配的通知渠道: %s", policy.target_url)
+            logger.debug("[AIErrorNotify] 通知目标没有匹配渠道 target=%s", mask_url(policy.target_url))
             return
-        await channel.send_card(
+        logger.info("[AIErrorNotify] 发送 AI 错误通知 target=%s degraded=%s", mask_url(policy.target_url), is_degraded)
+        success = await channel.send_card(
             policy.target_url,
             build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
         )
+        logger.info("[AIErrorNotify] AI 错误通知完成 target=%s success=%s", mask_url(policy.target_url), success)
     except Exception as e:
-        logger.error("发送 AI 错误通知失败: %s", e)
+        logger.error("[AIErrorNotify] 发送 AI 错误通知失败: %s", e)

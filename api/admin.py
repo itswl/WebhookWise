@@ -70,20 +70,24 @@ async def get_config_sources_endpoint() -> JSONResponse:
 async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
     try:
         if not runtime_config_enabled():
+            logger.warning("[Admin] 配置更新被拒绝，运行时动态配置未启用")
             return _fail("运行时动态配置已禁用，请通过环境变量/ConfigMap 配置并滚动重启生效", 403)
         if not payload:
+            logger.warning("[Admin] 配置更新被拒绝，请求体为空")
             return _fail("请求体为空", 400)
 
         updates, errors = collect_config_updates(payload)
         if errors:
+            logger.warning("[Admin] 配置更新校验失败 errors=%s", errors)
             return _fail("; ".join(errors), 400)
 
         if not updates:
+            logger.info("[Admin] 配置更新无需变更")
             return _ok(status=200, message="无需更新")
 
         updated_count = await save_config_updates(updates)
 
-        logger.info("配置已更新: %s", list(updates.keys()))
+        logger.info("[Admin] 配置已更新 keys=%s count=%s", list(updates.keys()), updated_count)
         return _ok(status=200, message=f"配置更新成功，已保存 {updated_count} 项")
 
     except ValueError as e:
@@ -99,6 +103,7 @@ async def reload_prompt() -> JSONResponse:
     try:
         new_template = await reload_user_prompt_template()
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
+        logger.info("[Admin] Prompt 模板已重新加载 length=%s", len(new_template))
         return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=preview)
     except Exception as e:
         logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
@@ -142,9 +147,11 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
     try:
         updated = await replay_dead_letter(session, event_id)
         if not updated:
+            logger.warning("[Admin] dead_letter 重放失败，状态不匹配或事件不存在 event_id=%s", event_id)
             return _fail(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
         await session.commit()
         await process_webhook_task.kiq(event_id=event_id)
+        logger.info("[Admin] dead_letter 已重放 event_id=%s", event_id)
         return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
         logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
@@ -178,9 +185,11 @@ async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depe
     try:
         updated = await requeue_stuck_event(session, event_id)
         if not updated:
+            logger.warning("[Admin] stuck-event 重新入队失败，状态不匹配或事件不存在 event_id=%s", event_id)
             return _fail(f"事件 {event_id} 不存在或状态不可重放", 404)
         await session.commit()
         await process_webhook_task.kiq(event_id=event_id, client_ip="admin-requeue")
+        logger.info("[Admin] stuck-event 已重新入队 event_id=%s", event_id)
         return _ok(http_status=200, message=f"事件 {event_id} 已重新入队", event_id=event_id)
     except Exception as e:
         logger.error("重放 stuck-event 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
@@ -196,6 +205,7 @@ async def replay_all_dead_letters(
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
         if not items:
+            logger.info("[Admin] 批量重放 dead_letter：无待处理记录")
             return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
         replayed_ids = []
         for item in items:
@@ -205,6 +215,7 @@ async def replay_all_dead_letters(
         await session.commit()
         for eid in replayed_ids:
             await process_webhook_task.kiq(event_id=eid)
+        logger.info("[Admin] 批量重放 dead_letter 完成 replayed=%s event_ids=%s", len(replayed_ids), replayed_ids)
         return _ok(
             http_status=200,
             message=f"已重放 {len(replayed_ids)} 条 dead_letter",
