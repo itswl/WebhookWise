@@ -1,3 +1,7 @@
+import logging
+import os
+
+import core.logger as logger_module
 from core.logger import mask_url
 
 
@@ -18,3 +22,17 @@ def test_mask_url_keeps_host_and_port_for_diagnostics():
 def test_mask_url_masks_invalid_or_empty_values():
     assert mask_url("") == "***"
     assert mask_url("not-a-url") == "***"
+
+
+def test_setup_logger_reinitializes_in_new_process():
+    logger_module.stop_log_listener()
+    service_logger = logging.getLogger("webhook_service")
+    inherited_handlers = list(service_logger.handlers)
+    logger_module._logger_pid = -1
+
+    configured_logger = logger_module.setup_logger()
+
+    assert configured_logger is service_logger
+    assert logger_module._logger_pid == os.getpid()
+    assert service_logger.handlers
+    assert not any(handler in inherited_handlers for handler in service_logger.handlers)
