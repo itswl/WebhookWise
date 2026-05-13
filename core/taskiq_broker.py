@@ -12,8 +12,10 @@ from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListRedisScheduleSource, RedisAsyncResultBackend, RedisStreamBroker
 
 from core.config import Config
+from core.logging_levels import apply_log_levels
 
 logger = logging.getLogger("webhook_service.taskiq")
+apply_log_levels(Config.server.LOG_LEVEL, Config.server.THIRD_PARTY_LOG_LEVEL)
 
 # Redis 连接配置
 REDIS_URL = Config.redis.REDIS_URL

@@ -3,6 +3,7 @@ import os
 
 import core.logger as logger_module
 from core.logger import mask_url
+from core.logging_levels import apply_log_levels
 
 
 def test_mask_url_hides_credentials_query_and_token_path_tail():
@@ -36,3 +37,29 @@ def test_setup_logger_reinitializes_in_new_process():
     assert logger_module._logger_pid == os.getpid()
     assert service_logger.handlers
     assert not any(handler in inherited_handlers for handler in service_logger.handlers)
+
+
+def test_apply_log_levels_splits_project_and_third_party_loggers():
+    root_logger = logging.getLogger()
+    original_levels = {
+        "": root_logger.level,
+        "webhook_service": logging.getLogger("webhook_service").level,
+        "config": logging.getLogger("config").level,
+        "models": logging.getLogger("models").level,
+        "taskiq": logging.getLogger("taskiq").level,
+        "httpx": logging.getLogger("httpx").level,
+    }
+
+    try:
+        apply_log_levels("INFO", "WARNING")
+
+        assert logging.getLogger("webhook_service").getEffectiveLevel() == logging.INFO
+        assert logging.getLogger("config").getEffectiveLevel() == logging.INFO
+        assert logging.getLogger("models.webhook").getEffectiveLevel() == logging.INFO
+        assert logging.getLogger("taskiq.receiver.receiver").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("httpx").getEffectiveLevel() == logging.WARNING
+    finally:
+        root_logger.setLevel(original_levels[""])
+        for logger_name, level in original_levels.items():
+            if logger_name:
+                logging.getLogger(logger_name).setLevel(level)

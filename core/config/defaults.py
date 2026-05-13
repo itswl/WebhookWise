@@ -29,6 +29,7 @@ class ServerConfig(BaseSettings):
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
     ALLOW_RUNTIME_CONNECTION_CONFIG: bool = Field(default=False)
     LOG_LEVEL: str = Field(default="INFO")
+    THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
