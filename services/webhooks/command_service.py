@@ -427,12 +427,23 @@ async def save_webhook_data_in_session(
         ).scalar_one_or_none()
         if existing is not None:
             if existing.processing_status == WebhookProcessingStatus.COMPLETED:
+                logger.info(
+                    "[WebhookSave] request_id 已完成，跳过重复保存 request_id=%s event_id=%s",
+                    request_id,
+                    existing.id,
+                )
                 return SaveWebhookResult(
                     existing.id,
                     bool(existing.is_duplicate),
                     existing.duplicate_of,
                     bool(existing.beyond_window),
                 )
+            logger.info(
+                "[WebhookSave] request_id 已存在，复用事件继续保存 request_id=%s event_id=%s status=%s",
+                request_id,
+                existing.id,
+                existing.processing_status,
+            )
             event_id = existing.id
             skip_duplicate_lookup = True
     if is_duplicate is None and not skip_duplicate_lookup:

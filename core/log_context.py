@@ -7,11 +7,13 @@ alert_hash_var: contextvars.ContextVar[str] = contextvars.ContextVar("alert_hash
 source_var: contextvars.ContextVar[str] = contextvars.ContextVar("source", default="")
 processing_status_var: contextvars.ContextVar[str] = contextvars.ContextVar("processing_status", default="")
 route_type_var: contextvars.ContextVar[str] = contextvars.ContextVar("route_type", default="")
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
 
 
 def set_log_context(
     *,
     event_id: int | None = None,
+    request_id: str | None = None,
     alert_hash: str | None = None,
     source: str | None = None,
     processing_status: str | None = None,
@@ -19,6 +21,8 @@ def set_log_context(
 ) -> None:
     if event_id is not None:
         event_id_var.set(event_id)
+    if request_id is not None:
+        request_id_var.set(request_id)
     if alert_hash is not None:
         alert_hash_var.set(alert_hash)
     if source is not None:
@@ -34,6 +38,10 @@ def get_log_context() -> dict[str, object]:
     event_id = event_id_var.get()
     if event_id is not None:
         ctx["event_id"] = event_id
+
+    request_id = request_id_var.get()
+    if request_id:
+        ctx["request_id"] = request_id
 
     alert_hash = alert_hash_var.get()
     if alert_hash:
@@ -55,6 +63,7 @@ def get_log_context() -> dict[str, object]:
 
 def clear_log_context() -> None:
     event_id_var.set(None)
+    request_id_var.set("")
     alert_hash_var.set("")
     source_var.set("")
     processing_status_var.set("")

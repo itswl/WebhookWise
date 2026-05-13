@@ -61,8 +61,9 @@ async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object
     if not getattr(lock_res, "suppressed", False):
         return False
     logger.info(
-        "[Pipeline] 告警风暴背压抑制 event_id=%s queue_size=%s reason=%s",
+        "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
         ctx.event_id,
+        ctx.request_id,
         getattr(lock_res, "queue_size", 0),
         getattr(lock_res, "reason", "") or "alert_storm_backpressure",
     )
@@ -129,7 +130,15 @@ async def handle_webhook_ingest(
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
     set_trace_id(request_id or generate_trace_id())
     clear_log_context()
-    set_log_context(source=source)
+    set_log_context(request_id=request_id, source=source)
+    logger.info(
+        "[Pipeline] raw ingest 开始 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
+        request_id,
+        source,
+        client_ip,
+        len(raw_body.encode("utf-8")),
+        received_at or "",
+    )
     env = EventEnvelope(
         headers=dict(raw_headers or {}),
         payload=None,
@@ -171,12 +180,13 @@ async def _handle_webhook_process_inner(
 
             metric_source = sanitize_source(env.source or "")
             request_id = env.request_id
+            set_log_context(request_id=request_id, source=env.source or "unknown")
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="analyzing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
             req_ctx = parse_request(client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts)
             alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
-            set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown")
+            set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
                 event_id=event_id,
                 request_id=request_id,
@@ -186,10 +196,12 @@ async def _handle_webhook_process_inner(
                 alert_hash=alert_hash,
             )
             logger.info(
-                "[Pipeline] 开始处理 event_id=%s source=%s adapter=%s",
+                "[Pipeline] 开始处理 event_id=%s request_id=%s source=%s adapter=%s body_size=%d",
                 event_id,
+                request_id,
                 req_ctx.source,
                 req_ctx.parsed_data.get("_adapter", req_ctx.source),
+                len(env.raw_body),
             )
             if _span:
                 _span.set_attribute("source", req_ctx.source or "unknown")
@@ -210,13 +222,19 @@ async def _handle_webhook_process_inner(
                 importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
                 if analysis_res.is_reused:
                     set_log_context(route_type=route_type)
-                    logger.info("[Pipeline] 分析结果复用(redis) event_id=%s importance=%s", event_id, importance)
+                    logger.info(
+                        "[Pipeline] 分析结果复用(redis) event_id=%s request_id=%s importance=%s",
+                        event_id,
+                        request_id,
+                        importance,
+                    )
                     noise = NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, [])
                 else:
                     set_log_context(route_type=route_type)
                     logger.info(
-                        "[Pipeline] 分析完成 event_id=%s route=%s importance=%s degraded=%s",
+                        "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
                         event_id,
+                        request_id,
                         route_type,
                         importance,
                         analysis_res.analysis_result.get("_degraded", False),
@@ -239,6 +257,14 @@ async def _handle_webhook_process_inner(
                 )
             if ctx.event_id is None:
                 set_log_context(event_id=save_res.webhook_id)
+            logger.info(
+                "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s beyond_window=%s",
+                save_res.webhook_id,
+                request_id,
+                save_res.is_duplicate,
+                save_res.original_id,
+                save_res.beyond_window,
+            )
             forward_results = await dispatch_forwarding_decision(
                 fwd_dec,
                 full_data=ctx.req_ctx.webhook_full_data,
@@ -264,8 +290,9 @@ async def _handle_webhook_process_inner(
             else:
                 fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
             logger.info(
-                "[Pipeline] 处理完成 event_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
-                event_id,
+                "[Pipeline] 处理完成 event_id=%s request_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
+                save_res.webhook_id,
+                request_id,
                 event_type,
                 importance,
                 route_label,
@@ -294,7 +321,11 @@ async def _handle_webhook_process_inner(
             if event_id is None or raise_on_error:
                 outcome = "failed"
                 logger.error(
-                    "[Pipeline] raw webhook processing failed source=%s error=%s", metric_source, e, exc_info=True
+                    "[Pipeline] raw webhook processing failed request_id=%s source=%s error=%s",
+                    locals().get("request_id"),
+                    metric_source,
+                    e,
+                    exc_info=True,
                 )
                 raise
             outcome = await handle_process_exception(
