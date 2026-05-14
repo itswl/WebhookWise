@@ -5,7 +5,47 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docker_e2e: ${{ steps.filter.outputs.docker_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docker_e2e:
+              - ".github/workflows/ci.yml"
+              - "Dockerfile"
+              - "docker-compose*.yml"
+              - "entrypoint.sh"
+              - "worker.py"
+              - "alembic/**"
+              - "scripts/run_migrations.py"
+              - "models/**"
+              - "db/**"
+              - "core/config/**"
+              - "core/redis_client.py"
+              - "core/retry_policies.py"
+              - "core/runtime_mode.py"
+              - "core/taskiq_broker.py"
+              - "api/forwarding.py"
+              - "api/webhook.py"
+              - "schemas/forwarding.py"
+              - "schemas/webhook.py"
+              - "services/forwarding/**"
+              - "services/operations/**"
+              - "services/webhooks/**"
+              - "tests/e2e/**"
+              - "requirements*.txt"
+              - "requirements*.lock"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +64,8 @@ jobs:
       - run: pytest -q
 
   docker-e2e:
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || needs.changes.outputs.docker_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
