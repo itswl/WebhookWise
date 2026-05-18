@@ -13,7 +13,7 @@ curl http://localhost:8000/health
 {"success": true, "data": {"status": "ready", "database": "ok", "redis": "ok", "queue": "redis_stream"}}
 ```
 
-Lite 模式下 `redis` 会显示 `skipped_lite`、`queue` 会显示 `inline`。如果 HTTP 状态为 `503` 或 `data.database` 为 `failed`，说明数据库连接失败，检查 `DATABASE_URL` 配置。
+如果 HTTP 状态为 `503`，按 `data.database` / `data.redis` 判断失败依赖；`queue` 固定为 `redis_stream`。
 
 ### 查看日志
 
@@ -38,13 +38,12 @@ tail -f logs/webhook.log
 
 **排查步骤：**
 
-1. 先确认运行模式：
+1. 先确认 API 就绪状态：
    ```bash
    curl http://localhost:8000/ready
    ```
-   如果 `queue=inline`，说明是 Lite 模式，跳过 Worker/Redis 检查，直接看 API 日志。
 
-2. Full 模式下确认 Worker 进程是否在运行：
+2. 确认 Worker 进程是否在运行：
    ```bash
    docker compose ps worker
    ```
@@ -198,7 +197,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-4. 检查日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误。Lite 模式看 API 容器日志；Full 模式看 Worker 日志。
+4. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误；all-in-one 部署可查看 `webhook-service` 容器内 supervisor 管理的 worker 输出。
 
 5. 如果失败转发状态为 `expired`，表示 Outbox 已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免旧告警误发而停止自动投递。确认仍需发送后，可以在失败转发页面手动重试。
 

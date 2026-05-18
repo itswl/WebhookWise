@@ -1,18 +1,16 @@
 """One-shot retry scheduling.
 
-Full mode uses TaskIQ dynamic schedules. Lite mode uses in-process delayed
-tasks plus periodic DB scans.
+TaskIQ dynamic schedules own retry timing; durable DB scans remain as a low
+frequency recovery path when dynamic schedule dispatch is missed.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from core.runtime_mode import is_lite_mode
 from core.taskiq_broker import dynamic_schedule_source
 
 if TYPE_CHECKING:
@@ -44,17 +42,6 @@ def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolic
 
 async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
     """Schedule a single webhook retry through TaskIQ's dynamic scheduler."""
-    if is_lite_mode():
-        from services.operations.tasks import run_webhook_task
-
-        async def _delayed() -> None:
-            await asyncio.sleep(max(0, int(delay_seconds)))
-            await run_webhook_task(event_id=event_id, client_ip="retry-schedule")
-
-        asyncio.create_task(_delayed())
-        logger.info("[Lite] 已调度进程内 webhook 重试 event_id=%s delay=%ss", event_id, delay_seconds)
-        return
-
     from services.operations.tasks import process_webhook_task
 
     schedule_id = f"webhook-retry:{event_id}"
@@ -93,25 +80,6 @@ async def schedule_webhook_ingest_retry(
     ingest_retry_count: int,
 ) -> None:
     """Schedule a raw webhook retry without requiring a pre-existing DB event."""
-    if is_lite_mode():
-        from services.operations.tasks import run_webhook_task
-
-        async def _delayed() -> None:
-            await asyncio.sleep(max(0, int(delay_seconds)))
-            await run_webhook_task(
-                webhook_source=source,
-                raw_headers=raw_headers,
-                raw_body=raw_body,
-                client_ip=client_ip,
-                request_id=request_id,
-                received_at=received_at,
-                ingest_retry_count=ingest_retry_count,
-            )
-
-        asyncio.create_task(_delayed())
-        logger.info("[Lite] 已调度进程内 raw webhook 重试 request_id=%s delay=%ss", request_id, delay_seconds)
-        return
-
     from services.operations.tasks import process_webhook_task
 
     schedule_id = _raw_ingest_schedule_id(request_id, source, raw_body)
@@ -136,18 +104,6 @@ async def schedule_webhook_ingest_retry(
 
 async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> None:
     """Schedule a single failed-forward retry through TaskIQ."""
-    if is_lite_mode():
-
-        async def _delayed() -> None:
-            from services.forwarding.retry import retry_failed_forward_by_id
-
-            await asyncio.sleep(max(0, int(delay_seconds)))
-            await retry_failed_forward_by_id(failed_forward_id)
-
-        asyncio.create_task(_delayed())
-        logger.info("[Lite] 已调度进程内 failed-forward 重试 id=%s delay=%ss", failed_forward_id, delay_seconds)
-        return
-
     from services.operations.tasks import retry_failed_forward_task
 
     schedule_id = f"forward-retry:{failed_forward_id}"
@@ -166,18 +122,6 @@ async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> 
 
 async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
     """Schedule a single forwarding outbox attempt through TaskIQ."""
-    if is_lite_mode():
-
-        async def _delayed() -> None:
-            from services.forwarding.outbox import process_forward_outbox_by_id
-
-            await asyncio.sleep(max(0, int(delay_seconds)))
-            await process_forward_outbox_by_id(outbox_id)
-
-        asyncio.create_task(_delayed())
-        logger.info("[Lite] 已调度进程内 outbox 重试 id=%s delay=%ss", outbox_id, delay_seconds)
-        return
-
     from services.operations.tasks import process_forward_outbox_task
 
     schedule_id = f"forward-outbox:{outbox_id}"
@@ -196,18 +140,6 @@ async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
 
 async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
     """Schedule a single OpenClaw result poll through TaskIQ."""
-    if is_lite_mode():
-
-        async def _delayed() -> None:
-            from services.analysis.openclaw_poller import poll_deep_analysis_once
-
-            await asyncio.sleep(max(0, int(delay_seconds)))
-            await poll_deep_analysis_once(analysis_id)
-
-        asyncio.create_task(_delayed())
-        logger.info("[Lite] 已调度进程内 OpenClaw 轮询 analysis_id=%s delay=%ss", analysis_id, delay_seconds)
-        return
-
     from services.operations.tasks import poll_openclaw_analysis_task
 
     schedule_id = f"openclaw-poll:{analysis_id}"
