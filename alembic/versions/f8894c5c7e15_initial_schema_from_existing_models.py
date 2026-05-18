@@ -45,17 +45,20 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_webhook_events_source", "webhook_events", ["source"])
-    op.create_index("ix_webhook_events_timestamp", "webhook_events", ["timestamp"])
-    op.create_index("ix_webhook_events_alert_hash", "webhook_events", ["alert_hash"])
-    op.create_index("ix_webhook_events_importance", "webhook_events", ["importance"])
-    op.create_index("ix_webhook_events_processing_status", "webhook_events", ["processing_status"])
-    op.create_index("idx_hash_timestamp", "webhook_events", ["alert_hash", "timestamp"])
-    op.create_index("idx_importance_timestamp", "webhook_events", ["importance", "timestamp"])
-    op.create_index("idx_duplicate_lookup", "webhook_events", ["alert_hash", "is_duplicate", "timestamp"])
-    op.create_index("idx_status_created", "webhook_events", ["processing_status", "created_at"])
-    op.create_index("idx_source_timestamp_id", "webhook_events", ["source", "timestamp", "id"])
+    op.create_index("ix_webhook_events_source", "webhook_events", ["source"], if_not_exists=True)
+    op.create_index("ix_webhook_events_timestamp", "webhook_events", ["timestamp"], if_not_exists=True)
+    op.create_index("ix_webhook_events_alert_hash", "webhook_events", ["alert_hash"], if_not_exists=True)
+    op.create_index("ix_webhook_events_importance", "webhook_events", ["importance"], if_not_exists=True)
+    op.create_index("ix_webhook_events_processing_status", "webhook_events", ["processing_status"], if_not_exists=True)
+    op.create_index("idx_hash_timestamp", "webhook_events", ["alert_hash", "timestamp"], if_not_exists=True)
+    op.create_index("idx_importance_timestamp", "webhook_events", ["importance", "timestamp"], if_not_exists=True)
+    op.create_index(
+        "idx_duplicate_lookup", "webhook_events", ["alert_hash", "is_duplicate", "timestamp"], if_not_exists=True
+    )
+    op.create_index("idx_status_created", "webhook_events", ["processing_status", "created_at"], if_not_exists=True)
+    op.create_index("idx_source_timestamp_id", "webhook_events", ["source", "timestamp", "id"], if_not_exists=True)
 
     # archived_webhook_events
     op.create_table(
@@ -80,13 +83,24 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.Column("archived_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_archived_webhook_events_source", "archived_webhook_events", ["source"])
-    op.create_index("ix_archived_webhook_events_timestamp", "archived_webhook_events", ["timestamp"])
-    op.create_index("ix_archived_webhook_events_alert_hash", "archived_webhook_events", ["alert_hash"])
-    op.create_index("ix_archived_webhook_events_importance", "archived_webhook_events", ["importance"])
-    op.create_index("ix_archived_webhook_events_archived_at", "archived_webhook_events", ["archived_at"])
-    op.create_index("idx_archived_hash_timestamp", "archived_webhook_events", ["alert_hash", "timestamp"])
+    op.create_index("ix_archived_webhook_events_source", "archived_webhook_events", ["source"], if_not_exists=True)
+    op.create_index(
+        "ix_archived_webhook_events_timestamp", "archived_webhook_events", ["timestamp"], if_not_exists=True
+    )
+    op.create_index(
+        "ix_archived_webhook_events_alert_hash", "archived_webhook_events", ["alert_hash"], if_not_exists=True
+    )
+    op.create_index(
+        "ix_archived_webhook_events_importance", "archived_webhook_events", ["importance"], if_not_exists=True
+    )
+    op.create_index(
+        "ix_archived_webhook_events_archived_at", "archived_webhook_events", ["archived_at"], if_not_exists=True
+    )
+    op.create_index(
+        "idx_archived_hash_timestamp", "archived_webhook_events", ["alert_hash", "timestamp"], if_not_exists=True
+    )
 
     # ai_usage_log
     op.create_table(
@@ -102,10 +116,11 @@ def upgrade() -> None:
         sa.Column("alert_hash", sa.String(64), nullable=True),
         sa.Column("source", sa.String(100), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_ai_usage_log_timestamp", "ai_usage_log", ["timestamp"])
-    op.create_index("ix_ai_usage_log_alert_hash", "ai_usage_log", ["alert_hash"])
-    op.create_index("idx_usage_timestamp_route", "ai_usage_log", ["timestamp", "route_type"])
+    op.create_index("ix_ai_usage_log_timestamp", "ai_usage_log", ["timestamp"], if_not_exists=True)
+    op.create_index("ix_ai_usage_log_alert_hash", "ai_usage_log", ["alert_hash"], if_not_exists=True)
+    op.create_index("idx_usage_timestamp_route", "ai_usage_log", ["timestamp", "route_type"], if_not_exists=True)
 
     # remediation_execution
     op.create_table(
@@ -123,9 +138,14 @@ def upgrade() -> None:
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("execution_id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_remediation_execution_execution_id", "remediation_execution", ["execution_id"])
-    op.create_index("idx_remediation_status_time", "remediation_execution", ["status", "started_at"])
+    op.create_index(
+        "ix_remediation_execution_execution_id", "remediation_execution", ["execution_id"], if_not_exists=True
+    )
+    op.create_index(
+        "idx_remediation_status_time", "remediation_execution", ["status", "started_at"], if_not_exists=True
+    )
 
     # forward_rules
     op.create_table(
@@ -144,8 +164,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("idx_forward_rules_priority", "forward_rules", ["priority"])
+    op.create_index("idx_forward_rules_priority", "forward_rules", ["priority"], if_not_exists=True)
 
     # deep_analyses
     op.create_table(
@@ -161,10 +182,11 @@ def upgrade() -> None:
         sa.Column("openclaw_session_key", sa.String(200), nullable=True),
         sa.Column("status", sa.String(20), nullable=True, server_default="'completed'"),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_deep_analyses_webhook_event_id", "deep_analyses", ["webhook_event_id"])
-    op.create_index("ix_deep_analyses_openclaw_run_id", "deep_analyses", ["openclaw_run_id"])
-    op.create_index("ix_deep_analyses_status", "deep_analyses", ["status"])
+    op.create_index("ix_deep_analyses_webhook_event_id", "deep_analyses", ["webhook_event_id"], if_not_exists=True)
+    op.create_index("ix_deep_analyses_openclaw_run_id", "deep_analyses", ["openclaw_run_id"], if_not_exists=True)
+    op.create_index("ix_deep_analyses_status", "deep_analyses", ["status"], if_not_exists=True)
 
     # failed_forwards
     op.create_table(
@@ -186,10 +208,11 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
-    op.create_index("ix_failed_forwards_webhook_event_id", "failed_forwards", ["webhook_event_id"])
-    op.create_index("idx_failed_status_retry", "failed_forwards", ["status", "next_retry_at"])
-    op.create_index("idx_failed_webhook_event", "failed_forwards", ["webhook_event_id"])
+    op.create_index("ix_failed_forwards_webhook_event_id", "failed_forwards", ["webhook_event_id"], if_not_exists=True)
+    op.create_index("idx_failed_status_retry", "failed_forwards", ["status", "next_retry_at"], if_not_exists=True)
+    op.create_index("idx_failed_webhook_event", "failed_forwards", ["webhook_event_id"], if_not_exists=True)
 
     # system_configs
     op.create_table(
@@ -209,6 +232,7 @@ def upgrade() -> None:
             comment="修改来源: api/migration/system",
         ),
         sa.PrimaryKeyConstraint("key"),
+        if_not_exists=True,
     )
 
 
