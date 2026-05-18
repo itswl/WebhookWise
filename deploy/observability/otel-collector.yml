@@ -29,11 +29,11 @@ exporters:
     namespace: webhookwise
     resource_to_telemetry_conversion:
       enabled: true
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
-  otlphttp/loki:
+  otlp_http/loki:
     endpoint: http://loki:3100/otlp
 
 service:
@@ -41,7 +41,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, attributes/cleanup, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -49,4 +49,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, attributes/cleanup, batch]
-      exporters: [otlphttp/loki]
+      exporters: [otlp_http/loki]
