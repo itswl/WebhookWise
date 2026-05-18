@@ -1,13 +1,14 @@
 """OpenAI / Instructor client and tracked LLM calls."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from collections.abc import Sequence
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import httpx
-import instructor
 import yaml
 from openai import AsyncOpenAI
 from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -27,6 +28,9 @@ from services.analysis.ai_policies import AIProviderPolicy
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult
+
+if TYPE_CHECKING:
+    import instructor
 
 _openai_client_lock = asyncio.Lock()
 _openai_client: AsyncOpenAI | None = None
@@ -78,6 +82,8 @@ async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None 
 async def initialize_openai_client(
     policy: AIProviderPolicy | None = None, *, http_client: httpx.AsyncClient | None = None
 ) -> None:
+    import instructor
+
     global _openai_client, _instructor_client
     policy = policy or AIProviderPolicy.from_config()
     async with _openai_client_lock:
