@@ -1,12 +1,19 @@
 """Processing steps used by the webhook pipeline entrypoints."""
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from core.alert_concurrency import alert_processing_gate
 from core.log_context import set_log_context
 from core.logger import logger
-from core.metrics import WEBHOOK_PROCESSING_STATUS_TOTAL, WEBHOOK_STORM_SUPPRESSED_TOTAL
+from core.metrics import (
+    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
+    WEBHOOK_PIPELINE_STEP_TOTAL,
+    WEBHOOK_PROCESSING_STATUS_TOTAL,
+    WEBHOOK_STORM_SUPPRESSED_TOTAL,
+)
+from core.otel import emit_event, record_signal
 from core.otel import span as otel_span
 from services.webhooks.analysis_resolution import resolve_analysis
 from services.webhooks.command_service import SaveWebhookResult, mark_webhook_suppressed
@@ -58,6 +65,16 @@ async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object
     )
     WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
     WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
+    attrs = {
+        "event_id": ctx.event_id or 0,
+        "source": ctx.req_ctx.source,
+        "alert_hash": ctx.alert_hash[:12],
+        "webhook.status": "suppressed",
+        "webhook.suppression.reason": getattr(lock_res, "reason", "") or "alert_storm_backpressure",
+        "queue.depth": getattr(lock_res, "queue_size", 0),
+    }
+    emit_event("webhook.storm.suppressed", attrs)
+    record_signal("webhook.ingest", "suppressed", attrs)
     noise = NoiseReductionContext(
         "storm",
         None,
@@ -86,16 +103,27 @@ async def _resolve_noise_context(
     ctx: WebhookProcessContext,
     dependencies: WebhookPipelineDependencies,
 ) -> tuple[dict[str, Any], NoiseReductionContext, Any]:
+    started = time.perf_counter()
+    outcome = "success"
     with otel_span(
         "webhook.analyze",
         {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
     ):
-        analysis_res = await resolve_analysis(
-            ctx.alert_hash,
-            ctx.req_ctx.webhook_full_data,
-            policy=dependencies.analysis_policy,
-            http_client=dependencies.http_client,
-        )
+        try:
+            analysis_res = await resolve_analysis(
+                ctx.alert_hash,
+                ctx.req_ctx.webhook_full_data,
+                policy=dependencies.analysis_policy,
+                http_client=dependencies.http_client,
+            )
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            WEBHOOK_PIPELINE_STEP_TOTAL.labels("analysis", ctx.metric_source, outcome).inc()
+            WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("analysis", ctx.metric_source, outcome).observe(
+                time.perf_counter() - started
+            )
     route_type = analysis_res.analysis_result.get("_route_type", "ai")
     importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
     set_log_context(route_type=route_type)
@@ -106,6 +134,15 @@ async def _resolve_noise_context(
             ctx.event_id,
             ctx.request_id,
             importance,
+        )
+        emit_event(
+            "webhook.analysis.reused",
+            {
+                "event_id": ctx.event_id or 0,
+                "source": ctx.req_ctx.source,
+                "alert_hash": ctx.alert_hash[:12],
+                "importance": importance,
+            },
         )
         return (
             analysis_res.analysis_result,
@@ -121,13 +158,35 @@ async def _resolve_noise_context(
         importance,
         analysis_res.analysis_result.get("_degraded", False),
     )
-    noise = await compute_noise(
-        ctx.alert_hash,
-        ctx.req_ctx.source,
-        ctx.req_ctx.parsed_data,
-        analysis_res.analysis_result,
-        policy=dependencies.noise_policy,
+    emit_event(
+        "webhook.analysis.completed",
+        {
+            "event_id": ctx.event_id or 0,
+            "source": ctx.req_ctx.source,
+            "alert_hash": ctx.alert_hash[:12],
+            "importance": importance,
+            "webhook.route": route_type,
+            "ai.degraded": bool(analysis_res.analysis_result.get("_degraded", False)),
+        },
     )
+    noise_started = time.perf_counter()
+    noise_outcome = "success"
+    try:
+        noise = await compute_noise(
+            ctx.alert_hash,
+            ctx.req_ctx.source,
+            ctx.req_ctx.parsed_data,
+            analysis_res.analysis_result,
+            policy=dependencies.noise_policy,
+        )
+    except Exception:
+        noise_outcome = "error"
+        raise
+    finally:
+        WEBHOOK_PIPELINE_STEP_TOTAL.labels("noise", ctx.metric_source, noise_outcome).inc()
+        WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("noise", ctx.metric_source, noise_outcome).observe(
+            time.perf_counter() - noise_started
+        )
     return analysis_res.analysis_result, noise, analysis_res
 
 
@@ -136,22 +195,45 @@ async def run_processing_steps(
     dependencies: WebhookPipelineDependencies,
 ) -> PipelineProcessingResult:
     async with alert_processing_gate(ctx.alert_hash) as gate_res:
+        validation_started = time.perf_counter()
+        validation_outcome = "success"
         with otel_span(
             "webhook.validate",
             {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
         ):
-            if await _handle_storm_suppression(ctx, gate_res):
-                return PipelineProcessingResult(suppressed=True)
+            try:
+                if await _handle_storm_suppression(ctx, gate_res):
+                    validation_outcome = "suppressed"
+                    return PipelineProcessingResult(suppressed=True)
+            except Exception:
+                validation_outcome = "error"
+                raise
+            finally:
+                WEBHOOK_PIPELINE_STEP_TOTAL.labels("validate", ctx.metric_source, validation_outcome).inc()
+                WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(
+                    "validate", ctx.metric_source, validation_outcome
+                ).observe(time.perf_counter() - validation_started)
 
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
         final_analysis = build_final_analysis(analysis, noise)
-        finalize_res = await finalize_analysis_transaction(
-            ctx,
-            analysis_res,
-            final_analysis,
-            noise,
-            forwarding_policy=dependencies.forwarding_policy,
-        )
+        persist_started = time.perf_counter()
+        persist_outcome = "success"
+        try:
+            finalize_res = await finalize_analysis_transaction(
+                ctx,
+                analysis_res,
+                final_analysis,
+                noise,
+                forwarding_policy=dependencies.forwarding_policy,
+            )
+        except Exception:
+            persist_outcome = "error"
+            raise
+        finally:
+            WEBHOOK_PIPELINE_STEP_TOTAL.labels("persist", ctx.metric_source, persist_outcome).inc()
+            WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("persist", ctx.metric_source, persist_outcome).observe(
+                time.perf_counter() - persist_started
+            )
         return PipelineProcessingResult(
             suppressed=False,
             save_result=finalize_res.save_result,

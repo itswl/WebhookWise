@@ -11,6 +11,7 @@ from api import InvalidSignatureError
 from core.config import SecurityConfig, UnifiedConfigManager
 from core.dependencies import get_config_manager
 from core.logger import logger
+from core.metrics import SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
 from services.webhooks.command_service import get_client_ip
 
@@ -168,6 +169,7 @@ async def verify_webhook_auth_dep(
             length = int(content_length)
             max_body_bytes = config.security.MAX_WEBHOOK_BODY_BYTES
             if max_body_bytes and length > max_body_bytes:
+                SECURITY_CHECKS_TOTAL.labels("body_size", "rejected").inc()
                 raise HTTPException(
                     status_code=413,
                     detail=f"Request body too large: {length} bytes (max {max_body_bytes})",
@@ -176,10 +178,12 @@ async def verify_webhook_auth_dep(
             logger.debug("无效的 Content-Length 头: %s", content_length)
 
     if not config.security.REQUIRE_WEBHOOK_AUTH:
+        SECURITY_CHECKS_TOTAL.labels("webhook_auth", "disabled").inc()
         return
 
     if not config.security.WEBHOOK_SECRET:
         logger.warning("Webhook 鉴权已启用但 WEBHOOK_SECRET 为空")
+        SECURITY_CHECKS_TOTAL.labels("webhook_auth", "misconfigured").inc()
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     # 2. 读取 body 并验证签名
@@ -188,13 +192,17 @@ async def verify_webhook_auth_dep(
     try:
         ensure_webhook_auth(headers, raw_body, secret=config.security.WEBHOOK_SECRET)
     except InvalidSignatureError:
+        SECURITY_CHECKS_TOTAL.labels("webhook_auth", "rejected").inc()
         raise HTTPException(status_code=401, detail="Unauthorized") from None
     except ValueError as e:
         logger.warning("Webhook 签名验证参数异常: %s", e)
+        SECURITY_CHECKS_TOTAL.labels("webhook_auth", "invalid").inc()
         raise HTTPException(status_code=401, detail="Unauthorized") from None
     except Exception as e:
         logger.error("Webhook 认证内部错误: %s", e, exc_info=True)
+        SECURITY_CHECKS_TOTAL.labels("webhook_auth", "error").inc()
         raise HTTPException(status_code=500, detail="Internal server error") from None
+    SECURITY_CHECKS_TOTAL.labels("webhook_auth", "allowed").inc()
 
 
 async def check_rate_limit_dep(
@@ -214,10 +222,13 @@ async def check_rate_limit_dep(
 
             src = sanitize_source(request.path_params.get("source", request.query_params.get("source", "unknown")))
             WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rate_limited").inc()
+            SECURITY_CHECKS_TOTAL.labels("rate_limit", "rejected").inc()
             retry_after = int(tier.reset_at - time.time()) if tier else 60
             response.headers["Retry-After"] = str(max(retry_after, 1))
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        SECURITY_CHECKS_TOTAL.labels("rate_limit", "allowed" if tier else "disabled").inc()
     except HTTPException:
         raise
     except Exception as e:
         logger.error("限流检查异常（降级放行）: %s", e, exc_info=True)
+        SECURITY_CHECKS_TOTAL.labels("rate_limit", "error_allowed").inc()

@@ -1,6 +1,8 @@
 import contextlib
 import json
-from typing import Any, Protocol, cast
+import time
+from collections.abc import Awaitable
+from typing import Any, Protocol, TypeVar, cast
 
 import redis.asyncio as redis
 from redis.asyncio.client import PubSub
@@ -9,6 +11,7 @@ from core.config import Config
 from core.logger import logger, mask_url
 
 _redis_client: "_RedisClient | None" = None
+T = TypeVar("T")
 
 
 class _RedisClient(Protocol):
@@ -66,6 +69,21 @@ def init_redis() -> None:
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 
+async def _record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
+    from core.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
+
+    start = time.perf_counter()
+    status = "success"
+    try:
+        return await awaitable
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        REDIS_OPERATIONS_TOTAL.labels(operation, status).inc()
+        REDIS_OPERATION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
+
+
 def _to_int(raw: object) -> int:
     if raw is None:
         return 0
@@ -77,13 +95,13 @@ def _to_int(raw: object) -> int:
 
 async def redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
     r = get_redis()
-    raw = await r.set(key, value, nx=True, ex=int(ttl_seconds))
+    raw = await _record_redis_operation("set_nx_ex", r.set(key, value, nx=True, ex=int(ttl_seconds)))
     return bool(raw)
 
 
 async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
     r = get_redis()
-    raw = await r.eval(script, int(numkeys), *args)
+    raw = await _record_redis_operation("eval", r.eval(script, int(numkeys), *args))
     try:
         return int(raw or 0)  # type: ignore[call-overload,no-any-return]
     except (TypeError, ValueError):
@@ -92,7 +110,7 @@ async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
 
 async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str | None:
     r = get_redis()
-    raw = await r.eval(script, int(numkeys), *args)
+    raw = await _record_redis_operation("eval", r.eval(script, int(numkeys), *args))
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -103,7 +121,7 @@ async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str 
 
 async def redis_get_str(key: str) -> str | None:
     r = get_redis()
-    raw = await r.get(key)
+    raw = await _record_redis_operation("get", r.get(key))
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -116,35 +134,35 @@ async def redis_get_str(key: str) -> str | None:
 
 async def redis_setex_str(key: str, ttl_seconds: int, value: str) -> None:
     r = get_redis()
-    await r.setex(key, int(ttl_seconds), value)
+    await _record_redis_operation("setex", r.setex(key, int(ttl_seconds), value))
 
 
 async def redis_setex_bytes(key: str, ttl_seconds: int, value: bytes) -> None:
     r = get_redis()
-    await r.setex(key, int(ttl_seconds), value)
+    await _record_redis_operation("setex", r.setex(key, int(ttl_seconds), value))
 
 
 async def redis_delete(key: str) -> int:
     r = get_redis()
-    raw = await r.delete(key)
+    raw = await _record_redis_operation("delete", r.delete(key))
     return _to_int(raw)
 
 
 async def redis_publish(channel: str, message: str) -> int:
     r = get_redis()
-    raw = await r.publish(channel, message)
+    raw = await _record_redis_operation("publish", r.publish(channel, message))
     return _to_int(raw)
 
 
 async def redis_incr(key: str) -> int:
     r = get_redis()
-    raw = await r.incr(key)
+    raw = await _record_redis_operation("incr", r.incr(key))
     return _to_int(raw)
 
 
 async def redis_expire(key: str, ttl_seconds: int) -> bool:
     r = get_redis()
-    raw = await r.expire(key, int(ttl_seconds))
+    raw = await _record_redis_operation("expire", r.expire(key, int(ttl_seconds)))
     return bool(raw)
 
 
@@ -200,13 +218,13 @@ def redis_pubsub() -> RedisPubSub:
 
 async def redis_xlen(stream: str) -> int:
     r = get_redis()
-    raw = await r.xlen(stream)
+    raw = await _record_redis_operation("xlen", r.xlen(stream))
     return _to_int(raw)
 
 
 async def redis_xpending_pending(stream: str, group: str) -> int:
     r = get_redis()
-    raw = await r.xpending(stream, group)
+    raw = await _record_redis_operation("xpending", r.xpending(stream, group))
     if isinstance(raw, dict):
         try:
             return int(raw.get("pending") or 0)
@@ -222,7 +240,7 @@ async def redis_xpending_pending(stream: str, group: str) -> int:
 
 async def redis_xinfo_group_lag(stream: str, group: str) -> int:
     r = get_redis()
-    raw = await r.xinfo_groups(stream)
+    raw = await _record_redis_operation("xinfo_groups", r.xinfo_groups(stream))
     if not isinstance(raw, list):
         return 0
     for item in raw:
@@ -238,7 +256,7 @@ async def redis_xinfo_group_lag(stream: str, group: str) -> int:
 
 async def redis_ping() -> bool:
     try:
-        raw = await get_redis().ping()
+        raw = await _record_redis_operation("ping", get_redis().ping())
         return bool(raw)
     except Exception as e:
         logger.warning("[Redis] ping 失败: %s", e)

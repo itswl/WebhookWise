@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -172,8 +173,19 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
     if _session_factory is None:
         await init_engine()
     assert _session_factory is not None
-    async with _session_factory() as session:
-        yield session
+    start = time.perf_counter()
+    status = "success"
+    try:
+        async with _session_factory() as session:
+            yield session
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+
+        DB_SESSION_TOTAL.labels("request_session", status).inc()
+        DB_SESSION_DURATION_SECONDS.labels("request_session", status).observe(time.perf_counter() - start)
 
 
 @asynccontextmanager
@@ -184,14 +196,26 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
     由框架负责提交、回滚和关闭。传入 existing_session 时不接管事务边界，
     由外层调用方负责提交或回滚。
     """
-    if existing_session:
-        yield existing_session
-    else:
-        if _session_factory is None:
-            await init_engine()
-        assert _session_factory is not None
-        async with _session_factory.begin() as session:
-            yield session
+    start = time.perf_counter()
+    operation = "existing_session" if existing_session else "transaction"
+    status = "success"
+    try:
+        if existing_session:
+            yield existing_session
+        else:
+            if _session_factory is None:
+                await init_engine()
+            assert _session_factory is not None
+            async with _session_factory.begin() as session:
+                yield session
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+
+        DB_SESSION_TOTAL.labels(operation, status).inc()
+        DB_SESSION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
 
 
 async def count_with_timeout(
@@ -204,6 +228,8 @@ async def count_with_timeout(
     超时返回 None，调用方应适配 None 场景。
     使用 SAVEPOINT 隔离超时查询，避免 rollback 摧毁调用者事务。
     """
+    start = time.perf_counter()
+    status = "success"
     try:
         async with session.begin_nested():
             with contextlib.suppress(Exception):
@@ -211,8 +237,14 @@ async def count_with_timeout(
             result = await session.execute(stmt)
             return result.scalar() or 0
     except Exception as e:
+        status = "timeout_or_error"
         _logger.warning("COUNT query timeout (%dms): %s", timeout_ms, e)
         return None
+    finally:
+        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+
+        DB_SESSION_TOTAL.labels("count_query", status).inc()
+        DB_SESSION_DURATION_SECONDS.labels("count_query", status).observe(time.perf_counter() - start)
 
 
 # ────────────────────────────────────────
@@ -232,6 +264,8 @@ async def init_db() -> None:
 
 async def test_db_connection() -> bool:
     """测试数据库连接（异步版本）"""
+    start = time.perf_counter()
+    status = "success"
     try:
         if _engine is None:
             await init_engine()
@@ -241,5 +275,11 @@ async def test_db_connection() -> bool:
         _logger.info("数据库连接测试成功")
         return True
     except Exception as e:
+        status = "error"
         _logger.error("数据库连接失败: %s", e)
         return False
+    finally:
+        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+
+        DB_SESSION_TOTAL.labels("healthcheck", status).inc()
+        DB_SESSION_DURATION_SECONDS.labels("healthcheck", status).observe(time.perf_counter() - start)

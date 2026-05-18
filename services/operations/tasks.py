@@ -21,7 +21,10 @@ from core.metrics import (
     SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME,
     SCHEDULED_TASK_RUNS_TOTAL,
     WEBHOOK_RUNNING_TASKS,
+    WORKER_TASK_DURATION_SECONDS,
+    WORKER_TASKS_TOTAL,
 )
+from core.otel import emit_event, record_signal
 from core.otel import span as otel_span
 from core.redis_client import RedisEvalArg
 from core.taskiq_broker import broker
@@ -357,6 +360,15 @@ async def run_webhook_task(
         event_id is None,
         ingest_retry_count,
     )
+    emit_event(
+        "webhook.task.started",
+        {
+            "event_id": event_id or 0,
+            "source": source or "unknown",
+            "webhook.raw_ingest": event_id is None,
+            "retry.count": ingest_retry_count,
+        },
+    )
     try:
         async with _webhook_task_slot():
             WEBHOOK_RUNNING_TASKS.inc()
@@ -410,6 +422,16 @@ async def run_webhook_task(
             outcome,
             duration_ms,
         )
+        attributes = {
+            "event_id": event_id or 0,
+            "source": source or "unknown",
+            "webhook.outcome": outcome,
+            "duration.ms": duration_ms,
+        }
+        emit_event("webhook.task.finished", attributes)
+        record_signal("webhook.task", outcome, attributes)
+        WORKER_TASKS_TOTAL.labels("webhook_process_task", outcome).inc()
+        WORKER_TASK_DURATION_SECONDS.labels("webhook_process_task", outcome).observe(time.perf_counter() - task_start)
 
 
 @broker.task(task_name="webhook_process_task")
@@ -449,7 +471,16 @@ async def run_forward_outbox_task(outbox_id: int) -> None:
     """Execute one transactional forwarding outbox intent."""
     from services.forwarding.outbox import process_forward_outbox_by_id
 
-    await process_forward_outbox_by_id(outbox_id)
+    start = time.perf_counter()
+    status = "success"
+    try:
+        await process_forward_outbox_by_id(outbox_id)
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        WORKER_TASKS_TOTAL.labels("forward_outbox_task", status).inc()
+        WORKER_TASK_DURATION_SECONDS.labels("forward_outbox_task", status).observe(time.perf_counter() - start)
 
 
 @broker.task(task_name="forward_outbox_task")

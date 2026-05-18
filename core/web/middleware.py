@@ -6,7 +6,40 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
+from core.metrics import (
+    HTTP_SERVER_REQUEST_BODY_BYTES,
+    HTTP_SERVER_REQUEST_DURATION_SECONDS,
+    HTTP_SERVER_REQUESTS_TOTAL,
+)
 from core.trace import build_traceparent, extract_trace_id_from_headers, generate_trace_id, set_trace_id, trace_id_var
+
+
+def _route_label(path: str) -> str:
+    if path in {"/", "/dashboard", "/live", "/ready", "/health", "/webhook", "/api/webhooks"}:
+        return path
+    if path.startswith("/static/"):
+        return "/static/*"
+    if path.startswith("/webhook/"):
+        return "/webhook/{source}"
+    if path.startswith("/api/admin/"):
+        return "/api/admin/*"
+    if path.startswith("/api/forwarding/"):
+        return "/api/forwarding/*"
+    if path.startswith("/api/deep-analysis/"):
+        return "/api/deep-analysis/*"
+    if path.startswith("/api/reanalysis/"):
+        return "/api/reanalysis/*"
+    if path.startswith("/api/ai-usage/"):
+        return "/api/ai-usage/*"
+    return "other"
+
+
+def _content_length_bytes(value: str) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 class SecurityHeadersMiddleware:
@@ -155,6 +188,14 @@ class TraceContextMiddleware:
             )
             raise
         finally:
+            route = _route_label(path)
+            status = str(status_code or 500)
+            duration_seconds = time.perf_counter() - started_at
+            HTTP_SERVER_REQUESTS_TOTAL.labels(method, route, status).inc()
+            HTTP_SERVER_REQUEST_DURATION_SECONDS.labels(method, route, status).observe(duration_seconds)
+            if (body_bytes := _content_length_bytes(content_length)) is not None:
+                HTTP_SERVER_REQUEST_BODY_BYTES.labels(method, route).observe(body_bytes)
+
             if path not in {"/live", "/ready", "/health"} and not path.startswith("/static/"):
                 duration_ms = int((time.perf_counter() - started_at) * 1000)
                 logger.info(

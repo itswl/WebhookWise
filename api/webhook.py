@@ -4,6 +4,7 @@ api/webhook.py
 Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
+import time
 from datetime import datetime
 from typing import Any
 
@@ -15,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import verify_api_key
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
-from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+from core.metrics import (
+    QUEUE_OPERATION_DURATION_SECONDS,
+    QUEUE_OPERATIONS_TOTAL,
+    WEBHOOK_INGRESS_PAYLOAD_BYTES,
+    WEBHOOK_RECEIVED_TOTAL,
+    sanitize_source,
+)
 from core.redis_client import redis_ping
 from core.sensitive_data import redact_event_dict
 from core.trace import generate_trace_id, set_trace_id
@@ -47,7 +54,9 @@ def _payload_too_large_response(
 ) -> JSONResponse | None:
     policy = policy or WebhookReceivePolicy.from_config()
     if policy.max_body_bytes and len(raw_body) > policy.max_body_bytes:
-        WEBHOOK_RECEIVED_TOTAL.labels(source=sanitize_source(source_hint), status="rejected_size").inc()
+        src = sanitize_source(source_hint)
+        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rejected_size").inc()
+        WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="rejected_size").observe(len(raw_body))
         return JSONResponse(status_code=413, content={"success": False, "error": "Payload too large"})
     return None
 
@@ -92,6 +101,7 @@ async def _receive_and_enqueue_webhook(
     if backpressure.suppressed:
         src = sanitize_source(source_hint)
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
+        WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="ingress_suppressed").observe(len(raw_body))
         logger.warning(
             "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s",
             request_id,
@@ -121,9 +131,15 @@ async def _receive_and_enqueue_webhook(
         "request_id": request_id,
         "received_at": received_at,
     }
+    enqueue_started = time.perf_counter()
+    enqueue_status = "success"
     try:
         await process_webhook_task.kiq(**task_kwargs)
     except Exception:
+        enqueue_status = "error"
+        WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=sanitize_source(source_hint), outcome="enqueue_failed").observe(
+            len(raw_body)
+        )
         logger.exception(
             "[Webhook] 告警入队失败 request_id=%s source=%s ip=%s body_size=%d",
             request_id,
@@ -132,6 +148,11 @@ async def _receive_and_enqueue_webhook(
             len(raw_body),
         )
         raise
+    finally:
+        QUEUE_OPERATIONS_TOTAL.labels("webhook_process_task", "enqueue", enqueue_status).inc()
+        QUEUE_OPERATION_DURATION_SECONDS.labels("webhook_process_task", "enqueue", enqueue_status).observe(
+            time.perf_counter() - enqueue_started
+        )
     logger.info(
         "[Webhook] 告警已入队 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
         request_id,
@@ -140,6 +161,7 @@ async def _receive_and_enqueue_webhook(
         len(raw_body),
         received_at,
     )
+    WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=sanitize_source(source_hint), outcome="queued").observe(len(raw_body))
 
     return {
         "success": True,

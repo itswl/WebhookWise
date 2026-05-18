@@ -1,6 +1,7 @@
 """OpenClaw forwarding and trigger payload construction."""
 
 import json
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
@@ -9,6 +10,7 @@ import httpx
 
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import logger, mask_url
+from core.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
@@ -26,6 +28,8 @@ async def forward_to_openclaw(
     dependencies: OpenClawForwardDependencies | None = None,
 ) -> ForwardResult:
     """推送任务到 OpenClaw 进行深度分析。"""
+    started = time.perf_counter()
+    status = "unknown"
     policy = policy or OpenClawTriggerPolicy.from_config()
     dependencies = dependencies or build_openclaw_forward_dependencies()
     if http_client is not None:
@@ -35,6 +39,9 @@ async def forward_to_openclaw(
         )
     if not policy.enabled:
         logger.debug("[Forward] OpenClaw 未启用，跳过深度分析")
+        status = "disabled"
+        FORWARD_DELIVERY_TOTAL.labels("openclaw", status).inc()
+        FORWARD_DELIVERY_DURATION_SECONDS.labels("openclaw", status).observe(time.perf_counter() - started)
         return {"status": "disabled"}
 
     async def _do_request() -> dict[str, Any]:
@@ -53,12 +60,18 @@ async def forward_to_openclaw(
 
     try:
         res = await dependencies.circuit_breaker.call_async(_do_request)
+        status = str(res.get("status") or ("pending" if res.get("_pending") else "success"))
         return res
     except CircuitBreakerOpenException:
+        status = "circuit_broken"
         return {"status": "circuit_broken"}
     except Exception as e:
         logger.error("OpenClaw 转发异常: %s", e)
+        status = "error"
         return {"status": "error", "message": str(e)}
+    finally:
+        FORWARD_DELIVERY_TOTAL.labels("openclaw", status).inc()
+        FORWARD_DELIVERY_DURATION_SECONDS.labels("openclaw", status).observe(time.perf_counter() - started)
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
