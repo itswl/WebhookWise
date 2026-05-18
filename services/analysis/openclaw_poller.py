@@ -5,6 +5,7 @@ stores audit state, while TaskIQ owns retry/poll timing.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -26,6 +27,7 @@ from services.operations.deep_analysis_notifications import (
 from services.webhooks.types import DeepAnalysisStatus, WebhookData
 
 logger = logging.getLogger("webhook_service.openclaw_poller")
+MANUAL_RETRY_STARTED_AT_KEY = "_manual_retry_started_at"
 
 
 async def _safe_notify(coro: Any) -> None:
@@ -56,6 +58,18 @@ def _openclaw_http_poll_timeout(policy: OpenClawPollPolicy | None = None) -> flo
 
 def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _poll_timeout_started_at(rec: WebhookData) -> datetime | None:
+    analysis_result = rec.get("analysis_result")
+    if isinstance(analysis_result, dict):
+        manual_retry_started_at = analysis_result.get(MANUAL_RETRY_STARTED_AT_KEY)
+        if isinstance(manual_retry_started_at, str) and manual_retry_started_at:
+            with contextlib.suppress(ValueError):
+                return datetime.fromisoformat(manual_retry_started_at)
+
+    created_at = rec.get("created_at")
+    return created_at if isinstance(created_at, datetime) else None
 
 
 def _is_transient_poll_error(error: object) -> bool:
@@ -160,12 +174,11 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
     record_id = rec["id"]
 
     try:
-        created_at = rec.get("created_at")
-        created_dt = created_at if isinstance(created_at, datetime) else None
+        timeout_started_at = _poll_timeout_started_at(rec)
         # --- 超时检查 ---
         timeout_seconds = policy.timeout_seconds
-        elapsed_total = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
-        if created_dt and elapsed_total > timeout_seconds:
+        elapsed_total = (datetime.now() - timeout_started_at).total_seconds() if timeout_started_at else 0.0
+        if timeout_started_at and elapsed_total > timeout_seconds:
             logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds)
             await _clear_poll_stability(record_id)
             DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
@@ -179,7 +192,7 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
 
         # --- session_key 缺失检查 ---
         if not rec["openclaw_session_key"]:
-            elapsed = (datetime.now() - created_dt).total_seconds() if created_dt else 999.0
+            elapsed = (datetime.now() - timeout_started_at).total_seconds() if timeout_started_at else 999.0
             if elapsed < compute_openclaw_poll_delay(0, policy=policy):
                 return {"id": record_id, "action": "skip"}
             logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
@@ -212,11 +225,11 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
         if result.get("status") == "completed":
             text = result.get("text", "")
             msg_count = int(result.get("msg_count", 0) or 0)
-            required_hits = policy.stability_required_hits
+            required_hits = 1 if result.get("is_final") is True else policy.stability_required_hits
 
             def _completed_update() -> WebhookData:
                 analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
-                duration = (datetime.now() - created_dt).total_seconds() if created_dt else 0.0
+                duration = (datetime.now() - timeout_started_at).total_seconds() if timeout_started_at else 0.0
                 DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
                 return {
                     "id": record_id,
@@ -430,7 +443,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             await _schedule_next_openclaw_poll(
                 analysis_id,
                 int(record_dict.get("poll_attempts") or 0),
-                record_dict.get("created_at") if isinstance(record_dict.get("created_at"), datetime) else None,
+                _poll_timeout_started_at(record_dict),
                 policy=policy,
             )
             return

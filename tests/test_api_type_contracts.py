@@ -228,11 +228,13 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
 
     await session.refresh(record)
     assert record.status == DeepAnalysisStatus.PENDING
-    assert record.analysis_result is None
+    assert isinstance(record.analysis_result, dict)
+    retry_started_at = record.analysis_result[deep_analysis.MANUAL_RETRY_STARTED_AT_KEY]
+    assert datetime.fromisoformat(str(retry_started_at)) >= started
     assert record.duration_seconds == 0
     assert record.poll_attempts == 0
     assert record.last_polled_at is None
-    assert record.created_at is not None and record.created_at >= started
+    assert record.created_at == old_created_at
     assert record.next_poll_at is not None and record.next_poll_at >= started
 
 

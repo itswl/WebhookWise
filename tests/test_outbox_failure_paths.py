@@ -504,6 +504,28 @@ class TestOpenClawPoller:
         assert result["retryable"] is True
         assert "connection attempts" in str(result["error"]).lower()
 
+    async def test_poll_via_http_treats_read_timeout_as_pending(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import httpx
+
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        class _Client:
+            async def get(self, *_: object, **__: object) -> object:
+                raise httpx.ReadTimeout("")
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
+
+        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+
+        assert result["status"] == "pending"
+        assert "ReadTimeout" in str(result["error"])
+
     async def test_poll_via_http_invalid_json_is_terminal_upstream_error(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -608,6 +630,79 @@ class TestOpenClawPoller:
         assert result["status"] == DeepAnalysisStatus.COMPLETED
         assert result["_need_success_notify"] is True
         assert result["analysis_result"]["root_cause"] == "root cause ready"
+
+    async def test_poll_single_record_trusts_explicit_final_http_result(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+
+        async def _completed(*_: object, **__: object) -> dict[str, object]:
+            return {"status": "completed", "text": "explicit final", "msg_count": 2, "is_final": True}
+
+        async def _stability_should_not_be_written(*_: object, **__: object) -> None:
+            raise AssertionError("explicit HTTP final should not need a stability snapshot")
+
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "_set_poll_stability", _stability_should_not_be_written)
+
+        result = await openclaw_poller._poll_single_record(
+            {
+                "id": 1,
+                "webhook_event_id": 1,
+                "engine": "openclaw",
+                "openclaw_session_key": "session-1",
+                "openclaw_run_id": "run-1",
+                "created_at": datetime.now(),
+                "status": DeepAnalysisStatus.PENDING,
+                "analysis_result": None,
+                "duration_seconds": 0,
+            }
+        )
+
+        assert result["action"] == "update"
+        assert result["status"] == DeepAnalysisStatus.COMPLETED
+        assert result["analysis_result"]["root_cause"] == "explicit final"
+
+    async def test_poll_single_record_uses_manual_retry_time_for_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from core.config import Config
+        from services.analysis import openclaw_poller
+
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(Config.openclaw, "OPENCLAW_TIMEOUT_SECONDS", 900)
+
+        async def _completed(*_: object, **__: object) -> dict[str, object]:
+            return {"status": "completed", "text": "manual retry ready", "msg_count": 2}
+
+        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+
+        result = await openclaw_poller._poll_single_record(
+            {
+                "id": 1,
+                "webhook_event_id": 1,
+                "engine": "openclaw",
+                "openclaw_session_key": "session-1",
+                "openclaw_run_id": "run-1",
+                "created_at": datetime.now() - timedelta(hours=2),
+                "status": DeepAnalysisStatus.PENDING,
+                "analysis_result": {
+                    openclaw_poller.MANUAL_RETRY_STARTED_AT_KEY: datetime.now().isoformat(),
+                },
+                "duration_seconds": 0,
+            }
+        )
+
+        assert result["action"] == "update"
+        assert result["status"] == DeepAnalysisStatus.COMPLETED
+        assert result["analysis_result"]["root_cause"] == "manual retry ready"
 
     async def test_poll_single_record_keeps_pending_and_does_not_use_gateway_when_http_api_is_configured(
         self,
