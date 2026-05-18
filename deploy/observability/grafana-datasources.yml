@@ -15,6 +15,14 @@ datasources:
       tracesToLogsV2:
         datasourceUid: loki
         tags: ["service.name", "webhook.source", "webhook.event_id"]
+      tracesToProfiles:
+        datasourceUid: pyroscope
+        tags:
+          - key: service.name
+            value: service_name
+          - key: deployment.environment
+            value: deployment_environment
+        profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
       serviceMap:
         datasourceUid: prometheus
     uid: tempo
@@ -23,3 +31,10 @@ datasources:
     access: proxy
     url: http://loki:3100
     uid: loki
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    url: http://pyroscope:4040
+    uid: pyroscope
+    jsonData:
+      minStep: "15s"

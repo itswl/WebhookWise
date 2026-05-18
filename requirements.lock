@@ -36,7 +36,9 @@ certifi==2026.4.22
     #   requests
     #   sentry-sdk
 cffi==2.0.0
-    # via cryptography
+    # via
+    #   cryptography
+    #   pyroscope-io
 charset-normalizer==3.4.7
     # via requests
 click==8.3.3
@@ -140,6 +142,7 @@ opentelemetry-api==1.41.1
     #   opentelemetry-instrumentation-sqlalchemy
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   pyroscope-otel
 opentelemetry-exporter-otlp-proto-common==1.41.1
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
@@ -177,6 +180,7 @@ opentelemetry-sdk==1.41.1
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   pyroscope-otel
 opentelemetry-semantic-conventions==0.62b1
     # via
     #   opentelemetry-instrumentation
@@ -234,6 +238,12 @@ pydantic-settings==2.2.1
     #   fastapi
 pygments==2.20.0
     # via rich
+pyroscope-io==1.0.8
+    # via
+    #   -r requirements.txt
+    #   pyroscope-otel
+pyroscope-otel==1.0.0
+    # via -r requirements.txt
 python-dotenv==1.2.2
     # via
     #   -r requirements.txt
