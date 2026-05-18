@@ -85,16 +85,18 @@ def build_span_exporter() -> Any | None:
     timeout = otlp_timeout()
     if protocol in {"http", "http/protobuf", "http-protobuf"}:
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as HttpOTLPSpanExporter
         except ImportError:
             return None
-        return OTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
+        return HttpOTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
     if protocol == "grpc":
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcOTLPSpanExporter
         except ImportError:
             return None
-        return OTLPSpanExporter(endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure())
+        return GrpcOTLPSpanExporter(
+            endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure()
+        )
     return None
 
 
@@ -107,16 +109,22 @@ def build_metric_exporter() -> Any | None:
     timeout = otlp_timeout()
     if protocol in {"http", "http/protobuf", "http-protobuf"}:
         try:
-            from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter as HttpOTLPMetricExporter,
+            )
         except ImportError:
             return None
-        return OTLPMetricExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
+        return HttpOTLPMetricExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
     if protocol == "grpc":
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+                OTLPMetricExporter as GrpcOTLPMetricExporter,
+            )
         except ImportError:
             return None
-        return OTLPMetricExporter(endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure())
+        return GrpcOTLPMetricExporter(
+            endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure()
+        )
     return None
 
 
@@ -129,14 +137,16 @@ def build_log_exporter() -> Any | None:
     timeout = otlp_timeout()
     if protocol in {"http", "http/protobuf", "http-protobuf"}:
         try:
-            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter as HttpOTLPLogExporter
         except ImportError:
             return None
-        return OTLPLogExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
+        return HttpOTLPLogExporter(endpoint=endpoint, headers=headers or None, timeout=timeout)
     if protocol == "grpc":
         try:
-            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter as GrpcOTLPLogExporter
         except ImportError:
             return None
-        return OTLPLogExporter(endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure())
+        return GrpcOTLPLogExporter(
+            endpoint=endpoint, headers=headers or None, timeout=timeout, insecure=otlp_insecure()
+        )
     return None
