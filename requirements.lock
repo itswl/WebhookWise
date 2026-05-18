@@ -199,10 +199,6 @@ packaging==26.2
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-sqlalchemy
     #   taskiq
-prometheus-client==0.25.0
-    # via prometheus-fastapi-instrumentator
-prometheus-fastapi-instrumentator==7.0.0
-    # via -r requirements.txt
 propcache==0.4.1
     # via
     #   aiohttp
@@ -288,7 +284,6 @@ starlette==0.52.1
     # via
     #   -r requirements.txt
     #   fastapi
-    #   prometheus-fastapi-instrumentator
 supervisor==4.2.5
     # via -r requirements.txt
 taskiq==0.12.2

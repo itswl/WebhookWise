@@ -22,6 +22,7 @@ from core.metrics import (
     SCHEDULED_TASK_RUNS_TOTAL,
     WEBHOOK_RUNNING_TASKS,
 )
+from core.otel import span as otel_span
 from core.redis_client import RedisEvalArg
 from core.runtime_mode import is_lite_mode
 from core.taskiq_broker import broker
@@ -310,27 +311,28 @@ async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]
 
 async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     start = time.time()
-    try:
-        await fn
-        SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="success").inc()
-        now = time.time()
-        prev = _last_success_by_name.get(name)
-        if prev is not None:
-            lag = max(0.0, now - prev - float(interval_seconds))
-            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
-        else:
-            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(0.0)
-        _last_success_by_name[name] = now
-        SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
-    except Exception:
-        SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="error").inc()
-        last = _last_success_by_name.get(name)
-        if last is not None:
-            lag = max(0.0, time.time() - last - float(interval_seconds))
-            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
-        raise
-    finally:
-        SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
+    with otel_span("scheduler.run", {"scheduler.task.name": name}):
+        try:
+            await fn
+            SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="success").inc()
+            now = time.time()
+            prev = _last_success_by_name.get(name)
+            if prev is not None:
+                lag = max(0.0, now - prev - float(interval_seconds))
+                SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
+            else:
+                SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(0.0)
+            _last_success_by_name[name] = now
+            SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
+        except Exception:
+            SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status="error").inc()
+            last = _last_success_by_name.get(name)
+            if last is not None:
+                lag = max(0.0, time.time() - last - float(interval_seconds))
+                SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
+            raise
+        finally:
+            SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
 
 
 async def run_webhook_task(
@@ -526,13 +528,14 @@ async def scheduled_data_maintenance() -> None:
 
 async def _run_data_maintenance_locked(fn: Awaitable[object]) -> None:
     start = time.time()
-    try:
-        await fn
-        SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="success").inc()
-        SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name="data_maintenance").set(time.time())
-        SCHEDULED_TASK_LAG_SECONDS.labels(name="data_maintenance").set(0.0)
-    except Exception:
-        SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="error").inc()
-        raise
-    finally:
-        SCHEDULED_TASK_DURATION_SECONDS.labels(name="data_maintenance").observe(time.time() - start)
+    with otel_span("scheduler.run", {"scheduler.task.name": "data_maintenance"}):
+        try:
+            await fn
+            SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="success").inc()
+            SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name="data_maintenance").set(time.time())
+            SCHEDULED_TASK_LAG_SECONDS.labels(name="data_maintenance").set(0.0)
+        except Exception:
+            SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status="error").inc()
+            raise
+        finally:
+            SCHEDULED_TASK_DURATION_SECONDS.labels(name="data_maintenance").observe(time.time() - start)

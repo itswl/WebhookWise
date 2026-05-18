@@ -24,8 +24,7 @@ from core.dependencies import get_config_manager
 from core.http_client import close_http_client, get_http_client
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger, stop_log_listener
-from core.metrics import setup_metrics
-from core.otel import setup_otel
+from core.observability import setup_observability
 from core.redis_client import dispose_redis
 from core.runtime_mode import is_lite_mode, uses_taskiq_broker
 from core.taskiq_broker import broker
@@ -134,8 +133,7 @@ app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
 app.state.config_manager = get_config_manager()
 
 
-setup_metrics(app)
-setup_otel(app)
+setup_observability(app)
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
 

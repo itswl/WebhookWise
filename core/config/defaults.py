@@ -23,7 +23,6 @@ class ServerConfig(BaseSettings):
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
-    METRICS_PORT: int = Field(default=0)
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="api")
     ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"

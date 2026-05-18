@@ -64,9 +64,9 @@ COPY alembic/ ./alembic/
 # 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录并设置权限
-RUN mkdir -p logs webhooks_data /tmp/prometheus_multiproc && \
-    chmod +x entrypoint.sh scripts/run_api.sh scripts/run_with_prometheus_cleanup.sh && \
-    chown -R appuser:appuser /app /tmp/prometheus_multiproc
+RUN mkdir -p logs webhooks_data && \
+    chmod +x entrypoint.sh scripts/run_api.sh && \
+    chown -R appuser:appuser /app
 
 # 切换到非 root 用户
 USER appuser

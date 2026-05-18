@@ -35,12 +35,31 @@ class TraceIdFilter(logging.Filter):
     """为每条日志记录注入当前协程的 trace_id。"""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.trace_id = get_trace_id() or "-"
+        otel_trace_id = ""
+        otel_span_id = ""
+        try:
+            from core.otel import get_otel_span_id, get_otel_trace_id
+
+            otel_trace_id = get_otel_trace_id()
+            otel_span_id = get_otel_span_id()
+        except Exception:
+            pass
+
+        record.trace_id = otel_trace_id or get_trace_id() or "-"
+        record.span_id = otel_span_id or "-"
 
         ctx = get_log_context()
         if ctx:
             for k, v in ctx.items():
                 setattr(record, k, v)
+            if "event_id" in ctx:
+                setattr(record, "webhook.event_id", ctx["event_id"])
+            if "source" in ctx:
+                setattr(record, "webhook.source", ctx["source"])
+            if "alert_hash" in ctx:
+                setattr(record, "webhook.alert_hash", ctx["alert_hash"])
+            if "processing_status" in ctx:
+                setattr(record, "webhook.status", ctx["processing_status"])
 
         return True
 
@@ -53,6 +72,7 @@ class JsonFormatter(logging.Formatter):
             "name": record.name,
             "message": record.getMessage(),
             "trace_id": getattr(record, "trace_id", "-"),
+            "span_id": getattr(record, "span_id", "-"),
         }
 
         reserved = {

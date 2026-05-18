@@ -248,14 +248,14 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查：**
 
-1. 检查 `db_queue_pending` 指标（`/metrics`）是否持续增长。该指标只代表 legacy DB 事件路径待恢复记录，不代表主 Webhook 队列。
+1. 在 Grafana/Prometheus-compatible backend 中检查 `queue.depth`、`queue.lag`、`webhook.running_tasks` 是否持续增长。
 
 2. 检查 Redis 内存：
    ```bash
    redis-cli info memory | grep used_memory_human
    ```
 
-3. 检查主表 `webhook_events` 行数：如果很大，说明数据归档未正常执行。归档由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduled_task_*` 指标。
+3. 检查主表 `webhook_events` 行数：如果很大，说明数据归档未正常执行。归档由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
 
 4. Docker 内存问题：`docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
 

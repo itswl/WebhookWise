@@ -48,6 +48,5 @@ module = [
   "instructor",
   "uvloop",
   "gunicorn.*",
-  "prometheus_client.*",
 ]
 ignore_missing_imports = true

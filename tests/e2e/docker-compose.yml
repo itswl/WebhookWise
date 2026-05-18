@@ -95,7 +95,6 @@ services:
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
-      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     ports:
       - "18080:8000"
     depends_on:
@@ -145,7 +144,6 @@ services:
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
-      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -181,7 +179,6 @@ services:
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
-      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
       migrate:
         condition: service_completed_successfully

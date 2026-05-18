@@ -145,7 +145,7 @@ async def _analyze_with_openai_tracked(
         get_prompt_source(),
     )
 
-    with otel_span("ai.openai_call", {"source": source, "model": policy.model}) as s:
+    with otel_span("ai.request", {"source": source, "model": policy.model, "provider": "openai"}) as s:
         res, completion = await _create_with_completion(
             client, model=policy.model, user_prompt=user_prompt, policy=policy
         )
@@ -157,8 +157,8 @@ async def _analyze_with_openai_tracked(
         AI_TOKENS_TOTAL.labels(policy.model, "output").inc(t_out)
         AI_COST_USD_TOTAL.labels(model=policy.model).inc(cost)
         if s:
-            s.set_attribute("tokens_in", t_in)
-            s.set_attribute("tokens_out", t_out)
+            s.set_attribute("ai.tokens.input", t_in)
+            s.set_attribute("ai.tokens.output", t_out)
     logger.info(
         "[AI] LLM 分析完成 source=%s model=%s tokens_in=%s tokens_out=%s cost_usd=%.6f",
         source,
