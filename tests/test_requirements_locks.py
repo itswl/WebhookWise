@@ -46,3 +46,10 @@ def test_dev_lock_contains_all_direct_dev_requirements() -> None:
     locked = set(_locked_versions(PROJECT_ROOT / "requirements-dev.lock"))
 
     assert declared - locked == set()
+
+
+def test_uv_lock_is_not_used_without_project_metadata() -> None:
+    pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
+    has_project_metadata = "\n[project]\n" in f"\n{pyproject}\n"
+
+    assert not (PROJECT_ROOT / "uv.lock").exists() or has_project_metadata

@@ -1,4 +1,4 @@
-"""logic sinking: add unique constraints and processing_locks
+"""Consolidate legacy unique indexes and processing locks.
 
 Consolidate manual migrations from scripts/migrate_db.py and
 scripts/apply_unique_constraint.py into Alembic.

@@ -212,6 +212,13 @@ tests/e2e/run_webhook_to_feishu.sh
 └── .env.example       # 配置模板
 ```
 
+详细边界约束见 [docs/architecture/boundaries.md](docs/architecture/boundaries.md)。简要规则：
+
+- `api/` 只做 HTTP 绑定，业务编排放在 `services/*`。
+- `adapters/` 负责外部载荷归一化或插件注册，不承载业务决策。
+- `core/` 只放跨切面运行时胶水；长出业务分支时迁回对应领域包。
+- 默认部署是 API、Worker、Scheduler 分进程/分容器；`docker-compose.supervisor.yml` 仅是单机/演示 override。
+
 ## 📡 API 端点速览
 
 > 所有 `/api/*` 端点需要 `Authorization: Bearer <API_KEY>` Header；会修改状态、触发 AI/OpenClaw 或发起外部转发的写接口需要 `Authorization: Bearer <ADMIN_WRITE_KEY>`（未配置时回退到 `API_KEY`）。
@@ -329,6 +336,17 @@ tests/e2e/run_webhook_to_feishu.sh
 | `NOISE_RELATED_MIN_CONFIDENCE` | `0.35` | 近邻告警纳入关联集合的最低置信度 |
 | `NOISE_*_WEIGHT` | 见 `core/config.py` | source/resource/semantic/severity/time 评分权重 |
 | `SUPPRESS_DERIVED_ALERT_FORWARD` | `true` | 抑制衍生告警的转发 |
+
+## 📦 依赖管理
+
+`requirements.txt` / `requirements-dev.txt` 是人工维护的直接依赖清单；`requirements.lock` / `requirements-dev.lock` 是安装入口和 CI/Docker 的准绳。锁文件由 uv 生成，但项目当前不是 `[project]` 风格的 uv 工程，因此不维护 `uv.lock`。
+
+更新依赖时使用：
+
+```bash
+uv pip compile requirements.txt -o requirements.lock --python-version 3.12
+uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.12
+```
 
 ### 转发与重试（`[runtime]` 可热更新）
 

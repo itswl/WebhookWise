@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.notification_targets import is_feishu_url
 from api.webhook_context import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.dependencies import get_http_client_dependency
@@ -19,6 +18,7 @@ from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.forwarding.forward import post_json_to_remote, record_failed_forward
 from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
+from services.notifications.target_detection import is_feishu_url
 from services.webhooks.types import DeepAnalysisStatus
 
 deep_analysis_router = APIRouter()

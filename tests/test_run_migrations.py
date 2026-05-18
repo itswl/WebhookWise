@@ -48,7 +48,7 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
-def test_legacy_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_legacy_partial_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
     executed: list[tuple[str, tuple[str, ...] | None]] = []
     responses = [
         ("alembic_version",),
@@ -76,7 +76,7 @@ def test_legacy_revision_patch_only_updates_matching_partial_state(monkeypatch: 
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
     monkeypatch.setattr("scripts.run_migrations.psycopg2.connect", lambda url: FakeConnection())
 
-    migrations._advance_legacy_logic_sinking_revision()
+    migrations._advance_legacy_partial_revision()
 
     assert (
         "update public.alembic_version set version_num=%s",

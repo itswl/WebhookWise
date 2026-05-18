@@ -4,12 +4,12 @@ from typing import Any, cast
 
 import httpx
 
-from adapters.notification_targets import is_feishu_url
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import logger, mask_url
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import RemoteForwardPolicy
+from services.notifications.target_detection import is_feishu_url
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 
