@@ -6,17 +6,17 @@
 
 | 能力 | 说明 |
 |:---|:---|
-| **异步 Webhook 接收** | Full 模式走 TaskIQ/Redis Stream；Lite 模式走 API 进程内后台任务，均立即返回 202 |
+| **异步 Webhook 接收** | API 只负责接收并投递 TaskIQ/Redis Stream，立即返回 202 |
 | **AI 深度分析** | LLM 自动识别重要性，输出根因定位、影响评估与修复建议 |
 | **OpenClaw 深度分析** | 接入 OpenClaw 深度分析引擎，通过 TaskIQ 动态延迟任务拉取结果 |
 | **智能降噪去重** | Adapter 范式化告警 identity，混合相似度/可选 embedding 识别衍生告警，缓存/数据库复用 + 24h 时间窗口（可配置） |
-| **告警风暴背压** | Full 模式同一 `alert_hash` Redis 分布式 single-flight + 短窗口 Fail-Fast，防资源耗尽；Lite 模式使用进程内同类告警串行 |
+| **告警风暴背压** | 同一 `alert_hash` Redis 分布式 single-flight + 短窗口 Fail-Fast，防资源耗尽 |
 | **转发规则引擎** | 多规则按优先级匹配，支持 Webhook / 飞书卡片 / OpenClaw 三种目标类型 |
 | **事务性转发 Outbox** | 处理结果与转发意图同事务落库，Worker 异步消费，避免 DB 状态与 HTTP 副作用脱节 |
 | **转发失败重试** | Outbox 投递失败后指数退避重试；超过最大投递年龄会标记 `expired`，避免旧告警误发 |
 | **冷热数据归档** | 每日凌晨自动按重要性分级归档（high 90d / medium 30d / low 7d） |
 | **运行时策略热更新** | 配置写入 DB `system_configs`，Redis Pub/Sub 广播到所有进程 |
-| **全方位可观测性** | Prometheus 原生指标 + OpenTelemetry 链路追踪（可选） |
+| **全方位可观测性** | OpenTelemetry SDK + OTLP 统一输出 metrics/traces/logs |
 
 ## 🏗️ 架构概览
 
@@ -45,7 +45,6 @@
 - `worker` 进程：TaskIQ Worker，消费异步业务任务和定时任务
 - `scheduler` 进程：TaskIQ Scheduler，只负责周期性投递任务，不执行业务逻辑
 - `RUN_MODE=all`：通过 `supervisord` 在同一个容器内同时拉起 `api` / `worker` / `scheduler`，适合单机小部署或演示；需要横向扩容 Worker 时仍推荐独立进程/独立容器。
-- `RUN_MODE=lite`：单 API 进程内完成接收、分析、Outbox 投递和兜底扫描，不依赖 Redis/TaskIQ；适合小团队、演示和低 QPS 告警转发。
 
 **异步职责边界：**
 - TaskIQ：基于 Redis Stream 的异步任务投递与 Worker 消费
@@ -55,10 +54,10 @@
 - PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
 - Redis：TaskIQ 队列、短窗口风暴计数、缓存、运行时配置广播
 
-**Lite 模式边界：**
-- 只启动 API + PostgreSQL，后台处理在 API 进程内执行。
-- 不使用 Redis Stream、Redis 缓存、Redis Pub/Sub 或跨进程分布式锁。
-- 适合单实例/小流量；需要横向扩容、强隔离 Worker、跨实例 single-flight 时使用默认 Full 模式。
+**部署边界：**
+- 小规模部署使用 `RUN_MODE=all` 把 API、Worker、Scheduler 放进同一个应用容器。
+- 默认生产拓扑仍是独立 API、Worker、Scheduler 容器，便于横向扩容 Worker。
+- 两种拓扑共享同一套 Redis/TaskIQ/Outbox/分布式锁语义；部署形态不改变业务执行流。
 
 ## 🛠️ 技术栈
 
@@ -73,7 +72,7 @@
 | 可观测性 | OpenTelemetry SDK + OTLP -> OpenTelemetry Collector |
 | 展示/告警 | Grafana + Prometheus-compatible metrics backend / Tempo / Loki |
 | 数据迁移 | Alembic |
-| 容器化 | Docker + Docker Compose；Full 模式 6 服务，Lite 模式 3 服务（migrate/API/PostgreSQL） |
+| 容器化 | Docker + Docker Compose；默认多容器拓扑，可选 supervisor all-in-one 应用容器 |
 
 ## 🚀 快速开始
 
@@ -93,22 +92,9 @@ curl http://localhost:8000/health
 
 数据库 Schema 迁移由 Compose 中的一次性 `migrate` 服务执行（`alembic upgrade head`）。API、Worker 和 Scheduler 只在迁移成功后启动，`entrypoint.sh` 只负责按 `RUN_MODE` 分发进程。
 
-### Lite 模式（小团队/演示）
+### Supervisor all-in-one 模式（小团队/演示）
 
-只想把 Prometheus/Grafana 告警处理后转发到飞书，可以先用 Lite 模式：
-
-```bash
-cp .env.example .env
-# 至少替换 API_KEY、ADMIN_WRITE_KEY、WEBHOOK_SECRET；如果只是内网测试，可显式设置 ALLOW_UNAUTHENTICATED_WEBHOOK=true
-docker compose -f docker-compose.lite.yml up -d --build
-curl http://localhost:8000/ready
-```
-
-Lite 模式不启动 Redis、Worker、Scheduler。Webhook 入站、AI 分析、Outbox 投递和补偿扫描都在 API 进程内完成；`/ready` 只检查 PostgreSQL。生产高流量或多实例部署仍建议使用默认 Full 模式。
-
-### Supervisor all-in-one 模式
-
-默认 Compose 是三容器进程模型。如果想用 supervisor 在一个应用容器里同时拉起 API、Worker、Scheduler：
+默认 Compose 是独立 API、Worker、Scheduler 容器。如果想在单机小部署中减少应用容器数量，可以用 supervisor 在一个应用容器里同时拉起三类进程：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.supervisor.yml up -d --build
@@ -122,6 +108,8 @@ docker compose -f docker-compose.yml -f docker-compose.supervisor.yml exec webho
 - `scheduler`：`taskiq scheduler core.taskiq_broker:scheduler`
 
 健康检查会同时校验 supervisor 中三个 program 均为 `RUNNING`，并探测 API `/ready`。
+
+All-in-one 只改变进程拓扑，不改变业务语义：Webhook 仍进入 Redis Stream，Worker 仍通过 TaskIQ 消费，Outbox、重试、缓存、分布式锁仍使用同一套实现。
 
 默认三容器模式下，API、Worker、Scheduler 都只通过 OTLP 把 metrics/traces/logs 发给 OpenTelemetry Collector；应用不暴露 `/metrics`，也不直接绑定 Prometheus client。需要本地观测栈时，可叠加 `docker-compose.observability.yml` 启动 Collector + Prometheus + Tempo + Loki + Grafana。
 
@@ -295,7 +283,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | `WEBHOOK_RATE_LIMIT_PER_MINUTE` | `600` | 按客户端 IP 限流；设为 `0` 表示关闭 |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
-| `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all` / `lite`；`lite` 单 API 进程内处理，不依赖 Redis/TaskIQ |
+| `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all`；`all` 为 supervisor all-in-one 拓扑 |
 | `ENABLE_RUNTIME_CONFIG` | `false`（生产） | 启用 DB/Redis 运行时业务策略配置 |
 | `ALLOW_RUNTIME_CONNECTION_CONFIG` | `false` | 允许连接/密钥类配置热更新；生产不建议开启 |
 | `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |

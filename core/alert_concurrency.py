@@ -1,7 +1,8 @@
 """Per-alert concurrency gate for webhook analysis.
 
-Full mode uses Redis for cross-worker single-flight per ``alert_hash``. Lite
-mode keeps the same local keyed lock but skips Redis entirely.
+Redis provides cross-worker single-flight per ``alert_hash``. The in-process
+lock remains as a local serialization layer and as a fallback if Redis is
+temporarily unavailable.
 """
 
 from __future__ import annotations
@@ -75,10 +76,9 @@ async def _release_lock_ref(alert_hash: str, ref: _LockRef) -> None:
 async def _count_recent_queue_size(alert_hash: str) -> int:
     from core.config import Config
     from core.redis_client import redis_eval_int
-    from core.runtime_mode import is_lite_mode
 
     threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
-    if not threshold or is_lite_mode():
+    if not threshold:
         return 0
 
     window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
@@ -97,9 +97,8 @@ def _lock_key(alert_hash: str) -> str:
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
     from core.config import Config
     from core.redis_client import redis_set_nx_ex
-    from core.runtime_mode import is_lite_mode
 
-    if not Config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED or is_lite_mode():
+    if not Config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
         return None
 
     key = _lock_key(alert_hash)

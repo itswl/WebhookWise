@@ -77,6 +77,10 @@ single-host deployments and demos. It must remain optional. Production changes
 should preserve the default multi-container path and should not require
 `RUN_MODE=all`.
 
+Deployment shape must not introduce a second runtime semantic path. All
+topologies use the same TaskIQ/Redis queue, dynamic scheduling, Redis-backed
+cache, and distributed locking behavior.
+
 ## Dependency Policy
 
 `requirements.txt` and `requirements-dev.txt` are the human-edited direct

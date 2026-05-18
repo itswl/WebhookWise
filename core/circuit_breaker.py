@@ -148,9 +148,7 @@ class CircuitBreaker:
     _R = TypeVar("_R")
 
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
-        from core.runtime_mode import is_lite_mode
-
-        if self.failure_threshold == 0 or is_lite_mode():
+        if self.failure_threshold == 0:
             try:
                 return await func(*args, **kwargs)
             except self.expected_exceptions as e:

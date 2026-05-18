@@ -88,13 +88,7 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python3",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready').read()"
-        ]
+      test: ["CMD", "python3", "-m", "scripts.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3

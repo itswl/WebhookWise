@@ -306,59 +306,62 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_lite_mode_processes_webhook_without_taskiq_or_ingress_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import httpx
 
     from core.app import app
     from core.config import Config
 
-    monkeypatch.setattr(Config.server, "RUN_MODE", "lite")
+    monkeypatch.setattr(Config.server, "RUN_MODE", "all")
     monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", False)
     monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
     monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
     monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
 
-    async def fail_backpressure(**_: object) -> object:
-        raise AssertionError("lite mode should not call Redis ingress backpressure")
+    backpressure_calls: list[dict[str, object]] = []
 
-    processed: list[dict[str, object]] = []
+    async def fake_backpressure(**kwargs: object) -> object:
+        backpressure_calls.append(kwargs)
+        return SimpleNamespace(suppressed=False)
 
-    async def fake_run_webhook_task(**kwargs: object) -> None:
-        processed.append(kwargs)
+    enqueued: list[dict[str, object]] = []
 
-    monkeypatch.setattr("api.webhook.check_ingress_backpressure", fail_backpressure)
-    monkeypatch.setattr("api.webhook.run_webhook_task", fake_run_webhook_task)
+    async def fake_kiq(**kwargs: object) -> None:
+        enqueued.append(kwargs)
+
+    monkeypatch.setattr("api.webhook.check_ingress_backpressure", fake_backpressure)
+    monkeypatch.setattr("api.webhook.process_webhook_task.kiq", fake_kiq)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/webhook/prometheus", json={"alertname": "lite"})
+        response = await client.post("/webhook/prometheus", json={"alertname": "canonical"})
 
     assert response.status_code == 202
-    assert response.json()["message"] == "Webhook received for lite processing"
-    assert len(processed) == 1
-    assert processed[0]["source"] == "prometheus"
-    assert json.loads(str(processed[0]["raw_body"])) == {"alertname": "lite"}
+    assert response.json()["message"] == "Webhook received and queued for processing"
+    assert len(backpressure_calls) == 1
+    assert len(enqueued) == 1
+    assert enqueued[0]["source"] == "prometheus"
+    assert json.loads(str(enqueued[0]["raw_body"])) == {"alertname": "canonical"}
 
 
 @pytest.mark.asyncio
-async def test_lite_readiness_skips_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_readiness_requires_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     from api.webhook import readiness_check
-    from core.config import Config
-
-    monkeypatch.setattr(Config.server, "RUN_MODE", "lite")
 
     async def db_ok() -> bool:
         return True
 
-    async def redis_should_not_run() -> bool:
-        raise AssertionError("lite readiness should not ping Redis")
+    async def redis_failed() -> bool:
+        return False
 
     monkeypatch.setattr("api.webhook.test_db_connection", db_ok)
-    monkeypatch.setattr("api.webhook.redis_ping", redis_should_not_run)
+    monkeypatch.setattr("api.webhook.redis_ping", redis_failed)
 
     response = await readiness_check()
-    body = response.body.decode("utf-8")
+    body = json.loads(response.body.decode("utf-8"))
 
-    assert response.status_code == 200
-    assert "skipped_lite" in body
-    assert "inline" in body
+    assert response.status_code == 503
+    assert body["data"]["redis"] == "failed"
+    assert body["data"]["queue"] == "redis_stream"

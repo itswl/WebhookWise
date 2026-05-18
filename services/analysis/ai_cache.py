@@ -12,10 +12,8 @@ def get_cache_key(alert_hash: str) -> str:
 
 
 async def get_cached_analysis(alert_hash: str, *, policy: AICachePolicy | None = None) -> AnalysisResult | None:
-    from core.runtime_mode import is_lite_mode
-
     policy = policy or AICachePolicy.from_config()
-    if not policy.enabled or is_lite_mode():
+    if not policy.enabled:
         return None
     try:
         from core.redis_client import redis_get_str, redis_incr_with_expire
@@ -40,10 +38,8 @@ async def get_cached_analysis(alert_hash: str, *, policy: AICachePolicy | None =
 async def save_to_cache(
     alert_hash: str, analysis_result: AnalysisResult, *, policy: AICachePolicy | None = None
 ) -> bool:
-    from core.runtime_mode import is_lite_mode
-
     policy = policy or AICachePolicy.from_config()
-    if not policy.enabled or is_lite_mode():
+    if not policy.enabled:
         return False
     try:
         from core.redis_client import redis_setex_bytes, redis_setex_str

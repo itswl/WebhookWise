@@ -7,7 +7,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,14 +17,13 @@ from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 from core.redis_client import redis_ping
-from core.runtime_mode import is_lite_mode
 from core.sensitive_data import redact_event_dict
 from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
-from services.operations.tasks import process_webhook_task, run_webhook_task
+from services.operations.tasks import process_webhook_task
 from services.webhooks.command_service import get_client_ip
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import WebhookReceivePolicy
@@ -58,7 +57,6 @@ async def _receive_and_enqueue_webhook(
     request: Request,
     source_hint: str,
     request_id: str,
-    background_tasks: BackgroundTasks | None = None,
 ) -> JSONDict | JSONResponse:
     try:
         client_ip = get_client_ip(request)
@@ -90,28 +88,26 @@ async def _receive_and_enqueue_webhook(
         )
         return too_large_response
 
-    lite = is_lite_mode()
-    if not lite:
-        backpressure = await check_ingress_backpressure(source_hint=source_hint, raw_body=raw_body)
-        if backpressure.suppressed:
-            src = sanitize_source(source_hint)
-            WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
-            logger.warning(
-                "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s",
-                request_id,
-                source_hint,
-                client_ip,
-                len(raw_body),
-                backpressure.count,
-                backpressure.threshold,
-                backpressure.key,
-            )
-            return {
-                "success": True,
-                "message": "Webhook suppressed by ingress backpressure",
-                "event_id": None,
-                "request_id": request_id,
-            }
+    backpressure = await check_ingress_backpressure(source_hint=source_hint, raw_body=raw_body)
+    if backpressure.suppressed:
+        src = sanitize_source(source_hint)
+        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
+        logger.warning(
+            "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s",
+            request_id,
+            source_hint,
+            client_ip,
+            len(raw_body),
+            backpressure.count,
+            backpressure.threshold,
+            backpressure.key,
+        )
+        return {
+            "success": True,
+            "message": "Webhook suppressed by ingress backpressure",
+            "event_id": None,
+            "request_id": request_id,
+        }
 
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
@@ -126,19 +122,10 @@ async def _receive_and_enqueue_webhook(
         "received_at": received_at,
     }
     try:
-        if lite:
-            if background_tasks is not None:
-                background_tasks.add_task(run_webhook_task, **task_kwargs)
-            else:
-                await run_webhook_task(**task_kwargs)
-        else:
-            await process_webhook_task.kiq(
-                **task_kwargs,
-            )
+        await process_webhook_task.kiq(**task_kwargs)
     except Exception:
         logger.exception(
-            "[Webhook] 告警%s失败 request_id=%s source=%s ip=%s body_size=%d",
-            "提交后台处理" if lite else "入队",
+            "[Webhook] 告警入队失败 request_id=%s source=%s ip=%s body_size=%d",
             request_id,
             source_hint,
             client_ip,
@@ -146,8 +133,7 @@ async def _receive_and_enqueue_webhook(
         )
         raise
     logger.info(
-        "[Webhook] 告警已%s request_id=%s source=%s ip=%s body_size=%d received_at=%s",
-        "提交 lite 后台处理" if lite else "入队",
+        "[Webhook] 告警已入队 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
         request_id,
         source_hint,
         client_ip,
@@ -157,7 +143,7 @@ async def _receive_and_enqueue_webhook(
 
     return {
         "success": True,
-        "message": "Webhook received and queued for processing" if not lite else "Webhook received for lite processing",
+        "message": "Webhook received and queued for processing",
         "event_id": None,
         "request_id": request_id,
     }
@@ -180,18 +166,17 @@ async def liveness_check() -> JSONResponse:
 
 @webhook_router.get("/ready", response_model=HealthResponse)
 async def readiness_check() -> JSONResponse:
-    """就绪检查：full 模式依赖 DB 与 Redis 队列；lite 模式只依赖 DB。"""
+    """就绪检查：API 依赖 DB 与 Redis 队列。"""
     db_ok = await test_db_connection()
-    lite = is_lite_mode()
-    redis_ok = True if lite else await redis_ping()
+    redis_ok = await redis_ping()
     ready = db_ok and redis_ok
     content = {
         "success": True,
         "data": {
             "status": "ready" if ready else "unready",
             "database": "ok" if db_ok else "failed",
-            "redis": "skipped_lite" if lite else ("ok" if redis_ok else "failed"),
-            "queue": "inline" if lite else "redis_stream",
+            "redis": "ok" if redis_ok else "failed",
+            "queue": "redis_stream",
         },
     }
     return JSONResponse(content=content, status_code=200 if ready else 503)
@@ -215,7 +200,6 @@ async def dashboard() -> FileResponse:
 )
 async def receive_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
@@ -229,7 +213,6 @@ async def receive_webhook(
         request=request,
         source_hint=source_hint,
         request_id=request_id,
-        background_tasks=background_tasks,
     )
 
 
@@ -241,7 +224,6 @@ async def receive_webhook(
 )
 async def receive_webhook_with_source(
     request: Request,
-    background_tasks: BackgroundTasks,
     source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
@@ -255,7 +237,6 @@ async def receive_webhook_with_source(
         request=request,
         source_hint=source_hint,
         request_id=request_id,
-        background_tasks=background_tasks,
     )
 
 
