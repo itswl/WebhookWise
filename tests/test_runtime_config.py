@@ -27,6 +27,20 @@ def test_openclaw_operational_knobs_are_runtime_configurable() -> None:
         assert Config.RUNTIME_KEYS[key]["sub"] == "openclaw"
 
 
+def test_prompt_templates_are_runtime_configurable() -> None:
+    from core.config import Config
+
+    expected = {
+        "AI_USER_PROMPT",
+        "AI_USER_PROMPT_FILE",
+        "DEEP_ANALYSIS_PROMPT",
+        "DEEP_ANALYSIS_PROMPT_FILE",
+    }
+
+    for key in expected:
+        assert Config.RUNTIME_KEYS[key]["sub"] == "ai"
+
+
 def test_connection_runtime_keys_require_restart_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.config import Config
 

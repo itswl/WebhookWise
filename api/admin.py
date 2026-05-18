@@ -3,7 +3,7 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -26,12 +26,14 @@ from schemas import (
     StuckEventRequeueResponse,
 )
 from services.analysis.ai_analyzer import (
+    get_prompt_source,
+    load_deep_analysis_prompt_template,
     load_user_prompt_template,
+    reload_deep_analysis_prompt_template,
     reload_user_prompt_template,
 )
 from services.operations.tasks import process_webhook_task
 from services.runtime_config.config_service import (
-    build_prompt_source,
     collect_config_updates,
     get_config_sources,
     get_current_config,
@@ -45,6 +47,28 @@ from services.webhooks.command_service import (
 from services.webhooks.query_service import count_dead_letters, list_dead_letters, list_stuck_events
 
 admin_router = APIRouter()
+PromptKind = Literal["user", "deep_analysis"]
+
+
+def _normalize_prompt_kind(kind: str) -> PromptKind:
+    normalized = kind.strip().lower().replace("-", "_")
+    if normalized in ("user", "ai"):
+        return "user"
+    if normalized in ("deep_analysis", "deep"):
+        return "deep_analysis"
+    raise ValueError("unsupported prompt kind")
+
+
+async def _load_prompt_by_kind(kind: PromptKind) -> str:
+    if kind == "deep_analysis":
+        return await load_deep_analysis_prompt_template()
+    return await load_user_prompt_template()
+
+
+async def _reload_prompt_by_kind(kind: PromptKind) -> str:
+    if kind == "deep_analysis":
+        return await reload_deep_analysis_prompt_template()
+    return await reload_user_prompt_template()
 
 
 @admin_router.get("/api/config", response_model=ConfigResponse)
@@ -103,22 +127,35 @@ async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
     response_model=PromptReloadResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def reload_prompt() -> JSONResponse:
+async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
-        new_template = await reload_user_prompt_template()
+        prompt_kind = _normalize_prompt_kind(kind)
+        new_template = await _reload_prompt_by_kind(prompt_kind)
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
-        logger.info("[Admin] Prompt 模板已重新加载 length=%s", len(new_template))
-        return _ok(status=200, message="Prompt 模板已重新加载", template_length=len(new_template), preview=preview)
+        logger.info("[Admin] Prompt 模板已重新加载 kind=%s length=%s", prompt_kind, len(new_template))
+        return _ok(
+            status=200,
+            message="Prompt 模板已重新加载",
+            kind=prompt_kind,
+            source=get_prompt_source(prompt_kind),
+            template_length=len(new_template),
+            preview=preview,
+        )
+    except ValueError as e:
+        return _fail(str(e), 400)
     except Exception as e:
         logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 
 @admin_router.get("/api/prompt", response_model=PromptGetResponse)
-async def get_prompt() -> JSONResponse:
+async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
-        template = await load_user_prompt_template()
-        return _ok(status=200, template=template, source=build_prompt_source())
+        prompt_kind = _normalize_prompt_kind(kind)
+        template = await _load_prompt_by_kind(prompt_kind)
+        return _ok(status=200, kind=prompt_kind, template=template, source=get_prompt_source(prompt_kind))
+    except ValueError as e:
+        return _fail(str(e), 400)
     except Exception as e:
         logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
         return _fail(str(e), 500)

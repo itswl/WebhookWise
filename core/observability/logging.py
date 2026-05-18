@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from core.observability.exporters import build_log_exporter, otel_enabled
 from core.observability.resource import build_resource
@@ -41,7 +41,7 @@ def setup_logging(*, service_name: str | None = None, logger_name: str = "webhoo
         return
 
     handler = LoggingHandler(level=logging.NOTSET, logger_provider=provider)
-    handler._webhookwise_otel_handler = True
+    cast(Any, handler)._webhookwise_otel_handler = True
     try:
         from core.logger import TraceIdFilter
 

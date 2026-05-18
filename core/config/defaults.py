@@ -129,6 +129,8 @@ class AIConfig(BaseSettings):
     OPENAI_TEMPERATURE: float = Field(default=0.2)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")
+    DEEP_ANALYSIS_PROMPT_FILE: str = Field(default="prompts/deep_analysis.txt")
+    DEEP_ANALYSIS_PROMPT: str = Field(default="")
 
     CACHE_ENABLED: bool = Field(default=True)
     ANALYSIS_CACHE_TTL: int = Field(default=21600)

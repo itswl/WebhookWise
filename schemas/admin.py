@@ -96,6 +96,7 @@ class PromptGetResponse(BaseModel):
     """获取 Prompt 模板响应"""
 
     success: bool
+    kind: str = "user"
     template: str
     source: str
 
@@ -105,5 +106,7 @@ class PromptReloadResponse(BaseModel):
 
     success: bool
     message: str
+    kind: str = "user"
+    source: str | None = None
     template_length: int
     preview: str

@@ -50,6 +50,29 @@ def test_default_prompt_path_resolves_from_project_root() -> None:
     assert path.exists()
 
 
+@pytest.mark.asyncio
+async def test_deep_analysis_prompt_uses_shared_loader(tmp_path: Path) -> None:
+    from services.analysis.ai_policies import DeepAnalysisPromptPolicy
+    from services.analysis.ai_prompt import (
+        DEEP_ANALYSIS_PROMPT_KIND,
+        get_prompt_source,
+        reload_deep_analysis_prompt_template,
+    )
+
+    prompt_file = tmp_path / "deep_analysis_prompt.txt"
+    prompt_file.write_text("managed deep analysis prompt", encoding="utf-8")
+
+    try:
+        template = await reload_deep_analysis_prompt_template(
+            DeepAnalysisPromptPolicy(inline_prompt="", prompt_file=str(prompt_file))
+        )
+
+        assert template == "managed deep analysis prompt"
+        assert get_prompt_source(DEEP_ANALYSIS_PROMPT_KIND) == f"file:{prompt_file}"
+    finally:
+        await reload_deep_analysis_prompt_template()
+
+
 def test_sanitize_for_ai_redacts_sensitive_nested_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.config import Config
     from core.sensitive_data import REDACTED

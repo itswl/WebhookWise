@@ -47,6 +47,9 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
 ) -> None:
     from services.forwarding import forward
 
+    async def fake_load_prompt() -> str:
+        return "managed deep-analysis prompt"
+
     response = MagicMock()
     response.json.return_value = response_payload
     response.raise_for_status = MagicMock()
@@ -57,6 +60,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
         return await fn(*args, **kwargs)
 
     monkeypatch.setattr(forward.openclaw_cb, "call_async", _call_direct)
+    monkeypatch.setattr("services.forwarding.openclaw.load_deep_analysis_prompt_template", fake_load_prompt)
 
     result = await forward.analyze_with_openclaw(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
@@ -83,6 +87,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     assert "json" not in post_kwargs
     assert isinstance(body, bytes)
     assert headers["Content-Type"] == "application/json; charset=utf-8"
+    assert b"managed deep-analysis prompt" in body
     assert "中文告警".encode() in body
     assert b"\\u4e2d\\u6587" not in body
     assert b"[REDACTED]" in body

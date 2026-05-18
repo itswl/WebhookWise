@@ -3,13 +3,13 @@
 import json
 import uuid
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any, cast
 
 import httpx
 
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import logger, mask_url
+from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import ForwardResult, WebhookData
@@ -132,14 +132,7 @@ async def analyze_with_openclaw(
 
     alert_data = await sanitize_for_ai_async(alert_data, strip_configured_keys=False, truncate=False)
     prompt_payload = _build_openclaw_prompt_payload(str(source), alert_data)
-
-    prompt_path = Path(policy.data_dir).parent / "prompts" / "deep_analysis.txt"
-    try:
-        with open(prompt_path, encoding="utf-8") as f:
-            template = f.read()
-    except FileNotFoundError:
-        template = "请对以下告警进行深度根因分析：\n\n{source}\n{alert_data}\n"
-        logger.warning("未能找到深度分析模板文件: %s", prompt_path)
+    template = await load_deep_analysis_prompt_template()
 
     overview_json = json.dumps(prompt_payload.get("overview", {}), ensure_ascii=False, separators=(",", ":"))
     payload_json = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
@@ -158,6 +151,11 @@ async def analyze_with_openclaw(
     )
     if user_question:
         message += f"\n\n## 用户补充问题\n{user_question}"
+    logger.info(
+        "[OpenClaw] 深度分析 prompt 已加载 source=%s bytes=%s",
+        get_prompt_source(DEEP_ANALYSIS_PROMPT_KIND),
+        len(template.encode("utf-8")),
+    )
 
     session_key = f"hook:deep-analysis:{source}:{uuid.uuid4()}"
     payload = {
