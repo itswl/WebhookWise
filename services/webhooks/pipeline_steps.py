@@ -7,6 +7,7 @@ from core.alert_concurrency import alert_processing_gate
 from core.log_context import set_log_context
 from core.logger import logger
 from core.metrics import WEBHOOK_PROCESSING_STATUS_TOTAL, WEBHOOK_STORM_SUPPRESSED_TOTAL
+from core.otel import span as otel_span
 from services.webhooks.analysis_resolution import resolve_analysis
 from services.webhooks.command_service import SaveWebhookResult, mark_webhook_suppressed
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
@@ -85,12 +86,16 @@ async def _resolve_noise_context(
     ctx: WebhookProcessContext,
     dependencies: WebhookPipelineDependencies,
 ) -> tuple[dict[str, Any], NoiseReductionContext, Any]:
-    analysis_res = await resolve_analysis(
-        ctx.alert_hash,
-        ctx.req_ctx.webhook_full_data,
-        policy=dependencies.analysis_policy,
-        http_client=dependencies.http_client,
-    )
+    with otel_span(
+        "webhook.analyze",
+        {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+    ):
+        analysis_res = await resolve_analysis(
+            ctx.alert_hash,
+            ctx.req_ctx.webhook_full_data,
+            policy=dependencies.analysis_policy,
+            http_client=dependencies.http_client,
+        )
     route_type = analysis_res.analysis_result.get("_route_type", "ai")
     importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
     set_log_context(route_type=route_type)
@@ -131,8 +136,12 @@ async def run_processing_steps(
     dependencies: WebhookPipelineDependencies,
 ) -> PipelineProcessingResult:
     async with alert_processing_gate(ctx.alert_hash) as gate_res:
-        if await _handle_storm_suppression(ctx, gate_res):
-            return PipelineProcessingResult(suppressed=True)
+        with otel_span(
+            "webhook.validate",
+            {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+        ):
+            if await _handle_storm_suppression(ctx, gate_res):
+                return PipelineProcessingResult(suppressed=True)
 
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
         final_analysis = build_final_analysis(analysis, noise)

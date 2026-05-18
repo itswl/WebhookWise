@@ -19,7 +19,6 @@ python-json-logger==2.0.7
 PyYAML==6.0.1
 websocket-client==1.7.0
 cryptography>=42.0.0
-prometheus-fastapi-instrumentator==7.0.0
 alembic==1.18.4
 tenacity>=8.2.0
 instructor==1.1.0

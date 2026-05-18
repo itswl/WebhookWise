@@ -46,7 +46,9 @@ services:
       PROCESSING_LOCK_DISTRIBUTED_ENABLED: "false"
       CACHE_ENABLED: "false"
       RECOVERY_SCAN_INTERVAL_SECONDS: ${RECOVERY_SCAN_INTERVAL_SECONDS:-60}
-      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+      OTEL_SERVICE_NAME: webhookwise-lite
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
     volumes:
       - ./.env:/app/.env
       - ./logs:/app/logs

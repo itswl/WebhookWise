@@ -61,6 +61,11 @@ scheduler = TaskiqScheduler(
     sources=[LabelScheduleSource(broker), dynamic_schedule_source],
 )
 
+if Config.server.RUN_MODE == "scheduler":
+    from core.observability import setup_observability_scheduler
+
+    setup_observability_scheduler()
+
 import services.operations.tasks  # noqa: E402,F401
 
 
@@ -71,14 +76,13 @@ async def worker_startup_event(state: object) -> None:
     from core.config import Config
     from core.http_client import get_http_client
     from core.logger import setup_logger
-    from core.metrics import start_background_metrics_server
+    from core.observability import setup_observability_worker
     from db.session import init_engine
     from services.analysis.ai_analyzer import initialize_openai_client
 
     # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
     setup_logger()
-    if Config.server.RUN_MODE == "worker":
-        start_background_metrics_server()
+    setup_observability_worker()
     initialize_adapters()
     await init_engine()
     get_http_client()
@@ -87,10 +91,6 @@ async def worker_startup_event(state: object) -> None:
         await Config.start_subscriber()
     if Config.ai.ENABLE_AI_ANALYSIS and Config.ai.OPENAI_API_KEY:
         await initialize_openai_client()
-    # 初始化 worker 进程 OTEL（TracerProvider + httpx/redis instrumentation）
-    from core.otel import setup_otel_worker
-
-    setup_otel_worker()
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)

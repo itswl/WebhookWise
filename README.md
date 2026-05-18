@@ -70,8 +70,8 @@
 | 队列/缓存 | Redis 7+ |
 | AI 调用 | AsyncOpenAI + Instructor (结构化输出) |
 | HTTP 客户端 | httpx 单例连接池 |
-| 监控 | Prometheus + prometheus-fastapi-instrumentator |
-| 链路追踪 | OpenTelemetry (可选，OTLP 导出) |
+| 可观测性 | OpenTelemetry SDK + OTLP -> OpenTelemetry Collector |
+| 展示/告警 | Grafana + Prometheus-compatible metrics backend / Tempo / Loki |
 | 数据迁移 | Alembic |
 | 容器化 | Docker + Docker Compose；Full 模式 6 服务，Lite 模式 3 服务（migrate/API/PostgreSQL） |
 
@@ -123,7 +123,7 @@ docker compose -f docker-compose.yml -f docker-compose.supervisor.yml exec webho
 
 健康检查会同时校验 supervisor 中三个 program 均为 `RUNNING`，并探测 API `/ready`。
 
-默认三容器模式下，API 指标从 `webhook-service:8000/metrics` 暴露；Worker 会在容器网络内额外 expose `${WORKER_METRICS_PORT:-9001}`，用于抓取 TaskIQ 后台任务、recovery、重试等指标。all-in-one 模式下这些进程共享 `PROMETHEUS_MULTIPROC_DIR`，统一从 API `/metrics` 聚合暴露。
+默认三容器模式下，API、Worker、Scheduler 都只通过 OTLP 把 metrics/traces/logs 发给 OpenTelemetry Collector；应用不暴露 `/metrics`，也不直接绑定 Prometheus client。需要本地观测栈时，可叠加 `docker-compose.observability.yml` 启动 Collector + Prometheus + Tempo + Loki + Grafana。
 
 ### 本地开发
 
@@ -267,10 +267,9 @@ tests/e2e/run_webhook_to_feishu.sh
 | `GET` | `/api/admin/stuck-events` | 列举僵尸事件 |
 | `POST` | `/api/admin/stuck-events/{id}/requeue` | 重新入队单条僵尸事件（写权限） |
 
-### 监控
-| 方法 | 路径 | 说明 |
-|:---|:---|:---|
-| `GET` | `/metrics` | Prometheus 格式指标 |
+### 可观测性
+
+应用不提供 HTTP 指标端点。Metrics、traces、logs 统一通过 OTLP 发送到 OpenTelemetry Collector，Collector 再转发到 Prometheus-compatible backend、Tempo 和 Loki。
 
 ## ⚙️ 关键配置说明
 
@@ -293,7 +292,6 @@ tests/e2e/run_webhook_to_feishu.sh
 | `ENABLE_RUNTIME_CONFIG` | `false`（生产） | 启用 DB/Redis 运行时业务策略配置 |
 | `ALLOW_RUNTIME_CONNECTION_CONFIG` | `false` | 允许连接/密钥类配置热更新；生产不建议开启 |
 | `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |
-| `WORKER_METRICS_PORT` | `9001` | Compose 中独立 Worker 容器的后台任务指标端口 |
 | `DB_POOL_SIZE` | `5` | 单进程数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
 | `LOG_LEVEL` | `INFO` | 项目业务日志级别（`webhook_service`、`config`、`db`、`models` 等） |
@@ -364,24 +362,25 @@ tests/e2e/run_webhook_to_feishu.sh
 | `OPENCLAW_POLL_TIMEOUT` | `180` | `[runtime]` 单次轮询请求超时 |
 | `DEEP_ANALYSIS_FEISHU_WEBHOOK` | — | 深度分析完成后推送的飞书 Webhook URL |
 
-## 📊 Prometheus 指标
+## 📊 OpenTelemetry 指标
 
-服务在 `/metrics` 暴露以下核心指标：
+应用侧通过 OTel Meter 产生以下核心指标，Collector 可将它们转成 Prometheus-compatible 后端可查询的时间序列：
 
 | 指标名 | 类型 | 说明 |
 |:---|:---|:---|
-| `webhook_received_total` | Counter | 接收 Webhook 总量（按 source/status） |
-| `webhook_processing_status_total` | Counter | Pipeline 处理结果计数 |
-| `webhook_processing_duration_seconds` | Histogram | Pipeline 处理耗时分布 |
-| `webhook_noise_reduced_total` | Counter | 降噪告警数（按 source/relation_type/suppressed） |
-| `webhook_storm_suppressed_total` | Counter | 告警风暴触发抑制/聚合次数 |
-| `webhook_running_tasks` | Gauge | 当前活跃的 Webhook 后台处理任务数 |
-| `webhook_recovery_polled_total` | Counter | Recovery 扫描处理的僵尸事件数 |
-| `ai_tokens_total` | Counter | Token 消耗量（按 model/token_type） |
-| `ai_cost_usd_total` | Counter | 累计 AI 成本（美元） |
-| `ai_analysis_duration_seconds` | Histogram | AI 分析耗时（按 source/engine） |
-| `db_queue_pending` | Gauge | legacy DB 事件路径待恢复记录数 |
-| `forward_retry_pending` | Gauge | DB 中待重试转发审计记录数 |
+| `webhook.received` | Counter | 接收 Webhook 总量（按 source/status） |
+| `webhook.processed` | Counter | Pipeline 状态流转计数 |
+| `webhook.processing.duration` | Histogram | Pipeline 处理耗时分布 |
+| `webhook.suppressed` | Counter | 降噪/抑制结果计数 |
+| `webhook.storm.suppressed` | Counter | 告警风暴触发抑制次数 |
+| `webhook.running_tasks` | Gauge | 当前活跃的 Webhook 后台处理任务数 |
+| `webhook.recovery.polled` | Counter | Recovery 扫描处理的僵尸事件数 |
+| `ai.tokens` | Counter | Token 消耗量（按 model/token_type） |
+| `ai.cost` | Counter | 累计 AI 成本 |
+| `ai.request.duration` | Histogram | AI 分析耗时（按 source/engine） |
+| `scheduler.task.runs` | Counter | 定时任务执行计数 |
+| `db.pool.connections.*` | Gauge | DB 连接池容量与借出连接数 |
+| `queue.depth` / `queue.lag` | Gauge | Redis Stream 队列深度与 consumer lag |
 
 ## 🔒 安全说明
 

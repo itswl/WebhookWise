@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import logger, mask_url
+from core.otel import span as otel_span
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
@@ -240,19 +241,20 @@ async def dispatch_forwarding_decision(
         )
         return []
 
-    client = forwarding_client or DefaultForwardingClient()
-    results: list[dict[str, Any]] = []
-    for rule in _target_rules(decision):
-        result = await _dispatch_one_target(
-            rule,
-            full_data=full_data,
-            analysis=analysis,
-            webhook_id=webhook_id,
-            is_periodic_reminder=decision.is_periodic_reminder,
-            forwarding_client=client,
-        )
-        if result is not None:
-            results.append(result)
+    with otel_span("forward.dispatch", {"event_id": webhook_id, "forward.status": "started"}):
+        client = forwarding_client or DefaultForwardingClient()
+        results: list[dict[str, Any]] = []
+        for rule in _target_rules(decision):
+            result = await _dispatch_one_target(
+                rule,
+                full_data=full_data,
+                analysis=analysis,
+                webhook_id=webhook_id,
+                is_periodic_reminder=decision.is_periodic_reminder,
+                forwarding_client=client,
+            )
+            if result is not None:
+                results.append(result)
     if results:
         await mark_last_notified(orig_id or webhook_id)
         logger.info(
@@ -287,48 +289,52 @@ async def finalize_analysis_transaction(
         beyond_for_save = False
 
     outbox_ids: list[int] = []
-    async with session_scope() as session:
-        save_res = await save_webhook_data_in_session(
-            session,
-            data=ctx.req_ctx.parsed_data,
-            source=ctx.req_ctx.source,
-            raw_payload=ctx.req_ctx.payload,
-            headers=ctx.req_ctx.headers,
-            client_ip=ctx.req_ctx.client_ip,
-            request_id=ctx.request_id,
-            ai_analysis=final_analysis,
-            alert_hash=ctx.alert_hash,
-            is_duplicate=is_dup_for_save,
-            original_event=original_for_save,
-            original_event_id=original_id_for_save,
-            beyond_window=beyond_for_save,
-            reanalyzed=analysis_res.reanalyzed,
-            event_id=ctx.event_id,
-            skip_duplicate_lookup=skip_duplicate_lookup,
-        )
-
-        fwd_dec = await resolve_forward_decision(
-            normalize_importance(final_analysis.get("importance", "")),
-            save_res.is_duplicate and not save_res.beyond_window,
-            save_res.beyond_window,
-            noise,
-            analysis_res.original_event,
-            ctx.req_ctx.source,
-            session=session,
-            policy=forwarding_policy,
-        )
-        if fwd_dec.should_forward:
-            forward_data = dict(ctx.req_ctx.webhook_full_data)
-            if isinstance(forward_data.get("headers"), dict):
-                forward_data["headers"] = redact_headers(forward_data["headers"])
-            outbox_ids = await create_forward_outbox_records(
+    with otel_span(
+        "webhook.persist",
+        {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+    ):
+        async with session_scope() as session:
+            save_res = await save_webhook_data_in_session(
                 session,
-                decision=fwd_dec,
-                full_data=forward_data,
-                analysis=final_analysis,
-                webhook_id=save_res.webhook_id,
-                orig_id=save_res.original_id,
+                data=ctx.req_ctx.parsed_data,
+                source=ctx.req_ctx.source,
+                raw_payload=ctx.req_ctx.payload,
+                headers=ctx.req_ctx.headers,
+                client_ip=ctx.req_ctx.client_ip,
+                request_id=ctx.request_id,
+                ai_analysis=final_analysis,
+                alert_hash=ctx.alert_hash,
+                is_duplicate=is_dup_for_save,
+                original_event=original_for_save,
+                original_event_id=original_id_for_save,
+                beyond_window=beyond_for_save,
+                reanalyzed=analysis_res.reanalyzed,
+                event_id=ctx.event_id,
+                skip_duplicate_lookup=skip_duplicate_lookup,
             )
+
+            fwd_dec = await resolve_forward_decision(
+                normalize_importance(final_analysis.get("importance", "")),
+                save_res.is_duplicate and not save_res.beyond_window,
+                save_res.beyond_window,
+                noise,
+                analysis_res.original_event,
+                ctx.req_ctx.source,
+                session=session,
+                policy=forwarding_policy,
+            )
+            if fwd_dec.should_forward:
+                forward_data = dict(ctx.req_ctx.webhook_full_data)
+                if isinstance(forward_data.get("headers"), dict):
+                    forward_data["headers"] = redact_headers(forward_data["headers"])
+                outbox_ids = await create_forward_outbox_records(
+                    session,
+                    decision=fwd_dec,
+                    full_data=forward_data,
+                    analysis=final_analysis,
+                    webhook_id=save_res.webhook_id,
+                    orig_id=save_res.original_id,
+                )
     await remember_duplicate_source(
         ctx.alert_hash,
         original_event_id=save_res.original_id or save_res.webhook_id,
