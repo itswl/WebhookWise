@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,34 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
         "cwd": migrations.PROJECT_ROOT,
         "check": True,
     }
+
+
+def test_initial_schema_revision_is_idempotent_for_historical_tables() -> None:
+    revision_path = migrations.PROJECT_ROOT / "alembic/versions/f8894c5c7e15_initial_schema_from_existing_models.py"
+    tree = ast.parse(revision_path.read_text())
+
+    calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in {"create_table", "create_index"}:
+            continue
+        if not isinstance(node.func.value, ast.Name) or node.func.value.id != "op":
+            continue
+        calls.append(node)
+
+    assert calls
+    missing = [
+        node.lineno
+        for node in calls
+        if not any(
+            kw.arg == "if_not_exists" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+            for kw in node.keywords
+        )
+    ]
+    assert missing == []
 
 
 def test_legacy_partial_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
