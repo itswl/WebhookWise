@@ -43,7 +43,8 @@ class TraceIdFilter(logging.Filter):
             otel_trace_id = get_otel_trace_id()
             otel_span_id = get_otel_span_id()
         except Exception:
-            pass
+            otel_trace_id = ""
+            otel_span_id = ""
 
         record.trace_id = otel_trace_id or get_trace_id() or "-"
         record.span_id = otel_span_id or "-"

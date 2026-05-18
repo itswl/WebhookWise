@@ -59,6 +59,8 @@ def _alias_for_key(key: str, label_keys: tuple[str, ...]) -> str:
     suffix_matches = [label for label in label_keys if label.endswith(f".{key}")]
     if len(suffix_matches) == 1:
         return suffix_matches[0]
+    if key == "token_type":
+        return "ai.token_type" if "ai.token_type" in label_keys else key
     alias_map = {
         "source": "webhook.source",
         "event_id": "webhook.event_id",
@@ -72,7 +74,6 @@ def _alias_for_key(key: str, label_keys: tuple[str, ...]) -> str:
         "model": "ai.model",
         "provider": "ai.provider",
         "engine": "ai.engine",
-        "token_type": "ai.token_type",
         "type": "error.type",
         "field": "webhook.field",
         "reason": "error.reason",
