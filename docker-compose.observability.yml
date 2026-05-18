@@ -5,6 +5,7 @@ services:
   webhook-service:
     environment:
       OTEL_ENABLED: "true"
+      OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: webhookwise-api
@@ -15,6 +16,7 @@ services:
   worker:
     environment:
       OTEL_ENABLED: "true"
+      OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: webhookwise-worker
@@ -25,12 +27,18 @@ services:
   scheduler:
     environment:
       OTEL_ENABLED: "true"
+      OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: webhookwise-scheduler
     depends_on:
       otel-collector:
         condition: service_started
+
+  migrate:
+    environment:
+      OTEL_ENABLED: "false"
+      OTEL_CONSOLE_EXPORTER: "false"
 
   otel-collector:
     image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:latest}
@@ -66,6 +74,7 @@ services:
 
   tempo:
     image: ${TEMPO_IMAGE:-grafana/tempo:latest}
+    user: "0:0"
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
       - ./deploy/observability/tempo.yml:/etc/tempo.yml:ro

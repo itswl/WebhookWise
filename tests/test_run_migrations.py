@@ -86,6 +86,16 @@ def test_initial_schema_revision_repairs_missing_historical_columns() -> None:
     assert '"created_at TIMESTAMP WITHOUT TIME ZONE"' in source
 
 
+def test_legacy_unique_index_predicate_matches_is_duplicate_column_type() -> None:
+    revision_path = migrations.PROJECT_ROOT / "alembic/versions/6a7b8c9d0e1f_consolidate_legacy_indexes_and_locks.py"
+    source = revision_path.read_text()
+
+    assert 'column_type == "boolean"' in source
+    assert 'column_type in {"smallint", "integer", "bigint"}' in source
+    assert "(is_duplicate = 0 OR is_duplicate IS NULL)" in source
+    assert "WHERE {predicate}" in source
+
+
 def test_legacy_partial_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
     executed: list[tuple[str, tuple[str, ...] | None]] = []
     responses = [
