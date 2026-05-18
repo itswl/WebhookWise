@@ -255,8 +255,8 @@ tests/e2e/run_webhook_to_feishu.sh
 | `GET` | `/api/config` | 查看当前有效配置 |
 | `GET` | `/api/config/sources` | 查看每个配置 key 的来源（db/env/default）及更新时间 |
 | `POST` | `/api/config` | 热更新运行时配置（写权限） |
-| `GET` | `/api/prompt` | 查看当前 AI Prompt |
-| `POST` | `/api/prompt/reload` | 热重载 Prompt 文件（写权限） |
+| `GET` | `/api/prompt?kind=user\|deep_analysis` | 查看当前 AI Prompt 或深度分析 Prompt |
+| `POST` | `/api/prompt/reload?kind=user\|deep_analysis` | 热重载 Prompt 文件（写权限） |
 | `GET` | `/api/admin/dead-letters` | 死信队列列表 |
 | `POST` | `/api/admin/dead-letters/{id}/replay` | 重放单条死信事件（写权限） |
 | `GET` | `/api/admin/stuck-events` | 列举僵尸事件 |
@@ -308,6 +308,9 @@ tests/e2e/run_webhook_to_feishu.sh
 | `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | `[runtime]` 使用的模型 |
 | `AI_SYSTEM_PROMPT` | 内置 | `[runtime]` 系统级 Prompt |
 | `AI_USER_PROMPT_FILE` | `prompts/webhook_analysis_detailed.txt` | 用户 Prompt 模板文件路径 |
+| `AI_USER_PROMPT` | — | `[runtime]` 用户 Prompt 内联覆盖，优先级高于文件 |
+| `DEEP_ANALYSIS_PROMPT_FILE` | `prompts/deep_analysis.txt` | OpenClaw 深度分析 Prompt 模板文件路径 |
+| `DEEP_ANALYSIS_PROMPT` | — | `[runtime]` 深度分析 Prompt 内联覆盖，优先级高于文件 |
 | `CACHE_ENABLED` | `true` | 分析结果 Redis 缓存 |
 | `ANALYSIS_CACHE_TTL` | `21600` | 缓存有效期（秒，默认 6h） |
 

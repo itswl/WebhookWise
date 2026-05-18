@@ -113,8 +113,10 @@ Prompt text is a product asset. The current control plane is:
 - `AI_SYSTEM_PROMPT`: runtime-configurable system prompt.
 - `AI_USER_PROMPT`: inline override for the user prompt.
 - `AI_USER_PROMPT_FILE`: file-backed prompt template.
-- `GET /api/prompt`: inspect the active prompt.
-- `POST /api/prompt/reload`: reload file-backed prompt content.
+- `DEEP_ANALYSIS_PROMPT`: inline override for the OpenClaw deep-analysis prompt.
+- `DEEP_ANALYSIS_PROMPT_FILE`: file-backed OpenClaw deep-analysis prompt template.
+- `GET /api/prompt?kind=user|deep_analysis`: inspect the active prompt and source.
+- `POST /api/prompt/reload?kind=user|deep_analysis`: reload file-backed prompt content.
 
 Prompt experiments should be represented as explicit config changes or versioned
 prompt files with tests. Avoid editing prompt text without a way to identify the

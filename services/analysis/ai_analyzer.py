@@ -19,7 +19,9 @@ from services.analysis.ai_policies import AICachePolicy, AIProviderPolicy, RuleA
 from services.analysis.ai_prompt import (
     _resolve_prompt_path,
     get_prompt_source,
+    load_deep_analysis_prompt_template,
     load_user_prompt_template,
+    reload_deep_analysis_prompt_template,
     reload_user_prompt_template,
 )
 from services.analysis.ai_usage import log_ai_usage
@@ -52,8 +54,10 @@ __all__ = [
     "get_deep_analysis_list",
     "get_prompt_source",
     "initialize_openai_client",
+    "load_deep_analysis_prompt_template",
     "load_user_prompt_template",
     "log_ai_usage",
+    "reload_deep_analysis_prompt_template",
     "reload_user_prompt_template",
     "reset_openai_client",
     "save_to_cache",

@@ -13,6 +13,10 @@ _CONFIG_SCHEMA: dict[str, tuple[str, str, _Validator | None]] = {
     "openai_api_url": ("OPENAI_API_URL", "str", lambda x: str(x).startswith("http")),
     "openai_model": ("OPENAI_MODEL", "str", lambda x: len(str(x)) > 0),
     "ai_system_prompt": ("AI_SYSTEM_PROMPT", "str", None),
+    "ai_user_prompt": ("AI_USER_PROMPT", "str", None),
+    "ai_user_prompt_file": ("AI_USER_PROMPT_FILE", "str", lambda x: len(str(x)) > 0),
+    "deep_analysis_prompt": ("DEEP_ANALYSIS_PROMPT", "str", None),
+    "deep_analysis_prompt_file": ("DEEP_ANALYSIS_PROMPT_FILE", "str", lambda x: len(str(x)) > 0),
     "log_level": ("LOG_LEVEL", "str", lambda x: str(x).upper() in ["DEBUG", "INFO", "WARNING", "ERROR"]),
     "third_party_log_level": (
         "THIRD_PARTY_LOG_LEVEL",
