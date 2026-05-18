@@ -24,6 +24,7 @@ from services.webhooks.types import DeepAnalysisStatus
 deep_analysis_router = APIRouter()
 
 MAX_PAGE = 500
+MANUAL_RETRY_STARTED_AT_KEY = "_manual_retry_started_at"
 
 
 def _is_supported_deep_analysis_engine(requested: str) -> bool:
@@ -85,8 +86,7 @@ async def _schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: i
 
 def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime) -> None:
     record.status = DeepAnalysisStatus.PENDING
-    record.created_at = now
-    record.analysis_result = None
+    record.analysis_result = {MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
     record.duration_seconds = 0
     record.poll_attempts = 0
     record.last_polled_at = None
@@ -220,9 +220,9 @@ async def retry_deep_analysis(
             ctx, event.headers or {}, record.user_question or ""
         )
         if new_result.get("_pending"):
+            now = datetime.now()
             record.status = DeepAnalysisStatus.PENDING
-            record.created_at = datetime.now()
-            record.analysis_result = new_result
+            record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
             record.openclaw_run_id = new_result.get("_openclaw_run_id", "")
             record.openclaw_session_key = new_result.get("_openclaw_session_key", "")
             record.duration_seconds = 0
