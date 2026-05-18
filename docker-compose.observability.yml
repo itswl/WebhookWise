@@ -8,9 +8,16 @@ services:
       OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-api
+      PYROSCOPE_ENABLED: "true"
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+      PYROSCOPE_APPLICATION_NAME: webhookwise-api
+      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
       otel-collector:
+        condition: service_started
+      pyroscope:
         condition: service_started
 
   worker:
@@ -19,9 +26,16 @@ services:
       OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-worker
+      PYROSCOPE_ENABLED: "true"
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+      PYROSCOPE_APPLICATION_NAME: webhookwise-worker
+      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
       otel-collector:
+        condition: service_started
+      pyroscope:
         condition: service_started
 
   scheduler:
@@ -30,9 +44,16 @@ services:
       OTEL_CONSOLE_EXPORTER: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-scheduler
+      PYROSCOPE_ENABLED: "true"
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+      PYROSCOPE_APPLICATION_NAME: webhookwise-scheduler
+      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
       otel-collector:
+        condition: service_started
+      pyroscope:
         condition: service_started
 
   migrate:
@@ -69,6 +90,16 @@ services:
     depends_on:
       otel-collector:
         condition: service_started
+    networks:
+      - webhook_net
+
+  pyroscope:
+    image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:latest}
+    command: ["server"]
+    volumes:
+      - pyroscope_data:/var/lib/pyroscope
+    ports:
+      - "4040:4040"
     networks:
       - webhook_net
 
@@ -113,6 +144,8 @@ services:
         condition: service_started
       loki:
         condition: service_started
+      pyroscope:
+        condition: service_started
     networks:
       - webhook_net
 
@@ -120,4 +153,5 @@ volumes:
   grafana_data:
   loki_data:
   prometheus_data:
+  pyroscope_data:
   tempo_data:

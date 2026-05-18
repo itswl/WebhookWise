@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from core.logger import logger, mask_url
-from core.metrics import ALERT_NUMERIC_PARSE_FAILURE_TOTAL
+from core.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from models import WebhookEvent
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
@@ -205,6 +205,7 @@ async def _degrade_to_rules(
     notify: bool,
 ) -> AnalysisResult:
     logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
+    AI_DEGRADATIONS_TOTAL.labels(str(reason).split(":", 1)[0][:80] or "unknown").inc()
     res = analyze_with_rules(parsed, source)
     res.update({"_degraded": True, "_route_type": "rule", "_degraded_reason": reason})
     await log_ai_usage("rule", alert_hash, source)

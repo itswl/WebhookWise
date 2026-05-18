@@ -10,12 +10,14 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.metrics import FORWARD_OUTBOX_PROCESS_DURATION_SECONDS, FORWARD_OUTBOX_RECORDS_TOTAL
 from db.session import session_scope
 from models import FailedForward, ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
@@ -76,6 +78,7 @@ async def create_forward_outbox_records(
         target_url = str(rule.get("target_url", "") or "")
         if target_type != "openclaw" and not target_url:
             logger.warning("[ForwardOutbox] 规则 '%s' target_url 为空，跳过意图创建", rule.get("name", rule.get("id")))
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
             continue
 
         rule_id = _rule_id(rule)
@@ -91,6 +94,7 @@ async def create_forward_outbox_records(
         ).scalar_one_or_none()
         if existing is not None:
             logger.info("[ForwardOutbox] 意图已存在 key=%s id=%s", key, existing)
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
             continue
 
         record = ForwardOutbox(
@@ -115,6 +119,7 @@ async def create_forward_outbox_records(
         session.add(record)
         await session.flush()
         created_ids.append(record.id)
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
         logger.info(
             "[ForwardOutbox] 已创建转发意图 id=%s event_id=%s target_type=%s", record.id, webhook_id, target_type
         )
@@ -131,7 +136,9 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
     for outbox_id in outbox_ids:
         try:
             await process_forward_outbox_task.kiq(outbox_id=outbox_id)
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
         except Exception as e:  # noqa: PERF203
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
             logger.warning("[ForwardOutbox] 即时调度失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
 
 
@@ -140,7 +147,9 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
         from services.operations.taskiq_retry_scheduler import schedule_forward_outbox
 
         await schedule_forward_outbox(outbox_id, delay_seconds)
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
     except Exception as e:
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
         logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
 
 
@@ -176,6 +185,7 @@ async def _expire_outbox_if_old(
     expired = (await session.execute(stmt)).scalar_one_or_none()
     if not expired:
         return False
+    FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(expired.target_type or "unknown"), "expired").inc()
     await _record_terminal_failed_forward(
         session,
         expired,
@@ -219,20 +229,33 @@ def _is_forward_success(result: dict[str, Any]) -> bool:
 
 
 async def process_forward_outbox_by_id(outbox_id: int) -> None:
+    started = time.perf_counter()
+    target_type = "unknown"
+    status = "not_claimed"
     record = await _claim_outbox(outbox_id)
     if not record:
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
+        FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
         return
+    target_type = str(record.target_type or "unknown")
 
     try:
         result = await _send_outbox_record(record)
     except Exception as e:
+        status = "failed"
         await _finalize_outbox_failure(record.id, str(e))
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
+        FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
         return
 
     if _is_forward_success(result):
+        status = "sent"
         await _finalize_outbox_success(record, result)
     else:
+        status = "failed"
         await _finalize_outbox_failure(record.id, f"forward status={result.get('status')}: {result.get('message', '')}")
+    FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
+    FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
 
 
 async def _send_outbox_record(record: ForwardOutbox) -> dict[str, Any]:
@@ -344,6 +367,7 @@ async def _finalize_outbox_failure(
                 record.max_attempts,
                 error_msg,
             )
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "exhausted").inc()
             return
 
         delay = policy.delay_for_attempt(record.attempts)
@@ -351,6 +375,7 @@ async def _finalize_outbox_failure(
         record.next_attempt_at = now + timedelta(seconds=delay)
         retry_outbox_id = record.id
         retry_delay = delay
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "retrying").inc()
         logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
     if retry_outbox_id is not None and retry_delay is not None:
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
@@ -419,6 +444,8 @@ async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: 
             failure_reason="outbox_expired",
         )
     if expired_records:
+        for record in expired_records:
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "expired").inc()
         logger.warning("[ForwardOutbox] 批量过期转发意图 count=%s", len(expired_records))
     return len(expired_records)
 
@@ -450,4 +477,7 @@ async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPoli
         )
         ids = list((await session.execute(stmt)).scalars().all())
     await schedule_forward_outbox_many(ids)
+    FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_queued").inc(len(ids))
+    if expired_count:
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_expired").inc(expired_count)
     return expired_count + len(ids)

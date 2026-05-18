@@ -14,6 +14,8 @@ from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
 from core.metrics import (
     WEBHOOK_NOISE_REDUCED_TOTAL,
+    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
+    WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
@@ -201,10 +203,21 @@ async def _handle_webhook_process_inner(
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
+            parse_start = time.perf_counter()
+            parse_outcome = "success"
             with otel_span("webhook.parse", {"source": env.source or "unknown", "event_id": event_id or 0}):
-                req_ctx = parse_request(
-                    client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts
-                )
+                try:
+                    req_ctx = parse_request(
+                        client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts
+                    )
+                except Exception:
+                    parse_outcome = "error"
+                    raise
+                finally:
+                    WEBHOOK_PIPELINE_STEP_TOTAL.labels("parse", metric_source, parse_outcome).inc()
+                    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("parse", metric_source, parse_outcome).observe(
+                        time.perf_counter() - parse_start
+                    )
             alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
