@@ -20,6 +20,11 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _add_columns_if_not_exists(table: str, columns: Sequence[str]) -> None:
+    for column in columns:
+        op.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}"))
+
+
 def upgrade() -> None:
     """Create all tables from existing models."""
     # webhook_events
@@ -46,6 +51,30 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
+    )
+    _add_columns_if_not_exists(
+        "webhook_events",
+        (
+            "id INTEGER",
+            "source VARCHAR(100)",
+            "client_ip VARCHAR(50)",
+            "timestamp TIMESTAMP WITHOUT TIME ZONE",
+            "raw_payload TEXT",
+            "headers JSONB",
+            "parsed_data JSONB",
+            "alert_hash VARCHAR(64)",
+            "ai_analysis JSONB",
+            "importance VARCHAR(20)",
+            "processing_status VARCHAR(20) DEFAULT 'received' NOT NULL",
+            "forward_status VARCHAR(20)",
+            "is_duplicate BOOLEAN DEFAULT false",
+            "duplicate_of INTEGER",
+            "duplicate_count INTEGER DEFAULT 1",
+            "beyond_window BOOLEAN DEFAULT false",
+            "last_notified_at TIMESTAMP WITHOUT TIME ZONE",
+            "created_at TIMESTAMP WITHOUT TIME ZONE",
+            "updated_at TIMESTAMP WITHOUT TIME ZONE",
+        ),
     )
     op.create_index("ix_webhook_events_source", "webhook_events", ["source"], if_not_exists=True)
     op.create_index("ix_webhook_events_timestamp", "webhook_events", ["timestamp"], if_not_exists=True)
@@ -85,6 +114,30 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
     )
+    _add_columns_if_not_exists(
+        "archived_webhook_events",
+        (
+            "id INTEGER",
+            "source VARCHAR(100)",
+            "client_ip VARCHAR(50)",
+            "timestamp TIMESTAMP WITHOUT TIME ZONE",
+            "raw_payload TEXT",
+            "headers JSONB",
+            "parsed_data JSONB",
+            "alert_hash VARCHAR(64)",
+            "ai_analysis JSONB",
+            "importance VARCHAR(20)",
+            "forward_status VARCHAR(20)",
+            "is_duplicate BOOLEAN",
+            "duplicate_of INTEGER",
+            "duplicate_count INTEGER",
+            "beyond_window BOOLEAN",
+            "last_notified_at TIMESTAMP WITHOUT TIME ZONE",
+            "created_at TIMESTAMP WITHOUT TIME ZONE",
+            "updated_at TIMESTAMP WITHOUT TIME ZONE",
+            "archived_at TIMESTAMP WITHOUT TIME ZONE",
+        ),
+    )
     op.create_index("ix_archived_webhook_events_source", "archived_webhook_events", ["source"], if_not_exists=True)
     op.create_index(
         "ix_archived_webhook_events_timestamp", "archived_webhook_events", ["timestamp"], if_not_exists=True
@@ -118,6 +171,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
     )
+    _add_columns_if_not_exists(
+        "ai_usage_log",
+        (
+            "id INTEGER",
+            "timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT now()",
+            "model VARCHAR(100)",
+            "tokens_in INTEGER DEFAULT 0",
+            "tokens_out INTEGER DEFAULT 0",
+            "cost_estimate DOUBLE PRECISION DEFAULT 0.0",
+            "cache_hit BOOLEAN DEFAULT false",
+            "route_type VARCHAR(20)",
+            "alert_hash VARCHAR(64)",
+            "source VARCHAR(100)",
+        ),
+    )
     op.create_index("ix_ai_usage_log_timestamp", "ai_usage_log", ["timestamp"], if_not_exists=True)
     op.create_index("ix_ai_usage_log_alert_hash", "ai_usage_log", ["alert_hash"], if_not_exists=True)
     op.create_index("idx_usage_timestamp_route", "ai_usage_log", ["timestamp", "route_type"], if_not_exists=True)
@@ -139,6 +207,22 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("execution_id"),
         if_not_exists=True,
+    )
+    _add_columns_if_not_exists(
+        "remediation_execution",
+        (
+            "id INTEGER",
+            "execution_id VARCHAR(64)",
+            "runbook_name VARCHAR(200)",
+            "trigger_alert_id INTEGER",
+            "trigger_alert_hash VARCHAR(64)",
+            "status VARCHAR(30) DEFAULT 'pending'",
+            "steps_log TEXT DEFAULT '[]'",
+            "dry_run BOOLEAN DEFAULT false",
+            "started_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now()",
+            "completed_at TIMESTAMP WITHOUT TIME ZONE",
+            "error_message TEXT",
+        ),
     )
     op.create_index(
         "ix_remediation_execution_execution_id", "remediation_execution", ["execution_id"], if_not_exists=True
@@ -166,6 +250,24 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
     )
+    _add_columns_if_not_exists(
+        "forward_rules",
+        (
+            "id INTEGER",
+            "name VARCHAR(100)",
+            "enabled BOOLEAN DEFAULT true",
+            "priority INTEGER DEFAULT 0",
+            "match_importance VARCHAR(50) DEFAULT ''",
+            "match_duplicate VARCHAR(20) DEFAULT 'all'",
+            "match_source VARCHAR(200) DEFAULT ''",
+            "target_type VARCHAR(20)",
+            "target_url VARCHAR(500) DEFAULT ''",
+            "target_name VARCHAR(100) DEFAULT ''",
+            "stop_on_match BOOLEAN DEFAULT false",
+            "created_at TIMESTAMP WITHOUT TIME ZONE",
+            "updated_at TIMESTAMP WITHOUT TIME ZONE",
+        ),
+    )
     op.create_index("idx_forward_rules_priority", "forward_rules", ["priority"], if_not_exists=True)
 
     # deep_analyses
@@ -183,6 +285,21 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=True, server_default="'completed'"),
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
+    )
+    _add_columns_if_not_exists(
+        "deep_analyses",
+        (
+            "id INTEGER",
+            "webhook_event_id INTEGER",
+            "engine VARCHAR(20) DEFAULT 'local'",
+            "user_question TEXT DEFAULT ''",
+            "analysis_result JSONB",
+            "duration_seconds DOUBLE PRECISION DEFAULT 0",
+            "created_at TIMESTAMP WITHOUT TIME ZONE",
+            "openclaw_run_id VARCHAR(64)",
+            "openclaw_session_key VARCHAR(200)",
+            "status VARCHAR(20) DEFAULT 'completed'",
+        ),
     )
     op.create_index("ix_deep_analyses_webhook_event_id", "deep_analyses", ["webhook_event_id"], if_not_exists=True)
     op.create_index("ix_deep_analyses_openclaw_run_id", "deep_analyses", ["openclaw_run_id"], if_not_exists=True)
@@ -210,6 +327,27 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         if_not_exists=True,
     )
+    _add_columns_if_not_exists(
+        "failed_forwards",
+        (
+            "id INTEGER",
+            "webhook_event_id INTEGER",
+            "forward_rule_id INTEGER",
+            "target_url VARCHAR(500)",
+            "target_type VARCHAR(20)",
+            "status VARCHAR(20) DEFAULT 'pending'",
+            "failure_reason VARCHAR(500)",
+            "error_message TEXT",
+            "retry_count INTEGER DEFAULT 0",
+            "max_retries INTEGER DEFAULT 3",
+            "next_retry_at TIMESTAMP WITHOUT TIME ZONE",
+            "last_retry_at TIMESTAMP WITHOUT TIME ZONE",
+            "forward_data JSONB",
+            "forward_headers JSONB",
+            "created_at TIMESTAMP WITHOUT TIME ZONE",
+            "updated_at TIMESTAMP WITHOUT TIME ZONE",
+        ),
+    )
     op.create_index("ix_failed_forwards_webhook_event_id", "failed_forwards", ["webhook_event_id"], if_not_exists=True)
     op.create_index("idx_failed_status_retry", "failed_forwards", ["status", "next_retry_at"], if_not_exists=True)
     op.create_index("idx_failed_webhook_event", "failed_forwards", ["webhook_event_id"], if_not_exists=True)
@@ -233,6 +371,17 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("key"),
         if_not_exists=True,
+    )
+    _add_columns_if_not_exists(
+        "system_configs",
+        (
+            "key VARCHAR(128)",
+            "value TEXT",
+            "value_type VARCHAR(16) DEFAULT 'str'",
+            "description TEXT",
+            "updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now()",
+            "updated_by VARCHAR(64) DEFAULT 'system'",
+        ),
     )
 
 

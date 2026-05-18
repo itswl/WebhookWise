@@ -77,6 +77,15 @@ def test_initial_schema_revision_is_idempotent_for_historical_tables() -> None:
     assert missing == []
 
 
+def test_initial_schema_revision_repairs_missing_historical_columns() -> None:
+    revision_path = migrations.PROJECT_ROOT / "alembic/versions/f8894c5c7e15_initial_schema_from_existing_models.py"
+    source = revision_path.read_text()
+
+    assert "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}" in source
+    assert "\"processing_status VARCHAR(20) DEFAULT 'received' NOT NULL\"" in source
+    assert '"created_at TIMESTAMP WITHOUT TIME ZONE"' in source
+
+
 def test_legacy_partial_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
     executed: list[tuple[str, tuple[str, ...] | None]] = []
     responses = [
