@@ -388,10 +388,10 @@ var DeepAnalysesModule = (function() {
         try {
             var result = await API.retryDeepAnalysis(analysisId);
             if (result.success) {
-                alert('🔄 已触发拉取');
+                alert('🔄 ' + (result.message || '已触发拉取'));
                 load();
             } else {
-                alert('❌ 重试失败: ' + (result.error || '未知错误'));
+                alert('❌ 重试失败: ' + (result.error || result.message || '未知错误'));
             }
         } catch (e) {
             alert('❌ 请求失败: ' + e.message);
