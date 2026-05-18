@@ -37,12 +37,13 @@ def _run_alembic_upgrade() -> None:
     subprocess.run(["alembic", "upgrade", "head"], cwd=PROJECT_ROOT, check=True)
 
 
-def _advance_legacy_logic_sinking_revision() -> None:
+def _advance_legacy_partial_revision() -> None:
     """Patch a historical partially-applied migration marker.
 
-    Older deployments could have the logic-sinking objects already present while
-    alembic_version stayed at the previous revision. This keeps that one-off
-    compatibility fix out of the long-running API/worker entrypoint.
+    Older deployments could have the unique alert index and processing lock
+    table already present while alembic_version stayed at the previous revision.
+    This keeps that one-off compatibility fix out of the long-running
+    API/worker entrypoint.
     """
     url = os.environ.get("DATABASE_URL", "")
     if not url:
@@ -83,7 +84,7 @@ def main() -> int:
     started = time.time()
     asyncio.run(_wait_for_database(max_retries=max_retries, interval_seconds=interval_seconds))
     _run_alembic_upgrade()
-    _advance_legacy_logic_sinking_revision()
+    _advance_legacy_partial_revision()
     print(f"数据库迁移完成，用时 {time.time() - started:.1f}s")
     return 0
 

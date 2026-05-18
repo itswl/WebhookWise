@@ -1,4 +1,4 @@
-"""Notification target detection helpers owned by the adapter boundary."""
+"""Notification target detection helpers."""
 
 from urllib.parse import urlsplit
 

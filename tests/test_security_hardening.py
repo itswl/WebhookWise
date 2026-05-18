@@ -213,7 +213,7 @@ def test_dashboard_deep_analysis_fields_are_escaped() -> None:
 
 
 def test_is_feishu_url_requires_hostname_match() -> None:
-    from adapters.notification_targets import is_feishu_url
+    from services.notifications.target_detection import is_feishu_url
 
     assert is_feishu_url("https://open.feishu.cn/open-apis/bot/v2/hook/token")
     assert is_feishu_url("https://tenant.larksuite.com/hook")
