@@ -86,7 +86,7 @@ def _alias_for_key(key: str, label_keys: tuple[str, ...]) -> str:
 
 
 class BoundMetric:
-    def __init__(self, metric: Counter | Histogram | Gauge, attributes: dict[str, str | bool | int | float]) -> None:
+    def __init__(self, metric: _MetricBase, attributes: dict[str, str | bool | int | float]) -> None:
         self._metric = metric
         self._attributes = attributes
 

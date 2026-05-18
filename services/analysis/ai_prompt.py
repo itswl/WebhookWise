@@ -2,17 +2,38 @@
 
 import asyncio
 from pathlib import Path
+from typing import Protocol
 
 from core.logger import logger
-from services.analysis.ai_policies import AIPromptPolicy
+from services.analysis.ai_policies import AIPromptPolicy, DeepAnalysisPromptPolicy
 
 _prompt_template_lock = asyncio.Lock()
-_user_prompt_template: str | None = None
-_user_prompt_source: str = "unknown"
+_prompt_templates: dict[str, str] = {}
+_prompt_sources: dict[str, str] = {}
+
+USER_PROMPT_KIND = "user"
+DEEP_ANALYSIS_PROMPT_KIND = "deep_analysis"
 
 
-def get_prompt_source() -> str:
-    return _user_prompt_source
+class _PromptPolicy(Protocol):
+    @property
+    def inline_prompt(self) -> str: ...
+
+    @property
+    def prompt_file(self) -> str: ...
+
+    @property
+    def builtin_prompt(self) -> str: ...
+
+    @property
+    def inline_source(self) -> str: ...
+
+    @property
+    def builtin_source(self) -> str: ...
+
+
+def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:
+    return _prompt_sources.get(kind, "unknown")
 
 
 def _resolve_prompt_path(prompt_file: str) -> Path:
@@ -23,36 +44,51 @@ def _resolve_prompt_path(prompt_file: str) -> Path:
     return project_root / file_path
 
 
-async def load_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
-    global _user_prompt_template, _user_prompt_source
-    policy = policy or AIPromptPolicy.from_config()
+async def _load_prompt_template(kind: str, policy: _PromptPolicy) -> str:
     async with _prompt_template_lock:
-        if _user_prompt_template is not None:
-            return _user_prompt_template
+        cached = _prompt_templates.get(kind)
+        if cached is not None:
+            return cached
 
         if policy.inline_prompt:
-            _user_prompt_source, _user_prompt_template = "env:AI_USER_PROMPT", policy.inline_prompt
-            return _user_prompt_template
+            _prompt_sources[kind] = policy.inline_source
+            _prompt_templates[kind] = policy.inline_prompt
+            return policy.inline_prompt
 
         prompt_file = policy.prompt_file
         if prompt_file:
             file_path = _resolve_prompt_path(prompt_file)
             if file_path.exists():
                 try:
-                    with open(file_path, encoding="utf-8") as f:
-                        _user_prompt_template = f.read()
-                    _user_prompt_source = f"file:{file_path}"
-                    return _user_prompt_template
-                except Exception as e:
-                    logger.warning("从文件加载 prompt 模板失败: %s", e)
+                    template = file_path.read_text(encoding="utf-8")
+                    _prompt_sources[kind] = f"file:{file_path}"
+                    _prompt_templates[kind] = template
+                    return template
+                except OSError as e:
+                    logger.warning("从文件加载 prompt 模板失败 kind=%s path=%s error=%s", kind, file_path, e)
 
-        _user_prompt_source = "builtin:default"
-        _user_prompt_template = policy.builtin_prompt
-        return _user_prompt_template
+        _prompt_sources[kind] = policy.builtin_source
+        _prompt_templates[kind] = policy.builtin_prompt
+        return policy.builtin_prompt
+
+
+async def load_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
+    return await _load_prompt_template(USER_PROMPT_KIND, policy or AIPromptPolicy.from_config())
+
+
+async def load_deep_analysis_prompt_template(policy: DeepAnalysisPromptPolicy | None = None) -> str:
+    return await _load_prompt_template(DEEP_ANALYSIS_PROMPT_KIND, policy or DeepAnalysisPromptPolicy.from_config())
 
 
 async def reload_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
-    global _user_prompt_template
     async with _prompt_template_lock:
-        _user_prompt_template = None
+        _prompt_templates.pop(USER_PROMPT_KIND, None)
+        _prompt_sources.pop(USER_PROMPT_KIND, None)
     return await load_user_prompt_template(policy=policy)
+
+
+async def reload_deep_analysis_prompt_template(policy: DeepAnalysisPromptPolicy | None = None) -> str:
+    async with _prompt_template_lock:
+        _prompt_templates.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
+        _prompt_sources.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
+    return await load_deep_analysis_prompt_template(policy=policy)

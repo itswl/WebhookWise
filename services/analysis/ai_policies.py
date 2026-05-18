@@ -13,6 +13,8 @@ DEFAULT_USER_PROMPT_TEMPLATE = """请分析以下 webhook 事件：
 ```
 请识别事件的类型、严重程度，并提供摘要、影响评估和处理建议。"""
 
+DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE = "请对以下告警进行深度根因分析。"
+
 
 def _split_keywords(value: str) -> tuple[str, ...]:
     return tuple(part.strip().lower() for part in str(value).split(",") if part.strip())
@@ -96,7 +98,25 @@ class AIPromptPolicy:
     inline_prompt: str
     prompt_file: str
     builtin_prompt: str = DEFAULT_USER_PROMPT_TEMPLATE
+    inline_source: str = "env:AI_USER_PROMPT"
+    builtin_source: str = "builtin:user"
 
     @classmethod
     def from_config(cls, config: Any = Config.ai) -> "AIPromptPolicy":
         return cls(inline_prompt=str(config.AI_USER_PROMPT), prompt_file=str(config.AI_USER_PROMPT_FILE))
+
+
+@dataclass(frozen=True, slots=True)
+class DeepAnalysisPromptPolicy:
+    inline_prompt: str
+    prompt_file: str
+    builtin_prompt: str = DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE
+    inline_source: str = "env:DEEP_ANALYSIS_PROMPT"
+    builtin_source: str = "builtin:deep_analysis"
+
+    @classmethod
+    def from_config(cls, config: Any = Config.ai) -> "DeepAnalysisPromptPolicy":
+        return cls(
+            inline_prompt=str(config.DEEP_ANALYSIS_PROMPT),
+            prompt_file=str(config.DEEP_ANALYSIS_PROMPT_FILE),
+        )
