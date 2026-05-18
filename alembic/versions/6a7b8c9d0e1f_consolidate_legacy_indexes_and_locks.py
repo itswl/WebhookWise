@@ -21,6 +21,31 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _column_type(table: str, column: str) -> str | None:
+    conn = op.get_bind()
+    return conn.execute(
+        sa.text(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = :table
+              AND column_name = :column
+            """
+        ),
+        {"table": table, "column": column},
+    ).scalar()
+
+
+def _original_alert_hash_predicate() -> str:
+    column_type = _column_type("webhook_events", "is_duplicate")
+    if column_type == "boolean":
+        return "NOT is_duplicate"
+    if column_type in {"smallint", "integer", "bigint"}:
+        return "(is_duplicate = 0 OR is_duplicate IS NULL)"
+    return "NOT (is_duplicate::text::boolean)"
+
+
 def upgrade() -> None:
     op.execute("SET lock_timeout = '5s'")
 
@@ -41,11 +66,12 @@ def upgrade() -> None:
     # 2. 创建唯一索引 idx_unique_alert_hash_original (来自 apply_unique_constraint.py)
     # 必须先确保没有冲突数据（逻辑已在脚本中处理，这里假设用户已清理或在迁移中尝试）
     # 为安全起见使用 IF NOT EXISTS (通过 SQL 原生执行)
+    predicate = _original_alert_hash_predicate()
     op.execute(
         sa.text(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert_hash_original "
             "ON webhook_events (alert_hash) "
-            "WHERE NOT is_duplicate"
+            f"WHERE {predicate}"
         )
     )
 
