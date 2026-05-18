@@ -14,6 +14,7 @@ from sqlalchemy.orm import defer
 
 from core.logger import mask_url
 from core.metrics import FORWARD_RETRY_TOTAL
+from core.otel import span as otel_span
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
 from services.forwarding.policies import ForwardRetryPolicy
@@ -38,7 +39,15 @@ async def retry_failed_forward_by_id(failed_forward_id: int, *, retry_policy: Fo
                 return
             if record.status not in (FailedForwardStatus.PENDING, FailedForwardStatus.RETRYING):
                 return
-            await _retry_forward(session, record, retry_policy=policy)
+            with otel_span(
+                "forward.retry",
+                {
+                    "event_id": record.webhook_event_id,
+                    "retry_count": record.retry_count + 1,
+                    "forward.status": str(record.status),
+                },
+            ):
+                await _retry_forward(session, record, retry_policy=policy)
     except Exception as e:
         logger.error("[ForwardRetry] 重试记录 ID=%s 异常: %s", failed_forward_id, e)
 

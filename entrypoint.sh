@@ -9,11 +9,6 @@ if [ -n "$JEMALLOC_PATH" ]; then
     export LD_PRELOAD="$JEMALLOC_PATH"
 fi
 
-# 清理 Prometheus 多进程残留文件
-if [ -n "$PROMETHEUS_MULTIPROC_DIR" ] && [ -d "$PROMETHEUS_MULTIPROC_DIR" ]; then
-    rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"/*
-fi
-
 export API_WORKERS="${API_WORKERS:-4}"
 
 case "${RUN_MODE:-api}" in
@@ -23,11 +18,11 @@ case "${RUN_MODE:-api}" in
         ;;
     worker)
         echo "Starting in TaskIQ Worker mode..."
-        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:broker services.operations.tasks
+        exec taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:broker services.operations.tasks
         ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."
-        exec /app/scripts/run_with_prometheus_cleanup.sh taskiq scheduler --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
+        exec taskiq scheduler --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" core.taskiq_broker:scheduler --update-interval 5 --loop-interval 1
         ;;
     all)
         echo "Starting in all-in-one supervisor mode..."

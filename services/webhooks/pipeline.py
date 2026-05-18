@@ -160,10 +160,10 @@ def _log_completed_processing(
     )
 
     if span:
-        span.set_attribute("importance", importance)
+        span.set_attribute("webhook.importance", importance)
         span.set_attribute("route", route_label)
-        span.set_attribute("event_type", event_type)
-        span.set_attribute("duration_ms", duration_ms)
+        span.set_attribute("webhook.event_type", event_type)
+        span.set_attribute("webhook.processing.duration_ms", duration_ms)
 
     WEBHOOK_NOISE_REDUCED_TOTAL.labels(
         source=ctx.metric_source,
@@ -184,7 +184,7 @@ async def _handle_webhook_process_inner(
     start_perf = time.perf_counter()
     outcome, metric_source = "unknown", "unknown"
     request_id: str | None = None
-    with otel_span("webhook.process", {"event_id": event_id or 0}) as _span:
+    with otel_span("webhook.receive", {"event_id": event_id or 0}) as _span:
         try:
             env = envelope
             if env is None:
@@ -201,7 +201,10 @@ async def _handle_webhook_process_inner(
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-            req_ctx = parse_request(client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts)
+            with otel_span("webhook.parse", {"source": env.source or "unknown", "event_id": event_id or 0}):
+                req_ctx = parse_request(
+                    client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts
+                )
             alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
@@ -221,8 +224,8 @@ async def _handle_webhook_process_inner(
                 len(env.raw_body),
             )
             if _span:
-                _span.set_attribute("source", req_ctx.source or "unknown")
-                _span.set_attribute("alert_hash", alert_hash[:12])
+                _span.set_attribute("webhook.source", req_ctx.source or "unknown")
+                _span.set_attribute("webhook.alert_hash", alert_hash[:12])
 
             result = await run_processing_steps(ctx, dependencies)
             if result.suppressed:

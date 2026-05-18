@@ -117,7 +117,7 @@ async def init_engine() -> None:
 
 
 def _setup_pool_metrics(engine: AsyncEngine) -> None:
-    """注册连接池事件监听，通过回调更新 Prometheus Gauge。"""
+    """注册连接池事件监听，通过回调更新 OTel Gauge。"""
     from core.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
 
     pool = engine.sync_engine.pool
@@ -133,7 +133,7 @@ def _setup_pool_metrics(engine: AsyncEngine) -> None:
 
     # 初始化连接池容量
     DB_POOL_SIZE.set(int(get_db_pool_capacity(engine) or 0))
-    _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin → Prometheus Gauge)")
+    _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin -> OTel Gauge)")
 
 
 def get_db_pool_capacity(engine: AsyncEngine) -> int | None:

@@ -11,6 +11,7 @@ import services.operations.tasks  # noqa: F401
 from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
+from core.observability import setup_observability_worker
 from core.redis_client import dispose_redis, init_redis
 from core.taskiq_broker import broker
 from db.session import dispose_engine, init_engine
@@ -22,6 +23,7 @@ logger = logging.getLogger("webhook_service.worker")
 async def startup() -> None:
     """初始化工作进程环境"""
     setup_logger()
+    setup_observability_worker()
     logger.info("[Worker] 正在初始化工作进程...")
 
     get_http_client()
