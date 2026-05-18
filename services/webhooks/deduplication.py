@@ -27,10 +27,6 @@ def _ttl_seconds(policy: WebhookSavePolicy | None = None) -> int:
 
 async def get_cached_duplicate(alert_hash: str) -> CachedDuplicate | None:
     """Return duplicate metadata from Redis without touching PostgreSQL."""
-    from core.runtime_mode import is_lite_mode
-
-    if is_lite_mode():
-        return None
     try:
         payload = await redis_get_json_dict(_dedupe_key(alert_hash))
     except Exception as e:
@@ -61,10 +57,6 @@ async def remember_duplicate_source(
     policy: WebhookSavePolicy | None = None,
 ) -> None:
     """Cache the canonical event for future duplicate checks."""
-    from core.runtime_mode import is_lite_mode
-
-    if is_lite_mode():
-        return
     if original_event_id <= 0:
         return
     payload: dict[str, Any] = {"original_event_id": original_event_id}

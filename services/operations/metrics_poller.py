@@ -17,7 +17,6 @@ from core.metrics import (
     WEBHOOK_STUCK_STATUS_COUNT,
 )
 from core.redis_client import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
-from core.runtime_mode import is_lite_mode
 from db.session import session_scope
 from models import WebhookEvent
 from services.operations.policies import MetricsPollPolicy
@@ -26,7 +25,7 @@ logger = logging.getLogger("webhook_service.metrics")
 
 
 async def refresh_all_metrics(*, policy: MetricsPollPolicy | None = None) -> None:
-    """刷新系统指标；lite 模式下跳过 Redis Stream 指标。"""
+    """刷新系统指标。"""
     policy = policy or MetricsPollPolicy.from_config()
     await _refresh_db_status_counts(policy=policy)
     await _refresh_mq_stats(policy=policy)
@@ -85,8 +84,6 @@ async def _refresh_db_status_counts(*, policy: MetricsPollPolicy | None = None) 
 
 async def _refresh_mq_stats(*, policy: MetricsPollPolicy | None = None) -> None:
     """MQ 指标刷新 — TaskIQ 使用 Redis Stream (RedisStreamBroker)。"""
-    if is_lite_mode():
-        return
     policy = policy or MetricsPollPolicy.from_config()
     from core.taskiq_broker import broker
 

@@ -24,7 +24,6 @@ from core.metrics import (
 )
 from core.otel import span as otel_span
 from core.redis_client import RedisEvalArg
-from core.runtime_mode import is_lite_mode
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
 
@@ -168,10 +167,6 @@ async def _webhook_task_slot(*, policy: TaskRuntimePolicy | None = None) -> Asyn
     limit = runtime_policy.max_concurrent_webhook_tasks
     if limit <= 0:
         yield
-        return
-    if is_lite_mode():
-        async with _local_webhook_task_slot(limit):
-            yield
         return
     async with _distributed_webhook_task_slot(limit, policy=runtime_policy):
         yield

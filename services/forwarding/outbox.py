@@ -125,15 +125,6 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
     """Best-effort immediate dispatch; scheduled scanner is the durable fallback."""
     if not outbox_ids:
         return
-    from core.runtime_mode import is_lite_mode
-
-    if is_lite_mode():
-        for outbox_id in outbox_ids:
-            try:
-                await process_forward_outbox_by_id(outbox_id)
-            except Exception as e:  # noqa: PERF203
-                logger.warning("[ForwardOutbox] lite 即时转发失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
-        return
 
     from services.operations.tasks import process_forward_outbox_task
 

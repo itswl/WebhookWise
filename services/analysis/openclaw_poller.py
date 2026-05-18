@@ -500,14 +500,6 @@ async def _schedule_next_openclaw_poll(
 
 
 async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
-    from core.runtime_mode import is_lite_mode
-
-    if is_lite_mode() and delay_seconds <= 0:
-        await poll_deep_analysis_once(analysis_id)
-        return
-    if is_lite_mode():
-        logger.info("[Poller] lite 模式延迟轮询由本进程扫描器兜底 analysis_id=%s delay=%ss", analysis_id, delay_seconds)
-        return
     try:
         from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
 
