@@ -5,7 +5,7 @@ WORKDIR /app
 
 # 优先使用锁文件确保可重现构建
 COPY requirements.lock requirements.txt ./
-RUN pip install --no-cache-dir --user -r requirements.lock -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir --user -r requirements.lock
 
 
 # ====== 运行阶段 ======

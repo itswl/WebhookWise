@@ -199,7 +199,7 @@ services:
       - webhook_net
 
   postgres:
-    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/postgres:15-alpine
+    image: postgres:15-alpine
     container_name: webhook-postgres
     restart: unless-stopped
 
