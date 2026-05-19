@@ -1,0 +1,198 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+
+    cors {
+      allowed_origins = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+      ]
+      allowed_headers = [
+        "Content-Type",
+        "Traceparent",
+        "X-API-Key",
+      ]
+    }
+  }
+
+  output {
+    metrics = [otelcol.processor.memory_limiter.default.input]
+    logs    = [otelcol.processor.memory_limiter.default.input]
+    traces  = [otelcol.processor.memory_limiter.default.input]
+  }
+}
+
+faro.receiver "dashboard" {
+  log_format = "json"
+  extra_log_labels = {
+    app = "webhookwise-dashboard",
+  }
+
+  server {
+    listen_address          = "0.0.0.0"
+    listen_port             = 12347
+    cors_allowed_origins    = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    max_allowed_payload_size = "5MiB"
+
+    rate_limiting {
+      enabled    = true
+      strategy   = "per_app"
+      rate       = 50
+      burst_size = 100
+    }
+  }
+
+  output {
+    logs   = [loki.process.faro.receiver]
+    traces = [otelcol.processor.memory_limiter.default.input]
+  }
+}
+
+otelcol.processor.memory_limiter "default" {
+  check_interval = "2s"
+  limit          = "256MiB"
+  spike_limit    = "64MiB"
+
+  output {
+    metrics = [otelcol.processor.transform.metric_labels.input]
+    logs    = [otelcol.processor.attributes.loki_labels.input]
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.transform "metric_labels" {
+  error_mode = "ignore"
+
+  metric_statements {
+    context = "datapoint"
+    statements = [
+      `set(attributes["service_name"], resource.attributes["service.name"])`,
+      `set(attributes["deployment_environment"], resource.attributes["deployment.environment"])`,
+      `set(attributes["service_namespace"], resource.attributes["service.namespace"])`,
+    ]
+  }
+
+  output {
+    metrics = [otelcol.exporter.prometheus.default.input]
+  }
+}
+
+otelcol.processor.attributes "loki_labels" {
+  action {
+    key    = "loki.resource.labels"
+    value  = "service.name,deployment.environment"
+    action = "insert"
+  }
+
+  action {
+    key    = "loki.attribute.labels"
+    value  = "event.name,webhook.source,webhook.status"
+    action = "insert"
+  }
+
+  output {
+    logs = [otelcol.exporter.loki.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout         = "5s"
+  send_batch_size = 1024
+
+  output {
+    metrics = [otelcol.exporter.prometheus.default.input]
+    logs    = [otelcol.exporter.loki.default.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+prometheus.remote_write "prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
+
+otelcol.exporter.loki "default" {
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+loki.source.file "webhook_logs" {
+  targets = [
+    {
+      __path__     = "/var/log/webhookwise/*.log",
+      job          = "webhookwise-file",
+      service_name = "webhookwise",
+    },
+  ]
+  forward_to = [loki.process.webhook_logs.receiver]
+
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.process "webhook_logs" {
+  stage.json {
+    expressions = {
+      level  = "level",
+      logger = "name",
+    }
+  }
+
+  stage.labels {
+    values = {
+      level  = "level",
+      logger = "logger",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.process "faro" {
+  stage.json {
+    expressions = {
+      kind = "kind",
+      app  = "app",
+    }
+  }
+
+  stage.labels {
+    values = {
+      kind = "kind",
+      app  = "app",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
