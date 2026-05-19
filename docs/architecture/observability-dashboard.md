@@ -1,0 +1,110 @@
+# Grafana Dashboard Guide
+
+WebhookWise ships a provisioned Grafana dashboard at `grafana/dashboard.json`.
+The dashboard is intentionally aligned to the OpenTelemetry metric names emitted by
+`core.observability.metrics` and transformed by Alloy into Prometheus series.
+
+Local entry:
+
+```text
+http://localhost:3000/d/webhook-wise-aiops/webhookwise-aiops-e5a4a7-e79b98
+```
+
+Provisioning path:
+
+```text
+grafana/dashboard.json -> docker compose volume -> /var/lib/grafana/dashboards
+deploy/observability/grafana-dashboards.yml -> file provider
+```
+
+If a local Grafana page does not pick up file changes, restart only Grafana:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml restart grafana
+```
+
+## Dashboard Coverage
+
+| Row | Panels | Primary question |
+| --- | --- | --- |
+| 系统入口与 HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
+| 队列、Worker 与 Pipeline | Queue depth/pending/lag, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, semaphore timeouts, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
+| 数据库与 Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
+| Scheduler 与恢复任务 | Scheduler runs, duration, lag, time since last success | Are periodic recovery/maintenance jobs running on time? |
+| AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
+| 可观测后端、RUM、Beyla 与压测 | Faro receiver, Beyla span metrics, process CPU, k6 smoke results, Alloy/Loki write health | Are telemetry collection, frontend RUM, eBPF, and synthetic checks working? |
+
+## No Data Rules
+
+`No data` has three common meanings:
+
+| Case | Meaning | Action |
+| --- | --- | --- |
+| Old metric name | The panel uses a metric that no longer exists after OTel naming changes | Update PromQL to the current metric catalog |
+| Cold business path | The metric only exists after a path runs, such as AI, forwarding, scheduler, or Faro | Trigger the path or widen the time range |
+| Histogram with no recent samples | The bucket series exists but has no rate in the selected interval, so quantile can be empty or `NaN` | Run traffic or increase the time range/rate interval |
+
+Stat panels that should represent absence as zero use `or vector(0)`. Latency
+histograms do not always use zero fallback because a zero latency can be
+misleading; no recent samples should be read as "that path did not run".
+
+## Current Metric Naming
+
+Use Prometheus names, not the Python OTel instrument names, in dashboard panels.
+
+| Domain | Prometheus metric examples | Important labels |
+| --- | --- | --- |
+| HTTP/API | `http_server_requests_total`, `http_server_request_duration_seconds_bucket` | `service_name`, `http_route`, `http_status_code`, `http_method` |
+| Webhook ingress | `webhook_received_total`, `webhook_ingress_payload_size_bytes_bucket` | `webhook_source`, `webhook_status`, `webhook_outcome` |
+| Queue | `queue_operations_total`, `queue_depth_ratio`, `queue_pending_ratio`, `queue_lag_ratio` | `queue_name`, `queue_operation`, `queue_status`, `queue_stream`, `queue_group` |
+| Worker/pipeline | `worker_task_runs_total`, `worker_task_duration_seconds_bucket`, `webhook_pipeline_steps_total`, `webhook_processing_duration_seconds_bucket` | `worker_task_name`, `worker_task_status`, `pipeline_step`, `webhook_outcome` |
+| DB/Redis | `db_sessions_total`, `db_session_duration_seconds_bucket`, `redis_operations_total`, `redis_operation_duration_seconds_bucket` | `db_operation`, `db_status`, `redis_operation`, `redis_status` |
+| Scheduler | `scheduler_task_runs_total`, `scheduler_task_duration_seconds_bucket`, `scheduler_task_lag_seconds`, `scheduler_task_last_success_unixtime_seconds` | `scheduler_task_name`, `scheduler_task_status` |
+| AIOps/AI | `webhook_suppressed_total`, `ai_request_duration_seconds_bucket`, `ai_cost_usd_total` | `webhook_relation`, `webhook_suppressed`, `ai_engine`, `ai_model` |
+| Forwarding | `forward_delivery_total`, `forward_delivery_duration_seconds_bucket`, `forward_outbox_records_total` | `forward_target_type`, `forward_status` |
+| Events/signals | `observability_events_total`, `observability_signals_total` | `event_name`, `signal_name`, `signal_state` |
+| Faro | `faro_receiver_events_total`, `faro_receiver_measurements_total`, `faro_receiver_exceptions_total`, `faro_receiver_logs_total` | Alloy component labels |
+| Beyla | `traces_span_metrics_calls_total`, `traces_span_metrics_duration_seconds_bucket`, `process_cpu_utilization_ratio` | `source`, `service_name`, `span_name`, `span_kind` |
+| k6 | `k6_http_reqs_total`, `k6_http_req_failed_rate`, `k6_http_req_duration_p95`, `k6_checks_rate` | k6 remote write labels |
+| Collection layer | `alloy_config_last_load_successful`, `alloy_component_controller_running_components`, `loki_write_dropped_entries_total` | Alloy component labels |
+
+## Quick PromQL Sanity Checks
+
+Use these when a panel looks suspicious:
+
+```promql
+count by (__name__) ({
+  __name__=~"http_server_requests_total|webhook_received_total|webhook_suppressed_total|ai_request_duration_seconds_bucket"
+})
+```
+
+```promql
+sum by (http_route, http_status_code) (
+  rate(http_server_requests_total{service_name="webhookwise-api"}[5m])
+)
+```
+
+```promql
+sum by (webhook_relation, webhook_suppressed) (
+  rate(webhook_suppressed_total[5m])
+)
+```
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, ai_engine) (
+    rate(ai_request_duration_seconds_bucket[5m])
+  )
+)
+```
+
+## Change Checklist
+
+When adding or renaming an observability metric:
+
+1. Update `docs/architecture/observability.md` component catalog.
+2. Update `docs/architecture/observability-local-lab.md` query examples and explanations.
+3. Update `grafana/dashboard.json` if the metric should be monitored on the dashboard.
+4. Validate the PromQL against local Prometheus.
+5. Decide whether absence should mean `0` or real `No data`.
