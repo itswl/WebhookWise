@@ -85,6 +85,8 @@ Operational dashboards should be built from these component metrics, then linked
 
 ## Local Stack
 
+For a step-by-step local learning flow with screenshots, see [observability-local-lab.md](observability-local-lab.md).
+
 Start the default app stack plus local observability backends:
 
 ```bash
