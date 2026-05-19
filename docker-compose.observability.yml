@@ -1,12 +1,13 @@
 # Optional local observability stack:
 #   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
 
 services:
   webhook-service:
     environment:
       OTEL_ENABLED: "true"
       OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-api
@@ -15,7 +16,7 @@ services:
       PYROSCOPE_APPLICATION_NAME: webhookwise-api
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
-      otel-collector:
+      alloy:
         condition: service_started
       pyroscope:
         condition: service_started
@@ -24,7 +25,7 @@ services:
     environment:
       OTEL_ENABLED: "true"
       OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-worker
@@ -33,7 +34,7 @@ services:
       PYROSCOPE_APPLICATION_NAME: webhookwise-worker
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
-      otel-collector:
+      alloy:
         condition: service_started
       pyroscope:
         condition: service_started
@@ -42,7 +43,7 @@ services:
     environment:
       OTEL_ENABLED: "true"
       OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
       OTEL_SERVICE_NAME: webhookwise-scheduler
@@ -51,7 +52,7 @@ services:
       PYROSCOPE_APPLICATION_NAME: webhookwise-scheduler
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
     depends_on:
-      otel-collector:
+      alloy:
         condition: service_started
       pyroscope:
         condition: service_started
@@ -61,15 +62,26 @@ services:
       OTEL_ENABLED: "false"
       OTEL_CONSOLE_EXPORTER: "false"
 
-  otel-collector:
-    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:latest}
-    command: ["--config=/etc/otelcol-contrib/config.yml"]
+  alloy:
+    image: ${ALLOY_IMAGE:-grafana/alloy:latest}
+    user: "0:0"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
     volumes:
-      - ./deploy/observability/otel-collector.yml:/etc/otelcol-contrib/config.yml:ro
+      - ./deploy/observability/alloy.alloy:/etc/alloy/config.alloy:ro
+      - ./logs:/var/log/webhookwise:ro
+      - alloy_data:/var/lib/alloy/data
     ports:
       - "4317:4317"
       - "4318:4318"
+      - "12345:12345"
+      - "${FARO_RECEIVER_PORT:-12347}:12347"
     depends_on:
+      prometheus:
+        condition: service_started
       tempo:
         condition: service_started
       loki:
@@ -82,13 +94,50 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+      - --enable-feature=native-histograms
     volumes:
       - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    networks:
+      - webhook_net
+
+  beyla:
+    image: ${BEYLA_IMAGE:-grafana/beyla:latest}
+    pid: "service:webhook-service"
+    privileged: true
+    environment:
+      BEYLA_CONFIG_PATH: /etc/beyla/config.yml
+    volumes:
+      - ./deploy/observability/beyla.yml:/etc/beyla/config.yml:ro
     depends_on:
-      otel-collector:
+      webhook-service:
+        condition: service_healthy
+      alloy:
+        condition: service_started
+    networks:
+      - webhook_net
+
+  k6:
+    image: ${K6_IMAGE:-grafana/k6:latest}
+    profiles:
+      - load
+    environment:
+      BASE_URL: ${K6_BASE_URL:-http://webhook-service:8000}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-please-change-webhook-secret}
+      K6_RUN_ID: ${K6_RUN_ID:-}
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,min,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+    volumes:
+      - ./tests/k6:/scripts:ro
+    command: ["run", "-o", "experimental-prometheus-rw", "/scripts/webhook_smoke.js"]
+    depends_on:
+      webhook-service:
+        condition: service_healthy
+      prometheus:
         condition: service_started
     networks:
       - webhook_net
@@ -133,12 +182,15 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
       - ./deploy/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./deploy/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
       - ./grafana:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
     depends_on:
       prometheus:
+        condition: service_started
+      alloy:
         condition: service_started
       tempo:
         condition: service_started
@@ -150,6 +202,7 @@ services:
       - webhook_net
 
 volumes:
+  alloy_data:
   grafana_data:
   loki_data:
   prometheus_data:

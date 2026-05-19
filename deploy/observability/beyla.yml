@@ -1,0 +1,28 @@
+log_level: INFO
+
+discovery:
+  instrument:
+    - name: webhookwise-api-beyla
+      namespace: webhookwise
+      open_ports: 8000
+
+otel_metrics_export:
+  endpoint: http://alloy:4318
+  protocol: http/protobuf
+  features:
+    - application
+    - application_span_otel
+    - application_service_graph
+    - application_process
+  instrumentations:
+    - http
+    - sql
+    - redis
+
+otel_traces_export:
+  endpoint: http://alloy:4318
+  protocol: http/protobuf
+  instrumentations:
+    - http
+    - sql
+    - redis

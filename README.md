@@ -111,7 +111,33 @@ docker compose -f docker-compose.yml -f docker-compose.supervisor.yml exec webho
 
 All-in-one 只改变进程拓扑，不改变业务语义：Webhook 仍进入 Redis Stream，Worker 仍通过 TaskIQ 消费，Outbox、重试、缓存、分布式锁仍使用同一套实现。
 
-默认三容器模式下，API、Worker、Scheduler 都只通过 OTLP 把 metrics/traces/logs 发给 OpenTelemetry Collector；应用不暴露 `/metrics`，也不直接绑定 Prometheus client。需要本地观测栈时，可叠加 `docker-compose.observability.yml` 启动 Collector + Prometheus + Tempo + Loki + Grafana。
+默认三容器模式下，API、Worker、Scheduler 都只通过 OTLP 把 metrics/traces/logs 发给 Grafana Alloy；应用不暴露 `/metrics`，也不直接绑定 Prometheus client。需要本地观测栈时，可叠加 `docker-compose.observability.yml` 启动 Alloy + Prometheus + Tempo + Loki + Grafana + Pyroscope，并附带 Beyla 自动观测、Faro 前端遥测和 k6 压测入口。
+
+### 本地可观测性学习栈
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+```
+
+启动后常用入口：
+
+| 组件 | 地址 | 用途 |
+|:---|:---|:---|
+| Grafana | http://localhost:3000 | 统一看 metrics/traces/logs/profiles |
+| Alloy | http://localhost:12345 | 查看采集管线与组件状态 |
+| Faro receiver | http://localhost:12347/collect | Dashboard 前端遥测入口 |
+| Prometheus | http://localhost:9090 | 应用、Beyla、k6 指标 |
+| Loki | http://localhost:3100 | OTLP 日志、文件日志、Faro 日志 |
+| Tempo | http://localhost:3200 | 应用 OTel trace + Beyla/Faro trace |
+| Pyroscope | http://localhost:4040 | Python 持续 profiling |
+
+运行一次 k6 学习压测：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
+```
+
+Beyla 通过 eBPF 观测 `webhook-service` 容器，需要 Linux eBPF 能力和 privileged 容器；在 Docker Desktop 上如果内核能力不足，其他 OTel/Faro/Loki/k6 链路仍可继续使用。
 
 ### 本地开发
 
