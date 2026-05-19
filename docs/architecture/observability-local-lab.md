@@ -49,6 +49,7 @@ curl -fsS http://localhost:12345/-/ready
 常用入口：
 
 - Grafana: `http://localhost:3000`, local default is `admin/admin`
+- Grafana AIOps dashboard: `http://localhost:3000/d/webhook-wise-aiops/webhookwise-aiops-e5a4a7-e79b98`
 - Prometheus: `http://localhost:9090`
 - Loki API: `http://localhost:3100`
 - Tempo: `http://localhost:3200`
@@ -91,6 +92,8 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml config 
 服务级 Prometheus 总览：
 
 ![Service metrics overview](../assets/observability-local-lab/services-prometheus.jpg)
+
+Dashboard 面板覆盖范围、No data 语义和维护 checklist 见 [observability-dashboard.md](observability-dashboard.md)。
 
 ## 统一排查路径
 
