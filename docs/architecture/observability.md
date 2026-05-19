@@ -81,7 +81,7 @@ Metrics are emitted through `core.metrics`, exported over OTLP, converted by All
 | Scheduler | `scheduler.task.runs`, `scheduler.task.duration`, `scheduler.task.lag`, `scheduler.task.last_success_unixtime` | `scheduler.task.name`, `scheduler.task.status` |
 | Observability layer | `observability.events`, `observability.signals` | `event.name`, `signal.name`, `signal.state` |
 
-Operational dashboards should be built from these component metrics, then linked to traces, logs, profiles, events, and signals for detail. For example: start from `http_server_request_duration_*` or `worker_task_duration_*`, jump into Tempo traces by `trace_id`, inspect Loki logs with the same trace/span IDs, and use Pyroscope profiles when latency rises without an obvious dependency error.
+Operational dashboards should be built from these component metrics, then linked to traces, logs, profiles, events, and signals for detail. For example: start from `http_server_request_duration_*` or `worker_task_duration_*`, jump into Tempo traces by `trace_id`, inspect Loki logs with the same trace/span IDs, and use Pyroscope profiles when latency rises without an obvious dependency error. For a field guide that explains what each local metric means and how to interpret abnormal values, see [observability-local-lab.md](observability-local-lab.md#指标解释速查).
 
 ## Local Stack
 
@@ -95,7 +95,7 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d -
 
 Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
 
-Pyroscope is available directly at `http://localhost:4040`.
+Pyroscope is available directly at `http://localhost:4040`. For practical reading notes on CPU cores, top table, flamegraphs, and common WebhookWise API / worker patterns, see [observability-local-lab.md](observability-local-lab.md#看-profile).
 
 Run the k6 smoke load check:
 
