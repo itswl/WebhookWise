@@ -247,7 +247,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查：**
 
-1. 在 Grafana/Prometheus-compatible backend 中检查 `queue.depth`、`queue.lag`、`webhook.running_tasks` 是否持续增长。
+1. 在 Grafana/Prometheus-compatible backend 中检查 `queue.pending`、`queue.lag`、`webhook.running_tasks` 是否持续增长。`queue.depth` 是 Redis Stream 保留长度，单独增长不代表消费积压。
 
 2. 检查 Redis 内存：
    ```bash

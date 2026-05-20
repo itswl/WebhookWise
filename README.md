@@ -415,7 +415,7 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 | `ai.request.duration` | Histogram | AI 分析耗时（按 source/engine） |
 | `scheduler.task.runs` | Counter | 定时任务执行计数 |
 | `db.pool.connections.*` | Gauge | DB 连接池容量与借出连接数 |
-| `queue.depth` / `queue.lag` | Gauge | Redis Stream 队列深度与 consumer lag |
+| `queue.depth` / `queue.pending` / `queue.lag` | Gauge | Redis Stream 保留长度、已投递未 ack 数、consumer lag；判断消费积压优先看 pending/lag |
 
 ## 🔒 安全说明
 
