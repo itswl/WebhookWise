@@ -70,7 +70,7 @@ Metrics are emitted through `core.metrics`, exported over OTLP, converted by All
 | HTTP/API | `http.server.requests`, `http.server.request.duration`, `http.server.request.body.size` | `http.method`, `http.route`, `http.status_code` |
 | Webhook ingress | `webhook.received`, `webhook.ingress.payload.size` | `webhook.source`, `webhook.status`, `webhook.outcome` |
 | Security | `security.checks` | `security.check`, `security.result` |
-| Queue | `queue.operations`, `queue.operation.duration`, `queue.depth`, `queue.pending`, `queue.lag` | `queue.name`, `queue.operation`, `queue.status`, `queue.stream`, `queue.group` |
+| Queue | `queue.operations`, `queue.operation.duration`, `queue.depth`, `queue.pending`, `queue.lag` | `queue.name`, `queue.operation`, `queue.status`, `queue.stream`, `queue.group`; `queue.depth` is retained Redis Stream length, while backlog is `queue.pending` / `queue.lag` |
 | Worker/runtime | `worker.task.runs`, `worker.task.duration`, `webhook.running_tasks`, `webhook.semaphore.timeouts` | `worker.task.name`, `worker.task.status` |
 | Webhook pipeline | `webhook.pipeline.steps`, `webhook.pipeline.step.duration`, `webhook.processing.duration`, `webhook.processed` | `pipeline.step`, `webhook.source`, `webhook.outcome`, `webhook.status` |
 | Noise reduction | `webhook.noise.evaluations`, `webhook.noise.evaluation.duration`, `webhook.suppressed` | `webhook.source`, `webhook.relation`, `webhook.suppressed` |
