@@ -33,6 +33,10 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml restart
 | Scheduler 与恢复任务 | Scheduler runs, duration, lag, time since last success | Are periodic recovery/maintenance jobs running on time? |
 | AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
 | 可观测后端、RUM、Beyla 与压测 | Faro receiver, Beyla span metrics, process CPU, k6 smoke results, Alloy/Loki write health | Are telemetry collection, frontend RUM, eBPF, and synthetic checks working? |
+| 环境与容量 | Current environment/service inventory, process memory, active HTTP requests and request-body P95 | Am I looking at the expected environment, and are service resources normal? |
+| Webhook 与 Pipeline 深度诊断 | Processing status, stuck status, pipeline step P95, queue operation P95, payload P95, status-transition rate | Where is webhook processing stuck or slow? |
+| AI、降噪与转发补充 | AI tokens, AI cache, deep analysis, noise evaluation rate/latency, outbox lifecycle/latency, cost by model | What drives AI cost and delivery behavior? |
+| 采集链路与服务拓扑补充 | Service graph calls/failures, process IO, OTel exporter queue, Loki write latency/retries, Faro limiter | Is the telemetry pipeline itself healthy? |
 
 ## No Data Rules
 
@@ -60,11 +64,11 @@ Use Prometheus names, not the Python OTel instrument names, in dashboard panels.
 | Worker/pipeline | `worker_task_runs_total`, `worker_task_duration_seconds_bucket`, `webhook_pipeline_steps_total`, `webhook_processing_duration_seconds_bucket` | `worker_task_name`, `worker_task_status`, `pipeline_step`, `webhook_outcome` |
 | DB/Redis | `db_sessions_total`, `db_session_duration_seconds_bucket`, `redis_operations_total`, `redis_operation_duration_seconds_bucket` | `db_operation`, `db_status`, `redis_operation`, `redis_status` |
 | Scheduler | `scheduler_task_runs_total`, `scheduler_task_duration_seconds_bucket`, `scheduler_task_lag_seconds`, `scheduler_task_last_success_unixtime_seconds` | `scheduler_task_name`, `scheduler_task_status` |
-| AIOps/AI | `webhook_suppressed_total`, `ai_request_duration_seconds_bucket`, `ai_cost_usd_total` | `webhook_relation`, `webhook_suppressed`, `ai_engine`, `ai_model` |
+| AIOps/AI | `webhook_suppressed_total`, `webhook_noise_evaluations_total`, `ai_request_duration_seconds_bucket`, `ai_tokens_total`, `ai_cost_USD_total`, `ai_cache_requests_total`, `ai_deep_analysis_total` | `webhook_relation`, `webhook_suppressed`, `ai_engine`, `ai_model`, `ai_token_type`, `ai_cache_result` |
 | Forwarding | `forward_delivery_total`, `forward_delivery_duration_seconds_bucket`, `forward_outbox_records_total` | `forward_target_type`, `forward_status` |
 | Events/signals | `observability_events_total`, `observability_signals_total` | `event_name`, `signal_name`, `signal_state` |
 | Faro | `faro_receiver_events_total`, `faro_receiver_measurements_total`, `faro_receiver_exceptions_total`, `faro_receiver_logs_total` | Alloy component labels |
-| Beyla | `traces_span_metrics_calls_total`, `traces_span_metrics_duration_seconds_bucket`, `process_cpu_utilization_ratio` | `source`, `service_name`, `span_name`, `span_kind` |
+| Beyla / service graph | `traces_span_metrics_calls_total`, `traces_span_metrics_duration_seconds_bucket`, `traces_service_graph_request_total`, `traces_service_graph_request_failed_total`, `process_cpu_utilization_ratio`, `process_memory_usage_bytes` | `source`, `service_name`, `span_name`, `span_kind`, `client`, `server`, `connection_type` |
 | k6 | `k6_http_reqs_total`, `k6_http_req_failed_rate`, `k6_http_req_duration_p95`, `k6_checks_rate` | k6 remote write labels |
 | Collection layer | `alloy_config_last_load_successful`, `alloy_component_controller_running_components`, `loki_write_dropped_entries_total` | Alloy component labels |
 
@@ -95,6 +99,21 @@ histogram_quantile(
   0.95,
   sum by (le, ai_engine) (
     rate(ai_request_duration_seconds_bucket[5m])
+  )
+)
+```
+
+```promql
+sum by (ai_model, ai_token_type) (
+  increase(ai_tokens_total[6h])
+)
+```
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, pipeline_step) (
+    rate(webhook_pipeline_step_duration_seconds_bucket[5m])
   )
 )
 ```
