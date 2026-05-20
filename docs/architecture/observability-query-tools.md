@@ -1,0 +1,181 @@
+# Observability Query Tools
+
+This repository includes a small query toolkit for WebhookWise runtime data.
+It is designed for Codex/agents first, but it also works as a plain CLI.
+
+## CLI
+
+Run from the repository root:
+
+```bash
+python scripts/observability/webhookwise_observe.py health
+```
+
+Common commands:
+
+```bash
+# List named PromQL presets
+python scripts/observability/webhookwise_observe.py preset --list
+
+# Run a preset
+python scripts/observability/webhookwise_observe.py preset api-rate
+python scripts/observability/webhookwise_observe.py preset queue-backlog
+python scripts/observability/webhookwise_observe.py preset collector-health
+
+# Run custom PromQL
+python scripts/observability/webhookwise_observe.py promql 'sum by (http_status_code) (increase(http_server_requests_total[1h]))'
+
+# Query Loki logs
+python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise"} | json' --limit 20
+
+# Validate every PromQL expression in the provisioned dashboard
+python scripts/observability/webhookwise_observe.py dashboard --validate
+```
+
+Use `--json` on commands when another program or agent should consume the output.
+
+## Online Grafana Proxy Mode
+
+For production, prefer querying through Grafana's datasource proxy instead of
+exposing Prometheus or Loki directly.
+
+Set the online endpoint and credentials in your shell:
+
+```bash
+export WEBHOOKWISE_QUERY_MODE=grafana-proxy
+export WEBHOOKWISE_GRAFANA_URL=https://webhook-grafana.wetalk.eu.org
+export WEBHOOKWISE_GRAFANA_TOKEN='<grafana-service-account-token>'
+```
+
+If the Grafana instance uses basic auth instead of a service account token:
+
+```bash
+export WEBHOOKWISE_GRAFANA_USER='<user>'
+export WEBHOOKWISE_GRAFANA_PASSWORD='<password>'
+```
+
+Discover datasource UIDs first:
+
+```bash
+python scripts/observability/webhookwise_observe.py datasources
+```
+
+Then set the datasource UIDs when they differ from the defaults:
+
+```bash
+export WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID=prometheus
+export WEBHOOKWISE_LOKI_DATASOURCE_UID=loki
+```
+
+Run the same commands against production:
+
+```bash
+python scripts/observability/webhookwise_observe.py health
+python scripts/observability/webhookwise_observe.py preset api-rate
+python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise-api"} | json' --limit 20
+python scripts/observability/webhookwise_observe.py dashboard --remote --uid webhook-wise-aiops
+python scripts/observability/webhookwise_observe.py dashboard --validate
+```
+
+Do not commit tokens or passwords. Keep them in your shell, password manager, or
+local ignored environment files.
+
+## MCP-Style Stdio Server
+
+Start the dependency-free JSON-RPC stdio server:
+
+```bash
+python scripts/observability/webhookwise_mcp.py
+```
+
+It exposes these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `webhookwise_health` | Check API, Prometheus, Loki, Tempo, Grafana, Pyroscope, and Alloy readiness |
+| `webhookwise_datasources` | List Grafana datasource names and UIDs |
+| `webhookwise_promql` | Run an arbitrary PromQL instant query |
+| `webhookwise_preset` | Run one of the named WebhookWise PromQL presets |
+| `webhookwise_logs` | Run a Loki `query_range` |
+| `webhookwise_dashboard_validate` | Validate `grafana/dashboard.json` against Prometheus |
+
+Example JSON-RPC call:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+```
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"webhookwise_preset","arguments":{"name":"api-rate"}}}
+```
+
+## Codex Skill
+
+A repo-local skill is stored at:
+
+```text
+.codex/skills/webhookwise-observability/SKILL.md
+```
+
+It tells Codex how to use the CLI and MCP-style entrypoint for questions such
+as "why is the dashboard No data?", "check API latency", "show worker queue
+lag", or "query recent Loki errors".
+
+## Endpoints
+
+Defaults target the local compose stack:
+
+| Backend | Default URL |
+| --- | --- |
+| API | `http://localhost:8000` |
+| Prometheus | `http://localhost:9090` |
+| Loki | `http://localhost:3100` |
+| Tempo | `http://localhost:3200` |
+| Grafana | `http://localhost:3000` |
+| Pyroscope | `http://localhost:4040` |
+| Alloy | `http://localhost:12345` |
+
+Override with:
+
+```bash
+WEBHOOKWISE_PROMETHEUS_URL=http://...
+WEBHOOKWISE_LOKI_URL=http://...
+WEBHOOKWISE_TEMPO_URL=http://...
+WEBHOOKWISE_GRAFANA_URL=http://...
+WEBHOOKWISE_PYROSCOPE_URL=http://...
+WEBHOOKWISE_ALLOY_URL=http://...
+WEBHOOKWISE_API_URL=http://...
+WEBHOOKWISE_QUERY_MODE=direct
+WEBHOOKWISE_GRAFANA_USER=admin
+WEBHOOKWISE_GRAFANA_PASSWORD=admin
+WEBHOOKWISE_GRAFANA_TOKEN=...
+WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID=prometheus
+WEBHOOKWISE_LOKI_DATASOURCE_UID=loki
+WEBHOOKWISE_HTTP_USER_AGENT=...
+```
+
+## Preset Groups
+
+| Area | Presets |
+| --- | --- |
+| API | `api-rate`, `api-latency-p95`, `api-5xx-rate` |
+| Webhook | `webhook-rate`, `active-events`, `noise-rate`, `suppression-rate` |
+| Queue / worker | `queue-backlog`, `queue-ops`, `worker-runs`, `worker-latency-p95` |
+| DB / Redis | `db-pool`, `db-latency-p95`, `redis-latency-p95` |
+| Scheduler | `scheduler-lag`, `scheduler-last-success-age` |
+| AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95` |
+| Deep diagnostics | `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`, `noise-latency-p95` |
+| Frontend / eBPF / load / collector | `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `collector-queue`, `loki-write-latency-p95`, `loki-write-retries` |
+
+## Maintenance
+
+When metrics change:
+
+1. Update `scripts/observability/query_lib.py` presets.
+2. Update `.codex/skills/webhookwise-observability/SKILL.md` if the workflow changes.
+3. Update `grafana/dashboard.json` if the dashboard should reflect the change.
+4. Run:
+
+```bash
+python scripts/observability/webhookwise_observe.py dashboard --validate
+```
