@@ -28,7 +28,7 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml restart
 | Row | Panels | Primary question |
 | --- | --- | --- |
 | 系统入口与 HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
-| 队列、Worker 与 Pipeline | Queue depth/pending/lag, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, semaphore timeouts, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
+| 队列、Worker 与 Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, semaphore timeouts, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
 | 数据库与 Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
 | Scheduler 与恢复任务 | Scheduler runs, duration, lag, time since last success | Are periodic recovery/maintenance jobs running on time? |
 | AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
@@ -60,7 +60,7 @@ Use Prometheus names, not the Python OTel instrument names, in dashboard panels.
 | --- | --- | --- |
 | HTTP/API | `http_server_requests_total`, `http_server_request_duration_seconds_bucket` | `service_name`, `http_route`, `http_status_code`, `http_method` |
 | Webhook ingress | `webhook_received_total`, `webhook_ingress_payload_size_bytes_bucket` | `webhook_source`, `webhook_status`, `webhook_outcome` |
-| Queue | `queue_operations_total`, `queue_depth_ratio`, `queue_pending_ratio`, `queue_lag_ratio` | `queue_name`, `queue_operation`, `queue_status`, `queue_stream`, `queue_group` |
+| Queue | `queue_operations_total`, `queue_pending_ratio`, `queue_lag_ratio`, `queue_depth_ratio` | `queue_name`, `queue_operation`, `queue_status`, `queue_stream`, `queue_group`; `queue_depth_ratio` is Redis Stream retained length, not unconsumed backlog |
 | Worker/pipeline | `worker_task_runs_total`, `worker_task_duration_seconds_bucket`, `webhook_pipeline_steps_total`, `webhook_processing_duration_seconds_bucket` | `worker_task_name`, `worker_task_status`, `pipeline_step`, `webhook_outcome` |
 | DB/Redis | `db_sessions_total`, `db_session_duration_seconds_bucket`, `redis_operations_total`, `redis_operation_duration_seconds_bucket` | `db_operation`, `db_status`, `redis_operation`, `redis_status` |
 | Scheduler | `scheduler_task_runs_total`, `scheduler_task_duration_seconds_bucket`, `scheduler_task_lag_seconds`, `scheduler_task_last_success_unixtime_seconds` | `scheduler_task_name`, `scheduler_task_status` |

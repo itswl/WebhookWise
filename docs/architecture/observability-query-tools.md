@@ -160,7 +160,7 @@ WEBHOOKWISE_HTTP_USER_AGENT=...
 | --- | --- |
 | API | `api-rate`, `api-latency-p95`, `api-5xx-rate` |
 | Webhook | `webhook-rate`, `active-events`, `noise-rate`, `suppression-rate` |
-| Queue / worker | `queue-backlog`, `queue-ops`, `worker-runs`, `worker-latency-p95` |
+| Queue / worker | `queue-backlog`, `queue-retained-depth`, `queue-ops`, `worker-runs`, `worker-latency-p95` |
 | DB / Redis | `db-pool`, `db-latency-p95`, `redis-latency-p95` |
 | Scheduler | `scheduler-lag`, `scheduler-last-success-age` |
 | AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95` |

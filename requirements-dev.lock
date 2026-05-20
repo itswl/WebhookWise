@@ -50,7 +50,7 @@ grpcio==1.80.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-idna==3.13
+idna==3.15
     # via
     #   -c requirements.lock
     #   requests

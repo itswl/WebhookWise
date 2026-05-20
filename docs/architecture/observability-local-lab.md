@@ -101,7 +101,7 @@ Dashboard 面板覆盖范围、No data 语义和维护 checklist 见 [observabil
 
 1. 服务是否活着：`docker compose ... ps` 和各 `/ready`。
 2. 请求是否进 API：Prometheus 查 `http_server_requests_total{service_name="webhookwise-api"}`。
-3. 是否入队：查 `queue_operations_total`、`queue_depth_ratio`、`queue_pending_ratio`。
+3. 是否入队和消费：查 `queue_operations_total`、`queue_pending_ratio`、`queue_lag_ratio`；`queue_depth_ratio` 只表示 Redis Stream 保留长度。
 4. worker 是否处理：查 `worker_task_runs_total`、`webhook_processed_total`、`webhook_processing_duration_seconds_bucket`。
 5. DB/Redis 是否慢或失败：查 `db_sessions_total`、`redis_operations_total`、对应 duration bucket。
 6. 是否转发/AI 异常：查 `forward_*`、`ai_*`、Loki 里按 `trace_id` / `event_name` 搜。
@@ -199,10 +199,18 @@ scheduler_task_lag_seconds
 ### Queue
 
 ```promql
-queue_depth_ratio
-or queue_pending_ratio
+queue_pending_ratio
 or queue_lag_ratio
 ```
+
+```promql
+queue_depth_ratio
+```
+
+`queue_depth_ratio` 是 Redis Stream 的 `XLEN`。TaskIQ 消费后会 `XACK`，
+但 `XACK` 不删除 stream entry，因此它可能随历史消息增长到
+`WEBHOOK_MQ_STREAM_MAXLEN` 附近；判断消费是否堵住，应优先看
+`queue_pending_ratio` 和 `queue_lag_ratio`。
 
 ```promql
 sum by (queue_name, queue_operation, queue_status) (
@@ -366,7 +374,7 @@ histogram_quantile(
 | --- | --- | --- | --- | --- |
 | `queue_operations_total` | Counter | `queue_name`、`queue_operation`、`queue_status` | 队列操作次数 | `error` 升高时看 Redis 连接、stream/group 是否正常 |
 | `queue_operation_duration_seconds_bucket` | Histogram | `queue_name`、`queue_operation`、`queue_status` | 队列操作耗时 | 慢在 enqueue/read/ack 哪一步，可以从 `queue_operation` 分辨 |
-| `queue_depth_ratio` | Gauge | `queue_stream` | Redis Stream 当前长度 | 持续变大说明生产速度大于消费速度 |
+| `queue_depth_ratio` | Gauge | `queue_stream` | Redis Stream 保留长度，即 `XLEN` | 会随历史消息保留增长到 `WEBHOOK_MQ_STREAM_MAXLEN` 附近；单独升高不代表消费积压 |
 | `queue_pending_ratio` | Gauge | `queue_stream`、`queue_group` | 已投递但未 ack 的消息数 | 升高说明 worker 拿到了任务但处理或 ack 没跟上 |
 | `queue_lag_ratio` | Gauge | `queue_stream`、`queue_group` | consumer group 尚未消费到的滞后量 | 持续升高是 worker 处理不过来的直接信号 |
 
@@ -374,7 +382,8 @@ histogram_quantile(
 
 | 现象 | 可能原因 |
 | --- | --- |
-| `queue_depth_ratio` 升高，`queue_pending_ratio` 不高 | worker 消费速度不够，或 worker 没有及时读取 |
+| `queue_depth_ratio` 升高，`queue_pending_ratio` 和 `queue_lag_ratio` 不高 | Redis Stream 在保留历史消息，通常不是消费堵塞 |
+| `queue_lag_ratio` 升高 | worker 尚未读到新任务，可能是消费能力不足或 worker 没在正常读取 |
 | `queue_pending_ratio` 升高 | worker 已取到任务，但处理慢、失败重试或 ack 异常 |
 | `queue_operation_duration_seconds_bucket` p95 升高 | Redis 慢、网络慢或 stream 操作阻塞 |
 

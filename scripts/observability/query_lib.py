@@ -75,7 +75,8 @@ PROMQL_PRESETS: dict[str, str] = {
     ),
     "webhook-rate": "sum by (webhook_source) (rate(webhook_received_total[5m]))",
     "active-events": "max(webhook_events_count_ratio) or vector(0)",
-    "queue-backlog": "max(queue_depth_ratio) or vector(0) or max(queue_pending_ratio) or max(queue_lag_ratio)",
+    "queue-backlog": "max(queue_pending_ratio) or vector(0) or max(queue_lag_ratio)",
+    "queue-retained-depth": "max by (queue_stream) (queue_depth_ratio) or vector(0)",
     "queue-ops": "sum by (queue_operation, queue_status) (rate(queue_operations_total[5m]))",
     "worker-runs": "sum by (worker_task_name, worker_task_status) (rate(worker_task_runs_total[5m]))",
     "worker-latency-p95": (

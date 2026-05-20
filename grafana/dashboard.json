@@ -648,7 +648,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "",
+      "description": "Consumer pending and lag are the real backlog signals. Redis Stream retained entries (XLEN) may keep growing until maxlen trimming and should not be read as unconsumed work.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -726,21 +726,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(queue_depth_ratio) or vector(0)",
-          "legendFormat": "stream depth",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
           "expr": "max(queue_pending_ratio) or vector(0)",
           "legendFormat": "consumer pending",
           "range": true,
-          "refId": "B"
+          "refId": "A"
         },
         {
           "datasource": {
@@ -751,10 +740,21 @@
           "expr": "max(queue_lag_ratio) or vector(0)",
           "legendFormat": "consumer lag",
           "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max(queue_depth_ratio) or vector(0)",
+          "legendFormat": "retained entries (XLEN)",
+          "range": true,
           "refId": "C"
         }
       ],
-      "title": "队列积压 (Queue Depth / Pending / Lag)",
+      "title": "队列消费积压 (Pending / Lag / Retained)",
       "type": "timeseries"
     },
     {
