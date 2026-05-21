@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import TypedDict, TypeVar
+from typing import TypedDict, TypeVar, get_args, get_origin
 
 from pydantic_settings import BaseSettings
 
@@ -37,6 +37,67 @@ class _RuntimeKeyMeta(TypedDict):
     sub: str
 
 
+_RUNTIME_CONFIG_SUBS = frozenset(
+    {
+        "server",
+        "security",
+        "ai",
+        "openclaw",
+        "circuit_breaker",
+        "retry",
+        "maintenance",
+    }
+)
+_RUNTIME_EXCLUDED_KEYS = frozenset(
+    {
+        "ALLOW_RUNTIME_CONNECTION_CONFIG",
+        "ADMIN_WRITE_KEY",
+        "API_KEY",
+        "DATA_DIR",
+        "DEBUG",
+        "ENABLE_RUNTIME_CONFIG",
+        "HOST",
+        "PORT",
+        "RUN_MODE",
+        "WEBHOOK_SECRET",
+        "WORKER_ID",
+    }
+)
+_RUNTIME_TYPE_BY_PY_TYPE: dict[type[object], RuntimeType] = {
+    bool: "bool",
+    int: "int",
+    float: "float",
+    str: "str",
+}
+
+
+def _runtime_type_for_annotation(annotation: object) -> RuntimeType | None:
+    if annotation in _RUNTIME_TYPE_BY_PY_TYPE:
+        return _RUNTIME_TYPE_BY_PY_TYPE[annotation]
+    if get_origin(annotation) is not None:
+        for arg in get_args(annotation):
+            if arg in _RUNTIME_TYPE_BY_PY_TYPE:
+                return _RUNTIME_TYPE_BY_PY_TYPE[arg]
+    return None
+
+
+def _build_runtime_keys() -> dict[str, _RuntimeKeyMeta]:
+    settings = get_settings()
+    runtime_keys: dict[str, _RuntimeKeyMeta] = {}
+    for sub_name in settings._SUB_NAMES:
+        if sub_name not in _RUNTIME_CONFIG_SUBS:
+            continue
+        sub_config = getattr(settings, sub_name)
+        for key, field in type(sub_config).model_fields.items():
+            if key in _RUNTIME_EXCLUDED_KEYS:
+                continue
+            value_type = _runtime_type_for_annotation(field.annotation)
+            if value_type is None:
+                continue
+            runtime_keys[key] = {"type": value_type, "sub": sub_name}
+    return runtime_keys
+
+
 class UnifiedConfigManager:
     """统一配置管理器：合并静态配置、动态覆盖、DB 加载与 Redis 同步"""
 
@@ -52,65 +113,7 @@ class UnifiedConfigManager:
         }
     )
 
-    RUNTIME_KEYS: dict[str, _RuntimeKeyMeta] = {
-        "FORWARD_URL": {"type": "str", "sub": "ai"},
-        "ENABLE_FORWARD": {"type": "bool", "sub": "ai"},
-        "ENABLE_AI_ANALYSIS": {"type": "bool", "sub": "ai"},
-        "OPENAI_API_KEY": {"type": "str", "sub": "ai"},
-        "OPENAI_API_URL": {"type": "str", "sub": "ai"},
-        "OPENAI_MODEL": {"type": "str", "sub": "ai"},
-        "AI_SYSTEM_PROMPT": {"type": "str", "sub": "ai"},
-        "AI_USER_PROMPT": {"type": "str", "sub": "ai"},
-        "AI_USER_PROMPT_FILE": {"type": "str", "sub": "ai"},
-        "DEEP_ANALYSIS_PROMPT": {"type": "str", "sub": "ai"},
-        "DEEP_ANALYSIS_PROMPT_FILE": {"type": "str", "sub": "ai"},
-        "LOG_LEVEL": {"type": "str", "sub": "server"},
-        "THIRD_PARTY_LOG_LEVEL": {"type": "str", "sub": "server"},
-        "DUPLICATE_ALERT_TIME_WINDOW": {"type": "int", "sub": "retry"},
-        "FORWARD_DUPLICATE_ALERTS": {"type": "bool", "sub": "retry"},
-        "REANALYZE_AFTER_TIME_WINDOW": {"type": "bool", "sub": "retry"},
-        "FORWARD_AFTER_TIME_WINDOW": {"type": "bool", "sub": "retry"},
-        "ENABLE_ALERT_NOISE_REDUCTION": {"type": "bool", "sub": "ai"},
-        "NOISE_REDUCTION_WINDOW_MINUTES": {"type": "int", "sub": "ai"},
-        "ROOT_CAUSE_MIN_CONFIDENCE": {"type": "float", "sub": "ai"},
-        "NOISE_RELATED_MIN_CONFIDENCE": {"type": "float", "sub": "ai"},
-        "NOISE_SOURCE_WEIGHT": {"type": "float", "sub": "ai"},
-        "NOISE_RESOURCE_WEIGHT": {"type": "float", "sub": "ai"},
-        "NOISE_SEMANTIC_WEIGHT": {"type": "float", "sub": "ai"},
-        "NOISE_SEVERITY_WEIGHT": {"type": "float", "sub": "ai"},
-        "NOISE_TIME_WEIGHT": {"type": "float", "sub": "ai"},
-        "NOISE_SEVERITY_DOWNGRADE_SCORE": {"type": "float", "sub": "ai"},
-        "SUPPRESS_DERIVED_ALERT_FORWARD": {"type": "bool", "sub": "ai"},
-        "RULE_HIGH_KEYWORDS": {"type": "str", "sub": "ai"},
-        "RULE_WARN_KEYWORDS": {"type": "str", "sub": "ai"},
-        "RULE_METRIC_KEYWORDS": {"type": "str", "sub": "ai"},
-        "RULE_THRESHOLD_MULTIPLIER": {"type": "float", "sub": "ai"},
-        "AI_PAYLOAD_MAX_BYTES": {"type": "int", "sub": "ai"},
-        "AI_PAYLOAD_STRIP_KEYS": {"type": "str", "sub": "ai"},
-        "NOTIFICATION_COOLDOWN_SECONDS": {"type": "int", "sub": "retry"},
-        "FORWARD_MAX_DELIVERY_AGE_SECONDS": {"type": "int", "sub": "retry"},
-        "ENABLE_PERIODIC_REMINDER": {"type": "bool", "sub": "retry"},
-        "REMINDER_INTERVAL_HOURS": {"type": "int", "sub": "retry"},
-        "WEBHOOK_RATE_LIMIT_PER_MINUTE": {"type": "int", "sub": "security"},
-        "WEBHOOK_RATE_LIMIT_BURST": {"type": "int", "sub": "security"},
-        "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE": {"type": "int", "sub": "security"},
-        "OPENCLAW_ENABLED": {"type": "bool", "sub": "openclaw"},
-        "OPENCLAW_GATEWAY_URL": {"type": "str", "sub": "openclaw"},
-        "OPENCLAW_GATEWAY_TOKEN": {"type": "str", "sub": "openclaw"},
-        "OPENCLAW_HOOKS_TOKEN": {"type": "str", "sub": "openclaw"},
-        "OPENCLAW_HTTP_API_URL": {"type": "str", "sub": "openclaw"},
-        "OPENCLAW_TIMEOUT_SECONDS": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_STABILITY_REQUIRED_HITS": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_POLL_INITIAL_DELAY_SECONDS": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_POLL_MAX_DELAY_SECONDS": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_POLL_BACKOFF_MULTIPLIER": {"type": "float", "sub": "openclaw"},
-        "OPENCLAW_MAX_CONSECUTIVE_ERRORS": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_ENABLE_DEGRADATION": {"type": "bool", "sub": "openclaw"},
-        "OPENCLAW_CONNECT_TIMEOUT": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_HANDSHAKE_TIMEOUT": {"type": "int", "sub": "openclaw"},
-        "OPENCLAW_NONCE_TIMEOUT": {"type": "float", "sub": "openclaw"},
-        "OPENCLAW_POLL_TIMEOUT": {"type": "int", "sub": "openclaw"},
-    }
+    RUNTIME_KEYS: dict[str, _RuntimeKeyMeta] = _build_runtime_keys()
 
     def __init__(self) -> None:
         self._overrides: dict[str, RuntimeValue] = {}

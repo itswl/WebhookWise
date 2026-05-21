@@ -37,8 +37,8 @@ def test_ci_enforces_coverage_gate() -> None:
     assert "--cov=api" in ci
     assert "--cov=services" in ci
     assert "--cov-report=xml" in ci
-    assert "--cov-fail-under=60" in ci
-    assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 60
+    assert "--cov-fail-under=63" in ci
+    assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 63
 
 
 def test_dockerfile_uses_directory_copy_contract() -> None:

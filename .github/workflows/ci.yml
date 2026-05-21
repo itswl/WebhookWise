@@ -62,7 +62,7 @@ jobs:
       - run: mypy
       - run: bandit -r core services adapters -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock
-      - run: pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov-report=term --cov-report=xml --cov-fail-under=60
+      - run: pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov-report=term --cov-report=xml --cov-fail-under=63
 
   docker-e2e:
     needs: changes

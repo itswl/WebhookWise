@@ -1,63 +1,33 @@
 """Retry classification policies for infrastructure failures."""
 
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import orjson
 import sqlalchemy.exc
+from asyncpg.exceptions import QueryCanceledError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    UnprocessableEntityError,
+)
 from redis.exceptions import RedisError
 
-_QueryCanceledError: type[BaseException] | None = None
-try:
-    from asyncpg.exceptions import QueryCanceledError
-
-    _QueryCanceledError = QueryCanceledError
-except ImportError:
-    pass
-
-_OpenAIAuthenticationError: type[Exception] | None = None
-_OpenAIBadRequestError: type[Exception] | None = None
-_OpenAIPermissionDeniedError: type[Exception] | None = None
-_OpenAIUnprocessableEntityError: type[Exception] | None = None
-_OpenAINotFoundError: type[Exception] | None = None
-_OpenAIRateLimitError: type[Exception] | None = None
-_OpenAIAPIConnectionError: type[Exception] | None = None
-_OpenAIAPITimeoutError: type[Exception] | None = None
-_OpenAIAPIStatusError: type[Exception] | None = None
-
-try:
-    from openai import AuthenticationError, BadRequestError, PermissionDeniedError, UnprocessableEntityError
-
-    _OpenAIAuthenticationError = AuthenticationError
-    _OpenAIBadRequestError = BadRequestError
-    _OpenAIPermissionDeniedError = PermissionDeniedError
-    _OpenAIUnprocessableEntityError = UnprocessableEntityError
-    try:
-        from openai import NotFoundError, RateLimitError
-
-        _OpenAINotFoundError = NotFoundError
-        _OpenAIRateLimitError = RateLimitError
-    except ImportError:
-        pass
-
-    try:
-        from openai import APIConnectionError, APITimeoutError
-
-        _OpenAIAPIConnectionError = APIConnectionError
-        _OpenAIAPITimeoutError = APITimeoutError
-    except ImportError:
-        pass
-
-    try:
-        from openai import APIStatusError
-
-        _OpenAIAPIStatusError = APIStatusError
-    except ImportError:
-        pass
-except ImportError:
-    pass
-
 _NON_RETRYABLE_ERRORS = (ValueError, KeyError, TypeError, orjson.JSONDecodeError, UnicodeDecodeError)
+_OPENAI_NON_RETRYABLE_ERRORS = (
+    AuthenticationError,
+    BadRequestError,
+    PermissionDeniedError,
+    UnprocessableEntityError,
+    NotFoundError,
+)
+_OPENAI_RETRYABLE_ERRORS = (RateLimitError, APIConnectionError, APITimeoutError)
 _OPENAI_NON_RETRYABLE_CLASS_NAMES = {
     "AuthenticationError",
     "BadRequestError",
@@ -75,7 +45,7 @@ class RetryPolicy:
         for curr in self._iter_chain(exc):
             if isinstance(curr, _NON_RETRYABLE_ERRORS):
                 return False
-            if _QueryCanceledError and isinstance(curr, _QueryCanceledError):
+            if isinstance(curr, QueryCanceledError):
                 return True
             if isinstance(curr, RedisError):
                 return True
@@ -91,7 +61,7 @@ class RetryPolicy:
             if self._is_openai_retryable(curr):
                 return True
 
-            if _OpenAIAPIStatusError and isinstance(curr, self._as_tuple(_OpenAIAPIStatusError)):
+            if isinstance(curr, APIStatusError):
                 status = self._extract_status_code(curr)
                 if status is not None:
                     return self._should_retry_http_status(status)
@@ -107,18 +77,10 @@ class RetryPolicy:
         return False
 
     def _is_openai_non_retryable(self, exc: BaseException) -> bool:
-        openai_non_retryable = self._as_tuple(
-            _OpenAIAuthenticationError,
-            _OpenAIBadRequestError,
-            _OpenAIPermissionDeniedError,
-            _OpenAIUnprocessableEntityError,
-            _OpenAINotFoundError,
-        )
-        return isinstance(exc, openai_non_retryable) or type(exc).__name__ in _OPENAI_NON_RETRYABLE_CLASS_NAMES
+        return isinstance(exc, _OPENAI_NON_RETRYABLE_ERRORS) or type(exc).__name__ in _OPENAI_NON_RETRYABLE_CLASS_NAMES
 
     def _is_openai_retryable(self, exc: BaseException) -> bool:
-        openai_retryable = self._as_tuple(_OpenAIRateLimitError, _OpenAIAPIConnectionError, _OpenAIAPITimeoutError)
-        return isinstance(exc, openai_retryable) or type(exc).__name__ in _OPENAI_RETRYABLE_CLASS_NAMES
+        return isinstance(exc, _OPENAI_RETRYABLE_ERRORS) or type(exc).__name__ in _OPENAI_RETRYABLE_CLASS_NAMES
 
     @staticmethod
     def _iter_chain(root: BaseException) -> list[BaseException]:
@@ -130,10 +92,6 @@ class RetryPolicy:
             out.append(curr)
             curr = curr.__cause__ or curr.__context__
         return out
-
-    @staticmethod
-    def _as_tuple(*items: object) -> tuple[type[BaseException], ...]:
-        return tuple(cast(type[BaseException], item) for item in items if isinstance(item, type))
 
     @staticmethod
     def _extract_status_code(exc: BaseException) -> int | None:

@@ -187,12 +187,15 @@ services:
     image: redis:7-alpine
     container_name: webhook-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     deploy:
       resources:
         limits:
           memory: 256M
         reservations:
           memory: 64M
+    volumes:
+      - ./redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

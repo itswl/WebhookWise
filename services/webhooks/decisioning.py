@@ -46,6 +46,14 @@ class ForwardingPolicy:
     forward_after_time_window: bool
 
 
+@dataclass(frozen=True)
+class _ForwardDecisionState:
+    should_forward: bool = False
+    skip_reason: str | None = None
+    is_periodic_reminder: bool = False
+    suppressed: bool = False
+
+
 def normalize_importance(value: Any) -> str:
     text = str(value or "").strip().lower()
     if "." in text:
@@ -109,6 +117,68 @@ def select_forward_rules(
     return matched_rules
 
 
+def _low_importance_reason(prefix: str, importance: str) -> str:
+    return (
+        f"{prefix}：重要性为 {importance}，非高风险事件不自动转发"
+        if prefix
+        else f"重要性为 {importance}，非高风险事件不自动转发"
+    )
+
+
+def _decide_new_alert(*, base_should_forward: bool, importance: str) -> _ForwardDecisionState:
+    return _ForwardDecisionState(
+        should_forward=base_should_forward,
+        skip_reason=None if base_should_forward else _low_importance_reason("", importance),
+    )
+
+
+def _decide_duplicate_alert(
+    *,
+    base_should_forward: bool,
+    importance: str,
+    seconds_since_notify: float | None,
+    policy: ForwardingPolicy,
+) -> _ForwardDecisionState:
+    if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
+        return _ForwardDecisionState(suppressed=True, skip_reason="窗口内重复告警，刚刚已转发")
+
+    if (
+        policy.enable_periodic_reminder
+        and seconds_since_notify is not None
+        and seconds_since_notify / 3600 >= policy.reminder_interval_hours
+    ):
+        return _ForwardDecisionState(
+            should_forward=base_should_forward,
+            is_periodic_reminder=True,
+            skip_reason=None if base_should_forward else _low_importance_reason("定期提醒", importance),
+        )
+
+    if not policy.forward_duplicate_alerts:
+        return _ForwardDecisionState(suppressed=True, skip_reason="窗口内重复告警，配置跳过转发")
+
+    return _ForwardDecisionState(
+        should_forward=base_should_forward,
+        skip_reason=None if base_should_forward else _low_importance_reason("窗口内重复告警", importance),
+    )
+
+
+def _decide_beyond_window_alert(
+    *,
+    base_should_forward: bool,
+    importance: str,
+    seconds_since_notify: float | None,
+    policy: ForwardingPolicy,
+) -> _ForwardDecisionState:
+    if not policy.forward_after_time_window:
+        return _ForwardDecisionState(suppressed=True, skip_reason="窗口外重复告警，配置不转发")
+    if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
+        return _ForwardDecisionState(suppressed=True, skip_reason="窗口外重复告警，刚刚已转发")
+    return _ForwardDecisionState(
+        should_forward=base_should_forward,
+        skip_reason=None if base_should_forward else _low_importance_reason("窗口外重复告警", importance),
+    )
+
+
 def decide_forwarding(
     *,
     importance: str,
@@ -132,47 +202,32 @@ def decide_forwarding(
         beyond_window=beyond_window,
     )
     current_time = now or datetime.now()
-    should_fwd, is_periodic, skip_reason = False, False, None
-    suppressed = False
     base_should_fwd = importance == "high" or bool(matched_rules)
 
     last_notified_at = original_event.last_notified_at if original_event else None
     seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
 
     if is_duplicate:
-        if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
-            suppressed, skip_reason = True, "窗口内重复告警，刚刚已转发"
-        elif (
-            policy.enable_periodic_reminder
-            and seconds_since_notify is not None
-            and seconds_since_notify / 3600 >= policy.reminder_interval_hours
-        ):
-            should_fwd, is_periodic = base_should_fwd, True
-            if not should_fwd:
-                skip_reason = f"定期提醒：重要性为 {importance}，非高风险事件不自动转发"
-        elif not policy.forward_duplicate_alerts:
-            suppressed, skip_reason = True, "窗口内重复告警，配置跳过转发"
-        else:
-            should_fwd = base_should_fwd
-            if not should_fwd:
-                skip_reason = f"窗口内重复告警：重要性为 {importance}，非高风险事件不自动转发"
+        state = _decide_duplicate_alert(
+            base_should_forward=base_should_fwd,
+            importance=importance,
+            seconds_since_notify=seconds_since_notify,
+            policy=policy,
+        )
     elif beyond_window:
-        if not policy.forward_after_time_window:
-            suppressed, skip_reason = True, "窗口外重复告警，配置不转发"
-        elif seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
-            suppressed, skip_reason = True, "窗口外重复告警，刚刚已转发"
-        else:
-            should_fwd = base_should_fwd
-            if not should_fwd:
-                skip_reason = f"窗口外重复告警：重要性为 {importance}，非高风险事件不自动转发"
+        state = _decide_beyond_window_alert(
+            base_should_forward=base_should_fwd,
+            importance=importance,
+            seconds_since_notify=seconds_since_notify,
+            policy=policy,
+        )
     else:
-        should_fwd = base_should_fwd
-        skip_reason = f"重要性为 {importance}，非高风险事件不自动转发" if not should_fwd else None
+        state = _decide_new_alert(base_should_forward=base_should_fwd, importance=importance)
 
-    final_forward = False if suppressed else (should_fwd or bool(matched_rules))
+    final_forward = False if state.suppressed else (state.should_forward or bool(matched_rules))
     return ForwardDecision(
         should_forward=final_forward,
-        skip_reason=skip_reason if not final_forward else None,
-        is_periodic_reminder=is_periodic,
-        matched_rules=matched_rules if not suppressed else [],
+        skip_reason=state.skip_reason if not final_forward else None,
+        is_periodic_reminder=state.is_periodic_reminder,
+        matched_rules=matched_rules if not state.suppressed else [],
     )
