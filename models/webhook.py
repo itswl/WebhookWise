@@ -91,14 +91,19 @@ class WebhookEvent(Base, SerializerMixin):
 
     def fill_fields(self, **kwargs: object) -> None:
         """统一填充字段"""
+        valid_fields = set(type(self).__mapper__.column_attrs.keys())
+        unknown_fields = sorted(k for k in kwargs if k not in valid_fields)
+        if unknown_fields:
+            _logger.warning("忽略未知 WebhookEvent 字段: %s", ",".join(unknown_fields))
         for k, v in kwargs.items():
+            if k not in valid_fields:
+                continue
             if k == "raw_payload" and isinstance(v, bytes):
                 with contextlib.suppress(Exception):
                     v = compress_payload(v.decode("utf-8"))
             if k == "headers" and isinstance(v, dict):
                 v = dict(v)
-            if hasattr(self, k):
-                setattr(self, k, v)
+            setattr(self, k, v)
         if not self.timestamp:
             self.timestamp = datetime.now()
         if not self.created_at:

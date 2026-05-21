@@ -38,8 +38,10 @@ from core.observability.tracing import (
 from core.observability.tracing import span as otel_span
 from core.redis_client import RedisEvalArg
 from core.redis_keys import scheduled_task_lock, webhook_global_task_slots
+from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER, TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE, TASK_SLOT_RENEW
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
+from services.operations.task_slots import TaskSlotManager, slot_times
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -48,36 +50,10 @@ _webhook_task_semaphore: asyncio.Semaphore | None = None
 _webhook_task_semaphore_limit = 0
 
 _WEBHOOK_TASK_SLOT_KEY = webhook_global_task_slots()
-
-_ACQUIRE_WEBHOOK_SLOT_LUA = """
-redis.call("zremrangebyscore", KEYS[1], "-inf", ARGV[1])
-if redis.call("zcard", KEYS[1]) >= tonumber(ARGV[2]) then
-    return 0
-end
-redis.call("zadd", KEYS[1], ARGV[3], ARGV[4])
-redis.call("pexpire", KEYS[1], ARGV[5])
-return 1
-"""
-
-_RENEW_WEBHOOK_SLOT_LUA = """
-if redis.call("zscore", KEYS[1], ARGV[1]) then
-    redis.call("zadd", KEYS[1], ARGV[2], ARGV[1])
-    redis.call("pexpire", KEYS[1], ARGV[3])
-    return 1
-end
-return 0
-"""
-
-_RELEASE_WEBHOOK_SLOT_LUA = """
-return redis.call("zrem", KEYS[1], ARGV[1])
-"""
-
-_RELEASE_IF_OWNER_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-end
-return 0
-"""
+_ACQUIRE_WEBHOOK_SLOT_LUA = TASK_SLOT_ACQUIRE
+_RENEW_WEBHOOK_SLOT_LUA = TASK_SLOT_RENEW
+_RELEASE_WEBHOOK_SLOT_LUA = TASK_SLOT_RELEASE
+_RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 
 
 @asynccontextmanager
@@ -105,44 +81,19 @@ def _webhook_slot_lease_seconds(policy: TaskRuntimePolicy | None = None) -> int:
 
 
 def _slot_times(lease_seconds: int) -> tuple[int, int, int]:
-    now_ms = int(time.time() * 1000)
-    lease_ms = int(lease_seconds * 1000)
-    # Keep the key slightly longer than one member lease so Redis can clean old slots on the next acquire.
-    key_ttl_ms = lease_ms + 30_000
-    return now_ms, now_ms + lease_ms, key_ttl_ms
+    return slot_times(lease_seconds)
+
+
+def _task_slot_manager() -> TaskSlotManager:
+    return TaskSlotManager(key=_WEBHOOK_TASK_SLOT_KEY, eval_int=_redis_eval_int, logger=logger)
 
 
 async def _try_acquire_webhook_slot(token: str, limit: int, lease_seconds: int) -> bool:
-    now_ms, expires_at_ms, key_ttl_ms = _slot_times(lease_seconds)
-    acquired = await _redis_eval_int(
-        _ACQUIRE_WEBHOOK_SLOT_LUA,
-        1,
-        _WEBHOOK_TASK_SLOT_KEY,
-        now_ms,
-        limit,
-        expires_at_ms,
-        token,
-        key_ttl_ms,
-    )
-    return bool(acquired)
+    return await _task_slot_manager().acquire(token, limit, lease_seconds)
 
 
 async def _renew_webhook_slot_until_cancelled(token: str, lease_seconds: int) -> None:
-    interval = max(1.0, lease_seconds / 3)
-    while True:
-        await asyncio.sleep(interval)
-        _now_ms, expires_at_ms, key_ttl_ms = _slot_times(lease_seconds)
-        renewed = await _redis_eval_int(
-            _RENEW_WEBHOOK_SLOT_LUA,
-            1,
-            _WEBHOOK_TASK_SLOT_KEY,
-            token,
-            expires_at_ms,
-            key_ttl_ms,
-        )
-        if not renewed:
-            logger.warning("[Tasks] Redis 全局并发令牌续期失败，可能已失去 slot token=%s", token)
-            return
+    await _task_slot_manager().renew_until_cancelled(token, lease_seconds)
 
 
 @asynccontextmanager
@@ -152,11 +103,12 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
     lease_seconds = _webhook_slot_lease_seconds(runtime_policy)
     poll_interval = runtime_policy.webhook_task_poll_interval_seconds
     renew_task: asyncio.Task[None] | None = None
+    slot_manager = _task_slot_manager()
     try:
         while True:
             try:
-                if await _try_acquire_webhook_slot(token, limit, lease_seconds):
-                    renew_task = asyncio.create_task(_renew_webhook_slot_until_cancelled(token, lease_seconds))
+                if await slot_manager.acquire(token, limit, lease_seconds):
+                    renew_task = asyncio.create_task(slot_manager.renew_until_cancelled(token, lease_seconds))
                     break
             except Exception as e:
                 logger.warning("[Tasks] Redis 全局并发令牌异常，降级为本进程限流: %s", e)
@@ -172,7 +124,7 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
             with contextlib.suppress(asyncio.CancelledError):
                 await renew_task
         with contextlib.suppress(Exception):
-            await _redis_eval_int(_RELEASE_WEBHOOK_SLOT_LUA, 1, _WEBHOOK_TASK_SLOT_KEY, token)
+            await slot_manager.release(token)
 
 
 @asynccontextmanager

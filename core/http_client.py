@@ -2,12 +2,11 @@ import threading
 
 import httpx
 
-from core.config import Config
+from core.config import Config, UnifiedConfigManager
 from core.logger import logger
 from core.observability.tracing import build_traceparent, get_current_trace_id
 
-_async_client: httpx.AsyncClient | None = None
-_async_client_lock = threading.RLock()
+_http_client_lock = threading.RLock()
 
 
 async def _inject_trace_headers(request: httpx.Request) -> None:
@@ -20,9 +19,12 @@ async def _inject_trace_headers(request: httpx.Request) -> None:
         request.headers["traceparent"] = build_traceparent(tid)
 
 
-def _build_async_client(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+def build_http_client(
+    config: UnifiedConfigManager = Config,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> httpx.AsyncClient:
     return httpx.AsyncClient(
-        timeout=httpx.Timeout(Config.ai.FORWARD_TIMEOUT, connect=10.0),
+        timeout=httpx.Timeout(config.forwarding.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
         follow_redirects=False,
         trust_env=False,
@@ -32,21 +34,25 @@ def _build_async_client(transport: httpx.AsyncBaseTransport | None = None) -> ht
 
 
 def get_http_client() -> httpx.AsyncClient:
-    """获取全局共享的异步 HTTP 客户端（协程安全，自动管理连接池）"""
-    global _async_client
-    with _async_client_lock:
-        if _async_client is None or _async_client.is_closed:
-            _async_client = _build_async_client()
-            logger.info("[HTTP] 成功初始化全局异步客户端")
-        return _async_client
+    """Return the AsyncClient owned by the current AppContext."""
+    from core.app_context import get_or_create_default_app_context
+
+    context = get_or_create_default_app_context()
+    with _http_client_lock:
+        if context.http_client is None or context.http_client.is_closed:
+            context.http_client = build_http_client(context.config)
+            logger.info("[HTTP] 成功初始化上下文异步客户端")
+        return context.http_client
 
 
 async def close_http_client() -> None:
-    """在应用关闭时调用，释放连接池"""
-    global _async_client
-    with _async_client_lock:
-        client = _async_client
-        _async_client = None
-    if client and not client.is_closed:
-        await client.aclose()
-        logger.info("[HTTP] 已关闭全局异步客户端")
+    """Close the AsyncClient owned by the current AppContext."""
+    from core.app_context import get_default_app_context
+
+    context = get_default_app_context()
+    if context is not None and context.http_client is not None:
+        client = context.http_client
+        context.http_client = None
+        if not client.is_closed:
+            await client.aclose()
+            logger.info("[HTTP] 已关闭上下文异步客户端")

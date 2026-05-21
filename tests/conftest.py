@@ -37,6 +37,16 @@ def initialize_adapter_registry():
     initialize_adapters()
 
 
+@pytest.fixture(autouse=True)
+def reset_default_app_context():
+    """Keep AppContext-owned resources isolated between tests."""
+    from core.app_context import set_default_app_context
+
+    set_default_app_context(None)
+    yield
+    set_default_app_context(None)
+
+
 # ── 外部服务 Mock ─────────────────────────────────────────────────────────────
 
 

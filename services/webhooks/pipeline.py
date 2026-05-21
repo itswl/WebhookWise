@@ -5,10 +5,9 @@ final persistence and forwarding intent creation.
 """
 
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
@@ -57,20 +56,26 @@ from services.webhooks.types import (
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 
 
+@dataclass(slots=True)
+class _PipelineExecutionState:
+    start_perf: float
+    outcome: str = "unknown"
+    metric_source: str = "unknown"
+    request_id: str | None = None
+
+
 async def handle_webhook_process(
     event_id: int,
     client_ip: str = "",
-    session: AsyncSession | None = None,
     *,
     dependencies: WebhookPipelineDependencies | None = None,
 ) -> None:
     set_fallback_trace_id(get_current_trace_id() or generate_trace_id(event_id=event_id))
     clear_log_context()
     set_log_context(event_id=event_id)
-    await _handle_webhook_process_inner(
+    await _handle_db_event(
         event_id,
         client_ip,
-        session=session,
         dependencies=dependencies or WebhookPipelineDependencies(),
     )
 
@@ -106,12 +111,10 @@ async def handle_webhook_ingest(
         event_ts=received_at or datetime.now().astimezone().isoformat(timespec="seconds"),
         request_id=request_id,
     )
-    await _handle_webhook_process_inner(
-        None,
+    await _handle_raw_ingest(
+        env,
         client_ip,
-        envelope=env,
         dependencies=dependencies or WebhookPipelineDependencies(),
-        raise_on_error=True,
     )
 
 
@@ -185,117 +188,135 @@ def _log_completed_processing(
     ).inc()
 
 
-async def _handle_webhook_process_inner(
-    event_id: int | None,
+def _record_pipeline_duration(state: _PipelineExecutionState, span: Any | None) -> None:
+    duration = time.perf_counter() - state.start_perf
+    if span:
+        span.set_attribute(WEBHOOK_OUTCOME, state.outcome)
+    WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=state.metric_source, outcome=state.outcome).observe(duration)
+
+
+async def _handle_db_event(
+    event_id: int,
     client_ip: str = "",
-    session: AsyncSession | None = None,
     *,
-    envelope: EventEnvelope | None = None,
     dependencies: WebhookPipelineDependencies,
-    raise_on_error: bool = False,
 ) -> None:
-    start_perf = time.perf_counter()
-    outcome, metric_source = "unknown", "unknown"
-    request_id: str | None = None
-    with otel_span("webhook.receive", {"event_id": event_id or 0}) as _span:
+    state = _PipelineExecutionState(start_perf=time.perf_counter())
+    with otel_span("webhook.receive", {"event_id": event_id}) as _span:
         active_trace_id = get_current_trace_id()
         if active_trace_id:
             set_fallback_trace_id(active_trace_id)
         try:
-            env = envelope
-            if env is None:
-                if event_id is None:
-                    raise ValueError("event_id is required when no raw envelope is provided")
-                env = await claim_legacy_event_for_processing(event_id)
+            env = await claim_legacy_event_for_processing(event_id)
             if env is None:
                 logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
                 return
-
-            metric_source = sanitize_source(env.source or "")
-            request_id = env.request_id
-            set_log_context(request_id=request_id, source=env.source or "unknown")
-            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
-            WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
-
-            parse_start = time.perf_counter()
-            parse_outcome = "success"
-            with otel_span(
-                "webhook.parse",
-                {"source": env.source or "unknown", "event_id": event_id or 0, "pipeline.step": "parse"},
-            ) as parse_span:
-                try:
-                    req_ctx = parse_request(
-                        client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts
-                    )
-                except Exception as exc:
-                    parse_outcome = "error"
-                    set_span_error(parse_span, exc)
-                    raise
-                finally:
-                    WEBHOOK_PIPELINE_STEP_TOTAL.labels("parse", metric_source, parse_outcome).inc()
-                    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("parse", metric_source, parse_outcome).observe(
-                        time.perf_counter() - parse_start
-                    )
-            alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
-            set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
-            ctx = WebhookProcessContext(
-                event_id=event_id,
-                request_id=request_id,
-                client_ip=client_ip,
-                metric_source=metric_source,
-                req_ctx=req_ctx,
-                alert_hash=alert_hash,
-            )
-            logger.info(
-                "[Pipeline] 开始处理 event_id=%s request_id=%s source=%s adapter=%s body_size=%d",
-                event_id,
-                request_id,
-                req_ctx.source,
-                req_ctx.parsed_data.get("_adapter", req_ctx.source),
-                len(env.raw_body),
-            )
-            if _span:
-                _span.set_attribute(WEBHOOK_SOURCE, req_ctx.source or "unknown")
-                _span.set_attribute(WEBHOOK_ALERT_HASH, alert_hash[:12])
-
-            result = await run_processing_steps(ctx, dependencies)
-            if result.suppressed:
-                outcome = "suppressed"
-                return
-            _log_completed_processing(
-                ctx=ctx,
-                result=result,
-                request_id=request_id,
-                start_perf=start_perf,
-                span=_span,
-            )
-
-            outcome = "completed"
-            set_log_context(processing_status=WebhookProcessingStatus.COMPLETED.value)
-            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
-
+            await _process_envelope(event_id, client_ip, env, dependencies, state, _span)
         except Exception as e:
-            if event_id is None or raise_on_error:
-                set_span_error(_span, e)
-                outcome = "failed"
-                logger.error(
-                    "[Pipeline] raw webhook processing failed request_id=%s source=%s error=%s",
-                    request_id,
-                    metric_source,
-                    e,
-                    exc_info=True,
-                )
-                raise
-            outcome = await handle_process_exception(
+            state.outcome = await handle_process_exception(
                 event_id,
                 e,
                 _span,
                 policy=dependencies.failure_policy,
                 dead_letter_notifier=dependencies.dead_letter_notifier,
             )
-            return
         finally:
-            duration = time.perf_counter() - start_perf
-            if _span:
-                _span.set_attribute(WEBHOOK_OUTCOME, outcome)
-            WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
+            _record_pipeline_duration(state, _span)
+
+
+async def _handle_raw_ingest(
+    envelope: EventEnvelope,
+    client_ip: str = "",
+    *,
+    dependencies: WebhookPipelineDependencies,
+) -> None:
+    state = _PipelineExecutionState(start_perf=time.perf_counter())
+    with otel_span("webhook.receive", {"event_id": 0}) as _span:
+        active_trace_id = get_current_trace_id()
+        if active_trace_id:
+            set_fallback_trace_id(active_trace_id)
+        try:
+            await _process_envelope(None, client_ip, envelope, dependencies, state, _span)
+        except Exception as e:
+            set_span_error(_span, e)
+            state.outcome = "failed"
+            logger.error(
+                "[Pipeline] raw webhook processing failed request_id=%s source=%s error=%s",
+                state.request_id,
+                state.metric_source,
+                e,
+                exc_info=True,
+            )
+            raise
+        finally:
+            _record_pipeline_duration(state, _span)
+
+
+async def _process_envelope(
+    event_id: int | None,
+    client_ip: str,
+    env: EventEnvelope,
+    dependencies: WebhookPipelineDependencies,
+    state: _PipelineExecutionState,
+    span: Any | None,
+) -> None:
+    state.metric_source = sanitize_source(env.source or "")
+    state.request_id = env.request_id
+    set_log_context(request_id=state.request_id, source=env.source or "unknown")
+    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
+    WEBHOOK_RECEIVED_TOTAL.labels(source=state.metric_source, status="received").inc()
+
+    parse_start = time.perf_counter()
+    parse_outcome = "success"
+    with otel_span(
+        "webhook.parse",
+        {"source": env.source or "unknown", "event_id": event_id or 0, "pipeline.step": "parse"},
+    ) as parse_span:
+        try:
+            req_ctx = parse_request(client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts)
+        except Exception as exc:
+            parse_outcome = "error"
+            set_span_error(parse_span, exc)
+            raise
+        finally:
+            WEBHOOK_PIPELINE_STEP_TOTAL.labels("parse", state.metric_source, parse_outcome).inc()
+            WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("parse", state.metric_source, parse_outcome).observe(
+                time.perf_counter() - parse_start
+            )
+    alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
+    set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=state.request_id)
+    ctx = WebhookProcessContext(
+        event_id=event_id,
+        request_id=state.request_id,
+        client_ip=client_ip,
+        metric_source=state.metric_source,
+        req_ctx=req_ctx,
+        alert_hash=alert_hash,
+    )
+    logger.info(
+        "[Pipeline] 开始处理 event_id=%s request_id=%s source=%s adapter=%s body_size=%d",
+        event_id,
+        state.request_id,
+        req_ctx.source,
+        req_ctx.parsed_data.get("_adapter", req_ctx.source),
+        len(env.raw_body),
+    )
+    if span:
+        span.set_attribute(WEBHOOK_SOURCE, req_ctx.source or "unknown")
+        span.set_attribute(WEBHOOK_ALERT_HASH, alert_hash[:12])
+
+    result = await run_processing_steps(ctx, dependencies)
+    if result.suppressed:
+        state.outcome = "suppressed"
+        return
+    _log_completed_processing(
+        ctx=ctx,
+        result=result,
+        request_id=state.request_id,
+        start_perf=state.start_perf,
+        span=span,
+    )
+
+    state.outcome = "completed"
+    set_log_context(processing_status=WebhookProcessingStatus.COMPLETED.value)
+    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
