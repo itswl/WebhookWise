@@ -1,6 +1,6 @@
-"""Webhook 查询服务：列表投影、分页与恢复视图。"""
+"""Webhook 查询服务：列表投影、分页与死信视图。"""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -16,8 +16,6 @@ _prev_ts_subq = (
     .scalar_subquery()
     .label("prev_alert_timestamp")
 )
-
-LEGACY_STUCK_STATUSES = ["received", "analyzing", "retry", "failed"]
 
 _SUMMARY_COLUMNS = [
     WebhookEvent.id,
@@ -71,20 +69,20 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
 async def list_webhook_summaries(
     session: AsyncSession,
     *,
-    cursor_id: int | None = None,
+    cursor: int | None = None,
     importance: str = "",
     source: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
     query = select(*_SUMMARY_COLUMNS)
-    if cursor_id is not None:
-        query = query.where(WebhookEvent.id < cursor_id)
+    if cursor is not None:
+        query = query.where(WebhookEvent.id < cursor)
     if importance:
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
-    if cursor_id is None and page > 1:
+    if cursor is None and page > 1:
         query = query.offset((page - 1) * page_size)
     query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
     result = await session.execute(query)
@@ -92,24 +90,6 @@ async def list_webhook_summaries(
     has_more = len(rows) > page_size
     if has_more:
         rows = rows[:page_size]
-    items = [_row_to_summary_dict(r) for r in rows]
-    return items, has_more, (rows[-1].id if has_more and rows else None)
-
-
-async def list_webhook_summaries_cursor(
-    session: AsyncSession, *, cursor_id: int | None = None, importance: str = "", source: str = "", limit: int = 200
-) -> tuple[list[dict[str, Any]], bool, int | None]:
-    query = select(*_SUMMARY_COLUMNS)
-    if importance:
-        query = query.where(WebhookEvent.importance == importance)
-    if source:
-        query = query.where(WebhookEvent.source == source)
-    if cursor_id is not None:
-        query = query.where(WebhookEvent.id < cursor_id)
-    query = query.order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc()).limit(limit)
-    result = await session.execute(query)
-    rows = result.all()
-    has_more = len(rows) == limit
     items = [_row_to_summary_dict(r) for r in rows]
     return items, has_more, (rows[-1].id if has_more and rows else None)
 
@@ -147,34 +127,3 @@ async def count_dead_letters(session: AsyncSession) -> int | None:
 
     stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == "dead_letter")
     return await count_with_timeout(session, stmt)
-
-
-async def list_stuck_events(
-    session: AsyncSession, *, statuses: list[str] | None = None, older_than_seconds: int = 300, limit: int = 50
-) -> list[dict[str, Any]]:
-    threshold = datetime.now() - timedelta(seconds=max(0, older_than_seconds))
-    stmt = (
-        select(
-            WebhookEvent.id,
-            WebhookEvent.source,
-            WebhookEvent.created_at,
-            WebhookEvent.updated_at,
-            WebhookEvent.retry_count,
-            WebhookEvent.processing_status,
-        )
-        .where(
-            WebhookEvent.processing_status.in_(statuses or LEGACY_STUCK_STATUSES),
-            WebhookEvent.created_at < threshold,
-        )
-        .order_by(WebhookEvent.created_at.asc())
-        .limit(limit)
-    )
-    res = await session.execute(stmt)
-    rows = []
-    for row in res.all():
-        d = dict(row._mapping)
-        for k in ("created_at", "updated_at"):
-            if isinstance(d.get(k), datetime):
-                d[k] = d[k].isoformat()
-        rows.append(d)
-    return rows

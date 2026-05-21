@@ -18,7 +18,8 @@ class RuntimeConfigRefreshPolicy:
     enabled: bool
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> RuntimeConfigRefreshPolicy:
+    def from_config(cls, config: Any | None = None) -> RuntimeConfigRefreshPolicy:
+        config = config or Config
         return cls(enabled=bool(config.server.ENABLE_RUNTIME_CONFIG))
 
 

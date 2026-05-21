@@ -12,10 +12,6 @@
     overflow: hidden;
 }
 
-.alert-list {
-    /* 告警列表容器 */
-}
-
 .alert-item {
     background: #ffffff;
     border-radius: 12px;
@@ -200,12 +196,6 @@
     justify-content: flex-end;
 }
 
-/* ==================== 表格 ==================== */
-.table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
 /* ==================== 徽章 ==================== */
 .badge {
     padding: 0.25rem 0.6rem;
@@ -330,10 +320,6 @@
     color: #569cd6;
 }
 
-.json-punctuation {
-    color: #d4d4d4;
-}
-
 /* 代码块头部 */
 .code-header {
     display: flex;
@@ -371,209 +357,6 @@
 
 .code-wrapper {
     margin: 1rem 0;
-}
-
-/* ==================== 时间线 ==================== */
-.timeline {
-    /* 时间线组件样式 */
-}
-
-/* ==================== 证据链 ==================== */
-.evidence-list {
-    /* 证据链列表样式 */
-}
-
-/* ==================== 技能卡片 ==================== */
-.skill-card {
-    background: #fff;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    padding: 1rem;
-    transition: all 0.2s;
-}
-
-.skill-card:hover {
-    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-}
-
-.skill-card.disabled {
-    opacity: 0.6;
-    background: #f6f8fa;
-}
-
-.skill-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-}
-
-.skill-name {
-    font-weight: 600;
-    color: #24292e;
-}
-
-.skill-type {
-    font-size: 0.75rem;
-    color: #586069;
-    background: #f6f8fa;
-    padding: 0.125rem 0.5rem;
-    border-radius: 12px;
-}
-
-.skill-type.external-tag {
-    background: #e8f5e9;
-    color: #2e7d32;
-    border: 1px solid #a5d6a7;
-}
-
-.skill-version {
-    font-size: 0.75rem;
-    color: #959da5;
-    margin-bottom: 0.5rem;
-}
-
-.skill-desc {
-    font-size: 0.875rem;
-    color: #586069;
-    margin-bottom: 0.75rem;
-    min-height: 1.5rem;
-}
-
-.skill-meta {
-    font-size: 0.75rem;
-    color: #959da5;
-    margin-bottom: 0.5rem;
-}
-
-.skill-path {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.skill-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-    margin-bottom: 0.75rem;
-}
-
-.status-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.status-indicator.healthy {
-    background: #28a745;
-}
-
-.status-indicator.unhealthy {
-    background: #d73a49;
-}
-
-.status-indicator.unknown {
-    background: #959da5;
-}
-
-.skill-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-/* 外部 Skill 卡片特殊样式 */
-.external-skill-card {
-    border-left: 3px solid #28a745;
-}
-
-.external-skill-card:hover {
-    border-left-color: #22863a;
-}
-
-/* Skill 文档内容样式 */
-.skill-doc-content {
-    line-height: 1.6;
-}
-
-.skill-doc-content h1,
-.skill-doc-content h2,
-.skill-doc-content h3 {
-    margin-top: 1.5rem;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-    color: #24292e;
-}
-
-.skill-doc-content h1 {
-    font-size: 1.5rem;
-    border-bottom: 1px solid #e1e4e8;
-    padding-bottom: 0.5rem;
-}
-
-.skill-doc-content h2 {
-    font-size: 1.25rem;
-}
-
-.skill-doc-content h3 {
-    font-size: 1rem;
-}
-
-.skill-doc-content p {
-    margin-bottom: 1rem;
-}
-
-.skill-doc-content code {
-    background: #f6f8fa;
-    padding: 0.125rem 0.375rem;
-    border-radius: 3px;
-    font-family: 'SF Mono', Monaco, Consolas, monospace;
-    font-size: 0.875em;
-}
-
-.skill-doc-content pre {
-    background: #1e1e1e;
-    color: #d4d4d4;
-    padding: 1rem;
-    border-radius: 6px;
-    overflow-x: auto;
-    margin-bottom: 1rem;
-}
-
-.skill-doc-content pre code {
-    background: none;
-    padding: 0;
-}
-
-.skill-doc-content ul,
-.skill-doc-content ol {
-    margin-bottom: 1rem;
-    padding-left: 1.5rem;
-}
-
-.skill-doc-content li {
-    margin-bottom: 0.25rem;
-}
-
-.skills-section {
-    margin-bottom: 2rem;
-}
-
-.skills-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
-}
-
-.external-skills-section {
-    background: #fff;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    padding: 1.5rem;
 }
 
 .text-muted {
@@ -620,86 +403,6 @@
 .ai-value {
     font-size: 0.875rem;
     color: #24292e;
-}
-
-.ai-list {
-    list-style: none;
-    padding-left: 1rem;
-}
-
-.ai-list li {
-    padding: 0.25rem 0;
-    position: relative;
-}
-
-.ai-list li:before {
-    content: "→";
-    position: absolute;
-    left: -1rem;
-    color: #52c41a;
-}
-
-/* ==================== AI 成本监控路由分布 ==================== */
-.route-distribution {
-    background: #fff;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    padding: 1.25rem;
-}
-
-.route-item {
-    margin-bottom: 1rem;
-}
-
-.route-item:last-child {
-    margin-bottom: 0;
-}
-
-.route-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-}
-
-.route-label {
-    font-size: 0.875rem;
-    color: #24292e;
-    font-weight: 500;
-}
-
-.route-value {
-    font-size: 0.875rem;
-    color: #586069;
-}
-
-.progress-bar {
-    height: 8px;
-    background: #e1e4e8;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s ease;
-}
-
-.progress-ai {
-    background: linear-gradient(90deg, #667eea, #764ba2);
-}
-
-.progress-rule {
-    background: linear-gradient(90deg, #f093fb, #f5576c);
-}
-
-.progress-cache {
-    background: linear-gradient(90deg, #4facfe, #00f2fe);
-}
-
-.progress-reuse {
-    background: linear-gradient(90deg, #11998e, #38ef7d);
 }
 
 /* 绿色高亮卡片 */
@@ -756,11 +459,6 @@
     to { transform: rotate(360deg); }
 }
 
-/* ==================== 代码编辑器相关样式 ==================== */
-.code-editor {
-    /* 代码编辑器样式 */
-}
-
 /* ==================== 响应式媒体查询 ==================== */
 @media (max-width: 768px) {
     .navbar-content {
@@ -789,170 +487,6 @@
         flex-wrap: wrap;
     }
 }
-
-/* ==================== Runbook 参数表单 ==================== */
-.runbook-parameters {
-    margin: 12px 0;
-    padding: 12px;
-    background: #f8f9fa;
-    border-left: 3px solid #0066cc;
-    border-radius: 4px;
-}
-
-.params-header {
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 4px;
-    color: #333;
-}
-
-.params-hint {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 10px;
-}
-
-.param-row {
-    margin-bottom: 8px;
-}
-
-.param-row label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    margin-bottom: 3px;
-    color: #444;
-}
-
-.param-input {
-    width: 100%;
-    padding: 6px 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 13px;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
-}
-
-.param-input:focus {
-    outline: none;
-    border-color: #0066cc;
-    box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
-}
-
-.param-input::placeholder {
-    color: #aaa;
-}
-
-/* ==================== OpenClaw Markdown 分析内容样式 ==================== */
-.openclaw-analysis-content {
-    line-height: 1.6;
-    font-size: 0.9em;
-}
-
-.openclaw-analysis-content h1,
-.openclaw-analysis-content h2 {
-    margin: 16px 0 10px;
-    font-weight: 600;
-    color: #24292e;
-    border-bottom: 1px solid #e1e4e8;
-    padding-bottom: 6px;
-}
-
-.openclaw-analysis-content h1 { font-size: 1.3em; }
-.openclaw-analysis-content h2 { font-size: 1.15em; }
-
-.openclaw-analysis-content h3,
-.openclaw-analysis-content h4 {
-    margin: 12px 0 8px;
-    font-weight: 600;
-    color: #24292e;
-}
-
-.openclaw-analysis-content h3 { font-size: 1.05em; }
-.openclaw-analysis-content h4 { font-size: 1em; }
-
-.openclaw-analysis-content p {
-    margin: 8px 0;
-}
-
-.openclaw-analysis-content table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 10px 0;
-    font-size: 0.9em;
-}
-
-.openclaw-analysis-content th,
-.openclaw-analysis-content td {
-    border: 1px solid #ddd;
-    padding: 8px 12px;
-    text-align: left;
-}
-
-.openclaw-analysis-content th {
-    background: #f5f5f5;
-    font-weight: 600;
-}
-
-.openclaw-analysis-content tr:nth-child(even) {
-    background: #fafafa;
-}
-
-.openclaw-analysis-content pre {
-    background: #f5f5f5;
-    padding: 12px;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-size: 0.85em;
-    margin: 10px 0;
-}
-
-.openclaw-analysis-content code {
-    background: #f0f0f0;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    font-family: 'SF Mono', Monaco, Consolas, monospace;
-}
-
-.openclaw-analysis-content pre code {
-    background: none;
-    padding: 0;
-}
-
-.openclaw-analysis-content ul,
-.openclaw-analysis-content ol {
-    padding-left: 24px;
-    margin: 8px 0;
-}
-
-.openclaw-analysis-content li {
-    margin: 4px 0;
-}
-
-.openclaw-analysis-content blockquote {
-    border-left: 3px solid #0366d6;
-    padding-left: 12px;
-    margin: 10px 0;
-    color: #586069;
-}
-
-.openclaw-analysis-content hr {
-    border: none;
-    border-top: 1px solid #e1e4e8;
-    margin: 16px 0;
-}
-
-.openclaw-analysis-content strong {
-    font-weight: 600;
-    color: #24292e;
-}
-
-.openclaw-analysis-content em {
-    font-style: italic;
-}
-
 
 /* ==================== Modern Forms & Checkboxes ==================== */
 .form-checkbox {
@@ -1008,7 +542,7 @@
     flex-grow: 1;
 }
 
-/* Modal fixes for dashboard.html compatibility */
+/* Dashboard modal layout fixes */
 .modal {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -1089,7 +623,7 @@
         gap: 0.75rem !important;
     }
 
-    .alert-body, .da-details, .rule-card {
+    .da-details, .rule-card {
         padding: 1rem !important;
     }
 

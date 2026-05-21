@@ -7,37 +7,15 @@ from core.config import Config
 
 
 @dataclass(frozen=True, slots=True)
-class ForwardRetryPolicy:
-    enabled: bool
-    max_retries: int
-    initial_delay: int
-    max_delay: int
-    backoff_multiplier: float
-
-    @classmethod
-    def from_config(cls, config: Any = Config) -> "ForwardRetryPolicy":
-        return cls(
-            enabled=bool(config.retry.ENABLE_FORWARD_RETRY),
-            max_retries=int(config.retry.FORWARD_RETRY_MAX_RETRIES),
-            initial_delay=int(config.retry.FORWARD_RETRY_INITIAL_DELAY),
-            max_delay=int(config.retry.FORWARD_RETRY_MAX_DELAY),
-            backoff_multiplier=float(config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
-        )
-
-    def delay_for_attempt(self, retry_count: int) -> int:
-        delay = self.initial_delay * self.backoff_multiplier ** (max(1, retry_count) - 1)
-        return int(min(delay, self.max_delay))
-
-
-@dataclass(frozen=True, slots=True)
 class RemoteForwardPolicy:
-    forward_url: str
+    default_target_url: str
     timeout_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "RemoteForwardPolicy":
+    def from_config(cls, config: Any | None = None) -> "RemoteForwardPolicy":
+        config = config or Config
         return cls(
-            forward_url=str(config.forwarding.FORWARD_URL),
+            default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
             timeout_seconds=int(config.forwarding.FORWARD_TIMEOUT),
         )
 
@@ -53,14 +31,15 @@ class ForwardOutboxPolicy:
     max_delivery_age_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "ForwardOutboxPolicy":
+    def from_config(cls, config: Any | None = None) -> "ForwardOutboxPolicy":
+        config = config or Config
         return cls(
-            default_target_url=str(config.forwarding.FORWARD_URL),
+            default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
             max_attempts=max(1, int(config.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
             retry_initial_delay=int(config.retry.FORWARD_RETRY_INITIAL_DELAY),
             retry_max_delay=int(config.retry.FORWARD_RETRY_MAX_DELAY),
             retry_backoff_multiplier=float(config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
-            stale_processing_threshold_seconds=int(config.tasks.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
+            stale_processing_threshold_seconds=int(config.tasks.FORWARD_OUTBOX_STALE_SECONDS),
             max_delivery_age_seconds=max(0, int(config.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS)),
         )
 
@@ -93,12 +72,13 @@ class OpenClawTriggerPolicy:
     retry_sleep_seconds: float = 2.0
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "OpenClawTriggerPolicy":
+    def from_config(cls, config: Any | None = None) -> "OpenClawTriggerPolicy":
+        config = config or Config
         return cls(
             enabled=bool(config.openclaw.OPENCLAW_ENABLED),
             data_dir=str(config.server.DATA_DIR),
             timeout_seconds=int(config.openclaw.OPENCLAW_TIMEOUT_SECONDS),
-            platform=str(getattr(config.ai, "DEEP_ANALYSIS_PLATFORM", "openclaw")).lower(),
+            platform=str(config.ai.DEEP_ANALYSIS_PLATFORM).lower(),
             gateway_url=str(config.openclaw.OPENCLAW_GATEWAY_URL),
             hooks_token=str(config.openclaw.OPENCLAW_HOOKS_TOKEN or config.openclaw.OPENCLAW_GATEWAY_TOKEN),
             connect_timeout=max(1.0, float(config.openclaw.OPENCLAW_CONNECT_TIMEOUT)),

@@ -15,7 +15,7 @@ logger = get_logger("payload_sanitizer")
 
 
 def _get_offload_threshold_bytes(policy: PayloadSanitizerPolicy | None = None) -> int:
-    """Compatibility helper for callers that inspect the offload threshold."""
+    """Return the configured payload offload threshold."""
     return (policy or PayloadSanitizerPolicy.from_config()).offload_threshold_bytes
 
 

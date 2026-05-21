@@ -13,10 +13,10 @@ from core.logger import logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
-from schemas import DeepAnalysisListResponse
+from schemas import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.forwarding.forward import post_json_to_remote, record_failed_forward
+from services.forwarding.forward import post_json_to_remote
 from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
 from services.notifications.target_detection import is_feishu_url
 from services.webhooks.types import DeepAnalysisStatus
@@ -138,7 +138,7 @@ async def deep_analyze_webhook(
     await session.flush()
     poll_delay = _prepare_openclaw_poll_if_pending(record)
     analysis_id = int(record.id)
-    record_data = record.to_dict()
+    record_data = deep_analysis_to_dict(record)
     await session.commit()
     if poll_delay is not None:
         await _schedule_openclaw_poll_best_effort(analysis_id, poll_delay)
@@ -172,7 +172,7 @@ async def list_all_deep_analyses(
 @deep_analysis_router.get("/api/deep-analyses/{webhook_id}")
 async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     records = await get_deep_analyses_for_webhook(session, webhook_id)
-    return {"success": True, "data": [record.to_dict() for record in records]}
+    return {"success": True, "data": [deep_analysis_to_dict(record) for record in records]}
 
 
 @deep_analysis_router.post(
@@ -251,7 +251,7 @@ async def retry_deep_analysis(
 
     _reset_deep_analysis_for_background_poll(record, datetime.now())
     await session.flush()
-    record_data = record.to_dict()
+    record_data = deep_analysis_to_dict(record)
     await session.commit()
     with contextlib.suppress(Exception):
         await clear_openclaw_poll_state(int(record.id))
@@ -318,19 +318,7 @@ async def forward_deep_analysis(
                 "[DeepAnalysis] 已发送到飞书 analysis_id=%s webhook_id=%s", analysis_id, analysis.webhook_event_id
             )
             return {"success": True, "message": "已发送到飞书"}
-        with contextlib.suppress(Exception):
-            await record_failed_forward(
-                webhook_event_id=analysis.webhook_event_id or 0,
-                forward_rule_id=None,
-                target_url=target_url,
-                target_type="feishu",
-                failure_reason="feishu_send_failed",
-                error_message="深度分析结果飞书发送失败",
-                forward_data={"analysis_id": analysis_id, "webhook_event_id": analysis.webhook_event_id},
-                session=session,
-            )
-            await session.commit()
-        return JSONResponse(status_code=202, content={"success": True, "message": "分析已提交，飞书通知可能延迟"})
+        return JSONResponse(status_code=502, content={"success": False, "error": "深度分析结果飞书发送失败"})
 
     fwd_payload = {
         "type": "deep_analysis",

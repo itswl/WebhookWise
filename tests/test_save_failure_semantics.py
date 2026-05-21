@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 
 import pytest
@@ -28,14 +27,11 @@ def test_build_event_beyond_window_flag_can_be_persisted():
     assert event.beyond_window is True
 
 
-def test_fill_fields_warns_when_unknown_fields_are_ignored(caplog: pytest.LogCaptureFixture) -> None:
+def test_fill_fields_rejects_unknown_fields() -> None:
     event = WebhookEvent()
 
-    with caplog.at_level(logging.WARNING, logger="models.webhook"):
+    with pytest.raises(ValueError, match="duplicate_from"):
         event.fill_fields(source="test", duplicate_from=1)
-
-    assert "duplicate_from" in caplog.text
-    assert not hasattr(event, "duplicate_from")
 
 
 def test_save_result_uses_database_event_ids_only():
@@ -83,10 +79,9 @@ async def test_resolve_request_id_returns_completed_result_without_resave() -> N
     resolved = await _resolve_request_id(
         _Session(),  # type: ignore[arg-type]
         request_id="req-1",
-        event_id=None,
         skip_duplicate_lookup=False,
     )
 
     assert resolved.completed_result == SaveWebhookResult(42, True, 7, True)
-    assert resolved.event_id == 42
+    assert resolved.existing_event_id == 42
     assert resolved.skip_duplicate_lookup is True

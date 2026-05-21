@@ -56,10 +56,10 @@
 
 **异步职责边界：**
 - TaskIQ：基于 Redis Stream 的异步任务投递与 Worker 消费
-- Scheduler：周期性投递 recovery、metrics、数据维护等任务
+- Scheduler：周期性投递 OpenClaw 轮询、Forward Outbox 补扫、metrics、数据维护等任务
 - TaskIQ 动态调度：按事件投递 Webhook 处理重试、Forward Outbox 重试和 OpenClaw 结果拉取
 - Forward Outbox：Webhook 处理事务内只写入待发送意图，由 Worker 执行真实 HTTP/OpenClaw 转发
-- PostgreSQL：Webhook 事实存储、失败转发/死信/重试状态等可审计状态
+- PostgreSQL：Webhook 事实存储、Forward Outbox、死信和重试状态等可审计状态
 - Redis：TaskIQ 队列、短窗口风暴计数、缓存、运行时配置广播
 
 **部署边界：**
@@ -99,7 +99,7 @@ cp .env.example .env
 docker-compose up -d --build
 
 # 3. 验证
-curl http://localhost:8000/health
+curl http://localhost:8000/ready
 ```
 
 数据库 Schema 迁移由 Compose 中的一次性 `migrate` 服务执行（`alembic upgrade head`）。API、Worker 和 Scheduler 只在迁移成功后启动，`entrypoint.sh` 只负责按 `RUN_MODE` 分发进程。
@@ -247,7 +247,7 @@ tests/e2e/run_webhook_to_feishu.sh
 
 ## 📡 API 端点速览
 
-> 所有 `/api/*` 端点需要 `Authorization: Bearer <API_KEY>` Header；会修改状态、触发 AI/OpenClaw 或发起外部转发的写接口需要 `Authorization: Bearer <ADMIN_WRITE_KEY>`（未配置时回退到 `API_KEY`）。
+> 所有 `/api/*` 端点需要 `Authorization: Bearer <API_KEY>` Header；会修改状态、触发 AI/OpenClaw 或发起外部转发的写接口需要 `Authorization: Bearer <ADMIN_WRITE_KEY>`。
 > `/webhook` 端点默认无需鉴权（可通过 `REQUIRE_WEBHOOK_AUTH=true` 开启）。
 
 ### Webhook 接收
@@ -255,7 +255,8 @@ tests/e2e/run_webhook_to_feishu.sh
 |:---|:---|:---|
 | `POST` | `/webhook` | 接收通用 Webhook（自动检测来源） |
 | `POST` | `/webhook/{source}` | 接收指定来源的 Webhook |
-| `GET` | `/health` | 健康检查 |
+| `GET` | `/live` | 进程存活检查 |
+| `GET` | `/ready` | DB/Redis 就绪检查 |
 | `GET` | `/` 或 `/dashboard` | Web 管理界面 |
 
 ### 事件管理
@@ -283,9 +284,6 @@ tests/e2e/run_webhook_to_feishu.sh
 | `POST` | `/api/forward-rules` | 创建转发规则（写权限） |
 | `PUT` | `/api/forward-rules/{id}` | 更新转发规则（写权限） |
 | `DELETE` | `/api/forward-rules/{id}` | 删除转发规则（写权限） |
-| `GET` | `/api/failed-forwards` | 失败转发审计记录 |
-| `POST` | `/api/failed-forwards/{id}/retry` | 重置失败转发重试（写权限） |
-| `DELETE` | `/api/failed-forwards/{id}` | 删除补偿记录（写权限） |
 
 ### 运维管理
 | 方法 | 路径 | 说明 |
@@ -297,8 +295,6 @@ tests/e2e/run_webhook_to_feishu.sh
 | `POST` | `/api/prompt/reload?kind=user\|deep_analysis` | 热重载 Prompt 文件（写权限） |
 | `GET` | `/api/admin/dead-letters` | 死信队列列表 |
 | `POST` | `/api/admin/dead-letters/{id}/replay` | 重放单条死信事件（写权限） |
-| `GET` | `/api/admin/stuck-events` | 列举僵尸事件 |
-| `POST` | `/api/admin/stuck-events/{id}/requeue` | 重新入队单条僵尸事件（写权限） |
 
 ### 可观测性
 
@@ -315,7 +311,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `API_KEY` | — | 管理 API 鉴权 Token（生产必须设置） |
-| `ADMIN_WRITE_KEY` | — | 写操作单独 Key（为空则回退到 API_KEY） |
+| `ADMIN_WRITE_KEY` | — | 写操作单独 Key（生产必须设置） |
 | `REQUIRE_WEBHOOK_AUTH` | `true` | 生产环境默认要求 Webhook 签名或 Token 鉴权 |
 | `ALLOW_UNAUTHENTICATED_WEBHOOK` | `false` | 显式允许生产环境公开接收 Webhook（不推荐） |
 | `WEBHOOK_RATE_LIMIT_PER_MINUTE` | `600` | 按客户端 IP 限流；设为 `0` 表示关闭 |
@@ -330,10 +326,10 @@ tests/e2e/run_webhook_to_feishu.sh
 | `LOG_LEVEL` | `INFO` | 项目业务日志级别（`webhook_service`、`config`、`db`、`models` 等） |
 | `THIRD_PARTY_LOG_LEVEL` | `WARNING` | 第三方/框架日志级别（TaskIQ、httpx、uvicorn、gunicorn 等） |
 | `LOG_FILE` | — | 日志文件路径（为空则仅控制台输出） |
-| `RECOVERY_SCAN_INTERVAL_SECONDS` | `300` | recovery-only DB 兜底扫描间隔；正常路径走 Redis/TaskIQ |
+| `BACKGROUND_SCAN_INTERVAL_SECONDS` | `300` | 后台扫描间隔（OpenClaw poll、forward outbox scan） |
 | `MAX_CONCURRENT_WEBHOOK_TASKS` | `30` | 所有 Worker 全局 Webhook 处理并发上限（Redis 分布式令牌） |
 | `WEBHOOK_TASK_SLOT_LEASE_SECONDS` | `1800` | 全局并发令牌租约秒数，长任务会自动续期 |
-| `RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS` | `300` | 僵尸事件判定阈值（秒） |
+| `FORWARD_OUTBOX_STALE_SECONDS` | `300` | Forward outbox `processing` 状态超时后重新认领阈值 |
 | `WEBHOOK_SECRET` | — | HMAC-SHA256 签名校验密钥 |
 
 ### AI 分析
@@ -382,8 +378,8 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `ENABLE_FORWARD` | `true` | 开启自动转发 |
-| `FORWARD_URL` | — | 默认转发目标 URL |
-| `ENABLE_FORWARD_RETRY` | `true` | 失败转发自动重试 |
+| `DEFAULT_FORWARD_TARGET_URL` | — | 默认转发目标 URL |
+| `FORWARD_TIMEOUT` | `10` | 单次转发 HTTP 超时（秒） |
 | `FORWARD_RETRY_MAX_RETRIES` | `3` | 最大重试次数 |
 | `FORWARD_RETRY_INITIAL_DELAY` | `60` | 初始重试延迟（秒） |
 | `FORWARD_MAX_DELIVERY_AGE_SECONDS` | `1800` | Outbox 最大投递年龄；超龄标记 `expired` 不再发送，`0` 表示关闭 |
@@ -421,7 +417,6 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 | `webhook.suppressed` | Counter | 降噪/抑制结果计数 |
 | `webhook.storm.suppressed` | Counter | 告警风暴触发抑制次数 |
 | `webhook.running_tasks` | Gauge | 当前活跃的 Webhook 后台处理任务数 |
-| `webhook.recovery.polled` | Counter | Recovery 扫描处理的僵尸事件数 |
 | `ai.tokens` | Counter | Token 消耗量（按 model/token_type） |
 | `ai.cost` | Counter | 累计 AI 成本 |
 | `ai.request.duration` | Histogram | AI 分析耗时（按 source/engine） |

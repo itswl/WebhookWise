@@ -190,7 +190,7 @@ the synthetic request can be signed.
 | DB / Redis | `db-pool`, `db-latency-p95`, `redis-latency-p95` |
 | Scheduler | `scheduler-lag`, `scheduler-last-success-age` |
 | AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95`, `forward-outbox-backlog-age`, `circuit-breaker-state` |
-| Deep diagnostics | `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`, `noise-latency-p95` |
+| Deep diagnostics | `webhook-status`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`, `noise-latency-p95` |
 | Frontend / eBPF / load / collector | `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `collector-queue`, `loki-write-latency-p95`, `loki-write-retries` |
 
 ## Maintenance

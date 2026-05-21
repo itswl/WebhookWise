@@ -3,7 +3,7 @@
 
 set -e
 
-# 动态加载 jemalloc（兼容 x86_64/aarch64）
+# 动态加载 jemalloc（适配 x86_64/aarch64）
 JEMALLOC_PATH=$(find /usr/lib -name "libjemalloc.so.2" -print -quit 2>/dev/null)
 if [ -n "$JEMALLOC_PATH" ]; then
     export LD_PRELOAD="$JEMALLOC_PATH"
@@ -26,7 +26,7 @@ case "${RUN_MODE:-api}" in
         ;;
     all)
         echo "Starting in all-in-one supervisor mode..."
-        export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources is deprecated as an API:UserWarning}"
+        export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources.*:UserWarning}"
         exec supervisord -c /app/supervisord.conf
         ;;
     api|"")

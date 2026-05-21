@@ -155,7 +155,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Application-side active webhook_events count gauge. The _ratio suffix is an OTel export naming artifact.",
+      "description": "Application-side active webhook event count gauge.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -220,7 +220,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(webhook_events_active) or max(webhook_events_count_ratio) or vector(0)",
+          "expr": "max(webhook_events_active) or vector(0)",
           "legendFormat": "Events",
           "range": true,
           "refId": "A"
@@ -837,7 +837,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(queue_pending) or max(queue_pending_ratio) or vector(0)",
+          "expr": "max(queue_pending) or vector(0)",
           "legendFormat": "consumer pending",
           "range": true,
           "refId": "A"
@@ -848,7 +848,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(queue_lag) or max(queue_lag_ratio) or vector(0)",
+          "expr": "max(queue_lag) or vector(0)",
           "legendFormat": "consumer lag",
           "range": true,
           "refId": "B"
@@ -859,7 +859,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(queue_depth) or max(queue_depth_ratio) or vector(0)",
+          "expr": "max(queue_depth) or vector(0)",
           "legendFormat": "retained entries (XLEN)",
           "range": true,
           "refId": "C"
@@ -1488,7 +1488,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(webhook_running_tasks) or max(webhook_running_tasks_ratio) or vector(0)",
+          "expr": "max(webhook_running_tasks) or vector(0)",
           "legendFormat": "running",
           "range": true,
           "refId": "A"
@@ -1842,7 +1842,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(db_pool_connections_checked_out) or max(db_pool_connections_checked_out_ratio) or vector(0)",
+          "expr": "max(db_pool_connections_checked_out) or vector(0)",
           "legendFormat": "checked out",
           "range": true,
           "refId": "A"
@@ -1853,7 +1853,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(db_pool_connections_max) or max(db_pool_connections_max_ratio) or vector(0)",
+          "expr": "max(db_pool_connections_max) or vector(0)",
           "legendFormat": "pool max",
           "range": true,
           "refId": "B"
@@ -2312,7 +2312,7 @@
       },
       "id": 140,
       "panels": [],
-      "title": "Scheduler 与恢复任务 (Scheduler / Recovery)",
+      "title": "Scheduler 与后台任务 (Scheduler / Background Jobs)",
       "type": "row"
     },
     {
@@ -3612,7 +3612,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (circuit_breaker_name, circuit_breaker_state) (circuit_breaker_active_state or circuit_breaker_state or circuit_breaker_state_ratio) or vector(0)",
+          "expr": "max by (circuit_breaker_name, circuit_breaker_state) (circuit_breaker_active_state) or vector(0)",
           "legendFormat": "{{circuit_breaker_name}} {{circuit_breaker_state}}",
           "range": true,
           "refId": "A"
@@ -3722,7 +3722,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (forward_target_type, forward_status) (forward_outbox_oldest_age_seconds or forward_outbox_backlog_age_seconds or forward_outbox_backlog_age_seconds_ratio) or vector(0)",
+          "expr": "max by (forward_target_type, forward_status) (forward_outbox_oldest_age_seconds) or vector(0)",
           "legendFormat": "{{forward_target_type}} {{forward_status}}",
           "range": true,
           "refId": "A"

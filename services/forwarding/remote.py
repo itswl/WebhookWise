@@ -41,12 +41,12 @@ async def forward_to_remote(
             circuit_breaker=dependencies.circuit_breaker,
             validate_url=dependencies.validate_url,
         )
-    url = target_url or policy.forward_url
+    url = target_url or policy.default_target_url
     if not url:
         logger.info("[Forward] 无转发 URL，跳过")
         status = "skipped"
         _record_delivery(target_type, status, started)
-        return {"status": "skipped", "reason": "no_forward_url"}
+        return {"status": "skipped", "reason": "no_default_target_url"}
     try:
         url = await dependencies.validate_url(url)
     except UnsafeTargetUrlError as e:

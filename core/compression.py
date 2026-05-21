@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import gzip
 
 import zstandard as zstd
 
@@ -16,7 +15,6 @@ _decompressor = zstd.ZstdDecompressor()
 
 # Magic headers
 _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
-_GZIP_MAGIC = b"\x1f\x8b"
 
 
 def compress_payload(text: str | bytes | None) -> bytes | None:
@@ -30,7 +28,7 @@ def compress_payload(text: str | bytes | None) -> bytes | None:
 
 
 def decompress_payload(data: bytes | str | None) -> str | None:
-    """解压 bytes 为文本。自动识别 Zstd/Gzip/原始数据，向后兼容已有 gzip 数据。"""
+    """解压 bytes 为文本。自动识别 Zstd/原始 UTF-8 数据。"""
     if data is None:
         return None
     if isinstance(data, str):
@@ -41,8 +39,6 @@ def decompress_payload(data: bytes | str | None) -> str | None:
             return data
     if data[:4] == _ZSTD_MAGIC:
         return _decompressor.decompress(data).decode("utf-8")
-    if data[:2] == _GZIP_MAGIC:
-        return gzip.decompress(data).decode("utf-8")
     # 无 magic header：当作原始 UTF-8 文本处理
     return data.decode("utf-8")
 

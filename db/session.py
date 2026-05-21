@@ -3,7 +3,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, cast
 
 from fastapi import Request
 from sqlalchemy import text
@@ -17,39 +17,6 @@ from sqlalchemy.orm import DeclarativeBase
 
 from core.config import Config, UnifiedConfigManager
 from core.logger import mask_url
-
-if TYPE_CHECKING:
-    from pydantic import BaseModel
-
-T = TypeVar("T", bound="BaseModel")
-
-
-class SerializerMixin:
-    """提供通用的序列化能力，减少 Models 与 Schemas 之间的重复代码。"""
-
-    __table__: Any
-
-    def to_schema(self, schema_cls: type[T]) -> T:
-        """将 Model 实例转换为指定的 Pydantic Schema。"""
-        return schema_cls.model_validate(self)
-
-    def to_dict(self, schema_cls: type["BaseModel"] | None = None) -> dict[str, object]:
-        """将 Model 实例转换为字典。如果提供 schema_cls，则通过 Schema 进行过滤和格式化。"""
-        if schema_cls:
-            return cast(dict[str, object], self.to_schema(schema_cls).model_dump(mode="json"))
-        # 默认简单的 dict 转换（排除 bytes 等非 JSON 序列化字段，格式化 datetime）
-        import datetime
-
-        res: dict[str, object] = {}
-        for c in self.__table__.columns:
-            val = getattr(self, c.name)
-            if isinstance(val, (bytes, memoryview)):
-                continue
-            if isinstance(val, datetime.datetime):
-                val = val.isoformat()
-            res[c.name] = val
-        return res
-
 
 _logger = logging.getLogger(__name__)
 
@@ -281,21 +248,6 @@ async def count_with_timeout(
 
         DB_SESSION_TOTAL.labels("count_query", status).inc()
         DB_SESSION_DURATION_SECONDS.labels("count_query", status).observe(time.perf_counter() - start)
-
-
-# ────────────────────────────────────────
-# 异步初始化 & 连接测试
-# ────────────────────────────────────────
-
-
-async def init_db() -> None:
-    """初始化数据库表（异步版本）"""
-    await init_engine()
-    engine = get_engine()
-    assert engine is not None
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    _logger.info("数据库表初始化完成")
 
 
 async def test_db_connection() -> bool:

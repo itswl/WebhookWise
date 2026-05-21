@@ -36,10 +36,6 @@ class LazyCircuitBreaker:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._get(), name)
 
-    def reset_for_tests(self) -> None:
-        with self._lock:
-            self._breaker = None
-
 
 def _build_feishu_circuit_breaker() -> CircuitBreaker:
     return CircuitBreaker(
@@ -68,9 +64,3 @@ def _build_forward_circuit_breaker() -> CircuitBreaker:
 feishu_cb = LazyCircuitBreaker(_build_feishu_circuit_breaker)
 openclaw_cb = LazyCircuitBreaker(_build_openclaw_circuit_breaker)
 forward_cb = LazyCircuitBreaker(_build_forward_circuit_breaker)
-
-
-def reset_circuit_breakers_for_tests() -> None:
-    feishu_cb.reset_for_tests()
-    openclaw_cb.reset_for_tests()
-    forward_cb.reset_for_tests()

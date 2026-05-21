@@ -1,5 +1,5 @@
 """
-摘要提取注册表
+摘要字段提取
 
 将 source-specific 的摘要字段提取逻辑从 model 层下沉到 adapter 层，
 消除 WebhookEvent.to_summary_dict() 中的 if-else 膨胀。
@@ -8,29 +8,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from services.webhooks.types import WebhookData
 
 logger = logging.getLogger(__name__)
 
-# 注册表: source -> extractor function
 Summary = dict[str, Any]
-_Extractor = Callable[[WebhookData], Summary]
-_SUMMARY_EXTRACTORS: dict[str, _Extractor] = {}
-_F = TypeVar("_F", bound=_Extractor)
-
-
-def register_summary_extractor(source: str) -> Callable[[_F], _F]:
-    """装饰器：注册 source 对应的摘要提取器。"""
-
-    def decorator(func: _F) -> _F:
-        _SUMMARY_EXTRACTORS[source] = func
-        logger.debug("[Summary Extractor] Registered extractor for: %s", source)
-        return func
-
-    return decorator
 
 
 def extract_summary_fields(source: str, parsed_data: WebhookData | None) -> Summary:
@@ -39,19 +23,17 @@ def extract_summary_fields(source: str, parsed_data: WebhookData | None) -> Summ
     返回值会被合并到 alert_info 字典中。
     若 source 没有注册提取器或 parsed_data 为空，返回空字典。
     """
-    if not parsed_data or source not in _SUMMARY_EXTRACTORS:
+    if not parsed_data:
+        return {}
+    if source != "mongodb":
         return {}
     try:
-        return _SUMMARY_EXTRACTORS[source](parsed_data)
+        return _extract_mongodb_summary(parsed_data)
     except Exception:
         logger.warning("[Summary Extractor] Failed to extract for source=%s", source, exc_info=True)
         return {}
 
 
-# ── 内置提取器 ────────────────────────────────────────────────────────────────
-
-
-@register_summary_extractor("mongodb")
 def _extract_mongodb_summary(parsed_data: WebhookData) -> Summary:
     """MongoDB 告警摘要字段提取。"""
     monitor = parsed_data.get("监控项")

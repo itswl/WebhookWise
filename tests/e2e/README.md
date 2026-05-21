@@ -34,7 +34,7 @@ tests/e2e/run_webhook_to_feishu.sh
 
 通过条件：
 
-- API `/health` 可用；
+- API `/ready` 可用；
 - migrate 任务成功退出；
 - scheduler 容器保持 running；
 - webhook 请求返回 `202`;

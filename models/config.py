@@ -18,16 +18,4 @@ class SystemConfig(Base):
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="配置说明")
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
-    updated_by: Mapped[str] = mapped_column(
-        String(64), server_default="system", comment="修改来源: api/migration/system"
-    )
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "key": self.key,
-            "value": self.value,
-            "value_type": self.value_type,
-            "description": self.description,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "updated_by": self.updated_by,
-        }
+    updated_by: Mapped[str] = mapped_column(String(64), server_default="system", comment="修改来源: api/system")

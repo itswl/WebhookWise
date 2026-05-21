@@ -45,7 +45,7 @@ when available, such as `webhook_source`, `service_name`, `worker_task_name`,
 | 系统入口与 HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
 | 队列、Worker 与 Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, semaphore timeouts, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
 | 数据库与 Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
-| Scheduler 与恢复任务 | Scheduler runs, duration, lag, time since last success | Are periodic recovery/maintenance jobs running on time? |
+| Scheduler 与后台任务 | Scheduler runs, duration, lag, time since last success | Are periodic poll/outbox/maintenance jobs running on time? |
 | AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, circuit breaker state, outbox oldest backlog age, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
 | SLO、告警与链路闭环 | API availability, webhook completion, AI degradation, forward success, Prometheus alert state, event/trace correlation | Are user-facing SLOs healthy, and can I jump from alert to logs/traces quickly? |
 
@@ -55,7 +55,7 @@ Deep diagnostic dashboard rows:
 | --- | --- | --- |
 | 可观测后端、RUM、Beyla 与压测 | Faro receiver, Beyla span metrics, process CPU, k6 smoke results, Alloy/Loki write health | Are telemetry collection, frontend RUM, eBPF, and synthetic checks working? |
 | 环境与容量 | Current environment/service inventory, process memory, active HTTP requests and request-body P95 | Am I looking at the expected environment, and are service resources normal? |
-| Webhook 与 Pipeline 深度诊断 | Processing status, stuck status, pipeline step P95, queue operation P95, payload P95, status-transition rate | Where is webhook processing stuck or slow? |
+| Webhook 与 Pipeline 深度诊断 | Processing status, pipeline step P95, queue operation P95, payload P95, status-transition rate | Where is webhook processing slow? |
 | AI、降噪与转发补充 | AI tokens, AI cache, deep analysis, noise evaluation rate/latency, outbox lifecycle/latency, cost by model | What drives AI cost and delivery behavior? |
 | 采集链路与服务拓扑补充 | Service graph calls/failures, process IO, OTel exporter queue, Loki write latency/retries, Faro limiter | Is the telemetry pipeline itself healthy? |
 
@@ -97,8 +97,8 @@ Some OpenTelemetry observable gauges are exposed by the Prometheus exporter with
 a `_ratio` suffix even when they are counts. The local rule file records friendly
 aliases such as `queue_pending`, `queue_lag`, `queue_depth`,
 `webhook_events_active`, `webhook_processing_status_count`, and
-`db_pool_connections_checked_out`. Dashboard queries keep fallbacks to the raw
-`*_ratio` names so a partially provisioned stack still shows data.
+`db_pool_connections_checked_out`. Dashboard queries use those recording rule
+names directly, so Grafana panels match the project metric vocabulary.
 
 ## Quick PromQL Sanity Checks
 

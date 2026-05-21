@@ -25,7 +25,8 @@ class OpenClawPollPolicy:
     notification_webhook_url: str
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "OpenClawPollPolicy":
+    def from_config(cls, config: Any | None = None) -> "OpenClawPollPolicy":
+        config = config or Config
         return cls(
             timeout_seconds=int(config.openclaw.OPENCLAW_TIMEOUT_SECONDS),
             poll_timeout_seconds=max(1, int(config.openclaw.OPENCLAW_POLL_TIMEOUT)),
@@ -94,17 +95,14 @@ class OpenClawWsPolicy:
     device_token: str
     gateway_token: str
     nonce_timeout: float
-    connect_timeout: int
-    handshake_timeout: int
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "OpenClawWsPolicy":
+    def from_config(cls, config: Any | None = None) -> "OpenClawWsPolicy":
+        config = config or Config
         return cls(
             device_id=str(config.openclaw.OPENCLAW_DEVICE_ID),
             device_private_key_b64=str(config.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM),
             device_token=str(config.openclaw.OPENCLAW_DEVICE_TOKEN),
             gateway_token=str(config.openclaw.OPENCLAW_GATEWAY_TOKEN),
             nonce_timeout=float(config.openclaw.OPENCLAW_NONCE_TIMEOUT),
-            connect_timeout=int(config.openclaw.OPENCLAW_CONNECT_TIMEOUT),
-            handshake_timeout=int(config.openclaw.OPENCLAW_HANDSHAKE_TIMEOUT),
         )

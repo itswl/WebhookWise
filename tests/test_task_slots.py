@@ -25,6 +25,7 @@ async def test_task_slot_manager_uses_lua_registry_scripts() -> None:
 @pytest.mark.asyncio
 async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.config import Config
+    from core.redis_lua import TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE
     from services.operations import tasks
 
     monkeypatch.setattr(Config.tasks, "MAX_CONCURRENT_WEBHOOK_TASKS", 2)
@@ -39,9 +40,9 @@ async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.Monk
     monkeypatch.setattr(tasks, "_redis_eval_int", fake_eval)
 
     async with tasks._webhook_task_slot():
-        assert calls == [tasks._ACQUIRE_WEBHOOK_SLOT_LUA]
+        assert calls == [TASK_SLOT_ACQUIRE]
 
-    assert calls == [tasks._ACQUIRE_WEBHOOK_SLOT_LUA, tasks._RELEASE_WEBHOOK_SLOT_LUA]
+    assert calls == [TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE]
 
 
 @pytest.mark.asyncio
@@ -62,13 +63,13 @@ async def test_webhook_task_slot_falls_back_to_local_limit_on_redis_error(monkey
         assert tasks._webhook_task_semaphore is not None
 
 
-def test_recovery_scan_interval_is_recovery_only_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_background_scan_interval_has_minimum_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.config import Config
     from services.operations import tasks
 
-    monkeypatch.setattr(Config.tasks, "RECOVERY_SCAN_INTERVAL_SECONDS", 10)
+    monkeypatch.setattr(Config.tasks, "BACKGROUND_SCAN_INTERVAL_SECONDS", 10)
 
-    assert tasks._recovery_scan_interval_seconds() == 30
+    assert tasks._background_scan_interval_seconds() == 30
 
 
 def test_redis_stream_broker_has_pending_reclaim_timeout() -> None:

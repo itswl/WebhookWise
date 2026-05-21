@@ -16,10 +16,7 @@ from core.observability.metrics import DEEP_ANALYSIS_TOTAL
 from core.observability.tracing import get_current_trace_id
 from services.analysis.openclaw_http import poll_openclaw_final
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
-from services.analysis.openclaw_result_parser import (
-    build_analysis_result_from_openclaw_text,
-    extract_robust_json,
-)
+from services.analysis.openclaw_result_parser import build_analysis_result_from_openclaw_text
 from services.operations.deep_analysis_notifications import (
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
@@ -48,12 +45,8 @@ def _clamp_poll_delay_to_timeout(
 
 
 def _poll_claim_lease_seconds(policy: OpenClawPollPolicy | None = None) -> int:
-    """How long a claimed poll stays hidden from scanner fallback."""
+    """How long a claimed poll stays hidden from the scanner."""
     return (policy or OpenClawPollPolicy.from_config()).poll_claim_lease_seconds
-
-
-def _openclaw_http_poll_timeout(policy: OpenClawPollPolicy | None = None) -> float:
-    return (policy or OpenClawPollPolicy.from_config()).http_poll_timeout
 
 
 def _text_hash(text: str) -> str:
@@ -117,41 +110,13 @@ async def clear_openclaw_poll_state(record_id: int) -> None:
     await _clear_poll_stability(record_id)
 
 
-async def _notify_feishu_deep_analysis(
-    record_dict: WebhookData, source: str = "", *, policy: OpenClawPollPolicy | None = None
-) -> None:
-    """Compatibility wrapper for the old poller notification hook."""
-    await send_deep_analysis_success_notification(record_dict, source, policy=policy)
-
-
-async def notify_deep_analysis_success(
-    record: Any, source: str = "", *, policy: OpenClawPollPolicy | None = None
-) -> None:
-    record_dict = {
-        "id": record.id,
-        "webhook_event_id": record.webhook_event_id,
-        "engine": record.engine,
-        "analysis_result": record.analysis_result,
-        "duration_seconds": record.duration_seconds,
-    }
-    await _notify_feishu_deep_analysis(record_dict, source, policy=policy)
-
-
-async def _notify_feishu_deep_analysis_failed(
-    record_dict: WebhookData, reason: str = "", *, policy: OpenClawPollPolicy | None = None
-) -> None:
-    """Compatibility wrapper for the old poller failure-notification hook."""
-    await send_deep_analysis_failure_notification(record_dict, reason, policy=policy)
-
-
-async def _poll_via_http(
+async def poll_openclaw_result_via_http(
     session_key: str,
     retry_count: int = 3,
     *,
     policy: OpenClawPollPolicy | None = None,
     http_client: Any | None = None,
 ) -> WebhookData:
-    """Compatibility wrapper for HTTP /final polling."""
     policy = policy or OpenClawPollPolicy.from_config()
     return await poll_openclaw_final(
         session_key,
@@ -190,7 +155,7 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
                 "analysis_result": {"root_cause": "OpenClaw 分析超时"},
             }
             notify_dict = {**rec, **update}
-            await _notify_feishu_deep_analysis_failed(notify_dict, "超时失败", policy=policy)
+            await send_deep_analysis_failure_notification(notify_dict, "超时失败", policy=policy)
             return {"id": record_id, "action": "update", **update}
 
         # --- session_key 缺失检查 ---
@@ -210,12 +175,14 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
             }
             await _clear_poll_stability(record_id)
             notify_dict = {**rec, **update}
-            await _notify_feishu_deep_analysis_failed(notify_dict, "无 session_key - OpenClaw 触发失败", policy=policy)
+            await send_deep_analysis_failure_notification(
+                notify_dict, "无 session_key - OpenClaw 触发失败", policy=policy
+            )
             return {"id": record_id, "action": "update", **update}
 
         # --- HTTP 轮询 ---
         if policy.has_http_api:
-            result = await _poll_via_http(rec["openclaw_session_key"], policy=policy)
+            result = await poll_openclaw_result_via_http(rec["openclaw_session_key"], policy=policy)
         else:
             result = await poll_session_result(
                 gateway_url=policy.gateway_url,
@@ -330,7 +297,7 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
             }
             DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
             notify_dict = {**rec, **update}
-            await _notify_feishu_deep_analysis_failed(notify_dict, error_msg, policy=policy)
+            await send_deep_analysis_failure_notification(notify_dict, error_msg, policy=policy)
             return {"id": record_id, "action": "update", **update}
 
         # --- pending / 其他状态 → skip ---
@@ -375,7 +342,7 @@ def _record_to_poll_dict(record: Any) -> WebhookData:
 async def _claim_openclaw_poll(
     analysis_id: int, *, policy: OpenClawPollPolicy | None = None
 ) -> tuple[WebhookData | None, int | None]:
-    """Atomically claim a due pending analysis and hide it from scanner fallback."""
+    """Atomically claim a due pending analysis and hide it from the scanner."""
     from sqlalchemy import select, update
 
     from db.session import session_scope
@@ -482,7 +449,9 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
                     event = evt_result.scalars().first()
                     source = event.source if event else ""
                     notify_dict = {**record_dict, **poll_result}
-                    asyncio.create_task(_safe_notify(_notify_feishu_deep_analysis(notify_dict, source, policy=policy)))
+                    asyncio.create_task(
+                        _safe_notify(send_deep_analysis_success_notification(notify_dict, source, policy=policy))
+                    )
                 except Exception as e:
                     logger.debug("飞书深度分析通知失败: %s", e)
 
@@ -549,8 +518,3 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     else:
         logger.debug("[Poller] 扫描未发现待调度 OpenClaw 分析")
     return len(ids)
-
-
-def _extract_robust_json(text: str) -> str | None:
-    """Compatibility wrapper for the old parser helper name."""
-    return extract_robust_json(text)

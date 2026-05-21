@@ -1,5 +1,9 @@
 log_level: INFO
 
+open_port: 8000
+service_name: webhookwise-api
+service_namespace: webhookwise
+
 discovery:
   instrument:
     - name: webhookwise-api-beyla

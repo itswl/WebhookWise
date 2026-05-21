@@ -42,13 +42,16 @@ async def verify_api_key(
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
     config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
 ) -> bool:
-    """
-    验证 API Key (Bearer Token)
-    如果 API_KEY 未配置，则跳过验证（兼容模式）
-    """
+    """验证管理 API Bearer Token。"""
     api_key = config.security.API_KEY
     if not api_key:
-        return True
+        if config.security.ALLOW_UNAUTHENTICATED_ADMIN:
+            return True
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API_KEY is not configured",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if not auth or not _matches_any_configured_token(auth.credentials, api_key, config.security.ADMIN_WRITE_KEY):
         client_ip = request.client.host if request.client else "unknown"
@@ -76,27 +79,25 @@ async def verify_admin_write(
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
     config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
 ) -> bool:
-    """
-    验证 Admin 写操作权限。
-    如果配置了 ADMIN_WRITE_KEY，则要求 Bearer token 必须匹配此 key；
-    否则退回到普通 verify_api_key 行为（向后兼容）。
-    """
+    """验证 Admin 写操作 Bearer Token。"""
     admin_write_key = config.security.ADMIN_WRITE_KEY
+    if not admin_write_key:
+        if config.security.ALLOW_UNAUTHENTICATED_ADMIN:
+            return True
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ADMIN_WRITE_KEY is not configured",
+        )
 
-    # 情况 1：配置了单独的 ADMIN_WRITE_KEY → 只校验它
-    if admin_write_key:
-        if not auth or not _matches_any_configured_token(auth.credentials, admin_write_key):
-            client_ip = request.client.host if request.client else "unknown"
-            logger.warning(
-                "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
-                client_ip,
-                request.url.path,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin write permission required",
-            )
-        return True
-
-    # 情况 2：未配置 ADMIN_WRITE_KEY → 回退到普通 API_KEY 逻辑
-    return await verify_api_key(request, auth, config)
+    if not auth or not _matches_any_configured_token(auth.credentials, admin_write_key):
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning(
+            "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
+            client_ip,
+            request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin write permission required",
+        )
+    return True

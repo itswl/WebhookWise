@@ -343,8 +343,6 @@ var DeepAnalysesModule = (function() {
         if (url === null) return; // User clicked Cancel
 
         url = url.trim();
-        // Since backend requires it, or we could pass an empty string if backend falls back to Config.FORWARD_URL?
-        // Wait, the backend says "转发 URL 不能为空", so we must provide one.
         if (!url) {
             alert('❌ 操作取消: 转发 URL 不能为空');
             return;

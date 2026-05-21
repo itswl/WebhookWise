@@ -28,7 +28,8 @@ class RuleAnalysisPolicy:
     threshold_multiplier: float
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "RuleAnalysisPolicy":
+    def from_config(cls, config: Any | None = None) -> "RuleAnalysisPolicy":
+        config = config or Config.ai
         return cls(
             high_keywords=_split_keywords(config.RULE_HIGH_KEYWORDS),
             warning_keywords=_split_keywords(config.RULE_WARN_KEYWORDS),
@@ -45,10 +46,11 @@ class AIErrorNotificationPolicy:
     timeout_seconds: int = 10
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "AIErrorNotificationPolicy":
+    def from_config(cls, config: Any | None = None) -> "AIErrorNotificationPolicy":
+        config = config or Config
         return cls(
             enabled=bool(config.forwarding.ENABLE_FORWARD),
-            target_url=str(config.forwarding.FORWARD_URL),
+            target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
             cooldown_seconds=max(1, int(config.notifications.AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS)),
             timeout_seconds=max(1, int(config.notifications.AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS)),
         )
@@ -60,7 +62,8 @@ class AICachePolicy:
     ttl_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "AICachePolicy":
+    def from_config(cls, config: Any | None = None) -> "AICachePolicy":
+        config = config or Config.ai
         return cls(enabled=bool(config.CACHE_ENABLED), ttl_seconds=int(config.ANALYSIS_CACHE_TTL))
 
 
@@ -77,7 +80,8 @@ class AIProviderPolicy:
     degradation_enabled: bool
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "AIProviderPolicy":
+    def from_config(cls, config: Any | None = None) -> "AIProviderPolicy":
+        config = config or Config.ai
         return cls(
             enabled=bool(config.ENABLE_AI_ANALYSIS),
             api_key=str(config.OPENAI_API_KEY),
@@ -107,7 +111,8 @@ class AIPromptPolicy:
     builtin_source: str = "builtin:user"
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "AIPromptPolicy":
+    def from_config(cls, config: Any | None = None) -> "AIPromptPolicy":
+        config = config or Config.ai
         return cls(inline_prompt=str(config.AI_USER_PROMPT), prompt_file=str(config.AI_USER_PROMPT_FILE))
 
 
@@ -120,7 +125,8 @@ class DeepAnalysisPromptPolicy:
     builtin_source: str = "builtin:deep_analysis"
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "DeepAnalysisPromptPolicy":
+    def from_config(cls, config: Any | None = None) -> "DeepAnalysisPromptPolicy":
+        config = config or Config.ai
         return cls(
             inline_prompt=str(config.DEEP_ANALYSIS_PROMPT),
             prompt_file=str(config.DEEP_ANALYSIS_PROMPT_FILE),

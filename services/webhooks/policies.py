@@ -15,7 +15,8 @@ class AnalysisResolutionPolicy:
     reanalyze_after_time_window: bool
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "AnalysisResolutionPolicy":
+    def from_config(cls, config: Any | None = None) -> "AnalysisResolutionPolicy":
+        config = config or Config
         return cls(
             duplicate_window_hours=int(config.retry.DUPLICATE_ALERT_TIME_WINDOW),
             recent_beyond_window_reuse_seconds=int(config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS),
@@ -32,7 +33,8 @@ class NoiseReductionPolicy:
     scoring_config: NoiseScoringConfig
 
     @classmethod
-    def from_config(cls, config: Any = Config.ai) -> "NoiseReductionPolicy":
+    def from_config(cls, config: Any | None = None) -> "NoiseReductionPolicy":
+        config = config or Config.ai
         return cls(
             enabled=bool(config.ENABLE_ALERT_NOISE_REDUCTION),
             window_minutes=max(1, int(config.NOISE_REDUCTION_WINDOW_MINUTES)),
@@ -50,7 +52,8 @@ class WebhookFailurePolicy:
     backoff_multiplier: float
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "WebhookFailurePolicy":
+    def from_config(cls, config: Any | None = None) -> "WebhookFailurePolicy":
+        config = config or Config
         return cls(
             max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
             initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
@@ -66,8 +69,9 @@ class PayloadSanitizerPolicy:
     max_bytes: int
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "PayloadSanitizerPolicy":
-        threshold = int(getattr(config.server, "PAYLOAD_OFFLOAD_THRESHOLD_BYTES", 0) or 0)
+    def from_config(cls, config: Any | None = None) -> "PayloadSanitizerPolicy":
+        config = config or Config
+        threshold = int(config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         strip_keys = (
             frozenset(k.strip().lower() for k in config.ai.AI_PAYLOAD_STRIP_KEYS.split(",") if k.strip())
             if config.ai.AI_PAYLOAD_STRIP_KEYS
@@ -87,7 +91,8 @@ class WebhookReceivePolicy:
     ingress_backpressure_window_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any = Config) -> "WebhookReceivePolicy":
+    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
+        config = config or Config
         return cls(
             max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
             ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
@@ -95,7 +100,8 @@ class WebhookReceivePolicy:
         )
 
 
-def forwarding_policy_from_config(config: Any = Config) -> ForwardingPolicy:
+def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy:
+    config = config or Config
     return ForwardingPolicy(
         notification_cooldown_seconds=config.retry.NOTIFICATION_COOLDOWN_SECONDS,
         enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,

@@ -5,15 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from contextlib import suppress
-from typing import Any, Protocol
+from typing import Any
 
 from core.observability.attributes import normalize_attributes
 from core.observability.exporters import otel_enabled
 from core.observability.metrics import OBSERVABILITY_EVENTS_TOTAL
-
-
-class _SpanWithEvents(Protocol):
-    def add_event(self, name: str, attributes: Mapping[str, str | bool | int | float] | None = None) -> None: ...
 
 
 def add_span_event(name: str, attributes: Mapping[str, Any] | None = None) -> None:
