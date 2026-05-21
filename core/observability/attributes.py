@@ -26,7 +26,8 @@ FORWARD_STATUS = "forward.status"
 AI_MODEL = "ai.model"
 AI_PROVIDER = "ai.provider"
 AI_ENGINE = "ai.engine"
-AI_TOKEN_TYPE = "ai.token_type"
+# OTel attribute key, not a secret value.
+AI_TOKEN_TYPE = "ai.token_type"  # nosec B105
 
 RETRY_COUNT = "retry.count"
 ERROR_TYPE = "error.type"
