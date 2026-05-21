@@ -25,6 +25,8 @@ def _render_schema(schema: dict[str, Any]) -> tuple[str, str]:
 
 def _load_schema() -> dict[str, Any]:
     os.environ.setdefault("OTEL_ENABLED", "false")
+    os.environ.setdefault("LOG_LEVEL", "WARNING")
+    os.environ.setdefault("THIRD_PARTY_LOG_LEVEL", "WARNING")
     from core.app import app
 
     return app.openapi()
