@@ -2,6 +2,13 @@
 
 一个面向生产运维场景的 Webhook 智能管家。基于 FastAPI 异步架构，具备 AI 根因分析、智能告警降噪、缓存/数据库去重、冷热数据归档以及可观测性能力。
 
+## 📚 项目入口
+
+- API 文档：运行服务后打开 `http://localhost:8000/docs`，离线导出见 [docs/api/README.md](docs/api/README.md)
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)
+- 架构边界：[docs/architecture/boundaries.md](docs/architecture/boundaries.md)
+
 ## ✨ 核心特性
 
 | 能力 | 说明 |
@@ -104,8 +111,8 @@ docker compose -f docker-compose.yml -f docker-compose.supervisor.yml exec webho
 `RUN_MODE=all` 时容器 PID 1 是 `supervisord`，它会管理三个子进程：
 
 - `api`：Gunicorn + UvicornWorker，监听 `:8000`
-- `worker`：`taskiq worker core.taskiq_broker:broker services.operations.tasks`
-- `scheduler`：`taskiq scheduler core.taskiq_broker:scheduler`
+- `worker`：`taskiq worker services.operations.taskiq_wiring:broker`
+- `scheduler`：`taskiq scheduler services.operations.taskiq_wiring:scheduler`
 
 健康检查会同时校验 supervisor 中三个 program 均为 `RUNNING`，并探测 API `/ready`。
 

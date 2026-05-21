@@ -43,6 +43,11 @@ Allowed examples:
 - `core/taskiq_broker.py`: broker construction.
 - `core/http_client.py` and `core/redis_client.py`: shared client lifecycle.
 
+Task registration is intentionally outside `core/`: TaskIQ CLI entrypoints use
+`services.operations.taskiq_wiring`, which imports task definitions and
+re-exports the broker/scheduler. This keeps `core.taskiq_broker` from depending
+on `services.operations.tasks`.
+
 Borderline modules such as `core/webhook_security.py`,
 `core/alert_concurrency.py`, and `core/circuit_breaker.py` should stay small and
 primitive-oriented. If they grow feature-specific branches, split the policy

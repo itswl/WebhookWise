@@ -34,9 +34,9 @@ class OpenClawForwardDependencies:
 
 
 def build_remote_forward_dependencies() -> RemoteForwardDependencies:
-    from core.circuit_breaker import forward_cb
     from core.http_client import get_http_client
     from core.url_security import validate_outbound_url
+    from services.forwarding.circuit_breakers import forward_cb
 
     return RemoteForwardDependencies(
         http_client=get_http_client(),
@@ -46,7 +46,7 @@ def build_remote_forward_dependencies() -> RemoteForwardDependencies:
 
 
 def build_openclaw_forward_dependencies() -> OpenClawForwardDependencies:
-    from core.circuit_breaker import openclaw_cb
     from core.http_client import get_http_client
+    from services.forwarding.circuit_breakers import openclaw_cb
 
     return OpenClawForwardDependencies(http_client=get_http_client(), circuit_breaker=openclaw_cb)

@@ -9,7 +9,8 @@ HTTP /webhook/prometheus
   -> Redis / TaskIQ
   -> Worker pipeline
   -> Scheduler process starts
-  -> rule analysis
+  -> fake OpenAI structured AI analysis
+  -> Redis analysis cache and noise reduction path enabled
   -> Feishu interactive card
   -> fake Feishu HTTP server
 ```
@@ -28,6 +29,7 @@ tests/e2e/run_webhook_to_feishu.sh
 - `webhook-service`: API 容器
 - `worker`: TaskIQ Worker 容器
 - `scheduler`: TaskIQ Scheduler 容器
+- `fake-openai`: 本地 OpenAI-compatible chat completions server
 - `fake-feishu`: 本地 HTTP server，记录收到的 webhook payload
 
 通过条件：
@@ -37,6 +39,7 @@ tests/e2e/run_webhook_to_feishu.sh
 - scheduler 容器保持 running；
 - webhook 请求返回 `202`;
 - worker 从 Redis 消费并完成处理；
+- fake OpenAI 收到 `/v1/chat/completions` 请求；
 - fake Feishu 收到 `msg_type=interactive` 的卡片 payload。
 
 失败时脚本会打印 `docker compose ps` 和最近容器日志，并自动执行：

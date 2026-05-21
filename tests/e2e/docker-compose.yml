@@ -51,6 +51,27 @@ services:
         aliases:
           - open.feishu.cn
 
+  fake-openai:
+    image: python:3.12-slim
+    command: ["python", "/app/fake_openai.py"]
+    volumes:
+      - ./fake_openai.py:/app/fake_openai.py:ro
+    ports:
+      - "19091:9001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9001/health').read()",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - e2e
+
   migrate:
     image: webhookwise-e2e:latest
     build:
@@ -87,10 +108,12 @@ services:
       ADMIN_WRITE_KEY: ""
       ALLOW_UNAUTHENTICATED_ADMIN: "true"
       WEBHOOK_RATE_LIMIT_PER_MINUTE: "0"
-      OPENAI_API_KEY: ""
-      ENABLE_AI_ANALYSIS: "false"
-      CACHE_ENABLED: "false"
-      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      OPENAI_API_KEY: e2e-test-key
+      OPENAI_API_URL: http://fake-openai:9001/v1
+      OPENAI_MODEL: e2e/fake-model
+      ENABLE_AI_ANALYSIS: "true"
+      CACHE_ENABLED: "true"
+      ENABLE_ALERT_NOISE_REDUCTION: "true"
       FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
@@ -105,6 +128,8 @@ services:
       redis:
         condition: service_healthy
       fake-feishu:
+        condition: service_healthy
+      fake-openai:
         condition: service_healthy
     healthcheck:
       test:
@@ -136,10 +161,12 @@ services:
       WEBHOOK_SECRET: ""
       API_KEY: ""
       ALLOW_UNAUTHENTICATED_ADMIN: "true"
-      OPENAI_API_KEY: ""
-      ENABLE_AI_ANALYSIS: "false"
-      CACHE_ENABLED: "false"
-      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      OPENAI_API_KEY: e2e-test-key
+      OPENAI_API_URL: http://fake-openai:9001/v1
+      OPENAI_MODEL: e2e/fake-model
+      ENABLE_AI_ANALYSIS: "true"
+      CACHE_ENABLED: "true"
+      ENABLE_ALERT_NOISE_REDUCTION: "true"
       FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
@@ -152,6 +179,8 @@ services:
       redis:
         condition: service_healthy
       webhook-service:
+        condition: service_healthy
+      fake-openai:
         condition: service_healthy
     networks:
       - e2e
@@ -171,10 +200,12 @@ services:
       WEBHOOK_SECRET: ""
       API_KEY: ""
       ALLOW_UNAUTHENTICATED_ADMIN: "true"
-      OPENAI_API_KEY: ""
-      ENABLE_AI_ANALYSIS: "false"
-      CACHE_ENABLED: "false"
-      ENABLE_ALERT_NOISE_REDUCTION: "false"
+      OPENAI_API_KEY: e2e-test-key
+      OPENAI_API_URL: http://fake-openai:9001/v1
+      OPENAI_MODEL: e2e/fake-model
+      ENABLE_AI_ANALYSIS: "true"
+      CACHE_ENABLED: "true"
+      ENABLE_ALERT_NOISE_REDUCTION: "true"
       FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_FORWARD_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
@@ -187,6 +218,8 @@ services:
       redis:
         condition: service_healthy
       webhook-service:
+        condition: service_healthy
+      fake-openai:
         condition: service_healthy
     networks:
       - e2e
