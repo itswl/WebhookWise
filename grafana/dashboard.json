@@ -97,12 +97,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -281,12 +281,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.http_route}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.http.route = \\\"${__field.labels.http_route}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -466,12 +466,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.http_route}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.http.route = \\\"${__field.labels.http_route}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -910,7 +910,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.queue_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -1015,7 +1015,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.worker_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -1120,7 +1120,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.worker_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -1225,12 +1225,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -1330,7 +1330,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.pipeline_step}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -1879,7 +1879,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.db_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -1984,7 +1984,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.db_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -2089,7 +2089,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.redis_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -2194,7 +2194,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.redis_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -2312,12 +2312,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.scheduler_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.scheduler.task.name = \\\"${__field.labels.scheduler_task_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -2417,12 +2417,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.scheduler_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.scheduler.task.name = \\\"${__field.labels.scheduler_task_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -2522,12 +2522,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.scheduler_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.scheduler.task.name = \\\"${__field.labels.scheduler_task_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -2627,12 +2627,12 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.scheduler_task_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
               "title": "查看相关 Trace",
-              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.scheduler.task.name = \\\"${__field.labels.scheduler_task_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             }
           ]
@@ -3036,7 +3036,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.ai_engine}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -3152,7 +3152,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.forward_target_type}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -3257,7 +3257,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.forward_target_type}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -3478,7 +3478,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.circuit_breaker_name}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -3583,7 +3583,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.forward_target_type}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
@@ -4040,7 +4040,7 @@
           "links": [
             {
               "title": "查看相关日志",
-              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.severity}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}",
               "targetBlank": true
             },
             {
