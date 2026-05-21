@@ -10,6 +10,10 @@ route:
 
 receivers:
   - name: webhookwise-local
+    webhook_configs:
+      - url: http://webhook-service:8000/webhook/alertmanager
+        send_resolved: true
+        max_alerts: 20
 
 inhibit_rules:
   - source_matchers:

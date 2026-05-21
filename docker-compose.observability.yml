@@ -17,6 +17,8 @@ services:
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       PYROSCOPE_APPLICATION_NAME: webhookwise-api
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
+      REQUIRE_WEBHOOK_AUTH: "false"
+      ALLOW_UNAUTHENTICATED_WEBHOOK: "true"
     depends_on:
       alloy:
         condition: service_started
@@ -69,7 +71,7 @@ services:
       OTEL_CONSOLE_EXPORTER: "false"
 
   alloy:
-    image: ${ALLOY_IMAGE:-grafana/alloy:latest}
+    image: ${ALLOY_IMAGE:-grafana/alloy:v1.5.1}
     user: "0:0"
     command:
       - run
@@ -96,7 +98,7 @@ services:
       - webhook_net
 
   prometheus:
-    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.55.1}
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -112,7 +114,7 @@ services:
       - webhook_net
 
   alertmanager:
-    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:latest}
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.27.0}
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -125,7 +127,7 @@ services:
       - webhook_net
 
   beyla:
-    image: ${BEYLA_IMAGE:-grafana/beyla:latest}
+    image: ${BEYLA_IMAGE:-grafana/beyla:1.9.0}
     pid: "service:webhook-service"
     privileged: true
     environment:
@@ -141,7 +143,7 @@ services:
       - webhook_net
 
   k6:
-    image: ${K6_IMAGE:-grafana/k6:latest}
+    image: ${K6_IMAGE:-grafana/k6:0.55.0}
     profiles:
       - load
     environment:
@@ -163,7 +165,7 @@ services:
       - webhook_net
 
   pyroscope:
-    image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:latest}
+    image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:1.9.0}
     command: ["server"]
     volumes:
       - pyroscope_data:/var/lib/pyroscope
@@ -173,7 +175,7 @@ services:
       - webhook_net
 
   tempo:
-    image: ${TEMPO_IMAGE:-grafana/tempo:latest}
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.6.1}
     user: "0:0"
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
@@ -185,7 +187,7 @@ services:
       - webhook_net
 
   loki:
-    image: ${LOKI_IMAGE:-grafana/loki:latest}
+    image: ${LOKI_IMAGE:-grafana/loki:3.2.1}
     command: ["-config.file=/etc/loki/local-config.yml"]
     volumes:
       - ./deploy/observability/loki.yml:/etc/loki/local-config.yml:ro
@@ -196,7 +198,7 @@ services:
       - webhook_net
 
   grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.3.0}
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}

@@ -10,5 +10,6 @@
 - 本地可观测实验手册： [observability-local-lab.md](architecture/observability-local-lab.md)
 - 排障： [TROUBLESHOOTING.md](troubleshooting/TROUBLESHOOTING.md) / [HOW_TO_VIEW_DETAILS.md](troubleshooting/HOW_TO_VIEW_DETAILS.md)
 - 贡献指南与变更记录： [../CONTRIBUTING.md](../CONTRIBUTING.md) / [../CHANGELOG.md](../CHANGELOG.md)
+- Kubernetes 部署清单： [../deploy/k8s/README.md](../deploy/k8s/README.md)
 
 其余说明性文档、阶段性结论、修复过程记录以 Git 历史为准。
