@@ -9,7 +9,9 @@ import redis.asyncio as redis
 from redis.asyncio.client import PubSub
 
 from core.config import Config, UnifiedConfigManager
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
+
+logger = get_logger("redis_client")
 
 if TYPE_CHECKING:
     RedisClient: TypeAlias = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]

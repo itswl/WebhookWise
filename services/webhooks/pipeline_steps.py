@@ -6,7 +6,7 @@ from typing import Any
 
 from core.alert_concurrency import alert_processing_gate
 from core.log_context import set_log_context
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.events import emit_event
 from core.observability.metrics import (
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
@@ -27,6 +27,8 @@ from services.webhooks.types import (
     NoiseReductionContext,
     WebhookProcessContext,
 )
+
+logger = get_logger("webhooks.pipeline_steps")
 
 
 @dataclass(frozen=True, slots=True)

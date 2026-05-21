@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_api_key
 from core.log_context import clear_log_context, set_log_context
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.metrics import (
     QUEUE_OPERATION_DURATION_SECONDS,
     QUEUE_OPERATIONS_TOTAL,
@@ -36,6 +36,8 @@ from services.webhooks.command_service import get_client_ip
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import WebhookReceivePolicy
 from services.webhooks.query_service import list_webhook_summaries
+
+logger = get_logger("api.webhook")
 
 webhook_router = APIRouter()
 

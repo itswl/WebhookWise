@@ -51,7 +51,13 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
 def test_alembic_history_is_a_current_schema_baseline() -> None:
     revision_paths = sorted((migrations.PROJECT_ROOT / "alembic/versions").glob("*.py"))
 
-    assert [path.name for path in revision_paths] == ["0001_current_schema.py"]
+    assert [path.name for path in revision_paths] == [
+        "0001_current_schema.py",
+        "0002_pluralize_log_and_outbox_tables.py",
+    ]
     source = revision_paths[0].read_text()
     assert "Base.metadata.create_all" in source
     assert "Base.metadata.drop_all" in source
+    migration_source = revision_paths[1].read_text()
+    assert 'op.rename_table("ai_usage_log", "ai_usage_logs")' in migration_source
+    assert 'op.rename_table("forward_outbox", "forward_outboxes")' in migration_source

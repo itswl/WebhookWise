@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from core.config import Config
+from core.text import split_csv_lower
 
 
 class UnsafeTargetUrlError(ValueError):
@@ -41,12 +42,8 @@ class OutboundURLPolicy:
         config = config or Config.security
         return cls(
             allow_private_target_urls=bool(config.ALLOW_PRIVATE_TARGET_URLS),
-            target_allowlist=tuple(_split_csv(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
+            target_allowlist=tuple(split_csv_lower(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
         )
-
-
-def _split_csv(value: str) -> list[str]:
-    return [item.strip().lower() for item in value.split(",") if item.strip()]
 
 
 def _host_matches_pattern(host: str, pattern: str) -> bool:

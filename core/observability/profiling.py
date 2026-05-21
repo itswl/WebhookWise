@@ -7,6 +7,7 @@ import os
 import re
 from typing import Any
 
+from core.observability.env import env_int
 from core.observability.events import emit_event
 from core.observability.exporters import env_flag
 from core.observability.resource import get_deployment_environment, get_service_name, get_service_version
@@ -17,13 +18,6 @@ _TAG_KEY_RE = re.compile(r"[^a-zA-Z0-9_]")
 
 def profiles_enabled() -> bool:
     return env_flag("PYROSCOPE_ENABLED", default=False) or env_flag("OTEL_PROFILES_ENABLED", default=False)
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return default
-    return int(raw)
 
 
 def _tag_key(key: str) -> str:
@@ -92,7 +86,7 @@ def setup_profiling(*, service_name: str | None = None) -> None:
     kwargs: dict[str, Any] = {
         "application_name": app_name,
         "server_address": server_address,
-        "sample_rate": _env_int("PYROSCOPE_SAMPLE_RATE", 100),
+        "sample_rate": env_int("PYROSCOPE_SAMPLE_RATE", 100),
         "oncpu": env_flag("PYROSCOPE_ONCPU", default=True),
         "gil_only": env_flag("PYROSCOPE_GIL_ONLY", default=True),
         "enable_logging": env_flag("PYROSCOPE_ENABLE_LOGGING", default=False),

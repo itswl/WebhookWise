@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import logging
 import time
 from datetime import datetime, timedelta
 from typing import Any
@@ -17,6 +16,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.logger import get_logger
 from core.observability.metrics import (
     FORWARD_OUTBOX_BACKLOG_AGE_SECONDS,
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
@@ -29,7 +29,7 @@ from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardDecision, ForwardOutboxStatus
 
-logger = logging.getLogger("webhook_service.forward_outbox")
+logger = get_logger("forward_outbox")
 
 
 def _rule_id(rule: dict[str, Any]) -> int | None:
@@ -274,11 +274,11 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
 
 async def _send_outbox_record(record: ForwardOutbox) -> dict[str, Any]:
     if record.target_type == "openclaw":
-        from services.forwarding.forward import forward_to_openclaw
+        from services.forwarding.openclaw import forward_to_openclaw
 
         return await forward_to_openclaw(dict(record.forward_data or {}), dict(record.analysis_result or {}))
 
-    from services.forwarding.forward import forward_to_remote
+    from services.forwarding.remote import forward_to_remote
 
     return await forward_to_remote(
         webhook_data=dict(record.forward_data or {}),

@@ -14,7 +14,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from core.logger import logger
+from core.logger import get_logger
 from core.redis_keys import webhook_processing_lock, webhook_processing_queue
 from core.redis_lua import (
     ALERT_REFRESH_LOCK_IF_OWNER as _REFRESH_IF_OWNER_LUA,
@@ -28,6 +28,8 @@ from core.redis_lua import (
 from core.redis_lua import (
     ALERT_RESERVE_QUEUE_SLOT as _RESERVE_QUEUE_SLOT_LUA,
 )
+
+logger = get_logger("alert_concurrency")
 
 
 @dataclass(frozen=True, slots=True)

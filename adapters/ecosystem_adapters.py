@@ -5,15 +5,15 @@ Handles normalization of various webhook sources into a standard format.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from adapters.normalized import AlertIdentity, with_alert_identity
+from core.logger import get_logger
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger("webhook_service.ecosystem_adapters")
+logger = get_logger("ecosystem_adapters")
 
 HeadersLike = Mapping[str, Any]
 _initialized = False
@@ -42,7 +42,7 @@ def _header_get(headers: HeadersLike | None, key: str) -> str | None:
     return None
 
 
-def _normalize_level(value: Any) -> str:
+def normalize_level(value: Any) -> str:
     text = str(value or "").strip().lower()
     high = {
         "critical",
@@ -158,7 +158,7 @@ def register_simple_adapters() -> None:
                 name=str(name) if name else None,
                 resource=resource,
                 fingerprint=_pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID")),
-                severity=_normalize_level(data.get("Level") or data.get("Severity")),
+                severity=normalize_level(data.get("Level") or data.get("Severity")),
             ),
         )
 
@@ -172,7 +172,7 @@ def register_simple_adapters() -> None:
         rule = _pick_first(data.get("ruleName"), data.get("title"), "grafana_alert")
         state = _pick_first(data.get("state"), data.get("status"))
         res = dict(data)
-        res.update({"Type": "GrafanaAlert", "RuleName": rule, "Level": _normalize_level(state), "event": "alert"})
+        res.update({"Type": "GrafanaAlert", "RuleName": rule, "Level": normalize_level(state), "event": "alert"})
         if "message" in data:
             res["summary"] = data["message"]
         if "ruleId" in data or "panelId" in data:
@@ -183,7 +183,7 @@ def register_simple_adapters() -> None:
                 source="grafana",
                 name=str(rule) if rule else None,
                 resource=str(_pick_first(data.get("ruleId"), data.get("panelId"), data.get("dashboardId")) or ""),
-                severity=_normalize_level(state),
+                severity=normalize_level(state),
             ),
         )
 
@@ -209,7 +209,7 @@ def register_simple_adapters() -> None:
             {
                 "Type": "PrometheusAlert",
                 "RuleName": name,
-                "Level": _normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
+                "Level": normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
                 "event": "alert",
             }
         )
@@ -246,7 +246,7 @@ def register_simple_adapters() -> None:
                     first.get("fingerprint"),
                     _pick_label(labels, "fingerprint", "internal_label_alert_id", "alert_id", "rule_id"),
                 ),
-                severity=_normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
+                severity=normalize_level(_pick_label(labels, "severity", "internal_label_alert_level")),
             ),
         )
 
@@ -261,7 +261,7 @@ def register_simple_adapters() -> None:
         title = _pick_first(data.get("alert_name"), data.get("title"), "datadog_alert")
         level = _pick_first(data.get("alert_type"), data.get("priority"))
         res = dict(data)
-        res.update({"Type": "DatadogAlert", "RuleName": title, "Level": _normalize_level(level), "event": "alert"})
+        res.update({"Type": "DatadogAlert", "RuleName": title, "Level": normalize_level(level), "event": "alert"})
         host = _pick_first(data.get("host"), _extract_tag(tags, "host"), _extract_tag(tags, "instance"))
         if host:
             res["Resources"] = [{"InstanceId": host}]
@@ -275,7 +275,7 @@ def register_simple_adapters() -> None:
                 resource=str(host) if host else None,
                 service=_extract_tag(tags, "service"),
                 fingerprint=_pick_first(data.get("id"), data.get("event_id")),
-                severity=_normalize_level(level),
+                severity=normalize_level(level),
             ),
         )
 
@@ -298,7 +298,7 @@ def register_simple_adapters() -> None:
             {
                 "Type": "PagerDutyEvent",
                 "RuleName": title,
-                "Level": _normalize_level(inc.get("urgency") or evt.get("event_type")),
+                "Level": normalize_level(inc.get("urgency") or evt.get("event_type")),
                 "event": evt.get("event_type", "alert"),
                 "alert_id": alert_id,
                 "service": service,
@@ -311,7 +311,7 @@ def register_simple_adapters() -> None:
                 name=str(title) if title else None,
                 service=str(service) if service else None,
                 fingerprint=str(alert_id) if alert_id else None,
-                severity=_normalize_level(inc.get("urgency") or evt.get("event_type")),
+                severity=normalize_level(inc.get("urgency") or evt.get("event_type")),
             ),
         )
 

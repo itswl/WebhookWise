@@ -21,7 +21,7 @@ from db.session import Base
 class AIUsageLog(Base):
     """AI 调用成本追踪"""
 
-    __tablename__ = "ai_usage_log"
+    __tablename__ = "ai_usage_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     timestamp: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), index=True)
@@ -34,7 +34,7 @@ class AIUsageLog(Base):
     alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     source: Mapped[str | None] = mapped_column(String(100))
 
-    __table_args__ = (Index("idx_usage_timestamp_route", "timestamp", "route_type"),)
+    __table_args__ = (Index("idx_ai_usage_logs_timestamp_route", "timestamp", "route_type"),)
 
 
 class DeepAnalysis(Base):
