@@ -81,7 +81,7 @@ class DBConfig(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
-    DB_SYNC_COMMIT: str = Field(default="off")
+    DB_SYNC_COMMIT: str = Field(default="on")
 
 
 class RedisConfig(BaseSettings):
@@ -141,6 +141,8 @@ class AIConfig(BaseSettings):
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     FORWARD_TIMEOUT: int = Field(default=10)
+    AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
+    AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS: int = Field(default=10)
 
 
 class OpenClawConfig(BaseSettings):

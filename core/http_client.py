@@ -1,3 +1,5 @@
+import threading
+
 import httpx
 
 from core.config import Config
@@ -5,6 +7,7 @@ from core.logger import logger
 from core.observability.tracing import build_traceparent, get_current_trace_id
 
 _async_client: httpx.AsyncClient | None = None
+_async_client_lock = threading.RLock()
 
 
 async def _inject_trace_headers(request: httpx.Request) -> None:
@@ -31,15 +34,19 @@ def _build_async_client(transport: httpx.AsyncBaseTransport | None = None) -> ht
 def get_http_client() -> httpx.AsyncClient:
     """获取全局共享的异步 HTTP 客户端（协程安全，自动管理连接池）"""
     global _async_client
-    if _async_client is None or _async_client.is_closed:
-        _async_client = _build_async_client()
-        logger.info("[HTTP] 成功初始化全局异步客户端")
-    return _async_client
+    with _async_client_lock:
+        if _async_client is None or _async_client.is_closed:
+            _async_client = _build_async_client()
+            logger.info("[HTTP] 成功初始化全局异步客户端")
+        return _async_client
 
 
 async def close_http_client() -> None:
     """在应用关闭时调用，释放连接池"""
     global _async_client
-    if _async_client and not _async_client.is_closed:
-        await _async_client.aclose()
+    with _async_client_lock:
+        client = _async_client
+        _async_client = None
+    if client and not client.is_closed:
+        await client.aclose()
         logger.info("[HTTP] 已关闭全局异步客户端")

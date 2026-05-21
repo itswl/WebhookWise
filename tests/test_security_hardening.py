@@ -176,6 +176,45 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
     assert result["response"] == {"_raw": "ok"}
 
 
+@pytest.mark.asyncio
+async def test_forward_revalidates_target_immediately_before_post() -> None:
+    from core.url_security import UnsafeTargetUrlError
+    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.remote import forward_to_remote
+
+    validate_calls = 0
+    posted_urls: list[str] = []
+
+    async def validate_url(url: str) -> str:
+        nonlocal validate_calls
+        validate_calls += 1
+        if validate_calls == 2:
+            raise UnsafeTargetUrlError("target host resolves to a non-public IP")
+        return url
+
+    class Client:
+        async def post(self, url: str, **_: Any) -> object:
+            posted_urls.append(url)
+            raise AssertionError("post should not be called after final URL validation fails")
+
+    class Breaker:
+        async def call_async(self, fn: Any, *args: Any, **kwargs: Any) -> object:
+            return await fn(*args, **kwargs)
+
+    result = await forward_to_remote(
+        {"source": "test", "parsed_data": {}},
+        {"summary": "ok"},
+        target_url="https://example.com/hook",
+        policy=RemoteForwardPolicy(forward_url="", timeout_seconds=2),
+        dependencies=RemoteForwardDependencies(Client(), Breaker(), validate_url),
+    )
+
+    assert result["status"] == "invalid_target"
+    assert validate_calls == 2
+    assert posted_urls == []
+
+
 def test_deep_analysis_view_does_not_render_unsanitized_marked_html() -> None:
     root = Path(__file__).resolve().parents[1]
     js = (root / "templates/static/js/deep-analyses.js").read_text()

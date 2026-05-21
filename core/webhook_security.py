@@ -13,40 +13,9 @@ from core.dependencies import get_config_manager
 from core.logger import logger
 from core.observability.metrics import SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
+from core.redis_keys import rate_limit_burst, rate_limit_global, rate_limit_sustained
+from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
 from services.webhooks.command_service import get_client_ip
-
-# ── Sliding Window Counter (Lua) ─────────────────────────────────────────────
-#
-# 原理：加权当前窗口 + 前一窗口计数，O(1) Redis 操作。
-# 返回值：>= 0 = 剩余配额（放行），-1 = 超限（拒绝）
-#
-_SLIDING_WINDOW_LUA = """
-local prefix = KEYS[1]
-local window = tonumber(ARGV[1])
-local limit = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
-
-local current_window = math.floor(now / window)
-local previous_window = current_window - 1
-
-local current_key = prefix .. ":" .. current_window
-local previous_key = prefix .. ":" .. previous_window
-
-local current_count = tonumber(redis.call("GET", current_key) or "0")
-local previous_count = tonumber(redis.call("GET", previous_key) or "0")
-
-local elapsed = now - current_window * window
-local weight = (window - elapsed) / window
-local estimated = math.floor(previous_count * weight + current_count)
-
-if estimated < limit then
-    redis.call("INCR", current_key)
-    redis.call("EXPIRE", current_key, window * 2)
-    return limit - estimated - 1
-else
-    return -1
-end
-"""
 
 _BURST_WINDOW_SECONDS = 10
 _SUSTAINED_WINDOW_SECONDS = 60
@@ -128,7 +97,7 @@ async def enforce_webhook_rate_limit(
     tightest: _TierResult | None = None
 
     if burst > 0:
-        prefix = f"rl:b:{client_ip}"
+        prefix = rate_limit_burst(client_ip)
         res = await _check_tier(prefix, _BURST_WINDOW_SECONDS, burst, now)
         if not res.allowed:
             return client_ip, res
@@ -136,7 +105,7 @@ async def enforce_webhook_rate_limit(
             tightest = res
 
     if per_minute > 0:
-        prefix = f"rl:s:{client_ip}"
+        prefix = rate_limit_sustained(client_ip)
         res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, per_minute, now)
         if not res.allowed:
             return client_ip, res
@@ -144,7 +113,7 @@ async def enforce_webhook_rate_limit(
             tightest = res
 
     if global_per_minute > 0:
-        prefix = "rl:g"
+        prefix = rate_limit_global()
         res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, global_per_minute, now)
         if not res.allowed:
             return client_ip, res

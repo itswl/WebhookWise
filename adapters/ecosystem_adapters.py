@@ -32,6 +32,9 @@ class NormalizedWebhook:
 def _header_get(headers: HeadersLike | None, key: str) -> str | None:
     if not headers:
         return None
+    value = headers.get(key)
+    if value is not None:
+        return str(value)
     target = key.lower()
     for k, v in headers.items():
         if str(k).lower() == target:

@@ -93,20 +93,23 @@ def _is_transient_poll_error(error: object) -> bool:
 
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
     from core.redis_client import redis_get_json_dict
+    from core.redis_keys import openclaw_poller_stability
 
-    return await redis_get_json_dict(f"openclaw:poller:stability:{record_id}")
+    return await redis_get_json_dict(openclaw_poller_stability(record_id))
 
 
 async def _set_poll_stability(record_id: int, data: WebhookData) -> None:
     from core.redis_client import redis_setex_json
+    from core.redis_keys import openclaw_poller_stability
 
-    await redis_setex_json(f"openclaw:poller:stability:{record_id}", 3600, data)
+    await redis_setex_json(openclaw_poller_stability(record_id), 3600, data)
 
 
 async def _clear_poll_stability(record_id: int) -> None:
     from core.redis_client import redis_delete
+    from core.redis_keys import openclaw_poller_stability
 
-    await redis_delete(f"openclaw:poller:stability:{record_id}")
+    await redis_delete(openclaw_poller_stability(record_id))
 
 
 async def clear_openclaw_poll_state(record_id: int) -> None:

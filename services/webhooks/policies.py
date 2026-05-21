@@ -81,19 +81,6 @@ class PayloadSanitizerPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class ClientIPPolicy:
-    trust_proxy_headers: bool
-    trusted_proxy_cidrs: tuple[str, ...]
-
-    @classmethod
-    def from_config(cls, config: Any = Config.security) -> "ClientIPPolicy":
-        return cls(
-            trust_proxy_headers=bool(config.TRUST_PROXY_HEADERS),
-            trusted_proxy_cidrs=tuple(item.strip() for item in config.TRUSTED_PROXY_CIDRS.split(",") if item.strip()),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class WebhookReceivePolicy:
     max_body_bytes: int
     ingress_backpressure_threshold: int
@@ -106,15 +93,6 @@ class WebhookReceivePolicy:
             ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
             ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
         )
-
-
-@dataclass(frozen=True, slots=True)
-class WebhookSavePolicy:
-    duplicate_window_hours: int
-
-    @classmethod
-    def from_config(cls, config: Any = Config.retry) -> "WebhookSavePolicy":
-        return cls(duplicate_window_hours=int(config.DUPLICATE_ALERT_TIME_WINDOW))
 
 
 def forwarding_policy_from_config(config: Any = Config) -> ForwardingPolicy:

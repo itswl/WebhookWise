@@ -15,6 +15,13 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-p no:cacheprovider"
+markers = [
+  "real_httpx: allow a test to use the real httpx client instead of the default mock",
+  "real_network: allow a test to use real outbound HTTP libraries",
+  "real_redis: allow a test to use a real Redis client instead of the default mock",
+  "real_requests: allow a test to use real requests calls instead of the default mock",
+  "real_services: allow a test to opt out of default external-service mocks",
+]
 
 [tool.coverage.run]
 source = ["core", "api", "services", "models", "adapters", "db"]
@@ -23,7 +30,7 @@ omit = ["tests/*", "alembic/*", "scripts/*"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-fail_under = 60
+fail_under = 63
 
 [tool.mypy]
 python_version = "3.12"

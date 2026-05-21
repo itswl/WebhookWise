@@ -74,8 +74,6 @@ def _build_engine_kwargs() -> dict[str, Any]:
         "connect_args": {
             "server_settings": {
                 "statement_timeout": str(Config.db.DB_STATEMENT_TIMEOUT_MS),
-                # 关闭同步提交可提升写入 3-5x，断电时可能丢失最近 1-2s 数据
-                # Webhook 场景可接受（有 Redis MQ + RecoveryPoller 兜底）
                 "synchronous_commit": Config.db.DB_SYNC_COMMIT,
             }
         },
@@ -87,7 +85,7 @@ def _async_url() -> str:
 
     不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
     """
-    url = Config.db.DATABASE_URL
+    url = str(Config.db.DATABASE_URL)
     for prefix in ("postgresql+psycopg2://", "postgresql://", "postgres://"):
         if url.startswith(prefix):
             return url.replace(prefix, "postgresql+asyncpg://", 1)

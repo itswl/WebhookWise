@@ -37,12 +37,16 @@ class FeishuNotificationChannel:
             try:
                 validated_url = await self.validate_url(target_url)
                 logger.info("[FeishuNotify] 开始发送卡片 target=%s", mask_url(validated_url))
-                response = await self.circuit_breaker.call_async(
-                    self.http_client.post,
-                    validated_url,
-                    json=card_payload,
-                    timeout=self.policy.timeout_seconds,
-                )
+
+                async def _do_post() -> Any:
+                    final_url = await self.validate_url(validated_url)
+                    return await self.http_client.post(
+                        final_url,
+                        json=card_payload,
+                        timeout=self.policy.timeout_seconds,
+                    )
+
+                response = await self.circuit_breaker.call_async(_do_post)
             except CircuitBreakerOpenException as e:
                 logger.warning("[FeishuNotify] 发送被熔断器拦截 target=%s error=%s", mask_url(target_url), e)
                 return False

@@ -5,7 +5,9 @@ WORKDIR /app
 
 # 优先使用锁文件确保可重现构建
 COPY requirements.lock requirements.txt ./
-RUN pip install --no-cache-dir --user -r requirements.lock
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.lock
 
 
 # ====== 运行阶段 ======
@@ -35,10 +37,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     API_WORKERS=4 \
     PYTHONPATH=/app \
-    PATH=/home/appuser/.local/bin:$PATH
+    PATH=/opt/venv/bin:$PATH
 
 # 从构建阶段复制已安装的依赖
-COPY --from=builder /root/.local /home/appuser/.local
+COPY --from=builder /opt/venv /opt/venv
 
 # 复制项目文件
 COPY .env.example .env.example
