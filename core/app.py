@@ -15,12 +15,14 @@ from api.webhook import webhook_router
 from core.app_context import AppContext, set_default_app_context
 from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
-from core.logger import logger, stop_log_listener
+from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from core.taskiq_broker import broker
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
 from core.web.startup_checks import validate_startup_security
+
+logger = get_logger("app")
 
 
 def _app_config(app: FastAPI) -> UnifiedConfigManager:
@@ -42,7 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     config = context.config
     logger.info(
         "[App] 启动中 env=%s debug=%s run_mode=%s runtime_config=%s ai_enabled=%s",
-        os.getenv("APP_ENV", "production"),
+        config.server.APP_ENV,
         config.server.DEBUG,
         config.server.RUN_MODE,
         config.server.ENABLE_RUNTIME_CONFIG,

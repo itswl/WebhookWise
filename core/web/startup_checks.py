@@ -1,5 +1,3 @@
-import os
-
 from core.config import UnifiedConfigManager
 
 _PLACEHOLDER_SECRETS = {"change-me", "changeme", "replace-me", "please-change", "please-change-me"}
@@ -11,7 +9,7 @@ def looks_like_placeholder_secret(value: str) -> bool:
 
 
 def validate_startup_security(config: UnifiedConfigManager, *, app_env: str | None = None) -> None:
-    env = app_env or os.getenv("APP_ENV", "production")
+    env = app_env or config.server.APP_ENV
     if not config.security.API_KEY and not (config.server.DEBUG or config.security.ALLOW_UNAUTHENTICATED_ADMIN):
         raise RuntimeError(
             "API_KEY 未配置且未允许公开管理接口，请设置 API_KEY 或在本地启用 ALLOW_UNAUTHENTICATED_ADMIN=true"

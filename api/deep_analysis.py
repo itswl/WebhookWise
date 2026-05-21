@@ -9,17 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.webhook_context import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.dependencies import get_http_client_dependency
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.forwarding.forward import post_json_to_remote
 from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
+from services.forwarding.remote import post_json_to_remote
 from services.notifications.target_detection import is_feishu_url
 from services.webhooks.types import DeepAnalysisStatus
+
+logger = get_logger("api.deep_analysis")
 
 deep_analysis_router = APIRouter()
 
@@ -34,7 +36,7 @@ def _is_supported_deep_analysis_engine(requested: str) -> bool:
 async def _run_openclaw_deep_analysis(
     ctx: JSONDict, headers: dict[str, Any], user_question: str
 ) -> tuple[dict[str, Any], str]:
-    from services.forwarding.forward import analyze_with_openclaw
+    from services.forwarding.openclaw import analyze_with_openclaw
 
     webhook_data: dict[str, Any] = {
         "source": ctx["source"],

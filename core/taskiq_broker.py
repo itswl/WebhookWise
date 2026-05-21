@@ -5,6 +5,8 @@
 - Scheduler：独立进程定时投递任务（只负责入队，不执行）
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 
@@ -35,6 +37,10 @@ class TaskiqBrokerSettings:
 
 
 def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
+    # This module is imported by TaskIQ worker/scheduler bootstrap before the
+    # app runtime services are started. Keep it on static settings and avoid
+    # importing core.config.Config, which would attach DB/Redis runtime behavior
+    # to broker construction.
     settings = get_settings()
     return TaskiqBrokerSettings(
         redis_url=settings.redis.REDIS_URL,

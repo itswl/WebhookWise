@@ -1,19 +1,20 @@
 """独立 Worker 进程入口 - 运行 TaskIQ Worker"""
 
+from __future__ import annotations
+
 import asyncio
-import logging
 import signal
 
 import uvloop
 
 from core.config import Config
-from core.logger import setup_logger, stop_log_listener
+from core.logger import get_logger, setup_logger, stop_log_listener
 from core.observability import setup_observability_worker
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from services.operations.taskiq_wiring import broker
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-logger = logging.getLogger("webhook_service.worker")
+logger = get_logger("worker")
 
 
 async def startup() -> None:

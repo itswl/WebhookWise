@@ -4,8 +4,10 @@ import asyncio
 from pathlib import Path
 from typing import Protocol
 
-from core.logger import logger
+from core.logger import get_logger
 from services.analysis.ai_policies import AIPromptPolicy, DeepAnalysisPromptPolicy
+
+logger = get_logger("analysis.ai_prompt")
 
 _prompt_template_lock = asyncio.Lock()
 _prompt_templates: dict[str, str] = {}
@@ -36,7 +38,7 @@ def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:
     return _prompt_sources.get(kind, "unknown")
 
 
-def _resolve_prompt_path(prompt_file: str) -> Path:
+def resolve_prompt_path(prompt_file: str) -> Path:
     file_path = Path(prompt_file)
     if file_path.is_absolute():
         return file_path
@@ -57,7 +59,7 @@ async def _load_prompt_template(kind: str, policy: _PromptPolicy) -> str:
 
         prompt_file = policy.prompt_file
         if prompt_file:
-            file_path = _resolve_prompt_path(prompt_file)
+            file_path = resolve_prompt_path(prompt_file)
             if file_path.exists():
                 try:
                     template = file_path.read_text(encoding="utf-8")

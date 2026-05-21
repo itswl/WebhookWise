@@ -4,7 +4,7 @@ import pytest
 
 
 def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
-    from services.forwarding.forward import _build_openclaw_prompt_payload
+    from services.forwarding.openclaw import _build_openclaw_prompt_payload
 
     payload = {
         "alerts": [
@@ -45,7 +45,9 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     response_payload: dict[str, str],
     expected_url: str,
 ) -> None:
-    from services.forwarding import forward
+    from services.forwarding.dependencies import OpenClawForwardDependencies
+    from services.forwarding.openclaw import analyze_with_openclaw
+    from services.forwarding.policies import OpenClawTriggerPolicy
 
     async def fake_load_prompt() -> str:
         return "managed deep-analysis prompt"
@@ -56,15 +58,15 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     client = MagicMock()
     client.post = AsyncMock(return_value=response)
 
-    async def _call_direct(fn, *args, **kwargs):
-        return await fn(*args, **kwargs)
+    class Breaker:
+        async def call_async(self, fn, *args, **kwargs):
+            return await fn(*args, **kwargs)
 
-    monkeypatch.setattr(forward.openclaw_cb, "call_async", _call_direct)
     monkeypatch.setattr("services.forwarding.openclaw.load_deep_analysis_prompt_template", fake_load_prompt)
 
-    result = await forward.analyze_with_openclaw(
+    result = await analyze_with_openclaw(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
-        policy=forward.OpenClawTriggerPolicy(
+        policy=OpenClawTriggerPolicy(
             enabled=True,
             data_dir="webhooks_data",
             timeout_seconds=900,
@@ -74,7 +76,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
             connect_timeout=13.0,
             enable_degradation=False,
         ),
-        http_client=client,
+        dependencies=OpenClawForwardDependencies(client, Breaker()),
     )
 
     assert result["_openclaw_run_id"] == "run-1"

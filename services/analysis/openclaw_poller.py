@@ -7,11 +7,11 @@ stores audit state, while TaskIQ owns retry/poll timing.
 import asyncio
 import contextlib
 import hashlib
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 from core.http_client import get_http_client
+from core.logger import get_logger
 from core.observability.metrics import DEEP_ANALYSIS_TOTAL
 from core.observability.tracing import get_current_trace_id
 from services.analysis.openclaw_http import poll_openclaw_final
@@ -23,7 +23,7 @@ from services.operations.deep_analysis_notifications import (
 )
 from services.webhooks.types import DeepAnalysisStatus, WebhookData
 
-logger = logging.getLogger("webhook_service.openclaw_poller")
+logger = get_logger("openclaw_poller")
 MANUAL_RETRY_STARTED_AT_KEY = "_manual_retry_started_at"
 
 

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import datetime, timedelta
 
 import sqlalchemy as sa
@@ -7,11 +6,12 @@ from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql.base import Executable
 
+from core.logger import get_logger
 from db.session import session_scope
 from models import ArchivedWebhookEvent, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 
-logger = logging.getLogger("webhook_service.maintenance")
+logger = get_logger("maintenance")
 
 
 async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:

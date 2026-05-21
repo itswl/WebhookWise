@@ -7,15 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook_context import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.forwarding.forward import forward_to_remote
 from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
 from services.forwarding.policies import RemoteForwardPolicy
+from services.forwarding.remote import forward_to_remote
 from services.webhooks.forwarding_stage import resolve_forward_decision
+
+logger = get_logger("api.reanalysis")
 
 reanalysis_router = APIRouter()
 

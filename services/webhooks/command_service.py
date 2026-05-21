@@ -10,13 +10,15 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Config
-from core.logger import logger
+from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.webhooks.deduplication import duplicate_window_hours
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
+
+logger = get_logger("webhooks.command_service")
 
 HeadersDict = dict[str, str]
 

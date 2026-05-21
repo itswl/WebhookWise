@@ -8,13 +8,13 @@
 import asyncio
 import contextlib
 import inspect
-import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 
 from core.log_context import clear_log_context, set_log_context
+from core.logger import get_logger
 from core.observability.attributes import WEBHOOK_OUTCOME
 from core.observability.events import emit_event
 from core.observability.metrics import (
@@ -43,7 +43,7 @@ from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
 from services.operations.task_slots import TaskSlotManager
 
-logger = logging.getLogger("webhook_service.tasks")
+logger = get_logger("tasks")
 
 _last_success_by_name: dict[str, float] = {}
 _webhook_task_semaphore: asyncio.Semaphore | None = None

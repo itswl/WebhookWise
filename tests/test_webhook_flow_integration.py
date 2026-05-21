@@ -100,12 +100,12 @@ async def test_webhook_receive_to_feishu_card_flow(
             posted.append({"url": url, "json": json, "timeout": timeout})
             return FakeResponse()
 
-    monkeypatch.setattr("services.forwarding.forward.get_http_client", lambda: FakeHttpClient())
+    monkeypatch.setattr("core.http_client.get_http_client", lambda: FakeHttpClient())
 
     async def accept_url(url: str) -> str:
         return url
 
-    monkeypatch.setattr("services.forwarding.forward.validate_outbound_url", accept_url)
+    monkeypatch.setattr("core.url_security.validate_outbound_url", accept_url)
 
     async def run_task_inline(
         client_ip: str | None = None,

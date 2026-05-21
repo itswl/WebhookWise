@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.metrics import (
     WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS,
     WEBHOOK_NOISE_EVALUATIONS_TOTAL,
@@ -15,6 +15,8 @@ from services.webhooks.decisioning import normalize_importance
 from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import list_recent_alert_contexts
 from services.webhooks.types import NoiseReductionContext
+
+logger = get_logger("webhooks.noise_stage")
 
 
 async def compute_noise(

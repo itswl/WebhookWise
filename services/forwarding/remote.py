@@ -6,13 +6,15 @@ from typing import Any, cast
 import httpx
 
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import RemoteForwardPolicy
 from services.notifications.target_detection import is_feishu_url
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
+
+logger = get_logger("forwarding.remote")
 
 
 def _record_delivery(target_type: str, status: str, started: float) -> None:

@@ -8,11 +8,13 @@ import orjson
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 
-from core.logger import logger
+from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.webhooks.types import WebhookProcessingStatus
+
+logger = get_logger("webhooks.ingest_failure")
 
 
 def _safe_error_message(err: Exception) -> str:
