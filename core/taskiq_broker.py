@@ -105,37 +105,30 @@ if _settings.run_mode == "scheduler":
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
-    from adapters.ecosystem_adapters import initialize_adapters
     from core.dependencies import get_config_manager
-    from core.http_client import get_http_client
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
-    from db.session import init_engine
-    from services.analysis.ai_analyzer import initialize_openai_client
+    from core.service_lifecycle import start_runtime_services
 
     config = get_config_manager()
-    # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
-    setup_logger()
-    setup_observability_worker()
-    initialize_adapters()
-    await init_engine()
-    get_http_client()
-    if config.server.ENABLE_RUNTIME_CONFIG:
-        await config.load_from_db()
-        await config.start_subscriber()
-    if config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
-        await initialize_openai_client()
+    await start_runtime_services(
+        config,
+        initialize_logger=setup_logger,
+        initialize_observability=setup_observability_worker,
+        initialize_redis_client=True,
+        initialize_ai_client=True,
+    )
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
     from core.dependencies import get_config_manager
-    from core.http_client import close_http_client
     from core.observability import shutdown_observability
-    from db.session import dispose_engine
+    from core.service_lifecycle import stop_runtime_services
 
-    await get_config_manager().stop_subscriber()
-    await dispose_engine()
-    await close_http_client()
+    await stop_runtime_services(
+        get_config_manager(),
+        reset_ai_client=True,
+    )
     shutdown_observability()
