@@ -1,11 +1,14 @@
-"""Configuration package — re-exports for backward compatibility."""
+"""Configuration package."""
 
 from core.config.defaults import (
     AIConfig,
     AppConfig,
     CircuitBreakerConfig,
     DBConfig,
+    ForwardingConfig,
     MaintenanceConfig,
+    MQConfig,
+    NotificationConfig,
     OpenClawConfig,
     RedisConfig,
     RetryConfig,
@@ -13,6 +16,7 @@ from core.config.defaults import (
     RuntimeValue,
     SecurityConfig,
     ServerConfig,
+    TaskConfig,
     get_settings,
 )
 from core.config.runtime import UnifiedConfigManager
@@ -25,7 +29,10 @@ __all__ = [
     "CircuitBreakerConfig",
     "Config",
     "DBConfig",
+    "ForwardingConfig",
     "MaintenanceConfig",
+    "MQConfig",
+    "NotificationConfig",
     "OpenClawConfig",
     "RedisConfig",
     "RetryConfig",
@@ -33,6 +40,7 @@ __all__ = [
     "RuntimeValue",
     "SecurityConfig",
     "ServerConfig",
+    "TaskConfig",
     "UnifiedConfigManager",
     "get_settings",
 ]

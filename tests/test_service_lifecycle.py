@@ -45,42 +45,57 @@ class _Broker:
 @pytest.mark.asyncio
 async def test_check_database_ready_initializes_engine_before_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.service_lifecycle as lifecycle
+    from core.app_context import AppContext, set_default_app_context
 
     calls: list[str] = []
 
-    async def init_engine() -> None:
+    async def ensure_db(self: AppContext) -> object:
         calls.append("init")
+        return object()
 
     async def test_db_connection() -> bool:
         calls.append("probe")
         return True
 
-    monkeypatch.setattr(lifecycle, "init_engine", init_engine)
+    context = AppContext(config=_Config())  # type: ignore[arg-type]
+    monkeypatch.setattr(AppContext, "ensure_db", ensure_db)
     monkeypatch.setattr(lifecycle, "test_db_connection", test_db_connection)
 
-    assert await lifecycle.check_database_ready() is True
+    assert await lifecycle.check_database_ready(context) is True
     assert calls == ["init", "probe"]
+    set_default_app_context(None)
 
 
 @pytest.mark.asyncio
 async def test_start_runtime_services_initializes_requested_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.service_lifecycle as lifecycle
+    from core.app_context import AppContext, set_default_app_context
 
     config = _Config()
     calls = config.calls
     http_client = object()
     broker = _Broker(calls)
+    context = AppContext(config=config)  # type: ignore[arg-type]
 
     def record(name: str) -> None:
         calls.append(name)
 
-    async def record_async(name: str) -> None:
-        calls.append(name)
+    async def ensure_http_client(self: AppContext) -> object:
+        calls.append("http")
+        return http_client
+
+    async def ensure_db(self: AppContext) -> object:
+        calls.append("db")
+        return object()
+
+    def ensure_redis_client(self: AppContext) -> object:
+        calls.append("redis")
+        return object()
 
     monkeypatch.setattr(lifecycle, "initialize_adapters", lambda: record("adapters"))
-    monkeypatch.setattr(lifecycle, "get_http_client", lambda: http_client)
-    monkeypatch.setattr(lifecycle, "init_redis", lambda: record("redis"))
-    monkeypatch.setattr(lifecycle, "init_engine", lambda: record_async("db"))
+    monkeypatch.setattr(AppContext, "ensure_http_client", ensure_http_client)
+    monkeypatch.setattr(AppContext, "ensure_db", ensure_db)
+    monkeypatch.setattr(AppContext, "ensure_redis_client", ensure_redis_client)
 
     async def initialize_ai_client(*, http_client: Any) -> None:
         assert http_client is services_http_client
@@ -91,6 +106,7 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
 
     services = await lifecycle.start_runtime_services(
         config,  # type: ignore[arg-type]
+        context=context,
         broker=broker,
         start_broker=True,
         initialize_logger=lambda: record("logger"),
@@ -100,10 +116,12 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
     )
 
     assert services.http_client is http_client
+    assert services.app_context is context
     assert calls == [
         "logger",
         "observability",
         "adapters",
+        "http",
         "db",
         "redis",
         "config.load_from_db",
@@ -111,27 +129,35 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         "ai",
         "broker.startup",
     ]
+    set_default_app_context(None)
 
 
 @pytest.mark.asyncio
 async def test_stop_runtime_services_tears_down_requested_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.service_lifecycle as lifecycle
+    from core.app_context import AppContext, set_default_app_context
 
     config = _Config()
     calls = config.calls
     broker = _Broker(calls)
+    context = AppContext(config=config)  # type: ignore[arg-type]
 
     async def record_async(name: str) -> None:
         calls.append(name)
 
-    monkeypatch.setattr(lifecycle, "dispose_engine", lambda: record_async("db.dispose"))
-    monkeypatch.setattr(lifecycle, "dispose_redis", lambda: record_async("redis.dispose"))
+    async def close_context(self: AppContext, *, close_redis: bool = True, **kwargs: object) -> None:
+        calls.append("db.dispose")
+        if close_redis:
+            calls.append("redis.dispose")
+        calls.append("http.close")
+
+    monkeypatch.setattr(AppContext, "close", close_context)
     monkeypatch.setattr(lifecycle, "reset_openai_client", lambda: record_async("ai.reset"))
-    monkeypatch.setattr(lifecycle, "close_http_client", lambda: record_async("http.close"))
     monkeypatch.setattr(lifecycle, "stop_log_listener", lambda: calls.append("logger.stop"))
 
     await lifecycle.stop_runtime_services(
         config,  # type: ignore[arg-type]
+        context=context,
         broker=broker,
         stop_broker=True,
         reset_ai_client=True,
@@ -142,10 +168,11 @@ async def test_stop_runtime_services_tears_down_requested_dependencies(monkeypat
     assert calls == [
         "config.stop_subscriber",
         "broker.shutdown",
+        "ai.reset",
         "db.dispose",
         "redis.dispose",
-        "ai.reset",
         "http.close",
         "observability.shutdown",
         "logger.stop",
     ]
+    set_default_app_context(None)

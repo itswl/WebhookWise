@@ -2,7 +2,6 @@ import os
 import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -13,9 +12,9 @@ from api.deep_analysis import deep_analysis_router
 from api.forwarding import forwarding_router
 from api.reanalysis import reanalysis_router
 from api.webhook import webhook_router
+from core.app_context import AppContext, set_default_app_context
 from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
-from core.dependencies import get_config_manager
 from core.logger import logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
@@ -25,13 +24,22 @@ from core.web.startup_checks import validate_startup_security
 
 
 def _app_config(app: FastAPI) -> UnifiedConfigManager:
-    config = getattr(app.state, "config_manager", None)
-    return cast(UnifiedConfigManager, config) if config is not None else get_config_manager()
+    return _app_context(app).config
+
+
+def _app_context(app: FastAPI) -> AppContext:
+    context = getattr(app.state, "app_context", None)
+    if not isinstance(context, AppContext):
+        context = AppContext()
+        app.state.app_context = context
+    return context
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    config = _app_config(app)
+    context = _app_context(app)
+    set_default_app_context(context)
+    config = context.config
     logger.info(
         "[App] 启动中 env=%s debug=%s run_mode=%s runtime_config=%s ai_enabled=%s",
         os.getenv("APP_ENV", "production"),
@@ -43,11 +51,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     validate_startup_security(config)
     services = await start_runtime_services(
         config,
+        context=context,
         broker=broker,
         start_broker=True,
         initialize_ai_client=True,
     )
-    app.state.http_client = services.http_client
+    app.state.app_context = services.app_context
     logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
     try:
@@ -56,6 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("[App] 正在关闭 worker_id=%s", _WORKER_ID)
         await stop_runtime_services(
             config,
+            context=context,
             broker=broker,
             stop_broker=True,
             reset_ai_client=True,
@@ -66,7 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
-app.state.config_manager = get_config_manager()
+app.state.app_context = AppContext()
 
 
 setup_observability(app)

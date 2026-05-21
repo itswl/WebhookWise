@@ -15,6 +15,9 @@ CIRCUIT_BREAKER_CHECK_STATE = _read_script("circuit_breaker_check_state.lua")
 CIRCUIT_BREAKER_RECORD_FAILURE = _read_script("circuit_breaker_record_failure.lua")
 CIRCUIT_BREAKER_RECORD_SUCCESS = _read_script("circuit_breaker_record_success.lua")
 SLIDING_WINDOW_RATE_LIMIT = _read_script("sliding_window_rate_limit.lua")
+TASK_SLOT_ACQUIRE = _read_script("task_slot_acquire.lua")
+TASK_SLOT_RELEASE = _read_script("task_slot_release.lua")
+TASK_SLOT_RENEW = _read_script("task_slot_renew.lua")
 
 __all__ = [
     "ALERT_REFRESH_LOCK_IF_OWNER",
@@ -25,4 +28,7 @@ __all__ = [
     "CIRCUIT_BREAKER_RECORD_FAILURE",
     "CIRCUIT_BREAKER_RECORD_SUCCESS",
     "SLIDING_WINDOW_RATE_LIMIT",
+    "TASK_SLOT_ACQUIRE",
+    "TASK_SLOT_RELEASE",
+    "TASK_SLOT_RENEW",
 ]

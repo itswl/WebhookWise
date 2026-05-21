@@ -9,21 +9,28 @@ from typing import Any
 import httpx
 
 from adapters.ecosystem_adapters import initialize_adapters
+from core.app_context import (
+    AppContext,
+    get_default_app_context,
+    get_or_create_default_app_context,
+    set_default_app_context,
+)
 from core.config import UnifiedConfigManager
-from core.http_client import close_http_client, get_http_client
 from core.logger import stop_log_listener
-from core.redis_client import dispose_redis, init_redis
-from db.session import dispose_engine, init_engine, test_db_connection
+from db.session import test_db_connection
 from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeServices:
+    app_context: AppContext
     http_client: httpx.AsyncClient
 
 
-async def check_database_ready() -> bool:
-    await init_engine()
+async def check_database_ready(context: AppContext | None = None) -> bool:
+    context = context or get_or_create_default_app_context()
+    set_default_app_context(context)
+    await context.ensure_db()
     return await test_db_connection()
 
 
@@ -37,7 +44,11 @@ async def start_runtime_services(
     initialize_redis_client: bool = False,
     initialize_adapter_registry: bool = True,
     initialize_ai_client: bool = False,
+    context: AppContext | None = None,
 ) -> RuntimeServices:
+    context = context or get_or_create_default_app_context(config)
+    set_default_app_context(context)
+
     if initialize_logger is not None:
         initialize_logger()
     if initialize_observability is not None:
@@ -46,10 +57,10 @@ async def start_runtime_services(
     if initialize_adapter_registry:
         initialize_adapters()
 
-    http_client = get_http_client()
-    await init_engine()
+    http_client = await context.ensure_http_client()
+    await context.ensure_db()
     if initialize_redis_client:
-        init_redis()
+        context.ensure_redis_client()
 
     if config.server.ENABLE_RUNTIME_CONFIG:
         await config.load_from_db()
@@ -61,7 +72,7 @@ async def start_runtime_services(
     if start_broker and broker is not None:
         await broker.startup()
 
-    return RuntimeServices(http_client=http_client)
+    return RuntimeServices(app_context=context, http_client=http_client)
 
 
 async def stop_runtime_services(
@@ -73,18 +84,19 @@ async def stop_runtime_services(
     dispose_redis_client: bool = True,
     shutdown_observability: Callable[[], None] | None = None,
     stop_logger: bool = False,
+    context: AppContext | None = None,
 ) -> None:
+    context = context or get_or_create_default_app_context(config)
     await config.stop_subscriber()
 
     if stop_broker and broker is not None:
         await broker.shutdown()
 
-    await dispose_engine()
-    if dispose_redis_client:
-        await dispose_redis()
     if reset_ai_client:
         await reset_openai_client()
-    await close_http_client()
+    await context.close(close_redis=dispose_redis_client)
+    if context is get_default_app_context():
+        set_default_app_context(None)
 
     if shutdown_observability is not None:
         shutdown_observability()

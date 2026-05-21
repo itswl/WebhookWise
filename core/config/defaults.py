@@ -31,15 +31,27 @@ class ServerConfig(BaseSettings):
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
+    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
+
+
+class TaskConfig(BaseSettings):
+    """TaskIQ worker/runtime scheduling."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
     RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
     RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
-    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
-    FORWARD_REQUEST_TIMEOUT_SECONDS: int = Field(default=10)
-    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
     WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
+
+
+class MQConfig(BaseSettings):
+    """Webhook Redis Stream queue."""
+
+    model_config = SettingsConfigDict(extra="ignore")
 
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")
@@ -101,8 +113,6 @@ class AIConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     ENABLE_AI_ANALYSIS: bool = Field(default=True)
-    FORWARD_URL: str = Field(default="")
-    ENABLE_FORWARD: bool = Field(default=True)
     OPENAI_API_KEY: str = Field(default="")
     OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
@@ -138,9 +148,25 @@ class AIConfig(BaseSettings):
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
 
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
+
+
+class ForwardingConfig(BaseSettings):
+    """Outbound forwarding defaults."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    FORWARD_URL: str = Field(default="")
+    ENABLE_FORWARD: bool = Field(default=True)
+    FORWARD_TIMEOUT: int = Field(default=10)
+
+
+class NotificationConfig(BaseSettings):
+    """Feishu and operational notification settings."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
-    FORWARD_TIMEOUT: int = Field(default=10)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
     AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS: int = Field(default=10)
 
@@ -240,10 +266,14 @@ class AppConfig(BaseSettings):
     )
 
     server: ServerConfig = Field(default_factory=ServerConfig)
+    tasks: TaskConfig = Field(default_factory=TaskConfig)
+    mq: MQConfig = Field(default_factory=MQConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     db: DBConfig = Field(default_factory=DBConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    forwarding: ForwardingConfig = Field(default_factory=ForwardingConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
@@ -251,10 +281,14 @@ class AppConfig(BaseSettings):
 
     _SUB_NAMES: tuple[str, ...] = (
         "server",
+        "tasks",
+        "mq",
         "security",
         "db",
         "redis",
         "ai",
+        "forwarding",
+        "notifications",
         "openclaw",
         "circuit_breaker",
         "retry",

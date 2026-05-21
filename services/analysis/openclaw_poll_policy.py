@@ -43,7 +43,7 @@ class OpenClawPollPolicy:
             stability_required_hits=max(1, int(config.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS)),
             max_consecutive_errors=int(config.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS),
             enable_degradation=bool(config.openclaw.OPENCLAW_ENABLE_DEGRADATION),
-            notification_webhook_url=str(config.ai.DEEP_ANALYSIS_FEISHU_WEBHOOK),
+            notification_webhook_url=str(config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK),
         )
 
     @property

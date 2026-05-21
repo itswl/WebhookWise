@@ -86,7 +86,10 @@ def test_config_sources_marks_restart_required_keys(monkeypatch: pytest.MonkeyPa
 def test_runtime_keys_are_derived_from_config_models() -> None:
     from core.config import Config
 
-    assert Config.RUNTIME_KEYS["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {"type": "int", "sub": "ai"}
+    assert Config.RUNTIME_KEYS["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {"type": "int", "sub": "notifications"}
+    assert Config.RUNTIME_KEYS["FORWARD_URL"] == {"type": "str", "sub": "forwarding"}
+    assert Config.RUNTIME_KEYS["WEBHOOK_MQ_QUEUE"] == {"type": "str", "sub": "mq"}
+    assert Config.RUNTIME_KEYS["MAX_CONCURRENT_WEBHOOK_TASKS"] == {"type": "int", "sub": "tasks"}
     assert Config.RUNTIME_KEYS["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {"type": "int", "sub": "circuit_breaker"}
     assert Config.RUNTIME_KEYS["ARCHIVE_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
 
