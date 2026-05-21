@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 DEFAULT_TIMEOUT_SECONDS = 10
 DEFAULT_USER_AGENT = "WebhookWise-Observability/0.1"
@@ -39,6 +39,7 @@ class Endpoints:
     prometheus_datasource_uid: str = "prometheus"
     loki_datasource_uid: str = "loki"
     tempo_datasource_uid: str = "tempo"
+    pyroscope_datasource_uid: str = "pyroscope"
 
     @classmethod
     def from_env(cls) -> Endpoints:
@@ -60,6 +61,7 @@ class Endpoints:
             ),
             loki_datasource_uid=os.getenv("WEBHOOKWISE_LOKI_DATASOURCE_UID", cls.loki_datasource_uid),
             tempo_datasource_uid=os.getenv("WEBHOOKWISE_TEMPO_DATASOURCE_UID", cls.tempo_datasource_uid),
+            pyroscope_datasource_uid=os.getenv("WEBHOOKWISE_PYROSCOPE_DATASOURCE_UID", cls.pyroscope_datasource_uid),
         )
 
 
@@ -233,7 +235,7 @@ def _request_json(
         raise RuntimeError(f"{url} failed: {exc}") from exc
 
     try:
-        return json.loads(body)
+        return cast(dict[str, Any], json.loads(body))
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"{url} returned non-JSON response: {body[:500]}") from exc
 
@@ -254,7 +256,7 @@ def _request_text(
         request.add_header("Authorization", f"Bearer {bearer_token}")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read().decode(errors="replace")
+            return str(response.read().decode(errors="replace"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")
         raise RuntimeError(f"{url} returned HTTP {exc.code}: {body[:500]}") from exc
@@ -284,7 +286,7 @@ def _post_json(
     except urllib.error.URLError as exc:
         raise RuntimeError(f"{url} failed: {exc}") from exc
     try:
-        return json.loads(response_body)
+        return cast(dict[str, Any], json.loads(response_body))
     except json.JSONDecodeError:
         return {"raw": response_body}
 
@@ -370,6 +372,78 @@ def tempo_search(
             **_grafana_auth(endpoints),
         )
     return _request_json(f"{endpoints.tempo}/api/search", params=params)
+
+
+def profile_selector(service_name: str, *, profile_type_id: str = "process_cpu:cpu:nanoseconds:cpu:nanoseconds") -> str:
+    service = service_name.strip() or "webhookwise-api"
+    return f'{{service_name="{service}", profile_type="{profile_type_id}"}}'
+
+
+def grafana_profile_url(
+    service_name: str,
+    endpoints: Endpoints | None = None,
+    *,
+    from_expr: str = "now-1h",
+    to_expr: str = "now",
+    relative: bool = False,
+    profile_type_id: str = "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+) -> str:
+    endpoints = endpoints or Endpoints.from_env()
+    left = {
+        "datasource": endpoints.pyroscope_datasource_uid,
+        "queries": [
+            {
+                "refId": "A",
+                "query": profile_selector(service_name, profile_type_id=profile_type_id),
+                "queryType": "profile",
+                "profileTypeId": profile_type_id,
+            }
+        ],
+        "range": {"from": from_expr, "to": to_expr},
+    }
+    state = urllib.parse.quote(json.dumps(left, ensure_ascii=False, separators=(",", ":")), safe="")
+    path = f"/explore?orgId=1&left={state}"
+    if relative:
+        return path
+    return f"{endpoints.grafana}{path}"
+
+
+def pyroscope_profile_url(
+    service_name: str,
+    endpoints: Endpoints | None = None,
+    *,
+    from_expr: str = "now-1h",
+    to_expr: str = "now",
+    profile_type_id: str = "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+) -> str:
+    endpoints = endpoints or Endpoints.from_env()
+    params = urllib.parse.urlencode(
+        {
+            "query": profile_selector(service_name, profile_type_id=profile_type_id),
+            "from": from_expr,
+            "to": to_expr,
+        }
+    )
+    return f"{endpoints.pyroscope}/?{params}"
+
+
+def profile_links(
+    service_name: str,
+    endpoints: Endpoints | None = None,
+    *,
+    from_expr: str = "now-1h",
+    to_expr: str = "now",
+) -> list[dict[str, str]]:
+    endpoints = endpoints or Endpoints.from_env()
+    selector = profile_selector(service_name)
+    return [
+        {
+            "service": service_name,
+            "selector": selector,
+            "grafana_url": grafana_profile_url(service_name, endpoints, from_expr=from_expr, to_expr=to_expr),
+            "pyroscope_url": pyroscope_profile_url(service_name, endpoints, from_expr=from_expr, to_expr=to_expr),
+        }
+    ]
 
 
 def post_smoke_webhook(endpoints: Endpoints | None = None) -> dict[str, Any]:

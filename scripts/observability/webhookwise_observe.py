@@ -21,6 +21,7 @@ from scripts.observability.query_lib import (  # noqa: E402
     grafana_datasources,
     health,
     loki_query_range,
+    profile_links,
     prometheus_query,
     prometheus_series,
     result_rows,
@@ -148,6 +149,20 @@ def cmd_tempo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_profiles(args: argparse.Namespace) -> int:
+    rows = profile_links(
+        args.service_name,
+        Endpoints.from_env(),
+        from_expr=args.from_expr,
+        to_expr=args.to_expr,
+    )
+    if args.json:
+        print_json(rows)
+    else:
+        print_table(rows, ["service", "selector", "grafana_url", "pyroscope_url"])
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     if args.validate:
         rows = validate_dashboard_queries(args.path, Endpoints.from_env())
@@ -235,6 +250,13 @@ def build_parser() -> argparse.ArgumentParser:
     tempo_parser.add_argument("--limit", type=int, default=5)
     tempo_parser.add_argument("--json", action="store_true")
     tempo_parser.set_defaults(func=cmd_tempo)
+
+    profiles_parser = sub.add_parser("profiles", help="Build Pyroscope profile query links")
+    profiles_parser.add_argument("--service-name", default="webhookwise-api")
+    profiles_parser.add_argument("--from", dest="from_expr", default="now-1h")
+    profiles_parser.add_argument("--to", dest="to_expr", default="now")
+    profiles_parser.add_argument("--json", action="store_true")
+    profiles_parser.set_defaults(func=cmd_profiles)
 
     dashboard_parser = sub.add_parser("dashboard", help="Inspect or validate the Grafana dashboard")
     dashboard_parser.add_argument("--path", default="grafana/dashboard.json")

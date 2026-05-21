@@ -22,6 +22,8 @@ from core.observability.metrics import (
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
 )
+from core.observability.tracing import set_span_error
+from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import FailedForward, ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
@@ -243,21 +245,35 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
         return
     target_type = str(record.target_type or "unknown")
 
-    try:
-        result = await _send_outbox_record(record)
-    except Exception as e:
-        status = "failed"
-        await _finalize_outbox_failure(record.id, str(e))
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
-        FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
-        return
+    with otel_span(
+        "forward.outbox.process",
+        {
+            "event_id": record.webhook_event_id,
+            "forward.outbox.id": record.id,
+            "forward.target_type": target_type,
+            "forward.status": str(record.status or "unknown"),
+        },
+    ) as outbox_span:
+        try:
+            result = await _send_outbox_record(record)
+        except Exception as e:
+            status = "failed"
+            set_span_error(outbox_span, e)
+            await _finalize_outbox_failure(record.id, str(e))
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
+            FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
+            return
 
-    if _is_forward_success(result):
-        status = "sent"
-        await _finalize_outbox_success(record, result)
-    else:
-        status = "failed"
-        await _finalize_outbox_failure(record.id, f"forward status={result.get('status')}: {result.get('message', '')}")
+        if _is_forward_success(result):
+            status = "sent"
+            await _finalize_outbox_success(record, result)
+        else:
+            status = "failed"
+            await _finalize_outbox_failure(
+                record.id, f"forward status={result.get('status')}: {result.get('message', '')}"
+            )
+        if outbox_span is not None:
+            outbox_span.set_attribute("forward.status", status)
     FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
 

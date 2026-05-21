@@ -22,6 +22,7 @@ from scripts.observability.query_lib import (  # noqa: E402
     grafana_datasources,
     health,
     loki_query_range,
+    profile_links,
     prometheus_query,
     result_rows,
     smoke,
@@ -81,6 +82,19 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "service_name": {"type": "string", "default": "webhookwise-api"},
                 "limit": {"type": "integer", "default": 5},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "webhookwise_profiles",
+        "description": "Build Pyroscope profile selectors and Grafana/Pyroscope links for a WebhookWise service.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "service_name": {"type": "string", "default": "webhookwise-api"},
+                "from_expr": {"type": "string", "default": "now-1h"},
+                "to_expr": {"type": "string", "default": "now"},
             },
             "additionalProperties": False,
         },
@@ -156,6 +170,15 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 endpoints,
                 service_name=str(arguments.get("service_name", "webhookwise-api")),
                 limit=int(arguments.get("limit", 5)),
+            )
+        )
+    if name == "webhookwise_profiles":
+        return _text_result(
+            profile_links(
+                str(arguments.get("service_name", "webhookwise-api")),
+                endpoints,
+                from_expr=str(arguments.get("from_expr", "now-1h")),
+                to_expr=str(arguments.get("to_expr", "now")),
             )
         )
     if name == "webhookwise_dashboard_validate":
