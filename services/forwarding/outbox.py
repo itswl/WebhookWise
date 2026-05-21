@@ -14,10 +14,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.metrics import FORWARD_OUTBOX_PROCESS_DURATION_SECONDS, FORWARD_OUTBOX_RECORDS_TOTAL
+from core.observability.metrics import (
+    FORWARD_OUTBOX_BACKLOG_AGE_SECONDS,
+    FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
+    FORWARD_OUTBOX_RECORDS_TOTAL,
+)
 from db.session import session_scope
 from models import FailedForward, ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
@@ -450,6 +454,34 @@ async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: 
     return len(expired_records)
 
 
+async def _refresh_outbox_backlog_metrics(session: AsyncSession, *, now: datetime) -> None:
+    active_statuses = [
+        ForwardOutboxStatus.PENDING,
+        ForwardOutboxStatus.RETRYING,
+        ForwardOutboxStatus.PROCESSING,
+    ]
+    rows = (
+        await session.execute(
+            select(
+                ForwardOutbox.target_type,
+                ForwardOutbox.status,
+                func.min(ForwardOutbox.created_at),
+            )
+            .where(ForwardOutbox.status.in_(active_statuses))
+            .group_by(ForwardOutbox.target_type, ForwardOutbox.status)
+        )
+    ).all()
+    max_age = 0.0
+    for target_type, status, oldest_created_at in rows:
+        if oldest_created_at is None:
+            continue
+        status_value = status.value if isinstance(status, ForwardOutboxStatus) else str(status or "unknown")
+        age_seconds = max(0.0, (now - oldest_created_at).total_seconds())
+        max_age = max(max_age, age_seconds)
+        FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels(str(target_type or "unknown"), status_value).set(age_seconds)
+    FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels("all", "active").set(max_age)
+
+
 async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPolicy | None = None) -> int:
     """Queue due outbox records and recover stale processing rows."""
     now = datetime.now()
@@ -457,6 +489,7 @@ async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPoli
     stale_before = now - timedelta(seconds=policy.stale_processing_threshold_seconds)
     async with session_scope() as session:
         expired_count = await _expire_due_outboxes(session, now=now, policy=policy, limit=limit)
+        await _refresh_outbox_backlog_metrics(session, now=now)
         await session.execute(
             update(ForwardOutbox)
             .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)

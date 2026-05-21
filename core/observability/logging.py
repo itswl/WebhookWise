@@ -5,16 +5,17 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from core.observability.exporters import build_log_exporter, otel_enabled
+from core.observability.exporters import build_log_exporter, env_flag, otel_enabled
 from core.observability.resource import build_resource
 
 _provider_initialized = False
 _handler_installed = False
+_log_provider: Any | None = None
 
 
 def setup_logging(*, service_name: str | None = None, logger_name: str = "webhook_service") -> None:
-    global _handler_installed, _provider_initialized
-    if not otel_enabled():
+    global _handler_installed, _log_provider, _provider_initialized
+    if not otel_enabled() or not env_flag("OTEL_LOGS_ENABLED", default=False):
         return
     exporter = build_log_exporter()
     if exporter is None:
@@ -33,6 +34,7 @@ def setup_logging(*, service_name: str | None = None, logger_name: str = "webhoo
         provider = LoggerProvider(resource=build_resource(service_name))
         provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
         _logs.set_logger_provider(provider)
+        _log_provider = provider
         _provider_initialized = True
     else:
         provider = _logs.get_logger_provider()
@@ -53,3 +55,21 @@ def setup_logging(*, service_name: str | None = None, logger_name: str = "webhoo
     if not any(getattr(existing, "_webhookwise_otel_handler", False) for existing in app_logger.handlers):
         app_logger.addHandler(handler)
     _handler_installed = True
+
+
+def shutdown_logging() -> None:
+    global _handler_installed, _log_provider, _provider_initialized
+    provider = _log_provider
+    if provider is None:
+        return
+    try:
+        provider.force_flush()
+    except Exception:
+        logging.getLogger("webhook_service").debug("[OTEL] log force_flush failed", exc_info=True)
+    try:
+        provider.shutdown()
+    except Exception:
+        logging.getLogger("webhook_service").debug("[OTEL] log shutdown failed", exc_info=True)
+    _log_provider = None
+    _provider_initialized = False
+    _handler_installed = False

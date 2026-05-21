@@ -8,7 +8,7 @@ async def test_http_client_injects_trace_headers(monkeypatch):
     import httpx
 
     from core.http_client import _build_async_client
-    from core.trace import set_trace_id
+    from core.observability.tracing import reset_fallback_trace_id, set_fallback_trace_id
 
     captured = {}
 
@@ -20,10 +20,11 @@ async def test_http_client_injects_trace_headers(monkeypatch):
     transport = httpx.MockTransport(handler)
     client = _build_async_client(transport=transport)
     try:
-        set_trace_id("evt-123")
+        token = set_fallback_trace_id("evt-123")
         r = await client.get("https://example.com/test")
         assert r.status_code == 200
     finally:
+        reset_fallback_trace_id(token)
         await client.aclose()
 
     assert captured["x_request_id"] and len(captured["x_request_id"]) == 32
@@ -45,14 +46,14 @@ async def test_http_client_ignores_proxy_environment(monkeypatch):
 
 
 def test_extract_trace_id_from_headers_prefers_x_request_id():
-    from core.trace import extract_trace_id_from_headers
+    from core.observability.tracing import extract_trace_id_from_headers
 
     tid = extract_trace_id_from_headers({"x-request-id": "evt-999"})
     assert tid and len(tid) == 32
 
 
 def test_extract_trace_id_from_headers_parses_traceparent():
-    from core.trace import extract_trace_id_from_headers
+    from core.observability.tracing import extract_trace_id_from_headers
 
     tid = extract_trace_id_from_headers({"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
     assert tid == "4bf92f3577b34da6a3ce929d0e0e4736"

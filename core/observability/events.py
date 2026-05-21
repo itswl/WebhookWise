@@ -41,6 +41,7 @@ def emit_event(
     """Emit a point-in-time event as both a span event and structured log."""
     normalized = normalize_attributes(attributes)
     normalized["event.name"] = name
+    normalized["event_name"] = name
     OBSERVABILITY_EVENTS_TOTAL.labels(name).inc()
     add_span_event(name, normalized)
     logging.getLogger("webhook_service.events").log(severity, body or name, extra=normalized)

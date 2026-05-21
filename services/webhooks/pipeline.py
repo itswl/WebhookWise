@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
-from core.metrics import (
+from core.observability.metrics import (
     WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
@@ -21,8 +21,15 @@ from core.metrics import (
     WEBHOOK_RECEIVED_TOTAL,
     sanitize_source,
 )
-from core.otel import span as otel_span
-from core.trace import generate_trace_id, set_trace_id
+from core.observability.tracing import (
+    generate_trace_id,
+    get_current_trace_id,
+    set_fallback_trace_id,
+    set_span_error,
+)
+from core.observability.tracing import (
+    span as otel_span,
+)
 from models import WebhookEvent
 from services.webhooks.decisioning import normalize_importance
 from services.webhooks.failure_handling import handle_process_exception
@@ -48,13 +55,7 @@ async def handle_webhook_process(
     *,
     dependencies: WebhookPipelineDependencies | None = None,
 ) -> None:
-    set_trace_id(generate_trace_id(event_id=event_id))
-    # 若 OTEL 已启用，优先用当前活动 span 的 trace_id 保证日志与 APM 一致
-    from core.otel import get_otel_trace_id
-
-    otel_tid = get_otel_trace_id()
-    if otel_tid:
-        set_trace_id(otel_tid)
+    set_fallback_trace_id(get_current_trace_id() or generate_trace_id(event_id=event_id))
     clear_log_context()
     set_log_context(event_id=event_id)
     await _handle_webhook_process_inner(
@@ -76,9 +77,10 @@ async def handle_webhook_ingest(
     dependencies: WebhookPipelineDependencies | None = None,
 ) -> None:
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
-    set_trace_id(request_id or generate_trace_id())
+    trace_id = request_id or generate_trace_id()
+    set_fallback_trace_id(trace_id)
     clear_log_context()
-    set_log_context(request_id=request_id, source=source)
+    set_log_context(request_id=trace_id, source=source)
     logger.info(
         "[Pipeline] raw ingest 开始 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
         request_id,
@@ -187,6 +189,9 @@ async def _handle_webhook_process_inner(
     outcome, metric_source = "unknown", "unknown"
     request_id: str | None = None
     with otel_span("webhook.receive", {"event_id": event_id or 0}) as _span:
+        active_trace_id = get_current_trace_id()
+        if active_trace_id:
+            set_fallback_trace_id(active_trace_id)
         try:
             env = envelope
             if env is None:
@@ -205,13 +210,16 @@ async def _handle_webhook_process_inner(
 
             parse_start = time.perf_counter()
             parse_outcome = "success"
-            with otel_span("webhook.parse", {"source": env.source or "unknown", "event_id": event_id or 0}):
+            with otel_span(
+                "webhook.parse", {"source": env.source or "unknown", "event_id": event_id or 0}
+            ) as parse_span:
                 try:
                     req_ctx = parse_request(
                         client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts
                     )
-                except Exception:
+                except Exception as exc:
                     parse_outcome = "error"
+                    set_span_error(parse_span, exc)
                     raise
                 finally:
                     WEBHOOK_PIPELINE_STEP_TOTAL.labels("parse", metric_source, parse_outcome).inc()
@@ -258,6 +266,7 @@ async def _handle_webhook_process_inner(
 
         except Exception as e:
             if event_id is None or raise_on_error:
+                set_span_error(_span, e)
                 outcome = "failed"
                 logger.error(
                     "[Pipeline] raw webhook processing failed request_id=%s source=%s error=%s",

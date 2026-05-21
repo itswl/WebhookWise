@@ -21,7 +21,7 @@ from core.config import UnifiedConfigManager
 from core.dependencies import get_config_manager
 from core.http_client import close_http_client, get_http_client
 from core.logger import logger, stop_log_listener
-from core.observability import setup_observability
+from core.observability import setup_observability, shutdown_observability
 from core.redis_client import dispose_redis
 from core.taskiq_broker import broker
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await reset_openai_client()
         await close_http_client()
         logger.info("[App] 关闭完成 worker_id=%s", _WORKER_ID)
+        shutdown_observability()
         stop_log_listener()
 
 

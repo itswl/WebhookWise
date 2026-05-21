@@ -11,7 +11,33 @@ from urllib.parse import urlparse
 from core.config import Config
 from core.log_context import get_log_context
 from core.logging_levels import apply_log_levels
-from core.trace import get_trace_id
+from core.observability.tracing import get_current_trace_id, get_otel_span_id
+
+_LEVEL_VALUE_BY_NAME = {
+    "CRITICAL": "fatal",
+    "ERROR": "error",
+    "WARNING": "warn",
+    "WARN": "warn",
+    "INFO": "info",
+    "DEBUG": "debug",
+    "TRACE": "trace",
+}
+_DISPLAY_LEVEL_BY_VALUE = {
+    "fatal": "FATAL",
+    "error": "ERROR",
+    "warn": "WARN",
+    "info": "INFO",
+    "debug": "DEBUG",
+    "trace": "TRACE",
+}
+
+
+def normalize_log_level(level_name: str) -> str:
+    return _LEVEL_VALUE_BY_NAME.get(str(level_name or "").upper(), str(level_name or "").lower() or "info")
+
+
+def display_log_level(level_name: str) -> str:
+    return _DISPLAY_LEVEL_BY_VALUE.get(normalize_log_level(level_name), str(level_name or "").upper())
 
 
 def mask_url(url: str) -> str:
@@ -38,15 +64,13 @@ class TraceIdFilter(logging.Filter):
         otel_trace_id = ""
         otel_span_id = ""
         try:
-            from core.otel import get_otel_span_id, get_otel_trace_id
-
-            otel_trace_id = get_otel_trace_id()
+            otel_trace_id = get_current_trace_id()
             otel_span_id = get_otel_span_id()
         except Exception:
             otel_trace_id = ""
             otel_span_id = ""
 
-        record.trace_id = otel_trace_id or get_trace_id() or "-"
+        record.trace_id = otel_trace_id or "-"
         record.span_id = otel_span_id or "-"
 
         ctx = get_log_context()
@@ -67,9 +91,12 @@ class TraceIdFilter(logging.Filter):
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        level = normalize_log_level(record.levelname)
         payload: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": record.levelname,
+            "level": level,
+            "severity_text": display_log_level(record.levelname),
+            "severity_number": record.levelno,
             "name": record.name,
             "message": record.getMessage(),
             "trace_id": getattr(record, "trace_id", "-"),

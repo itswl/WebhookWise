@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.observability.logging import setup_logging
+from core.observability.logging import setup_logging, shutdown_logging
 from core.observability.metrics import setup_metrics
+from core.observability.metrics.base import shutdown_meter_provider
 from core.observability.profiling import setup_profiling
-from core.observability.tracing import setup_tracing
+from core.observability.tracing import setup_tracing, shutdown_tracing
 
 
 def setup_observability(app: Any | None = None, *, service_name: str | None = None) -> None:
@@ -23,3 +24,9 @@ def setup_observability_worker(*, service_name: str | None = None) -> None:
 
 def setup_observability_scheduler(*, service_name: str | None = None) -> None:
     setup_observability(None, service_name=service_name)
+
+
+def shutdown_observability() -> None:
+    shutdown_logging()
+    shutdown_meter_provider()
+    shutdown_tracing()

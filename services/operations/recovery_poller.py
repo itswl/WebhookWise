@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import and_, func, or_, select, update
 
-from core.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
+from core.observability.metrics import WEBHOOK_RECOVERY_POLLED_TOTAL
 from db.session import session_scope
 from models import WebhookEvent
 from services.operations.policies import RecoveryScanPolicy
