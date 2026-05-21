@@ -15,28 +15,19 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from core.logger import logger
-
-_INCR_EXPIRE_IF_FIRST_LUA = """
-local c = redis.call("incr", KEYS[1])
-if c == 1 then
-    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
-end
-return c
-"""
-
-_RELEASE_IF_OWNER_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-end
-return 0
-"""
-
-_REFRESH_IF_OWNER_LUA = """
-if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
-end
-return 0
-"""
+from core.redis_keys import webhook_processing_lock, webhook_processing_queue
+from core.redis_lua import (
+    ALERT_REFRESH_LOCK_IF_OWNER as _REFRESH_IF_OWNER_LUA,
+)
+from core.redis_lua import (
+    ALERT_RELEASE_LOCK_IF_OWNER as _RELEASE_IF_OWNER_LUA,
+)
+from core.redis_lua import (
+    ALERT_RELEASE_QUEUE_SLOT as _RELEASE_QUEUE_SLOT_LUA,
+)
+from core.redis_lua import (
+    ALERT_RESERVE_QUEUE_SLOT as _RESERVE_QUEUE_SLOT_LUA,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +35,13 @@ class AlertProcessingGateResult:
     suppressed: bool
     queue_size: int = 0
     reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _QueueSlotReservation:
+    reserved: bool
+    queue_size: int = 0
+    suppressed: bool = False
 
 
 @dataclass(slots=True)
@@ -73,25 +71,47 @@ async def _release_lock_ref(alert_hash: str, ref: _LockRef) -> None:
             _lock_refs.pop(alert_hash, None)
 
 
-async def _count_recent_queue_size(alert_hash: str) -> int:
+async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
     from core.config import Config
     from core.redis_client import redis_eval_int
 
     threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     if not threshold:
-        return 0
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
 
     window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
-    queue_key = f"queue:webhook:{alert_hash}"
+    queue_key = webhook_processing_queue(alert_hash)
     try:
-        return await redis_eval_int(_INCR_EXPIRE_IF_FIRST_LUA, 1, queue_key, window_seconds)
+        queue_size = await redis_eval_int(
+            _RESERVE_QUEUE_SLOT_LUA,
+            1,
+            queue_key,
+            window_seconds,
+            threshold,
+        )
     except Exception as e:
-        logger.warning("[Concurrency] 告警风暴计数失败: %s", e)
-        return 0
+        logger.warning("[Concurrency] 告警风暴处理槽预占失败: %s", e)
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
+
+    if queue_size < 0:
+        return _QueueSlotReservation(reserved=False, queue_size=abs(queue_size), suppressed=True)
+    return _QueueSlotReservation(reserved=True, queue_size=queue_size, suppressed=False)
+
+
+async def _release_processing_slot(alert_hash: str) -> None:
+    from core.config import Config
+    from core.redis_client import redis_eval_int
+
+    window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
+    queue_key = webhook_processing_queue(alert_hash)
+    try:
+        await redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
+    except Exception as e:
+        logger.warning("[Concurrency] 告警风暴处理槽释放失败: %s", e)
 
 
 def _lock_key(alert_hash: str) -> str:
-    return f"lock:webhook:alert:{alert_hash}"
+    return webhook_processing_lock(alert_hash)
 
 
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
@@ -154,19 +174,17 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
     """Serialize same-alert processing across workers and apply storm backpressure."""
     from core.config import Config
 
-    queue_size = await _count_recent_queue_size(alert_hash)
-    threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
-    suppressed = bool(threshold and queue_size > threshold)
-    if suppressed:
+    slot = await _reserve_processing_slot(alert_hash)
+    if slot.suppressed:
         yield AlertProcessingGateResult(
             suppressed=True,
-            queue_size=queue_size,
+            queue_size=slot.queue_size,
             reason="alert_storm_backpressure",
         )
         return
 
-    ref = await _get_lock_ref(alert_hash)
-    await ref.lock.acquire()
+    ref: _LockRef | None = None
+    local_lock_acquired = False
     lock_key: str | None = None
     lock_token: str | None = None
     refresh_task: asyncio.Task[None] | None = None
@@ -175,7 +193,7 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
         if lock == ("", ""):
             yield AlertProcessingGateResult(
                 suppressed=True,
-                queue_size=queue_size,
+                queue_size=slot.queue_size,
                 reason="alert_processing_lock_timeout",
             )
             return
@@ -183,13 +201,22 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
             lock_key, lock_token = lock
             ttl_seconds = max(1, int(Config.retry.PROCESSING_LOCK_TTL_SECONDS))
             refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds))
-        yield AlertProcessingGateResult(suppressed=False, queue_size=queue_size)
+
+        ref = await _get_lock_ref(alert_hash)
+        await ref.lock.acquire()
+        local_lock_acquired = True
+
+        yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
     finally:
         if refresh_task:
             refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await refresh_task
+        if local_lock_acquired and ref is not None:
+            ref.lock.release()
+        if ref is not None:
+            await _release_lock_ref(alert_hash, ref)
         if lock_key and lock_token:
             await _release_distributed_lock(lock_key, lock_token)
-        ref.lock.release()
-        await _release_lock_ref(alert_hash, ref)
+        if slot.reserved:
+            await _release_processing_slot(alert_hash)

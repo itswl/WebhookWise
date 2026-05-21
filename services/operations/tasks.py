@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 
 from core.log_context import clear_log_context, set_log_context
+from core.observability.attributes import WEBHOOK_OUTCOME
 from core.observability.events import emit_event
 from core.observability.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
@@ -36,6 +37,7 @@ from core.observability.tracing import (
 )
 from core.observability.tracing import span as otel_span
 from core.redis_client import RedisEvalArg
+from core.redis_keys import scheduled_task_lock, webhook_global_task_slots
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
 
@@ -45,7 +47,7 @@ _last_success_by_name: dict[str, float] = {}
 _webhook_task_semaphore: asyncio.Semaphore | None = None
 _webhook_task_semaphore_limit = 0
 
-_WEBHOOK_TASK_SLOT_KEY = "webhook:global-task-slots"
+_WEBHOOK_TASK_SLOT_KEY = webhook_global_task_slots()
 
 _ACQUIRE_WEBHOOK_SLOT_LUA = """
 redis.call("zremrangebyscore", KEYS[1], "-inf", ARGV[1])
@@ -300,7 +302,7 @@ async def _scheduled_task_leader(
     name: str, interval_seconds: int, *, policy: TaskRuntimePolicy | None = None
 ) -> AsyncIterator[bool]:
     """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
-    key = f"scheduled-task-lock:{name}"
+    key = scheduled_task_lock(name)
     token = f"{_task_policy(policy).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
     try:
@@ -454,7 +456,7 @@ async def run_webhook_task(
             finally:
                 if worker_span is not None:
                     worker_span.set_attribute("worker.task.status", outcome)
-                    worker_span.set_attribute("webhook.outcome", outcome)
+                    worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
     except Exception:
         outcome = "error"
         logger.exception(
@@ -482,7 +484,7 @@ async def run_webhook_task(
         attributes = {
             "event_id": event_id or 0,
             "source": source or "unknown",
-            "webhook.outcome": outcome,
+            WEBHOOK_OUTCOME: outcome,
             "duration.ms": duration_ms,
         }
         emit_event("webhook.task.finished", attributes)

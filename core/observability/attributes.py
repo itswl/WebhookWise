@@ -12,6 +12,7 @@ SERVICE_INSTANCE_ID = "service.instance.id"
 
 WEBHOOK_SOURCE = "webhook.source"
 WEBHOOK_EVENT_ID = "webhook.event_id"
+WEBHOOK_EVENT_TYPE = "webhook.event_type"
 WEBHOOK_ALERT_HASH = "webhook.alert_hash"
 WEBHOOK_IMPORTANCE = "webhook.importance"
 WEBHOOK_RELATION = "webhook.relation"
@@ -19,6 +20,8 @@ WEBHOOK_SUPPRESSED = "webhook.suppressed"
 WEBHOOK_OUTCOME = "webhook.outcome"
 WEBHOOK_STATUS = "webhook.status"
 WEBHOOK_FIELD = "webhook.field"
+WEBHOOK_PROCESSING_DURATION_MS = "webhook.processing.duration_ms"
+WEBHOOK_ROUTE = "webhook.route"
 
 FORWARD_TARGET = "forward.target"
 FORWARD_STATUS = "forward.status"
@@ -36,6 +39,7 @@ ERROR_REASON = "error.reason"
 _ALIASES = {
     "source": WEBHOOK_SOURCE,
     "event_id": WEBHOOK_EVENT_ID,
+    "event_type": WEBHOOK_EVENT_TYPE,
     "alert_hash": WEBHOOK_ALERT_HASH,
     "importance": WEBHOOK_IMPORTANCE,
     "relation": WEBHOOK_RELATION,
@@ -44,6 +48,8 @@ _ALIASES = {
     "processing_status": WEBHOOK_STATUS,
     "status": WEBHOOK_STATUS,
     "field": WEBHOOK_FIELD,
+    "duration_ms": WEBHOOK_PROCESSING_DURATION_MS,
+    "route": WEBHOOK_ROUTE,
     "target": FORWARD_TARGET,
     "target_url": FORWARD_TARGET,
     "model": AI_MODEL,

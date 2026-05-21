@@ -81,3 +81,28 @@ def test_config_sources_marks_restart_required_keys(monkeypatch: pytest.MonkeyPa
 
     assert by_key["OPENAI_API_KEY"]["requires_restart"] is True
     assert by_key["OPENCLAW_TIMEOUT_SECONDS"]["requires_restart"] is False
+
+
+def test_runtime_keys_are_derived_from_config_models() -> None:
+    from core.config import Config
+
+    assert Config.RUNTIME_KEYS["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {"type": "int", "sub": "ai"}
+    assert Config.RUNTIME_KEYS["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {"type": "int", "sub": "circuit_breaker"}
+    assert Config.RUNTIME_KEYS["ARCHIVE_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
+
+
+def test_runtime_keys_do_not_include_foundational_connection_settings() -> None:
+    from core.config import Config
+
+    assert "DATABASE_URL" not in Config.RUNTIME_KEYS
+    assert "REDIS_URL" not in Config.RUNTIME_KEYS
+    assert "ALLOW_RUNTIME_CONNECTION_CONFIG" not in Config.RUNTIME_KEYS
+    assert "API_KEY" not in Config.RUNTIME_KEYS
+    assert "ADMIN_WRITE_KEY" not in Config.RUNTIME_KEYS
+    assert "WEBHOOK_SECRET" not in Config.RUNTIME_KEYS
+
+
+def test_database_sync_commit_defaults_to_durable() -> None:
+    from core.config.defaults import DBConfig
+
+    assert DBConfig.model_fields["DB_SYNC_COMMIT"].default == "on"
