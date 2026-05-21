@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import logging
 from datetime import datetime
 from typing import Any
 
@@ -23,9 +22,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from adapters.normalized import extract_alert_identity
 from core.compression import compress_payload
+from core.logger import get_logger
 from db.session import Base
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger("models.webhook")
 
 
 class WebhookEvent(Base):

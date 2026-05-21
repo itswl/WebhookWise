@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from core.logger import get_logger
 from services.notifications.channels import AsyncJsonPoster, NotificationChannel
 from services.notifications.factory import build_notification_channels, find_notification_channel
 from services.operations.policies import FeishuNotificationPolicy
 
-logger = logging.getLogger("webhook_service.feishu_notifications")
+logger = get_logger("feishu_notifications")
 
 
 async def send_feishu_deep_analysis(

@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 import threading
 
-from core.observability.metrics.base import _env_int
+from core.observability.env import env_int
 
 SOURCE_LABEL_MAX_LENGTH = 50
 _SOURCE_LABEL_INVALID_CHARS = re.compile(r"[^a-z0-9_.-]+")
-_SOURCE_LABEL_LIMIT = _env_int("WEBHOOKWISE_SOURCE_LABEL_LIMIT", 128)
+_SOURCE_LABEL_LIMIT = env_int("WEBHOOKWISE_SOURCE_LABEL_LIMIT", 128)
 _SOURCE_LABEL_LIMIT_FALLBACK = "other"
 _seen_sources: set[str] = set()
 _seen_sources_lock = threading.Lock()

@@ -4,10 +4,12 @@ import time
 
 import orjson
 
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
 from services.analysis.ai_policies import AICachePolicy
 from services.webhooks.types import AnalysisResult
+
+logger = get_logger("analysis.ai_cache")
 
 
 def get_cache_key(alert_hash: str) -> str:

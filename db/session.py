@@ -1,5 +1,4 @@
 import contextlib
-import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,9 +15,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from core.config import Config, UnifiedConfigManager
-from core.logger import mask_url
+from core.logger import get_logger, mask_url
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger("db.session")
 
 
 class Base(DeclarativeBase):

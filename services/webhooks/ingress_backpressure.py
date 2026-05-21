@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 from dataclasses import dataclass
 from typing import Any
 
 import orjson
 
 from adapters.ecosystem_adapters import normalize_webhook_event
+from core.logger import get_logger
 from models import WebhookEvent
 from services.webhooks.policies import WebhookReceivePolicy
 
-logger = logging.getLogger("webhook_service.ingress_backpressure")
+logger = get_logger("ingress_backpressure")
 
 _INGRESS_COUNTER_LUA = """
 local c = redis.call("incr", KEYS[1])

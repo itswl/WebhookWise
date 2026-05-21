@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from core.log_context import clear_log_context, set_log_context
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.attributes import (
     WEBHOOK_ALERT_HASH,
     WEBHOOK_EVENT_TYPE,
@@ -51,6 +51,8 @@ from services.webhooks.types import (
     WebhookProcessContext,
     WebhookProcessingStatus,
 )
+
+logger = get_logger("webhooks.pipeline")
 
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 

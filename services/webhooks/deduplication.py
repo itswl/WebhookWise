@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.config import Config
-from core.logger import logger
+from core.logger import get_logger
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_keys import webhook_dedupe
+
+logger = get_logger("webhooks.deduplication")
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import math
 import re
 from collections.abc import Iterable
@@ -8,9 +7,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from core.logger import get_logger
 from services.webhooks.types import AnalysisResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger("analysis.noise_reduction")
 
 
 AlertPayload = dict[str, Any]

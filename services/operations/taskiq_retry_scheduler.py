@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from core.logger import get_logger
 from core.taskiq_broker import dynamic_schedule_source
 
 if TYPE_CHECKING:
     from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 
-logger = logging.getLogger("webhook_service.taskiq_scheduler")
+logger = get_logger("taskiq_scheduler")
 
 
 def compute_backoff_delay(

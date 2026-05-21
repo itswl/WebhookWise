@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
 import math
@@ -10,12 +12,14 @@ from fastapi import Depends, HTTPException, Request, Response
 from api import InvalidSignatureError
 from core.config import SecurityConfig, UnifiedConfigManager
 from core.dependencies import get_config_manager
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.metrics import SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
 from core.redis_keys import rate_limit_burst, rate_limit_global, rate_limit_sustained
 from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
 from services.webhooks.command_service import get_client_ip
+
+logger = get_logger("webhook_security")
 
 _BURST_WINDOW_SECONDS = 10
 _SUSTAINED_WINDOW_SECONDS = 60

@@ -4,10 +4,12 @@ import math
 import time
 from typing import Any
 
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.metrics import AI_ANALYSIS_DURATION_SECONDS, ALERT_NUMERIC_PARSE_FAILURE_TOTAL, sanitize_source
 from services.analysis.ai_policies import RuleAnalysisPolicy
 from services.webhooks.types import AnalysisResult
+
+logger = get_logger("analysis.rule_analyzer")
 
 
 def analyze_with_rules(

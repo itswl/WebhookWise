@@ -40,7 +40,7 @@ class ForwardOutbox(Base):
     webhook state. A worker performs the network side effect later.
     """
 
-    __tablename__ = "forward_outbox"
+    __tablename__ = "forward_outboxes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
@@ -77,9 +77,9 @@ class ForwardOutbox(Base):
 
     __table_args__ = (
         Index(
-            "idx_forward_outbox_pending",
+            "idx_forward_outboxes_pending",
             "next_attempt_at",
             postgresql_where=text("status IN ('pending', 'retrying')"),
         ),
-        Index("idx_forward_outbox_event", "webhook_event_id"),
+        Index("idx_forward_outboxes_event", "webhook_event_id"),
     )

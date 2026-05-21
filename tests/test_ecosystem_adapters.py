@@ -7,7 +7,7 @@ tests/test_ecosystem_adapters.py
 
 import pytest
 
-from adapters.ecosystem_adapters import _normalize_level, normalize_webhook_event
+from adapters.ecosystem_adapters import normalize_level, normalize_webhook_event
 
 # ── Prometheus / Alertmanager ──────────────────────────────────────────────
 
@@ -275,4 +275,4 @@ def test_empty_payload_passes_through():
     ],
 )
 def test_normalize_level_mapping(val, expected):
-    assert _normalize_level(val) == expected, f"_normalize_level({val!r}) should be {expected!r}"
+    assert normalize_level(val) == expected, f"normalize_level({val!r}) should be {expected!r}"

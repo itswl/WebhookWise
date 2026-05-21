@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import verify_admin_write
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from schemas import (
@@ -17,14 +17,16 @@ from schemas import (
     ForwardRuleListResponse,
     forward_rule_to_dict,
 )
-from services.forwarding.forward import (
+from services.forwarding.remote import forward_to_remote
+from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
-    forward_to_remote,
     get_forward_rule,
     get_forward_rules,
     update_forward_rule,
 )
+
+logger = get_logger("api.forwarding")
 
 forwarding_router = APIRouter()
 
@@ -167,7 +169,7 @@ async def test_forward_rule_endpoint(
     test_analysis = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
 
     if rule.target_type == "openclaw":
-        from services.forwarding.forward import forward_to_openclaw
+        from services.forwarding.openclaw import forward_to_openclaw
 
         logger.info("[ForwardAPI] 测试 OpenClaw 转发规则 rule_id=%s name=%s", rule.id, rule.name)
         result = await forward_to_openclaw(test_webhook, test_analysis)
