@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhookwise-config
+  labels:
+    app.kubernetes.io/name: webhookwise
+data:
+  APP_ENV: production
+  HOST: 0.0.0.0
+  PORT: "8000"
+  LOG_FORMAT: json
+  LOG_LEVEL: INFO
+  REQUIRE_WEBHOOK_AUTH: "true"
+  ALLOW_UNAUTHENTICATED_WEBHOOK: "false"
+  ALLOW_UNAUTHENTICATED_ADMIN: "false"
+  REDIS_URL: redis://webhookwise-redis:6379/0
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_SEMCONV_STABILITY_OPT_IN: http
+  OTEL_LOGS_ENABLED: "false"
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "5"
+  DB_STATEMENT_TIMEOUT_MS: "30000"
+  MAX_CONCURRENT_WEBHOOK_TASKS: "30"
+  RECOVERY_SCAN_INTERVAL_SECONDS: "300"
+  WEBHOOK_TASK_SLOT_LEASE_SECONDS: "1800"

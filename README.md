@@ -8,6 +8,7 @@
 - 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
 - 变更记录：[CHANGELOG.md](CHANGELOG.md)
 - 架构边界：[docs/architecture/boundaries.md](docs/architecture/boundaries.md)
+- Kubernetes 清单：[deploy/k8s/README.md](deploy/k8s/README.md)
 
 ## ✨ 核心特性
 
@@ -80,6 +81,10 @@
 | 展示/告警 | Grafana + Prometheus-compatible metrics backend / Tempo / Loki |
 | 数据迁移 | Alembic |
 | 容器化 | Docker + Docker Compose；默认多容器拓扑，可选 supervisor all-in-one 应用容器 |
+
+## Kubernetes 部署
+
+`deploy/k8s/` 提供基础清单：API、Worker、Scheduler、迁移 Job、Redis、PostgreSQL、ConfigMap、Secret 示例与 ServiceAccount。先根据 [deploy/k8s/README.md](deploy/k8s/README.md) 填写真实 Secret，再执行 `kubectl apply -k deploy/k8s`。应用镜像必须使用 release tag 或 digest，避免使用 `latest`。
 
 ## 🚀 快速开始
 

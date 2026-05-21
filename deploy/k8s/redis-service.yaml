@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhookwise-redis
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: redis
+spec:
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: redis
