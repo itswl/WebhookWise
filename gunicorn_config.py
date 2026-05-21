@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import os
 
+# Gunicorn evaluates this file before the ASGI app and runtime config manager
+# exist, so process-shape settings are read directly from the environment.
+
 
 def _int_env(name: str, default: int) -> int:
     try:

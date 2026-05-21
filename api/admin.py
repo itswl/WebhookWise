@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import _fail, _ok
 from core.auth import verify_admin_write
-from core.logger import logger
+from core.logger import get_logger
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import (
@@ -41,6 +41,8 @@ from services.runtime_config.config_service import (
 )
 from services.webhooks.query_service import count_dead_letters, list_dead_letters
 from services.webhooks.repository import load_event_payload
+
+logger = get_logger("api.admin")
 
 admin_router = APIRouter()
 PromptKind = Literal["user", "deep_analysis"]

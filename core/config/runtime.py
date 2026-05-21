@@ -41,25 +41,17 @@ class _RuntimeKeyMeta(TypedDict):
     sub: str
 
 
+# DB/Redis connection pools are process-foundational and stay static; every
+# other AppConfig submodule participates in runtime overrides by default.
+_RUNTIME_STATIC_SUBS = frozenset({"db", "redis"})
 _RUNTIME_CONFIG_SUBS = frozenset(
-    {
-        "server",
-        "tasks",
-        "mq",
-        "security",
-        "forwarding",
-        "notifications",
-        "ai",
-        "openclaw",
-        "circuit_breaker",
-        "retry",
-        "maintenance",
-    }
+    sub_name for sub_name in get_settings()._SUB_NAMES if sub_name not in _RUNTIME_STATIC_SUBS
 )
 _RUNTIME_EXCLUDED_KEYS = frozenset(
     {
         "ALLOW_RUNTIME_CONNECTION_CONFIG",
         "ADMIN_WRITE_KEY",
+        "APP_ENV",
         "API_KEY",
         "DATA_DIR",
         "DEBUG",

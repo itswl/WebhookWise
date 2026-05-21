@@ -94,12 +94,24 @@ def test_runtime_keys_are_derived_from_config_models() -> None:
     assert Config.RUNTIME_KEYS["ARCHIVE_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
 
 
+def test_runtime_config_submodules_are_derived_from_app_config() -> None:
+    from core.config.defaults import get_settings
+    from core.config.runtime import _RUNTIME_CONFIG_SUBS, _RUNTIME_STATIC_SUBS
+
+    settings = get_settings()
+    assert (
+        frozenset(sub_name for sub_name in settings._SUB_NAMES if sub_name not in _RUNTIME_STATIC_SUBS)
+        == _RUNTIME_CONFIG_SUBS
+    )
+
+
 def test_runtime_keys_do_not_include_foundational_connection_settings() -> None:
     from core.config import Config
 
     assert "DATABASE_URL" not in Config.RUNTIME_KEYS
     assert "REDIS_URL" not in Config.RUNTIME_KEYS
     assert "ALLOW_RUNTIME_CONNECTION_CONFIG" not in Config.RUNTIME_KEYS
+    assert "APP_ENV" not in Config.RUNTIME_KEYS
     assert "API_KEY" not in Config.RUNTIME_KEYS
     assert "ADMIN_WRITE_KEY" not in Config.RUNTIME_KEYS
     assert "WEBHOOK_SECRET" not in Config.RUNTIME_KEYS

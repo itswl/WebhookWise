@@ -1,6 +1,5 @@
 """Redis 共享状态熔断器 — 防止级联故障。"""
 
-import logging
 import time
 from collections.abc import Awaitable, Callable
 from enum import Enum
@@ -8,6 +7,7 @@ from typing import ParamSpec, TypeVar
 
 import httpx
 
+from core.logger import get_logger
 from core.observability.events import add_span_event
 from core.observability.metrics import (
     CIRCUIT_BREAKER_REQUESTS_TOTAL,
@@ -25,7 +25,7 @@ from core.redis_lua import (
     CIRCUIT_BREAKER_RECORD_SUCCESS as _CB_RECORD_SUCCESS_LUA,
 )
 
-logger = logging.getLogger("webhook_service.circuit_breaker")
+logger = get_logger("circuit_breaker")
 
 
 class CircuitState(Enum):

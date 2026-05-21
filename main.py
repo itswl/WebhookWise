@@ -3,6 +3,8 @@
 Webhook AI分析服务主入口
 """
 
+from __future__ import annotations
+
 import asyncio
 
 import uvloop
@@ -10,8 +12,10 @@ import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from core.dependencies import get_config_manager
-from core.logger import logger
+from core.logger import get_logger
 from core.service_lifecycle import check_database_ready
+
+logger = get_logger("main")
 
 if __name__ == "__main__":
     config = get_config_manager()

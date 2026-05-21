@@ -1,12 +1,10 @@
 """Deep-analysis completion notification side effects."""
 
-import logging
-
-from core.logger import mask_url
+from core.logger import get_logger, mask_url
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger("webhook_service.deep_analysis_notifications")
+logger = get_logger("deep_analysis_notifications")
 
 
 async def send_deep_analysis_success_notification(
