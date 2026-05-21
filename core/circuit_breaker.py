@@ -8,7 +8,6 @@ from typing import ParamSpec, TypeVar
 
 import httpx
 
-from core.config import Config
 from core.observability.events import add_span_event
 from core.observability.metrics import (
     CIRCUIT_BREAKER_REQUESTS_TOTAL,
@@ -215,21 +214,3 @@ class CircuitBreaker:
                 )
             logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
             raise
-
-
-# 预置熔断器实例
-feishu_cb = CircuitBreaker(
-    name="feishu",
-    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
-    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
-)
-openclaw_cb = CircuitBreaker(
-    name="openclaw",
-    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
-    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
-)
-forward_cb = CircuitBreaker(
-    name="forward",
-    failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
-    recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
-)

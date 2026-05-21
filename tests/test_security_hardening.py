@@ -121,6 +121,22 @@ async def test_request_body_limit_middleware_rejects_oversized_body(monkeypatch:
 
 
 @pytest.mark.asyncio
+async def test_security_headers_include_hsts() -> None:
+    import httpx
+
+    from core.app import app
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        response = await client.get("/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
+
+
+@pytest.mark.asyncio
 async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.forwarding import forward as forward_mod
 

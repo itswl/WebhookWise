@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from core.circuit_breaker import feishu_cb
 from core.http_client import get_http_client
 from core.url_security import validate_outbound_url
+from services.forwarding.circuit_breakers import feishu_cb
 from services.forwarding.dependencies import ValidateURL
 from services.notifications.channels import AsyncJsonPoster, NotificationChannel
 from services.notifications.feishu import FeishuNotificationChannel

@@ -6,23 +6,58 @@
 """
 
 import logging
+from dataclasses import dataclass
 
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqScheduler
 from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListRedisScheduleSource, RedisAsyncResultBackend, RedisStreamBroker
 
-from core.config import Config
+from core.config.defaults import get_settings
 from core.logging_levels import apply_log_levels
 
 logger = logging.getLogger("webhook_service.taskiq")
-apply_log_levels(Config.server.LOG_LEVEL, Config.server.THIRD_PARTY_LOG_LEVEL)
 
-# Redis 连接配置
-REDIS_URL = Config.redis.REDIS_URL
+
+@dataclass(frozen=True, slots=True)
+class TaskiqBrokerSettings:
+    redis_url: str
+    queue_name: str
+    consumer_group_name: str
+    consumer_name: str
+    consumer_batch_size: int
+    consumer_timeout_ms: int
+    pending_idle_timeout_ms: int
+    stream_maxlen: int
+    debug: bool
+    run_mode: str
+    log_level: str
+    third_party_log_level: str
+
+
+def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
+    settings = get_settings()
+    return TaskiqBrokerSettings(
+        redis_url=settings.redis.REDIS_URL,
+        queue_name=settings.server.WEBHOOK_MQ_QUEUE,
+        consumer_group_name=settings.server.WEBHOOK_MQ_CONSUMER_GROUP,
+        consumer_name=settings.server.WORKER_ID,
+        consumer_batch_size=settings.server.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
+        consumer_timeout_ms=settings.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
+        pending_idle_timeout_ms=settings.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
+        stream_maxlen=settings.server.WEBHOOK_MQ_STREAM_MAXLEN,
+        debug=settings.server.DEBUG,
+        run_mode=settings.server.RUN_MODE,
+        log_level=settings.server.LOG_LEVEL,
+        third_party_log_level=settings.server.THIRD_PARTY_LOG_LEVEL,
+    )
+
+
+_settings = load_taskiq_broker_settings()
+apply_log_levels(_settings.log_level, _settings.third_party_log_level)
 
 # 1. 结果后端
 result_backend: RedisAsyncResultBackend[object] = RedisAsyncResultBackend(
-    redis_url=REDIS_URL,
+    redis_url=_settings.redis_url,
 )
 
 # 2. 异步任务代理
@@ -32,26 +67,26 @@ result_backend: RedisAsyncResultBackend[object] = RedisAsyncResultBackend(
 # exceptions are saved as failed results and ACKed, so domain retries must be
 # explicit in task code.
 broker: AsyncBroker = RedisStreamBroker(
-    url=REDIS_URL,
-    queue_name=Config.server.WEBHOOK_MQ_QUEUE,
-    consumer_group_name=Config.server.WEBHOOK_MQ_CONSUMER_GROUP,
-    consumer_name=Config.server.WORKER_ID,
-    xread_count=Config.server.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
-    xread_block=Config.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
-    idle_timeout=Config.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
-    unacknowledged_lock_timeout=max(30.0, Config.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS / 1000 * 2),
-    maxlen=Config.server.WEBHOOK_MQ_STREAM_MAXLEN,
+    url=_settings.redis_url,
+    queue_name=_settings.queue_name,
+    consumer_group_name=_settings.consumer_group_name,
+    consumer_name=_settings.consumer_name,
+    xread_count=_settings.consumer_batch_size,
+    xread_block=_settings.consumer_timeout_ms,
+    idle_timeout=_settings.pending_idle_timeout_ms,
+    unacknowledged_lock_timeout=max(30.0, _settings.pending_idle_timeout_ms / 1000 * 2),
+    maxlen=_settings.stream_maxlen,
 ).with_result_backend(result_backend)
 
 # 在测试环境下可以切换为 InMemoryBroker
-if Config.server.DEBUG and not REDIS_URL.startswith("redis"):
+if _settings.debug and not _settings.redis_url.startswith("redis"):
     broker = InMemoryBroker()
     logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
 else:
-    logger.info("[TaskIQ] 已初始化 Redis Broker: %s", REDIS_URL)
+    logger.info("[TaskIQ] 已初始化 Redis Broker: %s", _settings.redis_url)
 
 dynamic_schedule_source = ListRedisScheduleSource(
-    url=REDIS_URL,
+    url=_settings.redis_url,
     prefix="taskiq:schedule",
     skip_past_schedules=False,
 )
@@ -61,47 +96,46 @@ scheduler = TaskiqScheduler(
     sources=[LabelScheduleSource(broker), dynamic_schedule_source],
 )
 
-if Config.server.RUN_MODE == "scheduler":
+if _settings.run_mode == "scheduler":
     from core.observability import setup_observability_scheduler
 
     setup_observability_scheduler()
-
-import services.operations.tasks  # noqa: E402,F401
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
     from adapters.ecosystem_adapters import initialize_adapters
-    from core.config import Config
+    from core.dependencies import get_config_manager
     from core.http_client import get_http_client
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
     from db.session import init_engine
     from services.analysis.ai_analyzer import initialize_openai_client
 
+    config = get_config_manager()
     # 确保日志系统已初始化（taskiq CLI 不走 worker.py::startup）
     setup_logger()
     setup_observability_worker()
     initialize_adapters()
     await init_engine()
     get_http_client()
-    if Config.server.ENABLE_RUNTIME_CONFIG:
-        await Config.load_from_db()
-        await Config.start_subscriber()
-    if Config.ai.ENABLE_AI_ANALYSIS and Config.ai.OPENAI_API_KEY:
+    if config.server.ENABLE_RUNTIME_CONFIG:
+        await config.load_from_db()
+        await config.start_subscriber()
+    if config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
         await initialize_openai_client()
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
-    from core.config import Config
+    from core.dependencies import get_config_manager
     from core.http_client import close_http_client
     from core.observability import shutdown_observability
     from db.session import dispose_engine
 
-    await Config.stop_subscriber()
+    await get_config_manager().stop_subscriber()
     await dispose_engine()
     await close_http_client()
     shutdown_observability()
