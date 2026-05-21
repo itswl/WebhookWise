@@ -176,8 +176,11 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
     start = time.perf_counter()
     status = "success"
     try:
-        async with _session_factory() as session:
-            yield session
+        from core.observability.tracing import span as otel_span
+
+        with otel_span("db.session", {"db.operation": "request_session"}):
+            async with _session_factory() as session:
+                yield session
     except Exception:
         status = "error"
         raise
@@ -200,14 +203,17 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
     operation = "existing_session" if existing_session else "transaction"
     status = "success"
     try:
-        if existing_session:
-            yield existing_session
-        else:
-            if _session_factory is None:
-                await init_engine()
-            assert _session_factory is not None
-            async with _session_factory.begin() as session:
-                yield session
+        from core.observability.tracing import span as otel_span
+
+        with otel_span("db.session", {"db.operation": operation}):
+            if existing_session:
+                yield existing_session
+            else:
+                if _session_factory is None:
+                    await init_engine()
+                assert _session_factory is not None
+                async with _session_factory.begin() as session:
+                    yield session
     except Exception:
         status = "error"
         raise

@@ -158,6 +158,8 @@ async def _analyze_with_openai_tracked(
             "source": source,
             "model": policy.model,
             "provider": "openai",
+            "ai.engine": "openai",
+            "ai.model": policy.model,
             "gen_ai.system": "openai",
             "gen_ai.operation.name": "chat",
             "gen_ai.request.model": policy.model,

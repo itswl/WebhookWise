@@ -27,6 +27,17 @@ If a local Grafana page does not pick up file changes, restart only Grafana:
 docker compose -f docker-compose.yml -f docker-compose.observability.yml restart grafana
 ```
 
+Whenever panels are added or their grouping labels change, regenerate the
+Logs / Trace / Profile drill-down links:
+
+```bash
+python scripts/observability/update_dashboard_links.py
+```
+
+Those links inherit the current Grafana time range and add field-label context
+when available, such as `webhook_source`, `service_name`, `worker_task_name`,
+`pipeline_step`, or `forward_target_type`.
+
 ## Dashboard Coverage
 
 | Row | Panels | Primary question |

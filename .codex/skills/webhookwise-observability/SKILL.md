@@ -18,6 +18,7 @@ python scripts/observability/webhookwise_observe.py preset api-rate
 python scripts/observability/webhookwise_observe.py promql 'sum by (http_response_status_code) (increase(http_server_request_duration_seconds_count[1h]))'
 python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise"} | json' --limit 20
 python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
+python scripts/observability/webhookwise_observe.py profiles --service-name webhookwise-api
 python scripts/observability/webhookwise_observe.py dashboard --validate
 python scripts/observability/webhookwise_observe.py smoke
 ```
@@ -36,6 +37,7 @@ It exposes tools:
 - `webhookwise_preset`
 - `webhookwise_logs`
 - `webhookwise_tempo_search`
+- `webhookwise_profiles`
 - `webhookwise_dashboard_validate`
 - `webhookwise_smoke`
 
@@ -85,6 +87,7 @@ If the datasource UIDs are not `prometheus` and `loki`, set:
 export WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID='<prometheus-datasource-uid>'
 export WEBHOOKWISE_LOKI_DATASOURCE_UID='<loki-datasource-uid>'
 export WEBHOOKWISE_TEMPO_DATASOURCE_UID='<tempo-datasource-uid>'
+export WEBHOOKWISE_PYROSCOPE_DATASOURCE_UID='<pyroscope-datasource-uid>'
 ```
 
 The helper sends `WebhookWise-Observability/0.1` as its default `User-Agent`.
@@ -101,8 +104,9 @@ Never commit Grafana tokens or passwords.
 4. Use `promql` for custom metric questions.
 5. Use `logs` for concrete events, errors, trace IDs, or frontend Faro records.
 6. Use `tempo --service-name <service>` when the user asks whether trace data exists or needs trace examples.
-7. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
-8. Use `smoke` after observability config changes to verify API -> Prometheus -> Loki -> Tempo -> alert-rule wiring.
+7. Use `profiles --service-name <service>` when CPU, latency, or worker backlog needs Pyroscope investigation.
+8. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
+9. Use `smoke` after observability config changes to verify API -> Prometheus -> Loki -> Tempo -> alert-rule wiring.
 
 ## Useful Presets
 

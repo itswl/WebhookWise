@@ -71,11 +71,16 @@ RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 async def _record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
     from core.observability.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
+    from core.observability.tracing import span as otel_span
 
     start = time.perf_counter()
     status = "success"
     try:
-        return await awaitable
+        with otel_span(
+            "redis.operation",
+            {"db.system": "redis", "db.operation": operation, "redis.operation": operation},
+        ):
+            return await awaitable
     except Exception:
         status = "error"
         raise

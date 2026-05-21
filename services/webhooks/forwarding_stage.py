@@ -194,25 +194,41 @@ async def _dispatch_one_target(
         mask_url(target_url) if target_url else "",
         is_periodic_reminder,
     )
-    if target_type == "openclaw":
-        result = await forwarding_client.forward_to_openclaw(webhook_data=full_data, analysis_result=analysis)
-        if result.get("_pending"):
-            analysis_id = await create_openclaw_analysis(
-                webhook_id,
-                run_id=str(result.get("_openclaw_run_id", "")),
-                session_key=str(result.get("_openclaw_session_key", "")),
+    with otel_span(
+        "forward.target",
+        {
+            "event_id": webhook_id,
+            "forward.target_type": target_type,
+            "forward.rule": str(rule_label),
+            "forward.periodic_reminder": is_periodic_reminder,
+        },
+    ) as target_span:
+        if target_type == "openclaw":
+            result = await forwarding_client.forward_to_openclaw(webhook_data=full_data, analysis_result=analysis)
+            if result.get("_pending"):
+                analysis_id = await create_openclaw_analysis(
+                    webhook_id,
+                    run_id=str(result.get("_openclaw_run_id", "")),
+                    session_key=str(result.get("_openclaw_session_key", "")),
+                )
+                logger.info("[Forward] OpenClaw 分析记录已创建 event_id=%s analysis_id=%s", webhook_id, analysis_id)
+        else:
+            if not target_url:
+                logger.warning("[Forward] 规则 '%s' target_url 为空，跳过直接转发", rule.get("name", rule.get("id")))
+                if target_span is not None:
+                    target_span.set_attribute("forward.status", "skipped")
+                return None
+            result = await forwarding_client.forward_to_remote(
+                webhook_data=full_data,
+                analysis_result=analysis,
+                target_url=target_url,
+                is_periodic_reminder=is_periodic_reminder,
             )
-            logger.info("[Forward] OpenClaw 分析记录已创建 event_id=%s analysis_id=%s", webhook_id, analysis_id)
-    else:
-        if not target_url:
-            logger.warning("[Forward] 规则 '%s' target_url 为空，跳过直接转发", rule.get("name", rule.get("id")))
-            return None
-        result = await forwarding_client.forward_to_remote(
-            webhook_data=full_data,
-            analysis_result=analysis,
-            target_url=target_url,
-            is_periodic_reminder=is_periodic_reminder,
-        )
+        if target_span is not None:
+            target_span.set_attribute(
+                "forward.status",
+                str(result.get("status") or ("pending" if result.get("_pending") else "unknown")),
+            )
 
     if not _is_forward_success(result):
         raise RuntimeError(f"forward status={result.get('status')}: {result.get('message', '')}")
@@ -292,12 +308,22 @@ async def finalize_analysis_transaction(
     outbox_ids: list[int] = []
     with otel_span(
         "webhook.persist",
-        {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+        {
+            "event_id": ctx.event_id or 0,
+            "source": ctx.req_ctx.source,
+            "alert_hash": ctx.alert_hash[:12],
+            "pipeline.step": "persist",
+        },
     ):
         async with session_scope() as session:
             with otel_span(
                 "webhook.persist.save",
-                {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+                {
+                    "event_id": ctx.event_id or 0,
+                    "source": ctx.req_ctx.source,
+                    "alert_hash": ctx.alert_hash[:12],
+                    "pipeline.step": "persist",
+                },
             ):
                 save_res = await save_webhook_data_in_session(
                     session,
@@ -323,6 +349,7 @@ async def finalize_analysis_transaction(
                 {
                     "event_id": save_res.webhook_id,
                     "source": ctx.req_ctx.source,
+                    "pipeline.step": "persist",
                     "webhook.importance": normalize_importance(final_analysis.get("importance", "")),
                     "webhook.suppressed": save_res.is_duplicate and not save_res.beyond_window,
                 },
@@ -346,7 +373,12 @@ async def finalize_analysis_transaction(
                     {
                         "event_id": save_res.webhook_id,
                         "source": ctx.req_ctx.source,
+                        "pipeline.step": "persist",
                         "forward.target_count": len(fwd_dec.matched_rules) or 1,
+                        "forward.target_type": (
+                            str((fwd_dec.matched_rules[0] if fwd_dec.matched_rules else {}).get("target_type") or "")
+                            or "default"
+                        ),
                     },
                 ):
                     outbox_ids = await create_forward_outbox_records(

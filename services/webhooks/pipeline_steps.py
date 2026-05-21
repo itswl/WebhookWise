@@ -108,7 +108,12 @@ async def _resolve_noise_context(
     outcome = "success"
     with otel_span(
         "webhook.analyze",
-        {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+        {
+            "event_id": ctx.event_id or 0,
+            "source": ctx.req_ctx.source,
+            "alert_hash": ctx.alert_hash[:12],
+            "pipeline.step": "analysis",
+        },
     ):
         try:
             analysis_res = await resolve_analysis(
@@ -172,22 +177,31 @@ async def _resolve_noise_context(
     )
     noise_started = time.perf_counter()
     noise_outcome = "success"
-    try:
-        noise = await compute_noise(
-            ctx.alert_hash,
-            ctx.req_ctx.source,
-            ctx.req_ctx.parsed_data,
-            analysis_res.analysis_result,
-            policy=dependencies.noise_policy,
-        )
-    except Exception:
-        noise_outcome = "error"
-        raise
-    finally:
-        WEBHOOK_PIPELINE_STEP_TOTAL.labels("noise", ctx.metric_source, noise_outcome).inc()
-        WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("noise", ctx.metric_source, noise_outcome).observe(
-            time.perf_counter() - noise_started
-        )
+    with otel_span(
+        "webhook.noise",
+        {
+            "event_id": ctx.event_id or 0,
+            "source": ctx.req_ctx.source,
+            "alert_hash": ctx.alert_hash[:12],
+            "pipeline.step": "noise",
+        },
+    ):
+        try:
+            noise = await compute_noise(
+                ctx.alert_hash,
+                ctx.req_ctx.source,
+                ctx.req_ctx.parsed_data,
+                analysis_res.analysis_result,
+                policy=dependencies.noise_policy,
+            )
+        except Exception:
+            noise_outcome = "error"
+            raise
+        finally:
+            WEBHOOK_PIPELINE_STEP_TOTAL.labels("noise", ctx.metric_source, noise_outcome).inc()
+            WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("noise", ctx.metric_source, noise_outcome).observe(
+                time.perf_counter() - noise_started
+            )
     return analysis_res.analysis_result, noise, analysis_res
 
 
@@ -200,7 +214,12 @@ async def run_processing_steps(
         validation_outcome = "success"
         with otel_span(
             "webhook.validate",
-            {"event_id": ctx.event_id or 0, "source": ctx.req_ctx.source, "alert_hash": ctx.alert_hash[:12]},
+            {
+                "event_id": ctx.event_id or 0,
+                "source": ctx.req_ctx.source,
+                "alert_hash": ctx.alert_hash[:12],
+                "pipeline.step": "validate",
+            },
         ):
             try:
                 if await _handle_storm_suppression(ctx, gate_res):
