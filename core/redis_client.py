@@ -1,9 +1,10 @@
 import contextlib
+import inspect
 import json
 import threading
 import time
 from collections.abc import Awaitable
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 import redis.asyncio as redis
 from redis.asyncio.client import PubSub
@@ -11,12 +12,17 @@ from redis.asyncio.client import PubSub
 from core.config import Config
 from core.logger import logger, mask_url
 
-_redis_client: redis.Redis | None = None
+if TYPE_CHECKING:
+    RedisClient: TypeAlias = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
+else:
+    RedisClient = redis.Redis
+
+_redis_client: RedisClient | None = None
 _redis_client_lock = threading.RLock()
 T = TypeVar("T")
 
 
-def get_redis() -> redis.Redis:
+def get_redis() -> RedisClient:
     """获取全局 Redis 客户端单例"""
     global _redis_client
     with _redis_client_lock:
@@ -40,6 +46,11 @@ def init_redis() -> None:
 
 
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
+
+
+async def _await_if_needed(value: object) -> None:
+    if inspect.isawaitable(value):
+        await cast(Awaitable[object], value)
 
 
 async def _record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
@@ -79,13 +90,19 @@ async def redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
 
 async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
     r = get_redis()
-    raw = await _record_redis_operation("eval", cast(Awaitable[object], r.eval(script, int(numkeys), *args)))
+    raw = await _record_redis_operation(
+        "eval",
+        cast(Awaitable[object], cast(Any, r).eval(script, int(numkeys), *args)),
+    )
     return _to_int(raw)
 
 
 async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str | None:
     r = get_redis()
-    raw = await _record_redis_operation("eval", cast(Awaitable[object], r.eval(script, int(numkeys), *args)))
+    raw = await _record_redis_operation(
+        "eval",
+        cast(Awaitable[object], cast(Any, r).eval(script, int(numkeys), *args)),
+    )
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -199,7 +216,10 @@ async def redis_xlen(stream: str) -> int:
 
 async def redis_xpending_pending(stream: str, group: str) -> int:
     r = get_redis()
-    raw = await _record_redis_operation("xpending", r.xpending(stream, group))
+    raw = await _record_redis_operation(
+        "xpending",
+        cast(Awaitable[object], cast(Any, r).xpending(stream, group)),
+    )
     if isinstance(raw, dict):
         try:
             return int(raw.get("pending") or 0)
@@ -215,7 +235,10 @@ async def redis_xpending_pending(stream: str, group: str) -> int:
 
 async def redis_xinfo_group_lag(stream: str, group: str) -> int:
     r = get_redis()
-    raw = await _record_redis_operation("xinfo_groups", r.xinfo_groups(stream))
+    raw = await _record_redis_operation(
+        "xinfo_groups",
+        cast(Awaitable[object], cast(Any, r).xinfo_groups(stream)),
+    )
     if not isinstance(raw, list):
         return 0
     for item in raw:
@@ -246,10 +269,12 @@ async def dispose_redis() -> None:
         _redis_client = None
     if client:
         with contextlib.suppress(Exception):
-            await client.aclose()
+            close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
+            if callable(close_fn):
+                await _await_if_needed(close_fn())
         with contextlib.suppress(Exception):
             pool = getattr(client, "connection_pool", None)
             disconnect_fn = getattr(pool, "disconnect", None)
             if callable(disconnect_fn):
-                await disconnect_fn()
+                await _await_if_needed(disconnect_fn())
     logger.info("[Redis] 当前连接池已关闭")
