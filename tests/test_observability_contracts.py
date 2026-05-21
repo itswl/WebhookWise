@@ -117,6 +117,17 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
     assert len(metric_panels) >= 64
     assert len(linked_panels) == len(metric_panels)
 
+    link_urls = "\n".join(
+        str(link.get("url", ""))
+        for panel in metric_panels
+        for link in panel.get("fieldConfig", {}).get("defaults", {}).get("links", [])
+    )
+    assert "${__field.labels.webhook_source}" in link_urls
+    assert "${__field.labels.service_name}" in link_urls
+    assert "span.webhook.source" in link_urls
+    assert "resource.service.name = " in link_urls
+    assert "%26%26" in link_urls
+
 
 def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     db_session = (ROOT / "db/session.py").read_text()
