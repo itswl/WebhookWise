@@ -15,6 +15,15 @@ from core.observability.metrics import (
     CIRCUIT_BREAKER_TRANSITIONS_TOTAL,
 )
 from core.observability.signals import record_signal
+from core.redis_lua import (
+    CIRCUIT_BREAKER_CHECK_STATE as _CB_CHECK_STATE_LUA,
+)
+from core.redis_lua import (
+    CIRCUIT_BREAKER_RECORD_FAILURE as _CB_RECORD_FAILURE_LUA,
+)
+from core.redis_lua import (
+    CIRCUIT_BREAKER_RECORD_SUCCESS as _CB_RECORD_SUCCESS_LUA,
+)
 
 logger = logging.getLogger("webhook_service.circuit_breaker")
 
@@ -31,57 +40,6 @@ class CircuitBreakerOpenException(RuntimeError):
     def __init__(self, breaker_name: str) -> None:
         self.breaker_name = breaker_name
         super().__init__(f"CircuitBreaker [{breaker_name}] is open")
-
-
-# ====== Lua 脚本：熔断器原子操作 ======
-
-# 记录失败并判断是否需要熔断
-# KEYS: [failures_key, state_key, open_until_key]
-# ARGV: [failure_window, threshold, open_until_ts, state_expire]
-_CB_RECORD_FAILURE_LUA = """
-local failures = redis.call("incr", KEYS[1])
-if failures == 1 then
-    redis.call("expire", KEYS[1], tonumber(ARGV[1]))
-end
-if failures >= tonumber(ARGV[2]) then
-    redis.call("set", KEYS[2], "open")
-    redis.call("set", KEYS[3], ARGV[3])
-    redis.call("expire", KEYS[2], tonumber(ARGV[4]))
-    redis.call("expire", KEYS[3], tonumber(ARGV[4]))
-    return 1
-end
-return 0
-"""
-
-# 记录成功：仅当 state 为 half_open 时重置为 closed
-# KEYS: [failures_key, state_key, open_until_key]
-_CB_RECORD_SUCCESS_LUA = """
-local state = redis.call("get", KEYS[2])
-if state == "half_open" or state == "open" then
-    redis.call("del", KEYS[1])
-    redis.call("set", KEYS[2], "closed")
-    redis.call("del", KEYS[3])
-end
-return 0
-"""
-
-# 检查状态：如果 open 且超时则原子转为 half_open
-# KEYS: [state_key, open_until_key]
-# ARGV: [current_timestamp]
-_CB_CHECK_STATE_LUA = """
-local state = redis.call("get", KEYS[1])
-if not state or state == false then
-    return "closed"
-end
-if state == "open" then
-    local open_until = redis.call("get", KEYS[2])
-    if open_until and tonumber(ARGV[1]) >= tonumber(open_until) then
-        redis.call("set", KEYS[1], "half_open")
-        return "half_open"
-    end
-end
-return state
-"""
 
 
 class CircuitBreaker:

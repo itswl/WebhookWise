@@ -9,11 +9,12 @@ from fastapi import Request
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import Config
 from core.logger import logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
-from services.webhooks.policies import ClientIPPolicy, WebhookSavePolicy
+from services.webhooks.deduplication import duplicate_window_hours
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
 
@@ -28,10 +29,9 @@ class SaveWebhookResult:
     beyond_window: bool
 
 
-def get_client_ip(request: Request, *, policy: ClientIPPolicy | None = None) -> str:
+def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址。"""
-    policy = policy or ClientIPPolicy.from_config()
-    if _is_trusted_proxy(request.client.host if request.client else None, policy):
+    if _is_trusted_proxy(request.client.host if request.client else None):
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for and (ip := _first_valid_header_ip(forwarded_for)):
             return ip
@@ -53,16 +53,19 @@ def _first_valid_header_ip(value: str) -> str | None:
     return None
 
 
-def _is_trusted_proxy(client_host: str | None, policy: ClientIPPolicy | None = None) -> bool:
-    policy = policy or ClientIPPolicy.from_config()
-    if not client_host or not policy.trust_proxy_headers:
+def _trusted_proxy_cidrs() -> tuple[str, ...]:
+    return tuple(item.strip() for item in Config.security.TRUSTED_PROXY_CIDRS.split(",") if item.strip())
+
+
+def _is_trusted_proxy(client_host: str | None) -> bool:
+    if not client_host or not Config.security.TRUST_PROXY_HEADERS:
         return False
     try:
         client_ip = ipaddress.ip_address(client_host)
     except ValueError:
-        return client_host in set(policy.trusted_proxy_cidrs)
+        return client_host in set(_trusted_proxy_cidrs())
 
-    for item in policy.trusted_proxy_cidrs:
+    for item in _trusted_proxy_cidrs():
         if not item:
             continue
         try:
@@ -365,7 +368,6 @@ async def save_webhook_data(
     reanalyzed: bool = False,
     event_id: int | None = None,
     skip_duplicate_lookup: bool = False,
-    policy: WebhookSavePolicy | None = None,
 ) -> SaveWebhookResult:
     if alert_hash is None:
         alert_hash = WebhookEvent.generate_hash(data, source)
@@ -389,7 +391,6 @@ async def save_webhook_data(
                 reanalyzed=reanalyzed,
                 event_id=event_id,
                 skip_duplicate_lookup=skip_duplicate_lookup,
-                policy=policy,
             )
     except Exception:
         logger.exception("保存 webhook 事件失败")
@@ -414,10 +415,8 @@ async def save_webhook_data_in_session(
     reanalyzed: bool = False,
     event_id: int | None = None,
     skip_duplicate_lookup: bool = False,
-    policy: WebhookSavePolicy | None = None,
 ) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
-    policy = policy or WebhookSavePolicy.from_config()
     if alert_hash is None:
         alert_hash = WebhookEvent.generate_hash(data, source)
     safe_headers = redact_headers(headers)
@@ -447,9 +446,7 @@ async def save_webhook_data_in_session(
             event_id = existing.id
             skip_duplicate_lookup = True
     if is_duplicate is None and not skip_duplicate_lookup:
-        check = await check_duplicate_event(
-            alert_hash, session=session, time_window_hours=policy.duplicate_window_hours
-        )
+        check = await check_duplicate_event(alert_hash, session=session, time_window_hours=duplicate_window_hours())
         is_duplicate, original_event, beyond_window, original_event_id = (
             check.is_duplicate,
             check.original_event,
