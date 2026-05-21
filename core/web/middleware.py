@@ -25,6 +25,7 @@ class SecurityHeadersMiddleware:
         (b"x-content-type-options", b"nosniff"),
         (b"x-frame-options", b"DENY"),
         (b"referrer-policy", b"no-referrer"),
+        (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
     ]
 
     def __init__(self, app: ASGIApp) -> None:

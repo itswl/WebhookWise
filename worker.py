@@ -6,15 +6,13 @@ import signal
 
 import uvloop
 
-# 确保导入任务，以便 TaskIQ 注册
-import services.operations.tasks  # noqa: F401
 from core.config import Config
 from core.http_client import close_http_client, get_http_client
 from core.logger import setup_logger, stop_log_listener
 from core.observability import setup_observability_worker
 from core.redis_client import dispose_redis, init_redis
-from core.taskiq_broker import broker
 from db.session import dispose_engine, init_engine
+from services.operations.taskiq_wiring import broker
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 logger = logging.getLogger("webhook_service.worker")

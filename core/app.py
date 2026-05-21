@@ -7,8 +7,6 @@ from typing import cast
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
-# API 侧导入任务定义，确保 TaskIQ broker 注册完整。
-import services.operations.tasks  # noqa: F401
 from adapters.ecosystem_adapters import initialize_adapters
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router

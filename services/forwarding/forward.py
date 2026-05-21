@@ -11,9 +11,9 @@ from typing import Any
 
 import httpx
 
-from core.circuit_breaker import forward_cb, openclaw_cb
 from core.http_client import get_http_client
 from core.url_security import validate_outbound_url
+from services.forwarding.circuit_breakers import forward_cb, openclaw_cb
 from services.forwarding.dependencies import OpenClawForwardDependencies, RemoteForwardDependencies
 from services.forwarding.failed_records import (
     cleanup_old_success_records,

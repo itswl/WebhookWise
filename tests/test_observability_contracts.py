@@ -154,10 +154,14 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     pipeline_steps = (ROOT / "services/webhooks/pipeline_steps.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
     redis_client = (ROOT / "core/redis_client.py").read_text()
+    taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
     assert "instrument_sqlalchemy(_engine.sync_engine)" in db_session
     assert "shutdown_observability()" in app
     assert "shutdown_observability()" in broker
+    assert "services.operations.tasks" not in app
+    assert "services.operations.tasks" not in broker
+    assert "import services.operations.tasks" in taskiq_wiring
     assert '"traceparent": headers.get("traceparent") or build_traceparent(request_id)' in webhook
     assert "trace_context_from_headers(trace_headers)" in tasks
     assert '"worker.webhook_process_task"' in tasks
@@ -167,6 +171,27 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"pipeline.step": "noise"' in pipeline_steps
     assert '"forward.target_type": target_type' in forwarding_stage
     assert '"redis.operation": operation' in redis_client
+
+
+def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
+    app = (ROOT / "core/app.py").read_text()
+    broker = (ROOT / "core/taskiq_broker.py").read_text()
+    circuit_breaker = (ROOT / "core/circuit_breaker.py").read_text()
+    forwarding_breakers = (ROOT / "services/forwarding/circuit_breakers.py").read_text()
+    entrypoint = (ROOT / "entrypoint.sh").read_text()
+    supervisor = (ROOT / "supervisord.conf").read_text()
+
+    assert "import services." not in broker
+    assert "services.operations.tasks" not in app
+    assert "from core.config import Config" not in broker
+    assert "from core.config import Config" not in circuit_breaker
+    assert "Config.circuit_breaker" not in circuit_breaker
+    assert "LazyCircuitBreaker" in forwarding_breakers
+    assert "Config.circuit_breaker" in forwarding_breakers
+    assert "services.operations.taskiq_wiring:broker" in entrypoint
+    assert "services.operations.taskiq_wiring:scheduler" in entrypoint
+    assert "services.operations.taskiq_wiring:broker" in supervisor
+    assert "services.operations.taskiq_wiring:scheduler" in supervisor
 
 
 def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeypatch) -> None:
@@ -240,3 +265,23 @@ def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
     assert '"name": "webhookwise_profiles"' in mcp
     assert "PROFILE_TYPE_ID" in dashboard_links
     assert "scripts/export_openapi.py --check" in ci
+
+
+def test_docs_and_e2e_cover_project_operability_contracts() -> None:
+    readme = (ROOT / "README.md").read_text()
+    docs_readme = (ROOT / "docs/README.md").read_text()
+    e2e_compose = (ROOT / "tests/e2e/docker-compose.yml").read_text()
+    e2e_runner = (ROOT / "tests/e2e/run_webhook_to_feishu.sh").read_text()
+
+    assert (ROOT / "CONTRIBUTING.md").exists()
+    assert (ROOT / "CHANGELOG.md").exists()
+    assert "docs/api/README.md" in readme
+    assert "CONTRIBUTING.md" in readme
+    assert "CHANGELOG.md" in readme
+    assert "api/README.md" in docs_readme
+    assert "fake-openai" in e2e_compose
+    assert 'ENABLE_AI_ANALYSIS: "true"' in e2e_compose
+    assert 'CACHE_ENABLED: "true"' in e2e_compose
+    assert 'ENABLE_ALERT_NOISE_REDUCTION: "true"' in e2e_compose
+    assert "AI E2E 摘要" in e2e_runner
+    assert "/v1/chat/completions" in e2e_runner

@@ -63,6 +63,7 @@ def wait_json(url: str, timeout: int = 120):
 
 wait_json("http://localhost:18080/health")
 wait_json("http://localhost:19090/health")
+wait_json("http://localhost:19091/health")
 
 payload = {
     "alert_name": "checkout-critical-5xx",
@@ -88,8 +89,20 @@ requests = []
 while time.time() < deadline:
     requests = wait_json("http://localhost:19090/requests", timeout=5)
     serialized = json.dumps(requests, ensure_ascii=False)
-    if "interactive" in serialized and "Webhook 事件通知" in serialized and "当前值 25 / 阈值 5" in serialized:
-        print(json.dumps({"event_id": accepted["event_id"], "feishu_requests": len(requests)}, ensure_ascii=False))
+    if "interactive" in serialized and "Webhook 事件通知" in serialized and "AI E2E 摘要" in serialized:
+        openai_requests = wait_json("http://localhost:19091/requests", timeout=5)
+        if not any(req.get("path") == "/v1/chat/completions" for req in openai_requests):
+            raise SystemExit("fake OpenAI did not receive a chat completion request")
+        print(
+            json.dumps(
+                {
+                    "event_id": accepted["event_id"],
+                    "feishu_requests": len(requests),
+                    "openai_requests": len(openai_requests),
+                },
+                ensure_ascii=False,
+            )
+        )
         break
     time.sleep(2)
 else:
