@@ -65,7 +65,9 @@ def test_ai_error_notification_policy_reads_runtime_knobs(monkeypatch: pytest.Mo
     from services.analysis.ai_policies import AIErrorNotificationPolicy
 
     monkeypatch.setattr(Config.forwarding, "ENABLE_FORWARD", True)
-    monkeypatch.setattr(Config.forwarding, "FORWARD_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setattr(
+        Config.forwarding, "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test"
+    )
     monkeypatch.setattr(Config.notifications, "AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS", 123)
     monkeypatch.setattr(Config.notifications, "AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS", 7)
 

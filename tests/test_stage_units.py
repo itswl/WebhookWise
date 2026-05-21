@@ -152,7 +152,7 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
         {"source": "unit", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.test/hook",
-        policy=RemoteForwardPolicy(forward_url="", timeout_seconds=2),
+        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
         dependencies=RemoteForwardDependencies(
             http_client=client,
             circuit_breaker=cast(Any, breaker),
@@ -163,75 +163,6 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
     assert result["status"] == "success"
     assert breaker.called is True
     assert client.urls == ["https://example.test/hook"]
-
-
-@pytest.mark.asyncio
-async def test_dispatch_forwarding_uses_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    import services.webhooks.forwarding_stage as forwarding_stage
-    from services.webhooks.forwarding_stage import dispatch_forwarding_decision
-    from services.webhooks.types import ForwardDecision
-
-    class Client:
-        def __init__(self) -> None:
-            self.remote_calls: list[dict[str, Any]] = []
-
-        async def forward_to_remote(
-            self,
-            *,
-            webhook_data: dict[str, Any],
-            analysis_result: dict[str, Any],
-            target_url: str,
-            is_periodic_reminder: bool,
-        ) -> dict[str, Any]:
-            self.remote_calls.append(
-                {
-                    "webhook_data": webhook_data,
-                    "analysis_result": analysis_result,
-                    "target_url": target_url,
-                    "is_periodic_reminder": is_periodic_reminder,
-                }
-            )
-            return {"status": "success"}
-
-        async def forward_to_openclaw(
-            self,
-            *,
-            webhook_data: dict[str, Any],
-            analysis_result: dict[str, Any],
-        ) -> dict[str, Any]:
-            raise AssertionError("remote rule should not call openclaw")
-
-    async def noop_mark_last_notified(_: int) -> None:
-        return None
-
-    monkeypatch.setattr(forwarding_stage, "mark_last_notified", noop_mark_last_notified)
-
-    client = Client()
-    decision = ForwardDecision(
-        should_forward=True,
-        skip_reason=None,
-        is_periodic_reminder=True,
-        matched_rules=[{"target_type": "webhook", "target_url": "https://example.test/hook"}],
-    )
-
-    results = await dispatch_forwarding_decision(
-        decision,
-        full_data={"source": "unit"},
-        analysis={"summary": "ok"},
-        webhook_id=1,
-        orig_id=None,
-        forwarding_client=client,
-    )
-
-    assert results == [{"status": "success"}]
-    assert client.remote_calls == [
-        {
-            "webhook_data": {"source": "unit"},
-            "analysis_result": {"summary": "ok"},
-            "target_url": "https://example.test/hook",
-            "is_periodic_reminder": True,
-        }
-    ]
 
 
 @pytest.mark.asyncio

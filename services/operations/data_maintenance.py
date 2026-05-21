@@ -17,7 +17,6 @@ logger = logging.getLogger("webhook_service.maintenance")
 async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
     根据数据保留策略归档清理过期 webhook 记录。
-    整合了之前 cleanup_alerts.py 的细粒度过滤逻辑。
     """
     policy = policy or DataMaintenancePolicy.from_config()
     if not policy.enabled:
@@ -46,7 +45,7 @@ async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
             threshold = now - timedelta(days=days)
             conditions.append((WebhookEvent.source == source) & (WebhookEvent.timestamp < threshold))
 
-        # 按关键字匹配策略 (来自 cleanup_general_events.py)
+        # 按关键字匹配策略
         for field, keywords in policy.cleanup_keywords.items():
             for kw in keywords:
                 if field == "summary":
@@ -54,7 +53,7 @@ async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                 elif field == "parsed_data":
                     conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{kw}%"))
 
-        # 默认兜底策略
+        # 默认保留策略
         default_threshold = now - timedelta(days=policy.archive_days_default)
         # 如果既不在重要性策略里，也不在来源策略里，且超过默认天数，也清理
         # 但为了简单，我们直接加一个全局阈值作为主要判断逻辑之一

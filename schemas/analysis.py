@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -39,13 +40,13 @@ class DeepAnalysisRecord(BaseModel):
     user_question: str | None = None
     analysis_result: dict[str, Any] | str | None = None
     duration_seconds: float | None = None
-    created_at: str | None = None
+    created_at: datetime | str | None = None
     openclaw_run_id: str | None = None
     openclaw_session_key: str | None = None
     status: str | None = None
     poll_attempts: int | None = None
-    next_poll_at: str | None = None
-    last_polled_at: str | None = None
+    next_poll_at: datetime | str | None = None
+    last_polled_at: datetime | str | None = None
     source: str | None = None
     is_duplicate: bool = False
     beyond_window: bool = False
@@ -81,3 +82,11 @@ class ReanalysisResponse(BaseModel):
     forward_status: str | None = None
     forward_outbox_ids: list[int] = Field(default_factory=list)
     message: str | None = None
+
+
+def _model_dump_json_dict(schema: BaseModel) -> dict[str, Any]:
+    return schema.model_dump(mode="json")
+
+
+def deep_analysis_to_dict(record: Any) -> dict[str, Any]:
+    return _model_dump_json_dict(DeepAnalysisRecord.model_validate(record))

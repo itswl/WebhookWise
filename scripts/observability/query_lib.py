@@ -77,18 +77,15 @@ PROMQL_PRESETS: dict[str, str] = {
         "or vector(0)), 0.000001))"
     ),
     "webhook-rate": "sum by (webhook_source) (rate(webhook_received_total[5m]))",
-    "active-events": "max(webhook_events_active) or max(webhook_events_count_ratio) or vector(0)",
-    "queue-backlog": "max(queue_pending) or max(queue_pending_ratio) or vector(0) or max(queue_lag) or max(queue_lag_ratio)",
-    "queue-retained-depth": "max by (queue_stream) (queue_depth) or max by (queue_stream) (queue_depth_ratio) or vector(0)",
+    "active-events": "max(webhook_events_active) or vector(0)",
+    "queue-backlog": "max(queue_pending) or max(queue_lag) or vector(0)",
+    "queue-retained-depth": "max by (queue_stream) (queue_depth) or vector(0)",
     "queue-ops": "sum by (queue_operation, queue_status) (rate(queue_operations_total[5m]))",
     "worker-runs": "sum by (worker_task_name, worker_task_status) (rate(worker_task_runs_total[5m]))",
     "worker-latency-p95": (
         "histogram_quantile(0.95, sum by (le, worker_task_name) " "(rate(worker_task_duration_seconds_bucket[5m])))"
     ),
-    "db-pool": (
-        "max(db_pool_connections_checked_out) or max(db_pool_connections_checked_out_ratio) or vector(0) or "
-        "max(db_pool_connections_max) or max(db_pool_connections_max_ratio)"
-    ),
+    "db-pool": "max(db_pool_connections_checked_out) or max(db_pool_connections_max) or vector(0)",
     "db-latency-p95": (
         "histogram_quantile(0.95, sum by (le, db_operation) " "(rate(db_session_duration_seconds_bucket[5m])))"
     ),
@@ -124,22 +121,12 @@ PROMQL_PRESETS: dict[str, str] = {
         "(rate(forward_outbox_process_duration_seconds_bucket[5m])))"
     ),
     "forward-outbox-backlog-age": (
-        "max by (forward_target_type, forward_status) "
-        "(forward_outbox_oldest_age_seconds or forward_outbox_backlog_age_seconds or "
-        "forward_outbox_backlog_age_seconds_ratio) or vector(0)"
+        "max by (forward_target_type, forward_status) " "(forward_outbox_oldest_age_seconds) or vector(0)"
     ),
     "circuit-breaker-state": (
-        "max by (circuit_breaker_name, circuit_breaker_state) "
-        "(circuit_breaker_active_state or circuit_breaker_state or circuit_breaker_state_ratio) or vector(0)"
+        "max by (circuit_breaker_name, circuit_breaker_state) " "(circuit_breaker_active_state) or vector(0)"
     ),
-    "webhook-status": (
-        "max by (webhook_status) (webhook_processing_status_count) or "
-        "max by (webhook_status) (webhook_processing_status_count_ratio) or vector(0)"
-    ),
-    "webhook-stuck": (
-        "max by (webhook_status) (webhook_stuck_status_count) or "
-        "max by (webhook_status) (webhook_stuck_status_count_ratio) or vector(0)"
-    ),
+    "webhook-status": "max by (webhook_status) (webhook_processing_status_count) or vector(0)",
     "pipeline-step-latency-p95": (
         "histogram_quantile(0.95, sum by (le, pipeline_step) "
         "(rate(webhook_pipeline_step_duration_seconds_bucket[5m])))"
@@ -507,7 +494,7 @@ def smoke(
     prometheus_checks = {
         "prometheus-webhook-received": "sum(increase(webhook_received_total[10m]))",
         "prometheus-webhook-processed": "sum(increase(webhook_processed_total[10m]))",
-        "prometheus-recording-rules": "max(webhook_events_active) or max(webhook_events_count_ratio) or vector(0)",
+        "prometheus-recording-rules": "max(webhook_events_active) or vector(0)",
         "prometheus-alerts": 'sum by (alertstate) (ALERTS{alertname=~"WebhookWise.*"}) or vector(0)',
     }
     for name, query in prometheus_checks.items():

@@ -124,10 +124,6 @@ body {
     padding: 2rem;
 }
 
-.main-content {
-    /* 主内容区域样式 */
-}
-
 /* ==================== 统计卡片区域 ==================== */
 .stats-section {
     margin-bottom: 2rem;
@@ -388,44 +384,11 @@ body {
 }
 
 /* ==================== 功能面板容器样式 ==================== */
-.ai-cost-section,
-.predictions-section,
-.remediation-section,
-.topology-section {
+.ai-cost-section {
     padding: 20px 0;
 }
 
-.predictions-container,
-.patterns-container,
-.runbooks-container,
-.remediation-history-container,
-.topology-graph-container {
-    background: #fff;
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid #e1e4e8;
-}
-
-.container-header {
-    margin-bottom: 15px;
-}
-
-.container-header h3,
-.predictions-header h3,
-.patterns-header h3 {
-    margin: 0;
-    font-size: 16px;
-    color: #24292e;
-}
-
 .ai-period-selector {
-    display: flex;
-    gap: 8px;
-}
-
-.predictions-actions,
-.topology-actions {
     display: flex;
     gap: 8px;
 }

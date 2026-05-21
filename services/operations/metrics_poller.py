@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
 
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
@@ -14,7 +13,6 @@ from core.observability.metrics import (
     WEBHOOK_MQ_GROUP_PENDING,
     WEBHOOK_MQ_STREAM_LENGTH,
     WEBHOOK_PROCESSING_STATUS_COUNT,
-    WEBHOOK_STUCK_STATUS_COUNT,
 )
 from core.redis_client import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
@@ -27,7 +25,7 @@ logger = logging.getLogger("webhook_service.metrics")
 async def refresh_all_metrics(*, policy: MetricsPollPolicy | None = None) -> None:
     """刷新系统指标。"""
     policy = policy or MetricsPollPolicy.from_config()
-    await _refresh_db_status_counts(policy=policy)
+    await _refresh_db_status_counts()
     await _refresh_mq_stats(policy=policy)
     await _refresh_db_event_count()
 
@@ -41,20 +39,9 @@ async def _refresh_db_event_count() -> None:
         logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)
 
 
-async def _refresh_db_status_counts(*, policy: MetricsPollPolicy | None = None) -> None:
-    policy = policy or MetricsPollPolicy.from_config()
-    known_statuses = (
-        "received",
-        "analyzing",
-        "retry",
-        "completed",
-        "failed",
-        "dead_letter",
-    )  # fmt: skip — persisted values kept for legacy rows and terminal audit
+async def _refresh_db_status_counts() -> None:
+    known_statuses = ("completed", "dead_letter")
     status_counts = dict.fromkeys(known_statuses, 0)
-    stuck_counts = dict.fromkeys(known_statuses, 0)
-
-    threshold = datetime.now() - timedelta(seconds=policy.stuck_threshold_seconds)
 
     async with session_scope() as session:
         result = await session.execute(
@@ -65,21 +52,8 @@ async def _refresh_db_status_counts(*, policy: MetricsPollPolicy | None = None) 
             if key in status_counts:
                 status_counts[key] = int(count or 0)
 
-        result = await session.execute(
-            select(WebhookEvent.processing_status, func.count())
-            .where(WebhookEvent.processing_status.in_(["received", "analyzing", "retry", "failed"]))
-            .where(WebhookEvent.created_at < threshold)
-            .group_by(WebhookEvent.processing_status)
-        )
-        for status, count in result.all():
-            key = str(status or "")
-            if key in stuck_counts:
-                stuck_counts[key] = int(count or 0)
-
     for status, count in status_counts.items():
         WEBHOOK_PROCESSING_STATUS_COUNT.labels(status=status).set(count)
-    for status, count in stuck_counts.items():
-        WEBHOOK_STUCK_STATUS_COUNT.labels(status=status).set(count)
 
 
 async def _refresh_mq_stats(*, policy: MetricsPollPolicy | None = None) -> None:

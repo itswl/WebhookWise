@@ -6,7 +6,7 @@ from services.runtime_config.runtime_access import get_runtime_config_meta, get_
 
 _Validator = Callable[[Any], bool]
 _CONFIG_SCHEMA: dict[str, tuple[str, str, _Validator | None]] = {
-    "forward_url": ("FORWARD_URL", "str", lambda x: str(x).startswith("http")),
+    "default_target_url": ("DEFAULT_FORWARD_TARGET_URL", "str", lambda x: str(x).startswith("http")),
     "enable_forward": ("ENABLE_FORWARD", "bool", None),
     "enable_ai_analysis": ("ENABLE_AI_ANALYSIS", "bool", None),
     "openai_api_key": ("OPENAI_API_KEY", "str", None),
@@ -65,8 +65,6 @@ def _parse_update_value(key: str, raw_value: Any, value_type: str, validator: _V
 
     text_value = str(raw_value).strip()
     if not text_value:
-        # 如果前端显式传了空字符串，我们应该允许覆盖为空（或删除配置），但如果是 API Key 等，我们要额外处理
-        # 为兼容已有逻辑，返回特殊标记以删除或覆盖。此处直接返回空字符串
         return "", ""
     if validator and not validator(text_value):
         raise ValueError(f"{key} 格式无效")
@@ -124,14 +122,6 @@ def get_config_sources() -> list[dict[str, object]]:
             }
         )
     return items
-
-
-def build_prompt_source() -> str:
-    if Config.ai.AI_USER_PROMPT:
-        return "environment"
-    if Config.ai.AI_USER_PROMPT_FILE:
-        return "file"
-    return "default"
 
 
 def runtime_config_enabled() -> bool:

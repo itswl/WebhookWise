@@ -33,7 +33,7 @@ from core.config import Config
 from core.logger import logger
 from db.session import init_engine, session_scope
 from models import DeepAnalysis
-from services.analysis.openclaw_poller import _poll_via_http
+from services.analysis.openclaw_poller import poll_openclaw_result_via_http
 
 
 async def find_failed_records(webhook_id=None, limit=None):
@@ -68,7 +68,7 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if not Config.openclaw.OPENCLAW_HTTP_API_URL:
             return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
 
-        result = await _poll_via_http(record.openclaw_session_key, retry_count=3)
+        result = await poll_openclaw_result_via_http(record.openclaw_session_key, retry_count=3)
 
         if result.get("status") == "error":
             return False, f"API 错误: {result.get('error')}"

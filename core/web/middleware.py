@@ -160,7 +160,7 @@ class TraceContextMiddleware:
             )
             raise
         finally:
-            if path not in {"/live", "/ready", "/health"} and not path.startswith("/static/"):
+            if path not in {"/live", "/ready"} and not path.startswith("/static/"):
                 duration_ms = int((time.perf_counter() - started_at) * 1000)
                 logger.info(
                     "[HTTP] 请求完成 method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",

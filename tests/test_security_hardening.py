@@ -128,7 +128,7 @@ async def test_security_headers_include_hsts() -> None:
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
-        response = await client.get("/health")
+        response = await client.get("/ready")
 
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
@@ -206,7 +206,7 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        policy=RemoteForwardPolicy(forward_url="", timeout_seconds=2),
+        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
         dependencies=RemoteForwardDependencies(Client(), Breaker(), validate_url),
     )
 
@@ -241,7 +241,7 @@ async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.
 
 
 @pytest.mark.asyncio
-async def test_manual_forward_accepts_legacy_forward_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import reanalysis
 
     event = SimpleNamespace(id=1, ai_analysis={"summary": "ok"}, forward_status=None)
@@ -270,7 +270,7 @@ async def test_manual_forward_accepts_legacy_forward_url_field(monkeypatch: pyte
 
     result = await reanalysis.manual_forward_webhook(
         1,
-        {"forward_url": "https://example.com/hook"},
+        {"target_url": "https://example.com/hook"},
         session=fake_session,  # type: ignore[arg-type]
     )
 
@@ -420,7 +420,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
     assert response.json()["message"] == "Webhook received and queued for processing"
     assert len(backpressure_calls) == 1
     assert len(enqueued) == 1
-    assert enqueued[0]["source"] == "prometheus"
+    assert enqueued[0]["source_name"] == "prometheus"
     assert json.loads(str(enqueued[0]["raw_body"])) == {"alertname": "canonical"}
 
 

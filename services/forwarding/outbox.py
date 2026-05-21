@@ -25,9 +25,9 @@ from core.observability.metrics import (
 from core.observability.tracing import set_span_error
 from core.observability.tracing import span as otel_span
 from db.session import session_scope
-from models import FailedForward, ForwardOutbox, WebhookEvent
+from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
-from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardDecision, ForwardOutboxStatus
+from services.webhooks.types import DeepAnalysisStatus, ForwardDecision, ForwardOutboxStatus
 
 logger = logging.getLogger("webhook_service.forward_outbox")
 
@@ -133,7 +133,7 @@ async def create_forward_outbox_records(
 
 
 async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
-    """Best-effort immediate dispatch; scheduled scanner is the durable fallback."""
+    """Dispatch immediately; the scheduled scanner picks up missed records."""
     if not outbox_ids:
         return
 
@@ -145,7 +145,7 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
         except Exception as e:  # noqa: PERF203
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
-            logger.warning("[ForwardOutbox] 即时调度失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
+            logger.warning("[ForwardOutbox] 即时调度失败 id=%s error=%s，将由扫描任务补扫", outbox_id, e)
 
 
 async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
@@ -156,7 +156,7 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
     except Exception as e:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
-        logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务兜底", outbox_id, e)
+        logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务补扫", outbox_id, e)
 
 
 def _expires_before(now: datetime, policy: ForwardOutboxPolicy) -> datetime | None:
@@ -192,12 +192,6 @@ async def _expire_outbox_if_old(
     if not expired:
         return False
     FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(expired.target_type or "unknown"), "expired").inc()
-    await _record_terminal_failed_forward(
-        session,
-        expired,
-        status=FailedForwardStatus.EXPIRED,
-        failure_reason="outbox_expired",
-    )
     logger.warning(
         "[ForwardOutbox] 转发意图已过期 id=%s event_id=%s age_limit=%ss",
         expired.id,
@@ -374,12 +368,6 @@ async def _finalize_outbox_failure(
         record.updated_at = now
         if record.attempts >= record.max_attempts:
             record.status = ForwardOutboxStatus.EXHAUSTED
-            await _record_terminal_failed_forward(
-                session,
-                record,
-                status=FailedForwardStatus.EXHAUSTED,
-                failure_reason="outbox_exhausted",
-            )
             logger.warning(
                 "[ForwardOutbox] 转发耗尽 id=%s attempts=%s/%s error=%s",
                 record.id,
@@ -399,33 +387,6 @@ async def _finalize_outbox_failure(
         logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
     if retry_outbox_id is not None and retry_delay is not None:
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
-
-
-async def _record_terminal_failed_forward(
-    session: AsyncSession,
-    record: ForwardOutbox,
-    *,
-    status: FailedForwardStatus,
-    failure_reason: str,
-) -> None:
-    failed = FailedForward(
-        webhook_event_id=record.webhook_event_id,
-        forward_rule_id=record.forward_rule_id,
-        target_url=record.target_url,
-        target_type=record.target_type,
-        status=status,
-        failure_reason=failure_reason,
-        error_message=record.last_error,
-        retry_count=record.attempts,
-        max_retries=record.max_attempts,
-        next_retry_at=None,
-        last_retry_at=record.last_attempt_at,
-        forward_data=record.forward_data,
-        forward_headers=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
-    session.add(failed)
 
 
 async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardOutboxPolicy, limit: int) -> int:
@@ -456,13 +417,6 @@ async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: 
         .returning(ForwardOutbox)
     )
     expired_records = list((await session.execute(stmt)).scalars().all())
-    for record in expired_records:
-        await _record_terminal_failed_forward(
-            session,
-            record,
-            status=FailedForwardStatus.EXPIRED,
-            failure_reason="outbox_expired",
-        )
     if expired_records:
         for record in expired_records:
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "expired").inc()

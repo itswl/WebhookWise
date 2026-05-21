@@ -52,7 +52,7 @@ class _DuplicateStatus:
 
 @dataclass(frozen=True, slots=True)
 class _RequestIdResolution:
-    event_id: int | None
+    existing_event_id: int | None
     skip_duplicate_lookup: bool
     completed_result: SaveWebhookResult | None = None
 
@@ -123,78 +123,13 @@ def _resolve_analysis_for_duplicate(
     return final_analysis, final_importance
 
 
-async def replay_dead_letter(session: AsyncSession, event_id: int) -> bool:
-    stmt = (
-        update(WebhookEvent)
-        .where(WebhookEvent.id == event_id, WebhookEvent.processing_status == WebhookProcessingStatus.DEAD_LETTER)
-        .values(processing_status=WebhookProcessingStatus.RECEIVED, retry_count=0)
-        .returning(WebhookEvent.id)
-    )
-    res = await session.execute(stmt)
-    return res.scalar_one_or_none() is not None
-
-
-async def requeue_stuck_event(session: AsyncSession, event_id: int) -> bool:
-    stmt = (
-        update(WebhookEvent)
-        .where(
-            WebhookEvent.id == event_id,
-            WebhookEvent.processing_status.in_(
-                [WebhookProcessingStatus.RECEIVED, WebhookProcessingStatus.ANALYZING, WebhookProcessingStatus.FAILED]
-            ),
-        )
-        .values(processing_status=WebhookProcessingStatus.RECEIVED)
-    )
-    res = await session.execute(stmt)
-    return bool(res.rowcount)
-
-
-async def mark_webhook_suppressed(
-    *,
-    event_id: int,
-    request_id: str | None = None,
-    data: WebhookData,
-    source: str,
-    raw_payload: bytes | None,
-    headers: HeadersDict | None,
-    client_ip: str | None,
-    ai_analysis: AnalysisResult,
-    alert_hash: str,
-) -> None:
-    """Persist a storm-suppressed event without running duplicate queries."""
-    safe_headers = redact_headers(headers)
-    async with session_scope() as session:
-        event = await session.get(WebhookEvent, event_id)
-        if not event:
-            return
-        event.fill_fields(
-            source=source,
-            request_id=request_id,
-            client_ip=client_ip,
-            parsed_data=data,
-            alert_hash=alert_hash,
-            ai_analysis=ai_analysis,
-            importance=ai_analysis.get("importance") if ai_analysis else None,
-            forward_status="skipped",
-            is_duplicate=True,
-            duplicate_of=None,
-            duplicate_count=1,
-            beyond_window=False,
-            headers=safe_headers,
-            raw_payload=raw_payload,
-            processing_status=WebhookProcessingStatus.COMPLETED,
-            next_retry_at=None,
-        )
-        await session.flush()
-
-
 async def _save_duplicate_event(
     session: AsyncSession,
     *,
     payload: _WebhookSaveInput,
     duplicate_status: _DuplicateStatus,
     reanalyzed: bool,
-    event_id: int | None = None,
+    existing_event_id: int | None = None,
 ) -> SaveWebhookResult | None:
     original_event = duplicate_status.original_event
     original_event_id = duplicate_status.original_event_id
@@ -220,8 +155,8 @@ async def _save_duplicate_event(
         final_ai_analysis = payload.ai_analysis or {}
         final_importance = final_ai_analysis.get("importance") if final_ai_analysis else None
 
-    if event_id is not None:
-        dup_event = await session.get(WebhookEvent, event_id)
+    if existing_event_id is not None:
+        dup_event = await session.get(WebhookEvent, existing_event_id)
         if dup_event:
             dup_event.fill_fields(
                 source=payload.source,
@@ -374,17 +309,16 @@ async def _resolve_request_id(
     session: AsyncSession,
     *,
     request_id: str | None,
-    event_id: int | None,
     skip_duplicate_lookup: bool,
 ) -> _RequestIdResolution:
-    if event_id is not None or not request_id:
-        return _RequestIdResolution(event_id=event_id, skip_duplicate_lookup=skip_duplicate_lookup)
+    if not request_id:
+        return _RequestIdResolution(existing_event_id=None, skip_duplicate_lookup=skip_duplicate_lookup)
 
     existing = (
         await session.execute(sqlalchemy.select(WebhookEvent).where(WebhookEvent.request_id == request_id))
     ).scalar_one_or_none()
     if existing is None:
-        return _RequestIdResolution(event_id=None, skip_duplicate_lookup=skip_duplicate_lookup)
+        return _RequestIdResolution(existing_event_id=None, skip_duplicate_lookup=skip_duplicate_lookup)
 
     if existing.processing_status == WebhookProcessingStatus.COMPLETED:
         logger.info(
@@ -393,7 +327,7 @@ async def _resolve_request_id(
             existing.id,
         )
         return _RequestIdResolution(
-            event_id=existing.id,
+            existing_event_id=existing.id,
             skip_duplicate_lookup=True,
             completed_result=SaveWebhookResult(
                 existing.id,
@@ -409,7 +343,7 @@ async def _resolve_request_id(
         existing.id,
         existing.processing_status,
     )
-    return _RequestIdResolution(event_id=existing.id, skip_duplicate_lookup=True)
+    return _RequestIdResolution(existing_event_id=existing.id, skip_duplicate_lookup=True)
 
 
 async def _resolve_duplicate_status(
@@ -453,7 +387,6 @@ async def save_webhook_data(
     original_event_id: int | None = None,
     beyond_window: bool = False,
     reanalyzed: bool = False,
-    event_id: int | None = None,
     skip_duplicate_lookup: bool = False,
 ) -> SaveWebhookResult:
     if alert_hash is None:
@@ -476,7 +409,6 @@ async def save_webhook_data(
                 original_event_id=original_event_id,
                 beyond_window=beyond_window,
                 reanalyzed=reanalyzed,
-                event_id=event_id,
                 skip_duplicate_lookup=skip_duplicate_lookup,
             )
     except Exception:
@@ -500,7 +432,6 @@ async def save_webhook_data_in_session(
     original_event_id: int | None = None,
     beyond_window: bool = False,
     reanalyzed: bool = False,
-    event_id: int | None = None,
     skip_duplicate_lookup: bool = False,
 ) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
@@ -520,13 +451,12 @@ async def save_webhook_data_in_session(
     request_resolution = await _resolve_request_id(
         session,
         request_id=request_id,
-        event_id=event_id,
         skip_duplicate_lookup=skip_duplicate_lookup,
     )
     if request_resolution.completed_result is not None:
         return request_resolution.completed_result
 
-    event_id = request_resolution.event_id
+    existing_event_id = request_resolution.existing_event_id
     duplicate_status = await _resolve_duplicate_status(
         session,
         payload=payload,
@@ -542,14 +472,14 @@ async def save_webhook_data_in_session(
             payload=payload,
             duplicate_status=duplicate_status,
             reanalyzed=reanalyzed,
-            event_id=event_id,
+            existing_event_id=existing_event_id,
         )
         if saved:
             return saved
-    if event_id is not None:
+    if existing_event_id is not None:
         return await _update_existing_event(
             session,
-            event_id=event_id,
+            event_id=existing_event_id,
             payload=payload,
         )
     return await _save_new_event(

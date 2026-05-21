@@ -138,8 +138,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
-        'forward-rules': 'forwardRulesTab',
-        'failed-forwards': 'failedForwardsTab'
+        'forward-rules': 'forwardRulesTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -176,14 +175,6 @@ function switchMainTab(tabId) {
             }
             if (typeof loadForwardRules === 'function') {
                 loadForwardRules();
-            }
-            break;
-        case 'failed-forwards':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof FailedForwardsModule !== 'undefined') {
-                FailedForwardsModule.load();
             }
             break;
     }
@@ -231,7 +222,7 @@ async function openConfigModal() {
 
         if (result.success) {
             const c = result.data;
-            document.getElementById('configForwardUrl').value = c.forward_url || '';
+            document.getElementById('configForwardUrl').value = c.default_target_url || '';
             document.getElementById('configOpenaiApiKey').value = c.openai_api_key === '已配置' ? '' : c.openai_api_key || '';
             document.getElementById('configOpenaiApiUrl').value = c.openai_api_url || '';
             document.getElementById('configOpenaiModel').value = c.openai_model || '';
@@ -291,7 +282,7 @@ async function saveConfig() {
 
         // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
         if (forwardUrl && forwardUrl.trim()) {
-            data.forward_url = forwardUrl.trim();
+            data.default_target_url = forwardUrl.trim();
         }
         if (apiKey && apiKey.trim()) {
             data.openai_api_key = apiKey.trim();

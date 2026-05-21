@@ -1177,7 +1177,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (webhook_status) (webhook_processing_status_count) or max by (webhook_status) (webhook_processing_status_count_ratio) or vector(0)",
+          "expr": "max by (webhook_status) (webhook_processing_status_count) or vector(0)",
           "legendFormat": "{{webhook_status}}",
           "range": true,
           "refId": "A"
@@ -1282,13 +1282,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (webhook_status) (webhook_stuck_status_count) or max by (webhook_status) (webhook_stuck_status_count_ratio) or vector(0)",
+          "expr": "max by (webhook_status) (webhook_processing_status_count) or vector(0)",
           "legendFormat": "{{webhook_status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "卡住任务分布 (Stuck Status)",
+      "title": "处理状态分布 (Processing Status)",
       "type": "timeseries"
     },
     {

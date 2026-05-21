@@ -91,25 +91,6 @@ def build_feishu_card(
     }
 
 
-def build_dead_letter_card(event_id: int, retry_count: int, error: Exception) -> WebhookData:
-    """Build a Feishu/Lark interactive card for dead-letter notifications."""
-    return {
-        "msg_type": "interactive",
-        "card": {
-            "header": {"title": {"tag": "plain_text", "content": "🚨 Dead Letter 告警"}, "template": "red"},
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**event_id**: {event_id}\n**重试**: {retry_count}\n**详情**: {str(error)[:200]}",
-                    },
-                }
-            ],
-        },
-    }
-
-
 def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degraded: bool = False) -> WebhookData:
     """Build a Feishu/Lark interactive card for AI error/degradation alerts."""
     title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"

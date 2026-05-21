@@ -1,25 +1,18 @@
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
 
 import orjson
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from core.compression import decompress_payload_async
 from db.session import session_scope
-from models import DeepAnalysis, ForwardRule, WebhookEvent
+from models import ForwardRule, WebhookEvent
+from schemas import forward_rule_to_dict
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
-from services.webhooks.types import WebhookProcessingStatus
-
-LEGACY_EVENT_CLAIM_STATUSES = (
-    WebhookProcessingStatus.RECEIVED.value,
-    WebhookProcessingStatus.RETRY.value,
-    WebhookProcessingStatus.FAILED.value,
-)
 
 
 @dataclass(slots=True)
@@ -103,44 +96,6 @@ async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None
     return parsed_data, raw_text
 
 
-async def claim_legacy_event_for_processing(event_id: int) -> EventEnvelope | None:
-    """Claim a legacy DB-backed event and return its payload.
-
-    The primary ingest path no longer writes a DB row before analysis. This
-    exists for old rows, manual replay, and recovery paths that still carry an
-    ``event_id``.
-    """
-    async with session_scope() as sess:
-        stmt = (
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .where(WebhookEvent.processing_status.in_(LEGACY_EVENT_CLAIM_STATUSES))
-            .values(
-                processing_status=WebhookProcessingStatus.ANALYZING.value,
-                failure_reason=None,
-                error_message=None,
-                next_retry_at=None,
-            )
-            .returning(WebhookEvent)
-        )
-        res = await sess.execute(stmt)
-        event = res.scalar_one_or_none()
-        if not event:
-            return None
-        headers = cast(dict[str, Any], event.headers or {})
-        payload, raw_text = await load_event_payload(event)
-        raw_body = raw_text.encode("utf-8") if raw_text else b""
-        event_ts = event.timestamp.isoformat() if event.timestamp else None
-        return EventEnvelope(
-            headers=headers,
-            payload=payload,
-            raw_body=raw_body,
-            source=event.source,
-            event_ts=event_ts,
-            request_id=event.request_id,
-        )
-
-
 async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minutes: int) -> list[AlertContext]:
     async with session_scope() as session:
         stmt = (
@@ -169,7 +124,7 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
 
 
 def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
-    raw = cast(dict[str, Any], rule.to_dict())
+    raw = forward_rule_to_dict(rule)
     return ForwardRuleSnapshot(
         id=rule.id,
         name=rule.name,
@@ -192,94 +147,3 @@ async def list_enabled_forward_rules(session: Any | None = None) -> list[Forward
         return await _list(session)
     async with session_scope() as sess:
         return await _list(sess)
-
-
-async def create_openclaw_analysis(
-    webhook_event_id: int,
-    *,
-    run_id: str,
-    session_key: str,
-) -> int:
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay, schedule_openclaw_poll
-
-    initial_poll_delay = compute_openclaw_poll_delay(0)
-    analysis_id: int
-    async with session_scope() as sess:
-        record = DeepAnalysis(
-            webhook_event_id=webhook_event_id,
-            engine="openclaw",
-            openclaw_run_id=run_id,
-            openclaw_session_key=session_key,
-            status="pending",
-            poll_attempts=0,
-            next_poll_at=datetime.now() + timedelta(seconds=initial_poll_delay),
-        )
-        sess.add(record)
-        await sess.flush()
-        analysis_id = record.id
-    with contextlib.suppress(Exception):
-        await schedule_openclaw_poll(analysis_id, initial_poll_delay)
-    return analysis_id
-
-
-async def mark_last_notified(event_id: int) -> None:
-    async with session_scope() as sess:
-        await sess.execute(
-            update(WebhookEvent).where(WebhookEvent.id == event_id).values(last_notified_at=datetime.now())
-        )
-
-
-async def mark_retry(
-    event_id: int,
-    *,
-    max_retries: int,
-    error_message: str,
-    initial_delay: int,
-    max_delay: int,
-    multiplier: float,
-) -> tuple[int, int] | None:
-    from services.operations.taskiq_retry_scheduler import compute_backoff_delay
-
-    async with session_scope() as sess:
-        res = await sess.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .where(WebhookEvent.retry_count < max_retries)
-            .values(
-                processing_status=WebhookProcessingStatus.RETRY.value,
-                retry_count=WebhookEvent.retry_count + 1,
-                failure_reason="retry_err",
-                error_message=error_message[:2000],
-            )
-            .returning(WebhookEvent.retry_count)
-        )
-        row = res.first()
-        if not row:
-            return None
-        retry_count = int(row[0] or 0)
-        delay = compute_backoff_delay(
-            retry_count,
-            initial_delay=initial_delay,
-            max_delay=max_delay,
-            multiplier=multiplier,
-        )
-        await sess.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .values(next_retry_at=datetime.now() + timedelta(seconds=delay))
-        )
-        return retry_count, delay
-
-
-async def mark_dead_letter(event_id: int, *, retryable: bool, error_message: str) -> None:
-    async with session_scope() as sess:
-        await sess.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == event_id)
-            .values(
-                processing_status=WebhookProcessingStatus.DEAD_LETTER.value,
-                failure_reason="retry_exhausted" if retryable else "fat_err",
-                error_message=error_message[:2000],
-                next_retry_at=None,
-            )
-        )

@@ -1,8 +1,4 @@
-"""AI analysis orchestrator.
-
-This module intentionally remains the public compatibility facade for callers
-that import analysis helpers from ``services.analysis.ai_analyzer``.
-"""
+"""AI analysis orchestrator."""
 
 import asyncio
 import time
@@ -42,7 +38,6 @@ from services.webhooks.types import AnalysisResult, WebhookData
 
 __all__ = [
     "_call_ai_with_retry",
-    "_get_instructor_client",
     "_get_instructor_client_async",
     "_resolve_prompt_path",
     "analyze_webhook_with_ai",
@@ -81,10 +76,6 @@ def __getattr__(name: str) -> Any:
     if name in {"_openai_client", "_instructor_client"}:
         return getattr(_llm_client, name)
     raise AttributeError(name)
-
-
-def _get_instructor_client() -> Any:
-    return _llm_client._get_instructor_client()
 
 
 async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None = None) -> Any:
@@ -305,19 +296,3 @@ async def analyze_webhook_with_ai(
             )
         await _send_ai_error_alert(webhook_data, error_reason, is_degraded=False)
         raise
-
-
-async def _send_openclaw_failure_notification(webhook_data: WebhookData, source: str, error: str) -> None:
-    from services.operations.deep_analysis_notifications import send_deep_analysis_failure_notification
-
-    await send_deep_analysis_failure_notification(
-        {
-            "id": webhook_data.get("id", 0) or 0,
-            "webhook_event_id": int(webhook_data.get("id", 0) or 0),
-            "engine": "openclaw",
-            "analysis_result": {"root_cause": error, "impact": "分析失败，无法评估影响范围"},
-            "duration_seconds": 0,
-            "source": source,
-        },
-        error,
-    )

@@ -23,7 +23,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path == "/health":
+        if path == "/ready":
             self._send_json(200, {"ok": True})
             return
         if path == "/requests":

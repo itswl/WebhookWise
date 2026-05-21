@@ -1,40 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from adapters.summary_extractors import extract_summary_fields
+from core.compression import decompress_payload
+
 from .base import APIResponse, CursorPaginationInfo
 
 DuplicateType = Literal["new", "within_window", "beyond_window"]
-
-
-class WebhookEventFull(BaseModel):
-    """完整 Webhook 事件"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    request_id: str | None = None
-    source: str
-    client_ip: str | None = None
-    timestamp: str | None = None
-    raw_payload: str | None = None
-    headers: dict[str, Any] | None = None
-    parsed_data: dict[str, Any] | None = None
-    alert_hash: str | None = None
-    ai_analysis: dict[str, Any] | None = None
-    importance: str | None = None
-    processing_status: str
-    forward_status: str | None = None
-    is_duplicate: bool
-    duplicate_of: int | None = None
-    duplicate_count: int
-    beyond_window: bool
-    duplicate_type: DuplicateType = "new"
-    created_at: str | None = None
-    updated_at: str | None = None
-    prev_alert_id: int | None = None
 
 
 class WebhookEventSummary(BaseModel):
@@ -87,5 +63,47 @@ class HealthResponse(APIResponse[HealthData]):
     pass
 
 
-class WebhookDetailResponse(APIResponse[WebhookEventFull]):
-    pass
+def _iso_or_none(value: object) -> str | None:
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
+def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
+    ai_analysis = getattr(event, "ai_analysis", None)
+    parsed_data = getattr(event, "parsed_data", None)
+    source = str(getattr(event, "source", ""))
+    is_duplicate = bool(getattr(event, "is_duplicate", False))
+    beyond_window = bool(getattr(event, "beyond_window", False))
+    duplicate_type: DuplicateType = "new"
+    if is_duplicate:
+        duplicate_type = "beyond_window" if beyond_window else "within_window"
+    return {
+        "id": event.id,
+        "request_id": getattr(event, "request_id", None),
+        "source": source,
+        "client_ip": getattr(event, "client_ip", None),
+        "timestamp": _iso_or_none(getattr(event, "timestamp", None)),
+        "importance": getattr(event, "importance", None),
+        "is_duplicate": is_duplicate,
+        "duplicate_of": getattr(event, "duplicate_of", None),
+        "duplicate_count": int(getattr(event, "duplicate_count", 0) or 0),
+        "beyond_window": beyond_window,
+        "duplicate_type": duplicate_type,
+        "forward_status": getattr(event, "forward_status", None),
+        "summary": ai_analysis.get("summary", "") if isinstance(ai_analysis, dict) else None,
+        "alert_info": extract_summary_fields(source, parsed_data),
+        "created_at": _iso_or_none(getattr(event, "created_at", None)),
+        "prev_alert_id": getattr(event, "prev_alert_id", None),
+    }
+
+
+def webhook_event_to_full_dict(event: Any) -> dict[str, Any]:
+    return {
+        **webhook_event_to_summary_dict(event),
+        "raw_payload": decompress_payload(getattr(event, "raw_payload", None)),
+        "headers": getattr(event, "headers", None),
+        "parsed_data": getattr(event, "parsed_data", None),
+        "alert_hash": getattr(event, "alert_hash", None),
+        "ai_analysis": getattr(event, "ai_analysis", None),
+        "processing_status": getattr(event, "processing_status", None),
+        "updated_at": _iso_or_none(getattr(event, "updated_at", None)),
+    }

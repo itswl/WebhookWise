@@ -1,8 +1,7 @@
-"""Compatibility facade for forwarding APIs.
+"""Forwarding service facade.
 
 Implementation lives in focused modules:
 - rules.py for forwarding rules
-- failed_records.py for failed-forward audit records
 - remote.py for generic webhook delivery
 - openclaw.py for OpenClaw triggers
 """
@@ -15,20 +14,11 @@ from core.http_client import get_http_client
 from core.url_security import validate_outbound_url
 from services.forwarding.circuit_breakers import forward_cb, openclaw_cb
 from services.forwarding.dependencies import OpenClawForwardDependencies, RemoteForwardDependencies
-from services.forwarding.failed_records import (
-    cleanup_old_success_records,
-    delete_failed_forward,
-    get_failed_forward_stats,
-    get_failed_forwards,
-    manual_retry_reset,
-    record_failed_forward,
-)
 from services.forwarding.openclaw import (
     _build_openclaw_prompt_payload,
 )
 from services.forwarding.policies import (
     ForwardOutboxPolicy,
-    ForwardRetryPolicy,
     OpenClawTriggerPolicy,
     RemoteForwardPolicy,
 )
@@ -50,7 +40,7 @@ async def forward_to_remote(
     http_client: httpx.AsyncClient | None = None,
     policy: RemoteForwardPolicy | None = None,
 ) -> ForwardResult:
-    """Compatibility wrapper that preserves historical monkeypatch points."""
+    """Forward to a generic webhook target using service-level dependencies."""
     from services.forwarding import remote
 
     dependencies = RemoteForwardDependencies(
@@ -77,7 +67,7 @@ async def post_json_to_remote(
     policy: RemoteForwardPolicy | None = None,
     validate_target: bool = True,
 ) -> ForwardResult:
-    """Compatibility wrapper for raw JSON forwarding."""
+    """Post raw JSON to a validated remote target."""
     from services.forwarding import remote
 
     dependencies = RemoteForwardDependencies(
@@ -102,7 +92,7 @@ async def forward_to_openclaw(
     policy: OpenClawTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> ForwardResult:
-    """Compatibility wrapper that preserves historical monkeypatch points."""
+    """Trigger OpenClaw analysis with service-level dependencies."""
     from services.forwarding import openclaw
 
     dependencies = OpenClawForwardDependencies(
@@ -127,7 +117,7 @@ async def analyze_with_openclaw(
     http_client: httpx.AsyncClient | None = None,
     sleep: Any | None = None,
 ) -> dict[str, Any]:
-    """Compatibility wrapper that preserves historical monkeypatch points."""
+    """Run OpenClaw deep analysis with service-level dependencies."""
     from services.forwarding import openclaw
 
     dependencies = OpenClawForwardDependencies(
@@ -146,28 +136,21 @@ async def analyze_with_openclaw(
 
 
 __all__ = [
-    "ForwardRetryPolicy",
     "ForwardOutboxPolicy",
     "OpenClawTriggerPolicy",
     "RemoteForwardPolicy",
     "_build_openclaw_prompt_payload",
     "analyze_with_openclaw",
-    "cleanup_old_success_records",
     "create_forward_rule",
-    "delete_failed_forward",
     "delete_forward_rule",
     "forward_cb",
     "forward_to_openclaw",
     "forward_to_remote",
-    "get_failed_forward_stats",
-    "get_failed_forwards",
     "get_forward_rule",
     "get_forward_rules",
     "get_http_client",
-    "manual_retry_reset",
     "openclaw_cb",
     "post_json_to_remote",
-    "record_failed_forward",
     "update_forward_rule",
     "validate_outbound_url",
 ]

@@ -21,8 +21,3 @@ class CursorPaginationInfo(BaseModel):
     has_more: bool = False
     limit: int | None = None
     page_size: int | None = None
-
-
-class ErrorResponse(BaseModel):
-    success: bool = False
-    error: str

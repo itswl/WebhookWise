@@ -4,7 +4,7 @@ import contextlib
 import hashlib
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import orjson
 from sqlalchemy import (
@@ -22,17 +22,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from adapters.normalized import extract_alert_identity
-from adapters.summary_extractors import extract_summary_fields
-from core.compression import compress_payload, decompress_payload
-from db.session import Base, SerializerMixin
+from core.compression import compress_payload
+from db.session import Base
 
 _logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from pydantic import BaseModel
 
-
-class WebhookEvent(Base, SerializerMixin):
+class WebhookEvent(Base):
     """Webhook 事件模型"""
 
     __tablename__ = "webhook_events"
@@ -94,10 +90,8 @@ class WebhookEvent(Base, SerializerMixin):
         valid_fields = set(type(self).__mapper__.column_attrs.keys())
         unknown_fields = sorted(k for k in kwargs if k not in valid_fields)
         if unknown_fields:
-            _logger.warning("忽略未知 WebhookEvent 字段: %s", ",".join(unknown_fields))
+            raise ValueError(f"未知 WebhookEvent 字段: {','.join(unknown_fields)}")
         for k, v in kwargs.items():
-            if k not in valid_fields:
-                continue
             if k == "raw_payload" and isinstance(v, bytes):
                 with contextlib.suppress(Exception):
                     v = compress_payload(v.decode("utf-8"))
@@ -110,44 +104,9 @@ class WebhookEvent(Base, SerializerMixin):
             self.created_at = datetime.now()
         self.updated_at = datetime.now()
 
-    def to_summary_dict(self) -> dict[str, object]:
-        ai_analysis = self.ai_analysis
-        summary = ai_analysis.get("summary", "") if ai_analysis else None
-        alert_info = extract_summary_fields(self.source, self.parsed_data)
 
-        res = super().to_dict()
-        res.update(
-            {
-                "summary": summary,
-                "alert_info": alert_info,
-                "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-                "created_at": self.created_at.isoformat() if self.created_at else None,
-            }
-        )
-        return res
-
-    def to_dict(self, schema_cls: type[BaseModel] | None = None) -> dict[str, object]:
-        if schema_cls:
-            return super().to_dict(schema_cls)
-
-        res = super().to_dict()
-        res["raw_payload"] = decompress_payload(self.raw_payload)
-
-        for k in ["timestamp", "created_at", "updated_at", "last_notified_at", "next_retry_at"]:
-            val = getattr(self, k, None)
-            if isinstance(val, datetime):
-                res[k] = val.isoformat()
-
-        # 计算字段
-        is_dup = self.is_duplicate
-        beyond = self.beyond_window
-        res["duplicate_type"] = ("beyond_window" if beyond else "within_window") if is_dup else "new"
-
-        return res
-
-
-class ArchivedWebhookEvent(Base, SerializerMixin):
-    """已归档的 Webhook 事件模型（历史备份）"""
+class ArchivedWebhookEvent(Base):
+    """Webhook 事件归档表。"""
 
     __tablename__ = "archived_webhook_events"
 

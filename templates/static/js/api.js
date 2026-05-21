@@ -74,27 +74,16 @@ const API = {
      * @param {object} params - 查询参数
      * @param {number} params.page - 页码
      * @param {number} params.page_size - 每页数量
-     * @param {string} params.fields - 返回字段（summary 或 all）
+     * @param {number} params.cursor - 下一页游标
      * @returns {Promise<object>} 告警列表数据
      */
     async getWebhooks(params = {}) {
-        if (params.use_cursor || params.cursor_id !== undefined || params.limit) {
-            const queryParams = new URLSearchParams();
-            const limit = params.limit || params.page_size || 100;
-            queryParams.append('page_size', limit);
-            if (params.cursor_id !== null && params.cursor_id !== undefined) queryParams.append('cursor_id', params.cursor_id);
-            if (params.fields) queryParams.append('fields', params.fields);
-            if (params.importance) queryParams.append('importance', params.importance);
-            if (params.source) queryParams.append('source', params.source);
-
-            const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return await response.json();
-        }
-
         const queryParams = new URLSearchParams();
+        if (params.cursor !== null && params.cursor !== undefined) queryParams.append('cursor', params.cursor);
         if (params.page_size) queryParams.append('page_size', params.page_size);
-        if (params.fields) queryParams.append('fields', params.fields);
+        if (params.page) queryParams.append('page', params.page);
+        if (params.importance) queryParams.append('importance', params.importance);
+        if (params.source) queryParams.append('source', params.source);
 
         const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);

@@ -19,6 +19,7 @@ logs/
 *.db
 webhooks_data/
 postgres_data/
+redis_data/
 
 # Temporary and backup files
 *.sh~

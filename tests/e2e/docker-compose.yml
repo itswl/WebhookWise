@@ -41,7 +41,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:9000/health').read()",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9000/ready').read()",
         ]
       interval: 2s
       timeout: 3s
@@ -64,7 +64,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:9001/health').read()",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9001/ready').read()",
         ]
       interval: 2s
       timeout: 3s
@@ -114,8 +114,8 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
-      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
+      ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
     ports:
@@ -137,7 +137,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready').read()",
         ]
       interval: 5s
       timeout: 5s
@@ -167,8 +167,8 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
-      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
+      ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
     depends_on:
@@ -206,8 +206,8 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      FORWARD_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
-      ALLOW_PRIVATE_FORWARD_URLS: "true"
+      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
+      ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
     depends_on:

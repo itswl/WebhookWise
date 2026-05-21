@@ -1,9 +1,4 @@
-"""Application resource context.
-
-The context is the explicit owner for process-wide resources. Existing module
-helpers still exist for compatibility, but new lifecycle paths should pass this
-object around or store it on ``app.state``.
-"""
+"""Application resource context."""
 
 from __future__ import annotations
 

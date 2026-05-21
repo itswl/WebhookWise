@@ -1,6 +1,6 @@
 """
 Admin and Management API Routes.
-Handles system configuration, prompt management, and incident recovery (Dead Letter / Stuck Events).
+Handles system configuration, prompt management, and dead-letter replay.
 """
 
 from typing import Any, Literal
@@ -13,6 +13,7 @@ from api import _fail, _ok
 from core.auth import verify_admin_write
 from core.logger import logger
 from db.session import get_db_session
+from models import WebhookEvent
 from schemas import (
     ConfigResponse,
     ConfigSourcesResponse,
@@ -22,8 +23,6 @@ from schemas import (
     PromptReloadResponse,
     ReplayAllResponse,
     ReplayResponse,
-    StuckEventListResponse,
-    StuckEventRequeueResponse,
 )
 from services.analysis.ai_analyzer import (
     get_prompt_source,
@@ -40,11 +39,8 @@ from services.runtime_config.config_service import (
     runtime_config_enabled,
     save_config_updates,
 )
-from services.webhooks.command_service import (
-    replay_dead_letter,
-    requeue_stuck_event,
-)
-from services.webhooks.query_service import count_dead_letters, list_dead_letters, list_stuck_events
+from services.webhooks.query_service import count_dead_letters, list_dead_letters
+from services.webhooks.repository import load_event_payload
 
 admin_router = APIRouter()
 PromptKind = Literal["user", "deep_analysis"]
@@ -161,7 +157,21 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
         return _fail(str(e), 500)
 
 
-# ── Dead Letter & Stuck Events ──────────────────────────────────────────────────────────
+# ── Dead Letter ───────────────────────────────────────────────────────────────
+
+
+async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
+    headers = {str(k): str(v) for k, v in dict(event.headers or {}).items()}
+    _, raw_body = await load_event_payload(event)
+    await process_webhook_task.kiq(
+        source_name=event.source or "unknown",
+        raw_headers=headers,
+        raw_body=raw_body,
+        client_ip=event.client_ip or "admin-replay",
+        request_id=event.request_id,
+        received_at=event.timestamp.isoformat() if event.timestamp else None,
+        ingest_retry_count=max(0, int(event.retry_count or 0)),
+    )
 
 
 @admin_router.get("/api/admin/dead-letters", response_model=DeadLetterListResponse)
@@ -186,54 +196,15 @@ async def get_dead_letters_endpoint(
 )
 async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     try:
-        updated = await replay_dead_letter(session, event_id)
-        if not updated:
+        event = await session.get(WebhookEvent, event_id)
+        if not event or event.processing_status != "dead_letter":
             logger.warning("[Admin] dead_letter 重放失败，状态不匹配或事件不存在 event_id=%s", event_id)
             return _fail(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
-        await session.commit()
-        await process_webhook_task.kiq(event_id=event_id)
+        await _enqueue_dead_letter_event(event)
         logger.info("[Admin] dead_letter 已重放 event_id=%s", event_id)
         return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
         logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
-        return _fail(str(e), 500)
-
-
-@admin_router.get("/api/admin/stuck-events", response_model=StuckEventListResponse)
-async def get_stuck_events_endpoint(
-    status: str = Query("", alias="status"),
-    older_than_seconds: int = Query(300, ge=0),
-    limit: int = Query(50, ge=1, le=500),
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    statuses = [s for s in (status or "").split(",") if s.strip()]
-    try:
-        items = await list_stuck_events(
-            session, statuses=statuses or None, older_than_seconds=older_than_seconds, limit=limit
-        )
-        return _ok(items, 200)
-    except Exception as e:
-        logger.error("查询 stuck-events 失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
-
-
-@admin_router.post(
-    "/api/admin/stuck-events/{event_id}/requeue",
-    response_model=StuckEventRequeueResponse,
-    dependencies=[Depends(verify_admin_write)],
-)
-async def requeue_single_stuck_event(event_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
-    try:
-        updated = await requeue_stuck_event(session, event_id)
-        if not updated:
-            logger.warning("[Admin] stuck-event 重新入队失败，状态不匹配或事件不存在 event_id=%s", event_id)
-            return _fail(f"事件 {event_id} 不存在或状态不可重放", 404)
-        await session.commit()
-        await process_webhook_task.kiq(event_id=event_id, client_ip="admin-requeue")
-        logger.info("[Admin] stuck-event 已重新入队 event_id=%s", event_id)
-        return _ok(http_status=200, message=f"事件 {event_id} 已重新入队", event_id=event_id)
-    except Exception as e:
-        logger.error("重放 stuck-event 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
         return _fail(str(e), 500)
 
 
@@ -251,11 +222,10 @@ async def replay_all_dead_letters(
         replayed_ids = []
         for item in items:
             eid = item["id"]
-            if await replay_dead_letter(session, eid):
+            event = await session.get(WebhookEvent, eid)
+            if event and event.processing_status == "dead_letter":
                 replayed_ids.append(eid)
-        await session.commit()
-        for eid in replayed_ids:
-            await process_webhook_task.kiq(event_id=eid)
+                await _enqueue_dead_letter_event(event)
         logger.info("[Admin] 批量重放 dead_letter 完成 replayed=%s event_ids=%s", len(replayed_ids), replayed_ids)
         return _ok(
             http_status=200,

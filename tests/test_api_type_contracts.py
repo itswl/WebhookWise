@@ -33,7 +33,7 @@ async def session(monkeypatch):
 
 async def test_webhooks_cursor_prev_alert_timestamp(session):
     from models import WebhookEvent
-    from services.webhooks.query_service import list_webhook_summaries_cursor
+    from services.webhooks.query_service import list_webhook_summaries
 
     t0 = datetime(2026, 1, 1, 0, 0, 0)
     t1 = datetime(2026, 1, 1, 0, 1, 0)
@@ -65,7 +65,7 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
     session.add_all([e1, e2])
     await session.commit()
 
-    items, has_more, next_cursor = await list_webhook_summaries_cursor(limit=200, session=session)
+    items, has_more, next_cursor = await list_webhook_summaries(page_size=200, session=session)
     assert isinstance(items, list)
     assert len(items) == 2
 
