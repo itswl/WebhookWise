@@ -10,6 +10,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
+      OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-api
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
@@ -28,6 +30,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
+      OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-worker
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
@@ -46,6 +50,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
+      OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-scheduler
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
@@ -98,9 +104,23 @@ services:
       - --enable-feature=native-histograms
     volumes:
       - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    networks:
+      - webhook_net
+
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:latest}
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
     networks:
       - webhook_net
 
@@ -202,6 +222,7 @@ services:
       - webhook_net
 
 volumes:
+  alertmanager_data:
   alloy_data:
   grafana_data:
   loki_data:

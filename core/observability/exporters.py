@@ -21,12 +21,7 @@ def env_flag(name: str, *, default: bool = False) -> bool:
 
 
 def otel_enabled() -> bool:
-    raw = os.getenv("OTEL_ENABLED", "").strip().lower()
-    if raw in _TRUE_VALUES:
-        return True
-    if raw in _FALSE_VALUES:
-        return False
-    return bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip())
+    return env_flag("OTEL_ENABLED", default=False)
 
 
 def parse_headers(raw: str | None = None) -> dict[str, str]:

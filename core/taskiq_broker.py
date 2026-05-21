@@ -98,8 +98,10 @@ async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
     from core.config import Config
     from core.http_client import close_http_client
+    from core.observability import shutdown_observability
     from db.session import dispose_engine
 
     await Config.stop_subscriber()
     await dispose_engine()
     await close_http_client()
+    shutdown_observability()

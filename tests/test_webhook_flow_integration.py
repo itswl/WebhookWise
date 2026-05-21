@@ -48,7 +48,6 @@ async def test_webhook_receive_to_feishu_card_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OTEL_ENABLED", "false")
-    monkeypatch.setattr("core.otel._enabled_cache", None)
 
     from core.app import app
     from core.config import Config, get_settings
@@ -112,6 +111,7 @@ async def test_webhook_receive_to_feishu_card_flow(
         request_id: str | None = None,
         received_at: str | None = None,
         ingest_retry_count: int = 0,
+        traceparent: str | None = None,
     ) -> None:
         if event_id is not None:
             await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
