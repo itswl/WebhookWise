@@ -1,1 +1,1 @@
-"""TaskIQ tasks, pollers, recovery scans, and maintenance jobs."""
+"""TaskIQ tasks, pollers, outbox scans, and maintenance jobs."""

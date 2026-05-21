@@ -144,8 +144,7 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
 
-            // 使用纯游标模式加载最新数据（避免 offset/count）
-            const result = await API.getWebhooks({ use_cursor: true, limit: 200, fields: 'summary', cursor_id: null });
+            const result = await API.getWebhooks({ page_size: 200, cursor: null });
 
             if (!result.success || !result.data) {
                 throw new Error('数据格式错误');
@@ -180,7 +179,7 @@ const AlertsModule = {
                 btn.textContent = '加载中...';
             }
 
-            const result = await API.getWebhooks({ use_cursor: true, limit: 200, fields: 'summary', cursor_id: this.nextCursor });
+            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
             if (!result.success || !result.data) {
                 throw new Error('数据格式错误');
             }
@@ -319,7 +318,6 @@ const AlertsModule = {
             const importance = webhook.importance || 'low';
             const duplicateType = webhook.duplicate_type || 'new';
             const isDuplicate = duplicateType !== 'new' && !!webhook.is_duplicate;
-            // 兼容两种数据格式：详情数据(ai_analysis)和摘要数据(summary)
             const analysis = webhook.ai_analysis || {};
             const summary = webhook.summary || analysis.summary || '';
 
@@ -702,7 +700,7 @@ const AlertsModule = {
                     if (fullData.parsed_data) {
                         dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
                     } else if (fullData.raw_payload) {
-                        // parsed_data 为 null（零解析模式），fallback 到解压后的 raw_payload
+                        // parsed_data 为 null（零解析模式），使用解压后的 raw_payload
                         let rawData;
                         try {
                             rawData = JSON.parse(fullData.raw_payload);
@@ -913,7 +911,7 @@ const AlertsModule = {
                             html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
                         }
 
-                        // \u5982\u679c\u6ca1\u6709\u7ed3\u6784\u5316\u5b57\u6bb5\uff0cfallback \u663e\u793a\u539f\u59cb JSON
+                        // 如果没有结构化字段，直接显示原始 JSON
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
                             html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }

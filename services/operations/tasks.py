@@ -38,10 +38,10 @@ from core.observability.tracing import (
 from core.observability.tracing import span as otel_span
 from core.redis_client import RedisEvalArg
 from core.redis_keys import scheduled_task_lock, webhook_global_task_slots
-from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER, TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE, TASK_SLOT_RENEW
+from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
-from services.operations.task_slots import TaskSlotManager, slot_times
+from services.operations.task_slots import TaskSlotManager
 
 logger = logging.getLogger("webhook_service.tasks")
 
@@ -50,9 +50,6 @@ _webhook_task_semaphore: asyncio.Semaphore | None = None
 _webhook_task_semaphore_limit = 0
 
 _WEBHOOK_TASK_SLOT_KEY = webhook_global_task_slots()
-_ACQUIRE_WEBHOOK_SLOT_LUA = TASK_SLOT_ACQUIRE
-_RENEW_WEBHOOK_SLOT_LUA = TASK_SLOT_RENEW
-_RELEASE_WEBHOOK_SLOT_LUA = TASK_SLOT_RELEASE
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 
 
@@ -66,7 +63,7 @@ async def _local_webhook_task_slot(limit: int) -> AsyncIterator[None]:
         yield
 
 
-async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int:
+async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int | None:
     from core.redis_client import redis_eval_int
 
     return await redis_eval_int(script, numkeys, *args)
@@ -80,20 +77,8 @@ def _webhook_slot_lease_seconds(policy: TaskRuntimePolicy | None = None) -> int:
     return _task_policy(policy).webhook_task_slot_lease_seconds
 
 
-def _slot_times(lease_seconds: int) -> tuple[int, int, int]:
-    return slot_times(lease_seconds)
-
-
 def _task_slot_manager() -> TaskSlotManager:
     return TaskSlotManager(key=_WEBHOOK_TASK_SLOT_KEY, eval_int=_redis_eval_int, logger=logger)
-
-
-async def _try_acquire_webhook_slot(token: str, limit: int, lease_seconds: int) -> bool:
-    return await _task_slot_manager().acquire(token, limit, lease_seconds)
-
-
-async def _renew_webhook_slot_until_cancelled(token: str, lease_seconds: int) -> None:
-    await _task_slot_manager().renew_until_cancelled(token, lease_seconds)
 
 
 @asynccontextmanager
@@ -138,8 +123,8 @@ async def _webhook_task_slot(*, policy: TaskRuntimePolicy | None = None) -> Asyn
         yield
 
 
-def _recovery_scan_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
-    return _task_policy(policy).recovery_scan_interval_seconds
+def _background_scan_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
+    return _task_policy(policy).background_scan_interval_seconds
 
 
 def _metrics_refresh_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
@@ -314,10 +299,8 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
 
 
 async def run_webhook_task(
-    event_id: int | None = None,
     client_ip: str | None = None,
-    source: str | None = None,
-    webhook_source: str | None = None,
+    source_name: str = "unknown",
     raw_headers: dict[str, str] | None = None,
     raw_body: str | None = None,
     request_id: str | None = None,
@@ -325,28 +308,29 @@ async def run_webhook_task(
     ingest_retry_count: int = 0,
     traceparent: str | None = None,
 ) -> None:
-    """Process either a legacy DB event or a raw ingested webhook."""
-    from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
+    """Process a raw ingested webhook."""
+    from services.webhooks.pipeline import handle_webhook_ingest
 
-    source = source or webhook_source
+    normalized_source = source_name or "unknown"
+    normalized_headers = raw_headers or {}
+    normalized_body = raw_body or ""
+    normalized_client_ip = client_ip or ""
     clear_log_context()
-    set_log_context(event_id=event_id, request_id=request_id, source=source)
+    set_log_context(request_id=request_id, source=normalized_source)
     task_start = time.perf_counter()
     outcome = "completed"
     logger.info(
-        "[Tasks] Webhook 任务开始 event_id=%s request_id=%s source=%s raw_ingest=%s retry=%s",
-        event_id,
+        "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
         request_id,
-        source or "",
-        event_id is None,
+        normalized_source,
         ingest_retry_count,
     )
     emit_event(
         "webhook.task.started",
         {
-            "event_id": event_id or 0,
-            "source": source or "unknown",
-            "webhook.raw_ingest": event_id is None,
+            "event_id": 0,
+            "source": normalized_source,
+            "webhook.raw_ingest": True,
             "retry.count": ingest_retry_count,
         },
     )
@@ -359,10 +343,10 @@ async def run_webhook_task(
         with trace_context_from_headers(trace_headers), otel_span(
             "worker.webhook_process_task",
             {
-                "event_id": event_id or 0,
-                "source": source or "unknown",
+                "event_id": 0,
+                "source": normalized_source,
                 "retry.count": ingest_retry_count,
-                "webhook.raw_ingest": event_id is None,
+                "webhook.raw_ingest": True,
                 "worker.task.name": "webhook_process_task",
             },
         ) as worker_span:
@@ -370,35 +354,27 @@ async def run_webhook_task(
                 async with _webhook_task_slot():
                     WEBHOOK_RUNNING_TASKS.inc()
                     try:
-                        if event_id is not None:
-                            await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
-                        else:
-                            normalized_source = source or "unknown"
-                            normalized_headers = raw_headers or {}
-                            normalized_body = raw_body or ""
-                            normalized_client_ip = client_ip or ""
-                            try:
-                                await handle_webhook_ingest(
-                                    source=normalized_source,
-                                    raw_headers=normalized_headers,
-                                    raw_body=normalized_body,
-                                    client_ip=normalized_client_ip,
-                                    request_id=request_id,
-                                    received_at=received_at,
-                                )
-                            except Exception as e:
-                                outcome = "raw_failure_handled"
-                                await _handle_raw_webhook_failure(
-                                    source=normalized_source,
-                                    raw_headers=normalized_headers,
-                                    raw_body=normalized_body,
-                                    client_ip=normalized_client_ip,
-                                    request_id=request_id,
-                                    received_at=received_at,
-                                    ingest_retry_count=ingest_retry_count,
-                                    traceparent=trace_headers["traceparent"] or traceparent,
-                                    err=e,
-                                )
+                        await handle_webhook_ingest(
+                            source=normalized_source,
+                            raw_headers=normalized_headers,
+                            raw_body=normalized_body,
+                            client_ip=normalized_client_ip,
+                            request_id=request_id,
+                            received_at=received_at,
+                        )
+                    except Exception as e:
+                        outcome = "raw_failure_handled"
+                        await _handle_raw_webhook_failure(
+                            source=normalized_source,
+                            raw_headers=normalized_headers,
+                            raw_body=normalized_body,
+                            client_ip=normalized_client_ip,
+                            request_id=request_id,
+                            received_at=received_at,
+                            ingest_retry_count=ingest_retry_count,
+                            traceparent=trace_headers["traceparent"] or traceparent,
+                            err=e,
+                        )
                     finally:
                         WEBHOOK_RUNNING_TASKS.dec()
             except Exception as exc:
@@ -412,10 +388,9 @@ async def run_webhook_task(
     except Exception:
         outcome = "error"
         logger.exception(
-            "[Tasks] Webhook 任务异常退出 event_id=%s request_id=%s source=%s",
-            event_id,
+            "[Tasks] Webhook 任务异常退出 request_id=%s source=%s",
             request_id,
-            source or "",
+            normalized_source,
         )
         raise
     finally:
@@ -426,16 +401,15 @@ async def run_webhook_task(
                 logger.debug("[Tasks] fallback trace context already reset", exc_info=True)
         duration_ms = int((time.perf_counter() - task_start) * 1000)
         logger.info(
-            "[Tasks] Webhook 任务结束 event_id=%s request_id=%s source=%s outcome=%s duration=%dms",
-            event_id,
+            "[Tasks] Webhook 任务结束 request_id=%s source=%s outcome=%s duration=%dms",
             request_id,
-            source or "",
+            normalized_source,
             outcome,
             duration_ms,
         )
         attributes = {
-            "event_id": event_id or 0,
-            "source": source or "unknown",
+            "event_id": 0,
+            "source": normalized_source,
             WEBHOOK_OUTCOME: outcome,
             "duration.ms": duration_ms,
         }
@@ -447,10 +421,8 @@ async def run_webhook_task(
 
 @broker.task(task_name="webhook_process_task")
 async def process_webhook_task(
-    event_id: int | None = None,
     client_ip: str | None = None,
-    source: str | None = None,
-    webhook_source: str | None = None,
+    source_name: str = "unknown",
     raw_headers: dict[str, str] | None = None,
     raw_body: str | None = None,
     request_id: str | None = None,
@@ -459,10 +431,8 @@ async def process_webhook_task(
     traceparent: str | None = None,
 ) -> None:
     await run_webhook_task(
-        event_id=event_id,
         client_ip=client_ip,
-        source=source,
-        webhook_source=webhook_source,
+        source_name=source_name,
         raw_headers=raw_headers,
         raw_body=raw_body,
         request_id=request_id,
@@ -470,14 +440,6 @@ async def process_webhook_task(
         ingest_retry_count=ingest_retry_count,
         traceparent=traceparent,
     )
-
-
-@broker.task(task_name="forward_retry_task")
-async def retry_failed_forward_task(failed_forward_id: int) -> None:
-    """Retry a single failed-forward audit record."""
-    from services.forwarding.retry import retry_failed_forward_by_id
-
-    await retry_failed_forward_by_id(failed_forward_id)
 
 
 async def run_forward_outbox_task(outbox_id: int) -> None:
@@ -511,12 +473,12 @@ async def poll_openclaw_analysis_task(analysis_id: int) -> None:
 
 @broker.task(
     task_name="scheduled_openclaw_poll_scan",
-    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
 )
 async def scheduled_openclaw_poll_scan() -> None:
     from services.analysis.openclaw_poller import run_openclaw_poll_scan
 
-    await _run_scheduled("openclaw_poll_scan", _recovery_scan_interval_seconds(), run_openclaw_poll_scan())
+    await _run_scheduled("openclaw_poll_scan", _background_scan_interval_seconds(), run_openclaw_poll_scan())
 
 
 @broker.task(
@@ -535,23 +497,13 @@ async def scheduled_metrics_refresh() -> None:
 
 
 @broker.task(
-    task_name="scheduled_failed_forward_scan",
-    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "failed_forward_scan_interval"}],
-)
-async def scheduled_failed_forward_scan() -> None:
-    from services.forwarding.retry import run_failed_forward_scan
-
-    await _run_scheduled("failed_forward_scan", _recovery_scan_interval_seconds(), run_failed_forward_scan())
-
-
-@broker.task(
     task_name="scheduled_forward_outbox_scan",
-    schedule=[{"interval": _recovery_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
 )
 async def scheduled_forward_outbox_scan() -> None:
     from services.forwarding.outbox import run_forward_outbox_scan
 
-    await _run_scheduled("forward_outbox_scan", _recovery_scan_interval_seconds(), run_forward_outbox_scan())
+    await _run_scheduled("forward_outbox_scan", _background_scan_interval_seconds(), run_forward_outbox_scan())
 
 
 @broker.task(task_name="scheduled_data_maintenance", schedule=[{"cron": _maintenance_cron()}])

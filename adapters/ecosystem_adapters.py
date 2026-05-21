@@ -16,7 +16,7 @@ from services.webhooks.types import WebhookData
 logger = logging.getLogger("webhook_service.ecosystem_adapters")
 
 HeadersLike = Mapping[str, Any]
-_adapters_initialized = False
+_initialized = False
 
 
 @dataclass(frozen=True)
@@ -318,20 +318,16 @@ def register_simple_adapters() -> None:
 
 def initialize_adapters() -> None:
     """Initialize built-in and plugin adapters during process startup."""
-    global _adapters_initialized
-    if _adapters_initialized:
+    global _initialized
+    if _initialized:
         return
 
     from adapters.registry import registry
 
     register_simple_adapters()
     registry.auto_discover()
-    _adapters_initialized = True
+    _initialized = True
     logger.info("[Adapter] 适配器注册完成")
-
-
-def adapters_initialized() -> bool:
-    return _adapters_initialized
 
 
 def normalize_webhook_event(

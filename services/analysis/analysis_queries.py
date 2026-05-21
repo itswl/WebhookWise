@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
+from schemas import deep_analysis_to_dict
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
@@ -119,7 +120,7 @@ async def get_deep_analysis_list(
     rows = res.all()
     items = []
     for rec, evt in rows:
-        item = rec.to_dict()
+        item = deep_analysis_to_dict(rec)
         item["source"] = evt.source if evt else None
         item["is_duplicate"] = evt.is_duplicate if evt else False
         item["beyond_window"] = evt.beyond_window if evt else False

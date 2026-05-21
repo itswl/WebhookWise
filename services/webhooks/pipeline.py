@@ -40,13 +40,12 @@ from core.observability.tracing import (
 )
 from models import WebhookEvent
 from services.webhooks.decisioning import normalize_importance
-from services.webhooks.failure_handling import handle_process_exception
 from services.webhooks.pipeline_steps import (
     PipelineProcessingResult,
     WebhookPipelineDependencies,
     run_processing_steps,
 )
-from services.webhooks.repository import EventEnvelope, claim_legacy_event_for_processing
+from services.webhooks.repository import EventEnvelope
 from services.webhooks.request_parser import parse_request
 from services.webhooks.types import (
     WebhookProcessContext,
@@ -62,22 +61,6 @@ class _PipelineExecutionState:
     outcome: str = "unknown"
     metric_source: str = "unknown"
     request_id: str | None = None
-
-
-async def handle_webhook_process(
-    event_id: int,
-    client_ip: str = "",
-    *,
-    dependencies: WebhookPipelineDependencies | None = None,
-) -> None:
-    set_fallback_trace_id(get_current_trace_id() or generate_trace_id(event_id=event_id))
-    clear_log_context()
-    set_log_context(event_id=event_id)
-    await _handle_db_event(
-        event_id,
-        client_ip,
-        dependencies=dependencies or WebhookPipelineDependencies(),
-    )
 
 
 async def handle_webhook_ingest(
@@ -195,35 +178,6 @@ def _record_pipeline_duration(state: _PipelineExecutionState, span: Any | None) 
     WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=state.metric_source, outcome=state.outcome).observe(duration)
 
 
-async def _handle_db_event(
-    event_id: int,
-    client_ip: str = "",
-    *,
-    dependencies: WebhookPipelineDependencies,
-) -> None:
-    state = _PipelineExecutionState(start_perf=time.perf_counter())
-    with otel_span("webhook.receive", {"event_id": event_id}) as _span:
-        active_trace_id = get_current_trace_id()
-        if active_trace_id:
-            set_fallback_trace_id(active_trace_id)
-        try:
-            env = await claim_legacy_event_for_processing(event_id)
-            if env is None:
-                logger.debug("[Pipeline] 忽略已处理或不存在的事件: event_id=%s", event_id)
-                return
-            await _process_envelope(event_id, client_ip, env, dependencies, state, _span)
-        except Exception as e:
-            state.outcome = await handle_process_exception(
-                event_id,
-                e,
-                _span,
-                policy=dependencies.failure_policy,
-                dead_letter_notifier=dependencies.dead_letter_notifier,
-            )
-        finally:
-            _record_pipeline_duration(state, _span)
-
-
 async def _handle_raw_ingest(
     envelope: EventEnvelope,
     client_ip: str = "",
@@ -236,7 +190,7 @@ async def _handle_raw_ingest(
         if active_trace_id:
             set_fallback_trace_id(active_trace_id)
         try:
-            await _process_envelope(None, client_ip, envelope, dependencies, state, _span)
+            await _process_envelope(client_ip, envelope, dependencies, state, _span)
         except Exception as e:
             set_span_error(_span, e)
             state.outcome = "failed"
@@ -253,7 +207,6 @@ async def _handle_raw_ingest(
 
 
 async def _process_envelope(
-    event_id: int | None,
     client_ip: str,
     env: EventEnvelope,
     dependencies: WebhookPipelineDependencies,
@@ -270,7 +223,7 @@ async def _process_envelope(
     parse_outcome = "success"
     with otel_span(
         "webhook.parse",
-        {"source": env.source or "unknown", "event_id": event_id or 0, "pipeline.step": "parse"},
+        {"source": env.source or "unknown", "event_id": 0, "pipeline.step": "parse"},
     ) as parse_span:
         try:
             req_ctx = parse_request(client_ip, env.headers, env.payload or {}, env.raw_body, env.source, env.event_ts)
@@ -286,7 +239,7 @@ async def _process_envelope(
     alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
     set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=state.request_id)
     ctx = WebhookProcessContext(
-        event_id=event_id,
+        event_id=None,
         request_id=state.request_id,
         client_ip=client_ip,
         metric_source=state.metric_source,
@@ -294,8 +247,7 @@ async def _process_envelope(
         alert_hash=alert_hash,
     )
     logger.info(
-        "[Pipeline] 开始处理 event_id=%s request_id=%s source=%s adapter=%s body_size=%d",
-        event_id,
+        "[Pipeline] 开始处理 request_id=%s source=%s adapter=%s body_size=%d",
         state.request_id,
         req_ctx.source,
         req_ctx.parsed_data.get("_adapter", req_ctx.source),

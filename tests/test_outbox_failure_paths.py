@@ -1,4 +1,4 @@
-"""Tests for outbox failure, retry exhaustion, stale recovery, and claim semantics.
+"""Tests for outbox failure, retry exhaustion, stale claim handling, and claim semantics.
 
 Reuses the SQLite session-factory pattern from test_forward_outbox.py.
 """
@@ -14,7 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
 from services.forwarding.policies import ForwardOutboxPolicy
-from services.webhooks.types import DeepAnalysisStatus, FailedForwardStatus, ForwardOutboxStatus
+from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
 
 
 @compiles(JSONB, "sqlite")
@@ -99,30 +99,6 @@ async def _insert_outbox(
         return record.id
 
 
-async def _insert_failed_forward(
-    session_factory: async_sessionmaker[AsyncSession],
-    *,
-    status: str = FailedForwardStatus.PENDING,
-    next_retry_at: datetime | None = None,
-) -> int:
-    from models import FailedForward
-
-    async with session_factory.begin() as session:
-        record = FailedForward(
-            webhook_event_id=1,
-            target_url="https://example.test/hook",
-            target_type="webhook",
-            status=status,
-            failure_reason="test",
-            retry_count=0,
-            max_retries=3,
-            next_retry_at=next_retry_at or datetime.now(),
-        )
-        session.add(record)
-        await session.flush()
-        return record.id
-
-
 # ── _is_forward_success ──────────────────────────────────────────────
 
 
@@ -176,7 +152,7 @@ class TestClaimOutbox:
         assert record is None
 
     async def test_expires_old_pending_record(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        from models import FailedForward, ForwardOutbox
+        from models import ForwardOutbox
         from services.forwarding.outbox import _claim_outbox
 
         created_at = datetime.now() - timedelta(minutes=31)
@@ -191,12 +167,9 @@ class TestClaimOutbox:
 
         async with session_factory() as session:
             updated = await session.get(ForwardOutbox, outbox_id)
-            failed = (await session.execute(select(FailedForward))).scalars().first()
         assert record is None
         assert updated is not None
         assert updated.status == ForwardOutboxStatus.EXPIRED
-        assert failed is not None
-        assert failed.status == FailedForwardStatus.EXPIRED
 
     async def test_claims_retrying_status(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
@@ -244,7 +217,7 @@ class TestFinalizeOutboxFailure:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from models import FailedForward, ForwardOutbox
+        from models import ForwardOutbox
         from services.forwarding.outbox import _claim_outbox, _finalize_outbox_failure
 
         async def _noop(*_: object, **__: object) -> None:
@@ -262,10 +235,6 @@ class TestFinalizeOutboxFailure:
             record = await session.get(ForwardOutbox, outbox_id)
             assert record is not None
             assert record.status == ForwardOutboxStatus.EXHAUSTED
-
-            failed = (await session.execute(select(FailedForward))).scalars().first()
-            assert failed is not None
-            assert failed.status == "exhausted"
 
 
 # ── _finalize_outbox_success ─────────────────────────────────────────
@@ -389,7 +358,7 @@ class TestRunForwardOutboxScan:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from models import FailedForward, ForwardOutbox
+        from models import ForwardOutbox
         from services.forwarding.outbox import run_forward_outbox_scan
 
         scheduled_ids: list[list[int]] = []
@@ -411,46 +380,16 @@ class TestRunForwardOutboxScan:
 
         async with session_factory() as session:
             record = (await session.execute(select(ForwardOutbox))).scalar_one()
-            failed = (await session.execute(select(FailedForward))).scalars().first()
         assert count == 1
         assert scheduled_ids == [[]]
         assert record.status == ForwardOutboxStatus.EXPIRED
-        assert failed is not None
-        assert failed.failure_reason == "outbox_expired"
-
-
-# ── FailedForward scan fallback ───────────────────────────────────────
-
-
-class TestRunFailedForwardScan:
-    async def test_selects_due_failed_forward_rows(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from services.forwarding.retry import run_failed_forward_scan
-
-        scheduled_ids: list[list[int]] = []
-
-        async def _fake_schedule(ids: list[int]) -> None:
-            scheduled_ids.append(ids)
-
-        monkeypatch.setattr("services.forwarding.retry.schedule_failed_forward_many", _fake_schedule)
-
-        due_id = await _insert_failed_forward(session_factory, next_retry_at=datetime.now() - timedelta(seconds=10))
-        await _insert_failed_forward(session_factory, next_retry_at=datetime.now() + timedelta(hours=1))
-
-        count = await run_failed_forward_scan()
-
-        assert count == 1
-        assert scheduled_ids == [[due_id]]
 
 
 # ── OpenClaw poll claim / stability ───────────────────────────────────
 
 
 class TestOpenClawPoller:
-    async def test_poll_via_http_uses_configured_timeout_and_waits_for_final_text(
+    async def test_poll_openclaw_result_via_http_uses_configured_timeout_and_waits_for_final_text(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -482,12 +421,12 @@ class TestOpenClawPoller:
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
-        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+        result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "pending"
         assert seen_timeouts == [(3.0, 7.0)]
 
-    async def test_poll_via_http_marks_transport_errors_retryable(
+    async def test_poll_openclaw_result_via_http_marks_transport_errors_retryable(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -501,13 +440,13 @@ class TestOpenClawPoller:
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
-        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+        result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "error"
         assert result["retryable"] is True
         assert "connection attempts" in str(result["error"]).lower()
 
-    async def test_poll_via_http_treats_read_timeout_as_pending(
+    async def test_poll_openclaw_result_via_http_treats_read_timeout_as_pending(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -524,12 +463,12 @@ class TestOpenClawPoller:
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
-        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+        result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "pending"
         assert "ReadTimeout" in str(result["error"])
 
-    async def test_poll_via_http_invalid_json_is_terminal_upstream_error(
+    async def test_poll_openclaw_result_via_http_invalid_json_is_terminal_upstream_error(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -549,7 +488,7 @@ class TestOpenClawPoller:
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
-        result = await openclaw_poller._poll_via_http("session-1", retry_count=1)
+        result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "error"
         assert result.get("retryable") is not True
@@ -613,7 +552,7 @@ class TestOpenClawPoller:
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "root cause ready", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _completed)
 
         result = await openclaw_poller._poll_single_record(
             {
@@ -650,7 +589,7 @@ class TestOpenClawPoller:
         async def _stability_should_not_be_written(*_: object, **__: object) -> None:
             raise AssertionError("explicit HTTP final should not need a stability snapshot")
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _completed)
         monkeypatch.setattr(openclaw_poller, "_set_poll_stability", _stability_should_not_be_written)
 
         result = await openclaw_poller._poll_single_record(
@@ -685,7 +624,7 @@ class TestOpenClawPoller:
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "manual retry ready", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _completed)
 
         result = await openclaw_poller._poll_single_record(
             {
@@ -723,7 +662,7 @@ class TestOpenClawPoller:
         async def _gateway_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
             raise AssertionError("configured OPENCLAW_HTTP_API_URL must be the only poll transport")
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_error)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _http_error)
         monkeypatch.setattr(openclaw_ws_client, "poll_session_result", _gateway_should_not_be_called)
 
         result = await openclaw_poller._poll_single_record(
@@ -759,7 +698,7 @@ class TestOpenClawPoller:
         async def _gateway_completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "gateway result", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _http_should_not_be_called)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _http_should_not_be_called)
         monkeypatch.setattr(openclaw_ws_client, "poll_session_result", _gateway_completed)
 
         result = await openclaw_poller._poll_single_record(
@@ -810,7 +749,7 @@ class TestOpenClawPoller:
 
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
         monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw_poller, "_poll_via_http", _completed)
+        monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _completed)
         monkeypatch.setattr(openclaw_poller, "_get_poll_stability", _get_stability)
         monkeypatch.setattr(openclaw_poller, "_set_poll_stability", _set_stability)
         monkeypatch.setattr(openclaw_poller, "_clear_poll_stability", _clear)

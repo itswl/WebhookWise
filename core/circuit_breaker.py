@@ -101,7 +101,7 @@ class CircuitBreaker:
                 open_until_ts,
                 str(state_expire),
             )
-            return bool(tripped)
+            return tripped == 1
         except Exception as e:
             logger.warning("CircuitBreaker [%s] Redis 记录失败异常: %s", self.name, e)
             return False

@@ -1,8 +1,4 @@
-"""One-shot retry scheduling.
-
-TaskIQ dynamic schedules own retry timing; durable DB scans remain as a low
-frequency recovery path when dynamic schedule dispatch is missed.
-"""
+"""One-shot retry scheduling."""
 
 from __future__ import annotations
 
@@ -40,25 +36,6 @@ def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolic
     return poll_policy.delay_for_attempt(poll_attempts)
 
 
-async def schedule_webhook_retry(event_id: int, delay_seconds: int) -> None:
-    """Schedule a single webhook retry through TaskIQ's dynamic scheduler."""
-    from services.operations.tasks import process_webhook_task
-
-    schedule_id = f"webhook-retry:{event_id}"
-    await dynamic_schedule_source.delete_schedule(schedule_id)
-    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
-    await (
-        process_webhook_task.kicker()
-        .with_schedule_id(schedule_id)
-        .schedule_by_time(
-            dynamic_schedule_source,
-            run_at,
-            event_id=event_id,
-            client_ip="retry-schedule",
-        )
-    )
-
-
 def _raw_ingest_schedule_id(request_id: str | None, source: str | None, raw_body: str | None) -> str:
     if request_id:
         identifier = request_id
@@ -93,7 +70,7 @@ async def schedule_webhook_ingest_retry(
             .schedule_by_time(
                 dynamic_schedule_source,
                 run_at,
-                webhook_source=source,
+                source_name=source,
                 raw_headers=raw_headers,
                 raw_body=raw_body,
                 client_ip=client_ip,
@@ -110,7 +87,7 @@ async def schedule_webhook_ingest_retry(
             .schedule_by_time(
                 dynamic_schedule_source,
                 run_at,
-                webhook_source=source,
+                source_name=source,
                 raw_headers=raw_headers,
                 raw_body=raw_body,
                 client_ip=client_ip,
@@ -119,24 +96,6 @@ async def schedule_webhook_ingest_retry(
                 ingest_retry_count=ingest_retry_count,
             )
         )
-
-
-async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> None:
-    """Schedule a single failed-forward retry through TaskIQ."""
-    from services.operations.tasks import retry_failed_forward_task
-
-    schedule_id = f"forward-retry:{failed_forward_id}"
-    await dynamic_schedule_source.delete_schedule(schedule_id)
-    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
-    await (
-        retry_failed_forward_task.kicker()
-        .with_schedule_id(schedule_id)
-        .schedule_by_time(
-            dynamic_schedule_source,
-            run_at,
-            failed_forward_id=failed_forward_id,
-        )
-    )
 
 
 async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:

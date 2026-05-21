@@ -2,7 +2,7 @@
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from core.alert_concurrency import alert_processing_gate
 from core.log_context import set_log_context
@@ -17,20 +17,16 @@ from core.observability.metrics import (
 from core.observability.signals import record_signal
 from core.observability.tracing import span as otel_span
 from services.webhooks.analysis_resolution import resolve_analysis
-from services.webhooks.command_service import SaveWebhookResult, mark_webhook_suppressed
+from services.webhooks.command_service import SaveWebhookResult
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
 from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.noise_stage import compute_noise
-from services.webhooks.policies import AnalysisResolutionPolicy, NoiseReductionPolicy, WebhookFailurePolicy
+from services.webhooks.policies import AnalysisResolutionPolicy, NoiseReductionPolicy
 from services.webhooks.types import (
     ForwardDecision,
     NoiseReductionContext,
     WebhookProcessContext,
 )
-
-if TYPE_CHECKING:
-    from services.webhooks.failure_handling import DeadLetterNotifier
-    from services.webhooks.forwarding_stage import ForwardingClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,10 +34,7 @@ class WebhookPipelineDependencies:
     analysis_policy: AnalysisResolutionPolicy | None = None
     noise_policy: NoiseReductionPolicy | None = None
     forwarding_policy: ForwardingPolicy | None = None
-    failure_policy: WebhookFailurePolicy | None = None
-    dead_letter_notifier: "DeadLetterNotifier | None" = None
     http_client: Any | None = None
-    forwarding_client: "ForwardingClient | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,27 +69,6 @@ async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object
     }
     emit_event("webhook.storm.suppressed", attrs)
     record_signal("webhook.ingest", "suppressed", attrs)
-    noise = NoiseReductionContext(
-        "storm",
-        None,
-        1.0,
-        True,
-        getattr(lock_res, "reason", "") or "alert_storm_backpressure",
-        getattr(lock_res, "queue_size", 0),
-        [],
-    )
-    if ctx.event_id is not None:
-        await mark_webhook_suppressed(
-            event_id=ctx.event_id,
-            request_id=ctx.request_id,
-            data=ctx.req_ctx.parsed_data,
-            source=ctx.req_ctx.source,
-            raw_payload=ctx.req_ctx.payload,
-            headers=ctx.req_ctx.headers,
-            client_ip=ctx.req_ctx.client_ip,
-            ai_analysis={"noise_reduction": noise.__dict__},
-            alert_hash=ctx.alert_hash,
-        )
     return True
 
 

@@ -27,7 +27,6 @@ from core.observability.metrics._metrics_forward import (
     FORWARD_OUTBOX_BACKLOG_AGE_SECONDS,
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
-    FORWARD_RETRY_TOTAL,
 )
 from core.observability.metrics._metrics_observability import OBSERVABILITY_EVENTS_TOTAL, OBSERVABILITY_SIGNAL_TOTAL
 from core.observability.metrics._metrics_queue import (
@@ -66,11 +65,9 @@ from core.observability.metrics._metrics_webhook import (
     WEBHOOK_PROCESSING_STATUS_COUNT,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
-    WEBHOOK_RECOVERY_POLLED_TOTAL,
     WEBHOOK_RUNNING_TASKS,
     WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL,
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
-    WEBHOOK_STUCK_STATUS_COUNT,
 )
 from core.observability.metrics.base import Counter, Gauge, Histogram, setup_meter_provider
 from core.observability.metrics.source import sanitize_source
@@ -79,10 +76,6 @@ from core.observability.metrics.source import sanitize_source
 def setup_metrics(app: object | None = None) -> None:
     setup_meter_provider()
     update_db_pool_metrics()
-
-
-def start_background_metrics_server() -> None:
-    setup_metrics()
 
 
 def update_db_pool_metrics() -> None:
@@ -121,7 +114,6 @@ __all__ = [
     "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS",
     "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS",
     "FORWARD_OUTBOX_RECORDS_TOTAL",
-    "FORWARD_RETRY_TOTAL",
     "Gauge",
     "Histogram",
     "OBSERVABILITY_EVENTS_TOTAL",
@@ -150,15 +142,12 @@ __all__ = [
     "WEBHOOK_PROCESSING_STATUS_COUNT",
     "WEBHOOK_PROCESSING_STATUS_TOTAL",
     "WEBHOOK_RECEIVED_TOTAL",
-    "WEBHOOK_RECOVERY_POLLED_TOTAL",
     "WEBHOOK_RUNNING_TASKS",
     "WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL",
     "WEBHOOK_STORM_SUPPRESSED_TOTAL",
-    "WEBHOOK_STUCK_STATUS_COUNT",
     "WORKER_TASK_DURATION_SECONDS",
     "WORKER_TASKS_TOTAL",
     "sanitize_source",
     "setup_metrics",
-    "start_background_metrics_server",
     "update_db_pool_metrics",
 ]

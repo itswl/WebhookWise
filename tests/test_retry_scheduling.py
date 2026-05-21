@@ -27,39 +27,6 @@ def test_compute_openclaw_poll_delay_is_exponential_and_bounded(monkeypatch: pyt
 
 
 @pytest.mark.asyncio
-async def test_schedule_webhook_retry_uses_taskiq_dynamic_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
-    import services.operations.taskiq_retry_scheduler as scheduler
-    import services.operations.tasks as tasks
-
-    source = AsyncMock()
-    captured: dict[str, object] = {}
-
-    class FakeKicker:
-        def with_schedule_id(self, schedule_id: str) -> "FakeKicker":
-            captured["schedule_id"] = schedule_id
-            return self
-
-        async def schedule_by_time(self, schedule_source: object, run_at: object, **kwargs: object) -> None:
-            captured["schedule_source"] = schedule_source
-            captured["run_at"] = run_at
-            captured["kwargs"] = kwargs
-
-    class FakeTask:
-        def kicker(self) -> FakeKicker:
-            return FakeKicker()
-
-    monkeypatch.setattr(scheduler, "dynamic_schedule_source", source)
-    monkeypatch.setattr(tasks, "process_webhook_task", FakeTask())
-
-    await scheduler.schedule_webhook_retry(123, 30)
-
-    source.delete_schedule.assert_awaited_once_with("webhook-retry:123")
-    assert captured["schedule_id"] == "webhook-retry:123"
-    assert captured["schedule_source"] is source
-    assert captured["kwargs"] == {"event_id": 123, "client_ip": "retry-schedule"}
-
-
-@pytest.mark.asyncio
 async def test_schedule_webhook_ingest_retry_uses_request_id_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.operations.taskiq_retry_scheduler as scheduler
     import services.operations.tasks as tasks
@@ -99,7 +66,7 @@ async def test_schedule_webhook_ingest_retry_uses_request_id_schedule(monkeypatc
     assert captured["schedule_id"] == "webhook-ingest-retry:req-123"
     assert captured["schedule_source"] is source
     assert captured["kwargs"] == {
-        "webhook_source": "prometheus",
+        "source_name": "prometheus",
         "raw_headers": {"x-test": "1"},
         "raw_body": '{"alertname":"HighCPU"}',
         "client_ip": "127.0.0.1",
@@ -107,39 +74,6 @@ async def test_schedule_webhook_ingest_retry_uses_request_id_schedule(monkeypatc
         "received_at": "2026-05-13T12:00:00+08:00",
         "ingest_retry_count": 2,
     }
-
-
-@pytest.mark.asyncio
-async def test_schedule_forward_retry_uses_taskiq_dynamic_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
-    import services.operations.taskiq_retry_scheduler as scheduler
-    import services.operations.tasks as tasks
-
-    source = AsyncMock()
-    captured: dict[str, object] = {}
-
-    class FakeKicker:
-        def with_schedule_id(self, schedule_id: str) -> "FakeKicker":
-            captured["schedule_id"] = schedule_id
-            return self
-
-        async def schedule_by_time(self, schedule_source: object, run_at: object, **kwargs: object) -> None:
-            captured["schedule_source"] = schedule_source
-            captured["run_at"] = run_at
-            captured["kwargs"] = kwargs
-
-    class FakeTask:
-        def kicker(self) -> FakeKicker:
-            return FakeKicker()
-
-    monkeypatch.setattr(scheduler, "dynamic_schedule_source", source)
-    monkeypatch.setattr(tasks, "retry_failed_forward_task", FakeTask())
-
-    await scheduler.schedule_forward_retry(456, 60)
-
-    source.delete_schedule.assert_awaited_once_with("forward-retry:456")
-    assert captured["schedule_id"] == "forward-retry:456"
-    assert captured["schedule_source"] is source
-    assert captured["kwargs"] == {"failed_forward_id": 456}
 
 
 @pytest.mark.asyncio

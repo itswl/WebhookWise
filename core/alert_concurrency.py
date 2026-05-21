@@ -1,7 +1,7 @@
 """Per-alert concurrency gate for webhook analysis.
 
 Redis provides cross-worker single-flight per ``alert_hash``. The in-process
-lock remains as a local serialization layer and as a fallback if Redis is
+lock remains as a local serialization layer when Redis is
 temporarily unavailable.
 """
 
@@ -73,16 +73,18 @@ async def _release_lock_ref(alert_hash: str, ref: _LockRef) -> None:
 
 @asynccontextmanager
 async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
-    ref = await _get_lock_ref(alert_hash)
+    ref: _LockRef | None = None
     acquired = False
     try:
+        ref = await _get_lock_ref(alert_hash)
         await ref.lock.acquire()
         acquired = True
         yield
     finally:
-        if acquired:
+        if acquired and ref is not None:
             ref.lock.release()
-        await _release_lock_ref(alert_hash, ref)
+        if ref is not None:
+            await _release_lock_ref(alert_hash, ref)
 
 
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
@@ -105,6 +107,10 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
         )
     except Exception as e:
         logger.warning("[Concurrency] 告警风暴处理槽预占失败: %s", e)
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
+
+    if queue_size is None:
+        logger.warning("[Concurrency] 告警风暴处理槽预占返回空结果")
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
 
     if queue_size < 0:

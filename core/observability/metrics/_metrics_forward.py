@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from core.observability.metrics.base import Counter, Gauge, Histogram
 
-FORWARD_RETRY_TOTAL = Counter("forward.retry", "Forward retry result count", ("forward.status",))
 FORWARD_DELIVERY_TOTAL = Counter(
     "forward.delivery",
     "Forward delivery attempt count",

@@ -32,7 +32,6 @@ otelcol.receiver.otlp "default" {
 }
 
 faro.receiver "dashboard" {
-	log_format       = "json"
 	extra_log_labels = {
 		app = "webhookwise-dashboard",
 	}
@@ -45,7 +44,6 @@ faro.receiver "dashboard" {
 
 		rate_limiting {
 			enabled    = true
-			strategy   = "per_app"
 			rate       = 50
 			burst_size = 100
 		}
@@ -154,11 +152,6 @@ loki.source.file "webhook_logs" {
 		},
 	]
 	forward_to = [loki.process.webhook_logs.receiver]
-
-	file_match {
-		enabled     = true
-		sync_period = "10s"
-	}
 }
 
 loki.process "webhook_logs" {

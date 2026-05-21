@@ -75,9 +75,9 @@ Metrics are emitted through `core.observability.metrics`, exported over OTLP, co
 | Webhook pipeline | `webhook.pipeline.steps`, `webhook.pipeline.step.duration`, `webhook.processing.duration`, `webhook.processed` | `pipeline.step`, `webhook.source`, `webhook.outcome`, `webhook.status` |
 | Noise reduction | `webhook.noise.evaluations`, `webhook.noise.evaluation.duration`, `webhook.suppressed` | `webhook.source`, `webhook.relation`, `webhook.suppressed` |
 | AI analysis | `ai.request.duration`, `ai.request.errors`, `ai.tokens`, `ai.cost`, `ai.cache.requests`, `ai.cache.operation.duration`, `ai.degradations` | `ai.engine`, `ai.model`, `ai.token_type`, `ai.cache.operation`, `ai.cache.result` |
-| Forwarding | `forward.delivery`, `forward.delivery.duration`, `forward.retry`, `forward.outbox.records`, `forward.outbox.process.duration`, `forward.outbox.backlog.age` | `forward.target_type`, `forward.status` |
+| Forwarding | `forward.delivery`, `forward.delivery.duration`, `forward.outbox.records`, `forward.outbox.process.duration`, `forward.outbox.backlog.age` | `forward.target_type`, `forward.status` |
 | Resilience | `circuit_breaker.requests`, `circuit_breaker.transitions`, `circuit_breaker.state` | `circuit_breaker.name`, `circuit_breaker.outcome`, `circuit_breaker.state` |
-| Database | `db.sessions`, `db.session.duration`, `db.pool.connections.checked_out`, `db.pool.connections.max`, `webhook.events.count`, `webhook.processing.status_count`, `webhook.stuck.status_count` | `db.operation`, `db.status`, `webhook.status` |
+| Database | `db.sessions`, `db.session.duration`, `db.pool.connections.checked_out`, `db.pool.connections.max`, `webhook.events.count`, `webhook.processing.status_count` | `db.operation`, `db.status`, `webhook.status` |
 | Redis | `redis.operations`, `redis.operation.duration` | `redis.operation`, `redis.status` |
 | Scheduler | `scheduler.task.runs`, `scheduler.task.duration`, `scheduler.task.lag`, `scheduler.task.last_success_unixtime` | `scheduler.task.name`, `scheduler.task.status` |
 | Observability layer | `observability.events`, `observability.signals` | `event.name`, `signal.name`, `signal.state` |

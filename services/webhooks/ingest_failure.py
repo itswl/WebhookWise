@@ -48,7 +48,7 @@ async def record_raw_ingest_dead_letter(
     retryable: bool,
     err: Exception,
 ) -> int | None:
-    """Persist a terminal raw-ingest failure so it is visible to recovery tools."""
+    """Persist a terminal raw-ingest failure as a dead-letter event."""
     if request_id:
         existing_id = await _update_existing_dead_letter(
             request_id=request_id,

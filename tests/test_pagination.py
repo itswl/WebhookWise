@@ -54,28 +54,28 @@ async def test_list_webhook_summaries_pagination(
 ) -> None:
     # 测试第一页
     async with mock_session_scope() as session:
-        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=None, page_size=5)
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=None, page_size=5)
     assert len(webhooks) == 5
     assert has_more is True
     assert next_cursor == 11
 
     # 测试第二页
     async with mock_session_scope() as session:
-        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=11, page_size=5)
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=11, page_size=5)
     assert len(webhooks) == 5
     assert has_more is True
     assert next_cursor == 6
 
     # 测试第三页
     async with mock_session_scope() as session:
-        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=6, page_size=5)
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=6, page_size=5)
     assert len(webhooks) == 5
     assert has_more is False
     assert next_cursor is None  # 5, 4, 3, 2, 1 (没有更多了)
 
     # 验证最后一页
     async with mock_session_scope() as session:
-        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor_id=1, page_size=5)
+        webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=1, page_size=5)
     assert len(webhooks) == 0
     assert has_more is False
     assert next_cursor is None

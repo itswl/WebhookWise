@@ -71,7 +71,10 @@ async def check_ingress_backpressure(
             from core.redis_client import redis_eval_int
 
             redis_eval_int_func = redis_eval_int
-        count = int(await redis_eval_int_func(_INGRESS_COUNTER_LUA, 1, key, policy.ingress_backpressure_window_seconds))
+        raw_count = await redis_eval_int_func(_INGRESS_COUNTER_LUA, 1, key, policy.ingress_backpressure_window_seconds)
+        if raw_count is None:
+            raise RuntimeError("ingress counter script returned no integer")
+        count = int(raw_count)
     except Exception as e:
         logger.warning("[IngressBackpressure] Redis 计数失败，降级放行: %s", e)
         return IngressBackpressureResult(False, key, 0, threshold)

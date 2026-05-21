@@ -27,7 +27,7 @@ def _check_api() -> None:
 
 def _check_supervisor() -> None:
     env = dict(os.environ)
-    env.setdefault("PYTHONWARNINGS", "ignore:pkg_resources is deprecated as an API:UserWarning")
+    env.setdefault("PYTHONWARNINGS", "ignore:pkg_resources.*:UserWarning")
     output = subprocess.check_output(
         ["supervisorctl", "-c", "/app/supervisord.conf", "status"],
         text=True,

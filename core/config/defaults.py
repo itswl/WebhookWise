@@ -31,7 +31,6 @@ class ServerConfig(BaseSettings):
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
-    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: int = Field(default=30)
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
 
 
@@ -40,10 +39,9 @@ class TaskConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    RECOVERY_POLLER_INTERVAL_SECONDS: int = Field(default=60)
-    RECOVERY_SCAN_INTERVAL_SECONDS: int = Field(default=300)
+    BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
-    RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS: int = Field(default=300)
+    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300)
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
     WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
 
@@ -78,7 +76,7 @@ class SecurityConfig(BaseSettings):
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
-    ALLOW_PRIVATE_FORWARD_URLS: bool = Field(default=False)
+    ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)
     FORWARD_TARGET_ALLOWLIST: str = Field(default="")
 
 
@@ -155,7 +153,7 @@ class ForwardingConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    FORWARD_URL: str = Field(default="")
+    DEFAULT_FORWARD_TARGET_URL: str = Field(default="")
     ENABLE_FORWARD: bool = Field(default=True)
     FORWARD_TIMEOUT: int = Field(default=10)
 
@@ -189,7 +187,6 @@ class OpenClawConfig(BaseSettings):
     OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=8)
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
     OPENCLAW_CONNECT_TIMEOUT: int = Field(default=20)
-    OPENCLAW_HANDSHAKE_TIMEOUT: int = Field(default=10)
     OPENCLAW_NONCE_TIMEOUT: float = Field(default=5.0)
     OPENCLAW_POLL_TIMEOUT: int = Field(default=180)
     OPENCLAW_DEVICE_ID: str = Field(default="")
@@ -248,7 +245,6 @@ class RetryConfig(BaseSettings):
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)
     WEBHOOK_RETRY_MAX_DELAY: int = Field(default=900)
     WEBHOOK_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    ENABLE_FORWARD_RETRY: bool = Field(default=True)
     FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
     FORWARD_RETRY_INITIAL_DELAY: int = Field(default=60)
     FORWARD_RETRY_MAX_DELAY: int = Field(default=3600)

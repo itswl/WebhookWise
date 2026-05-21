@@ -67,16 +67,10 @@ WEBHOOK_STORM_SUPPRESSED_TOTAL = Counter(
     "Webhook storm fail-fast suppression count",
     ("webhook.source",),
 )
-WEBHOOK_RECOVERY_POLLED_TOTAL = Counter("webhook.recovery.polled", "Recovered zombie event count")
 WEBHOOK_RUNNING_TASKS = Gauge("webhook.running_tasks", "Currently running webhook processing tasks")
 WEBHOOK_DEAD_LETTER_TOTAL = Counter("webhook.dead_letter", "Non-retryable dead letter event count")
 WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
     "webhook.processing.status_count",
     "Webhook event count by processing status",
-    ("webhook.status",),
-)
-WEBHOOK_STUCK_STATUS_COUNT = Gauge(
-    "webhook.stuck.status_count",
-    "Stuck webhook event count by processing status",
     ("webhook.status",),
 )

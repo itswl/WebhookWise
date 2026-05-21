@@ -33,13 +33,14 @@ _DNS_CACHE_LOCK = asyncio.Lock()
 
 @dataclass(frozen=True, slots=True)
 class OutboundURLPolicy:
-    allow_private_forward_urls: bool
+    allow_private_target_urls: bool
     target_allowlist: tuple[str, ...]
 
     @classmethod
-    def from_config(cls, config: Any = Config.security) -> OutboundURLPolicy:
+    def from_config(cls, config: Any | None = None) -> OutboundURLPolicy:
+        config = config or Config.security
         return cls(
-            allow_private_forward_urls=bool(config.ALLOW_PRIVATE_FORWARD_URLS),
+            allow_private_target_urls=bool(config.ALLOW_PRIVATE_TARGET_URLS),
             target_allowlist=tuple(_split_csv(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
         )
 
@@ -74,7 +75,7 @@ def _reject_blocked_hostname(host: str) -> None:
 
 
 def _reject_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, policy: OutboundURLPolicy) -> None:
-    if policy.allow_private_forward_urls:
+    if policy.allow_private_target_urls:
         return
     if not ip.is_global:
         raise UnsafeTargetUrlError("target host resolves to a non-public IP")
@@ -145,7 +146,7 @@ async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = 
 
     host = parts.hostname.lower().rstrip(".")
     _require_allowlisted_host(host, policy)
-    if not policy.allow_private_forward_urls:
+    if not policy.allow_private_target_urls:
         _reject_blocked_hostname(host)
 
     try:

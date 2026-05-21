@@ -30,6 +30,7 @@ from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
+from schemas.webhook import webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
 from services.webhooks.command_service import get_client_ip
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
@@ -124,7 +125,7 @@ async def _receive_and_enqueue_webhook(
     received_at = datetime.now().astimezone().isoformat(timespec="seconds")
 
     task_kwargs: dict[str, Any] = {
-        "source": source_hint,
+        "source_name": source_hint,
         "raw_headers": headers,
         "raw_body": raw_body_str,
         "client_ip": client_ip or "",
@@ -173,12 +174,6 @@ async def _receive_and_enqueue_webhook(
 
 
 # ── 基础路由 ───────────────────────────────────────────────────────────────────
-
-
-@webhook_router.get("/health", response_model=HealthResponse)
-async def health_check() -> JSONResponse:
-    """兼容性健康检查：等同 readiness。"""
-    return await readiness_check()
 
 
 @webhook_router.get("/live", response_model=HealthResponse)
@@ -270,14 +265,14 @@ async def receive_webhook_with_source(
 async def get_webhooks_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
-    cursor: int | None = Query(None, alias="cursor_id"),
+    cursor: int | None = Query(None),
     importance: str = Query(""),
     source: str = Query(""),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """获取所有 webhook 事件的摘要列表。"""
     items, has_more, next_cursor = await list_webhook_summaries(
-        session, cursor_id=cursor, importance=importance, source=source, page=page, page_size=page_size
+        session, cursor=cursor, importance=importance, source=source, page=page, page_size=page_size
     )
     return {
         "success": True,
@@ -301,7 +296,7 @@ async def get_webhook_by_request_id_endpoint(
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
-    return {"success": True, "data": redact_event_dict(event.to_dict())}
+    return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
 
 
 @webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
@@ -313,4 +308,4 @@ async def get_webhook_detail_endpoint(
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
-    return {"success": True, "data": redact_event_dict(event.to_dict())}
+    return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}

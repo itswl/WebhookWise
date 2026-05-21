@@ -1,4 +1,4 @@
-"""Backward-compatible Feishu/Lark notification transport facade."""
+"""Feishu/Lark notification transport."""
 
 from __future__ import annotations
 

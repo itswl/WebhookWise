@@ -70,7 +70,7 @@ def test_prometheus_loads_webhookwise_rules() -> None:
     assert alertmanager["route"]["receiver"] == "webhookwise-local"
 
 
-def test_dashboard_includes_slo_and_recording_rule_fallbacks() -> None:
+def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     dashboard = json.loads((ROOT / "grafana/dashboard.json").read_text())
     diagnostics = json.loads((ROOT / "grafana/dashboard-diagnostics.json").read_text())
     assert dashboard["title"] == "WebhookWise AIOps 基础大盘"
@@ -91,8 +91,8 @@ def test_dashboard_includes_slo_and_recording_rule_fallbacks() -> None:
         if target.get("expr")
     )
     assert "webhook_events_active" in expressions
-    assert "queue_pending) or max(queue_pending_ratio)" in expressions
-    assert "db_pool_connections_checked_out) or max(db_pool_connections_checked_out_ratio)" in expressions
+    assert "queue_pending_ratio" not in expressions
+    assert "db_pool_connections_checked_out_ratio" not in expressions
     assert "forward_outbox_oldest_age_seconds" in expressions
     assert "circuit_breaker_active_state" in expressions
 
@@ -153,6 +153,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     tasks = (ROOT / "services/operations/tasks.py").read_text()
     pipeline_steps = (ROOT / "services/webhooks/pipeline_steps.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
+    forward_outbox = (ROOT / "services/forwarding/outbox.py").read_text()
     redis_client = (ROOT / "core/redis_client.py").read_text()
     taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
@@ -169,7 +170,8 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert "worker.task.status" in tasks
     assert '"pipeline.step": "validate"' in pipeline_steps
     assert '"pipeline.step": "noise"' in pipeline_steps
-    assert '"forward.target_type": target_type' in forwarding_stage
+    assert '"forward.target_type": (' in forwarding_stage
+    assert '"forward.target_type": target_type' in forward_outbox
     assert '"redis.operation": operation' in redis_client
 
 

@@ -15,10 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.session import Base, SerializerMixin
+from db.session import Base
 
 
-class AIUsageLog(Base, SerializerMixin):
+class AIUsageLog(Base):
     """AI 调用成本追踪"""
 
     __tablename__ = "ai_usage_log"
@@ -37,7 +37,7 @@ class AIUsageLog(Base, SerializerMixin):
     __table_args__ = (Index("idx_usage_timestamp_route", "timestamp", "route_type"),)
 
 
-class DeepAnalysis(Base, SerializerMixin):
+class DeepAnalysis(Base):
     """深度分析历史记录"""
 
     __tablename__ = "deep_analyses"

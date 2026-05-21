@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 
 from db.session import init_engine, session_scope
 from models import WebhookEvent
+from schemas.webhook import webhook_event_to_full_dict
 
 
 def print_json(data):
@@ -37,7 +38,7 @@ async def query_by_id(event_id: int):
         event = result.scalar_one_or_none()
         if event:
             print(f"\n=== 告警 ID {event_id} ===")
-            print_json(event.to_dict())
+            print_json(webhook_event_to_full_dict(event))
         else:
             print(f"未找到 ID={event_id} 的告警")
         return event
@@ -61,7 +62,7 @@ async def query_list(
         events = result.scalars().all()
         print(f"\n=== 最近 {len(events)} 条告警 ===")
         for e in events:
-            d = e.to_dict()
+            d = webhook_event_to_full_dict(e)
             ts = d.get("timestamp", "")[:19]
             imp = d.get("importance", "-")
             src = d.get("source", "-")
@@ -81,7 +82,7 @@ async def query_by_hash(alert_hash: str):
 
         print(f"\n=== Hash={alert_hash[:16]}... 的 {len(events)} 条告警 ===")
         for e in events:
-            d = e.to_dict()
+            d = webhook_event_to_full_dict(e)
             ts = d.get("timestamp", "")[:19]
             imp = d.get("importance", "-")
             dup = "🔁" if d.get("is_duplicate") else "🆕"

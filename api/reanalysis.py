@@ -112,7 +112,7 @@ async def manual_forward_webhook(
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
-    url = data.get("target_url") or data.get("forward_url")
+    url = data.get("target_url")
     fwd_res = await forward_to_remote(ctx, event.ai_analysis or {}, url)
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
@@ -132,6 +132,6 @@ async def manual_forward_webhook(
             },
         )
 
-    target_url = url or RemoteForwardPolicy.from_config().forward_url
+    target_url = url or RemoteForwardPolicy.from_config().default_target_url
     logger.info("[Reanalysis] 手动转发完成 webhook_id=%s target=%s", webhook_id, mask_url(target_url))
     return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(target_url)}"}

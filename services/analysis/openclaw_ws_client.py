@@ -3,7 +3,6 @@ OpenClaw WebSocket 客户端模块（异步版）
 
 提供两类能力：
 - poll_session_result：基于 chat.history 的短连接轮询（sessionKey → 最终文本）
-- wait_for_result：监听 runId 的事件流（agent/chat 事件 → 最终文本）
 """
 
 import asyncio
@@ -288,87 +287,3 @@ async def poll_session_result(
         return {"status": "error", "error": f"Invalid JSON response: {e}"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
-
-async def wait_for_result(
-    gateway_url: str,
-    gateway_token: str,
-    run_id: str,
-    timeout: int = 300,
-    connect_timeout: int | None = None,
-    *,
-    policy: OpenClawWsPolicy | None = None,
-) -> dict[str, Any]:
-    ws_url = _http_to_ws_url(gateway_url)
-    policy = policy or OpenClawWsPolicy.from_config()
-    connect_timeout = connect_timeout or policy.connect_timeout
-    handshake_timeout = policy.handshake_timeout
-
-    text_fragments: list[str] = []
-
-    try:
-        async with websockets.connect(
-            ws_url,
-            open_timeout=connect_timeout,
-            close_timeout=1,
-            max_size=None,
-        ) as ws:
-            ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout, policy=policy)
-            if not ok:
-                return {"status": "error", "run_id": run_id, "error": err_type or "handshake_failed"}
-
-            async def _recv_loop() -> dict[str, Any]:
-                while True:
-                    raw = await ws.recv()
-                    frame = _loads_dict(raw)
-                    if not frame or frame.get("type") != "event":
-                        continue
-                    payload = frame.get("payload", {}) or {}
-                    if payload.get("runId") != run_id:
-                        continue
-                    event_type = frame.get("event")
-
-                    if event_type == "agent":
-                        if payload.get("stream") == "assistant":
-                            data = payload.get("data")
-                            text = ""
-                            if isinstance(data, dict):
-                                text = data.get("text", "") or data.get("delta", "")
-                            elif isinstance(data, str):
-                                text = data
-                            if text:
-                                text_fragments.append(text)
-                        continue
-
-                    if event_type == "chat":
-                        state = payload.get("state")
-                        if state == "error":
-                            error_msg = payload.get("errorMessage", "Unknown error")
-                            return {"status": "error", "run_id": run_id, "error": error_msg}
-                        if state == "final":
-                            message = payload.get("message", {}) or {}
-                            content = message.get("content", [])
-                            final_text = ""
-                            if isinstance(content, list):
-                                text_parts = [
-                                    item.get("text", "")
-                                    for item in content
-                                    if isinstance(item, dict) and item.get("type") == "text"
-                                ]
-                                final_text = "\n".join([t for t in text_parts if t])
-                            elif isinstance(content, str):
-                                final_text = content
-                            if not final_text:
-                                final_text = "".join([t for t in text_fragments if isinstance(t, str)])
-                            return {"status": "success", "run_id": run_id, "message": message, "text": final_text}
-                return {"status": "timeout", "run_id": run_id, "partial_text": "".join(text_fragments)}
-
-            return await asyncio.wait_for(_recv_loop(), timeout=timeout)
-
-    except asyncio.TimeoutError:
-        partial_text = "".join([t for t in text_fragments if isinstance(t, str)])
-        return {"status": "timeout", "run_id": run_id, "partial_text": partial_text}
-    except Exception as e:
-        return {"status": "error", "run_id": run_id, "error": str(e)}
-
-    return {"status": "timeout", "run_id": run_id, "partial_text": "".join(text_fragments)}

@@ -26,14 +26,6 @@ class ForwardOutboxStatus(StrEnum):
     EXHAUSTED = "exhausted"
 
 
-class FailedForwardStatus(StrEnum):
-    PENDING = "pending"
-    RETRYING = "retrying"
-    SUCCESS = "success"
-    EXPIRED = "expired"
-    EXHAUSTED = "exhausted"
-
-
 class DeepAnalysisStatus(StrEnum):
     PENDING = "pending"
     COMPLETED = "completed"
@@ -91,12 +83,6 @@ class NoiseReductionContext:
     reason: str
     related_alert_count: int
     related_alert_ids: list[int]
-
-
-@dataclass(frozen=True)
-class PersistedEventContext:
-    save_result: object  # SaveWebhookResult
-    noise_context: NoiseReductionContext
 
 
 # Unified type aliases — single source of truth

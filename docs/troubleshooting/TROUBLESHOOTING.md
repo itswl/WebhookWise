@@ -5,7 +5,7 @@
 ### 健康检查
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/ready
 ```
 
 正常响应：
@@ -34,7 +34,7 @@ tail -f logs/webhook.log
 
 ### 1. Webhook 接收后无分析结果
 
-**症状：** POST `/webhook` 返回 202，但按 `request_id` 查不到最终事件，或 legacy 事件一直处于 `received/analyzing/retry`。
+**症状：** POST `/webhook` 返回 202，但按 `request_id` 查不到最终事件。
 
 **排查步骤：**
 
@@ -63,12 +63,12 @@ tail -f logs/webhook.log
    redis-cli xinfo stream webhook:queue
    ```
 
-6. 如果是 legacy DB 事件卡在 `received/analyzing/retry` 超过 5 分钟，Recovery Poller 会自动重拾。也可先查询僵尸事件，再按事件 ID 手动重放：
+6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
    ```bash
-   curl http://localhost:8000/api/admin/stuck-events \
+   curl http://localhost:8000/api/admin/dead-letters \
      -H "Authorization: Bearer $API_KEY"
 
-   curl -X POST http://localhost:8000/api/admin/stuck-events/{event_id}/requeue \
+   curl -X POST http://localhost:8000/api/admin/dead-letters/{event_id}/replay \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
@@ -179,27 +179,21 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查步骤：**
 
-1. 查看失败转发审计记录：
-   ```bash
-   curl http://localhost:8000/api/failed-forwards \
-     -H "Authorization: Bearer $API_KEY"
-   ```
-
-2. 检查转发规则是否正确配置（重要性匹配、目标 URL 非空）：
+1. 检查转发规则是否正确配置（重要性匹配、目标 URL 非空）：
    ```bash
    curl http://localhost:8000/api/forward-rules \
      -H "Authorization: Bearer $API_KEY"
    ```
 
-3. 手动触发转发（写操作需要 `ADMIN_WRITE_KEY`）：
+2. 手动触发转发（写操作需要 `ADMIN_WRITE_KEY`）：
    ```bash
    curl -X POST http://localhost:8000/api/forward/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-4. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误；all-in-one 部署可查看 `webhook-service` 容器内 supervisor 管理的 worker 输出。
+3. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误；all-in-one 部署可查看 `webhook-service` 容器内 supervisor 管理的 worker 输出。
 
-5. 如果失败转发状态为 `expired`，表示 Outbox 已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免旧告警误发而停止自动投递。确认仍需发送后，可以在失败转发页面手动重试。
+4. 如果 outbox 记录进入 `expired`，表示已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免过期告警误发而停止自动投递。确认仍需发送后，使用手动转发接口重新发送当前事件。
 
 ---
 
@@ -235,7 +229,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **处理：**
 
-- 如果是偶发的行锁超时，Recovery Poller 会在 5 分钟内自动重试。
+- 如果是偶发的行锁超时，TaskIQ 重试和后台补扫会自动重新投递。
 - 如果频繁出现，可适当增大超时：`.env` 中调整 `DB_STATEMENT_TIMEOUT_MS=60000`，然后重启服务。
 - 检查是否有长事务未提交（通过 PostgreSQL `pg_stat_activity` 视图排查）。
 
@@ -264,7 +258,7 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **症状：** 写配置时提示无权限。
 
-**原因：** 配置写入需要单独的 `ADMIN_WRITE_KEY`（若未设置，则复用 `API_KEY`）。
+**原因：** 配置写入需要单独的 `ADMIN_WRITE_KEY`。
 
 **修复：** 请求时添加 Header：
 ```bash

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 from .base import APIResponse
@@ -21,8 +24,8 @@ class ForwardRuleSchema(BaseModel):
     target_url: str
     target_name: str | None = None
     stop_on_match: bool
-    created_at: str | None = None
-    updated_at: str | None = None
+    created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
 
 
 class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):
@@ -31,3 +34,7 @@ class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):
 
 class ForwardRuleDetailResponse(APIResponse[ForwardRuleSchema]):
     """转发规则详情响应"""
+
+
+def forward_rule_to_dict(rule: Any) -> dict[str, Any]:
+    return ForwardRuleSchema.model_validate(rule).model_dump(mode="json")

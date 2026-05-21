@@ -61,9 +61,9 @@ def wait_json(url: str, timeout: int = 120):
     raise SystemExit(f"timed out waiting for {url}: {last_error}")
 
 
-wait_json("http://localhost:18080/health")
-wait_json("http://localhost:19090/health")
-wait_json("http://localhost:19091/health")
+wait_json("http://localhost:18080/ready")
+wait_json("http://localhost:19090/ready")
+wait_json("http://localhost:19091/ready")
 
 payload = {
     "alert_name": "checkout-critical-5xx",

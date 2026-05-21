@@ -76,6 +76,8 @@ class _TierResult:
 
 async def _check_tier(prefix: str, window: int, limit: int, now: float) -> _TierResult:
     remaining = await redis_eval_int(_SLIDING_WINDOW_LUA, 1, prefix, window, limit, now)
+    if remaining is None:
+        raise RuntimeError("rate limit script returned no integer")
     allowed = remaining >= 0
     reset_at = (math.floor(now / window) + 1) * window
     return _TierResult(allowed=allowed, remaining=max(remaining, 0), limit=limit, reset_at=reset_at)

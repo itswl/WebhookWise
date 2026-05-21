@@ -26,7 +26,7 @@ def slot_times(lease_seconds: int) -> tuple[int, int, int]:
 @dataclass(frozen=True, slots=True)
 class TaskSlotManager:
     key: str
-    eval_int: Callable[..., Awaitable[int]]
+    eval_int: Callable[..., Awaitable[int | None]]
     logger: logging.Logger
 
     async def acquire(self, token: str, limit: int, lease_seconds: int) -> bool:
@@ -41,7 +41,7 @@ class TaskSlotManager:
             token,
             key_ttl_ms,
         )
-        return bool(acquired)
+        return acquired == 1
 
     async def renew_until_cancelled(self, token: str, lease_seconds: int) -> None:
         interval = max(1.0, lease_seconds / 3)
@@ -56,7 +56,7 @@ class TaskSlotManager:
                 expires_at_ms,
                 key_ttl_ms,
             )
-            if not renewed:
+            if renewed != 1:
                 self.logger.warning("[Tasks] Redis 全局并发令牌续期失败，可能已失去 slot token=%s", token)
                 return
 

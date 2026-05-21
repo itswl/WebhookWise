@@ -67,10 +67,6 @@ class _InstructorClient(Protocol):
     chat: _InstructorChat
 
 
-def _get_instructor_client() -> instructor.Instructor:
-    raise RuntimeError("_get_instructor_client 已弃用，请使用 _get_instructor_client_async")
-
-
 async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None = None) -> instructor.Instructor:
     if _instructor_client is not None:
         return _instructor_client

@@ -103,7 +103,7 @@ def setup_tracing(app: Any | None = None, *, service_name: str | None = None) ->
             from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         except ImportError:
             return
-        exclude = "/live,/ready,/health,/static"
+        exclude = "/live,/ready,/static"
         excluded_urls = (env_flag("OTEL_INCLUDE_HEALTHCHECKS", default=False) and "/static") or exclude
         excluded_urls = os.getenv("OTEL_EXCLUDED_URLS", excluded_urls).strip()
         FastAPIInstrumentor.instrument_app(app, excluded_urls=excluded_urls)

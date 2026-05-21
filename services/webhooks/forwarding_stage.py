@@ -1,21 +1,17 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
-from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.logger import logger, mask_url
+from core.logger import logger
 from core.observability.events import add_span_event, emit_event
 from core.observability.tracing import span as otel_span
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
-from services.forwarding.forward import forward_to_openclaw as default_forward_to_openclaw
-from services.forwarding.forward import forward_to_remote as default_forward_to_remote
 from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
-from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.command_service import SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardingPolicy,
@@ -25,7 +21,7 @@ from services.webhooks.decisioning import (
 )
 from services.webhooks.deduplication import remember_duplicate_source
 from services.webhooks.policies import forwarding_policy_from_config
-from services.webhooks.repository import create_openclaw_analysis, list_enabled_forward_rules, mark_last_notified
+from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResolution,
     ForwardDecision,
@@ -34,60 +30,11 @@ from services.webhooks.types import (
 )
 
 
-class ForwardingClient(Protocol):
-    async def forward_to_remote(
-        self,
-        *,
-        webhook_data: dict[str, Any],
-        analysis_result: dict[str, Any],
-        target_url: str,
-        is_periodic_reminder: bool,
-    ) -> dict[str, Any]: ...
-
-    async def forward_to_openclaw(
-        self,
-        *,
-        webhook_data: dict[str, Any],
-        analysis_result: dict[str, Any],
-    ) -> dict[str, Any]: ...
-
-
-@dataclass(frozen=True, slots=True)
-class DefaultForwardingClient:
-    async def forward_to_remote(
-        self,
-        *,
-        webhook_data: dict[str, Any],
-        analysis_result: dict[str, Any],
-        target_url: str,
-        is_periodic_reminder: bool,
-    ) -> dict[str, Any]:
-        return await default_forward_to_remote(
-            webhook_data=webhook_data,
-            analysis_result=analysis_result,
-            target_url=target_url,
-            is_periodic_reminder=is_periodic_reminder,
-        )
-
-    async def forward_to_openclaw(
-        self,
-        *,
-        webhook_data: dict[str, Any],
-        analysis_result: dict[str, Any],
-    ) -> dict[str, Any]:
-        return await default_forward_to_openclaw(webhook_data, analysis_result)
-
-
 @dataclass(frozen=True, slots=True)
 class FinalizeAnalysisResult:
     save_result: SaveWebhookResult
     forward_decision: ForwardDecision | None
     outbox_ids: list[int]
-
-    def __iter__(self) -> Iterator[Any]:
-        # Backward-compatible two-value unpacking for existing tests/callers.
-        yield self.save_result
-        yield self.forward_decision
 
 
 async def resolve_forward_decision(
@@ -143,144 +90,6 @@ async def resolve_forward_decision(
         )
 
     return decision
-
-
-async def execute_forwarding(
-    decision: ForwardDecision,
-    full_data: dict[str, Any],
-    analysis: dict[str, Any],
-    webhook_id: int,
-    orig_id: int | None,
-    forwarding_client: ForwardingClient | None = None,
-) -> None:
-    """Compatibility wrapper: directly dispatch forwarding in the worker."""
-    await dispatch_forwarding_decision(
-        decision,
-        full_data=full_data,
-        analysis=analysis,
-        webhook_id=webhook_id,
-        orig_id=orig_id,
-        forwarding_client=forwarding_client,
-    )
-
-
-def _target_rules(decision: ForwardDecision) -> list[dict[str, Any]]:
-    if decision.matched_rules:
-        return [dict(rule) for rule in decision.matched_rules]
-    return [ForwardOutboxPolicy.from_config().default_rule()]
-
-
-def _is_forward_success(result: dict[str, Any]) -> bool:
-    return result.get("status") == "success" or bool(result.get("_pending"))
-
-
-async def _dispatch_one_target(
-    rule: dict[str, Any],
-    *,
-    full_data: dict[str, Any],
-    analysis: dict[str, Any],
-    webhook_id: int,
-    is_periodic_reminder: bool,
-    forwarding_client: ForwardingClient,
-) -> dict[str, Any] | None:
-    target_type = str(rule.get("target_type", "webhook") or "webhook")
-    target_url = str(rule.get("target_url", "") or "")
-    rule_label = rule.get("name") or rule.get("id") or "default"
-    logger.info(
-        "[Forward] 开始执行目标 event_id=%s rule=%s target_type=%s target=%s periodic=%s",
-        webhook_id,
-        rule_label,
-        target_type,
-        mask_url(target_url) if target_url else "",
-        is_periodic_reminder,
-    )
-    with otel_span(
-        "forward.target",
-        {
-            "event_id": webhook_id,
-            "forward.target_type": target_type,
-            "forward.rule": str(rule_label),
-            "forward.periodic_reminder": is_periodic_reminder,
-        },
-    ) as target_span:
-        if target_type == "openclaw":
-            result = await forwarding_client.forward_to_openclaw(webhook_data=full_data, analysis_result=analysis)
-            if result.get("_pending"):
-                analysis_id = await create_openclaw_analysis(
-                    webhook_id,
-                    run_id=str(result.get("_openclaw_run_id", "")),
-                    session_key=str(result.get("_openclaw_session_key", "")),
-                )
-                logger.info("[Forward] OpenClaw 分析记录已创建 event_id=%s analysis_id=%s", webhook_id, analysis_id)
-        else:
-            if not target_url:
-                logger.warning("[Forward] 规则 '%s' target_url 为空，跳过直接转发", rule.get("name", rule.get("id")))
-                if target_span is not None:
-                    target_span.set_attribute("forward.status", "skipped")
-                return None
-            result = await forwarding_client.forward_to_remote(
-                webhook_data=full_data,
-                analysis_result=analysis,
-                target_url=target_url,
-                is_periodic_reminder=is_periodic_reminder,
-            )
-        if target_span is not None:
-            target_span.set_attribute(
-                "forward.status",
-                str(result.get("status") or ("pending" if result.get("_pending") else "unknown")),
-            )
-
-    if not _is_forward_success(result):
-        raise RuntimeError(f"forward status={result.get('status')}: {result.get('message', '')}")
-    logger.info(
-        "[Forward] 目标执行完成 event_id=%s rule=%s target_type=%s status=%s",
-        webhook_id,
-        rule_label,
-        target_type,
-        result.get("status") or ("pending" if result.get("_pending") else "unknown"),
-    )
-    return result
-
-
-async def dispatch_forwarding_decision(
-    decision: ForwardDecision | None,
-    *,
-    full_data: dict[str, Any],
-    analysis: dict[str, Any],
-    webhook_id: int,
-    orig_id: int | None,
-    forwarding_client: ForwardingClient | None = None,
-) -> list[dict[str, Any]]:
-    """Legacy compatibility wrapper for tests/manual callers that need direct forwarding."""
-    if not decision or not decision.should_forward:
-        logger.info(
-            "[Forward] 无需转发 event_id=%s reason=%s", webhook_id, getattr(decision, "skip_reason", "no_decision")
-        )
-        return []
-
-    with otel_span("forward.dispatch", {"event_id": webhook_id, "forward.status": "started"}):
-        client = forwarding_client or DefaultForwardingClient()
-        results: list[dict[str, Any]] = []
-        for rule in _target_rules(decision):
-            result = await _dispatch_one_target(
-                rule,
-                full_data=full_data,
-                analysis=analysis,
-                webhook_id=webhook_id,
-                is_periodic_reminder=decision.is_periodic_reminder,
-                forwarding_client=client,
-            )
-            if result is not None:
-                results.append(result)
-    if results:
-        await mark_last_notified(orig_id or webhook_id)
-        logger.info(
-            "[Forward] 转发批次完成 event_id=%s notified_event_id=%s target_count=%d",
-            webhook_id,
-            orig_id or webhook_id,
-            len(results),
-        )
-    return results
 
 
 async def finalize_analysis_transaction(
@@ -340,7 +149,6 @@ async def finalize_analysis_transaction(
                     original_event_id=original_id_for_save,
                     beyond_window=beyond_for_save,
                     reanalyzed=analysis_res.reanalyzed,
-                    event_id=ctx.event_id,
                     skip_duplicate_lookup=skip_duplicate_lookup,
                 )
 

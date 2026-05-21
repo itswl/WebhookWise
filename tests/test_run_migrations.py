@@ -1,4 +1,3 @@
-import ast
 from pathlib import Path
 from typing import Any
 
@@ -49,85 +48,10 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
-def test_initial_schema_revision_is_idempotent_for_historical_tables() -> None:
-    revision_path = migrations.PROJECT_ROOT / "alembic/versions/f8894c5c7e15_initial_schema_from_existing_models.py"
-    tree = ast.parse(revision_path.read_text())
+def test_alembic_history_is_a_current_schema_baseline() -> None:
+    revision_paths = sorted((migrations.PROJECT_ROOT / "alembic/versions").glob("*.py"))
 
-    calls: list[ast.Call] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not isinstance(node.func, ast.Attribute):
-            continue
-        if node.func.attr not in {"create_table", "create_index"}:
-            continue
-        if not isinstance(node.func.value, ast.Name) or node.func.value.id != "op":
-            continue
-        calls.append(node)
-
-    assert calls
-    missing = [
-        node.lineno
-        for node in calls
-        if not any(
-            kw.arg == "if_not_exists" and isinstance(kw.value, ast.Constant) and kw.value.value is True
-            for kw in node.keywords
-        )
-    ]
-    assert missing == []
-
-
-def test_initial_schema_revision_repairs_missing_historical_columns() -> None:
-    revision_path = migrations.PROJECT_ROOT / "alembic/versions/f8894c5c7e15_initial_schema_from_existing_models.py"
-    source = revision_path.read_text()
-
-    assert "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}" in source
-    assert "\"processing_status VARCHAR(20) DEFAULT 'received' NOT NULL\"" in source
-    assert '"created_at TIMESTAMP WITHOUT TIME ZONE"' in source
-
-
-def test_legacy_unique_index_predicate_matches_is_duplicate_column_type() -> None:
-    revision_path = migrations.PROJECT_ROOT / "alembic/versions/6a7b8c9d0e1f_consolidate_legacy_indexes_and_locks.py"
-    source = revision_path.read_text()
-
-    assert 'column_type == "boolean"' in source
-    assert 'column_type in {"smallint", "integer", "bigint"}' in source
-    assert "(is_duplicate = 0 OR is_duplicate IS NULL)" in source
-    assert "WHERE {predicate}" in source
-
-
-def test_legacy_partial_revision_patch_only_updates_matching_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    executed: list[tuple[str, tuple[str, ...] | None]] = []
-    responses = [
-        ("alembic_version",),
-        ("9c0b7c3e2a11",),
-        ("processing_locks",),
-        (1,),
-    ]
-
-    class FakeCursor:
-        def execute(self, sql: str, params: tuple[str, ...] | None = None) -> None:
-            executed.append((sql, params))
-
-        def fetchone(self) -> tuple[object, ...] | None:
-            return responses.pop(0)
-
-    class FakeConnection:
-        autocommit = False
-
-        def cursor(self) -> FakeCursor:
-            return FakeCursor()
-
-        def close(self) -> None:
-            executed.append(("close", None))
-
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
-    monkeypatch.setattr("scripts.run_migrations.psycopg2.connect", lambda url: FakeConnection())
-
-    migrations._advance_legacy_partial_revision()
-
-    assert (
-        "update public.alembic_version set version_num=%s",
-        ("6a7b8c9d0e1f",),
-    ) in executed
-    assert executed[-1] == ("close", None)
+    assert [path.name for path in revision_paths] == ["0001_current_schema.py"]
+    source = revision_paths[0].read_text()
+    assert "Base.metadata.create_all" in source
+    assert "Base.metadata.drop_all" in source

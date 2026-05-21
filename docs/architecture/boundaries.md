@@ -13,7 +13,7 @@ is not intended to be a microservice split, and it should not mix generic
 | `services/analysis/` | AI/rule/OpenClaw analysis policies, prompt loading, cache and usage tracking | FastAPI route handling, notification channel formatting |
 | `services/forwarding/` | Forwarding rules, transactional outbox, delivery retry, remote target dispatch | Source webhook normalization |
 | `services/notifications/` | Notification channel abstractions, target detection, message formatting | Pipeline orchestration or persistence decisions |
-| `services/operations/` | TaskIQ tasks, schedulers, recovery scans, data maintenance jobs | Request parsing or domain decisions hidden inside background tasks |
+| `services/operations/` | TaskIQ tasks, schedulers, outbox scans, data maintenance jobs | Request parsing or domain decisions hidden inside background tasks |
 | `adapters/` | Inbound ecosystem normalization and plugin registry | Business orchestration, notification target detection, or target delivery side effects |
 | `models/` | SQLAlchemy persistence schema | Domain decision logic beyond simple model helpers |
 | `schemas/` | Pydantic API contracts | ORM behavior or service orchestration |
@@ -105,11 +105,11 @@ from `requirements-dev.lock`. Do not add a second lock source such as
 
 ## Migration Policy
 
-Alembic revisions should describe schema or bounded data migrations. Avoid vague
-names such as "cleanup" or "logic sinking"; those hide the operational risk.
-When a migration must repair historical partial state, keep the compatibility
-patch in `scripts/run_migrations.py` or a clearly named migration helper, and
-keep long-running business cleanup out of API/worker startup.
+Alembic revisions describe the current schema and deliberate forward-only data
+changes. Avoid vague names such as "cleanup" or "logic sinking"; those hide the
+operational risk. Do not add schema repair logic to application startup. Existing
+environments that predate the current baseline must be reset or migrated with a
+one-off operator-run script outside the service runtime.
 
 ## Prompt Management
 

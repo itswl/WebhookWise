@@ -133,17 +133,11 @@ async def _record_notification_failure(
     error_message: str,
     analysis_type: str,
 ) -> None:
-    try:
-        from services.forwarding.forward import record_failed_forward
-
-        await record_failed_forward(
-            webhook_event_id=webhook_event_id,
-            forward_rule_id=None,
-            target_url=target_url,
-            target_type="feishu",
-            failure_reason=failure_reason,
-            error_message=error_message,
-            forward_data={"webhook_event_id": webhook_event_id, "analysis_type": analysis_type},
-        )
-    except Exception as rec_err:
-        logger.warning("记录深度分析通知失败异常: %s", rec_err)
+    logger.warning(
+        "[DeepAnalysisNotify] 通知失败 event_id=%s target=%s reason=%s error=%s analysis_type=%s",
+        webhook_event_id,
+        mask_url(target_url),
+        failure_reason,
+        error_message,
+        analysis_type,
+    )

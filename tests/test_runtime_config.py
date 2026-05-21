@@ -18,7 +18,6 @@ def test_openclaw_operational_knobs_are_runtime_configurable() -> None:
         "OPENCLAW_MAX_CONSECUTIVE_ERRORS",
         "OPENCLAW_ENABLE_DEGRADATION",
         "OPENCLAW_CONNECT_TIMEOUT",
-        "OPENCLAW_HANDSHAKE_TIMEOUT",
         "OPENCLAW_NONCE_TIMEOUT",
         "OPENCLAW_POLL_TIMEOUT",
     }
@@ -87,8 +86,9 @@ def test_runtime_keys_are_derived_from_config_models() -> None:
     from core.config import Config
 
     assert Config.RUNTIME_KEYS["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {"type": "int", "sub": "notifications"}
-    assert Config.RUNTIME_KEYS["FORWARD_URL"] == {"type": "str", "sub": "forwarding"}
+    assert Config.RUNTIME_KEYS["DEFAULT_FORWARD_TARGET_URL"] == {"type": "str", "sub": "forwarding"}
     assert Config.RUNTIME_KEYS["WEBHOOK_MQ_QUEUE"] == {"type": "str", "sub": "mq"}
+    assert Config.RUNTIME_KEYS["BACKGROUND_SCAN_INTERVAL_SECONDS"] == {"type": "int", "sub": "tasks"}
     assert Config.RUNTIME_KEYS["MAX_CONCURRENT_WEBHOOK_TASKS"] == {"type": "int", "sub": "tasks"}
     assert Config.RUNTIME_KEYS["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {"type": "int", "sub": "circuit_breaker"}
     assert Config.RUNTIME_KEYS["ARCHIVE_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
