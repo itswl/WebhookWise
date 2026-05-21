@@ -15,7 +15,8 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 
 from core.log_context import clear_log_context, set_log_context
-from core.metrics import (
+from core.observability.events import emit_event
+from core.observability.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
     SCHEDULED_TASK_LAG_SECONDS,
     SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME,
@@ -24,8 +25,15 @@ from core.metrics import (
     WORKER_TASK_DURATION_SECONDS,
     WORKER_TASKS_TOTAL,
 )
-from core.otel import emit_event, record_signal
-from core.otel import span as otel_span
+from core.observability.signals import record_signal
+from core.observability.tracing import (
+    build_traceparent,
+    extract_trace_id_from_headers,
+    reset_fallback_trace_id,
+    set_fallback_trace_id,
+    trace_context_from_headers,
+)
+from core.observability.tracing import span as otel_span
 from core.redis_client import RedisEvalArg
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
@@ -197,8 +205,9 @@ async def _handle_raw_webhook_failure(
     received_at: str | None,
     ingest_retry_count: int,
     err: Exception,
+    traceparent: str | None = None,
 ) -> None:
-    from core.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
+    from core.observability.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
     from core.retry_policies import retry_policy
     from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_ingest_retry
     from services.webhooks.ingest_failure import record_raw_ingest_dead_letter
@@ -215,17 +224,20 @@ async def _handle_raw_webhook_failure(
             max_delay=policy.max_delay,
             multiplier=policy.backoff_multiplier,
         )
+        retry_kwargs = {
+            "delay_seconds": delay,
+            "source": source,
+            "raw_headers": raw_headers,
+            "raw_body": raw_body,
+            "client_ip": client_ip,
+            "request_id": request_id,
+            "received_at": received_at,
+            "ingest_retry_count": next_retry_count,
+        }
+        if traceparent:
+            retry_kwargs["traceparent"] = traceparent
         try:
-            await schedule_webhook_ingest_retry(
-                delay_seconds=delay,
-                source=source,
-                raw_headers=raw_headers,
-                raw_body=raw_body,
-                client_ip=client_ip,
-                request_id=request_id,
-                received_at=received_at,
-                ingest_retry_count=next_retry_count,
-            )
+            await schedule_webhook_ingest_retry(**retry_kwargs)
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
             logger.error(
                 "[Tasks] raw webhook 处理失败，已调度重试 request_id=%s source=%s retry=%s/%s delay=%ss error=%s",
@@ -343,6 +355,7 @@ async def run_webhook_task(
     request_id: str | None = None,
     received_at: str | None = None,
     ingest_retry_count: int = 0,
+    traceparent: str | None = None,
 ) -> None:
     """Process either a legacy DB event or a raw ingested webhook."""
     from services.webhooks.pipeline import handle_webhook_ingest, handle_webhook_process
@@ -369,40 +382,55 @@ async def run_webhook_task(
             "retry.count": ingest_retry_count,
         },
     )
+    trace_headers = {"traceparent": traceparent or ""}
+    if not trace_headers["traceparent"] and request_id:
+        trace_headers["traceparent"] = build_traceparent(request_id)
+    fallback_trace_id = extract_trace_id_from_headers(trace_headers) or (request_id or "")
+    fallback_token = set_fallback_trace_id(fallback_trace_id) if fallback_trace_id else None
     try:
-        async with _webhook_task_slot():
-            WEBHOOK_RUNNING_TASKS.inc()
-            try:
-                if event_id is not None:
-                    await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
-                else:
-                    normalized_source = source or "unknown"
-                    normalized_headers = raw_headers or {}
-                    normalized_body = raw_body or ""
-                    normalized_client_ip = client_ip or ""
-                    try:
-                        await handle_webhook_ingest(
-                            source=normalized_source,
-                            raw_headers=normalized_headers,
-                            raw_body=normalized_body,
-                            client_ip=normalized_client_ip,
-                            request_id=request_id,
-                            received_at=received_at,
-                        )
-                    except Exception as e:
-                        outcome = "raw_failure_handled"
-                        await _handle_raw_webhook_failure(
-                            source=normalized_source,
-                            raw_headers=normalized_headers,
-                            raw_body=normalized_body,
-                            client_ip=normalized_client_ip,
-                            request_id=request_id,
-                            received_at=received_at,
-                            ingest_retry_count=ingest_retry_count,
-                            err=e,
-                        )
-            finally:
-                WEBHOOK_RUNNING_TASKS.dec()
+        with trace_context_from_headers(trace_headers), otel_span(
+            "worker.webhook_process_task",
+            {
+                "event_id": event_id or 0,
+                "source": source or "unknown",
+                "retry.count": ingest_retry_count,
+                "webhook.raw_ingest": event_id is None,
+            },
+        ):
+            async with _webhook_task_slot():
+                WEBHOOK_RUNNING_TASKS.inc()
+                try:
+                    if event_id is not None:
+                        await handle_webhook_process(event_id=event_id, client_ip=client_ip or "")
+                    else:
+                        normalized_source = source or "unknown"
+                        normalized_headers = raw_headers or {}
+                        normalized_body = raw_body or ""
+                        normalized_client_ip = client_ip or ""
+                        try:
+                            await handle_webhook_ingest(
+                                source=normalized_source,
+                                raw_headers=normalized_headers,
+                                raw_body=normalized_body,
+                                client_ip=normalized_client_ip,
+                                request_id=request_id,
+                                received_at=received_at,
+                            )
+                        except Exception as e:
+                            outcome = "raw_failure_handled"
+                            await _handle_raw_webhook_failure(
+                                source=normalized_source,
+                                raw_headers=normalized_headers,
+                                raw_body=normalized_body,
+                                client_ip=normalized_client_ip,
+                                request_id=request_id,
+                                received_at=received_at,
+                                ingest_retry_count=ingest_retry_count,
+                                traceparent=trace_headers["traceparent"] or traceparent,
+                                err=e,
+                            )
+                finally:
+                    WEBHOOK_RUNNING_TASKS.dec()
     except Exception:
         outcome = "error"
         logger.exception(
@@ -413,6 +441,11 @@ async def run_webhook_task(
         )
         raise
     finally:
+        if fallback_token is not None:
+            try:
+                reset_fallback_trace_id(fallback_token)
+            except ValueError:
+                logger.debug("[Tasks] fallback trace context already reset", exc_info=True)
         duration_ms = int((time.perf_counter() - task_start) * 1000)
         logger.info(
             "[Tasks] Webhook 任务结束 event_id=%s request_id=%s source=%s outcome=%s duration=%dms",
@@ -445,6 +478,7 @@ async def process_webhook_task(
     request_id: str | None = None,
     received_at: str | None = None,
     ingest_retry_count: int = 0,
+    traceparent: str | None = None,
 ) -> None:
     await run_webhook_task(
         event_id=event_id,
@@ -456,6 +490,7 @@ async def process_webhook_task(
         request_id=request_id,
         received_at=received_at,
         ingest_retry_count=ingest_retry_count,
+        traceparent=traceparent,
     )
 
 

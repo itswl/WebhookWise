@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from core.http_client import get_http_client
-from core.metrics import DEEP_ANALYSIS_TOTAL
-from core.trace import get_trace_id
+from core.observability.metrics import DEEP_ANALYSIS_TOTAL
+from core.observability.tracing import get_current_trace_id
 from services.analysis.openclaw_http import poll_openclaw_final
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.analysis.openclaw_result_parser import (
@@ -154,7 +154,7 @@ async def _poll_via_http(
         session_key,
         policy=policy,
         http_client=http_client or get_http_client(),
-        trace_id=get_trace_id(),
+        trace_id=get_current_trace_id(),
         retry_count=retry_count,
     )
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
-from core.metrics import (
+from core.observability.metrics import (
     DATABASE_EVENTS_COUNT,
     WEBHOOK_MQ_GROUP_LAG,
     WEBHOOK_MQ_GROUP_PENDING,

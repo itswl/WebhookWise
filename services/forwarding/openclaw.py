@@ -10,7 +10,7 @@ import httpx
 
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import logger, mask_url
-from core.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
+from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
@@ -124,7 +124,7 @@ async def analyze_with_openclaw(
     sleep: Callable[[float], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
-    from core.trace import get_trace_id
+    from core.observability.tracing import get_current_trace_id
 
     policy = policy or OpenClawTriggerPolicy.from_config()
     dependencies = dependencies or build_openclaw_forward_dependencies()
@@ -198,7 +198,7 @@ async def analyze_with_openclaw(
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": _JSON_UTF8_CONTENT_TYPE}
     kwargs: dict[str, Any] = {"content": payload_bytes}
 
-    trace_id = get_trace_id()
+    trace_id = get_current_trace_id()
     if trace_id:
         headers["X-Trace-Id"] = trace_id
 

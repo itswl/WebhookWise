@@ -23,13 +23,19 @@ python scripts/observability/webhookwise_observe.py preset queue-backlog
 python scripts/observability/webhookwise_observe.py preset collector-health
 
 # Run custom PromQL
-python scripts/observability/webhookwise_observe.py promql 'sum by (http_status_code) (increase(http_server_requests_total[1h]))'
+python scripts/observability/webhookwise_observe.py promql 'sum by (http_response_status_code) (increase(http_server_request_duration_seconds_count[1h]))'
 
 # Query Loki logs
 python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise"} | json' --limit 20
 
+# Search recent Tempo traces
+python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
+
 # Validate every PromQL expression in the provisioned dashboard
 python scripts/observability/webhookwise_observe.py dashboard --validate
+
+# Run an end-to-end telemetry smoke check
+python scripts/observability/webhookwise_observe.py smoke
 ```
 
 Use `--json` on commands when another program or agent should consume the output.
@@ -65,6 +71,7 @@ Then set the datasource UIDs when they differ from the defaults:
 ```bash
 export WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID=prometheus
 export WEBHOOKWISE_LOKI_DATASOURCE_UID=loki
+export WEBHOOKWISE_TEMPO_DATASOURCE_UID=tempo
 ```
 
 Run the same commands against production:
@@ -73,8 +80,10 @@ Run the same commands against production:
 python scripts/observability/webhookwise_observe.py health
 python scripts/observability/webhookwise_observe.py preset api-rate
 python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise-api"} | json' --limit 20
+python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
 python scripts/observability/webhookwise_observe.py dashboard --remote --uid webhook-wise-aiops
 python scripts/observability/webhookwise_observe.py dashboard --validate
+python scripts/observability/webhookwise_observe.py smoke --skip-webhook
 ```
 
 Do not commit tokens or passwords. Keep them in your shell, password manager, or
@@ -97,7 +106,9 @@ It exposes these tools:
 | `webhookwise_promql` | Run an arbitrary PromQL instant query |
 | `webhookwise_preset` | Run one of the named WebhookWise PromQL presets |
 | `webhookwise_logs` | Run a Loki `query_range` |
+| `webhookwise_tempo_search` | Search recent Tempo traces for a service |
 | `webhookwise_dashboard_validate` | Validate `grafana/dashboard.json` against Prometheus |
+| `webhookwise_smoke` | Run the API -> Prometheus -> Loki -> Tempo smoke check |
 
 Example JSON-RPC call:
 
@@ -151,8 +162,17 @@ WEBHOOKWISE_GRAFANA_PASSWORD=admin
 WEBHOOKWISE_GRAFANA_TOKEN=...
 WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID=prometheus
 WEBHOOKWISE_LOKI_DATASOURCE_UID=loki
+WEBHOOKWISE_TEMPO_DATASOURCE_UID=tempo
 WEBHOOKWISE_HTTP_USER_AGENT=...
 ```
+
+The default user agent is `WebhookWise-Observability/0.1`; override it only
+when a front door requires a different client identity.
+
+The `smoke` command posts a synthetic webhook by default. Use `--skip-webhook`
+when you only want to query online telemetry and do not want to create traffic.
+If webhook auth is enabled, export `WEBHOOK_SECRET` before running the command so
+the synthetic request can be signed.
 
 ## Preset Groups
 
@@ -163,7 +183,7 @@ WEBHOOKWISE_HTTP_USER_AGENT=...
 | Queue / worker | `queue-backlog`, `queue-retained-depth`, `queue-ops`, `worker-runs`, `worker-latency-p95` |
 | DB / Redis | `db-pool`, `db-latency-p95`, `redis-latency-p95` |
 | Scheduler | `scheduler-lag`, `scheduler-last-success-age` |
-| AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95` |
+| AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95`, `forward-outbox-backlog-age`, `circuit-breaker-state` |
 | Deep diagnostics | `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`, `noise-latency-p95` |
 | Frontend / eBPF / load / collector | `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `collector-queue`, `loki-write-latency-p95`, `loki-write-retries` |
 
@@ -174,8 +194,10 @@ When metrics change:
 1. Update `scripts/observability/query_lib.py` presets.
 2. Update `.codex/skills/webhookwise-observability/SKILL.md` if the workflow changes.
 3. Update `grafana/dashboard.json` if the dashboard should reflect the change.
-4. Run:
+4. Update `deploy/observability/alerts.yml` if the new metric affects SLOs or alerting.
+5. Run:
 
 ```bash
 python scripts/observability/webhookwise_observe.py dashboard --validate
+python scripts/observability/webhookwise_observe.py smoke
 ```

@@ -70,7 +70,7 @@ RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 
 async def _record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
-    from core.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
+    from core.observability.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
 
     start = time.perf_counter()
     status = "success"

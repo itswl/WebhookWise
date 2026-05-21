@@ -1,8 +1,9 @@
+import json
 import logging
 import os
 
 import core.logger as logger_module
-from core.logger import mask_url
+from core.logger import JsonFormatter, mask_url
 from core.logging_levels import apply_log_levels
 
 
@@ -23,6 +24,17 @@ def test_mask_url_keeps_host_and_port_for_diagnostics():
 def test_mask_url_masks_invalid_or_empty_values():
     assert mask_url("") == "***"
     assert mask_url("not-a-url") == "***"
+
+
+def test_json_formatter_uses_lowercase_level_and_uppercase_display_severity():
+    formatter = JsonFormatter()
+    record = logging.LogRecord("webhook_service.test", logging.WARNING, __file__, 1, "Redis latency high", (), None)
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["level"] == "warn"
+    assert payload["severity_text"] == "WARN"
+    assert payload["severity_number"] == logging.WARNING
 
 
 def test_setup_logger_reinitializes_in_new_process():

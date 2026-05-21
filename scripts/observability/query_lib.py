@@ -7,6 +7,8 @@ the app container, on a developer laptop, or from a lightweight MCP wrapper.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import time
@@ -18,10 +20,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_TIMEOUT_SECONDS = 10
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-)
+DEFAULT_USER_AGENT = "WebhookWise-Observability/0.1"
 
 
 @dataclass(frozen=True)
@@ -39,6 +38,7 @@ class Endpoints:
     grafana_token: str = ""
     prometheus_datasource_uid: str = "prometheus"
     loki_datasource_uid: str = "loki"
+    tempo_datasource_uid: str = "tempo"
 
     @classmethod
     def from_env(cls) -> Endpoints:
@@ -59,30 +59,34 @@ class Endpoints:
                 cls.prometheus_datasource_uid,
             ),
             loki_datasource_uid=os.getenv("WEBHOOKWISE_LOKI_DATASOURCE_UID", cls.loki_datasource_uid),
+            tempo_datasource_uid=os.getenv("WEBHOOKWISE_TEMPO_DATASOURCE_UID", cls.tempo_datasource_uid),
         )
 
 
 PROMQL_PRESETS: dict[str, str] = {
-    "api-rate": 'sum by (http_route, http_status_code) (rate(http_server_requests_total{service_name="webhookwise-api"}[5m]))',
+    "api-rate": 'sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m]))',
     "api-latency-p95": (
         "histogram_quantile(0.95, sum by (le, http_route) "
         '(rate(http_server_request_duration_seconds_bucket{service_name="webhookwise-api"}[5m])))'
     ),
     "api-5xx-rate": (
-        '100 * ((sum(rate(http_server_requests_total{service_name="webhookwise-api", http_status_code=~"5.."}[5m])) '
-        'or vector(0)) / clamp_min((sum(rate(http_server_requests_total{service_name="webhookwise-api"}[5m])) '
+        '100 * ((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api", http_response_status_code=~"5.."}[5m])) '
+        'or vector(0)) / clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m])) '
         "or vector(0)), 0.000001))"
     ),
     "webhook-rate": "sum by (webhook_source) (rate(webhook_received_total[5m]))",
-    "active-events": "max(webhook_events_count_ratio) or vector(0)",
-    "queue-backlog": "max(queue_pending_ratio) or vector(0) or max(queue_lag_ratio)",
-    "queue-retained-depth": "max by (queue_stream) (queue_depth_ratio) or vector(0)",
+    "active-events": "max(webhook_events_active) or max(webhook_events_count_ratio) or vector(0)",
+    "queue-backlog": "max(queue_pending) or max(queue_pending_ratio) or vector(0) or max(queue_lag) or max(queue_lag_ratio)",
+    "queue-retained-depth": "max by (queue_stream) (queue_depth) or max by (queue_stream) (queue_depth_ratio) or vector(0)",
     "queue-ops": "sum by (queue_operation, queue_status) (rate(queue_operations_total[5m]))",
     "worker-runs": "sum by (worker_task_name, worker_task_status) (rate(worker_task_runs_total[5m]))",
     "worker-latency-p95": (
         "histogram_quantile(0.95, sum by (le, worker_task_name) " "(rate(worker_task_duration_seconds_bucket[5m])))"
     ),
-    "db-pool": "max(db_pool_connections_checked_out_ratio) or vector(0) or max(db_pool_connections_max_ratio)",
+    "db-pool": (
+        "max(db_pool_connections_checked_out) or max(db_pool_connections_checked_out_ratio) or vector(0) or "
+        "max(db_pool_connections_max) or max(db_pool_connections_max_ratio)"
+    ),
     "db-latency-p95": (
         "histogram_quantile(0.95, sum by (le, db_operation) " "(rate(db_session_duration_seconds_bucket[5m])))"
     ),
@@ -117,8 +121,23 @@ PROMQL_PRESETS: dict[str, str] = {
         "histogram_quantile(0.95, sum by (le, forward_target_type) "
         "(rate(forward_outbox_process_duration_seconds_bucket[5m])))"
     ),
-    "webhook-status": "max by (webhook_status) (webhook_processing_status_count_ratio) or vector(0)",
-    "webhook-stuck": "max by (webhook_status) (webhook_stuck_status_count_ratio) or vector(0)",
+    "forward-outbox-backlog-age": (
+        "max by (forward_target_type, forward_status) "
+        "(forward_outbox_oldest_age_seconds or forward_outbox_backlog_age_seconds or "
+        "forward_outbox_backlog_age_seconds_ratio) or vector(0)"
+    ),
+    "circuit-breaker-state": (
+        "max by (circuit_breaker_name, circuit_breaker_state) "
+        "(circuit_breaker_active_state or circuit_breaker_state or circuit_breaker_state_ratio) or vector(0)"
+    ),
+    "webhook-status": (
+        "max by (webhook_status) (webhook_processing_status_count) or "
+        "max by (webhook_status) (webhook_processing_status_count_ratio) or vector(0)"
+    ),
+    "webhook-stuck": (
+        "max by (webhook_status) (webhook_stuck_status_count) or "
+        "max by (webhook_status) (webhook_stuck_status_count_ratio) or vector(0)"
+    ),
     "pipeline-step-latency-p95": (
         "histogram_quantile(0.95, sum by (le, pipeline_step) "
         "(rate(webhook_pipeline_step_duration_seconds_bucket[5m])))"
@@ -153,7 +172,7 @@ PROMQL_PRESETS: dict[str, str] = {
         "increase(loki_write_dropped_entries_total[6h])"
     ),
     "environment-services": (
-        'count by (deployment_environment, service_name, job) ({__name__=~"http_server_requests_total|'
+        'count by (deployment_environment, service_name, job) ({__name__=~"http_server_request_duration_seconds_count|'
         'worker_task_runs_total|scheduler_task_runs_total|ai_tokens_total|process_cpu_utilization_ratio"})'
     ),
     "process-memory": "sum by (service_name) (process_memory_usage_bytes) or vector(0)",
@@ -243,6 +262,33 @@ def _request_text(
         raise RuntimeError(f"{url} failed: {exc}") from exc
 
 
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    request = urllib.request.Request(url, data=body, method="POST")
+    request.add_header("User-Agent", os.getenv("WEBHOOKWISE_HTTP_USER_AGENT", DEFAULT_USER_AGENT))
+    request.add_header("Content-Type", "application/json")
+    for key, value in (headers or {}).items():
+        request.add_header(key, value)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response_body = response.read().decode(errors="replace")
+    except urllib.error.HTTPError as exc:
+        response_body = exc.read().decode(errors="replace")
+        raise RuntimeError(f"{url} returned HTTP {exc.code}: {response_body[:500]}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"{url} failed: {exc}") from exc
+    try:
+        return json.loads(response_body)
+    except json.JSONDecodeError:
+        return {"raw": response_body}
+
+
 def prometheus_query(query: str, endpoints: Endpoints | None = None) -> dict[str, Any]:
     endpoints = endpoints or Endpoints.from_env()
     if endpoints.query_mode == "grafana-proxy":
@@ -307,6 +353,121 @@ def loki_query_range(
             "end": str(end_ns),
         },
     )
+
+
+def tempo_search(
+    endpoints: Endpoints | None = None,
+    *,
+    service_name: str = "webhookwise-api",
+    limit: int = 1,
+) -> dict[str, Any]:
+    endpoints = endpoints or Endpoints.from_env()
+    params = {"tags": f'service.name="{service_name}"', "limit": str(limit)}
+    if endpoints.query_mode == "grafana-proxy":
+        return _request_json(
+            f"{endpoints.grafana}/api/datasources/proxy/uid/{endpoints.tempo_datasource_uid}/api/search",
+            params=params,
+            **_grafana_auth(endpoints),
+        )
+    return _request_json(f"{endpoints.tempo}/api/search", params=params)
+
+
+def post_smoke_webhook(endpoints: Endpoints | None = None) -> dict[str, Any]:
+    endpoints = endpoints or Endpoints.from_env()
+    run_id = os.getenv("WEBHOOKWISE_SMOKE_RUN_ID") or f"smoke-{int(time.time())}"
+    payload = {
+        "alertname": "WebhookWiseObservabilitySmoke",
+        "source": "observability-smoke",
+        "severity": "warning",
+        "service": "webhookwise-api",
+        "instance": "webhookwise-smoke",
+        "run_id": run_id,
+        "current_value": 1,
+        "threshold": 1,
+        "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "annotations": {
+            "summary": "WebhookWise observability smoke synthetic alert",
+            "description": "Generated by scripts/observability/webhookwise_observe.py smoke",
+        },
+    }
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    headers = {"X-Webhook-Source": "observability-smoke"}
+    secret = os.getenv("WEBHOOK_SECRET", "")
+    if secret:
+        signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        headers["X-Webhook-Signature"] = signature
+    return _post_json(f"{endpoints.api}/webhook/observability-smoke", payload, headers=headers)
+
+
+def smoke(
+    endpoints: Endpoints | None = None,
+    *,
+    send_webhook: bool = True,
+    wait_seconds: int | None = None,
+) -> list[dict[str, str]]:
+    endpoints = endpoints or Endpoints.from_env()
+    wait_seconds = wait_seconds if wait_seconds is not None else int(os.getenv("WEBHOOKWISE_SMOKE_WAIT_SECONDS", "8"))
+    rows: list[dict[str, str]] = []
+
+    health_rows = health(endpoints)
+    ok_services = sum(1 for row in health_rows if row["status"] == "ok")
+    rows.append(
+        {
+            "check": "health",
+            "status": "ok" if ok_services == len(health_rows) else "error",
+            "detail": f"{ok_services}/{len(health_rows)} endpoints ok",
+        }
+    )
+
+    if send_webhook:
+        try:
+            result = post_smoke_webhook(endpoints)
+            request_id = result.get("request_id") or result.get("id") or ""
+            rows.append({"check": "webhook-post", "status": "ok", "detail": f"request_id={request_id}"})
+        except RuntimeError as exc:
+            rows.append({"check": "webhook-post", "status": "error", "detail": str(exc)[:200]})
+
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+
+    prometheus_checks = {
+        "prometheus-webhook-received": "sum(increase(webhook_received_total[10m]))",
+        "prometheus-webhook-processed": "sum(increase(webhook_processed_total[10m]))",
+        "prometheus-recording-rules": "max(webhook_events_active) or max(webhook_events_count_ratio) or vector(0)",
+        "prometheus-alerts": 'sum by (alertstate) (ALERTS{alertname=~"WebhookWise.*"}) or vector(0)',
+    }
+    for name, query in prometheus_checks.items():
+        rows.append(_prometheus_smoke_row(name, query, endpoints))
+
+    try:
+        result = loki_query_range(
+            '{service_name=~"webhookwise.*|webhookwise"} | json | trace_id != "-"',
+            endpoints,
+            limit=5,
+            since_seconds=600,
+        )
+        streams = len(result.get("data", {}).get("result", []))
+        rows.append({"check": "loki-trace-logs", "status": "ok" if streams else "warn", "detail": f"{streams} streams"})
+    except RuntimeError as exc:
+        rows.append({"check": "loki-trace-logs", "status": "error", "detail": str(exc)[:200]})
+
+    try:
+        result = tempo_search(endpoints)
+        traces = len(result.get("traces") or result.get("data", {}).get("traces") or [])
+        rows.append({"check": "tempo-search", "status": "ok" if traces else "warn", "detail": f"{traces} traces"})
+    except RuntimeError as exc:
+        rows.append({"check": "tempo-search", "status": "error", "detail": str(exc)[:200]})
+
+    return rows
+
+
+def _prometheus_smoke_row(name: str, query: str, endpoints: Endpoints) -> dict[str, str]:
+    try:
+        result = prometheus_query(query, endpoints)
+    except RuntimeError as exc:
+        return {"check": name, "status": "error", "detail": str(exc)[:200]}
+    series = len(result.get("data", {}).get("result", []))
+    return {"check": name, "status": "ok" if series else "warn", "detail": f"{series} series"}
 
 
 def grafana_dashboard(uid: str = "webhook-wise-aiops", endpoints: Endpoints | None = None) -> dict[str, Any]:

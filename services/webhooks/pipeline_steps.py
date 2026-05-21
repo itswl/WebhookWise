@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING, Any
 from core.alert_concurrency import alert_processing_gate
 from core.log_context import set_log_context
 from core.logger import logger
-from core.metrics import (
+from core.observability.events import emit_event
+from core.observability.metrics import (
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
 )
-from core.otel import emit_event, record_signal
-from core.otel import span as otel_span
+from core.observability.signals import record_signal
+from core.observability.tracing import span as otel_span
 from services.webhooks.analysis_resolution import resolve_analysis
 from services.webhooks.command_service import SaveWebhookResult, mark_webhook_suppressed
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance

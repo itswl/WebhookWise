@@ -9,6 +9,13 @@ from typing import ParamSpec, TypeVar
 import httpx
 
 from core.config import Config
+from core.observability.events import add_span_event
+from core.observability.metrics import (
+    CIRCUIT_BREAKER_REQUESTS_TOTAL,
+    CIRCUIT_BREAKER_STATE,
+    CIRCUIT_BREAKER_TRANSITIONS_TOTAL,
+)
+from core.observability.signals import record_signal
 
 logger = logging.getLogger("webhook_service.circuit_breaker")
 
@@ -102,6 +109,10 @@ class CircuitBreaker:
         self._state_key = f"{self._prefix}:state"
         self._open_until_key = f"{self._prefix}:open_until"
 
+    def _record_state_metric(self, state: CircuitState) -> None:
+        for candidate in CircuitState:
+            CIRCUIT_BREAKER_STATE.labels(self.name, candidate.value).set(1 if candidate == state else 0)
+
     async def _check_state_async(self) -> CircuitState:
         try:
             from core.redis_client import redis_eval_str
@@ -109,10 +120,12 @@ class CircuitBreaker:
             state_str = await redis_eval_str(
                 _CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time())
             )
-            return CircuitState(state_str) if state_str else CircuitState.CLOSED
+            state = CircuitState(state_str) if state_str else CircuitState.CLOSED
         except Exception as e:
             logger.warning("CircuitBreaker [%s] Redis 检查状态失败: %s", self.name, e)
-            return CircuitState.CLOSED
+            state = CircuitState.CLOSED
+        self._record_state_metric(state)
+        return state
 
     async def _record_failure(self) -> bool:
         try:
@@ -150,23 +163,50 @@ class CircuitBreaker:
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
         if self.failure_threshold == 0:
             try:
-                return await func(*args, **kwargs)
+                result = await func(*args, **kwargs)
+                CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "disabled_success").inc()
+                return result
             except self.expected_exceptions as e:
+                CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "disabled_failure").inc()
                 logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
                 raise
 
         current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
+            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "rejected").inc()
+            record_signal("circuit_breaker", "open", {"circuit_breaker.name": self.name})
+            add_span_event(
+                "circuit_breaker.open",
+                {"circuit_breaker.name": self.name, "circuit_breaker.state": current_state.value},
+            )
             logger.warning("CircuitBreaker [%s] OPEN — 请求被拒绝", self.name)
             raise CircuitBreakerOpenException(self.name)
 
         try:
             result = await func(*args, **kwargs)
+            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "success").inc()
             await self._record_success()
+            if current_state == CircuitState.HALF_OPEN:
+                CIRCUIT_BREAKER_TRANSITIONS_TOTAL.labels(self.name, CircuitState.CLOSED.value).inc()
+                self._record_state_metric(CircuitState.CLOSED)
+                record_signal("circuit_breaker", "closed", {"circuit_breaker.name": self.name})
             return result
         except self.expected_exceptions as e:
+            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "failure").inc()
             tripped = await self._record_failure()
             if tripped:
+                CIRCUIT_BREAKER_TRANSITIONS_TOTAL.labels(self.name, CircuitState.OPEN.value).inc()
+                self._record_state_metric(CircuitState.OPEN)
+                record_signal("circuit_breaker", "open", {"circuit_breaker.name": self.name})
+                add_span_event(
+                    "circuit_breaker.tripped",
+                    {
+                        "circuit_breaker.name": self.name,
+                        "circuit_breaker.failure_threshold": self.failure_threshold,
+                        "circuit_breaker.recovery_timeout": self.recovery_timeout,
+                        "error.type": type(e).__name__,
+                    },
+                )
                 logger.error(
                     "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, " "将在 %.1fs 后恢复",
                     self.name,

@@ -41,9 +41,19 @@ def test_emit_event_records_metric_span_event_and_structured_log(monkeypatch) ->
         logger.setLevel(old_level)
 
     assert metric_names == ["webhook.test"]
-    assert span_events == [("webhook.test", {"webhook.source": "github", "event.name": "webhook.test"})]
+    assert span_events == [
+        (
+            "webhook.test",
+            {
+                "webhook.source": "github",
+                "event.name": "webhook.test",
+                "event_name": "webhook.test",
+            },
+        )
+    ]
     assert records[0].getMessage() == "test event"
     assert getattr(records[0], "event.name") == "webhook.test"
+    assert records[0].event_name == "webhook.test"
     assert getattr(records[0], "webhook.source") == "github"
 
 
@@ -78,9 +88,6 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
     from core.observability import metrics
 
     expected_label_keys = {
-        "HTTP_SERVER_REQUESTS_TOTAL": ("http.method", "http.route", "http.status_code"),
-        "HTTP_SERVER_REQUEST_DURATION_SECONDS": ("http.method", "http.route", "http.status_code"),
-        "HTTP_SERVER_REQUEST_BODY_BYTES": ("http.method", "http.route"),
         "SECURITY_CHECKS_TOTAL": ("security.check", "security.result"),
         "WEBHOOK_INGRESS_PAYLOAD_BYTES": ("webhook.source", "webhook.outcome"),
         "WEBHOOK_PIPELINE_STEP_TOTAL": ("pipeline.step", "webhook.source", "webhook.outcome"),
@@ -96,12 +103,16 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         "FORWARD_DELIVERY_DURATION_SECONDS": ("forward.target_type", "forward.status"),
         "FORWARD_OUTBOX_RECORDS_TOTAL": ("forward.target_type", "forward.status"),
         "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS": ("forward.target_type", "forward.status"),
+        "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS": ("forward.target_type", "forward.status"),
         "QUEUE_OPERATIONS_TOTAL": ("queue.name", "queue.operation", "queue.status"),
         "QUEUE_OPERATION_DURATION_SECONDS": ("queue.name", "queue.operation", "queue.status"),
         "DB_SESSION_TOTAL": ("db.operation", "db.status"),
         "DB_SESSION_DURATION_SECONDS": ("db.operation", "db.status"),
         "REDIS_OPERATIONS_TOTAL": ("redis.operation", "redis.status"),
         "REDIS_OPERATION_DURATION_SECONDS": ("redis.operation", "redis.status"),
+        "CIRCUIT_BREAKER_REQUESTS_TOTAL": ("circuit_breaker.name", "circuit_breaker.outcome"),
+        "CIRCUIT_BREAKER_TRANSITIONS_TOTAL": ("circuit_breaker.name", "circuit_breaker.state"),
+        "CIRCUIT_BREAKER_STATE": ("circuit_breaker.name", "circuit_breaker.state"),
     }
 
     forbidden_labels = {"webhook.event_id", "webhook.alert_hash", "forward.target", "url", "request_id"}
@@ -111,23 +122,39 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         assert forbidden_labels.isdisjoint(metric.label_keys)
 
 
-def test_component_metrics_are_exported_from_legacy_facade() -> None:
-    import core.metrics as facade
-    from core.observability import metrics
+def test_sanitize_source_preserves_custom_low_cardinality_values() -> None:
+    from core.observability.metrics import sanitize_source
 
-    metric_names = [
-        "HTTP_SERVER_REQUESTS_TOTAL",
-        "SECURITY_CHECKS_TOTAL",
-        "WEBHOOK_INGRESS_PAYLOAD_BYTES",
-        "WEBHOOK_PIPELINE_STEP_TOTAL",
-        "AI_CACHE_REQUESTS_TOTAL",
-        "AI_DEGRADATIONS_TOTAL",
-        "WORKER_TASKS_TOTAL",
-        "FORWARD_DELIVERY_TOTAL",
-        "FORWARD_OUTBOX_RECORDS_TOTAL",
-        "QUEUE_OPERATIONS_TOTAL",
-        "DB_SESSION_TOTAL",
-        "REDIS_OPERATIONS_TOTAL",
-    ]
-    for metric_name in metric_names:
-        assert getattr(facade, metric_name) is getattr(metrics, metric_name)
+    assert sanitize_source(" OpenClaw ") == "openclaw"
+    assert sanitize_source("Custom Team / Service!") == "custom-team-service"
+    assert sanitize_source("🚨") == "unknown"
+    assert len(sanitize_source("x" * 80)) == 50
+
+
+def test_set_span_error_marks_status_and_records_exception(monkeypatch) -> None:
+    from core.observability import tracing
+
+    class FakeStatusCode:
+        ERROR = "ERROR"
+
+    fake_trace = SimpleNamespace(StatusCode=FakeStatusCode)
+    monkeypatch.setitem(sys.modules, "opentelemetry.trace", fake_trace)
+
+    class FakeSpan:
+        def __init__(self) -> None:
+            self.status: tuple[object, str | None] | None = None
+            self.exceptions: list[BaseException] = []
+
+        def set_status(self, status: object, description: str | None = None) -> None:
+            self.status = (status, description)
+
+        def record_exception(self, error: BaseException) -> None:
+            self.exceptions.append(error)
+
+    span = FakeSpan()
+    error = RuntimeError("boom")
+
+    tracing.set_span_error(span, error)
+
+    assert span.status == ("ERROR", "boom")
+    assert span.exceptions == [error]

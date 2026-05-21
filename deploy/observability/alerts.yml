@@ -1,0 +1,182 @@
+groups:
+  - name: webhookwise-recording
+    interval: 30s
+    rules:
+      - record: webhook_events_active
+        expr: webhook_events_count_ratio
+      - record: webhook_running_tasks
+        expr: webhook_running_tasks_ratio
+      - record: webhook_processing_status_count
+        expr: webhook_processing_status_count_ratio
+      - record: webhook_stuck_status_count
+        expr: webhook_stuck_status_count_ratio
+      - record: queue_pending
+        expr: queue_pending_ratio
+      - record: queue_lag
+        expr: queue_lag_ratio
+      - record: queue_depth
+        expr: queue_depth_ratio
+      - record: db_pool_connections_checked_out
+        expr: db_pool_connections_checked_out_ratio
+      - record: db_pool_connections_max
+        expr: db_pool_connections_max_ratio
+      - record: forward_outbox_oldest_age_seconds
+        expr: forward_outbox_backlog_age_seconds or forward_outbox_backlog_age_seconds_ratio
+      - record: circuit_breaker_active_state
+        expr: circuit_breaker_state or circuit_breaker_state_ratio
+
+  - name: webhookwise-alerts
+    interval: 30s
+    rules:
+      - alert: WebhookWiseApiHigh5xxRate
+        expr: |
+          100 *
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[5m])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m])) or vector(0)), 0.000001)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: WebhookWise API 5xx rate is above 1%.
+          runbook: Check Grafana API panels, then jump from Tempo traces to Loki logs by trace_id.
+
+      - alert: WebhookWiseApiSevere5xxRate
+        expr: |
+          100 *
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[5m])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m])) or vector(0)), 0.000001)
+          ) > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: webhookwise-api
+        annotations:
+          summary: WebhookWise API 5xx rate is above 5%.
+          runbook: Start with api-5xx-rate, Loki {level="error"}, and Tempo traces for webhookwise-api.
+
+      - alert: WebhookWiseWebhookDeadLetters
+        expr: increase(webhook_dead_letters_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: webhookwise-worker
+        annotations:
+          summary: Webhook processing produced dead letters.
+          runbook: Query webhook-status, webhook-stuck, and Loki by event_id or trace_id.
+
+      - alert: WebhookWiseQueueBacklogHigh
+        expr: (max(queue_pending) or max(queue_pending_ratio) or max(queue_lag) or max(queue_lag_ratio) or vector(0)) > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Webhook queue pending or lag has stayed high.
+          runbook: Use queue-backlog, worker-runs, and worker-latency-p95. Retained queue depth alone can grow from XLEN retention and is not backlog.
+
+      - alert: WebhookWiseQueueRetainedDepthGrowing
+        expr: (delta(queue_depth[30m]) or delta(queue_depth_ratio[30m]) or vector(0)) > 1000
+        for: 30m
+        labels:
+          severity: info
+          service: webhookwise-worker
+        annotations:
+          summary: Redis Stream retained depth is growing.
+          runbook: Check queue pending/lag first. If pending and lag are normal, tune Redis Stream maxlen/trimming rather than scaling workers.
+
+      - alert: WebhookWiseDbPoolNearCapacity
+        expr: |
+          (
+            (max(db_pool_connections_checked_out) or max(db_pool_connections_checked_out_ratio))
+            /
+            clamp_min((max(db_pool_connections_max) or max(db_pool_connections_max_ratio)), 1)
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: Database pool usage is above 80%.
+          runbook: Check db-pool, db-latency-p95, slow requests, and worker concurrency.
+
+      - alert: WebhookWiseAiErrors
+        expr: (sum(rate(ai_request_errors_total[10m])) or vector(0)) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: AI provider calls are failing.
+          runbook: Check ai-latency-p95, ai-cost, ai-cache-rate, and Loki {logger=~"webhook_service.*analysis.*"}.
+
+      - alert: WebhookWiseAiLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le, ai_engine) (rate(ai_request_duration_seconds_bucket[10m]))) > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: AI request P95 latency is above 30 seconds.
+          runbook: Check model/provider, prompt size, OpenClaw status, and fallback-to-rules behavior.
+
+      - alert: WebhookWiseForwardOutboxBacklogOld
+        expr: (max(forward_outbox_backlog_age_seconds{forward_target_type="all",forward_status="active"}) or max(forward_outbox_backlog_age_seconds_ratio{forward_target_type="all",forward_status="active"}) or vector(0)) > 600
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Forwarding outbox backlog contains records older than 10 minutes.
+          runbook: Check forward-outbox-rate, forward-outbox-latency-p95, target service availability, and worker task errors.
+
+      - alert: WebhookWiseCircuitBreakerOpen
+        expr: (max by (circuit_breaker_name) (circuit_breaker_state{circuit_breaker_state="open"}) or max by (circuit_breaker_name) (circuit_breaker_state_ratio{circuit_breaker_state="open"}) or vector(0)) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: webhookwise-worker
+        annotations:
+          summary: A WebhookWise circuit breaker is open.
+          runbook: Check circuit breaker metrics, forwarding/OpenClaw/Feishu logs, and downstream dependency health.
+
+      - alert: WebhookWiseCollectorExporterQueueHigh
+        expr: |
+          (
+            max(otelcol_exporter_queue_size)
+            /
+            clamp_min(max(otelcol_exporter_queue_capacity), 1)
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: alloy
+        annotations:
+          summary: Alloy exporter queue is near capacity.
+          runbook: Check Tempo/Loki/Prometheus availability and collector-health.
+
+      - alert: WebhookWiseLokiDrops
+        expr: (increase(loki_write_dropped_entries_total[10m]) or increase(loki_write_dropped_bytes_total[10m]) or vector(0)) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: alloy
+        annotations:
+          summary: Alloy is dropping Loki log entries or bytes.
+          runbook: Check Loki readiness, write latency, write retries, and log volume.
+
+      - alert: WebhookWiseAlloyConfigFailed
+        expr: alloy_config_last_load_successful == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: alloy
+        annotations:
+          summary: Alloy configuration failed to load.
+          runbook: Inspect Alloy logs and validate deploy/observability/alloy.alloy.

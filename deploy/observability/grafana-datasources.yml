@@ -14,7 +14,19 @@ datasources:
     jsonData:
       tracesToLogsV2:
         datasourceUid: loki
-        tags: ["service.name", "webhook.source", "webhook.event_id"]
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: service_name
+          - key: deployment.environment
+            value: deployment_environment
+          - key: webhook.source
+            value: webhook_source
+          - key: webhook.status
+            value: webhook_status
+        filterByTraceID: true
+        filterBySpanID: false
       tracesToProfiles:
         datasourceUid: pyroscope
         tags:
@@ -31,6 +43,13 @@ datasources:
     access: proxy
     url: http://loki:3100
     uid: loki
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":"([0-9a-f]{32})"'
+          name: TraceID
+          url: '$${__value.raw}'
+          urlDisplayLabel: View Trace
   - name: Pyroscope
     type: grafana-pyroscope-datasource
     access: proxy

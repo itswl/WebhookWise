@@ -24,6 +24,8 @@ from scripts.observability.query_lib import (  # noqa: E402
     prometheus_query,
     prometheus_series,
     result_rows,
+    smoke,
+    tempo_search,
     validate_dashboard_queries,
 )
 
@@ -128,6 +130,24 @@ def cmd_logs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tempo(args: argparse.Namespace) -> int:
+    result = tempo_search(Endpoints.from_env(), service_name=args.service_name, limit=args.limit)
+    if args.json:
+        print_json(result)
+        return 0
+    traces = result.get("traces") or result.get("data", {}).get("traces") or []
+    rows = [
+        {
+            "traceID": item.get("traceID") or item.get("traceId") or "",
+            "service": args.service_name,
+            "startTimeUnixNano": item.get("startTimeUnixNano", ""),
+        }
+        for item in traces[: args.limit]
+    ]
+    print_table(rows, ["traceID", "service", "startTimeUnixNano"])
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     if args.validate:
         rows = validate_dashboard_queries(args.path, Endpoints.from_env())
@@ -168,6 +188,15 @@ def cmd_datasources(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_smoke(args: argparse.Namespace) -> int:
+    rows = smoke(Endpoints.from_env(), send_webhook=not args.skip_webhook, wait_seconds=args.wait)
+    if args.json:
+        print_json(rows)
+    else:
+        print_table(rows, ["check", "status", "detail"])
+    return 0 if all(row["status"] in {"ok", "warn"} for row in rows) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -188,7 +217,9 @@ def build_parser() -> argparse.ArgumentParser:
     preset_parser.set_defaults(func=cmd_preset)
 
     series_parser = sub.add_parser("series", help="List Prometheus series metadata")
-    series_parser.add_argument("match", help='Prometheus series matcher, e.g. "http_server_requests_total"')
+    series_parser.add_argument(
+        "match", help='Prometheus series matcher, e.g. "http_server_request_duration_seconds_count"'
+    )
     series_parser.add_argument("--json", action="store_true")
     series_parser.set_defaults(func=cmd_series)
 
@@ -198,6 +229,12 @@ def build_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument("--since", type=int, default=3600, help="Lookback in seconds")
     logs_parser.add_argument("--json", action="store_true")
     logs_parser.set_defaults(func=cmd_logs)
+
+    tempo_parser = sub.add_parser("tempo", help="Search recent Tempo traces")
+    tempo_parser.add_argument("--service-name", default="webhookwise-api")
+    tempo_parser.add_argument("--limit", type=int, default=5)
+    tempo_parser.add_argument("--json", action="store_true")
+    tempo_parser.set_defaults(func=cmd_tempo)
 
     dashboard_parser = sub.add_parser("dashboard", help="Inspect or validate the Grafana dashboard")
     dashboard_parser.add_argument("--path", default="grafana/dashboard.json")
@@ -212,6 +249,16 @@ def build_parser() -> argparse.ArgumentParser:
     datasources_parser = sub.add_parser("datasources", help="List Grafana datasources and UIDs")
     datasources_parser.add_argument("--json", action="store_true")
     datasources_parser.set_defaults(func=cmd_datasources)
+
+    smoke_parser = sub.add_parser("smoke", help="Run an end-to-end observability smoke check")
+    smoke_parser.add_argument(
+        "--skip-webhook", action="store_true", help="Only query telemetry; do not post a test webhook"
+    )
+    smoke_parser.add_argument(
+        "--wait", type=int, default=None, help="Seconds to wait after posting the synthetic webhook"
+    )
+    smoke_parser.add_argument("--json", action="store_true")
+    smoke_parser.set_defaults(func=cmd_smoke)
 
     return parser
 

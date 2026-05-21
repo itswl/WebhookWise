@@ -5,7 +5,7 @@ import time
 import orjson
 
 from core.logger import logger
-from core.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
+from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
 from services.analysis.ai_policies import AICachePolicy
 from services.webhooks.types import AnalysisResult
 

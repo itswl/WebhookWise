@@ -16,16 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import verify_api_key
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
-from core.metrics import (
+from core.observability.metrics import (
     QUEUE_OPERATION_DURATION_SECONDS,
     QUEUE_OPERATIONS_TOTAL,
     WEBHOOK_INGRESS_PAYLOAD_BYTES,
     WEBHOOK_RECEIVED_TOTAL,
     sanitize_source,
 )
+from core.observability.tracing import build_traceparent, get_or_generate_trace_id, set_fallback_trace_id
 from core.redis_client import redis_ping
 from core.sensitive_data import redact_event_dict
-from core.trace import generate_trace_id, set_trace_id
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session, test_db_connection
 from models import WebhookEvent
@@ -130,6 +130,7 @@ async def _receive_and_enqueue_webhook(
         "client_ip": client_ip or "",
         "request_id": request_id,
         "received_at": received_at,
+        "traceparent": headers.get("traceparent") or build_traceparent(request_id),
     }
     enqueue_started = time.perf_counter()
     enqueue_status = "success"
@@ -225,8 +226,8 @@ async def receive_webhook(
     source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """通用 Webhook 接收入口。"""
-    request_id = generate_trace_id()
-    set_trace_id(request_id)
+    request_id = get_or_generate_trace_id()
+    set_fallback_trace_id(request_id)
     source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
     clear_log_context()
     set_log_context(request_id=request_id, source=source_hint)
@@ -249,8 +250,8 @@ async def receive_webhook_with_source(
     source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
     """带来源标识的 Webhook 接收入口。"""
-    request_id = generate_trace_id()
-    set_trace_id(request_id)
+    request_id = get_or_generate_trace_id()
+    set_fallback_trace_id(request_id)
     source_hint = _normalize_source_hint(source)
     clear_log_context()
     set_log_context(request_id=request_id, source=source_hint)

@@ -2,13 +2,13 @@ import httpx
 
 from core.config import Config
 from core.logger import logger
-from core.trace import build_traceparent, get_trace_id
+from core.observability.tracing import build_traceparent, get_current_trace_id
 
 _async_client: httpx.AsyncClient | None = None
 
 
 async def _inject_trace_headers(request: httpx.Request) -> None:
-    tid = get_trace_id()
+    tid = get_current_trace_id()
     if not tid:
         return
     if "X-Request-Id" not in request.headers:

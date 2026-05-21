@@ -5,7 +5,11 @@ from datetime import datetime
 from typing import Any
 
 from core.logger import logger
-from core.metrics import WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS, WEBHOOK_NOISE_EVALUATIONS_TOTAL, sanitize_source
+from core.observability.metrics import (
+    WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS,
+    WEBHOOK_NOISE_EVALUATIONS_TOTAL,
+    sanitize_source,
+)
 from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
 from services.webhooks.decisioning import normalize_importance
 from services.webhooks.policies import NoiseReductionPolicy

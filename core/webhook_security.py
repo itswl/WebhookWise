@@ -11,7 +11,7 @@ from api import InvalidSignatureError
 from core.config import SecurityConfig, UnifiedConfigManager
 from core.dependencies import get_config_manager
 from core.logger import logger
-from core.metrics import SECURITY_CHECKS_TOTAL
+from core.observability.metrics import SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
 from services.webhooks.command_service import get_client_ip
 
@@ -218,7 +218,7 @@ async def check_rate_limit_dep(
             response.headers["X-RateLimit-Remaining"] = str(tier.remaining)
             response.headers["X-RateLimit-Reset"] = str(int(tier.reset_at))
         if limited_ip:
-            from core.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
+            from core.observability.metrics import WEBHOOK_RECEIVED_TOTAL, sanitize_source
 
             src = sanitize_source(request.path_params.get("source", request.query_params.get("source", "unknown")))
             WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rate_limited").inc()

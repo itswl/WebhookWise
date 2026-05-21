@@ -15,9 +15,11 @@ Prefer the repository helper CLI:
 python scripts/observability/webhookwise_observe.py health
 python scripts/observability/webhookwise_observe.py preset --list
 python scripts/observability/webhookwise_observe.py preset api-rate
-python scripts/observability/webhookwise_observe.py promql 'sum by (http_status_code) (increase(http_server_requests_total[1h]))'
+python scripts/observability/webhookwise_observe.py promql 'sum by (http_response_status_code) (increase(http_server_request_duration_seconds_count[1h]))'
 python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise"} | json' --limit 20
+python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
 python scripts/observability/webhookwise_observe.py dashboard --validate
+python scripts/observability/webhookwise_observe.py smoke
 ```
 
 For MCP-style stdio clients, start:
@@ -33,7 +35,9 @@ It exposes tools:
 - `webhookwise_promql`
 - `webhookwise_preset`
 - `webhookwise_logs`
+- `webhookwise_tempo_search`
 - `webhookwise_dashboard_validate`
+- `webhookwise_smoke`
 
 ## Endpoints
 
@@ -80,11 +84,12 @@ If the datasource UIDs are not `prometheus` and `loki`, set:
 ```bash
 export WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID='<prometheus-datasource-uid>'
 export WEBHOOKWISE_LOKI_DATASOURCE_UID='<loki-datasource-uid>'
+export WEBHOOKWISE_TEMPO_DATASOURCE_UID='<tempo-datasource-uid>'
 ```
 
-The helper sends a browser-like `User-Agent` by default because some public
-Grafana front doors block Python's default urllib user agent. Override it with
-`WEBHOOKWISE_HTTP_USER_AGENT` only when needed.
+The helper sends `WebhookWise-Observability/0.1` as its default `User-Agent`.
+Override it with `WEBHOOKWISE_HTTP_USER_AGENT` only when a front door requires a
+different client identity.
 
 Never commit Grafana tokens or passwords.
 
@@ -95,7 +100,9 @@ Never commit Grafana tokens or passwords.
 3. Use `preset --list` then `preset <name>` for common metrics. Prefer presets over rewriting PromQL.
 4. Use `promql` for custom metric questions.
 5. Use `logs` for concrete events, errors, trace IDs, or frontend Faro records.
-6. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
+6. Use `tempo --service-name <service>` when the user asks whether trace data exists or needs trace examples.
+7. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
+8. Use `smoke` after observability config changes to verify API -> Prometheus -> Loki -> Tempo -> alert-rule wiring.
 
 ## Useful Presets
 
@@ -104,7 +111,7 @@ Never commit Grafana tokens or passwords.
 - Queue/worker: `queue-backlog`, `queue-retained-depth`, `queue-ops`, `worker-runs`, `worker-latency-p95`
 - DB/Redis: `db-pool`, `db-latency-p95`, `redis-latency-p95`
 - Scheduler: `scheduler-lag`, `scheduler-last-success-age`
-- AI/forwarding: `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`
+- AI/forwarding: `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-backlog-age`, `circuit-breaker-state`
 - Deep diagnostics: `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`
 - Frontend/eBPF/load/collector: `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `loki-write-latency-p95`, `loki-write-retries`
 
@@ -113,4 +120,6 @@ Never commit Grafana tokens or passwords.
 - `No data` often means the business path did not run in the selected range. Latency histograms should not be forced to zero.
 - Stat/count panels may use `or vector(0)` when absence should mean no events.
 - k6 writes stale markers after a run; use range functions such as `max_over_time(k6_http_req_duration_p95[6h])`.
-- Current metric labels use OTel-to-Prometheus names such as `webhook_source`, `http_status_code`, `ai_engine`, `webhook_relation`, and `webhook_suppressed`.
+- Current metric labels use OTel-to-Prometheus names such as `webhook_source`, `http_response_status_code`, `ai_engine`, `webhook_relation`, and `webhook_suppressed`.
+- Friendly recording rules hide confusing OTel gauge suffixes where possible, for example `queue_pending` falls back to `queue_pending_ratio` and `webhook_events_active` falls back to `webhook_events_count_ratio`.
+- Trace/log correlation is bidirectional: Tempo `tracesToLogsV2` maps `service.name` to Loki `service_name`, and Loki derived fields link JSON `trace_id` back to Tempo.

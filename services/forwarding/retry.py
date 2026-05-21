@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from core.logger import mask_url
-from core.metrics import FORWARD_RETRY_TOTAL
-from core.otel import span as otel_span
+from core.observability.metrics import FORWARD_RETRY_TOTAL
+from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import FailedForward, WebhookEvent
 from services.forwarding.policies import ForwardRetryPolicy

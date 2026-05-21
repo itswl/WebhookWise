@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from core.logger import logger, mask_url
-from core.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
+from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from models import WebhookEvent
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache

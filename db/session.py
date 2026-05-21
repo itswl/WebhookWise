@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -109,7 +109,7 @@ async def init_engine() -> None:
     _session_factory = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
     assert _engine is not None
     try:
-        from core.otel import instrument_sqlalchemy
+        from core.observability.tracing import instrument_sqlalchemy
 
         instrument_sqlalchemy(_engine.sync_engine)
     except Exception as e:
@@ -118,23 +118,12 @@ async def init_engine() -> None:
 
 
 def _setup_pool_metrics(engine: AsyncEngine) -> None:
-    """注册连接池事件监听，通过回调更新 OTel Gauge。"""
-    from core.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
+    """Initialize DB pool gauges from the real SQLAlchemy pool state."""
+    from core.observability.metrics import DB_POOL_CHECKED_OUT, DB_POOL_SIZE
 
-    pool = engine.sync_engine.pool
-
-    def _on_checkout(dbapi_conn: Any, connection_record: Any, connection_proxy: Any) -> None:
-        DB_POOL_CHECKED_OUT.inc()
-
-    def _on_checkin(dbapi_conn: Any, connection_record: Any) -> None:
-        DB_POOL_CHECKED_OUT.dec()
-
-    event.listen(pool, "checkout", _on_checkout)
-    event.listen(pool, "checkin", _on_checkin)
-
-    # 初始化连接池容量
-    DB_POOL_SIZE.set(int(get_db_pool_capacity(engine) or 0))
-    _logger.info("[DB] Pool 事件监听已注册 (checkout/checkin -> OTel Gauge)")
+    DB_POOL_SIZE.set_callback(lambda: get_db_pool_capacity(engine))
+    DB_POOL_CHECKED_OUT.set_callback(lambda: get_db_pool_checked_out(engine))
+    _logger.info("[DB] Pool metrics initialized from SQLAlchemy pool state")
 
 
 def get_db_pool_capacity(engine: AsyncEngine) -> int | None:
@@ -145,6 +134,17 @@ def get_db_pool_capacity(engine: AsyncEngine) -> int | None:
         return None
     try:
         return int(size() + overflow())
+    except Exception:
+        return None
+
+
+def get_db_pool_checked_out(engine: AsyncEngine) -> int | None:
+    pool = engine.sync_engine.pool
+    checkedout = getattr(pool, "checkedout", None)
+    if not callable(checkedout):
+        return None
+    try:
+        return int(checkedout())
     except Exception:
         return None
 
@@ -182,7 +182,7 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
         status = "error"
         raise
     finally:
-        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+        from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 
         DB_SESSION_TOTAL.labels("request_session", status).inc()
         DB_SESSION_DURATION_SECONDS.labels("request_session", status).observe(time.perf_counter() - start)
@@ -212,7 +212,7 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
         status = "error"
         raise
     finally:
-        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+        from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 
         DB_SESSION_TOTAL.labels(operation, status).inc()
         DB_SESSION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
@@ -241,7 +241,7 @@ async def count_with_timeout(
         _logger.warning("COUNT query timeout (%dms): %s", timeout_ms, e)
         return None
     finally:
-        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+        from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 
         DB_SESSION_TOTAL.labels("count_query", status).inc()
         DB_SESSION_DURATION_SECONDS.labels("count_query", status).observe(time.perf_counter() - start)
@@ -279,7 +279,7 @@ async def test_db_connection() -> bool:
         _logger.error("数据库连接失败: %s", e)
         return False
     finally:
-        from core.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+        from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 
         DB_SESSION_TOTAL.labels("healthcheck", status).inc()
         DB_SESSION_DURATION_SECONDS.labels("healthcheck", status).observe(time.perf_counter() - start)

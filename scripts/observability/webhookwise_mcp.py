@@ -24,6 +24,8 @@ from scripts.observability.query_lib import (  # noqa: E402
     loki_query_range,
     prometheus_query,
     result_rows,
+    smoke,
+    tempo_search,
     validate_dashboard_queries,
 )
 
@@ -72,11 +74,35 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "webhookwise_tempo_search",
+        "description": "Search recent Tempo traces for a WebhookWise service.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "service_name": {"type": "string", "default": "webhookwise-api"},
+                "limit": {"type": "integer", "default": 5},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "webhookwise_dashboard_validate",
         "description": "Validate grafana/dashboard.json PromQL against Prometheus.",
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string", "default": "grafana/dashboard.json"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "webhookwise_smoke",
+        "description": "Run an end-to-end WebhookWise observability smoke check.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "send_webhook": {"type": "boolean", "default": True},
+                "wait_seconds": {"type": "integer", "default": 8},
+            },
             "additionalProperties": False,
         },
     },
@@ -124,8 +150,24 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             since_seconds=int(arguments.get("since_seconds", 3600)),
         )
         return _text_result(result)
+    if name == "webhookwise_tempo_search":
+        return _text_result(
+            tempo_search(
+                endpoints,
+                service_name=str(arguments.get("service_name", "webhookwise-api")),
+                limit=int(arguments.get("limit", 5)),
+            )
+        )
     if name == "webhookwise_dashboard_validate":
         return _text_result(validate_dashboard_queries(str(arguments.get("path", "grafana/dashboard.json")), endpoints))
+    if name == "webhookwise_smoke":
+        return _text_result(
+            smoke(
+                endpoints,
+                send_webhook=bool(arguments.get("send_webhook", True)),
+                wait_seconds=int(arguments.get("wait_seconds", 8)),
+            )
+        )
     raise ValueError(f"unknown tool: {name}")
 
 

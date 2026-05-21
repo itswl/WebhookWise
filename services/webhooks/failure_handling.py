@@ -4,7 +4,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from core.logger import logger
-from core.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
+from core.observability.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
+from core.observability.tracing import set_span_error
 from core.retry_policies import retry_policy
 from services.operations.dead_letter_notifications import notify_dead_letter
 from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_retry
@@ -15,17 +16,6 @@ from services.webhooks.types import WebhookProcessingStatus
 DeadLetterNotifier = Callable[[int, int, Exception], Awaitable[None]]
 RetryClassifier = Callable[[Exception], bool]
 RetryScheduler = Callable[[int, int], Awaitable[None]]
-
-
-def set_span_error(span: Any, message: str) -> None:
-    if not span:
-        return
-    try:
-        from opentelemetry.trace import StatusCode
-
-        span.set_status(StatusCode.ERROR, message)
-    except Exception:
-        return
 
 
 async def handle_process_exception(

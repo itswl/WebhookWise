@@ -15,14 +15,15 @@ from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_att
 
 from core.http_client import get_http_client
 from core.logger import logger, mask_url
-from core.metrics import (
+from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_COST_USD_TOTAL,
     AI_TOKENS_TOTAL,
     OPENAI_ERRORS_TOTAL,
     sanitize_source,
 )
-from core.otel import span as otel_span
+from core.observability.tracing import set_span_error
+from core.observability.tracing import span as otel_span
 from schemas import WebhookAnalysisResult
 from services.analysis.ai_policies import AIProviderPolicy
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
@@ -151,10 +152,28 @@ async def _analyze_with_openai_tracked(
         get_prompt_source(),
     )
 
-    with otel_span("ai.request", {"source": source, "model": policy.model, "provider": "openai"}) as s:
-        res, completion = await _create_with_completion(
-            client, model=policy.model, user_prompt=user_prompt, policy=policy
-        )
+    with otel_span(
+        "ai.request",
+        {
+            "source": source,
+            "model": policy.model,
+            "provider": "openai",
+            "gen_ai.system": "openai",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.request.model": policy.model,
+            "gen_ai.request.temperature": policy.temperature,
+            "gen_ai.request.max_retries": 2,
+            "prompt.source": get_prompt_source(),
+            "prompt.size_bytes": len(user_prompt.encode("utf-8")),
+        },
+    ) as s:
+        try:
+            res, completion = await _create_with_completion(
+                client, model=policy.model, user_prompt=user_prompt, policy=policy
+            )
+        except Exception as exc:
+            set_span_error(s, exc)
+            raise
 
         t_in = completion.usage.prompt_tokens if completion.usage else 0
         t_out = completion.usage.completion_tokens if completion.usage else 0
@@ -165,6 +184,10 @@ async def _analyze_with_openai_tracked(
         if s:
             s.set_attribute("ai.tokens.input", t_in)
             s.set_attribute("ai.tokens.output", t_out)
+            s.set_attribute("ai.cost.usd", cost)
+            s.set_attribute("gen_ai.response.model", policy.model)
+            s.set_attribute("gen_ai.usage.input_tokens", t_in)
+            s.set_attribute("gen_ai.usage.output_tokens", t_out)
     logger.info(
         "[AI] LLM 分析完成 source=%s model=%s tokens_in=%s tokens_out=%s cost_usd=%.6f",
         source,
