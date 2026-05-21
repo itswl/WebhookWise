@@ -127,7 +127,7 @@ services:
       - webhook_net
 
   beyla:
-    image: ${BEYLA_IMAGE:-grafana/beyla:1.9.0}
+    image: ${BEYLA_IMAGE:-grafana/beyla:3.14.0}
     command: ["-config", "/etc/beyla/config.yml"]
     pid: "service:webhook-service"
     privileged: true
