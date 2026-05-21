@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from core.observability.attributes import normalize_attribute_key, normalize_attribute_value
@@ -36,10 +36,23 @@ def _histogram_views() -> list[Any]:
     fast_seconds = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
     request_seconds = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30]
     ai_seconds = [0.5, 1, 2, 5, 10, 20, 30, 60, 120]
-    bytes_buckets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+    bytes_buckets = [
+        512.0,
+        1024.0,
+        2048.0,
+        4096.0,
+        8192.0,
+        16384.0,
+        32768.0,
+        65536.0,
+        131072.0,
+        262144.0,
+        524288.0,
+        1048576.0,
+    ]
     default_seconds = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60]
 
-    buckets_by_instrument = {
+    buckets_by_instrument: dict[str, Sequence[float]] = {
         "http.server.request.duration": request_seconds,
         "webhook.processing.duration": request_seconds,
         "webhook.pipeline.step.duration": request_seconds,
