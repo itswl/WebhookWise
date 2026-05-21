@@ -36,7 +36,10 @@ class RemoteForwardPolicy:
 
     @classmethod
     def from_config(cls, config: Any = Config) -> "RemoteForwardPolicy":
-        return cls(forward_url=str(config.ai.FORWARD_URL), timeout_seconds=int(config.ai.FORWARD_TIMEOUT))
+        return cls(
+            forward_url=str(config.forwarding.FORWARD_URL),
+            timeout_seconds=int(config.forwarding.FORWARD_TIMEOUT),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,12 +55,12 @@ class ForwardOutboxPolicy:
     @classmethod
     def from_config(cls, config: Any = Config) -> "ForwardOutboxPolicy":
         return cls(
-            default_target_url=str(config.ai.FORWARD_URL),
+            default_target_url=str(config.forwarding.FORWARD_URL),
             max_attempts=max(1, int(config.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
             retry_initial_delay=int(config.retry.FORWARD_RETRY_INITIAL_DELAY),
             retry_max_delay=int(config.retry.FORWARD_RETRY_MAX_DELAY),
             retry_backoff_multiplier=float(config.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
-            stale_processing_threshold_seconds=int(config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
+            stale_processing_threshold_seconds=int(config.tasks.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
             max_delivery_age_seconds=max(0, int(config.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS)),
         )
 

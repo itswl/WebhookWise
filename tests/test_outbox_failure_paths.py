@@ -24,8 +24,8 @@ def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
 
 @pytest.fixture()
 async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    import db.session as db_session
     import models  # noqa: F401
+    from core.app_context import AppContext, set_default_app_context
     from db.session import Base
 
     engine = create_async_engine(
@@ -37,10 +37,13 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr(db_session, "_engine", engine)
-    monkeypatch.setattr(db_session, "_session_factory", factory)
+    context = AppContext()
+    context.db_engine = engine
+    context.session_factory = factory
+    set_default_app_context(context)
 
     yield factory
+    set_default_app_context(None)
     await engine.dispose()
 
 

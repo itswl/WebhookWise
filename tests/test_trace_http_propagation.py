@@ -7,7 +7,7 @@ pytest.importorskip("httpx")
 async def test_http_client_injects_trace_headers(monkeypatch):
     import httpx
 
-    from core.http_client import _build_async_client
+    from core.http_client import build_http_client
     from core.observability.tracing import reset_fallback_trace_id, set_fallback_trace_id
 
     captured = {}
@@ -18,7 +18,7 @@ async def test_http_client_injects_trace_headers(monkeypatch):
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = _build_async_client(transport=transport)
+    client = build_http_client(transport=transport)
     try:
         token = set_fallback_trace_id("evt-123")
         r = await client.get("https://example.com/test")
@@ -33,12 +33,12 @@ async def test_http_client_injects_trace_headers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_http_client_ignores_proxy_environment(monkeypatch):
-    from core.http_client import _build_async_client
+    from core.http_client import build_http_client
 
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9999")
     monkeypatch.setenv("NO_PROXY", "fd00:b51a:cc66:f0::/64")
 
-    client = _build_async_client()
+    client = build_http_client()
     try:
         assert client.trust_env is False
     finally:

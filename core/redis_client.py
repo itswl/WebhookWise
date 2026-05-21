@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 import redis.asyncio as redis
 from redis.asyncio.client import PubSub
 
-from core.config import Config
+from core.config import Config, UnifiedConfigManager
 from core.logger import logger, mask_url
 
 if TYPE_CHECKING:
@@ -17,28 +17,32 @@ if TYPE_CHECKING:
 else:
     RedisClient = redis.Redis
 
-_redis_client: RedisClient | None = None
 _redis_client_lock = threading.RLock()
 T = TypeVar("T")
 
 
+def build_redis_client(config: UnifiedConfigManager = Config) -> RedisClient:
+    pool: Any = redis.ConnectionPool.from_url(
+        config.redis.REDIS_URL,
+        decode_responses=True,
+        max_connections=100,
+        socket_connect_timeout=config.redis.REDIS_SOCKET_CONNECT_TIMEOUT,
+        socket_timeout=config.redis.REDIS_SOCKET_TIMEOUT,
+        socket_keepalive=True,
+        health_check_interval=config.redis.REDIS_HEALTH_CHECK_INTERVAL,
+    )
+    client = redis.Redis(connection_pool=pool)
+    logger.info("[Redis] 成功初始化连接池: %s", mask_url(config.redis.REDIS_URL))
+    return client
+
+
 def get_redis() -> RedisClient:
-    """获取全局 Redis 客户端单例"""
-    global _redis_client
+    """Return the Redis client owned by the current AppContext."""
+    from core.app_context import get_or_create_default_app_context
+
+    context = get_or_create_default_app_context()
     with _redis_client_lock:
-        if _redis_client is None:
-            pool: Any = redis.ConnectionPool.from_url(
-                Config.redis.REDIS_URL,
-                decode_responses=True,
-                max_connections=100,
-                socket_connect_timeout=Config.redis.REDIS_SOCKET_CONNECT_TIMEOUT,
-                socket_timeout=Config.redis.REDIS_SOCKET_TIMEOUT,
-                socket_keepalive=True,
-                health_check_interval=Config.redis.REDIS_HEALTH_CHECK_INTERVAL,
-            )
-            _redis_client = redis.Redis(connection_pool=pool)
-            logger.info("[Redis] 成功初始化连接池: %s", mask_url(Config.redis.REDIS_URL))
-        return _redis_client
+        return context.ensure_redis_client()
 
 
 def init_redis() -> None:
@@ -262,19 +266,24 @@ async def redis_ping() -> bool:
 
 
 async def dispose_redis() -> None:
-    """关闭 Redis 连接池（应用关闭时调用）"""
-    global _redis_client
-    with _redis_client_lock:
-        client = _redis_client
-        _redis_client = None
-    if client:
-        with contextlib.suppress(Exception):
-            close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
-            if callable(close_fn):
-                await _await_if_needed(close_fn())
-        with contextlib.suppress(Exception):
-            pool = getattr(client, "connection_pool", None)
-            disconnect_fn = getattr(pool, "disconnect", None)
-            if callable(disconnect_fn):
-                await _await_if_needed(disconnect_fn())
-    logger.info("[Redis] 当前连接池已关闭")
+    """Close the Redis client owned by the current AppContext."""
+    from core.app_context import get_default_app_context
+
+    context = get_default_app_context()
+    if context is not None and context.redis_client is not None:
+        client = context.redis_client
+        context.redis_client = None
+        await close_redis_client(client)
+        logger.info("[Redis] 当前上下文连接池已关闭")
+
+
+async def close_redis_client(client: RedisClient) -> None:
+    with contextlib.suppress(Exception):
+        close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
+        if callable(close_fn):
+            await _await_if_needed(close_fn())
+    with contextlib.suppress(Exception):
+        pool = getattr(client, "connection_pool", None)
+        disconnect_fn = getattr(pool, "disconnect", None)
+        if callable(disconnect_fn):
+            await _await_if_needed(disconnect_fn())

@@ -27,21 +27,22 @@ class TaskRuntimePolicy:
     @classmethod
     def from_config(cls, config: Any = Config) -> TaskRuntimePolicy:
         server = config.server
+        tasks = config.tasks
         retry = config.retry
         maintenance = config.maintenance
         return cls(
             worker_id=str(server.WORKER_ID),
-            webhook_task_slot_lease_seconds=max(30, int(server.WEBHOOK_TASK_SLOT_LEASE_SECONDS or 0)),
+            webhook_task_slot_lease_seconds=max(30, int(tasks.WEBHOOK_TASK_SLOT_LEASE_SECONDS or 0)),
             webhook_task_poll_interval_seconds=max(
                 0.05,
                 float(retry.PROCESSING_LOCK_POLL_INTERVAL_MS or 100) / 1000,
             ),
-            max_concurrent_webhook_tasks=int(server.MAX_CONCURRENT_WEBHOOK_TASKS or 0),
+            max_concurrent_webhook_tasks=int(tasks.MAX_CONCURRENT_WEBHOOK_TASKS or 0),
             recovery_scan_interval_seconds=max(
                 30,
-                int(server.RECOVERY_SCAN_INTERVAL_SECONDS or server.RECOVERY_POLLER_INTERVAL_SECONDS),
+                int(tasks.RECOVERY_SCAN_INTERVAL_SECONDS or tasks.RECOVERY_POLLER_INTERVAL_SECONDS),
             ),
-            metrics_refresh_interval_seconds=max(1, int(server.METRICS_REFRESH_INTERVAL_SECONDS or 0)),
+            metrics_refresh_interval_seconds=max(1, int(tasks.METRICS_REFRESH_INTERVAL_SECONDS or 0)),
             maintenance_hour=max(0, min(23, int(maintenance.MAINTENANCE_HOUR))),
         )
 
@@ -65,9 +66,9 @@ class RecoveryScanPolicy:
             stuck_threshold_seconds=int(
                 stuck_threshold_seconds
                 if stuck_threshold_seconds is not None
-                else config.server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
+                else config.tasks.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS
             ),
-            scan_interval_seconds=max(1, int(config.server.RECOVERY_SCAN_INTERVAL_SECONDS)),
+            scan_interval_seconds=max(1, int(config.tasks.RECOVERY_SCAN_INTERVAL_SECONDS)),
             max_retries=int(config.retry.WEBHOOK_RETRY_MAX_RETRIES),
             batch_size=batch_size,
         )
@@ -104,11 +105,12 @@ class MetricsPollPolicy:
 
     @classmethod
     def from_config(cls, config: Any = Config) -> MetricsPollPolicy:
-        server = config.server
+        tasks = config.tasks
+        mq = config.mq
         return cls(
-            stuck_threshold_seconds=int(server.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
-            webhook_mq_queue=str(server.WEBHOOK_MQ_QUEUE),
-            webhook_mq_consumer_group=str(server.WEBHOOK_MQ_CONSUMER_GROUP),
+            stuck_threshold_seconds=int(tasks.RECOVERY_POLLER_STUCK_THRESHOLD_SECONDS),
+            webhook_mq_queue=str(mq.WEBHOOK_MQ_QUEUE),
+            webhook_mq_consumer_group=str(mq.WEBHOOK_MQ_CONSUMER_GROUP),
         )
 
 
@@ -118,7 +120,7 @@ class DeadLetterNotificationPolicy:
 
     @classmethod
     def from_config(cls, config: Any = Config) -> DeadLetterNotificationPolicy:
-        return cls(target_url=str(config.ai.FORWARD_URL or ""))
+        return cls(target_url=str(config.forwarding.FORWARD_URL or ""))
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,4 +129,4 @@ class FeishuNotificationPolicy:
 
     @classmethod
     def from_config(cls, config: Any = Config) -> FeishuNotificationPolicy:
-        return cls(timeout_seconds=max(1, int(config.ai.FEISHU_WEBHOOK_TIMEOUT)))
+        return cls(timeout_seconds=max(1, int(config.notifications.FEISHU_WEBHOOK_TIMEOUT)))

@@ -22,8 +22,8 @@ def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
 async def integration_session_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    import db.session as db_session
     import models  # noqa: F401 - register all SQLAlchemy models
+    from core.app_context import AppContext, set_default_app_context
     from db.session import Base
 
     engine = create_async_engine(
@@ -35,11 +35,14 @@ async def integration_session_factory(
         await conn.run_sync(Base.metadata.create_all)
 
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr(db_session, "_engine", engine)
-    monkeypatch.setattr(db_session, "_session_factory", session_factory)
+    context = AppContext()
+    context.db_engine = engine
+    context.session_factory = session_factory
+    set_default_app_context(context)
 
     yield session_factory
 
+    set_default_app_context(None)
     await engine.dispose()
 
 
@@ -172,7 +175,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     assert len(posted) == 1
     outbound = posted[0]
-    assert outbound["url"] == Config.ai.FORWARD_URL
+    assert outbound["url"] == Config.forwarding.FORWARD_URL
     card = outbound["json"]
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "red"
@@ -234,7 +237,7 @@ async def test_finalization_skips_outbox_without_target(
     from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
     settings = get_settings()
-    monkeypatch.setattr(settings.ai, "FORWARD_URL", "")
+    monkeypatch.setattr(settings.forwarding, "FORWARD_URL", "")
 
     payload = {
         "alert_name": "checkout-5xx",

@@ -38,13 +38,13 @@ def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
     settings = get_settings()
     return TaskiqBrokerSettings(
         redis_url=settings.redis.REDIS_URL,
-        queue_name=settings.server.WEBHOOK_MQ_QUEUE,
-        consumer_group_name=settings.server.WEBHOOK_MQ_CONSUMER_GROUP,
+        queue_name=settings.mq.WEBHOOK_MQ_QUEUE,
+        consumer_group_name=settings.mq.WEBHOOK_MQ_CONSUMER_GROUP,
         consumer_name=settings.server.WORKER_ID,
-        consumer_batch_size=settings.server.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
-        consumer_timeout_ms=settings.server.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
-        pending_idle_timeout_ms=settings.server.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
-        stream_maxlen=settings.server.WEBHOOK_MQ_STREAM_MAXLEN,
+        consumer_batch_size=settings.mq.WEBHOOK_MQ_CONSUMER_BATCH_SIZE,
+        consumer_timeout_ms=settings.mq.WEBHOOK_MQ_CONSUMER_TIMEOUT_MS,
+        pending_idle_timeout_ms=settings.mq.WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS,
+        stream_maxlen=settings.mq.WEBHOOK_MQ_STREAM_MAXLEN,
         debug=settings.server.DEBUG,
         run_mode=settings.server.RUN_MODE,
         log_level=settings.server.LOG_LEVEL,
@@ -105,14 +105,15 @@ if _settings.run_mode == "scheduler":
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
-    from core.dependencies import get_config_manager
+    from core.app_context import get_or_create_default_app_context
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
     from core.service_lifecycle import start_runtime_services
 
-    config = get_config_manager()
+    context = get_or_create_default_app_context()
     await start_runtime_services(
-        config,
+        context.config,
+        context=context,
         initialize_logger=setup_logger,
         initialize_observability=setup_observability_worker,
         initialize_redis_client=True,
@@ -123,12 +124,14 @@ async def worker_startup_event(state: object) -> None:
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
-    from core.dependencies import get_config_manager
+    from core.app_context import get_or_create_default_app_context
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
 
+    context = get_or_create_default_app_context()
     await stop_runtime_services(
-        get_config_manager(),
+        context.config,
+        context=context,
         reset_ai_client=True,
     )
     shutdown_observability()

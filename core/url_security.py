@@ -28,6 +28,7 @@ _DNS_CACHE: dict[
     tuple[str, int | None],
     tuple[float, tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]],
 ] = {}
+_DNS_CACHE_LOCK = asyncio.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,18 +105,26 @@ def _resolved_ips(host: str, port: int | None) -> list[ipaddress.IPv4Address | i
 
 async def _resolve_ips_cached(host: str, port: int | None) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     key = (host, port)
-    now = time.monotonic()
-    cached = _DNS_CACHE.get(key)
-    if cached is not None:
-        expires_at, cached_ips = cached
-        if now < expires_at:
-            return list(cached_ips)
-        _DNS_CACHE.pop(key, None)
+    async with _DNS_CACHE_LOCK:
+        now = time.monotonic()
+        cached = _DNS_CACHE.get(key)
+        if cached is not None:
+            expires_at, cached_ips = cached
+            if now < expires_at:
+                return list(cached_ips)
+            _DNS_CACHE.pop(key, None)
 
     resolved_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = await asyncio.to_thread(
         _resolved_ips, host, port
     )
-    _DNS_CACHE[key] = (now + _DNS_CACHE_TTL_SECONDS, tuple(resolved_ips))
+    async with _DNS_CACHE_LOCK:
+        now = time.monotonic()
+        cached = _DNS_CACHE.get(key)
+        if cached is not None:
+            expires_at, cached_ips = cached
+            if now < expires_at:
+                return list(cached_ips)
+        _DNS_CACHE[key] = (now + _DNS_CACHE_TTL_SECONDS, tuple(resolved_ips))
     return resolved_ips
 
 

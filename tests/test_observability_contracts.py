@@ -156,7 +156,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     redis_client = (ROOT / "core/redis_client.py").read_text()
     taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
-    assert "instrument_sqlalchemy(_engine.sync_engine)" in db_session
+    assert "instrument_sqlalchemy(engine.sync_engine)" in db_session
     assert "shutdown_observability()" in app
     assert "shutdown_observability()" in broker
     assert "services.operations.tasks" not in app

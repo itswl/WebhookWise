@@ -16,7 +16,10 @@ from core.config.defaults import (
     AIConfig,
     CircuitBreakerConfig,
     DBConfig,
+    ForwardingConfig,
     MaintenanceConfig,
+    MQConfig,
+    NotificationConfig,
     OpenClawConfig,
     RedisConfig,
     RetryConfig,
@@ -24,6 +27,7 @@ from core.config.defaults import (
     RuntimeValue,
     SecurityConfig,
     ServerConfig,
+    TaskConfig,
     get_settings,
 )
 
@@ -40,7 +44,11 @@ class _RuntimeKeyMeta(TypedDict):
 _RUNTIME_CONFIG_SUBS = frozenset(
     {
         "server",
+        "tasks",
+        "mq",
         "security",
+        "forwarding",
+        "notifications",
         "ai",
         "openclaw",
         "circuit_breaker",
@@ -144,6 +152,14 @@ class UnifiedConfigManager:
         return self._merged_sub("server", get_settings().server)
 
     @property
+    def tasks(self) -> TaskConfig:
+        return self._merged_sub("tasks", get_settings().tasks)
+
+    @property
+    def mq(self) -> MQConfig:
+        return self._merged_sub("mq", get_settings().mq)
+
+    @property
     def security(self) -> SecurityConfig:
         return self._merged_sub("security", get_settings().security)
 
@@ -158,6 +174,14 @@ class UnifiedConfigManager:
     @property
     def ai(self) -> AIConfig:
         return self._merged_sub("ai", get_settings().ai)
+
+    @property
+    def forwarding(self) -> ForwardingConfig:
+        return self._merged_sub("forwarding", get_settings().forwarding)
+
+    @property
+    def notifications(self) -> NotificationConfig:
+        return self._merged_sub("notifications", get_settings().notifications)
 
     @property
     def openclaw(self) -> OpenClawConfig:

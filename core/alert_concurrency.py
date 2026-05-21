@@ -71,6 +71,20 @@ async def _release_lock_ref(alert_hash: str, ref: _LockRef) -> None:
             _lock_refs.pop(alert_hash, None)
 
 
+@asynccontextmanager
+async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
+    ref = await _get_lock_ref(alert_hash)
+    acquired = False
+    try:
+        await ref.lock.acquire()
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            ref.lock.release()
+        await _release_lock_ref(alert_hash, ref)
+
+
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
     from core.config import Config
     from core.redis_client import redis_eval_int
@@ -183,8 +197,6 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
         )
         return
 
-    ref: _LockRef | None = None
-    local_lock_acquired = False
     lock_key: str | None = None
     lock_token: str | None = None
     refresh_task: asyncio.Task[None] | None = None
@@ -202,20 +214,13 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
             ttl_seconds = max(1, int(Config.retry.PROCESSING_LOCK_TTL_SECONDS))
             refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds))
 
-        ref = await _get_lock_ref(alert_hash)
-        await ref.lock.acquire()
-        local_lock_acquired = True
-
-        yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
+        async with _local_alert_lock(alert_hash):
+            yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
     finally:
         if refresh_task:
             refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await refresh_task
-        if local_lock_acquired and ref is not None:
-            ref.lock.release()
-        if ref is not None:
-            await _release_lock_ref(alert_hash, ref)
         if lock_key and lock_token:
             await _release_distributed_lock(lock_key, lock_token)
         if slot.reserved:
