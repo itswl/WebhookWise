@@ -5,7 +5,7 @@ from typing import Any
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from core.log_context import clear_log_context, set_log_context
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.tracing import (
     build_traceparent,
     extract_trace_id_from_headers,
@@ -16,6 +16,8 @@ from core.observability.tracing import (
     set_current_span_error,
     set_fallback_trace_id,
 )
+
+logger = get_logger("web.middleware")
 
 
 class SecurityHeadersMiddleware:

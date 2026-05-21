@@ -3,13 +3,15 @@
 from datetime import datetime
 from typing import Any
 
-from core.logger import logger
+from core.logger import get_logger
 from db.session import session_scope
 from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
 from services.webhooks.deduplication import get_cached_duplicate
 from services.webhooks.policies import AnalysisResolutionPolicy
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResolution
+
+logger = get_logger("webhooks.analysis_resolution")
 
 
 async def resolve_analysis(

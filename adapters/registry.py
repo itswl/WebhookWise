@@ -1,13 +1,13 @@
 import importlib
-import logging
 import pkgutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
+from core.logger import get_logger
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger(__name__)
+logger = get_logger("adapters.registry")
 
 _Normalizer = Callable[[WebhookData], WebhookData]
 _Detector = Callable[[WebhookData], bool]

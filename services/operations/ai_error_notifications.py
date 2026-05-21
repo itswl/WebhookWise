@@ -1,19 +1,18 @@
 """Operational notifications for AI analysis errors."""
 
 import hashlib
-import logging
 import re
 from typing import Any
 
 from adapters.plugins.feishu_card import build_ai_error_card
-from core.logger import mask_url
+from core.logger import get_logger, mask_url
 from core.redis_keys import ai_error_alert_lock
 from services.analysis.ai_policies import AIErrorNotificationPolicy
 from services.notifications.factory import build_notification_channels, find_notification_channel
 from services.operations.policies import FeishuNotificationPolicy
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger("webhook_service.ai_error_notifications")
+logger = get_logger("ai_error_notifications")
 
 _HEX_OR_UUID_RE = re.compile(r"\b[0-9a-f]{8,}(?:-[0-9a-f]{4,})*\b", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\b\d+\b")

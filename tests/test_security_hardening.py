@@ -41,10 +41,10 @@ def test_non_json_raw_payload_is_not_echoed() -> None:
 
 
 def test_default_prompt_path_resolves_from_project_root() -> None:
-    from services.analysis.ai_analyzer import _resolve_prompt_path
+    from services.analysis.ai_prompt import resolve_prompt_path
 
     root = Path(__file__).resolve().parents[1]
-    path = _resolve_prompt_path("prompts/webhook_analysis_detailed.txt")
+    path = resolve_prompt_path("prompts/webhook_analysis_detailed.txt")
 
     assert path == root / "prompts/webhook_analysis_detailed.txt"
     assert path.exists()
@@ -94,7 +94,7 @@ def test_sanitize_for_ai_redacts_sensitive_nested_fields(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_forward_to_remote_rejects_private_target() -> None:
-    from services.forwarding.forward import forward_to_remote
+    from services.forwarding.remote import forward_to_remote
 
     result = await forward_to_remote(
         {"source": "test", "parsed_data": {}},
@@ -138,7 +138,9 @@ async def test_security_headers_include_hsts() -> None:
 
 @pytest.mark.asyncio
 async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.forwarding import forward as forward_mod
+    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.remote import forward_to_remote
 
     class FakeResponse:
         status_code = 200
@@ -155,21 +157,19 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
         async def post(self, *args: Any, **kwargs: Any) -> FakeResponse:
             return FakeResponse()
 
-    async def call_async(fn: Any) -> Any:
-        return await fn()
-
-    monkeypatch.setattr(forward_mod.forward_cb, "call_async", call_async)
-
     async def accept_url(url: str) -> str:
         return url
 
-    monkeypatch.setattr(forward_mod, "validate_outbound_url", accept_url)
+    class Breaker:
+        async def call_async(self, fn: Any, *args: Any, **kwargs: Any) -> object:
+            return await fn(*args, **kwargs)
 
-    result = await forward_mod.forward_to_remote(
+    result = await forward_to_remote(
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        http_client=FakeHttpClient(),  # type: ignore[arg-type]
+        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
+        dependencies=RemoteForwardDependencies(FakeHttpClient(), Breaker(), accept_url),
     )
 
     assert result["status"] == "success"

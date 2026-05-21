@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
 
 from adapters.plugins.feishu_card import build_deep_analysis_card
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.logger import mask_url
+from core.logger import get_logger, mask_url
 from core.observability.tracing import span as otel_span
 from core.url_security import validate_outbound_url
 from services.forwarding.dependencies import CircuitBreakerLike, ValidateURL
@@ -16,7 +15,7 @@ from services.notifications.channels import AsyncJsonPoster
 from services.notifications.target_detection import is_feishu_url
 from services.operations.policies import FeishuNotificationPolicy
 
-logger = logging.getLogger("webhook_service.notifications.feishu")
+logger = get_logger("notifications.feishu")
 
 
 @dataclass(frozen=True, slots=True)

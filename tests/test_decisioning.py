@@ -7,11 +7,11 @@ forwarding / rule-matching logic.
 
 from datetime import datetime, timedelta
 
+from core.text import split_csv_lower
 from services.webhooks.decisioning import (
     ForwardingPolicy,
     ForwardRuleSnapshot,
     _rule_matches,
-    _split_csv,
     build_final_analysis,
     decide_forwarding,
     normalize_importance,
@@ -101,21 +101,21 @@ class TestNormalizeImportance:
         assert normalize_importance("M") == "m"
 
 
-# ── _split_csv ───────────────────────────────────────────────────────
+# ── split_csv_lower ──────────────────────────────────────────────────
 
 
 class TestSplitCsv:
     def test_basic_split(self) -> None:
-        assert _split_csv("HIGH,CRITICAL") == ["high", "critical"]
+        assert split_csv_lower("HIGH,CRITICAL") == ["high", "critical"]
 
     def test_strips_whitespace(self) -> None:
-        assert _split_csv("  a , B , ") == ["a", "b"]
+        assert split_csv_lower("  a , B , ") == ["a", "b"]
 
     def test_empty_returns_empty(self) -> None:
-        assert _split_csv("") == []
+        assert split_csv_lower("") == []
 
     def test_single_value(self) -> None:
-        assert _split_csv("high") == ["high"]
+        assert split_csv_lower("high") == ["high"]
 
 
 # ── _rule_matches ────────────────────────────────────────────────────
@@ -157,7 +157,9 @@ class TestRuleMatches:
     def test_combined_filters(self) -> None:
         rule = _make_rule(match_importance="high", match_source="prometheus", match_duplicate="new")
         assert _rule_matches(rule, importance="high", source="prometheus", is_duplicate=False, beyond_window=False)
-        assert not _rule_matches(rule, importance="medium", source="prometheus", is_duplicate=False, beyond_window=False)
+        assert not _rule_matches(
+            rule, importance="medium", source="prometheus", is_duplicate=False, beyond_window=False
+        )
         assert not _rule_matches(rule, importance="high", source="grafana", is_duplicate=False, beyond_window=False)
 
 
