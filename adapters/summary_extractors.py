@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from core.logger import get_logger
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger(__name__)
+logger = get_logger("adapters.summary_extractors")
 
 Summary = dict[str, Any]
 

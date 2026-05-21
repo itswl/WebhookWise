@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
+from core.text import split_csv_lower
 from services.webhooks.types import ForwardDecision, NoiseReductionContext
 
 
@@ -67,10 +68,6 @@ def build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReductionC
     return final_analysis
 
 
-def _split_csv(value: str) -> list[str]:
-    return [item.strip().lower() for item in value.split(",") if item.strip()]
-
-
 def _rule_matches(
     rule: ForwardRuleSnapshot,
     *,
@@ -79,9 +76,9 @@ def _rule_matches(
     is_duplicate: bool,
     beyond_window: bool,
 ) -> bool:
-    if rule.match_importance and importance not in _split_csv(rule.match_importance):
+    if rule.match_importance and importance not in split_csv_lower(rule.match_importance):
         return False
-    if rule.match_source and source.lower() not in _split_csv(rule.match_source):
+    if rule.match_source and source.lower() not in split_csv_lower(rule.match_source):
         return False
     if rule.match_duplicate and rule.match_duplicate != "all":
         if rule.match_duplicate == "new" and (is_duplicate or beyond_window):

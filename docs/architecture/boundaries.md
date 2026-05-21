@@ -48,6 +48,41 @@ Task registration is intentionally outside `core/`: TaskIQ CLI entrypoints use
 re-exports the broker/scheduler. This keeps `core.taskiq_broker` from depending
 on `services.operations.tasks`.
 
+## Runtime Configuration Boundary
+
+Application code should read business and runtime settings through
+`core.config.Config` or an injected `UnifiedConfigManager`. The exceptions are
+bootstrap surfaces that execute before the application context exists:
+
+- `core.taskiq_broker` reads `core.config.defaults.get_settings()` only. TaskIQ
+  imports the broker while constructing workers and schedulers, before DB/Redis
+  runtime overrides can be loaded.
+- `gunicorn_config.py` reads process-shape settings directly from the
+  environment because Gunicorn evaluates it before importing the ASGI app.
+- `core.observability` reads OTEL/Pyroscope environment variables directly to
+  follow OpenTelemetry vendor conventions during instrumentation bootstrap.
+
+DB and Redis connection settings remain static for a process lifetime. Runtime
+overrides intentionally exclude the `db` and `redis` config submodules.
+
+## Logging Boundary
+
+Feature modules should use `core.logger.get_logger("component")` for child
+loggers under the `webhook_service.*` namespace. Importing the root
+`core.logger.logger` is reserved for application lifecycle glue and legacy code
+that does not need a distinct component name.
+
+Raw `logging.getLogger(...)` is allowed only in logging infrastructure,
+observability bootstrap code, tests, and modules that must avoid importing
+`core.logger` during early startup such as `core.taskiq_broker`.
+
+## Typing Boundary
+
+New runtime modules should include `from __future__ import annotations`. Existing
+files may be migrated opportunistically when touched; do not keep a separate
+runtime-type-checking path that depends on eager annotation evaluation without a
+local comment explaining it.
+
 Borderline modules such as `core/webhook_security.py`,
 `core/alert_concurrency.py`, and `core/circuit_breaker.py` should stay small and
 primitive-oriented. If they grow feature-specific branches, split the policy

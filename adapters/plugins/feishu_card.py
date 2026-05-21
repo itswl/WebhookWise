@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from adapters.ecosystem_adapters import _normalize_level
+from adapters.ecosystem_adapters import normalize_level
 from adapters.registry import registry
 from services.webhooks.types import WebhookData
 
@@ -247,7 +247,7 @@ def normalize(data: WebhookData) -> WebhookData:
             "Type": "FeishuCard",
             "RuleName": alert_strategy or header_title or "feishu_alert",
             "alert_name": alert_strategy or header_title or "feishu_alert",
-            "Level": _normalize_level(alert_level),
+            "Level": normalize_level(alert_level),
             "MetricName": log_topic or "feishu_log_alert",
             "event": "alert",
             "event_type": "feishu_card_alert",

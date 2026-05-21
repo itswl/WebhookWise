@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
+import logging
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.config import UnifiedConfigManager
 from core.dependencies import get_config_manager
-from core.logger import logger
+from core.logger import get_logger
+
+logger = get_logger("auth")
 
 security = HTTPBearer(auto_error=False)
 _AUTH_DEPENDENCY = Security(security)
@@ -56,15 +61,20 @@ async def verify_api_key(
     if not auth or not _matches_any_configured_token(auth.credentials, api_key, config.security.ADMIN_WRITE_KEY):
         client_ip = request.client.host if request.client else "unknown"
 
-        try:
-            body_bytes = await request.body()
-        except Exception:
-            body_bytes = b""
+        if logger.isEnabledFor(logging.WARNING):
+            try:
+                body_bytes = await request.body()
+            except Exception:
+                body_bytes = b""
 
-        logger.warning(
-            f"[Auth] 未授权的 API 访问尝试: IP={client_ip}, URL={request.url.path}, "
-            f"Method={request.method}, Headers={_redact_headers(dict(request.headers))}, Body={_body_meta(body_bytes)}"
-        )
+            logger.warning(
+                "[Auth] 未授权的 API 访问尝试: IP=%s, URL=%s, Method=%s, Headers=%s, Body=%s",
+                client_ip,
+                request.url.path,
+                request.method,
+                _redact_headers(dict(request.headers)),
+                _body_meta(body_bytes),
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API Key",

@@ -6,14 +6,13 @@ from typing import Any
 
 import httpx
 
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from models import WebhookEvent
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
 from services.analysis.ai_policies import AICachePolicy, AIProviderPolicy, RuleAnalysisPolicy
 from services.analysis.ai_prompt import (
-    _resolve_prompt_path,
     get_prompt_source,
     load_deep_analysis_prompt_template,
     load_user_prompt_template,
@@ -36,10 +35,9 @@ from services.runtime_config.runtime_access import (
 )
 from services.webhooks.types import AnalysisResult, WebhookData
 
+logger = get_logger("analysis.ai_analyzer")
+
 __all__ = [
-    "_call_ai_with_retry",
-    "_get_instructor_client_async",
-    "_resolve_prompt_path",
     "analyze_webhook_with_ai",
     "analyze_with_rules",
     "get_cache_key",
@@ -70,12 +68,6 @@ _AI_POLICY_REFUSAL_MARKERS = (
     "policy violation",
     "violation of provider",
 )
-
-
-def __getattr__(name: str) -> Any:
-    if name in {"_openai_client", "_instructor_client"}:
-        return getattr(_llm_client, name)
-    raise AttributeError(name)
 
 
 async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None = None) -> Any:

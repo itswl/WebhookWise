@@ -1,15 +1,15 @@
 """HTTP polling for OpenClaw final analysis results."""
 
-import logging
 import time
 from typing import Any
 
 import httpx
 
+from core.logger import get_logger
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.webhooks.types import WebhookData
 
-logger = logging.getLogger("webhook_service.openclaw_http")
+logger = get_logger("openclaw_http")
 
 
 def _describe_exception(exc: Exception) -> str:

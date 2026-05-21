@@ -106,7 +106,7 @@ async def test_process_forward_outbox_marks_sent(
     async def fake_forward_to_remote(**_: Any) -> dict[str, Any]:
         return {"status": "success", "status_code": 200}
 
-    monkeypatch.setattr("services.forwarding.forward.forward_to_remote", fake_forward_to_remote)
+    monkeypatch.setattr("services.forwarding.remote.forward_to_remote", fake_forward_to_remote)
 
     await process_forward_outbox_by_id(outbox_id)
 

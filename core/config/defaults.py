@@ -20,6 +20,7 @@ class ServerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
+    APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")

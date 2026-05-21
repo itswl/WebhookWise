@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import logging
-
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
+from core.logger import get_logger
 from core.observability.metrics import (
     DATABASE_EVENTS_COUNT,
     WEBHOOK_MQ_GROUP_LAG,
@@ -19,7 +18,7 @@ from db.session import session_scope
 from models import WebhookEvent
 from services.operations.policies import MetricsPollPolicy
 
-logger = logging.getLogger("webhook_service.metrics")
+logger = get_logger("metrics")
 
 
 async def refresh_all_metrics(*, policy: MetricsPollPolicy | None = None) -> None:

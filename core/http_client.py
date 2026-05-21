@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import httpx
 
 from core.config import Config, UnifiedConfigManager
-from core.logger import logger
+from core.logger import get_logger
 from core.observability.tracing import build_traceparent, get_current_trace_id
+
+logger = get_logger("http_client")
 
 
 async def _inject_trace_headers(request: httpx.Request) -> None:

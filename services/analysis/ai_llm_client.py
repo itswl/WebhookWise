@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from core.http_client import get_http_client
-from core.logger import logger, mask_url
+from core.logger import get_logger, mask_url
 from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_COST_USD_TOTAL,
@@ -29,6 +29,8 @@ from services.analysis.ai_policies import AIProviderPolicy
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult
+
+logger = get_logger("analysis.ai_llm_client")
 
 if TYPE_CHECKING:
     import instructor
