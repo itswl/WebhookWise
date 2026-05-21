@@ -224,20 +224,30 @@ async def _handle_raw_webhook_failure(
             max_delay=policy.max_delay,
             multiplier=policy.backoff_multiplier,
         )
-        retry_kwargs = {
-            "delay_seconds": delay,
-            "source": source,
-            "raw_headers": raw_headers,
-            "raw_body": raw_body,
-            "client_ip": client_ip,
-            "request_id": request_id,
-            "received_at": received_at,
-            "ingest_retry_count": next_retry_count,
-        }
-        if traceparent:
-            retry_kwargs["traceparent"] = traceparent
         try:
-            await schedule_webhook_ingest_retry(**retry_kwargs)
+            if traceparent:
+                await schedule_webhook_ingest_retry(
+                    delay_seconds=delay,
+                    source=source,
+                    raw_headers=raw_headers,
+                    raw_body=raw_body,
+                    client_ip=client_ip,
+                    request_id=request_id,
+                    received_at=received_at,
+                    ingest_retry_count=next_retry_count,
+                    traceparent=traceparent,
+                )
+            else:
+                await schedule_webhook_ingest_retry(
+                    delay_seconds=delay,
+                    source=source,
+                    raw_headers=raw_headers,
+                    raw_body=raw_body,
+                    client_ip=client_ip,
+                    request_id=request_id,
+                    received_at=received_at,
+                    ingest_retry_count=next_retry_count,
+                )
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
             logger.error(
                 "[Tasks] raw webhook 处理失败，已调度重试 request_id=%s source=%s retry=%s/%s delay=%ss error=%s",

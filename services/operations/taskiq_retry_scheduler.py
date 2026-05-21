@@ -86,26 +86,39 @@ async def schedule_webhook_ingest_retry(
     schedule_id = _raw_ingest_schedule_id(request_id, source, raw_body)
     await dynamic_schedule_source.delete_schedule(schedule_id)
     run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
-    task_kwargs = {
-        "webhook_source": source,
-        "raw_headers": raw_headers,
-        "raw_body": raw_body,
-        "client_ip": client_ip,
-        "request_id": request_id,
-        "received_at": received_at,
-        "ingest_retry_count": ingest_retry_count,
-    }
     if traceparent:
-        task_kwargs["traceparent"] = traceparent
-    await (
-        process_webhook_task.kicker()
-        .with_schedule_id(schedule_id)
-        .schedule_by_time(
-            dynamic_schedule_source,
-            run_at,
-            **task_kwargs,
+        await (
+            process_webhook_task.kicker()
+            .with_schedule_id(schedule_id)
+            .schedule_by_time(
+                dynamic_schedule_source,
+                run_at,
+                webhook_source=source,
+                raw_headers=raw_headers,
+                raw_body=raw_body,
+                client_ip=client_ip,
+                request_id=request_id,
+                received_at=received_at,
+                ingest_retry_count=ingest_retry_count,
+                traceparent=traceparent,
+            )
         )
-    )
+    else:
+        await (
+            process_webhook_task.kicker()
+            .with_schedule_id(schedule_id)
+            .schedule_by_time(
+                dynamic_schedule_source,
+                run_at,
+                webhook_source=source,
+                raw_headers=raw_headers,
+                raw_body=raw_body,
+                client_ip=client_ip,
+                request_id=request_id,
+                received_at=received_at,
+                ingest_retry_count=ingest_retry_count,
+            )
+        )
 
 
 async def schedule_forward_retry(failed_forward_id: int, delay_seconds: int) -> None:
