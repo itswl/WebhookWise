@@ -1,6 +1,6 @@
 """pluralize log and outbox table names
 
-Revision ID: 0002_pluralize_log_and_outbox_tables
+Revision ID: 0002_pluralize_tables
 Revises: 0001_current_schema
 Create Date: 2026-05-21 00:00:00.000000
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0002_pluralize_log_and_outbox_tables"
+revision: str = "0002_pluralize_tables"
 down_revision: str | Sequence[str] | None = "0001_current_schema"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

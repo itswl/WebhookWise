@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Any
 
@@ -53,8 +54,12 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
 
     assert [path.name for path in revision_paths] == [
         "0001_current_schema.py",
-        "0002_pluralize_log_and_outbox_tables.py",
+        "0002_pluralize_tables.py",
     ]
+    for path in revision_paths:
+        revision = re.search(r'^revision: str = "([^"]+)"', path.read_text(), re.MULTILINE)
+        assert revision is not None
+        assert len(revision.group(1)) <= 32
     source = revision_paths[0].read_text()
     assert "Base.metadata.create_all" in source
     assert "Base.metadata.drop_all" in source
