@@ -40,9 +40,16 @@ def initialize_adapter_registry():
 # ── 外部服务 Mock ─────────────────────────────────────────────────────────────
 
 
+def _has_marker(request: pytest.FixtureRequest, *names: str) -> bool:
+    return any(request.node.get_closest_marker(name) is not None for name in names)
+
+
 @pytest.fixture(autouse=True)
-def mock_requests():
+def mock_requests(request: pytest.FixtureRequest):
     """所有测试默认 mock requests，避免发起真实 HTTP 请求。"""
+    if _has_marker(request, "real_requests", "real_network", "real_services"):
+        yield None
+        return
     with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -56,8 +63,11 @@ def mock_requests():
 
 
 @pytest.fixture(autouse=True)
-def mock_httpx():
+def mock_httpx(request: pytest.FixtureRequest):
     """Mock httpx async client，阻止所有真实 HTTP 请求。"""
+    if _has_marker(request, "real_httpx", "real_network", "real_services"):
+        yield None
+        return
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = "{}"
@@ -73,8 +83,11 @@ def mock_httpx():
 
 
 @pytest.fixture(autouse=True)
-def mock_redis():
+def mock_redis(request: pytest.FixtureRequest):
     """Mock Redis 客户端，避免连接真实 Redis。"""
+    if _has_marker(request, "real_redis", "real_services"):
+        yield None
+        return
     mock = AsyncMock()
     mock.get.return_value = None
     mock.set.return_value = True
@@ -98,14 +111,14 @@ def mock_redis():
 @pytest.fixture
 def temp_config():
     """临时覆盖 Config 属性，测试结束后自动恢复。"""
-    from core.config import Config
+    from core.config import Config, get_settings
 
-    snapshots: dict[str, dict[str, object]] = {}
-    for sub_name in Config._SUB_NAMES:
-        sub = getattr(Config, sub_name)
-        snapshots[sub_name] = {k: getattr(sub, k) for k in sub.model_fields}
+    settings = get_settings()
+    snapshots = {sub_name: getattr(settings, sub_name).model_copy(deep=True) for sub_name in settings._SUB_NAMES}
+    override_snapshot = Config._overrides.copy()
+    meta_snapshot = {key: value.copy() for key, value in Config._meta.items()}
     yield Config
-    for sub_name, fields in snapshots.items():
-        sub = getattr(Config, sub_name)
-        for k, v in fields.items():
-            setattr(sub, k, v)
+    for sub_name, snapshot in snapshots.items():
+        setattr(settings, sub_name, snapshot)
+    Config._overrides = override_snapshot
+    Config._meta = meta_snapshot

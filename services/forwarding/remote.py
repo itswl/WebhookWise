@@ -65,14 +65,15 @@ async def forward_to_remote(
         payload = {"webhook": webhook_data, "analysis": analysis_result, "is_periodic_reminder": is_periodic_reminder}
 
     async def _do_post() -> httpx.Response:
+        final_url = await dependencies.validate_url(url)
         logger.info(
             "[Forward] 开始转发 target=%s target_type=%s periodic=%s",
-            mask_url(url),
+            mask_url(final_url),
             target_type,
             is_periodic_reminder,
         )
         resp = cast(
-            httpx.Response, await dependencies.http_client.post(url, json=payload, timeout=policy.timeout_seconds)
+            httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)
         )
         resp.raise_for_status()
         return resp
@@ -93,6 +94,10 @@ async def forward_to_remote(
             "status_code": response.status_code,
             "response": resp_payload,
         }
+    except UnsafeTargetUrlError as e:
+        logger.warning("[Forward] 目标 URL 发送前安全校验失败 target=%s error=%s", mask_url(url), e)
+        status = "invalid_target"
+        return {"status": "invalid_target", "message": str(e)}
     except CircuitBreakerOpenException:
         logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
         status = "circuit_broken"
@@ -142,9 +147,10 @@ async def post_json_to_remote(
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
-        logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(url))
+        final_url = await dependencies.validate_url(url) if validate_target else url
+        logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(final_url))
         resp = cast(
-            httpx.Response, await dependencies.http_client.post(url, json=payload, timeout=policy.timeout_seconds)
+            httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)
         )
         resp.raise_for_status()
         return resp
@@ -154,6 +160,10 @@ async def post_json_to_remote(
         logger.info("[Forward] raw-json 转发完成 target=%s status_code=%s", mask_url(url), response.status_code)
         status = "success"
         return {"status": "success", "status_code": response.status_code}
+    except UnsafeTargetUrlError as e:
+        logger.warning("[Forward] 目标 URL 发送前安全校验失败 target=%s error=%s", mask_url(url), e)
+        status = "invalid_target"
+        return {"status": "invalid_target", "message": str(e)}
     except CircuitBreakerOpenException:
         logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
         status = "circuit_broken"

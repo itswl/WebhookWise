@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -22,6 +23,11 @@ class UnsafeTargetUrlError(ValueError):
 
 _BLOCKED_HOSTNAMES = {"localhost", "localhost.localdomain"}
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
+_DNS_CACHE_TTL_SECONDS = 60.0
+_DNS_CACHE: dict[
+    tuple[str, int | None],
+    tuple[float, tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]],
+] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +102,23 @@ def _resolved_ips(host: str, port: int | None) -> list[ipaddress.IPv4Address | i
     return ips
 
 
+async def _resolve_ips_cached(host: str, port: int | None) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    key = (host, port)
+    now = time.monotonic()
+    cached = _DNS_CACHE.get(key)
+    if cached is not None:
+        expires_at, cached_ips = cached
+        if now < expires_at:
+            return list(cached_ips)
+        _DNS_CACHE.pop(key, None)
+
+    resolved_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = await asyncio.to_thread(
+        _resolved_ips, host, port
+    )
+    _DNS_CACHE[key] = (now + _DNS_CACHE_TTL_SECONDS, tuple(resolved_ips))
+    return resolved_ips
+
+
 async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = None) -> str:
     """Return a normalized URL if it is safe for server-side outbound calls."""
     policy = policy or OutboundURLPolicy.from_config()
@@ -119,7 +142,7 @@ async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = 
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
-        ips = await asyncio.to_thread(_resolved_ips, host, parts.port)
+        ips = await _resolve_ips_cached(host, parts.port)
         for ip in ips:
             _reject_private_ip(ip, policy)
     else:

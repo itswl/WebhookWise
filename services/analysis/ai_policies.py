@@ -46,7 +46,12 @@ class AIErrorNotificationPolicy:
 
     @classmethod
     def from_config(cls, config: Any = Config.ai) -> "AIErrorNotificationPolicy":
-        return cls(enabled=bool(config.ENABLE_FORWARD), target_url=str(config.FORWARD_URL))
+        return cls(
+            enabled=bool(config.ENABLE_FORWARD),
+            target_url=str(config.FORWARD_URL),
+            cooldown_seconds=max(1, int(getattr(config, "AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS", 3600))),
+            timeout_seconds=max(1, int(getattr(config, "AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS", 10))),
+        )
 
 
 @dataclass(frozen=True, slots=True)

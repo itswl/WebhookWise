@@ -11,18 +11,12 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from core.dependencies import get_config_manager
 from core.logger import logger
-from db.session import init_engine, test_db_connection
-
-
-async def _check_db() -> bool:
-    await init_engine()
-    return await test_db_connection()
-
+from core.service_lifecycle import check_database_ready
 
 if __name__ == "__main__":
     config = get_config_manager()
     # 启动前验证（model_validator 在 Config 实例化时已自动执行）
-    if not asyncio.run(_check_db()):
+    if not asyncio.run(check_database_ready()):
         logger.error("数据库连接失败，请检查配置")
         raise SystemExit(1)
 

@@ -12,6 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import logger
+from core.observability.attributes import (
+    WEBHOOK_ALERT_HASH,
+    WEBHOOK_EVENT_TYPE,
+    WEBHOOK_IMPORTANCE,
+    WEBHOOK_OUTCOME,
+    WEBHOOK_PROCESSING_DURATION_MS,
+    WEBHOOK_ROUTE,
+    WEBHOOK_SOURCE,
+)
 from core.observability.metrics import (
     WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
@@ -164,10 +173,10 @@ def _log_completed_processing(
     )
 
     if span:
-        span.set_attribute("webhook.importance", importance)
-        span.set_attribute("route", route_label)
-        span.set_attribute("webhook.event_type", event_type)
-        span.set_attribute("webhook.processing.duration_ms", duration_ms)
+        span.set_attribute(WEBHOOK_IMPORTANCE, importance)
+        span.set_attribute(WEBHOOK_ROUTE, route_label)
+        span.set_attribute(WEBHOOK_EVENT_TYPE, event_type)
+        span.set_attribute(WEBHOOK_PROCESSING_DURATION_MS, duration_ms)
 
     WEBHOOK_NOISE_REDUCED_TOTAL.labels(
         source=ctx.metric_source,
@@ -246,8 +255,8 @@ async def _handle_webhook_process_inner(
                 len(env.raw_body),
             )
             if _span:
-                _span.set_attribute("webhook.source", req_ctx.source or "unknown")
-                _span.set_attribute("webhook.alert_hash", alert_hash[:12])
+                _span.set_attribute(WEBHOOK_SOURCE, req_ctx.source or "unknown")
+                _span.set_attribute(WEBHOOK_ALERT_HASH, alert_hash[:12])
 
             result = await run_processing_steps(ctx, dependencies)
             if result.suppressed:
@@ -288,5 +297,5 @@ async def _handle_webhook_process_inner(
         finally:
             duration = time.perf_counter() - start_perf
             if _span:
-                _span.set_attribute("webhook.outcome", outcome)
+                _span.set_attribute(WEBHOOK_OUTCOME, outcome)
             WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
