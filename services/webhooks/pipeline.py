@@ -211,7 +211,8 @@ async def _handle_webhook_process_inner(
             parse_start = time.perf_counter()
             parse_outcome = "success"
             with otel_span(
-                "webhook.parse", {"source": env.source or "unknown", "event_id": event_id or 0}
+                "webhook.parse",
+                {"source": env.source or "unknown", "event_id": event_id or 0, "pipeline.step": "parse"},
             ) as parse_span:
                 try:
                     req_ctx = parse_request(
@@ -286,4 +287,6 @@ async def _handle_webhook_process_inner(
             return
         finally:
             duration = time.perf_counter() - start_perf
+            if _span:
+                _span.set_attribute("webhook.outcome", outcome)
             WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)

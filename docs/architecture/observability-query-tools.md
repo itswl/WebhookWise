@@ -31,6 +31,9 @@ python scripts/observability/webhookwise_observe.py logs --query '{service_name=
 # Search recent Tempo traces
 python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
 
+# Build Pyroscope profile links
+python scripts/observability/webhookwise_observe.py profiles --service-name webhookwise-api
+
 # Validate every PromQL expression in the provisioned dashboard
 python scripts/observability/webhookwise_observe.py dashboard --validate
 
@@ -72,6 +75,7 @@ Then set the datasource UIDs when they differ from the defaults:
 export WEBHOOKWISE_PROMETHEUS_DATASOURCE_UID=prometheus
 export WEBHOOKWISE_LOKI_DATASOURCE_UID=loki
 export WEBHOOKWISE_TEMPO_DATASOURCE_UID=tempo
+export WEBHOOKWISE_PYROSCOPE_DATASOURCE_UID=pyroscope
 ```
 
 Run the same commands against production:
@@ -81,6 +85,7 @@ python scripts/observability/webhookwise_observe.py health
 python scripts/observability/webhookwise_observe.py preset api-rate
 python scripts/observability/webhookwise_observe.py logs --query '{service_name="webhookwise-api"} | json' --limit 20
 python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
+python scripts/observability/webhookwise_observe.py profiles --service-name webhookwise-api
 python scripts/observability/webhookwise_observe.py dashboard --remote --uid webhook-wise-aiops
 python scripts/observability/webhookwise_observe.py dashboard --validate
 python scripts/observability/webhookwise_observe.py smoke --skip-webhook
@@ -107,6 +112,7 @@ It exposes these tools:
 | `webhookwise_preset` | Run one of the named WebhookWise PromQL presets |
 | `webhookwise_logs` | Run a Loki `query_range` |
 | `webhookwise_tempo_search` | Search recent Tempo traces for a service |
+| `webhookwise_profiles` | Build Pyroscope profile selectors and Grafana/Pyroscope links |
 | `webhookwise_dashboard_validate` | Validate `grafana/dashboard.json` against Prometheus |
 | `webhookwise_smoke` | Run the API -> Prometheus -> Loki -> Tempo smoke check |
 

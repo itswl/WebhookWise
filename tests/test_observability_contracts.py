@@ -124,9 +124,25 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
     )
     assert "${__field.labels.webhook_source}" in link_urls
     assert "${__field.labels.service_name}" in link_urls
+    assert "${__from}" in link_urls
+    assert "${__to}" in link_urls
+    assert "now-1h" not in link_urls
     assert "span.webhook.source" in link_urls
+    assert "span.worker.task.name" in link_urls
+    assert "span.pipeline.step" in link_urls
+    assert "span.forward.target_type" in link_urls
     assert "resource.service.name = " in link_urls
     assert "%26%26" in link_urls
+
+    profile_linked_panels = [
+        panel
+        for panel in metric_panels
+        if "查看 Profile"
+        in {link.get("title") for link in panel.get("fieldConfig", {}).get("defaults", {}).get("links", [])}
+    ]
+    assert len(profile_linked_panels) >= 30
+    assert "pyroscope" in link_urls
+    assert "profileTypeId" in link_urls
 
 
 def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
@@ -135,6 +151,9 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     webhook = (ROOT / "api/webhook.py").read_text()
     tasks = (ROOT / "services/operations/tasks.py").read_text()
+    pipeline_steps = (ROOT / "services/webhooks/pipeline_steps.py").read_text()
+    forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
+    redis_client = (ROOT / "core/redis_client.py").read_text()
 
     assert "instrument_sqlalchemy(_engine.sync_engine)" in db_session
     assert "shutdown_observability()" in app
@@ -142,6 +161,12 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"traceparent": headers.get("traceparent") or build_traceparent(request_id)' in webhook
     assert "trace_context_from_headers(trace_headers)" in tasks
     assert '"worker.webhook_process_task"' in tasks
+    assert '"worker.task.name": "webhook_process_task"' in tasks
+    assert "worker.task.status" in tasks
+    assert '"pipeline.step": "validate"' in pipeline_steps
+    assert '"pipeline.step": "noise"' in pipeline_steps
+    assert '"forward.target_type": target_type' in forwarding_stage
+    assert '"redis.operation": operation' in redis_client
 
 
 def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeypatch) -> None:
@@ -205,7 +230,13 @@ def test_otlp_logs_are_opt_in_and_otel_enabled_is_explicit() -> None:
 def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
     cli = (ROOT / "scripts/observability/webhookwise_observe.py").read_text()
     mcp = (ROOT / "scripts/observability/webhookwise_mcp.py").read_text()
+    dashboard_links = (ROOT / "scripts/observability/update_dashboard_links.py").read_text()
+    ci = (ROOT / ".github/workflows/ci.yml").read_text()
     assert 'sub.add_parser("smoke"' in cli
     assert 'sub.add_parser("tempo"' in cli
+    assert 'sub.add_parser("profiles"' in cli
     assert '"name": "webhookwise_smoke"' in mcp
     assert '"name": "webhookwise_tempo_search"' in mcp
+    assert '"name": "webhookwise_profiles"' in mcp
+    assert "PROFILE_TYPE_ID" in dashboard_links
+    assert "scripts/export_openapi.py --check" in ci

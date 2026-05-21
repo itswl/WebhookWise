@@ -16,3 +16,9 @@ Regenerate them from the repository root:
 ```bash
 OTEL_ENABLED=false python scripts/export_openapi.py
 ```
+
+CI checks that these exports stay fresh:
+
+```bash
+OTEL_ENABLED=false python scripts/export_openapi.py --check
+```
