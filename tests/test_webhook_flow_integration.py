@@ -303,6 +303,75 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
     assert persisted.ai_analysis["summary"] == "already persisted"
 
 
+async def test_data_maintenance_archives_old_events_before_delete(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from models import ArchivedWebhookEvent, WebhookEvent
+    from services.operations.data_maintenance import cleanup_old_data_by_policy
+    from services.operations.policies import DataMaintenancePolicy
+
+    old_timestamp = datetime.now() - timedelta(days=40)
+    fresh_timestamp = datetime.now() - timedelta(days=1)
+    async with integration_session_factory.begin() as session:
+        old_event = WebhookEvent(
+            request_id="req-old-archive",
+            source="prometheus",
+            client_ip="127.0.0.1",
+            timestamp=old_timestamp,
+            raw_payload=b'{"alert_name":"old"}',
+            headers={"x-source": "test"},
+            parsed_data={"alert_name": "old"},
+            alert_hash="old-archive-hash",
+            ai_analysis={"importance": "low", "summary": "old should archive"},
+            importance="low",
+            processing_status="completed",
+            forward_status="sent",
+            is_duplicate=False,
+            duplicate_count=1,
+            beyond_window=False,
+        )
+        fresh_event = WebhookEvent(
+            request_id="req-fresh-archive",
+            source="prometheus",
+            client_ip="127.0.0.1",
+            timestamp=fresh_timestamp,
+            parsed_data={"alert_name": "fresh"},
+            ai_analysis={"importance": "high", "summary": "fresh should remain"},
+            importance="high",
+            processing_status="completed",
+        )
+        session.add_all([old_event, fresh_event])
+        await session.flush()
+        old_id = old_event.id
+        fresh_id = fresh_event.id
+
+    archived_count = await cleanup_old_data_by_policy(
+        policy=DataMaintenancePolicy(
+            enabled=True,
+            retention_days_default=30,
+            retention_policies={},
+            source_retention_policies={},
+            cleanup_keywords={},
+        )
+    )
+
+    async with integration_session_factory() as session:
+        remaining = (await session.execute(select(WebhookEvent).order_by(WebhookEvent.id.asc()))).scalars().all()
+        archived = (
+            await session.execute(select(ArchivedWebhookEvent).order_by(ArchivedWebhookEvent.id.asc()))
+        ).scalar_one()
+
+    assert archived_count == 1
+    assert [event.id for event in remaining] == [fresh_id]
+    assert archived.id == old_id
+    assert archived.request_id == "req-old-archive"
+    assert archived.raw_payload == b'{"alert_name":"old"}'
+    assert archived.headers == {"x-source": "test"}
+    assert archived.parsed_data == {"alert_name": "old"}
+    assert archived.ai_analysis == {"importance": "low", "summary": "old should archive"}
+    assert archived.archived_at is not None
+
+
 async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
     integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

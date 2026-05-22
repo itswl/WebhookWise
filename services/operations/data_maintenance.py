@@ -6,22 +6,53 @@ from sqlalchemy import delete, or_, select
 
 from core.logger import get_logger
 from db.session import session_scope
-from models import WebhookEvent
+from models import ArchivedWebhookEvent, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 
 logger = get_logger("maintenance")
 
 
+def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object]:
+    return {
+        "id": event.id,
+        "request_id": event.request_id,
+        "source": event.source,
+        "client_ip": event.client_ip,
+        "timestamp": event.timestamp,
+        "raw_payload": event.raw_payload,
+        "headers": event.headers,
+        "parsed_data": event.parsed_data,
+        "alert_hash": event.alert_hash,
+        "ai_analysis": event.ai_analysis,
+        "importance": event.importance,
+        "processing_status": event.processing_status,
+        "retry_count": event.retry_count,
+        "next_retry_at": event.next_retry_at,
+        "failure_reason": event.failure_reason,
+        "error_message": event.error_message,
+        "forward_status": event.forward_status,
+        "prev_alert_id": event.prev_alert_id,
+        "is_duplicate": event.is_duplicate,
+        "duplicate_of": event.duplicate_of,
+        "duplicate_count": event.duplicate_count,
+        "beyond_window": event.beyond_window,
+        "last_notified_at": event.last_notified_at,
+        "created_at": event.created_at,
+        "updated_at": event.updated_at,
+        "archived_at": archived_at,
+    }
+
+
 async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
-    根据数据保留策略清理过期 webhook 记录。
+    根据数据保留策略归档并清理过期 webhook 记录。
     """
     policy = policy or DataMaintenancePolicy.from_config()
     if not policy.enabled:
         logger.info("[Maintenance] 数据清理已禁用，跳过。")
         return 0
 
-    total_deleted = 0
+    total_archived = 0
     try:
         now = datetime.now()
 
@@ -82,23 +113,37 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                 # 分块处理 (避免过大的 IN 查询)
                 for chunk_start in range(0, len(target_ids), 1000):
                     chunk_ids = target_ids[chunk_start : chunk_start + 1000]
+                    events = list(
+                        (
+                            await session.scalars(
+                                select(WebhookEvent)
+                                .filter(WebhookEvent.id.in_(chunk_ids))
+                                .order_by(WebhookEvent.id.asc())
+                            )
+                        ).all()
+                    )
+                    if not events:
+                        continue
 
+                    archived_at = datetime.now()
+                    archive_rows = [_archive_row(event, archived_at) for event in events]
+                    await session.execute(sa.insert(ArchivedWebhookEvent), archive_rows)
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
-                    deleted_this_round += len(chunk_ids)
-                    total_deleted += len(chunk_ids)
+                    deleted_this_round += len(events)
+                    total_archived += len(events)
 
-            logger.info("[Maintenance] 已清理 %d 条记录...", total_deleted)
+            logger.info("[Maintenance] 已转存并清理 %d 条记录...", total_archived)
             if deleted_this_round < batch_limit:
                 break
             await asyncio.sleep(0.5)
 
-        if total_deleted:
-            logger.info("[Maintenance] 清理任务完成！共处理 %d 条记录。", total_deleted)
+        if total_archived:
+            logger.info("[Maintenance] 转存清理任务完成！共处理 %d 条记录。", total_archived)
         else:
             logger.info("[Maintenance] 没有需要清理的数据。")
-        return total_deleted
+        return total_archived
 
     except Exception as e:
         logger.error("[Maintenance] 清理任务失败: %s", e, exc_info=True)
-        return total_deleted
+        return total_archived
