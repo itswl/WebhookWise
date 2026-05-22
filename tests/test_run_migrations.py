@@ -57,6 +57,7 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
         "0002_pluralize_tables.py",
         "0003_drop_system_configs.py",
         "0004_drop_archived_webhook_events.py",
+        "0005_create_archived_webhook_events.py",
     ]
     for path in revision_paths:
         revision = re.search(r'^revision: str = "([^"]+)"', path.read_text(), re.MULTILINE)
@@ -72,3 +73,8 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
     assert 'op.drop_table("system_configs")' in cleanup_source
     archive_cleanup_source = revision_paths[3].read_text()
     assert 'op.drop_table("archived_webhook_events")' in archive_cleanup_source
+    archive_create_source = revision_paths[4].read_text()
+    assert "op.create_table(" in archive_create_source
+    assert '"archived_webhook_events"' in archive_create_source
+    assert "processing_status" in archive_create_source
+    assert "request_id" in archive_create_source
