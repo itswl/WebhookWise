@@ -1,275 +1,45 @@
-import contextlib
-import inspect
-import json
-import time
-from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
+from __future__ import annotations
 
-import redis.asyncio as redis
-from redis.asyncio.client import PubSub
+from core.redis_json import redis_get_json_dict, redis_setex_json
+from core.redis_lifecycle import RedisClient, build_redis_client, close_redis_client, dispose_redis, get_redis
+from core.redis_ops import (
+    RedisEvalArg,
+    redis_delete,
+    redis_eval_int,
+    redis_eval_str,
+    redis_get_str,
+    redis_incr_with_expire,
+    redis_ping,
+    redis_publish,
+    redis_set_nx_ex,
+    redis_setex_bytes,
+    redis_setex_str,
+)
+from core.redis_pubsub import RedisPubSub, redis_pubsub
+from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 
-from core.config import Config, UnifiedConfigManager
-from core.logger import get_logger, mask_url
-
-logger = get_logger("redis_client")
-
-if TYPE_CHECKING:
-    RedisClient: TypeAlias = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
-else:
-    RedisClient = redis.Redis
-
-T = TypeVar("T")
-
-
-def build_redis_client(config: UnifiedConfigManager = Config) -> RedisClient:
-    pool: Any = redis.ConnectionPool.from_url(
-        config.redis.REDIS_URL,
-        decode_responses=True,
-        max_connections=100,
-        socket_connect_timeout=config.redis.REDIS_SOCKET_CONNECT_TIMEOUT,
-        socket_timeout=config.redis.REDIS_SOCKET_TIMEOUT,
-        socket_keepalive=True,
-        health_check_interval=config.redis.REDIS_HEALTH_CHECK_INTERVAL,
-    )
-    client = redis.Redis(connection_pool=pool)
-    logger.info("[Redis] 成功初始化连接池: %s", mask_url(config.redis.REDIS_URL))
-    return client
-
-
-def get_redis() -> RedisClient:
-    """Return the Redis client owned by the current AppContext."""
-    from core.app_context import get_or_create_default_app_context
-
-    context = get_or_create_default_app_context()
-    return context.ensure_redis_client()
-
-
-RedisEvalArg = bytes | bytearray | str | int | float | memoryview
-
-
-async def _await_if_needed(value: object) -> None:
-    if inspect.isawaitable(value):
-        await cast(Awaitable[object], value)
-
-
-async def _record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
-    from core.observability.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
-    from core.observability.tracing import span as otel_span
-
-    start = time.perf_counter()
-    status = "success"
-    try:
-        with otel_span(
-            "redis.operation",
-            {"db.system": "redis", "db.operation": operation, "redis.operation": operation},
-        ):
-            return await awaitable
-    except Exception:
-        status = "error"
-        raise
-    finally:
-        REDIS_OPERATIONS_TOTAL.labels(operation, status).inc()
-        REDIS_OPERATION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
-
-
-def _parse_int(raw: object) -> int | None:
-    if raw is None:
-        return None
-    try:
-        return int(raw)  # type: ignore[call-overload,no-any-return]
-    except (TypeError, ValueError):
-        return None
-
-
-def _coerce_int(raw: object, default: int = 0) -> int:
-    parsed = _parse_int(raw)
-    return default if parsed is None else parsed
-
-
-async def redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
-    r = get_redis()
-    raw = await _record_redis_operation("set_nx_ex", r.set(key, value, nx=True, ex=int(ttl_seconds)))
-    return bool(raw)
-
-
-async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int | None:
-    r = get_redis()
-    raw = await _record_redis_operation(
-        "eval",
-        cast(Awaitable[object], cast(Any, r).eval(script, int(numkeys), *args)),
-    )
-    return _parse_int(raw)
-
-
-async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str | None:
-    r = get_redis()
-    raw = await _record_redis_operation(
-        "eval",
-        cast(Awaitable[object], cast(Any, r).eval(script, int(numkeys), *args)),
-    )
-    if raw is None:
-        return None
-    if isinstance(raw, bytes):
-        with contextlib.suppress(Exception):
-            return raw.decode("utf-8")
-    return str(raw)
-
-
-async def redis_get_str(key: str) -> str | None:
-    r = get_redis()
-    raw = await _record_redis_operation("get", cast(Awaitable[object], r.get(key)))
-    if raw is None:
-        return None
-    if isinstance(raw, bytes):
-        with contextlib.suppress(Exception):
-            return raw.decode("utf-8")
-    if isinstance(raw, str):
-        return raw
-    return str(raw)
-
-
-async def redis_setex_str(key: str, ttl_seconds: int, value: str) -> None:
-    r = get_redis()
-    await _record_redis_operation("setex", r.setex(key, int(ttl_seconds), value))
-
-
-async def redis_setex_bytes(key: str, ttl_seconds: int, value: bytes) -> None:
-    r = get_redis()
-    await _record_redis_operation("setex", r.setex(key, int(ttl_seconds), value))
-
-
-async def redis_delete(key: str) -> int:
-    r = get_redis()
-    raw = await _record_redis_operation("delete", r.delete(key))
-    return _coerce_int(raw)
-
-
-async def redis_publish(channel: str, message: str) -> int:
-    r = get_redis()
-    raw = await _record_redis_operation("publish", r.publish(channel, message))
-    return _coerce_int(raw)
-
-
-async def redis_incr_with_expire(key: str, ttl_seconds: int) -> int:
-    r = get_redis()
-    val = _coerce_int(await _record_redis_operation("incr", r.incr(key)))
-    await _record_redis_operation("expire", r.expire(key, int(ttl_seconds)))
-    return val
-
-
-async def redis_get_json_dict(key: str) -> dict[str, Any] | None:
-    raw = await redis_get_str(key)
-    if not raw:
-        return None
-    try:
-        obj = json.loads(raw)
-    except Exception:
-        return None
-    return obj if isinstance(obj, dict) else None
-
-
-async def redis_setex_json(key: str, ttl_seconds: int, payload: dict[str, Any]) -> None:
-    await redis_setex_str(key, ttl_seconds, json.dumps(payload))
-
-
-class RedisPubSub:
-    def __init__(self, inner: PubSub) -> None:
-        self._inner = inner
-
-    async def subscribe(self, channel: str) -> None:
-        await self._inner.subscribe(channel)
-
-    async def get_message(
-        self, *, ignore_subscribe_messages: bool = True, timeout: float | None = None
-    ) -> dict[str, Any] | None:
-        timeout_value = float(timeout or 0.0)
-        raw = await self._inner.get_message(
-            ignore_subscribe_messages=ignore_subscribe_messages,
-            timeout=timeout_value,
-        )
-        return raw if isinstance(raw, dict) else None
-
-    async def close(self) -> None:
-        await self._inner.close()
-
-
-def redis_pubsub() -> RedisPubSub:
-    r = get_redis()
-    return RedisPubSub(r.pubsub())
-
-
-async def redis_xlen(stream: str) -> int:
-    r = get_redis()
-    raw = await _record_redis_operation("xlen", r.xlen(stream))
-    return _coerce_int(raw)
-
-
-async def redis_xpending_pending(stream: str, group: str) -> int:
-    r = get_redis()
-    raw = await _record_redis_operation(
-        "xpending",
-        cast(Awaitable[object], cast(Any, r).xpending(stream, group)),
-    )
-    if isinstance(raw, dict):
-        try:
-            return int(raw.get("pending") or 0)
-        except (TypeError, ValueError):
-            return 0
-    if isinstance(raw, (list, tuple)) and raw:
-        try:
-            return int(raw[0] or 0)
-        except (TypeError, ValueError, IndexError):
-            return 0
-    return 0
-
-
-async def redis_xinfo_group_lag(stream: str, group: str) -> int:
-    r = get_redis()
-    raw = await _record_redis_operation(
-        "xinfo_groups",
-        cast(Awaitable[object], cast(Any, r).xinfo_groups(stream)),
-    )
-    if not isinstance(raw, list):
-        return 0
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("name") or "") == group:
-            try:
-                return int(item.get("lag") or 0)
-            except (TypeError, ValueError):
-                return 0
-    return 0
-
-
-async def redis_ping() -> bool:
-    try:
-        raw = await _record_redis_operation("ping", cast(Awaitable[object], get_redis().ping()))
-        return bool(raw)
-    except Exception as e:
-        logger.warning("[Redis] ping 失败: %s", e)
-        return False
-
-
-async def dispose_redis() -> None:
-    """Close the Redis client owned by the current AppContext."""
-    from core.app_context import get_default_app_context
-
-    context = get_default_app_context()
-    if context is not None and context.redis_client is not None:
-        client = context.redis_client
-        context.redis_client = None
-        await close_redis_client(client)
-        logger.info("[Redis] 当前上下文连接池已关闭")
-
-
-async def close_redis_client(client: RedisClient) -> None:
-    with contextlib.suppress(Exception):
-        close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
-        if callable(close_fn):
-            await _await_if_needed(close_fn())
-    with contextlib.suppress(Exception):
-        pool = getattr(client, "connection_pool", None)
-        disconnect_fn = getattr(pool, "disconnect", None)
-        if callable(disconnect_fn):
-            await _await_if_needed(disconnect_fn())
+__all__ = [
+    "RedisClient",
+    "RedisEvalArg",
+    "RedisPubSub",
+    "build_redis_client",
+    "close_redis_client",
+    "dispose_redis",
+    "get_redis",
+    "redis_delete",
+    "redis_eval_int",
+    "redis_eval_str",
+    "redis_get_json_dict",
+    "redis_get_str",
+    "redis_incr_with_expire",
+    "redis_ping",
+    "redis_publish",
+    "redis_pubsub",
+    "redis_set_nx_ex",
+    "redis_setex_bytes",
+    "redis_setex_json",
+    "redis_setex_str",
+    "redis_xinfo_group_lag",
+    "redis_xlen",
+    "redis_xpending_pending",
+]

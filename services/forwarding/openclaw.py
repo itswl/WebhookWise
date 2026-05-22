@@ -1,6 +1,5 @@
 """OpenClaw forwarding and trigger payload construction."""
 
-import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -8,6 +7,7 @@ from typing import Any, cast
 
 import httpx
 
+from core import json
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import get_logger, mask_url
 from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
@@ -149,8 +149,8 @@ async def analyze_with_openclaw(
     prompt_payload = _build_openclaw_prompt_payload(str(source), alert_data)
     template = await load_deep_analysis_prompt_template()
 
-    overview_json = json.dumps(prompt_payload.get("overview", {}), ensure_ascii=False, separators=(",", ":"))
-    payload_json = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
+    overview_json = json.dumps(prompt_payload.get("overview", {}))
+    payload_json = json.dumps(prompt_payload)
     message = (
         f"{template}\n\n"
         "## 当前告警关键字段（优先使用）\n"
@@ -185,7 +185,7 @@ async def analyze_with_openclaw(
 
     platform = policy.platform
     hooks_token = policy.hooks_token
-    payload_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    payload_bytes = json.dumps_bytes(payload)
     connect_timeout = policy.connect_timeout
 
     if platform == "hermes":

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
 
 DEFAULT_USER_PROMPT_TEMPLATE = """请分析以下 webhook 事件：
 **来源**: {source}
@@ -29,7 +29,7 @@ class RuleAnalysisPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "RuleAnalysisPolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(
             high_keywords=_split_keywords(config.RULE_HIGH_KEYWORDS),
             warning_keywords=_split_keywords(config.RULE_WARN_KEYWORDS),
@@ -47,7 +47,7 @@ class AIErrorNotificationPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "AIErrorNotificationPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             enabled=bool(config.forwarding.ENABLE_FORWARD),
             target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
@@ -63,7 +63,7 @@ class AICachePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "AICachePolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(enabled=bool(config.CACHE_ENABLED), ttl_seconds=int(config.ANALYSIS_CACHE_TTL))
 
 
@@ -81,7 +81,7 @@ class AIProviderPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "AIProviderPolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(
             enabled=bool(config.ENABLE_AI_ANALYSIS),
             api_key=str(config.OPENAI_API_KEY),
@@ -112,7 +112,7 @@ class AIPromptPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "AIPromptPolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(inline_prompt=str(config.AI_USER_PROMPT), prompt_file=str(config.AI_USER_PROMPT_FILE))
 
 
@@ -126,7 +126,7 @@ class DeepAnalysisPromptPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "DeepAnalysisPromptPolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(
             inline_prompt=str(config.DEEP_ANALYSIS_PROMPT),
             prompt_file=str(config.DEEP_ANALYSIS_PROMPT_FILE),

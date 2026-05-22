@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class OpenClawPollPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "OpenClawPollPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             timeout_seconds=int(config.openclaw.OPENCLAW_TIMEOUT_SECONDS),
             poll_timeout_seconds=max(1, int(config.openclaw.OPENCLAW_POLL_TIMEOUT)),
@@ -98,7 +98,7 @@ class OpenClawWsPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "OpenClawWsPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             device_id=str(config.openclaw.OPENCLAW_DEVICE_ID),
             device_private_key_b64=str(config.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM),

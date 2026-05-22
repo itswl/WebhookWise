@@ -12,15 +12,14 @@ _FakePermissionDenied.__name__ = "PermissionDeniedError"
 
 @pytest.mark.asyncio
 async def test_ai_policy_refusal_degrades_to_rules_even_when_global_degradation_disabled(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, temp_config
 ) -> None:
-    from core.config import Config
     from services.analysis import ai_analyzer
 
-    monkeypatch.setattr(Config.ai, "ENABLE_AI_ANALYSIS", True)
-    monkeypatch.setattr(Config.ai, "OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(Config.ai, "CACHE_ENABLED", False)
-    monkeypatch.setattr(Config.ai, "ENABLE_AI_DEGRADATION", False)
+    monkeypatch.setattr(temp_config.ai, "ENABLE_AI_ANALYSIS", True)
+    monkeypatch.setattr(temp_config.ai, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(temp_config.ai, "CACHE_ENABLED", False)
+    monkeypatch.setattr(temp_config.ai, "ENABLE_AI_DEGRADATION", False)
 
     async def fail_with_policy_refusal(
         parsed_data: dict[str, object], source: str
@@ -52,15 +51,14 @@ async def test_ai_policy_refusal_degrades_to_rules_even_when_global_degradation_
 
 @pytest.mark.asyncio
 async def test_ai_generic_error_still_raises_when_global_degradation_disabled(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, temp_config
 ) -> None:
-    from core.config import Config
     from services.analysis import ai_analyzer
 
-    monkeypatch.setattr(Config.ai, "ENABLE_AI_ANALYSIS", True)
-    monkeypatch.setattr(Config.ai, "OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(Config.ai, "CACHE_ENABLED", False)
-    monkeypatch.setattr(Config.ai, "ENABLE_AI_DEGRADATION", False)
+    monkeypatch.setattr(temp_config.ai, "ENABLE_AI_ANALYSIS", True)
+    monkeypatch.setattr(temp_config.ai, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(temp_config.ai, "CACHE_ENABLED", False)
+    monkeypatch.setattr(temp_config.ai, "ENABLE_AI_DEGRADATION", False)
     monkeypatch.setattr(ai_analyzer, "_send_ai_error_alert", AsyncMock())
 
     async def fail_generically(parsed_data: dict[str, object], source: str) -> tuple[dict[str, object], int, int]:

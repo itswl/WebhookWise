@@ -40,9 +40,15 @@ def initialize_adapter_registry():
 @pytest.fixture(autouse=True)
 def reset_default_app_context():
     """Keep AppContext-owned resources isolated between tests."""
-    from core.app_context import set_default_app_context
+    from core.app_context import AppContext, set_default_app_context
+    from core.config import UnifiedConfigManager, get_settings
 
-    set_default_app_context(None)
+    settings = get_settings().model_copy(deep=True)
+    context = AppContext(config=UnifiedConfigManager(settings))
+    set_default_app_context(context)
+    app_module = sys.modules.get("core.app")
+    if app_module is not None:
+        app_module.app.state.app_context = context
     yield
     set_default_app_context(None)
 
@@ -111,20 +117,19 @@ def mock_redis(request: pytest.FixtureRequest):
     pipeline_mock.expire = AsyncMock()
     pipeline_mock.setex = AsyncMock()
     mock.pipeline.return_value = pipeline_mock
-    with patch("core.redis_client.get_redis", return_value=mock):
+    with (
+        patch("core.redis_client.get_redis", return_value=mock),
+        patch("core.redis_lifecycle.get_redis", return_value=mock),
+    ):
         yield mock
 
 
-# ── Config Override Fixture ───────────────────────────────────────────────────
+# ── Configuration Override Fixture ────────────────────────────────────────────
 
 
 @pytest.fixture
 def temp_config():
-    """临时覆盖 Config 属性，测试结束后自动恢复。"""
-    from core.config import Config, get_settings
+    """Return this test's isolated AppContext configuration manager."""
+    from core.app_context import get_default_config
 
-    settings = get_settings()
-    snapshots = {sub_name: getattr(settings, sub_name).model_copy(deep=True) for sub_name in settings._SUB_NAMES}
-    yield Config
-    for sub_name, snapshot in snapshots.items():
-        setattr(settings, sub_name, snapshot)
+    yield get_default_config()

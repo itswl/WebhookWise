@@ -1,26 +1,31 @@
 """Pydantic settings definitions — static configuration from env / .env files."""
 
+from __future__ import annotations
+
 import os
 import socket
 from functools import lru_cache
 
-from dotenv import load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv(override=False)
+
+class StaticSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
-class ServerConfig(BaseSettings):
+class ServerConfig(StaticSettings):
     """服务器 / 运行模式 / 日志 / 数据目录"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
     HOST: str = Field(default="127.0.0.1")
-    DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
+    DEBUG: bool = Field(default=False)
     RUN_MODE: str = Field(default="api")
     LOG_LEVEL: str = Field(default="INFO")
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
@@ -28,11 +33,15 @@ class ServerConfig(BaseSettings):
     DATA_DIR: str = Field(default="webhooks_data")
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
 
+    @model_validator(mode="after")
+    def _derive_debug_default(self) -> ServerConfig:
+        if "DEBUG" not in self.model_fields_set:
+            self.DEBUG = self.APP_ENV == "development"
+        return self
 
-class TaskConfig(BaseSettings):
+
+class TaskConfig(StaticSettings):
     """TaskIQ worker/runtime scheduling."""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
@@ -41,10 +50,8 @@ class TaskConfig(BaseSettings):
     WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
 
 
-class MQConfig(BaseSettings):
+class MQConfig(StaticSettings):
     """Webhook Redis Stream queue."""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")
@@ -54,10 +61,8 @@ class MQConfig(BaseSettings):
     WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000)
 
 
-class SecurityConfig(BaseSettings):
+class SecurityConfig(StaticSettings):
     """认证 / 签名 / 限流"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
@@ -75,10 +80,8 @@ class SecurityConfig(BaseSettings):
     FORWARD_TARGET_ALLOWLIST: str = Field(default="")
 
 
-class DBConfig(BaseSettings):
+class DBConfig(StaticSettings):
     """PostgreSQL 连接池"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
     DB_POOL_SIZE: int = Field(default=5)
@@ -89,10 +92,8 @@ class DBConfig(BaseSettings):
     DB_SYNC_COMMIT: str = Field(default="on")
 
 
-class RedisConfig(BaseSettings):
+class RedisConfig(StaticSettings):
     """Redis 连接"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     REDIS_SOCKET_CONNECT_TIMEOUT: int = Field(default=5)
@@ -100,10 +101,8 @@ class RedisConfig(BaseSettings):
     REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30)
 
 
-class AIConfig(BaseSettings):
+class AIConfig(StaticSettings):
     """OpenAI + AI 分析 + 降噪"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     ENABLE_AI_ANALYSIS: bool = Field(default=True)
     OPENAI_API_KEY: str = Field(default="")
@@ -143,20 +142,16 @@ class AIConfig(BaseSettings):
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
 
 
-class ForwardingConfig(BaseSettings):
+class ForwardingConfig(StaticSettings):
     """Outbound forwarding defaults."""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     DEFAULT_FORWARD_TARGET_URL: str = Field(default="")
     ENABLE_FORWARD: bool = Field(default=True)
     FORWARD_TIMEOUT: int = Field(default=10)
 
 
-class NotificationConfig(BaseSettings):
+class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
@@ -164,10 +159,8 @@ class NotificationConfig(BaseSettings):
     AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS: int = Field(default=10)
 
 
-class OpenClawConfig(BaseSettings):
+class OpenClawConfig(StaticSettings):
     """OpenClaw 深度分析引擎"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     OPENCLAW_ENABLED: bool = Field(default=False)
     OPENCLAW_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
@@ -189,10 +182,8 @@ class OpenClawConfig(BaseSettings):
     OPENCLAW_DEVICE_TOKEN: str = Field(default="")
 
 
-class CircuitBreakerConfig(BaseSettings):
+class CircuitBreakerConfig(StaticSettings):
     """熔断器"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT: float = Field(default=30.0)
@@ -202,13 +193,11 @@ class CircuitBreakerConfig(BaseSettings):
     CIRCUIT_BREAKER_FORWARD_TIMEOUT: float = Field(default=30.0)
 
 
-class MaintenanceConfig(BaseSettings):
-    """数据清理 / 归档 / 维护"""
+class MaintenanceConfig(StaticSettings):
+    """数据清理 / 保留策略 / 维护"""
 
-    model_config = SettingsConfigDict(extra="ignore")
-
-    ENABLE_ARCHIVE_CLEANUP: bool = Field(default=True)
-    ARCHIVE_DAYS_DEFAULT: int = Field(default=30)
+    ENABLE_DATA_CLEANUP: bool = Field(default=True)
+    DATA_RETENTION_DAYS_DEFAULT: int = Field(default=30)
     RETENTION_POLICIES: dict[str, int] = Field(default={"high": 90, "medium": 30, "low": 7, "unknown": 3})
     SOURCE_RETENTION_POLICIES: dict[str, int] = Field(default={"prometheus": 30, "grafana": 30, "datadog": 30})
     CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
@@ -217,10 +206,8 @@ class MaintenanceConfig(BaseSettings):
     MAINTENANCE_HOUR: int = Field(default=3)
 
 
-class RetryConfig(BaseSettings):
+class RetryConfig(StaticSettings):
     """重试 + 去重 + 周期提醒"""
-
-    model_config = SettingsConfigDict(extra="ignore")
 
     DUPLICATE_ALERT_TIME_WINDOW: int = Field(default=24)
     FORWARD_DUPLICATE_ALERTS: bool = Field(default=False)
@@ -247,14 +234,8 @@ class RetryConfig(BaseSettings):
     FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800)
 
 
-class AppConfig(BaseSettings):
+class AppConfig(StaticSettings):
     """应用配置类 — 组合所有领域子配置"""
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     tasks: TaskConfig = Field(default_factory=TaskConfig)
@@ -287,7 +268,7 @@ class AppConfig(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def _validate_cross_fields(self) -> "AppConfig":
+    def _validate_cross_fields(self) -> AppConfig:
         if self.security.REQUIRE_WEBHOOK_AUTH and not self.security.WEBHOOK_SECRET:
             raise ValueError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空")
         return self

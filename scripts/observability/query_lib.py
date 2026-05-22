@@ -9,7 +9,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import os
 import time
 import urllib.error
@@ -18,6 +17,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+
+from core import json
 
 DEFAULT_TIMEOUT_SECONDS = 10
 DEFAULT_USER_AGENT = "WebhookWise-Observability/0.1"
@@ -83,14 +84,14 @@ PROMQL_PRESETS: dict[str, str] = {
     "queue-ops": "sum by (queue_operation, queue_status) (rate(queue_operations_total[5m]))",
     "worker-runs": "sum by (worker_task_name, worker_task_status) (rate(worker_task_runs_total[5m]))",
     "worker-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, worker_task_name) " "(rate(worker_task_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, worker_task_name) (rate(worker_task_duration_seconds_bucket[5m])))"
     ),
     "db-pool": "max(db_pool_connections_checked_out) or max(db_pool_connections_max) or vector(0)",
     "db-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, db_operation) " "(rate(db_session_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, db_operation) (rate(db_session_duration_seconds_bucket[5m])))"
     ),
     "redis-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, redis_operation) " "(rate(redis_operation_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, redis_operation) (rate(redis_operation_duration_seconds_bucket[5m])))"
     ),
     "scheduler-lag": "max by (scheduler_task_name) (scheduler_task_lag_seconds) or vector(0)",
     "scheduler-last-success-age": "time() - max by (scheduler_task_name) (scheduler_task_last_success_unixtime_seconds)",
@@ -100,13 +101,11 @@ PROMQL_PRESETS: dict[str, str] = {
         "clamp_min((sum(rate(webhook_suppressed_total[5m])) or vector(0)), 0.000001))"
     ),
     "ai-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, ai_engine) " "(rate(ai_request_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, ai_engine) (rate(ai_request_duration_seconds_bucket[5m])))"
     ),
     "ai-cost": "sum(ai_cost_USD_total) or vector(0)",
     "ai-tokens": "sum by (ai_model, ai_token_type) (increase(ai_tokens_total[6h])) or vector(0)",
-    "ai-cache-rate": (
-        "sum by (ai_cache_operation, ai_cache_result) " "(rate(ai_cache_requests_total[5m])) or vector(0)"
-    ),
+    "ai-cache-rate": ("sum by (ai_cache_operation, ai_cache_result) (rate(ai_cache_requests_total[5m])) or vector(0)"),
     "ai-cache-latency-p95": (
         "histogram_quantile(0.95, sum by (le, ai_cache_operation, ai_cache_result) "
         "(rate(ai_cache_operation_duration_seconds_bucket[5m])))"
@@ -121,21 +120,20 @@ PROMQL_PRESETS: dict[str, str] = {
         "(rate(forward_outbox_process_duration_seconds_bucket[5m])))"
     ),
     "forward-outbox-backlog-age": (
-        "max by (forward_target_type, forward_status) " "(forward_outbox_oldest_age_seconds) or vector(0)"
+        "max by (forward_target_type, forward_status) (forward_outbox_oldest_age_seconds) or vector(0)"
     ),
     "circuit-breaker-state": (
-        "max by (circuit_breaker_name, circuit_breaker_state) " "(circuit_breaker_active_state) or vector(0)"
+        "max by (circuit_breaker_name, circuit_breaker_state) (circuit_breaker_active_state) or vector(0)"
     ),
     "webhook-status": "max by (webhook_status) (webhook_processing_status_count) or vector(0)",
     "pipeline-step-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, pipeline_step) "
-        "(rate(webhook_pipeline_step_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, pipeline_step) (rate(webhook_pipeline_step_duration_seconds_bucket[5m])))"
     ),
     "queue-operation-latency-p95": (
-        "histogram_quantile(0.95, sum by (le, queue_operation) " "(rate(queue_operation_duration_seconds_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, queue_operation) (rate(queue_operation_duration_seconds_bucket[5m])))"
     ),
     "webhook-payload-p95": (
-        "histogram_quantile(0.95, sum by (le, webhook_source) " "(rate(webhook_ingress_payload_size_bytes_bucket[5m])))"
+        "histogram_quantile(0.95, sum by (le, webhook_source) (rate(webhook_ingress_payload_size_bytes_bucket[5m])))"
     ),
     "noise-evaluations": (
         "sum by (webhook_source, webhook_relation, webhook_suppressed) "
@@ -146,7 +144,7 @@ PROMQL_PRESETS: dict[str, str] = {
         "(rate(webhook_noise_evaluation_duration_seconds_bucket[5m])))"
     ),
     "faro-rum": (
-        "sum(rate(faro_receiver_events_total[5m])) or vector(0) or " "sum(rate(faro_receiver_measurements_total[5m]))"
+        "sum(rate(faro_receiver_events_total[5m])) or vector(0) or sum(rate(faro_receiver_measurements_total[5m]))"
     ),
     "beyla-calls": (
         'sum by (span_name, span_kind) (rate(traces_span_metrics_calls_total{source="beyla", '
@@ -166,10 +164,10 @@ PROMQL_PRESETS: dict[str, str] = {
     ),
     "process-memory": "sum by (service_name) (process_memory_usage_bytes) or vector(0)",
     "service-graph-rate": (
-        "sum by (client, server, connection_type) " "(rate(traces_service_graph_request_total[5m])) or vector(0)"
+        "sum by (client, server, connection_type) (rate(traces_service_graph_request_total[5m])) or vector(0)"
     ),
     "service-graph-failures": (
-        "sum by (client, server, connection_type) " "(rate(traces_service_graph_request_failed_total[5m])) or vector(0)"
+        "sum by (client, server, connection_type) (rate(traces_service_graph_request_failed_total[5m])) or vector(0)"
     ),
     "collector-queue": "otelcol_exporter_queue_size or vector(0)",
     "loki-write-latency-p95": (
@@ -258,7 +256,7 @@ def _post_json(
     headers: dict[str, str] | None = None,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    body = json.dumps_bytes(payload)
     request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("User-Agent", os.getenv("WEBHOOKWISE_HTTP_USER_AGENT", DEFAULT_USER_AGENT))
     request.add_header("Content-Type", "application/json")
@@ -388,7 +386,7 @@ def grafana_profile_url(
         ],
         "range": {"from": from_expr, "to": to_expr},
     }
-    state = urllib.parse.quote(json.dumps(left, ensure_ascii=False, separators=(",", ":")), safe="")
+    state = urllib.parse.quote(json.dumps(left), safe="")
     path = f"/explore?orgId=1&left={state}"
     if relative:
         return path
@@ -451,7 +449,7 @@ def post_smoke_webhook(endpoints: Endpoints | None = None) -> dict[str, Any]:
             "description": "Generated by scripts/observability/webhookwise_observe.py smoke",
         },
     }
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    body = json.dumps_bytes(payload)
     headers = {"X-Webhook-Source": "observability-smoke"}
     secret = os.getenv("WEBHOOK_SECRET", "")
     if secret:

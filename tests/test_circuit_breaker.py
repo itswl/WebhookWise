@@ -103,8 +103,10 @@ def _make_eval_helpers(state: _FakeRedisState):
 def fake_state():
     state = _FakeRedisState()
     eval_int, eval_str = _make_eval_helpers(state)
-    with patch("core.redis_client.redis_eval_int", side_effect=eval_int), \
-         patch("core.redis_client.redis_eval_str", side_effect=eval_str):
+    with (
+        patch("core.redis_client.redis_eval_int", side_effect=eval_int),
+        patch("core.redis_client.redis_eval_str", side_effect=eval_str),
+    ):
         yield state
 
 
@@ -152,7 +154,9 @@ class TestOpeningCircuit:
         with pytest.raises(CircuitBreakerOpenException):
             await breaker.call_async(_succeed)
 
-    async def test_non_expected_exception_does_not_count(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+    async def test_non_expected_exception_does_not_count(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
         async def _value_error() -> str:
             raise ValueError("not counted")
 
@@ -164,7 +168,9 @@ class TestOpeningCircuit:
 
 
 class TestHalfOpenRecovery:
-    async def test_transitions_to_half_open_after_timeout(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+    async def test_transitions_to_half_open_after_timeout(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
         for _ in range(breaker.failure_threshold):
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)
@@ -173,7 +179,9 @@ class TestHalfOpenRecovery:
         time.sleep(breaker.recovery_timeout + 0.05)
         assert await breaker._check_state_async() == CircuitState.HALF_OPEN
 
-    async def test_success_in_half_open_closes_circuit(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+    async def test_success_in_half_open_closes_circuit(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
         for _ in range(breaker.failure_threshold):
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)

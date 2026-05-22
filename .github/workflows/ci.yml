@@ -58,6 +58,7 @@ jobs:
       - run: pip install -r requirements.lock -r requirements-dev.lock
       - run: python -m compileall -q .
       - run: ruff check .
+      - run: python scripts/check_requirements_locks.py
       - run: mypy
       - run: bandit -r core services adapters -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock

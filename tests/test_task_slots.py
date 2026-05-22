@@ -23,13 +23,12 @@ async def test_task_slot_manager_uses_lua_registry_scripts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from core.redis_lua import TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE
     from services.operations import tasks
 
-    monkeypatch.setattr(Config.tasks, "MAX_CONCURRENT_WEBHOOK_TASKS", 2)
-    monkeypatch.setattr(Config.tasks, "WEBHOOK_TASK_SLOT_LEASE_SECONDS", 30)
+    monkeypatch.setattr(temp_config.tasks, "MAX_CONCURRENT_WEBHOOK_TASKS", 2)
+    monkeypatch.setattr(temp_config.tasks, "WEBHOOK_TASK_SLOT_LEASE_SECONDS", 30)
 
     calls: list[str] = []
 
@@ -46,11 +45,12 @@ async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
-async def test_webhook_task_slot_falls_back_to_local_limit_on_redis_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+async def test_webhook_task_slot_falls_back_to_local_limit_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch, temp_config
+) -> None:
     from services.operations import tasks
 
-    monkeypatch.setattr(Config.tasks, "MAX_CONCURRENT_WEBHOOK_TASKS", 1)
+    monkeypatch.setattr(temp_config.tasks, "MAX_CONCURRENT_WEBHOOK_TASKS", 1)
     monkeypatch.setattr(tasks, "_webhook_task_semaphore", None)
     monkeypatch.setattr(tasks, "_webhook_task_semaphore_limit", 0)
 
@@ -63,11 +63,10 @@ async def test_webhook_task_slot_falls_back_to_local_limit_on_redis_error(monkey
         assert tasks._webhook_task_semaphore is not None
 
 
-def test_background_scan_interval_has_minimum_floor(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+def test_background_scan_interval_has_minimum_floor(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from services.operations import tasks
 
-    monkeypatch.setattr(Config.tasks, "BACKGROUND_SCAN_INTERVAL_SECONDS", 10)
+    monkeypatch.setattr(temp_config.tasks, "BACKGROUND_SCAN_INTERVAL_SECONDS", 10)
 
     assert tasks._background_scan_interval_seconds() == 30
 

@@ -7,7 +7,6 @@ OpenClaw WebSocket 客户端模块（异步版）
 
 import asyncio
 import base64
-import json
 import platform
 import time
 import uuid
@@ -15,6 +14,7 @@ from typing import Any
 
 import websockets
 
+from core import json
 from core.logger import get_logger
 from services.analysis.openclaw_poll_policy import OpenClawWsPolicy
 
@@ -105,7 +105,7 @@ def _build_device_auth(
         signature_gateway_token = gateway_token or policy.gateway_token
         scopes_str = "operator.read"
         payload = (
-            f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|" f"{signed_at}|{signature_gateway_token}|{nonce}"
+            f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{signature_gateway_token}|{nonce}"
         )
 
         signature = private_key.sign(payload.encode())

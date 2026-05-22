@@ -11,13 +11,12 @@ def test_compute_backoff_delay_is_bounded() -> None:
     assert compute_backoff_delay(99, initial_delay=30, max_delay=900, multiplier=2.0) == 900
 
 
-def test_compute_openclaw_poll_delay_is_exponential_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+def test_compute_openclaw_poll_delay_is_exponential_and_bounded(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_INITIAL_DELAY_SECONDS", 10)
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_BACKOFF_MULTIPLIER", 3.0)
-    monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_MAX_DELAY_SECONDS", 300)
+    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_INITIAL_DELAY_SECONDS", 10)
+    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_BACKOFF_MULTIPLIER", 3.0)
+    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_MAX_DELAY_SECONDS", 300)
 
     assert compute_openclaw_poll_delay(0) == 10
     assert compute_openclaw_poll_delay(1) == 30

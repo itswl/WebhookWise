@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
+from services.webhooks.identity import generate_alert_hash
+
 
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
@@ -58,21 +60,22 @@ async def test_webhook_receive_to_feishu_card_flow(
     monkeypatch.setenv("OTEL_ENABLED", "false")
 
     from core.app import app
-    from core.config import Config, get_settings
+    from core.app_context import get_default_config
     from models import WebhookEvent
     from services.forwarding.outbox import process_forward_outbox_by_id
     from services.operations.tasks import process_forward_outbox_task, process_webhook_task
     from services.webhooks.pipeline import handle_webhook_ingest
 
-    settings = get_settings()
-    monkeypatch.setattr(settings.security, "WEBHOOK_SECRET", "")
-    monkeypatch.setattr(settings.security, "REQUIRE_WEBHOOK_AUTH", False)
-    monkeypatch.setattr(settings.security, "API_KEY", "integration-read-token")
-    monkeypatch.setattr(settings.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    config = get_default_config()
+    app.state.app_context.config = config
+    monkeypatch.setattr(config.security, "WEBHOOK_SECRET", "")
+    monkeypatch.setattr(config.security, "REQUIRE_WEBHOOK_AUTH", False)
+    monkeypatch.setattr(config.security, "API_KEY", "integration-read-token")
+    monkeypatch.setattr(config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
     _set_config(
-        monkeypatch, Config, "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token"
+        monkeypatch, config, "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token"
     )
-    _set_config(monkeypatch, Config, "ENABLE_ALERT_NOISE_REDUCTION", False)
+    _set_config(monkeypatch, config, "ENABLE_ALERT_NOISE_REDUCTION", False)
 
     async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
         parsed = webhook_data["parsed_data"]
@@ -179,7 +182,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     assert len(posted) == 1
     outbound = posted[0]
-    assert outbound["url"] == Config.forwarding.DEFAULT_FORWARD_TARGET_URL
+    assert outbound["url"] == config.forwarding.DEFAULT_FORWARD_TARGET_URL
     card = outbound["json"]
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "red"
@@ -216,7 +219,7 @@ async def test_finalization_skips_outbox_without_target(
         "prometheus",
         None,
     )
-    alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
+    alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
     ctx = WebhookProcessContext(
         event_id=None,
         request_id="req-finalize-test",
@@ -304,17 +307,18 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from core.config import Config
+    from core.app_context import get_default_config
     from models import ForwardOutbox, WebhookEvent
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.request_parser import parse_request
     from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
-    _set_config(monkeypatch, Config, "DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
-    _set_config(monkeypatch, Config, "ENABLE_PERIODIC_REMINDER", True)
-    _set_config(monkeypatch, Config, "REMINDER_INTERVAL_HOURS", 1)
-    _set_config(monkeypatch, Config, "NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config(monkeypatch, Config, "FORWARD_DUPLICATE_ALERTS", False)
+    config = get_default_config()
+    _set_config(monkeypatch, config, "DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
+    _set_config(monkeypatch, config, "ENABLE_PERIODIC_REMINDER", True)
+    _set_config(monkeypatch, config, "REMINDER_INTERVAL_HOURS", 1)
+    _set_config(monkeypatch, config, "NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config(monkeypatch, config, "FORWARD_DUPLICATE_ALERTS", False)
 
     async with integration_session_factory.begin() as session:
         original = WebhookEvent(

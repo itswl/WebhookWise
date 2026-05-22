@@ -7,8 +7,9 @@ tests/test_pipeline_parse.py
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import orjson
 import pytest
+
+from core import json
 
 # ── parse_request ──────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ def test_parse_request_parses_raw_body_when_no_payload():
     from services.webhooks.request_parser import parse_request
 
     data = {"alertname": "MemHigh", "severity": "warning"}
-    raw = orjson.dumps(data)
+    raw = json.dumps_bytes(data)
     ctx = parse_request("1.2.3.4", {}, {}, raw, "unknown", None)
     assert isinstance(ctx.parsed_data, dict)
 
@@ -99,7 +100,7 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
     from services.webhooks.repository import load_event_payload
 
     data = {"alerts": [{"labels": {"alertname": "DiskFull"}}]}
-    raw_json = orjson.dumps(data).decode()
+    raw_json = json.dumps(data)
 
     event = MagicMock()
     event.parsed_data = None

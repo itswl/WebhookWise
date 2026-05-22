@@ -3,12 +3,12 @@ import os
 import queue
 import sys
 from datetime import datetime, timezone
-from json import dumps
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from typing import Any
 from urllib.parse import urlparse
 
-from core.config import Config
+from core import json
+from core.config import UnifiedConfigManager
 from core.log_context import get_log_context
 from core.logging_levels import apply_log_levels
 from core.observability.tracing import get_current_trace_id, get_otel_span_id
@@ -132,13 +132,22 @@ class JsonFormatter(logging.Formatter):
             if k not in payload:
                 payload[k] = v
 
-        return dumps(payload, ensure_ascii=False, default=str)
+        return json.dumps(payload)
 
 
-def setup_logger() -> logging.Logger:
+def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
+    if config is not None:
+        return config
+    from core.app_context import get_default_config
+
+    return get_default_config()
+
+
+def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:
     """初始化全局日志系统"""
     global _log_listener, _logger_pid
-    apply_log_levels(Config.server.LOG_LEVEL, Config.server.THIRD_PARTY_LOG_LEVEL)
+    config = _resolve_config(config)
+    apply_log_levels(config.server.LOG_LEVEL, config.server.THIRD_PARTY_LOG_LEVEL)
     logger = logging.getLogger("webhook_service")
 
     if logger.handlers:
@@ -167,7 +176,7 @@ def setup_logger() -> logging.Logger:
     handlers.append(stdout_h)
 
     # 文件
-    log_file = Config.server.LOG_FILE
+    log_file = config.server.LOG_FILE
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_h = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)

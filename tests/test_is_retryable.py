@@ -44,14 +44,14 @@ _FakeUnprocessable.__name__ = "UnprocessableEntityError"
 
 def test_json_decode_error_not_retryable():
     """JSON 解析失败是数据问题，重试无意义。"""
-    import orjson
+    from core import json
 
     try:
-        orjson.loads(b"not-json")
-    except orjson.JSONDecodeError as err:
+        json.loads(b"not-json")
+    except json.JSONDecodeError as err:
         assert retry_policy.should_retry(err) is False
     else:
-        pytest.fail("orjson.loads should have raised JSONDecodeError")
+        pytest.fail("json.loads should have raised JSONDecodeError")
 
 
 def test_value_error_not_retryable():

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import orjson
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 
+from core import json
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
@@ -23,7 +23,7 @@ def _safe_error_message(err: Exception) -> str:
 
 def _parse_raw_body(raw_body: str) -> dict[str, object] | None:
     try:
-        loaded = orjson.loads(raw_body.encode("utf-8"))
+        loaded = json.loads(raw_body)
     except Exception:
         return None
     return loaded if isinstance(loaded, dict) else None

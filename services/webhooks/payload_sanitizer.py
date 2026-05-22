@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import orjson
-
+from core import json
 from core.logger import get_logger
 from core.sensitive_data import redact_nested
 from services.webhooks.policies import PayloadSanitizerPolicy
@@ -100,7 +99,7 @@ def sanitize_for_ai(
         return cleaned
 
     max_bytes = policy.max_bytes
-    serialized = orjson.dumps(cleaned)
+    serialized = json.dumps_bytes(cleaned)
     if max_bytes > 0 and len(serialized) > max_bytes:
         logger.info(
             "Payload 超过 AI 输入限制 (%d > %d bytes)，执行截断",
@@ -142,7 +141,7 @@ def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> obje
         # 按值的序列化大小降序排列
         items_with_size = []
         for k, v in data.items():
-            size = len(orjson.dumps(v))
+            size = len(json.dumps_bytes(v))
             items_with_size.append((k, v, size))
         items_with_size.sort(key=lambda x: x[2], reverse=True)
 
@@ -162,7 +161,7 @@ def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> obje
                 current_size += size + len(k) + 4
         return result
 
-    if isinstance(data, list) and len(orjson.dumps(data)) > max_bytes:
+    if isinstance(data, list) and len(json.dumps_bytes(data)) > max_bytes:
         # 截断列表到合理长度
         truncated = data[:10]
         truncated.append({"_truncated": True, "_original_length": len(data)})

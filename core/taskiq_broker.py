@@ -110,6 +110,10 @@ if _settings.run_mode == "scheduler":
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
     """Worker 进程启动时的生命周期事件"""
+    if _settings.run_mode != "worker":
+        logger.debug("[TaskIQ] 跳过 worker runtime 初始化 run_mode=%s", _settings.run_mode)
+        return
+
     from core.app_context import get_or_create_default_app_context
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
@@ -129,6 +133,10 @@ async def worker_startup_event(state: object) -> None:
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
     """Worker 进程关闭时的生命周期事件"""
+    if _settings.run_mode != "worker":
+        logger.debug("[TaskIQ] 跳过 worker runtime 关闭 run_mode=%s", _settings.run_mode)
+        return
+
     from core.app_context import get_or_create_default_app_context
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services

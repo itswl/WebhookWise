@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import _fail, _ok
+from api import fail_response, ok_response
 from core.auth import verify_admin_write
 from core.logger import get_logger
 from db.session import get_db_session
@@ -65,20 +65,20 @@ async def _reload_prompt_by_kind(kind: PromptKind) -> str:
 @admin_router.get("/api/config", response_model=ConfigResponse)
 async def get_config() -> JSONResponse:
     try:
-        return _ok(get_current_config(), 200)
+        return ok_response(get_current_config(), 200)
     except Exception as e:
         logger.error("获取配置失败: %s", e)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 @admin_router.get("/api/config/sources", response_model=ConfigSourcesResponse)
 async def get_config_sources_endpoint() -> JSONResponse:
     try:
         items_data = get_config_sources()
-        return _ok(items_data, 200)
+        return ok_response(items_data, 200)
     except Exception as e:
         logger.error("获取配置来源失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 @admin_router.post(
@@ -92,7 +92,7 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
         new_template = await _reload_prompt_by_kind(prompt_kind)
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
         logger.info("[Admin] Prompt 模板已重新加载 kind=%s length=%s", prompt_kind, len(new_template))
-        return _ok(
+        return ok_response(
             status=200,
             message="Prompt 模板已重新加载",
             kind=prompt_kind,
@@ -101,10 +101,10 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
             preview=preview,
         )
     except ValueError as e:
-        return _fail(str(e), 400)
+        return fail_response(str(e), 400)
     except Exception as e:
         logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 @admin_router.get("/api/prompt", response_model=PromptGetResponse)
@@ -112,12 +112,12 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
         prompt_kind = _normalize_prompt_kind(kind)
         template = await _load_prompt_by_kind(prompt_kind)
-        return _ok(status=200, kind=prompt_kind, template=template, source=get_prompt_source(prompt_kind))
+        return ok_response(status=200, kind=prompt_kind, template=template, source=get_prompt_source(prompt_kind))
     except ValueError as e:
-        return _fail(str(e), 400)
+        return fail_response(str(e), 400)
     except Exception as e:
         logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 # ── Dead Letter ───────────────────────────────────────────────────────────────
@@ -146,10 +146,12 @@ async def get_dead_letters_endpoint(
     try:
         items = await list_dead_letters(session, page=page, page_size=page_size)
         total = await count_dead_letters(session)
-        return _ok(data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total})
+        return ok_response(
+            data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total}
+        )
     except Exception as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 @admin_router.post(
@@ -162,13 +164,13 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
         event = await session.get(WebhookEvent, event_id)
         if not event or event.processing_status != "dead_letter":
             logger.warning("[Admin] dead_letter 重放失败，状态不匹配或事件不存在 event_id=%s", event_id)
-            return _fail(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
+            return fail_response(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
         await _enqueue_dead_letter_event(event)
         logger.info("[Admin] dead_letter 已重放 event_id=%s", event_id)
-        return _ok(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
+        return ok_response(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
         logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)
 
 
 @admin_router.post(
@@ -181,7 +183,7 @@ async def replay_all_dead_letters(
         items = await list_dead_letters(session, page=1, page_size=batch_size)
         if not items:
             logger.info("[Admin] 批量重放 dead_letter：无待处理记录")
-            return _ok(http_status=200, message="无 dead_letter 需要重放", replayed=0)
+            return ok_response(http_status=200, message="无 dead_letter 需要重放", replayed=0)
         replayed_ids = []
         for item in items:
             eid = item["id"]
@@ -190,7 +192,7 @@ async def replay_all_dead_letters(
                 replayed_ids.append(eid)
                 await _enqueue_dead_letter_event(event)
         logger.info("[Admin] 批量重放 dead_letter 完成 replayed=%s event_ids=%s", len(replayed_ids), replayed_ids)
-        return _ok(
+        return ok_response(
             http_status=200,
             message=f"已重放 {len(replayed_ids)} 条 dead_letter",
             replayed=len(replayed_ids),
@@ -198,4 +200,4 @@ async def replay_all_dead_letters(
         )
     except Exception as e:
         logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
+        return fail_response(str(e), 500)

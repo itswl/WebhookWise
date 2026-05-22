@@ -19,13 +19,10 @@ from core.config.defaults import (
 )
 from core.config.manager import ConfigKeyMeta, ConfigValueType, UnifiedConfigManager
 
-Config = UnifiedConfigManager()
-
 __all__ = [
     "AIConfig",
     "AppConfig",
     "CircuitBreakerConfig",
-    "Config",
     "ConfigKeyMeta",
     "ConfigValueType",
     "DBConfig",

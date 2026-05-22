@@ -46,7 +46,7 @@ def build_feishu_card(
     impact = analysis_result.get("impact_scope", "") or analysis_result.get("impact", "")
     actions = analysis_result.get("actions") or []
     if isinstance(actions, list):
-        suggestion = "\n".join(f"{i+1}. {a}" for i, a in enumerate(actions) if a) if actions else ""
+        suggestion = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(actions) if a) if actions else ""
     else:
         suggestion = str(actions)
 
