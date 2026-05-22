@@ -25,6 +25,7 @@ from core.observability.metrics import (
 )
 from core.observability.tracing import build_traceparent, get_or_generate_trace_id, set_fallback_trace_id
 from core.redis_client import redis_ping
+from core.request_ip import get_client_ip
 from core.sensitive_data import redact_event_dict
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.engine import test_db_connection
@@ -33,7 +34,6 @@ from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from schemas.webhook import webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
-from services.webhooks.command_service import get_client_ip
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import WebhookReceivePolicy
 from services.webhooks.query_service import list_webhook_summaries
