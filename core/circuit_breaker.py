@@ -71,6 +71,14 @@ class CircuitBreaker:
             CIRCUIT_BREAKER_STATE.labels(self.name, candidate.value).set(1 if candidate == state else 0)
 
     async def _check_state_async(self) -> CircuitState:
+        from core.redis_health import ensure_redis_available, mark_redis_failure
+
+        if not await ensure_redis_available(f"circuit_breaker:{self.name}:check_state"):
+            logger.warning("CircuitBreaker [%s] Redis 不可用，按 OPEN 处理", self.name)
+            state = CircuitState.OPEN
+            self._record_state_metric(state)
+            return state
+
         try:
             from core.redis_client import redis_eval_str
 
@@ -79,12 +87,18 @@ class CircuitBreaker:
             )
             state = CircuitState(state_str) if state_str else CircuitState.CLOSED
         except Exception as e:
-            logger.warning("CircuitBreaker [%s] Redis 检查状态失败: %s", self.name, e)
-            state = CircuitState.CLOSED
+            mark_redis_failure(f"circuit_breaker:{self.name}:check_state", e)
+            logger.warning("CircuitBreaker [%s] Redis 检查状态失败，按 OPEN 处理: %s", self.name, e)
+            state = CircuitState.OPEN
         self._record_state_metric(state)
         return state
 
     async def _record_failure(self) -> bool:
+        from core.redis_health import ensure_redis_available, mark_redis_failure
+
+        if not await ensure_redis_available(f"circuit_breaker:{self.name}:record_failure"):
+            return True
+
         try:
             from core.redis_client import redis_eval_int
 
@@ -103,15 +117,22 @@ class CircuitBreaker:
             )
             return tripped == 1
         except Exception as e:
+            mark_redis_failure(f"circuit_breaker:{self.name}:record_failure", e)
             logger.warning("CircuitBreaker [%s] Redis 记录失败异常: %s", self.name, e)
-            return False
+            return True
 
     async def _record_success(self) -> None:
+        from core.redis_health import ensure_redis_available, mark_redis_failure
+
+        if not await ensure_redis_available(f"circuit_breaker:{self.name}:record_success"):
+            return
+
         try:
             from core.redis_client import redis_eval_int
 
             await redis_eval_int(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
         except Exception as e:
+            mark_redis_failure(f"circuit_breaker:{self.name}:record_success", e)
             logger.warning("CircuitBreaker [%s] Redis 记录成功异常: %s", self.name, e)
 
     _P = ParamSpec("_P")

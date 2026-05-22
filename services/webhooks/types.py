@@ -2,10 +2,79 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Required, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
     from models import WebhookEvent
+
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+JsonObject: TypeAlias = dict[str, JsonValue]
+
+
+class NoiseReductionSnapshot(TypedDict):
+    relation: str
+    root_cause_event_id: int | None
+    confidence: float
+    suppress_forward: bool
+    reason: str
+    related_alert_count: int
+    related_alert_ids: list[int]
+
+
+class AnalysisResult(TypedDict, total=False):
+    """AI/rule analysis contract shared by cache, noise reduction and persistence."""
+
+    source: str
+    event_type: str
+    importance: str
+    summary: str
+    impact_scope: str | None
+    impact: str
+    actions: list[str]
+    risks: list[str]
+    monitoring_suggestions: list[str]
+    noise_reduction: NoiseReductionSnapshot
+    _route_type: Literal["ai", "cache", "rule", "redis_reuse", "db_reuse"]
+    _degraded: bool
+    _degraded_reason: str
+    _cache_hit: bool
+    _cache_hit_count: int
+
+
+class ForwardRuleTarget(TypedDict, total=False):
+    """Resolved forwarding target snapshot stored in ForwardDecision."""
+
+    id: int | None
+    name: Required[str]
+    target_type: Required[str]
+    target_url: Required[str]
+    target_name: str
+    stop_on_match: bool
+
+
+class ForwardResult(TypedDict, total=False):
+    """Result shape returned by forwarding integrations."""
+
+    status: str
+    reason: str
+    message: str
+    status_code: int
+    response: dict[str, Any]
+    _pending: bool
+    _openclaw_run_id: Any
+    _openclaw_session_key: str
+    _degraded: bool
+    _degraded_reason: str
+    source: str
+    event_type: str
+    importance: str
+    summary: str
+    impact_scope: str | None
+    actions: list[str]
+    risks: list[str]
+    monitoring_suggestions: list[str]
 
 
 class WebhookProcessingStatus(StrEnum):
@@ -37,7 +106,7 @@ class DeepAnalysisStatus(StrEnum):
 
 @dataclass(frozen=True)
 class AnalysisResolution:
-    analysis_result: dict[str, Any]
+    analysis_result: AnalysisResult
     reanalyzed: bool
     is_duplicate: bool
     original_event: "WebhookEvent | None"
@@ -71,7 +140,7 @@ class ForwardDecision:
     should_forward: bool
     skip_reason: str | None
     is_periodic_reminder: bool
-    matched_rules: list[dict[str, Any]] = field(default_factory=list)
+    matched_rules: list[ForwardRuleTarget] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -85,7 +154,7 @@ class NoiseReductionContext:
     related_alert_ids: list[int]
 
 
-# Unified type aliases — single source of truth
+# Unified type alias for external webhook payloads. The source data is intentionally
+# loose at the ingress boundary; internal analysis and forwarding contracts above
+# are typed once the payload has been interpreted.
 WebhookData = dict[str, Any]
-AnalysisResult = dict[str, Any]
-ForwardResult = dict[str, Any]

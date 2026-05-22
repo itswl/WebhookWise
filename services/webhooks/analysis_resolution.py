@@ -1,7 +1,8 @@
 """AI analysis resolution stage for webhook processing."""
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from core.logger import get_logger
 from db.session import session_scope
@@ -9,9 +10,15 @@ from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
 from services.webhooks.deduplication import get_cached_duplicate
 from services.webhooks.policies import AnalysisResolutionPolicy
 from services.webhooks.repository import check_duplicate_event
-from services.webhooks.types import AnalysisResolution
+from services.webhooks.types import AnalysisResolution, AnalysisResult
 
 logger = get_logger("webhooks.analysis_resolution")
+
+
+def _analysis_with_route(analysis: Mapping[str, Any], route_type: Literal["redis_reuse", "db_reuse"]) -> AnalysisResult:
+    routed = cast(AnalysisResult, dict(analysis))
+    routed["_route_type"] = route_type
+    return routed
 
 
 async def resolve_analysis(
@@ -39,7 +46,7 @@ async def resolve_analysis(
             )
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution(
-                {**cached.analysis, "_route_type": "redis_reuse"},
+                _analysis_with_route(cached.analysis, "redis_reuse"),
                 False,
                 True,
                 orig,
@@ -67,7 +74,7 @@ async def resolve_analysis(
             )
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution(
-                {**(last_beyond.ai_analysis or {}), "_route_type": "db_reuse"},
+                _analysis_with_route(cast(Mapping[str, Any], last_beyond.ai_analysis or {}), "db_reuse"),
                 False,
                 True,
                 orig,
@@ -78,7 +85,7 @@ async def resolve_analysis(
             logger.debug("[Pipeline] 窗口外复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution(
-                {**(orig.ai_analysis or {}), "_route_type": "db_reuse"},
+                _analysis_with_route(cast(Mapping[str, Any], orig.ai_analysis or {}), "db_reuse"),
                 False,
                 True,
                 orig,
@@ -98,7 +105,7 @@ async def resolve_analysis(
             logger.debug("[Pipeline] 窗口内复用原始事件分析 orig_id=%s hash=%s...", orig.id, alert_hash[:12])
             await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
             return AnalysisResolution(
-                {**target.ai_analysis, "_route_type": "db_reuse"},
+                _analysis_with_route(cast(Mapping[str, Any], target.ai_analysis), "db_reuse"),
                 False,
                 True,
                 orig,
