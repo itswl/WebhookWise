@@ -55,6 +55,7 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
     assert [path.name for path in revision_paths] == [
         "0001_current_schema.py",
         "0002_pluralize_tables.py",
+        "0003_drop_system_configs.py",
     ]
     for path in revision_paths:
         revision = re.search(r'^revision: str = "([^"]+)"', path.read_text(), re.MULTILINE)
@@ -66,3 +67,5 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
     migration_source = revision_paths[1].read_text()
     assert 'op.rename_table("ai_usage_log", "ai_usage_logs")' in migration_source
     assert 'op.rename_table("forward_outbox", "forward_outboxes")' in migration_source
+    cleanup_source = revision_paths[2].read_text()
+    assert 'op.drop_table("system_configs")' in cleanup_source

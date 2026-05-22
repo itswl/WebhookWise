@@ -238,6 +238,7 @@ async function openConfigModal() {
             document.getElementById('configForwardAfterWindow').checked = c.forward_after_time_window || false;
             document.getElementById('configLogLevel').value = c.log_level || 'INFO';
             document.getElementById('configAiSystemPrompt').value = c.ai_system_prompt || '';
+            setConfigModalReadonly();
 
             document.getElementById('configModal').classList.add('active');
         }
@@ -253,78 +254,12 @@ function closeConfigModal() {
     document.getElementById('configModal').classList.remove('active');
 }
 
-/**
- * 保存配置
- */
-async function saveConfig() {
-    try {
-        // 获取表单值
-        const forwardUrl = document.getElementById('configForwardUrl').value;
-        const apiKey = document.getElementById('configOpenaiApiKey').value;
-        const apiUrl = document.getElementById('configOpenaiApiUrl').value;
-        const model = document.getElementById('configOpenaiModel').value;
-
-        // 构建数据对象（只包含非空值）
-        const data = {
-            duplicate_alert_time_window: parseInt(document.getElementById('configDuplicateWindow').value) || 24,
-            enable_forward: document.getElementById('configEnableForward').checked,
-            enable_ai_analysis: document.getElementById('configEnableAi').checked,
-            forward_duplicate_alerts: document.getElementById('configForwardDuplicate').checked,
-            enable_alert_noise_reduction: document.getElementById('configEnableNoiseReduction').checked,
-            suppress_derived_alert_forward: document.getElementById('configSuppressDerivedForward').checked,
-            noise_reduction_window_minutes: parseInt(document.getElementById('configNoiseWindow').value) || 5,
-            root_cause_min_confidence: parseFloat(document.getElementById('configRootCauseConfidence').value) || 0.65,
-            reanalyze_after_time_window: document.getElementById('configReanalyzeAfterWindow').checked,
-            forward_after_time_window: document.getElementById('configForwardAfterWindow').checked,
-            log_level: document.getElementById('configLogLevel').value,
-            ai_system_prompt: document.getElementById('configAiSystemPrompt').value.trim()
-        };
-
-        // 只有当用户输入了值时才添加到请求中（避免覆盖已有配置）
-        if (forwardUrl && forwardUrl.trim()) {
-            data.default_target_url = forwardUrl.trim();
-        }
-        if (apiKey && apiKey.trim()) {
-            data.openai_api_key = apiKey.trim();
-        }
-        if (apiUrl && apiUrl.trim()) {
-            data.openai_api_url = apiUrl.trim();
-        }
-        if (model && model.trim()) {
-            data.openai_model = model.trim();
-        }
-
-        console.log('📤 保存配置:', data);
-
-        const result = await API.saveConfig(data);
-        console.log('📥 服务器响应:', result);
-
-        if (result.success) {
-            alert('✅ 配置保存成功！');
-            closeConfigModal();
-        } else {
-            const errorMsg = result.error || '未知错误';
-            console.error('❌ 保存失败:', errorMsg);
-
-            // 提供更友好的错误提示
-            if (errorMsg.includes('权限') || errorMsg.includes('Permission')) {
-                alert('❌ 保存失败: 权限错误\n\n' +
-                      '可能原因：\n' +
-                      '1. .env 文件被锁定或只读\n' +
-                      '2. Docker 容器内没有写入权限\n' +
-                      '3. 文件被其他程序占用\n\n' +
-                      '建议：\n' +
-                      '- 检查 .env 文件权限\n' +
-                      '- 或使用环境变量配置（不写入文件）\n' +
-                      '- 或使用 docker-compose.yml 配置');
-            } else {
-                alert('❌ 保存失败: ' + errorMsg);
-            }
-        }
-    } catch (error) {
-        console.error('❌ 请求失败:', error);
-        alert('❌ 保存失败: ' + error.message);
-    }
+function setConfigModalReadonly() {
+    const modal = document.getElementById('configModal');
+    if (!modal) return;
+    modal.querySelectorAll('input, textarea, select').forEach((element) => {
+        element.disabled = true;
+    });
 }
 
 /**

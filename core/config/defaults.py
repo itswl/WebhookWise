@@ -3,16 +3,12 @@
 import os
 import socket
 from functools import lru_cache
-from typing import Literal, TypeAlias
 
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv(override=False)
-
-RuntimeType: TypeAlias = Literal["str", "int", "float", "bool"]
-RuntimeValue: TypeAlias = str | int | float | bool
 
 
 class ServerConfig(BaseSettings):
@@ -26,8 +22,6 @@ class ServerConfig(BaseSettings):
     HOST: str = Field(default="127.0.0.1")
     DEBUG: bool = os.getenv("APP_ENV", "production") == "development"
     RUN_MODE: str = Field(default="api")
-    ENABLE_RUNTIME_CONFIG: bool = os.getenv("APP_ENV", "production") == "development"
-    ALLOW_RUNTIME_CONNECTION_CONFIG: bool = Field(default=False)
     LOG_LEVEL: str = Field(default="INFO")
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
     LOG_FILE: str = Field(default="logs/webhook.log")

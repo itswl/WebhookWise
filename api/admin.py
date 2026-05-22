@@ -3,7 +3,7 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and dead-letter replay.
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -17,7 +17,6 @@ from models import WebhookEvent
 from schemas import (
     ConfigResponse,
     ConfigSourcesResponse,
-    ConfigUpdateResponse,
     DeadLetterListResponse,
     PromptGetResponse,
     PromptReloadResponse,
@@ -31,14 +30,8 @@ from services.analysis.ai_analyzer import (
     reload_deep_analysis_prompt_template,
     reload_user_prompt_template,
 )
+from services.configuration.config_service import get_config_sources, get_current_config
 from services.operations.tasks import process_webhook_task
-from services.runtime_config.config_service import (
-    collect_config_updates,
-    get_config_sources,
-    get_current_config,
-    runtime_config_enabled,
-    save_config_updates,
-)
 from services.webhooks.query_service import count_dead_letters, list_dead_letters
 from services.webhooks.repository import load_event_payload
 
@@ -85,38 +78,6 @@ async def get_config_sources_endpoint() -> JSONResponse:
         return _ok(items_data, 200)
     except Exception as e:
         logger.error("获取配置来源失败: %s", e, exc_info=True)
-        return _fail(str(e), 500)
-
-
-@admin_router.post("/api/config", response_model=ConfigUpdateResponse, dependencies=[Depends(verify_admin_write)])
-async def update_config(payload: dict[str, Any] | None = None) -> JSONResponse:
-    try:
-        if not runtime_config_enabled():
-            logger.warning("[Admin] 配置更新被拒绝，运行时动态配置未启用")
-            return _fail("运行时动态配置已禁用，请通过环境变量/ConfigMap 配置并滚动重启生效", 403)
-        if not payload:
-            logger.warning("[Admin] 配置更新被拒绝，请求体为空")
-            return _fail("请求体为空", 400)
-
-        updates, errors = collect_config_updates(payload)
-        if errors:
-            logger.warning("[Admin] 配置更新校验失败 errors=%s", errors)
-            return _fail("; ".join(errors), 400)
-
-        if not updates:
-            logger.info("[Admin] 配置更新无需变更")
-            return _ok(status=200, message="无需更新")
-
-        updated_count = await save_config_updates(updates)
-
-        logger.info("[Admin] 配置已更新 keys=%s count=%s", list(updates.keys()), updated_count)
-        return _ok(status=200, message=f"配置更新成功，已保存 {updated_count} 项")
-
-    except ValueError as e:
-        logger.warning("更新配置被拒绝: %s", e)
-        return _fail(str(e), 400)
-    except Exception as e:
-        logger.error("更新配置失败: %s", e, exc_info=True)
         return _fail(str(e), 500)
 
 

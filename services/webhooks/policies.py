@@ -1,4 +1,4 @@
-"""Webhook service policies built from runtime configuration."""
+"""Webhook service policies built from static process configuration."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -40,7 +40,7 @@ class NoiseReductionPolicy:
             window_minutes=max(1, int(config.NOISE_REDUCTION_WINDOW_MINUTES)),
             root_cause_min_confidence=float(config.ROOT_CAUSE_MIN_CONFIDENCE),
             suppress_derived_forward=bool(config.SUPPRESS_DERIVED_ALERT_FORWARD),
-            scoring_config=NoiseScoringConfig.from_runtime_config(config),
+            scoring_config=NoiseScoringConfig.from_config(config),
         )
 
 

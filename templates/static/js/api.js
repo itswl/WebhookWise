@@ -173,21 +173,6 @@ const API = {
         return await response.json();
     },
 
-    /**
-     * 保存系统配置
-     * @param {object} data - 配置数据
-     * @returns {Promise<object>} 保存结果
-     */
-    async saveConfig(data) {
-        const response = await this.authenticatedFetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
     // ========== 深度分析 API ==========
 
     /**

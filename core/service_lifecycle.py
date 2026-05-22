@@ -62,10 +62,6 @@ async def start_runtime_services(
     if initialize_redis_client:
         context.ensure_redis_client()
 
-    if config.server.ENABLE_RUNTIME_CONFIG:
-        await config.load_from_db()
-        await config.start_subscriber()
-
     if initialize_ai_client and config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
         await initialize_openai_client(http_client=http_client)
 
@@ -87,7 +83,6 @@ async def stop_runtime_services(
     context: AppContext | None = None,
 ) -> None:
     context = context or get_or_create_default_app_context(config)
-    await config.stop_subscriber()
 
     if stop_broker and broker is not None:
         await broker.shutdown()

@@ -125,10 +125,6 @@ def temp_config():
 
     settings = get_settings()
     snapshots = {sub_name: getattr(settings, sub_name).model_copy(deep=True) for sub_name in settings._SUB_NAMES}
-    override_snapshot = Config._overrides.copy()
-    meta_snapshot = {key: value.copy() for key, value in Config._meta.items()}
     yield Config
     for sub_name, snapshot in snapshots.items():
         setattr(settings, sub_name, snapshot)
-    Config._overrides = override_snapshot
-    Config._meta = meta_snapshot

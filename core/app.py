@@ -43,11 +43,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     set_default_app_context(context)
     config = context.config
     logger.info(
-        "[App] 启动中 env=%s debug=%s run_mode=%s runtime_config=%s ai_enabled=%s",
+        "[App] 启动中 env=%s debug=%s run_mode=%s ai_enabled=%s",
         config.server.APP_ENV,
         config.server.DEBUG,
         config.server.RUN_MODE,
-        config.server.ENABLE_RUNTIME_CONFIG,
         config.ai.ENABLE_AI_ANALYSIS,
     )
     validate_startup_security(config)

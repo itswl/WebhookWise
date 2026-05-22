@@ -1,4 +1,4 @@
-"""OpenClaw polling policy built from runtime configuration."""
+"""OpenClaw polling policy built from static process configuration."""
 
 from dataclasses import dataclass
 from datetime import datetime

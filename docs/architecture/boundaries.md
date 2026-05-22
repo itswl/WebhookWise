@@ -38,7 +38,7 @@ Allowed examples:
 
 - `core/app.py`: FastAPI application construction and middleware registration.
 - `core/web/`: web middleware and startup checks.
-- `core/config/`: static settings plus runtime override manager.
+- `core/config/`: static settings and read-only process configuration access.
 - `core/metrics.py` and `core/otel.py`: instrumentation setup.
 - `core/taskiq_broker.py`: broker construction.
 - `core/http_client.py` and `core/redis_client.py`: shared client lifecycle.
@@ -48,22 +48,24 @@ Task registration is intentionally outside `core/`: TaskIQ CLI entrypoints use
 re-exports the broker/scheduler. This keeps `core.taskiq_broker` from depending
 on `services.operations.tasks`.
 
-## Runtime Configuration Boundary
+## Configuration Boundary
 
-Application code should read business and runtime settings through
+Application code should read business and process settings through
 `core.config.Config` or an injected `UnifiedConfigManager`. The exceptions are
 bootstrap surfaces that execute before the application context exists:
 
 - `core.taskiq_broker` reads `core.config.defaults.get_settings()` only. TaskIQ
-  imports the broker while constructing workers and schedulers, before DB/Redis
-  runtime overrides can be loaded.
+  imports the broker while constructing workers and schedulers, before the
+  application context exists.
 - `gunicorn_config.py` reads process-shape settings directly from the
   environment because Gunicorn evaluates it before importing the ASGI app.
 - `core.observability` reads OTEL/Pyroscope environment variables directly to
   follow OpenTelemetry vendor conventions during instrumentation bootstrap.
 
-DB and Redis connection settings remain static for a process lifetime. Runtime
-overrides intentionally exclude the `db` and `redis` config submodules.
+All settings remain static for a process lifetime. Configuration comes from
+code defaults plus `.env`, environment variables, ConfigMap, or Secret values
+loaded before process startup. The application must not load configuration
+overrides from database tables or Redis Pub/Sub.
 
 ## Logging Boundary
 
@@ -150,7 +152,7 @@ one-off operator-run script outside the service runtime.
 
 Prompt text is a product asset. The current control plane is:
 
-- `AI_SYSTEM_PROMPT`: runtime-configurable system prompt.
+- `AI_SYSTEM_PROMPT`: system prompt loaded at startup.
 - `AI_USER_PROMPT`: inline override for the user prompt.
 - `AI_USER_PROMPT_FILE`: file-backed prompt template.
 - `DEEP_ANALYSIS_PROMPT`: inline override for the OpenClaw deep-analysis prompt.

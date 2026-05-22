@@ -96,22 +96,17 @@ tail -f logs/webhook.log
 
 ### 3. 配置修改后不生效
 
-**症状：** 修改了 `.env` 或通过 `POST /api/config` 提交了新配置，但行为未变化。
+**症状：** 修改了 `.env`、环境变量、ConfigMap 或 Secret，但行为未变化。
 
 **说明：**
-- `.env` 中的配置**只在服务启动时读取**，修改后必须重启容器。
-- `POST /api/config` 写入数据库，通过 Redis Pub/Sub 广播，**无需重启**，但生效有秒级延迟。
+- 所有应用配置都只在服务启动时读取，修改后必须重启本地进程或滚动发布容器。
+- 应用不再从数据库读取配置，也不提供 `POST /api/config` 在线写配置入口。
 
 **排查：**
 ```bash
-# 查看某个 key 当前来源（db/env/default）及最后更新时间
+# 查看某个 key 当前来源（file_or_environment/default）
 curl http://localhost:8000/api/config/sources \
-  -H "Authorization: Bearer $API_KEY" | jq '.data.OPENAI_MODEL'
-```
-
-如果来源是 `db` 但值仍为旧值，检查 Redis Pub/Sub 是否正常：
-```bash
-redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
+  -H "Authorization: Bearer $API_KEY" | jq '.data[] | select(.key == "OPENAI_MODEL")'
 ```
 
 ---
@@ -203,12 +198,9 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 **排查：**
 
-1. 检查 `DUPLICATE_ALERT_TIME_WINDOW`（默认 24 小时）。如需缩短去重窗口：
+1. 检查 `DUPLICATE_ALERT_TIME_WINDOW`（默认 24 小时）。如需缩短去重窗口，修改配置文件后重启或滚动发布：
    ```bash
-   curl -X POST http://localhost:8000/api/config \
-     -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"key": "DUPLICATE_ALERT_TIME_WINDOW", "value": "1"}'
+   DUPLICATE_ALERT_TIME_WINDOW=1
    ```
 
 2. 告警 hash 优先由 adapter 产出的 `_alert_identity` 生成。如果两条告警 hash 相同但内容有差异，优先检查对应 adapter 是否把关键身份字段写进了 `_alert_identity`；未知来源缺少 identity 时会退回完整 payload hash 并记录 warning。
@@ -254,32 +246,13 @@ redis-cli subscribe webhook:config:updated  # 应该能收到广播消息
 
 ---
 
-### 10. `POST /api/config` 返回 403
-
-**症状：** 写配置时提示无权限。
-
-**原因：** 配置写入需要单独的 `ADMIN_WRITE_KEY`。
-
-**修复：** 请求时添加 Header：
-```bash
-curl -X POST http://localhost:8000/api/config \
-  -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "LOG_LEVEL", "value": "DEBUG"}'
-```
-
----
-
 ## 🪲 开启 DEBUG 日志
 
 排查 AI 分析内容或 Webhook 解析问题时，开启 DEBUG 级别：
 
 ```bash
-# 热更新，无需重启
-curl -X POST http://localhost:8000/api/config \
-  -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "LOG_LEVEL", "value": "DEBUG"}'
+# 修改配置文件后重启或滚动发布
+LOG_LEVEL=DEBUG
 ```
 
 排查完成后记得改回 `INFO`。
@@ -292,4 +265,4 @@ curl -X POST http://localhost:8000/api/config \
 1. 相关的 `trace_id`（从日志中获取）
 2. 对应事件的 `event_id`
 3. Worker 和 API 日志中的完整错误堆栈
-4. `GET /api/config/sources` 的返回结果（确认配置来源）
+4. `GET /api/config/sources` 的返回结果（确认配置是否来自配置文件/环境变量）
