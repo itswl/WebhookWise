@@ -157,6 +157,7 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
 
 
 def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
+    db_engine = (ROOT / "db/engine.py").read_text()
     db_session = (ROOT / "db/session.py").read_text()
     app = (ROOT / "core/app.py").read_text()
     broker = (ROOT / "core/taskiq_broker.py").read_text()
@@ -168,14 +169,15 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     redis_client = (ROOT / "core/redis_client.py").read_text()
     taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
-    assert "instrument_sqlalchemy(engine.sync_engine)" in db_session
+    assert "instrument_sqlalchemy(engine.sync_engine)" in db_engine
+    assert "from db.engine import build_engine_and_session_factory" in db_session
     assert "shutdown_observability()" in app
     assert "shutdown_observability()" in broker
     assert "services.operations.tasks" not in app
     assert "services.operations.tasks" not in broker
     assert "import services.operations.tasks" in taskiq_wiring
     assert '"traceparent": headers.get("traceparent") or build_traceparent(request_id)' in webhook
-    assert "trace_context_from_headers(trace_headers)" in tasks
+    assert "trace_context_from_headers(ctx.trace_headers)" in tasks
     assert '"worker.webhook_process_task"' in tasks
     assert '"worker.task.name": "webhook_process_task"' in tasks
     assert "worker.task.status" in tasks

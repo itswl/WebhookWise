@@ -7,20 +7,19 @@ from services.webhooks.types import WebhookData
 
 def extract_robust_json(text: str) -> str | None:
     """Extract the first complete JSON object from mixed text."""
-    try:
-        start_idx = text.find("{")
-        if start_idx == -1:
-            return None
-        stack = 0
-        for i in range(start_idx, len(text)):
-            if text[i] == "{":
-                stack += 1
-            elif text[i] == "}":
-                stack -= 1
-                if stack == 0:
-                    return text[start_idx : i + 1]
-    except Exception:
+    if not isinstance(text, str):
         return None
+    start_idx = text.find("{")
+    if start_idx == -1:
+        return None
+    stack = 0
+    for i in range(start_idx, len(text)):
+        if text[i] == "{":
+            stack += 1
+        elif text[i] == "}":
+            stack -= 1
+            if stack == 0:
+                return text[start_idx : i + 1]
     return None
 
 
@@ -31,7 +30,7 @@ def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> Web
     if json_text:
         try:
             parsed_result = json.loads(json_text)
-        except Exception:
+        except json.JSONDecodeError:
             parsed_result = None
 
     if parsed_result and isinstance(parsed_result, dict):

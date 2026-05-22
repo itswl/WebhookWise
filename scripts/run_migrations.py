@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from db.session import dispose_engine, init_engine, test_db_connection
+from db.engine import dispose_engine, init_engine, test_db_connection
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

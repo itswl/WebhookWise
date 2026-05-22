@@ -17,7 +17,7 @@ from core.app_context import (
 )
 from core.config import UnifiedConfigManager
 from core.logger import stop_log_listener
-from db.session import test_db_connection
+from db.engine import test_db_connection
 from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
 
 

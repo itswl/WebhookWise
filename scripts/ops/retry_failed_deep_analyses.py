@@ -31,7 +31,8 @@ from sqlalchemy import select
 
 from core.config import Config
 from core.logger import logger
-from db.session import init_engine, session_scope
+from db.engine import init_engine
+from db.session import session_scope
 from models import DeepAnalysis
 from services.analysis.openclaw_poller import poll_openclaw_result_via_http
 

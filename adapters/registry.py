@@ -54,8 +54,8 @@ class AdapterRegistry:
             try:
                 if detector(data):
                     return source_name
-            except Exception:  # nosec B110 # noqa: PERF203
-                pass
+            except Exception:  # noqa: PERF203
+                logger.exception("[Adapter Registry] Detector failed for %s", source_name)
         return None
 
     def find_adapter_by_source(self, source: str) -> str | None:
@@ -103,8 +103,8 @@ class AdapterRegistry:
             try:
                 importlib.import_module(module_full)
                 logger.debug("[Adapter Registry] Auto-discovered: %s", module_full)
-            except Exception as e:
-                logger.error("[Adapter Registry] Failed to import %s: %s", module_full, e)
+            except Exception:
+                logger.exception("[Adapter Registry] Failed to import %s", module_full)
 
         self._discovered = True
 

@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -51,6 +52,19 @@ _webhook_task_semaphore_limit = 0
 
 _WEBHOOK_TASK_SLOT_KEY = webhook_global_task_slots()
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
+
+
+@dataclass(slots=True)
+class _WebhookTaskContext:
+    source: str
+    raw_headers: dict[str, str]
+    raw_body: str
+    client_ip: str
+    request_id: str | None
+    received_at: str | None
+    ingest_retry_count: int
+    traceparent: str | None
+    trace_headers: dict[str, str]
 
 
 @asynccontextmanager
@@ -298,6 +312,146 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
             SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
 
 
+def _build_webhook_task_context(
+    *,
+    client_ip: str | None,
+    source_name: str,
+    raw_headers: dict[str, str] | None,
+    raw_body: str | None,
+    request_id: str | None,
+    received_at: str | None,
+    ingest_retry_count: int,
+    traceparent: str | None,
+) -> _WebhookTaskContext:
+    trace_headers = {"traceparent": traceparent or ""}
+    if not trace_headers["traceparent"] and request_id:
+        trace_headers["traceparent"] = build_traceparent(request_id)
+    return _WebhookTaskContext(
+        source=source_name or "unknown",
+        raw_headers=raw_headers or {},
+        raw_body=raw_body or "",
+        client_ip=client_ip or "",
+        request_id=request_id,
+        received_at=received_at,
+        ingest_retry_count=ingest_retry_count,
+        traceparent=traceparent,
+        trace_headers=trace_headers,
+    )
+
+
+def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
+    clear_log_context()
+    set_log_context(request_id=ctx.request_id, source=ctx.source)
+    logger.info(
+        "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
+        ctx.request_id,
+        ctx.source,
+        ctx.ingest_retry_count,
+    )
+    emit_event(
+        "webhook.task.started",
+        {
+            "event_id": 0,
+            "source": ctx.source,
+            "webhook.raw_ingest": True,
+            "retry.count": ctx.ingest_retry_count,
+        },
+    )
+
+
+def _set_webhook_task_fallback_trace(ctx: _WebhookTaskContext) -> object | None:
+    fallback_trace_id = extract_trace_id_from_headers(ctx.trace_headers) or (ctx.request_id or "")
+    return set_fallback_trace_id(fallback_trace_id) if fallback_trace_id else None
+
+
+def _reset_webhook_task_fallback_trace(token: object | None) -> None:
+    if token is None:
+        return
+    try:
+        reset_fallback_trace_id(token)
+    except ValueError:
+        logger.debug("[Tasks] fallback trace context already reset", exc_info=True)
+
+
+async def _run_webhook_ingest_with_failure_handling(ctx: _WebhookTaskContext) -> str:
+    from services.webhooks.pipeline import handle_webhook_ingest
+
+    async with _webhook_task_slot():
+        WEBHOOK_RUNNING_TASKS.inc()
+        try:
+            try:
+                await handle_webhook_ingest(
+                    source=ctx.source,
+                    raw_headers=ctx.raw_headers,
+                    raw_body=ctx.raw_body,
+                    client_ip=ctx.client_ip,
+                    request_id=ctx.request_id,
+                    received_at=ctx.received_at,
+                )
+                return "completed"
+            except Exception as e:
+                await _handle_raw_webhook_failure(
+                    source=ctx.source,
+                    raw_headers=ctx.raw_headers,
+                    raw_body=ctx.raw_body,
+                    client_ip=ctx.client_ip,
+                    request_id=ctx.request_id,
+                    received_at=ctx.received_at,
+                    ingest_retry_count=ctx.ingest_retry_count,
+                    traceparent=ctx.trace_headers["traceparent"] or ctx.traceparent,
+                    err=e,
+                )
+                return "raw_failure_handled"
+        finally:
+            WEBHOOK_RUNNING_TASKS.dec()
+
+
+async def _run_webhook_task_span(ctx: _WebhookTaskContext) -> str:
+    outcome = "completed"
+    with trace_context_from_headers(ctx.trace_headers), otel_span(
+        "worker.webhook_process_task",
+        {
+            "event_id": 0,
+            "source": ctx.source,
+            "retry.count": ctx.ingest_retry_count,
+            "webhook.raw_ingest": True,
+            "worker.task.name": "webhook_process_task",
+        },
+    ) as worker_span:
+        try:
+            outcome = await _run_webhook_ingest_with_failure_handling(ctx)
+            return outcome
+        except Exception as exc:
+            outcome = "error"
+            set_span_error(worker_span, exc)
+            raise
+        finally:
+            if worker_span is not None:
+                worker_span.set_attribute("worker.task.status", outcome)
+                worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
+
+
+def _finish_webhook_task(ctx: _WebhookTaskContext, outcome: str, task_start: float) -> None:
+    duration_ms = int((time.perf_counter() - task_start) * 1000)
+    logger.info(
+        "[Tasks] Webhook 任务结束 request_id=%s source=%s outcome=%s duration=%dms",
+        ctx.request_id,
+        ctx.source,
+        outcome,
+        duration_ms,
+    )
+    attributes = {
+        "event_id": 0,
+        "source": ctx.source,
+        WEBHOOK_OUTCOME: outcome,
+        "duration.ms": duration_ms,
+    }
+    emit_event("webhook.task.finished", attributes)
+    record_signal("webhook.task", outcome, attributes)
+    WORKER_TASKS_TOTAL.labels("webhook_process_task", outcome).inc()
+    WORKER_TASK_DURATION_SECONDS.labels("webhook_process_task", outcome).observe(time.perf_counter() - task_start)
+
+
 async def run_webhook_task(
     client_ip: str | None = None,
     source_name: str = "unknown",
@@ -309,114 +463,33 @@ async def run_webhook_task(
     traceparent: str | None = None,
 ) -> None:
     """Process a raw ingested webhook."""
-    from services.webhooks.pipeline import handle_webhook_ingest
-
-    normalized_source = source_name or "unknown"
-    normalized_headers = raw_headers or {}
-    normalized_body = raw_body or ""
-    normalized_client_ip = client_ip or ""
-    clear_log_context()
-    set_log_context(request_id=request_id, source=normalized_source)
+    ctx = _build_webhook_task_context(
+        client_ip=client_ip,
+        source_name=source_name,
+        raw_headers=raw_headers,
+        raw_body=raw_body,
+        request_id=request_id,
+        received_at=received_at,
+        ingest_retry_count=ingest_retry_count,
+        traceparent=traceparent,
+    )
     task_start = time.perf_counter()
     outcome = "completed"
-    logger.info(
-        "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
-        request_id,
-        normalized_source,
-        ingest_retry_count,
-    )
-    emit_event(
-        "webhook.task.started",
-        {
-            "event_id": 0,
-            "source": normalized_source,
-            "webhook.raw_ingest": True,
-            "retry.count": ingest_retry_count,
-        },
-    )
-    trace_headers = {"traceparent": traceparent or ""}
-    if not trace_headers["traceparent"] and request_id:
-        trace_headers["traceparent"] = build_traceparent(request_id)
-    fallback_trace_id = extract_trace_id_from_headers(trace_headers) or (request_id or "")
-    fallback_token = set_fallback_trace_id(fallback_trace_id) if fallback_trace_id else None
+    _start_webhook_task(ctx)
+    fallback_token = _set_webhook_task_fallback_trace(ctx)
     try:
-        with trace_context_from_headers(trace_headers), otel_span(
-            "worker.webhook_process_task",
-            {
-                "event_id": 0,
-                "source": normalized_source,
-                "retry.count": ingest_retry_count,
-                "webhook.raw_ingest": True,
-                "worker.task.name": "webhook_process_task",
-            },
-        ) as worker_span:
-            try:
-                async with _webhook_task_slot():
-                    WEBHOOK_RUNNING_TASKS.inc()
-                    try:
-                        await handle_webhook_ingest(
-                            source=normalized_source,
-                            raw_headers=normalized_headers,
-                            raw_body=normalized_body,
-                            client_ip=normalized_client_ip,
-                            request_id=request_id,
-                            received_at=received_at,
-                        )
-                    except Exception as e:
-                        outcome = "raw_failure_handled"
-                        await _handle_raw_webhook_failure(
-                            source=normalized_source,
-                            raw_headers=normalized_headers,
-                            raw_body=normalized_body,
-                            client_ip=normalized_client_ip,
-                            request_id=request_id,
-                            received_at=received_at,
-                            ingest_retry_count=ingest_retry_count,
-                            traceparent=trace_headers["traceparent"] or traceparent,
-                            err=e,
-                        )
-                    finally:
-                        WEBHOOK_RUNNING_TASKS.dec()
-            except Exception as exc:
-                outcome = "error"
-                set_span_error(worker_span, exc)
-                raise
-            finally:
-                if worker_span is not None:
-                    worker_span.set_attribute("worker.task.status", outcome)
-                    worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
+        outcome = await _run_webhook_task_span(ctx)
     except Exception:
         outcome = "error"
         logger.exception(
             "[Tasks] Webhook 任务异常退出 request_id=%s source=%s",
-            request_id,
-            normalized_source,
+            ctx.request_id,
+            ctx.source,
         )
         raise
     finally:
-        if fallback_token is not None:
-            try:
-                reset_fallback_trace_id(fallback_token)
-            except ValueError:
-                logger.debug("[Tasks] fallback trace context already reset", exc_info=True)
-        duration_ms = int((time.perf_counter() - task_start) * 1000)
-        logger.info(
-            "[Tasks] Webhook 任务结束 request_id=%s source=%s outcome=%s duration=%dms",
-            request_id,
-            normalized_source,
-            outcome,
-            duration_ms,
-        )
-        attributes = {
-            "event_id": 0,
-            "source": normalized_source,
-            WEBHOOK_OUTCOME: outcome,
-            "duration.ms": duration_ms,
-        }
-        emit_event("webhook.task.finished", attributes)
-        record_signal("webhook.task", outcome, attributes)
-        WORKER_TASKS_TOTAL.labels("webhook_process_task", outcome).inc()
-        WORKER_TASK_DURATION_SECONDS.labels("webhook_process_task", outcome).observe(time.perf_counter() - task_start)
+        _reset_webhook_task_fallback_trace(fallback_token)
+        _finish_webhook_task(ctx, outcome, task_start)
 
 
 @broker.task(task_name="webhook_process_task")

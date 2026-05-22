@@ -6,7 +6,7 @@ import urllib.request
 
 async def _check_background_process() -> None:
     from core.redis_client import dispose_redis, get_redis
-    from db.session import dispose_engine, init_engine, test_db_connection
+    from db.engine import dispose_engine, init_engine, test_db_connection
 
     try:
         await init_engine()
