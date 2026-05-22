@@ -70,6 +70,17 @@ def test_prometheus_loads_webhookwise_rules() -> None:
     assert alertmanager["route"]["receiver"] == "webhookwise-local"
 
 
+def test_tempo_enables_traceql_metrics_generator() -> None:
+    tempo = yaml.safe_load((ROOT / "deploy/observability/tempo.yml").read_text())
+
+    processors = tempo["overrides"]["defaults"]["metrics_generator"]["processors"]
+    assert "local-blocks" in processors
+    assert tempo["metrics_generator"]["processor"]["local_blocks"]["filter_server_spans"] is False
+    assert tempo["metrics_generator"]["storage"]["remote_write"][0]["url"] == "http://prometheus:9090/api/v1/write"
+    assert tempo["metrics_generator"]["traces_storage"]["path"]
+    assert tempo["query_frontend"]["metrics"]["concurrent_jobs"] <= 8
+
+
 def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     dashboard = json.loads((ROOT / "grafana/dashboard.json").read_text())
     diagnostics = json.loads((ROOT / "grafana/dashboard-diagnostics.json").read_text())
