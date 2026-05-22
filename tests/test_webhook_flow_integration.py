@@ -303,6 +303,106 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
     assert persisted.ai_analysis["summary"] == "already persisted"
 
 
+async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from models import WebhookEvent
+    from services.webhooks.command_service import save_webhook_data_in_session
+
+    async with integration_session_factory.begin() as session:
+        original = WebhookEvent(
+            source="volcengine",
+            client_ip="127.0.0.1",
+            processing_status="completed",
+            alert_hash="redis-reuse-count-hash",
+            parsed_data={"RuleId": "disk"},
+            ai_analysis={"importance": "high", "summary": "disk high"},
+            importance="high",
+            is_duplicate=False,
+            duplicate_count=41,
+            beyond_window=False,
+        )
+        session.add(original)
+        await session.flush()
+        original_id = original.id
+
+        saved = await save_webhook_data_in_session(
+            session,
+            data={"RuleId": "disk"},
+            source="volcengine",
+            request_id="redis-reuse-count-request",
+            ai_analysis={"importance": "high", "summary": "disk still high"},
+            alert_hash="redis-reuse-count-hash",
+            is_duplicate=True,
+            original_event_id=original_id,
+            skip_duplicate_lookup=True,
+        )
+
+    async with integration_session_factory() as session:
+        persisted_original = await session.get(WebhookEvent, original_id)
+        duplicate = await session.get(WebhookEvent, saved.webhook_id)
+
+    assert persisted_original is not None
+    assert duplicate is not None
+    assert persisted_original.duplicate_count == 42
+    assert duplicate.duplicate_count == 42
+    assert duplicate.duplicate_of == original_id
+
+
+async def test_redis_reuse_does_not_bypass_expired_duplicate_window(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.app_context import get_default_config
+    from models import WebhookEvent
+    from services.webhooks.analysis_resolution import resolve_analysis
+    from services.webhooks.deduplication import CachedDuplicate
+
+    config = get_default_config()
+    _set_config(monkeypatch, config, "DUPLICATE_ALERT_TIME_WINDOW", 4)
+    _set_config(monkeypatch, config, "REANALYZE_AFTER_TIME_WINDOW", True)
+
+    async with integration_session_factory.begin() as session:
+        original = WebhookEvent(
+            source="volcengine",
+            client_ip="127.0.0.1",
+            timestamp=datetime.now() - timedelta(hours=5),
+            processing_status="completed",
+            alert_hash="redis-expired-window-hash",
+            parsed_data={"RuleId": "disk"},
+            ai_analysis={"importance": "high", "summary": "cached old analysis"},
+            importance="high",
+            is_duplicate=False,
+            duplicate_count=1,
+            beyond_window=False,
+        )
+        session.add(original)
+        await session.flush()
+        original_id = original.id
+
+    async def fake_cached_duplicate(alert_hash: str) -> CachedDuplicate | None:
+        return CachedDuplicate(original_id, {"importance": "high", "summary": "cached should be ignored"})
+
+    async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
+        return {"importance": "high", "summary": "fresh beyond-window analysis"}
+
+    monkeypatch.setattr("services.webhooks.analysis_resolution.get_cached_duplicate", fake_cached_duplicate)
+    monkeypatch.setattr("services.webhooks.analysis_resolution.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
+
+    result = await resolve_analysis(
+        "redis-expired-window-hash",
+        {"source": "volcengine", "parsed_data": {"RuleId": "disk"}},
+    )
+
+    assert result.reanalyzed is True
+    assert result.is_reused is False
+    assert result.is_duplicate is False
+    assert result.beyond_window is True
+    assert result.original_event is not None
+    assert result.original_event.id == original_id
+    assert result.analysis_result["summary"] == "fresh beyond-window analysis"
+
+
 async def test_reused_analysis_queues_periodic_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
@@ -334,6 +434,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
         )
         session.add(original)
         await session.flush()
+        original_id = original.id
 
     payload = {"alert_name": "checkout-5xx", "event_type": "prometheus_alert", "service": "checkout-api"}
     req_ctx = parse_request("127.0.0.1", {}, payload, b'{"alert_name":"checkout-5xx"}', "prometheus", None)
@@ -349,9 +450,10 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
         {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
         reanalyzed=False,
         is_duplicate=True,
-        original_event=original,
+        original_event=None,
         beyond_window=False,
         is_reused=True,
+        original_event_id=original_id,
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
 
