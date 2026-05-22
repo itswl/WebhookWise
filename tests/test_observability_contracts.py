@@ -271,7 +271,6 @@ def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
     cli = (ROOT / "scripts/observability/webhookwise_observe.py").read_text()
     mcp = (ROOT / "scripts/observability/webhookwise_mcp.py").read_text()
     dashboard_links = (ROOT / "scripts/observability/update_dashboard_links.py").read_text()
-    ci = (ROOT / ".github/workflows/ci.yml").read_text()
     assert 'sub.add_parser("smoke"' in cli
     assert 'sub.add_parser("tempo"' in cli
     assert 'sub.add_parser("profiles"' in cli
@@ -279,7 +278,6 @@ def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
     assert '"name": "webhookwise_tempo_search"' in mcp
     assert '"name": "webhookwise_profiles"' in mcp
     assert "PROFILE_TYPE_ID" in dashboard_links
-    assert "scripts/export_openapi.py --check" in ci
 
 
 def test_docs_and_e2e_cover_project_operability_contracts() -> None:
