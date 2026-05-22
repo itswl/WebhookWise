@@ -221,6 +221,10 @@
                     <span>🔄</span>
                     <span>刷新</span>
                 </button>
+                <button class="btn" id="authBtn" onclick="openAuthModal()">
+                    <span>🔐</span>
+                    <span id="authBtnText">凭证</span>
+                </button>
                 <button class="btn btn-primary" onclick="openConfigModal()">
                     <span>⚙️</span>
                     <span>配置</span>
@@ -474,6 +478,43 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-primary" onclick="closeConfigModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 凭证模态框 -->
+    <div class="modal" id="authModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Dashboard 凭证</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">API_KEY（只读）</label>
+                    <input type="password" class="form-input" id="authApiKey" placeholder="用于 GET 查询，留空表示不修改">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                        告警列表、配置查看、AI 成本、转发规则列表等只读请求使用此 key。
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">ADMIN_WRITE_KEY（写操作）</label>
+                    <input type="password" class="form-input" id="authAdminWriteKey" placeholder="用于 POST / PUT / DELETE，留空表示不修改">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                        重新分析、手动转发、重试、保存/删除转发规则等写请求使用此 key。
+                    </p>
+                </div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem;">
+                    <span id="authReadStatus">API_KEY：未保存</span>
+                    <span id="authWriteStatus">ADMIN_WRITE_KEY：未保存</span>
+                </div>
+                <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                    凭证仅保存在当前浏览器 localStorage，不会写入服务端配置。
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="clearAuthKeys()">清除本机凭证</button>
+                <button class="btn" onclick="closeAuthModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveAuthKeys()">保存</button>
             </div>
         </div>
     </div>

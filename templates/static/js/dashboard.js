@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
 function initDashboard() {
     console.log('🚀 初始化 Dashboard...');
 
+    updateAuthButtonState();
+
     // 初始化各模块
     if (typeof AlertsModule !== 'undefined') {
         AlertsModule.init();
@@ -252,6 +254,61 @@ async function openConfigModal() {
  */
 function closeConfigModal() {
     document.getElementById('configModal').classList.remove('active');
+}
+
+function openAuthModal() {
+    const apiKeyInput = document.getElementById('authApiKey');
+    const adminWriteKeyInput = document.getElementById('authAdminWriteKey');
+    if (apiKeyInput) apiKeyInput.value = '';
+    if (adminWriteKeyInput) adminWriteKeyInput.value = '';
+    updateAuthButtonState();
+    document.getElementById('authModal').classList.add('active');
+}
+
+function closeAuthModal() {
+    document.getElementById('authModal').classList.remove('active');
+}
+
+function saveAuthKeys() {
+    const apiKey = document.getElementById('authApiKey')?.value.trim() || '';
+    const adminWriteKey = document.getElementById('authAdminWriteKey')?.value.trim() || '';
+
+    if (apiKey) {
+        API.setReadToken(apiKey);
+    }
+    if (adminWriteKey) {
+        API.setWriteToken(adminWriteKey);
+    }
+
+    updateAuthButtonState();
+    closeAuthModal();
+}
+
+function clearAuthKeys() {
+    API.clearTokens();
+    const apiKeyInput = document.getElementById('authApiKey');
+    const adminWriteKeyInput = document.getElementById('authAdminWriteKey');
+    if (apiKeyInput) apiKeyInput.value = '';
+    if (adminWriteKeyInput) adminWriteKeyInput.value = '';
+    updateAuthButtonState();
+}
+
+function updateAuthButtonState() {
+    if (typeof API === 'undefined') return;
+    const status = API.getTokenStatus();
+    const readStatus = document.getElementById('authReadStatus');
+    const writeStatus = document.getElementById('authWriteStatus');
+    const authBtnText = document.getElementById('authBtnText');
+
+    if (readStatus) {
+        readStatus.textContent = `API_KEY：${status.read ? '已保存' : '未保存'}`;
+    }
+    if (writeStatus) {
+        writeStatus.textContent = `ADMIN_WRITE_KEY：${status.write ? '已保存' : '未保存'}`;
+    }
+    if (authBtnText) {
+        authBtnText.textContent = status.read && status.write ? '凭证已保存' : '凭证';
+    }
 }
 
 function setConfigModalReadonly() {

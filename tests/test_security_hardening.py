@@ -339,6 +339,22 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
     assert write_with_admin.json()["template_length"] == len("test prompt")
 
 
+def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
+    root = Path(__file__).resolve().parents[1]
+    api_js = (root / "templates/static/js/api.js").read_text()
+    dashboard_html = (root / "templates/dashboard.html").read_text()
+
+    assert "const READ_TOKEN_KEY = 'webhook_api_key';" in api_js
+    assert "const WRITE_TOKEN_KEY = 'webhook_admin_write_key';" in api_js
+    assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
+    assert "this.getWriteToken()" in api_js
+    assert "Admin write permission required" in api_js
+
+    assert 'id="authModal"' in dashboard_html
+    assert 'id="authApiKey"' in dashboard_html
+    assert 'id="authAdminWriteKey"' in dashboard_html
+
+
 @pytest.mark.asyncio
 async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx

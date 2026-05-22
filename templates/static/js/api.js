@@ -3,27 +3,77 @@
  * 统一封装所有后端 API 调用，提供统一的错误处理和响应解析
  */
 
+const READ_TOKEN_KEY = 'webhook_api_key';
+const WRITE_TOKEN_KEY = 'webhook_admin_write_key';
+
 const API = {
     /**
-     * 获取认证 Token
+     * 获取只读 API Token
      */
     getToken() {
-        return localStorage.getItem('webhook_api_key') || '';
+        return this.getReadToken();
+    },
+
+    getReadToken() {
+        return localStorage.getItem(READ_TOKEN_KEY) || '';
+    },
+
+    getWriteToken() {
+        return localStorage.getItem(WRITE_TOKEN_KEY) || '';
+    },
+
+    setReadToken(token) {
+        if (token) {
+            localStorage.setItem(READ_TOKEN_KEY, token);
+        }
+    },
+
+    setWriteToken(token) {
+        if (token) {
+            localStorage.setItem(WRITE_TOKEN_KEY, token);
+        }
+    },
+
+    clearTokens() {
+        localStorage.removeItem(READ_TOKEN_KEY);
+        localStorage.removeItem(WRITE_TOKEN_KEY);
+    },
+
+    getTokenStatus() {
+        return {
+            read: Boolean(this.getReadToken()),
+            write: Boolean(this.getWriteToken())
+        };
+    },
+
+    getAuthMode(options = {}) {
+        if (options.authMode) return options.authMode;
+        const method = String(options.method || 'GET').toUpperCase();
+        return method === 'GET' || method === 'HEAD' ? 'read' : 'write';
+    },
+
+    getTokenForMode(mode) {
+        return mode === 'write' ? this.getWriteToken() : this.getReadToken();
     },
 
     // 全局鉴权锁，防止并发请求时弹出多个输入框
-    _authPromise: null,
+    _authPromises: {
+        read: null,
+        write: null
+    },
 
     /**
      * 包装 fetch，自动添加 Auth 头和处理 401
      */
-    async authenticatedFetch(url, options = {}) {
+    async authenticatedFetch(url, options = {}, retryState = {}) {
+        const authMode = this.getAuthMode(options);
+
         // 如果有正在进行的鉴权弹窗，则等待它完成
-        if (this._authPromise) {
-            await this._authPromise;
+        if (this._authPromises[authMode]) {
+            await this._authPromises[authMode];
         }
 
-        const token = this.getToken();
+        const token = this.getTokenForMode(authMode);
         const headers = {
             ...options.headers,
             'Content-Type': 'application/json'
@@ -32,39 +82,72 @@ const API = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(url, { ...options, headers });
+        const { authMode: _ignoredAuthMode, ...fetchOptions } = options;
+        const response = await fetch(url, { ...fetchOptions, headers });
 
-        if (response.status === 401) {
+        if (await this.shouldPromptForAuth(response, authMode)) {
             // 在弹窗前再次检查是否已经被其他并发请求处理过了
-            const currentToken = this.getToken();
+            const currentToken = this.getTokenForMode(authMode);
             if (currentToken && currentToken !== token) {
                 // Token 已被更新，直接使用新 Token 重试
-                return this.authenticatedFetch(url, options);
+                return this.authenticatedFetch(url, options, retryState);
             }
 
-            if (!this._authPromise) {
+            if (retryState[authMode]) {
+                return response;
+            }
+
+            if (!this._authPromises[authMode]) {
                 // 创建一个 Promise 锁，并阻塞其他并发请求
-                this._authPromise = new Promise((resolve) => {
+                this._authPromises[authMode] = new Promise((resolve) => {
                     // 使用 setTimeout 确保 UI 线程不被死锁，并给浏览器渲染机会
                     setTimeout(() => {
-                        const key = prompt('请输入 WebhookWise 的管理接口 API Key:');
+                        const key = prompt(this.authPromptText(authMode));
                         if (key) {
-                            localStorage.setItem('webhook_api_key', key);
+                            if (authMode === 'write') {
+                                this.setWriteToken(key);
+                            } else {
+                                this.setReadToken(key);
+                            }
+                            if (typeof updateAuthButtonState === 'function') {
+                                updateAuthButtonState();
+                            }
                         }
                         resolve(key);
-                        this._authPromise = null;
+                        this._authPromises[authMode] = null;
                     }, 50);
                 });
             }
 
-            const newKey = await this._authPromise;
+            const newKey = await this._authPromises[authMode];
             if (newKey) {
                 // 有了新 Token，递归重试该请求
-                return this.authenticatedFetch(url, options);
+                return this.authenticatedFetch(url, options, { ...retryState, [authMode]: true });
             }
         }
 
         return response;
+    },
+
+    authPromptText(mode) {
+        if (mode === 'write') {
+            return '请输入 WebhookWise 的 ADMIN_WRITE_KEY（用于保存、转发、重试等写操作）:';
+        }
+        return '请输入 WebhookWise 的 API_KEY（用于 Dashboard 只读查询）:';
+    },
+
+    async shouldPromptForAuth(response, mode) {
+        if (mode === 'read') {
+            return response.status === 401;
+        }
+        if (response.status === 401) {
+            return true;
+        }
+        if (response.status !== 403) {
+            return false;
+        }
+        const body = await response.clone().json().catch(() => null);
+        return body?.detail === 'Admin write permission required';
     },
 
     // ========== 告警相关 API ==========
