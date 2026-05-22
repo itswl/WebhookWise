@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,15 +16,41 @@ from core.app_context import (
     set_default_app_context,
 )
 from core.config import UnifiedConfigManager
-from core.logger import stop_log_listener
+from core.logger import get_logger, stop_log_listener
 from db.engine import test_db_connection
-from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
+
+logger = get_logger("service_lifecycle")
+
+AIClientInitializer = Callable[..., Awaitable[None]]
+AIClientResetter = Callable[[], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeLifecycleHooks:
+    initialize_ai_client: AIClientInitializer | None = None
+    reset_ai_client: AIClientResetter | None = None
+
+
+_runtime_hooks = RuntimeLifecycleHooks()
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeServices:
     app_context: AppContext
     http_client: httpx.AsyncClient
+
+
+def configure_runtime_lifecycle_hooks(
+    *,
+    initialize_ai_client: AIClientInitializer | None = None,
+    reset_ai_client: AIClientResetter | None = None,
+) -> None:
+    """Register process-level hooks without making lifecycle own feature code."""
+    global _runtime_hooks
+    _runtime_hooks = RuntimeLifecycleHooks(
+        initialize_ai_client=initialize_ai_client,
+        reset_ai_client=reset_ai_client,
+    )
 
 
 async def check_database_ready(context: AppContext | None = None) -> bool:
@@ -44,6 +70,7 @@ async def start_runtime_services(
     initialize_redis_client: bool = False,
     initialize_adapter_registry: bool = True,
     initialize_ai_client: bool = False,
+    initialize_ai_client_hook: AIClientInitializer | None = None,
     context: AppContext | None = None,
 ) -> RuntimeServices:
     context = context or get_or_create_default_app_context(config)
@@ -63,7 +90,11 @@ async def start_runtime_services(
         context.ensure_redis_client()
 
     if initialize_ai_client and config.ai.ENABLE_AI_ANALYSIS and config.ai.OPENAI_API_KEY:
-        await initialize_openai_client(http_client=http_client)
+        ai_initializer = initialize_ai_client_hook or _runtime_hooks.initialize_ai_client
+        if ai_initializer is None:
+            logger.warning("[Lifecycle] AI client initialization requested but no initializer hook is registered")
+        else:
+            await ai_initializer(http_client=http_client)
 
     if start_broker and broker is not None:
         await broker.startup()
@@ -77,6 +108,7 @@ async def stop_runtime_services(
     broker: Any | None = None,
     stop_broker: bool = False,
     reset_ai_client: bool = False,
+    reset_ai_client_hook: AIClientResetter | None = None,
     dispose_redis_client: bool = True,
     shutdown_observability: Callable[[], None] | None = None,
     stop_logger: bool = False,
@@ -88,7 +120,11 @@ async def stop_runtime_services(
         await broker.shutdown()
 
     if reset_ai_client:
-        await reset_openai_client()
+        ai_resetter = reset_ai_client_hook or _runtime_hooks.reset_ai_client
+        if ai_resetter is None:
+            logger.warning("[Lifecycle] AI client reset requested but no reset hook is registered")
+        else:
+            await ai_resetter()
     await context.close(close_redis=dispose_redis_client)
     if context is get_default_app_context():
         set_default_app_context(None)

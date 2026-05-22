@@ -13,6 +13,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+from core import redis_client, redis_health
+from core.app_context import get_default_config
 from core.logger import get_logger
 from core.redis_keys import webhook_processing_lock, webhook_processing_queue
 from core.redis_lua import (
@@ -90,10 +92,6 @@ async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
 
 
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
-    from core.app_context import get_default_config
-    from core.redis_client import redis_eval_int
-    from core.redis_health import ensure_redis_available, mark_redis_failure
-
     config = get_default_config()
     threshold = max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     if not threshold:
@@ -101,12 +99,12 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
 
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
-    if not await ensure_redis_available("alert_concurrency:reserve_processing_slot"):
+    if not await redis_health.ensure_redis_available("alert_concurrency:reserve_processing_slot"):
         logger.warning("[Concurrency] Redis 不可用，告警处理槽按背压抑制 alert_hash=%s", alert_hash)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     try:
-        queue_size = await redis_eval_int(
+        queue_size = await redis_client.redis_eval_int(
             _RESERVE_QUEUE_SLOT_LUA,
             1,
             queue_key,
@@ -114,7 +112,7 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
             threshold,
         )
     except Exception as e:
-        mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
+        redis_health.mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
         logger.warning("[Concurrency] 告警风暴处理槽预占失败，按背压抑制: %s", e)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
@@ -128,14 +126,11 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
 
 
 async def _release_processing_slot(alert_hash: str) -> None:
-    from core.app_context import get_default_config
-    from core.redis_client import redis_eval_int
-
     config = get_default_config()
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
     try:
-        await redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
+        await redis_client.redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
     except Exception as e:
         logger.warning("[Concurrency] 告警风暴处理槽释放失败: %s", e)
 
@@ -145,10 +140,6 @@ def _lock_key(alert_hash: str) -> str:
 
 
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
-    from core.app_context import get_default_config
-    from core.redis_client import redis_set_nx_ex
-    from core.redis_health import ensure_redis_available, mark_redis_failure
-
     config = get_default_config()
     if not config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
         return None
@@ -161,16 +152,16 @@ async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
 
-    if not await ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
+    if not await redis_health.ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
         logger.warning("[Concurrency] Redis 不可用，拒绝降级为本进程锁 alert_hash=%s", alert_hash)
         return "", "redis_unavailable"
 
     while True:
         try:
-            if await redis_set_nx_ex(key, token, ttl_seconds):
+            if await redis_client.redis_set_nx_ex(key, token, ttl_seconds):
                 return key, token
         except Exception as e:
-            mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
+            redis_health.mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
             logger.warning("[Concurrency] Redis 分布式锁获取失败，按 Redis 不可用抑制: %s", e)
             return "", "redis_unavailable"
 
@@ -180,24 +171,20 @@ async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
 
 
 async def _release_distributed_lock(key: str, token: str) -> None:
-    from core.redis_client import redis_eval_int
-
     if not key or not token:
         return
     try:
-        await redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
+        await redis_client.redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
     except Exception as e:
         logger.warning("[Concurrency] Redis 分布式锁释放失败: %s", e)
 
 
 async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> None:
-    from core.redis_client import redis_eval_int
-
     interval = max(1.0, float(ttl_seconds) / 3.0)
     while True:
         await asyncio.sleep(interval)
         try:
-            refreshed = await redis_eval_int(_REFRESH_IF_OWNER_LUA, 1, key, token, ttl_seconds)
+            refreshed = await redis_client.redis_eval_int(_REFRESH_IF_OWNER_LUA, 1, key, token, ttl_seconds)
         except Exception as e:
             logger.warning("[Concurrency] Redis 分布式锁续期失败: %s", e)
             return
@@ -209,8 +196,6 @@ async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> N
 @asynccontextmanager
 async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessingGateResult, None]:
     """Serialize same-alert processing across workers and apply storm backpressure."""
-    from core.app_context import get_default_config
-
     config = get_default_config()
 
     slot = await _reserve_processing_slot(alert_hash)

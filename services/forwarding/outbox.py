@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -38,6 +39,23 @@ from services.webhooks.types import (
 )
 
 logger = get_logger("forward_outbox")
+
+ForwardOutboxEnqueuer = Callable[[int], Awaitable[None]]
+ForwardOutboxRetryScheduler = Callable[[int, int], Awaitable[None]]
+
+_forward_outbox_enqueuer: ForwardOutboxEnqueuer | None = None
+_forward_outbox_retry_scheduler: ForwardOutboxRetryScheduler | None = None
+
+
+def configure_forward_outbox_schedulers(
+    *,
+    enqueue_outbox: ForwardOutboxEnqueuer | None = None,
+    schedule_retry: ForwardOutboxRetryScheduler | None = None,
+) -> None:
+    """Register operations-layer schedulers without importing task definitions here."""
+    global _forward_outbox_enqueuer, _forward_outbox_retry_scheduler
+    _forward_outbox_enqueuer = enqueue_outbox
+    _forward_outbox_retry_scheduler = schedule_retry
 
 
 def _rule_id(rule: ForwardRuleTarget) -> int | None:
@@ -145,11 +163,13 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
     if not outbox_ids:
         return
 
-    from services.operations.tasks import process_forward_outbox_task
+    if _forward_outbox_enqueuer is None:
+        logger.warning("[ForwardOutbox] 未注册即时调度器，ids=%s 将由扫描任务补扫", outbox_ids)
+        return
 
     for outbox_id in outbox_ids:
         try:
-            await process_forward_outbox_task.kiq(outbox_id=outbox_id)
+            await _forward_outbox_enqueuer(outbox_id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
         except Exception as e:  # noqa: PERF203
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
@@ -157,10 +177,11 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
 
 
 async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
+    if _forward_outbox_retry_scheduler is None:
+        logger.warning("[ForwardOutbox] 未注册延迟调度器 id=%s，将由扫描任务补扫", outbox_id)
+        return
     try:
-        from services.operations.taskiq_retry_scheduler import schedule_forward_outbox
-
-        await schedule_forward_outbox(outbox_id, delay_seconds)
+        await _forward_outbox_retry_scheduler(outbox_id, delay_seconds)
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
     except Exception as e:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
