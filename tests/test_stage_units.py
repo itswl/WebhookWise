@@ -202,6 +202,29 @@ async def test_ingress_backpressure_suppresses_after_threshold() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingress_backpressure_suppresses_on_redis_error() -> None:
+    from services.webhooks.ingress_backpressure import check_ingress_backpressure
+    from services.webhooks.policies import WebhookReceivePolicy
+
+    async def failing_eval(*_: object) -> int:
+        raise RuntimeError("redis unavailable")
+
+    result = await check_ingress_backpressure(
+        source_hint="prometheus",
+        raw_body=b'{"alertname":"HighCPU","instance":"a"}',
+        policy=WebhookReceivePolicy(
+            max_body_bytes=1024,
+            ingress_backpressure_threshold=1,
+            ingress_backpressure_window_seconds=60,
+        ),
+        redis_eval_int_func=failing_eval,
+    )
+
+    assert result.suppressed is True
+    assert result.reason == "redis_unavailable"
+
+
+@pytest.mark.asyncio
 async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import webhook
     from services.operations.tasks import process_webhook_task

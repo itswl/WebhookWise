@@ -11,7 +11,7 @@ import contextlib
 import hashlib
 import time
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,12 +27,20 @@ from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardOutboxPolicy
-from services.webhooks.types import DeepAnalysisStatus, ForwardDecision, ForwardOutboxStatus
+from services.webhooks.types import (
+    AnalysisResult,
+    DeepAnalysisStatus,
+    ForwardDecision,
+    ForwardOutboxStatus,
+    ForwardResult,
+    ForwardRuleTarget,
+    WebhookData,
+)
 
 logger = get_logger("forward_outbox")
 
 
-def _rule_id(rule: dict[str, Any]) -> int | None:
+def _rule_id(rule: ForwardRuleTarget) -> int | None:
     raw = rule.get("id")
     if isinstance(raw, int):
         return raw
@@ -55,9 +63,9 @@ def _idempotency_key(
     return f"forward:{webhook_id}:{digest[:32]}"
 
 
-def _iter_target_rules(decision: ForwardDecision, policy: ForwardOutboxPolicy) -> list[dict[str, Any]]:
+def _iter_target_rules(decision: ForwardDecision, policy: ForwardOutboxPolicy) -> list[ForwardRuleTarget]:
     if decision.matched_rules:
-        return [dict(r) for r in decision.matched_rules]
+        return list(decision.matched_rules)
     return [policy.default_rule()]
 
 
@@ -66,7 +74,7 @@ async def create_forward_outbox_records(
     *,
     decision: ForwardDecision,
     full_data: dict[str, Any],
-    analysis: dict[str, Any],
+    analysis: AnalysisResult,
     webhook_id: int,
     orig_id: int | None,
     policy: ForwardOutboxPolicy | None = None,
@@ -224,7 +232,7 @@ async def _claim_outbox(outbox_id: int, *, policy: ForwardOutboxPolicy | None = 
         return res.scalar_one_or_none()
 
 
-def _is_forward_success(result: dict[str, Any]) -> bool:
+def _is_forward_success(result: ForwardResult) -> bool:
     return result.get("status") == "success" or bool(result.get("_pending"))
 
 
@@ -272,23 +280,25 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
 
 
-async def _send_outbox_record(record: ForwardOutbox) -> dict[str, Any]:
+async def _send_outbox_record(record: ForwardOutbox) -> ForwardResult:
+    forward_data = cast(WebhookData, dict(record.forward_data or {}))
+    analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
     if record.target_type == "openclaw":
         from services.forwarding.openclaw import forward_to_openclaw
 
-        return await forward_to_openclaw(dict(record.forward_data or {}), dict(record.analysis_result or {}))
+        return await forward_to_openclaw(forward_data, analysis)
 
     from services.forwarding.remote import forward_to_remote
 
     return await forward_to_remote(
-        webhook_data=dict(record.forward_data or {}),
-        analysis_result=dict(record.analysis_result or {}),
+        webhook_data=forward_data,
+        analysis_result=analysis,
         target_url=record.target_url,
         is_periodic_reminder=bool(record.is_periodic_reminder),
     )
 
 
-async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]) -> None:
+async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
     now = datetime.now()
     openclaw_analysis_id: int | None = None
     async with session_scope() as session:
@@ -303,7 +313,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: dict[str, Any]
         current.sent_at = now
         current.updated_at = now
         current.last_error = None
-        current.response_data = result
+        current.response_data = dict(result)
 
         if current.target_type == "openclaw" and result.get("_pending"):
             from models import DeepAnalysis

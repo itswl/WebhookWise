@@ -68,6 +68,11 @@ async def check_ingress_backpressure(
     try:
         if redis_eval_int_func is None:
             from core.redis_client import redis_eval_int
+            from core.redis_health import ensure_redis_available
+
+            if not await ensure_redis_available("ingress_backpressure:counter"):
+                logger.warning("[IngressBackpressure] Redis 不可用，ingress 按背压抑制 key=%s", key)
+                return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
             redis_eval_int_func = redis_eval_int
         raw_count = await redis_eval_int_func(_INGRESS_COUNTER_LUA, 1, key, policy.ingress_backpressure_window_seconds)
@@ -75,8 +80,11 @@ async def check_ingress_backpressure(
             raise RuntimeError("ingress counter script returned no integer")
         count = int(raw_count)
     except Exception as e:
-        logger.warning("[IngressBackpressure] Redis 计数失败，降级放行: %s", e)
-        return IngressBackpressureResult(False, key, 0, threshold)
+        from core.redis_health import mark_redis_failure
+
+        mark_redis_failure("ingress_backpressure:counter", e)
+        logger.warning("[IngressBackpressure] Redis 计数失败，ingress 按背压抑制: %s", e)
+        return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
     suppressed = count > threshold
     return IngressBackpressureResult(

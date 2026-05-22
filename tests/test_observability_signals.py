@@ -110,6 +110,7 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         "DB_SESSION_DURATION_SECONDS": ("db.operation", "db.status"),
         "REDIS_OPERATIONS_TOTAL": ("redis.operation", "redis.status"),
         "REDIS_OPERATION_DURATION_SECONDS": ("redis.operation", "redis.status"),
+        "REDIS_HEALTH_STATE": ("redis.state",),
         "CIRCUIT_BREAKER_REQUESTS_TOTAL": ("circuit_breaker.name", "circuit_breaker.outcome"),
         "CIRCUIT_BREAKER_TRANSITIONS_TOTAL": ("circuit_breaker.name", "circuit_breaker.state"),
         "CIRCUIT_BREAKER_STATE": ("circuit_breaker.name", "circuit_breaker.state"),

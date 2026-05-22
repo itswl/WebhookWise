@@ -10,9 +10,9 @@ from core import json
 from core.compression import decompress_payload_async
 from db.session import session_scope
 from models import ForwardRule, WebhookEvent
-from schemas import forward_rule_to_dict
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
+from services.webhooks.types import AnalysisResult
 
 
 @dataclass(slots=True)
@@ -115,7 +115,7 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
                 e.source,
                 normalize_importance(e.importance or "medium"),
                 cast(dict[str, Any], e.parsed_data or {}),
-                cast(dict[str, Any], e.ai_analysis or {}),
+                cast(AnalysisResult, e.ai_analysis or {}),
                 e.timestamp or now,
                 e.alert_hash,
             )
@@ -124,7 +124,6 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
 
 
 def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
-    raw = forward_rule_to_dict(rule)
     return ForwardRuleSnapshot(
         id=rule.id,
         name=rule.name,
@@ -134,7 +133,7 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
         target_type=rule.target_type,
         target_url=rule.target_url,
         stop_on_match=rule.stop_on_match,
-        extra=raw,
+        target_name=rule.target_name or "",
     )
 
 

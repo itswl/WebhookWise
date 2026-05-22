@@ -14,7 +14,7 @@ from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWAR
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
-from services.webhooks.types import ForwardResult, WebhookData
+from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 logger = get_logger("forwarding.openclaw")
 
@@ -23,7 +23,7 @@ _JSON_UTF8_CONTENT_TYPE = "application/json; charset=utf-8"
 
 async def forward_to_openclaw(
     webhook_data: WebhookData,
-    analysis_result: dict[str, Any],
+    analysis_result: AnalysisResult,
     *,
     policy: OpenClawTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
@@ -46,7 +46,7 @@ async def forward_to_openclaw(
         FORWARD_DELIVERY_DURATION_SECONDS.labels("openclaw", status).observe(time.perf_counter() - started)
         return {"status": "disabled"}
 
-    async def _do_request() -> dict[str, Any]:
+    async def _do_request() -> ForwardResult:
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
         result = await analyze_with_openclaw(webhook_data, policy=policy, dependencies=dependencies)
@@ -57,7 +57,7 @@ async def forward_to_openclaw(
                 "headers": webhook_data.get("headers", {}),
                 "parsed_data": webhook_data.get("parsed_data", {}),
             }
-            return await analyze_webhook_with_ai(local_data)
+            return cast(ForwardResult, await analyze_webhook_with_ai(local_data))
         return result
 
     try:
@@ -124,7 +124,7 @@ async def analyze_with_openclaw(
     http_client: httpx.AsyncClient | None = None,
     dependencies: OpenClawForwardDependencies | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
-) -> dict[str, Any]:
+) -> ForwardResult:
     """通过 OpenClaw Agent 进行深度分析（非阻塞触发，立即返回）"""
     from core.observability.tracing import get_current_trace_id
 

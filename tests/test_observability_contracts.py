@@ -164,7 +164,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     webhook = (ROOT / "api/webhook.py").read_text()
     tasks = (ROOT / "services/operations/tasks.py").read_text()
-    pipeline_steps = (ROOT / "services/webhooks/pipeline_steps.py").read_text()
+    pipeline = (ROOT / "services/webhooks/pipeline.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
     forward_outbox = (ROOT / "services/forwarding/outbox.py").read_text()
     redis_metrics = (ROOT / "core/redis_metrics.py").read_text()
@@ -182,8 +182,8 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"worker.webhook_process_task"' in tasks
     assert '"worker.task.name": "webhook_process_task"' in tasks
     assert "worker.task.status" in tasks
-    assert '"pipeline.step": "validate"' in pipeline_steps
-    assert '"pipeline.step": "noise"' in pipeline_steps
+    assert '"pipeline.step": "validate"' in pipeline
+    assert '"pipeline.step": "noise"' in pipeline
     assert '"forward.target_type": (' in forwarding_stage
     assert '"forward.target_type": target_type' in forward_outbox
     assert '"redis.operation": operation' in redis_metrics

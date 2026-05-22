@@ -1,7 +1,6 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +23,7 @@ from services.webhooks.policies import forwarding_policy_from_config
 from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResolution,
+    AnalysisResult,
     ForwardDecision,
     NoiseReductionContext,
     WebhookProcessContext,
@@ -97,7 +97,7 @@ async def resolve_forward_decision(
 async def finalize_analysis_transaction(
     ctx: WebhookProcessContext,
     analysis_res: AnalysisResolution,
-    final_analysis: dict[str, Any],
+    final_analysis: AnalysisResult,
     noise: NoiseReductionContext,
     *,
     forwarding_policy: ForwardingPolicy | None = None,
@@ -181,6 +181,7 @@ async def finalize_analysis_transaction(
                 forward_data = dict(ctx.req_ctx.webhook_full_data)
                 if isinstance(forward_data.get("headers"), dict):
                     forward_data["headers"] = redact_headers(forward_data["headers"])
+                first_target_type = fwd_dec.matched_rules[0]["target_type"] if fwd_dec.matched_rules else "default"
                 with otel_span(
                     "webhook.persist.outbox",
                     {
@@ -188,10 +189,7 @@ async def finalize_analysis_transaction(
                         "source": ctx.req_ctx.source,
                         "pipeline.step": "persist",
                         "forward.target_count": len(fwd_dec.matched_rules) or 1,
-                        "forward.target_type": (
-                            str((fwd_dec.matched_rules[0] if fwd_dec.matched_rules else {}).get("target_type") or "")
-                            or "default"
-                        ),
+                        "forward.target_type": (first_target_type),
                     },
                 ):
                     outbox_ids = await create_forward_outbox_records(

@@ -25,6 +25,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
+from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("api.forwarding")
 
@@ -165,8 +166,8 @@ async def test_forward_rule_endpoint(
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
 
-    test_webhook = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
-    test_analysis = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
+    test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
+    test_analysis: AnalysisResult = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
 
     if rule.target_type == "openclaw":
         from services.forwarding.openclaw import forward_to_openclaw

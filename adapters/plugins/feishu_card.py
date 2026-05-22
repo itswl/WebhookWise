@@ -6,7 +6,7 @@ from typing import Any
 
 from adapters.ecosystem_adapters import normalize_level
 from adapters.registry import registry
-from services.webhooks.types import WebhookData
+from services.webhooks.types import AnalysisResult, WebhookData
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {
@@ -19,7 +19,7 @@ _IMPORTANCE_LABEL = {
 
 def build_feishu_card(
     webhook_data: WebhookData,
-    analysis_result: WebhookData,
+    analysis_result: AnalysisResult,
     *,
     is_periodic_reminder: bool = False,
 ) -> WebhookData:

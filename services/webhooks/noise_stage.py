@@ -14,7 +14,7 @@ from services.analysis.noise_reduction import AlertContext, analyze_noise_reduct
 from services.webhooks.decisioning import normalize_importance
 from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import list_recent_alert_contexts
-from services.webhooks.types import NoiseReductionContext
+from services.webhooks.types import AnalysisResult, NoiseReductionContext
 
 logger = get_logger("webhooks.noise_stage")
 
@@ -23,7 +23,7 @@ async def compute_noise(
     alert_hash: str,
     source: str,
     parsed: dict[str, Any],
-    analysis: dict[str, Any],
+    analysis: AnalysisResult,
     *,
     policy: NoiseReductionPolicy | None = None,
 ) -> NoiseReductionContext:

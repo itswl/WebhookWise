@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
 from core.text import split_csv_lower
-from services.webhooks.types import ForwardDecision, NoiseReductionContext
+from services.webhooks.types import (
+    AnalysisResult,
+    ForwardDecision,
+    ForwardRuleTarget,
+    NoiseReductionContext,
+    NoiseReductionSnapshot,
+)
 
 
 class NotifiedEvent(Protocol):
@@ -22,19 +28,18 @@ class ForwardRuleSnapshot:
     target_type: str
     target_url: str
     stop_on_match: bool
-    extra: dict[str, Any] = field(default_factory=dict)
+    target_name: str = ""
 
-    def to_dict(self) -> dict[str, Any]:
-        data = dict(self.extra)
-        data.update(
-            {
-                "id": self.id,
-                "name": self.name,
-                "target_type": self.target_type,
-                "target_url": self.target_url,
-                "stop_on_match": self.stop_on_match,
-            }
-        )
+    def to_dict(self) -> ForwardRuleTarget:
+        data: ForwardRuleTarget = {
+            "id": self.id,
+            "name": self.name,
+            "target_type": self.target_type,
+            "target_url": self.target_url,
+            "stop_on_match": self.stop_on_match,
+        }
+        if self.target_name:
+            data["target_name"] = self.target_name
         return data
 
 
@@ -62,9 +67,18 @@ def normalize_importance(value: Any) -> str:
     return text
 
 
-def build_final_analysis(analysis_result: dict[str, Any], noise: NoiseReductionContext) -> dict[str, Any]:
-    final_analysis = dict(analysis_result)
-    final_analysis["noise_reduction"] = noise.__dict__
+def build_final_analysis(analysis_result: AnalysisResult, noise: NoiseReductionContext) -> AnalysisResult:
+    final_analysis = analysis_result.copy()
+    noise_snapshot: NoiseReductionSnapshot = {
+        "relation": noise.relation,
+        "root_cause_event_id": noise.root_cause_event_id,
+        "confidence": noise.confidence,
+        "suppress_forward": noise.suppress_forward,
+        "reason": noise.reason,
+        "related_alert_count": noise.related_alert_count,
+        "related_alert_ids": noise.related_alert_ids,
+    }
+    final_analysis["noise_reduction"] = noise_snapshot
     return final_analysis
 
 
@@ -97,8 +111,8 @@ def select_forward_rules(
     source: str,
     is_duplicate: bool,
     beyond_window: bool,
-) -> list[dict[str, Any]]:
-    matched_rules: list[dict[str, Any]] = []
+) -> list[ForwardRuleTarget]:
+    matched_rules: list[ForwardRuleTarget] = []
     for rule in rules:
         if not _rule_matches(
             rule,
