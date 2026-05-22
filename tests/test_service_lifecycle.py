@@ -6,7 +6,7 @@ import pytest
 
 
 class _ServerConfig:
-    ENABLE_RUNTIME_CONFIG = True
+    RUN_MODE = "api"
 
 
 class _AIConfig:
@@ -20,15 +20,6 @@ class _Config:
 
     def __init__(self) -> None:
         self.calls: list[str] = []
-
-    async def load_from_db(self) -> None:
-        self.calls.append("config.load_from_db")
-
-    async def start_subscriber(self) -> None:
-        self.calls.append("config.start_subscriber")
-
-    async def stop_subscriber(self) -> None:
-        self.calls.append("config.stop_subscriber")
 
 
 class _Broker:
@@ -124,8 +115,6 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         "http",
         "db",
         "redis",
-        "config.load_from_db",
-        "config.start_subscriber",
         "ai",
         "broker.startup",
     ]
@@ -166,7 +155,6 @@ async def test_stop_runtime_services_tears_down_requested_dependencies(monkeypat
     )
 
     assert calls == [
-        "config.stop_subscriber",
         "broker.shutdown",
         "ai.reset",
         "db.dispose",

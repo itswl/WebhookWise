@@ -38,9 +38,8 @@ class TaskiqBrokerSettings:
 
 def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
     # This module is imported by TaskIQ worker/scheduler bootstrap before the
-    # app runtime services are started. Keep it on static settings and avoid
-    # importing core.config.Config, which would attach DB/Redis runtime behavior
-    # to broker construction.
+    # app services are started. Keep it on static settings so broker
+    # construction never depends on database-backed application resources.
     settings = get_settings()
     return TaskiqBrokerSettings(
         redis_url=settings.redis.REDIS_URL,

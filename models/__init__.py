@@ -3,7 +3,6 @@
 """
 
 from models.analysis import AIUsageLog, DeepAnalysis
-from models.config import SystemConfig
 from models.forwarding import ForwardOutbox, ForwardRule
 from models.webhook import ArchivedWebhookEvent, WebhookEvent
 
@@ -14,5 +13,4 @@ __all__ = [
     "ForwardRule",
     "ForwardOutbox",
     "DeepAnalysis",
-    "SystemConfig",
 ]

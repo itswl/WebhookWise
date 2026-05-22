@@ -244,7 +244,7 @@ def test_resilience_and_outbox_operational_metrics_exist() -> None:
 def test_otlp_logs_are_opt_in_and_otel_enabled_is_explicit() -> None:
     exporters = (ROOT / "core/observability/exporters.py").read_text()
     logging_py = (ROOT / "core/observability/logging.py").read_text()
-    env_example = (ROOT / ".env.example").read_text()
+    env_example = (ROOT / ".env.example.all").read_text()
 
     assert 'return env_flag("OTEL_ENABLED", default=False)' in exporters
     assert (

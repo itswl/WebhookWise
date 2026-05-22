@@ -53,18 +53,9 @@ class ConfigResponse(APIResponse[dict[str, Any]]):
     """配置读取响应"""
 
 
-class ConfigUpdateResponse(BaseModel):
-    """配置更新响应"""
-
-    success: bool
-    message: str
-
-
 class ConfigSourceItem(BaseModel):
     key: str
     source: str
-    updated_at: str | None = None
-    updated_by: str | None = None
     requires_restart: bool = False
 
 

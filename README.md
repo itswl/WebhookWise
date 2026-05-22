@@ -23,7 +23,7 @@
 | **事务性转发 Outbox** | 处理结果与转发意图同事务落库，Worker 异步消费，避免 DB 状态与 HTTP 副作用脱节 |
 | **转发失败重试** | Outbox 投递失败后指数退避重试；超过最大投递年龄会标记 `expired`，避免旧告警误发 |
 | **冷热数据归档** | 每日凌晨自动按重要性分级归档（high 90d / medium 30d / low 7d） |
-| **运行时策略热更新** | 配置写入 DB `system_configs`，Redis Pub/Sub 广播到所有进程 |
+| **静态配置治理** | 配置只从 `.env` / 环境变量 / ConfigMap 读取，修改后通过重启或滚动发布生效 |
 | **全方位可观测性** | OpenTelemetry SDK + OTLP 统一输出 metrics/traces/logs |
 
 ## 🏗️ 架构概览
@@ -60,7 +60,7 @@
 - TaskIQ 动态调度：按事件投递 Webhook 处理重试、Forward Outbox 重试和 OpenClaw 结果拉取
 - Forward Outbox：Webhook 处理事务内只写入待发送意图，由 Worker 执行真实 HTTP/OpenClaw 转发
 - PostgreSQL：Webhook 事实存储、Forward Outbox、死信和重试状态等可审计状态
-- Redis：TaskIQ 队列、短窗口风暴计数、缓存、运行时配置广播
+- Redis：TaskIQ 队列、短窗口风暴计数、缓存
 
 **部署边界：**
 - 小规模部署使用 `RUN_MODE=all` 把 API、Worker、Scheduler 放进同一个应用容器。
@@ -94,6 +94,7 @@
 # 1. 复制并填写配置
 cp .env.example .env
 # 至少需要替换: API_KEY, ADMIN_WRITE_KEY, WEBHOOK_SECRET；需要 AI 分析时再填写 OPENAI_API_KEY
+# 完整配置项参考 .env.example.all
 
 # 2. 一键启动（Migrate + API + Worker + Scheduler + Redis + PostgreSQL）
 docker-compose up -d --build
@@ -219,7 +220,7 @@ tests/e2e/run_webhook_to_feishu.sh
 │   ├── forwarding/    # 转发规则、外部投递、失败转发补偿
 │   ├── analysis/      # AI 分析、降噪、OpenClaw 集成
 │   ├── operations/    # TaskIQ 任务、调度入口、恢复/指标/维护任务
-│   └── runtime_config/# 运行时配置热更新服务
+│   └── configuration/ # 配置只读查询服务
 ├── adapters/          # 生态适配器 (多格式归一化)
 │   └── plugins/       # 生态适配器插件 (feishu_card)
 ├── models/            # SQLAlchemy ORM 模型
@@ -235,7 +236,8 @@ tests/e2e/run_webhook_to_feishu.sh
 ├── worker.py          # TaskIQ Worker 入口
 ├── Dockerfile         # 多阶段构建 (jemalloc + 非 root)
 ├── docker-compose.yml # 6 服务编排（含 migrate job）
-└── .env.example       # 配置模板
+├── .env.example       # 精简配置模板
+└── .env.example.all   # 完整配置参考
 ```
 
 详细边界约束见 [docs/architecture/boundaries.md](docs/architecture/boundaries.md)。简要规则：
@@ -289,8 +291,7 @@ tests/e2e/run_webhook_to_feishu.sh
 | 方法 | 路径 | 说明 |
 |:---|:---|:---|
 | `GET` | `/api/config` | 查看当前有效配置 |
-| `GET` | `/api/config/sources` | 查看每个配置 key 的来源（db/env/default）及更新时间 |
-| `POST` | `/api/config` | 热更新运行时配置（写权限） |
+| `GET` | `/api/config/sources` | 查看每个配置 key 当前来自配置文件/环境变量还是默认值 |
 | `GET` | `/api/prompt?kind=user\|deep_analysis` | 查看当前 AI Prompt 或深度分析 Prompt |
 | `POST` | `/api/prompt/reload?kind=user\|deep_analysis` | 热重载 Prompt 文件（写权限） |
 | `GET` | `/api/admin/dead-letters` | 死信队列列表 |
@@ -302,9 +303,9 @@ tests/e2e/run_webhook_to_feishu.sh
 
 ## ⚙️ 关键配置说明
 
-优先级（低 → 高）：内置默认值 < `.env` / 环境变量 < `system_configs` 数据库表（仅启用运行时配置后参与热更新）
+优先级（低 → 高）：内置默认值 < `.env` / 环境变量 / ConfigMap。
 
-> 标记 `[runtime]` 的业务策略项支持通过 `POST /api/config` 或 Web 界面在线修改，无需重启。连接串、模型基地址、Token/API Key 默认要求通过环境变量或 ConfigMap 修改并滚动重启，避免多进程配置短暂不一致。
+> 所有配置只在进程启动时读取。修改 `.env`、环境变量、Kubernetes ConfigMap 或 Secret 后，需要重启本地进程或滚动发布容器；应用不再从数据库读取配置，也不提供在线写配置入口。
 
 ### 基础设施（启动时读取，修改后需重启）
 
@@ -318,8 +319,6 @@ tests/e2e/run_webhook_to_feishu.sh
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接串 |
 | `RUN_MODE` | `api` | `api` / `worker` / `scheduler` / `all`；`all` 为 supervisor all-in-one 拓扑 |
-| `ENABLE_RUNTIME_CONFIG` | `false`（生产） | 启用 DB/Redis 运行时业务策略配置 |
-| `ALLOW_RUNTIME_CONNECTION_CONFIG` | `false` | 允许连接/密钥类配置热更新；生产不建议开启 |
 | `API_WORKERS` | `4` | `RUN_MODE=all` 时 API Gunicorn worker 数 |
 | `DB_POOL_SIZE` | `5` | 单进程数据库连接池大小 |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | SQL 语句超时（毫秒） |
@@ -336,19 +335,19 @@ tests/e2e/run_webhook_to_feishu.sh
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `ENABLE_AI_ANALYSIS` | `true` | `[runtime]` 开启 AI 分析 |
-| `OPENAI_API_KEY` | — | LLM 提供商 API Key；默认需重启生效 |
-| `OPENAI_API_URL` | OpenRouter | LLM API 基地址；默认需重启生效 |
-| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | `[runtime]` 使用的模型 |
-| `AI_SYSTEM_PROMPT` | 内置 | `[runtime]` 系统级 Prompt |
+| `ENABLE_AI_ANALYSIS` | `true` | 开启 AI 分析 |
+| `OPENAI_API_KEY` | — | LLM 提供商 API Key |
+| `OPENAI_API_URL` | OpenRouter | LLM API 基地址 |
+| `OPENAI_MODEL` | `anthropic/claude-sonnet-4` | 使用的模型 |
+| `AI_SYSTEM_PROMPT` | 内置 | 系统级 Prompt |
 | `AI_USER_PROMPT_FILE` | `prompts/webhook_analysis_detailed.txt` | 用户 Prompt 模板文件路径 |
-| `AI_USER_PROMPT` | — | `[runtime]` 用户 Prompt 内联覆盖，优先级高于文件 |
+| `AI_USER_PROMPT` | — | 用户 Prompt 内联覆盖，优先级高于文件 |
 | `DEEP_ANALYSIS_PROMPT_FILE` | `prompts/deep_analysis.txt` | OpenClaw 深度分析 Prompt 模板文件路径 |
-| `DEEP_ANALYSIS_PROMPT` | — | `[runtime]` 深度分析 Prompt 内联覆盖，优先级高于文件 |
+| `DEEP_ANALYSIS_PROMPT` | — | 深度分析 Prompt 内联覆盖，优先级高于文件 |
 | `CACHE_ENABLED` | `true` | 分析结果 Redis 缓存 |
 | `ANALYSIS_CACHE_TTL` | `21600` | 缓存有效期（秒，默认 6h） |
 
-### 去重与降噪（`[runtime]` 可热更新）
+### 去重与降噪
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
@@ -373,7 +372,7 @@ uv pip compile requirements.txt -o requirements.lock --python-version 3.12
 uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.12
 ```
 
-### 转发与重试（`[runtime]` 可热更新）
+### 转发与重试
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
