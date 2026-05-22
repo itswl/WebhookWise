@@ -31,12 +31,11 @@ mypy
 pytest -q
 ```
 
-When API contracts change, refresh and check the exported OpenAPI files with
-the lock-file dependency set:
+When API contracts change, refresh the exported OpenAPI files with the
+lock-file dependency set:
 
 ```bash
 OTEL_ENABLED=false python scripts/export_openapi.py
-OTEL_ENABLED=false python scripts/export_openapi.py --check
 ```
 
 When touching Alembic, Redis/TaskIQ, pipeline, forwarding, or container
