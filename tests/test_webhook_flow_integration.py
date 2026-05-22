@@ -18,6 +18,11 @@ def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
     return "JSON"
 
 
+def _set_config(monkeypatch: pytest.MonkeyPatch, config: Any, key: str, value: object) -> None:
+    config_info = config.CONFIG_KEYS[key]
+    monkeypatch.setattr(getattr(config, config_info["sub"]), key, value)
+
+
 @pytest.fixture()
 async def integration_session_factory(
     monkeypatch: pytest.MonkeyPatch,
@@ -59,17 +64,15 @@ async def test_webhook_receive_to_feishu_card_flow(
     from services.operations.tasks import process_forward_outbox_task, process_webhook_task
     from services.webhooks.pipeline import handle_webhook_ingest
 
-    monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
-    monkeypatch.setattr(Config, "_meta", dict(Config._meta))
     settings = get_settings()
     monkeypatch.setattr(settings.security, "WEBHOOK_SECRET", "")
     monkeypatch.setattr(settings.security, "REQUIRE_WEBHOOK_AUTH", False)
     monkeypatch.setattr(settings.security, "API_KEY", "integration-read-token")
     monkeypatch.setattr(settings.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
-    Config.set_override(
-        "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token", source="test"
+    _set_config(
+        monkeypatch, Config, "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token"
     )
-    Config.set_override("ENABLE_ALERT_NOISE_REDUCTION", False, source="test")
+    _set_config(monkeypatch, Config, "ENABLE_ALERT_NOISE_REDUCTION", False)
 
     async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
         parsed = webhook_data["parsed_data"]
@@ -307,13 +310,11 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     from services.webhooks.request_parser import parse_request
     from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
-    monkeypatch.setattr(Config, "_overrides", dict(Config._overrides))
-    monkeypatch.setattr(Config, "_meta", dict(Config._meta))
-    Config.set_override("DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook", source="test")
-    Config.set_override("ENABLE_PERIODIC_REMINDER", True, source="test")
-    Config.set_override("REMINDER_INTERVAL_HOURS", 1, source="test")
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1, source="test")
-    Config.set_override("FORWARD_DUPLICATE_ALERTS", False, source="test")
+    _set_config(monkeypatch, Config, "DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
+    _set_config(monkeypatch, Config, "ENABLE_PERIODIC_REMINDER", True)
+    _set_config(monkeypatch, Config, "REMINDER_INTERVAL_HOURS", 1)
+    _set_config(monkeypatch, Config, "NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config(monkeypatch, Config, "FORWARD_DUPLICATE_ALERTS", False)
 
     async with integration_session_factory.begin() as session:
         original = WebhookEvent(

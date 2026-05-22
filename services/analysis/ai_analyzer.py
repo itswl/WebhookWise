@@ -1,12 +1,10 @@
 """AI analysis orchestrator."""
 
-import asyncio
-import time
 from typing import Any
 
 import httpx
 
-from core.logger import get_logger, mask_url
+from core.logger import get_logger
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from models import WebhookEvent
 from services.analysis import ai_llm_client as _llm_client
@@ -26,13 +24,6 @@ from services.analysis.analysis_queries import (
     get_deep_analysis_list,
 )
 from services.analysis.rule_analyzer import analyze_with_rules as _analyze_with_rules
-from services.runtime_config.runtime_access import (
-    RuntimeConfigRefreshPolicy,
-    format_runtime_meta_time,
-    get_runtime_config_meta,
-    get_runtime_config_source,
-    reload_runtime_config,
-)
 from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("analysis.ai_analyzer")
@@ -55,9 +46,6 @@ __all__ = [
     "reset_openai_client",
     "save_to_cache",
 ]
-
-_last_policy_refresh_at: float = 0.0
-_policy_refresh_lock = asyncio.Lock()
 
 _AI_POLICY_REFUSAL_MARKERS = (
     "terms of service",
@@ -88,34 +76,6 @@ async def _call_ai_with_retry(
     parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
 ) -> tuple[dict[str, Any], int, int]:
     return await _llm_client._call_ai_with_retry(parsed_data, source, http_client=http_client)
-
-
-async def _maybe_refresh_runtime_policies(keys: tuple[str, ...], min_interval_seconds: int = 30) -> None:
-    global _last_policy_refresh_at
-    if not RuntimeConfigRefreshPolicy.from_config().enabled:
-        return
-    async with _policy_refresh_lock:
-        now = time.time()
-        if now - _last_policy_refresh_at < min_interval_seconds:
-            return
-        before_policy = AIProviderPolicy.from_config()
-        await reload_runtime_config()
-        after_policy = AIProviderPolicy.from_config()
-        api_url_changed = before_policy.api_url != after_policy.api_url
-        api_key_changed = before_policy.api_key != after_policy.api_key
-        if api_url_changed or api_key_changed:
-            logger.info(
-                "[AI] 运行时配置刷新触发客户端重建 changed_api_url=%s changed_api_key=%s old_api_url=%s new_api_url=%s keys=%s",
-                api_url_changed,
-                api_key_changed,
-                mask_url(before_policy.api_url),
-                mask_url(after_policy.api_url),
-                ",".join(keys),
-            )
-            await reset_openai_client()
-        else:
-            logger.debug("[AI] 运行时配置刷新完成 keys=%s", ",".join(keys))
-        _last_policy_refresh_at = now
 
 
 def _iter_exception_chain(root: BaseException) -> list[BaseException]:
@@ -204,7 +164,6 @@ async def analyze_webhook_with_ai(
     *,
     http_client: httpx.AsyncClient | None = None,
 ) -> AnalysisResult:
-    await _maybe_refresh_runtime_policies(("OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_API_URL"), min_interval_seconds=60)
     cache_policy = AICachePolicy.from_config()
     provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
@@ -231,13 +190,10 @@ async def analyze_webhook_with_ai(
         return await _degrade_to_rules(webhook_data, parsed, source, alert_hash, notify_reason, notify=notify)
 
     try:
-        model_meta = get_runtime_config_meta("OPENAI_MODEL")
         logger.debug(
-            "[AI] 发起 OpenAI 请求 source=%s model=%s model_source=%s model_updated_at=%s hash=%s...",
+            "[AI] 发起 OpenAI 请求 source=%s model=%s hash=%s...",
             source,
             provider_policy.model,
-            get_runtime_config_source("OPENAI_MODEL"),
-            format_runtime_meta_time(model_meta.get("updated_at")),
             alert_hash[:12],
         )
         if http_client is not None:

@@ -54,7 +54,7 @@ def test_dockerfile_uses_directory_copy_contract() -> None:
 
 
 def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> None:
-    env_example = (ROOT / ".env.example").read_text()
+    env_example = (ROOT / ".env.example.all").read_text()
     compose = yaml.safe_load((ROOT / "docker-compose.observability.yml").read_text())
     alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager.yml").read_text())
 

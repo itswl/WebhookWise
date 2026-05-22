@@ -117,7 +117,7 @@ Useful environment variables:
 - `OTEL_TRACES_SAMPLER=always_on` locally; production usually uses `parentbased_traceidratio`
 - `OTEL_TRACES_SAMPLER_ARG=0.1` for 10% production head sampling
 - `WEBHOOKWISE_SOURCE_LABEL_LIMIT=128` to cap custom `webhook.source` label cardinality; overflow is reported as `other`
-- Local observability images are pinned in `.env.example` and `docker-compose.observability.yml`; avoid `latest` so learning screenshots and contract tests stay reproducible.
+- Local observability images are pinned in `.env.example.all` and `docker-compose.observability.yml`; avoid `latest` so learning screenshots and contract tests stay reproducible.
 - Alertmanager posts local alerts back to `http://webhook-service:8000/webhook/alertmanager`; the observability compose override disables webhook auth only for this local feedback loop.
 - `PYROSCOPE_ENABLED=true`
 - `PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`

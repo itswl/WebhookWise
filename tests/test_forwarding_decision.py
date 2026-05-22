@@ -39,6 +39,16 @@ def _make_rules_loader(rules: list):
 NO_RULES = _make_rules_loader([])
 
 
+@pytest.fixture(autouse=True)
+def _restore_static_config(temp_config):
+    yield
+
+
+def _set_config(key: str, value: object) -> None:
+    config_info = Config.CONFIG_KEYS[key]
+    setattr(getattr(Config, config_info["sub"]), key, value)
+
+
 # ── 新告警（非重复、非超窗）────────────────────────────────────────────────────
 
 
@@ -102,7 +112,7 @@ async def test_noise_no_suppress_allows_forward():
 async def test_duplicate_in_cooldown_skips():
     """重复告警在冷却期内不转发。"""
     orig = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 300)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=10))
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
@@ -110,16 +120,16 @@ async def test_duplicate_in_cooldown_skips():
         assert decision.should_forward is False
         assert "刚刚已转发" in (decision.skip_reason or "")
     finally:
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig)
 
 
 @pytest.mark.asyncio
 async def test_duplicate_forward_disabled_skips():
     """FORWARD_DUPLICATE_ALERTS=False 时窗口内重复不转发。"""
     orig_cooldown = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    Config.set_override("FORWARD_DUPLICATE_ALERTS", False)
-    Config.set_override("ENABLE_PERIODIC_REMINDER", False)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("FORWARD_DUPLICATE_ALERTS", False)
+    _set_config("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
@@ -127,27 +137,27 @@ async def test_duplicate_forward_disabled_skips():
         assert decision.should_forward is False
         assert "跳过转发" in (decision.skip_reason or "")
     finally:
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        Config.set_override("FORWARD_DUPLICATE_ALERTS", False)
-        Config.set_override("ENABLE_PERIODIC_REMINDER", False)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
+        _set_config("FORWARD_DUPLICATE_ALERTS", False)
+        _set_config("ENABLE_PERIODIC_REMINDER", False)
 
 
 @pytest.mark.asyncio
 async def test_duplicate_forward_enabled_forwards():
     """FORWARD_DUPLICATE_ALERTS=True 且不在冷却期，应转发。"""
     orig_cooldown = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    Config.set_override("FORWARD_DUPLICATE_ALERTS", True)
-    Config.set_override("ENABLE_PERIODIC_REMINDER", False)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("FORWARD_DUPLICATE_ALERTS", True)
+    _set_config("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await resolve_forward_decision("high", True, False, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        Config.set_override("FORWARD_DUPLICATE_ALERTS", False)
-        Config.set_override("ENABLE_PERIODIC_REMINDER", False)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
+        _set_config("FORWARD_DUPLICATE_ALERTS", False)
+        _set_config("ENABLE_PERIODIC_REMINDER", False)
 
 
 @pytest.mark.asyncio
@@ -155,10 +165,10 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     """周期提醒间隔已到，应转发并标记 is_periodic_reminder=True。"""
     orig_cooldown = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
     orig_interval = Config.retry.REMINDER_INTERVAL_HOURS
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    Config.set_override("FORWARD_DUPLICATE_ALERTS", False)
-    Config.set_override("ENABLE_PERIODIC_REMINDER", True)
-    Config.set_override("REMINDER_INTERVAL_HOURS", 6)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("FORWARD_DUPLICATE_ALERTS", False)
+    _set_config("ENABLE_PERIODIC_REMINDER", True)
+    _set_config("REMINDER_INTERVAL_HOURS", 6)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(hours=7))
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
@@ -166,10 +176,10 @@ async def test_duplicate_periodic_reminder_triggers_forward():
         assert decision.should_forward is True
         assert decision.is_periodic_reminder is True
     finally:
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        Config.set_override("FORWARD_DUPLICATE_ALERTS", False)
-        Config.set_override("ENABLE_PERIODIC_REMINDER", False)
-        Config.set_override("REMINDER_INTERVAL_HOURS", orig_interval)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
+        _set_config("FORWARD_DUPLICATE_ALERTS", False)
+        _set_config("ENABLE_PERIODIC_REMINDER", False)
+        _set_config("REMINDER_INTERVAL_HOURS", orig_interval)
 
 
 # ── 超窗口重复告警 ─────────────────────────────────────────────────────────────
@@ -178,38 +188,38 @@ async def test_duplicate_periodic_reminder_triggers_forward():
 @pytest.mark.asyncio
 async def test_beyond_window_forward_disabled_skips():
     """FORWARD_AFTER_TIME_WINDOW=False 时超窗告警不转发。"""
-    Config.set_override("FORWARD_AFTER_TIME_WINDOW", False)
+    _set_config("FORWARD_AFTER_TIME_WINDOW", False)
     try:
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await resolve_forward_decision("high", False, True, None, _Event(), "prometheus")
         assert decision.should_forward is False
         assert "不转发" in (decision.skip_reason or "")
     finally:
-        Config.set_override("FORWARD_AFTER_TIME_WINDOW", True)
+        _set_config("FORWARD_AFTER_TIME_WINDOW", True)
 
 
 @pytest.mark.asyncio
 async def test_beyond_window_forward_enabled_and_cooldown_expired_forwards():
     """FORWARD_AFTER_TIME_WINDOW=True 且冷却期已过，超窗告警应转发。"""
     orig_cooldown = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    Config.set_override("FORWARD_AFTER_TIME_WINDOW", True)
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("FORWARD_AFTER_TIME_WINDOW", True)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=60))
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
             decision = await resolve_forward_decision("high", False, True, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
-        Config.set_override("FORWARD_AFTER_TIME_WINDOW", True)
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
+        _set_config("FORWARD_AFTER_TIME_WINDOW", True)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
 
 
 @pytest.mark.asyncio
 async def test_beyond_window_in_cooldown_skips():
     """FORWARD_AFTER_TIME_WINDOW=True 但仍在冷却期，不转发。"""
     orig_cooldown = Config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    Config.set_override("FORWARD_AFTER_TIME_WINDOW", True)
-    Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", 300)
+    _set_config("FORWARD_AFTER_TIME_WINDOW", True)
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(seconds=10))
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
@@ -217,8 +227,8 @@ async def test_beyond_window_in_cooldown_skips():
         assert decision.should_forward is False
         assert "刚刚已转发" in (decision.skip_reason or "")
     finally:
-        Config.set_override("FORWARD_AFTER_TIME_WINDOW", True)
-        Config.set_override("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
+        _set_config("FORWARD_AFTER_TIME_WINDOW", True)
+        _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
 
 
 # ── 转发规则匹配 ──────────────────────────────────────────────────────────────

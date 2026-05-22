@@ -23,7 +23,6 @@ from models import (  # noqa: E402, F401
     DeepAnalysis,
     ForwardOutbox,
     ForwardRule,
-    SystemConfig,
     WebhookEvent,
 )
 

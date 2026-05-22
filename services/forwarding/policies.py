@@ -1,4 +1,4 @@
-"""Forwarding policies built from runtime configuration or explicit injection."""
+"""Forwarding policies built from static configuration or explicit injection."""
 
 from dataclasses import dataclass
 from typing import Any

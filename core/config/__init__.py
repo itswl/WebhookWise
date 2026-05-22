@@ -12,14 +12,12 @@ from core.config.defaults import (
     OpenClawConfig,
     RedisConfig,
     RetryConfig,
-    RuntimeType,
-    RuntimeValue,
     SecurityConfig,
     ServerConfig,
     TaskConfig,
     get_settings,
 )
-from core.config.runtime import UnifiedConfigManager
+from core.config.manager import ConfigKeyMeta, ConfigValueType, UnifiedConfigManager
 
 Config = UnifiedConfigManager()
 
@@ -28,6 +26,8 @@ __all__ = [
     "AppConfig",
     "CircuitBreakerConfig",
     "Config",
+    "ConfigKeyMeta",
+    "ConfigValueType",
     "DBConfig",
     "ForwardingConfig",
     "MaintenanceConfig",
@@ -36,8 +36,6 @@ __all__ = [
     "OpenClawConfig",
     "RedisConfig",
     "RetryConfig",
-    "RuntimeType",
-    "RuntimeValue",
     "SecurityConfig",
     "ServerConfig",
     "TaskConfig",

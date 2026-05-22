@@ -17,7 +17,6 @@ async def test_ai_policy_refusal_degrades_to_rules_even_when_global_degradation_
     from core.config import Config
     from services.analysis import ai_analyzer
 
-    monkeypatch.setattr(Config.server, "ENABLE_RUNTIME_CONFIG", False)
     monkeypatch.setattr(Config.ai, "ENABLE_AI_ANALYSIS", True)
     monkeypatch.setattr(Config.ai, "OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(Config.ai, "CACHE_ENABLED", False)
@@ -58,7 +57,6 @@ async def test_ai_generic_error_still_raises_when_global_degradation_disabled(
     from core.config import Config
     from services.analysis import ai_analyzer
 
-    monkeypatch.setattr(Config.server, "ENABLE_RUNTIME_CONFIG", False)
     monkeypatch.setattr(Config.ai, "ENABLE_AI_ANALYSIS", True)
     monkeypatch.setattr(Config.ai, "OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(Config.ai, "CACHE_ENABLED", False)
