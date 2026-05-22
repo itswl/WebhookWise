@@ -3,6 +3,7 @@
 import ipaddress
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
 import sqlalchemy
 from fastapi import Request
@@ -126,13 +127,13 @@ def _resolve_analysis_for_duplicate(
     if ai_analysis:
         final_analysis, final_importance = ai_analysis, ai_analysis.get("importance")
     elif original.ai_analysis:
-        final_analysis, final_importance = original.ai_analysis, original.importance
+        final_analysis, final_importance = cast(AnalysisResult, original.ai_analysis), original.importance
     else:
         final_analysis, final_importance = {}, None
 
     if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
         logger.info("更新原始告警 ID=%d 的AI分析结果（之前缺失）", original.id)
-        original.ai_analysis = ai_analysis
+        original.ai_analysis = dict(ai_analysis)
         original.importance = ai_analysis.get("importance")
 
     return final_analysis, final_importance

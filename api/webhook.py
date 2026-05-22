@@ -107,7 +107,7 @@ async def _receive_and_enqueue_webhook(
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
         WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="ingress_suppressed").observe(len(raw_body))
         logger.warning(
-            "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s",
+            "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s reason=%s",
             request_id,
             source_hint,
             client_ip,
@@ -115,6 +115,7 @@ async def _receive_and_enqueue_webhook(
             backpressure.count,
             backpressure.threshold,
             backpressure.key,
+            backpressure.reason,
         )
         return {
             "success": True,

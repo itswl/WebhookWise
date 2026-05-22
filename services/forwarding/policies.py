@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.app_context import get_default_config
+from services.webhooks.types import ForwardRuleTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +54,7 @@ class ForwardOutboxPolicy:
             multiplier=self.retry_backoff_multiplier,
         )
 
-    def default_rule(self) -> dict[str, Any]:
+    def default_rule(self) -> ForwardRuleTarget:
         return {"name": "default", "target_url": self.default_target_url, "target_type": "webhook"}
 
 

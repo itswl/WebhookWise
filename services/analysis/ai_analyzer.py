@@ -74,7 +74,7 @@ async def reset_openai_client() -> None:
 
 async def _call_ai_with_retry(
     parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
-) -> tuple[dict[str, Any], int, int]:
+) -> tuple[AnalysisResult, int, int]:
     return await _llm_client._call_ai_with_retry(parsed_data, source, http_client=http_client)
 
 
@@ -150,7 +150,9 @@ async def _degrade_to_rules(
     logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
     AI_DEGRADATIONS_TOTAL.labels(str(reason).split(":", 1)[0][:80] or "unknown").inc()
     res = analyze_with_rules(parsed, source)
-    res.update({"_degraded": True, "_route_type": "rule", "_degraded_reason": reason})
+    res["_degraded"] = True
+    res["_route_type"] = "rule"
+    res["_degraded_reason"] = reason
     await log_ai_usage("rule", alert_hash, source)
     if notify:
         await _send_ai_error_alert(webhook_data, reason, is_degraded=True)
@@ -176,7 +178,9 @@ async def analyze_webhook_with_ai(
             hits = cached.get("_cache_hit_count", 1)
             logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
             await log_ai_usage("cache", alert_hash, source, cache_hit=True, policy=provider_policy)
-            return {**cached, "_route_type": "cache"}
+            cached_result = cached.copy()
+            cached_result["_route_type"] = "cache"
+            return cached_result
 
     if not provider_policy.available:
         reason = "disabled" if not provider_policy.enabled else "no_api_key"
@@ -219,7 +223,9 @@ async def analyze_webhook_with_ai(
             tokens_out=t_out,
             policy=provider_policy,
         )
-        return {**analysis, "_route_type": "ai"}
+        analysis_result = analysis.copy()
+        analysis_result["_route_type"] = "ai"
+        return analysis_result
     except Exception as e:
         error_reason = _extract_ai_error_message(e)
         logger.error("[AI] 分析失败 source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)

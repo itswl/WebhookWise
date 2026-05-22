@@ -196,7 +196,7 @@ async def _analyze_with_openai_tracked(
         t_out,
         cost,
     )
-    return res.to_dict(), t_in, t_out
+    return cast(AnalysisResult, res.to_dict()), t_in, t_out
 
 
 @retry(
@@ -210,7 +210,7 @@ async def _analyze_with_openai_tracked(
 )
 async def _call_ai_with_retry(
     parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
-) -> tuple[dict[str, Any], int, int]:
+) -> tuple[AnalysisResult, int, int]:
     start = time.time()
     try:
         res, t_in, t_out = await _analyze_with_openai_tracked(parsed_data, source, http_client=http_client)

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from core.app_context import get_default_config
 from core.logger import get_logger
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_keys import webhook_dedupe
+from services.webhooks.types import AnalysisResult
 
 logger = get_logger("webhooks.deduplication")
 
@@ -16,7 +17,7 @@ logger = get_logger("webhooks.deduplication")
 @dataclass(frozen=True, slots=True)
 class CachedDuplicate:
     original_event_id: int
-    analysis: dict[str, Any] | None
+    analysis: AnalysisResult | None
 
 
 def duplicate_window_hours() -> int:
@@ -47,7 +48,7 @@ async def get_cached_duplicate(alert_hash: str) -> CachedDuplicate | None:
     analysis = payload.get("analysis")
     return CachedDuplicate(
         original_event_id=original_event_id,
-        analysis=analysis if isinstance(analysis, dict) else None,
+        analysis=cast(AnalysisResult, analysis) if isinstance(analysis, dict) else None,
     )
 
 
@@ -55,7 +56,7 @@ async def remember_duplicate_source(
     alert_hash: str,
     *,
     original_event_id: int,
-    analysis: dict[str, Any] | None,
+    analysis: AnalysisResult | None,
 ) -> None:
     """Cache the canonical event for future duplicate checks."""
     if original_event_id <= 0:

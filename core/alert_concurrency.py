@@ -1,8 +1,7 @@
 """Per-alert concurrency gate for webhook analysis.
 
 Redis provides cross-worker single-flight per ``alert_hash``. The in-process
-lock remains as a local serialization layer when Redis is
-temporarily unavailable.
+lock is only a local serialization layer after the Redis-backed gate succeeds.
 """
 
 from __future__ import annotations
@@ -44,6 +43,7 @@ class _QueueSlotReservation:
     reserved: bool
     queue_size: int = 0
     suppressed: bool = False
+    reason: str = ""
 
 
 @dataclass(slots=True)
@@ -92,6 +92,7 @@ async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
     from core.app_context import get_default_config
     from core.redis_client import redis_eval_int
+    from core.redis_health import ensure_redis_available, mark_redis_failure
 
     config = get_default_config()
     threshold = max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
@@ -100,6 +101,10 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
 
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
+    if not await ensure_redis_available("alert_concurrency:reserve_processing_slot"):
+        logger.warning("[Concurrency] Redis 不可用，告警处理槽按背压抑制 alert_hash=%s", alert_hash)
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
+
     try:
         queue_size = await redis_eval_int(
             _RESERVE_QUEUE_SLOT_LUA,
@@ -109,12 +114,13 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
             threshold,
         )
     except Exception as e:
-        logger.warning("[Concurrency] 告警风暴处理槽预占失败: %s", e)
-        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
+        mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
+        logger.warning("[Concurrency] 告警风暴处理槽预占失败，按背压抑制: %s", e)
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     if queue_size is None:
         logger.warning("[Concurrency] 告警风暴处理槽预占返回空结果")
-        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
+        return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     if queue_size < 0:
         return _QueueSlotReservation(reserved=False, queue_size=abs(queue_size), suppressed=True)
@@ -141,6 +147,7 @@ def _lock_key(alert_hash: str) -> str:
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
     from core.app_context import get_default_config
     from core.redis_client import redis_set_nx_ex
+    from core.redis_health import ensure_redis_available, mark_redis_failure
 
     config = get_default_config()
     if not config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
@@ -154,13 +161,18 @@ async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
 
+    if not await ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
+        logger.warning("[Concurrency] Redis 不可用，拒绝降级为本进程锁 alert_hash=%s", alert_hash)
+        return "", "redis_unavailable"
+
     while True:
         try:
             if await redis_set_nx_ex(key, token, ttl_seconds):
                 return key, token
         except Exception as e:
-            logger.warning("[Concurrency] Redis 分布式锁获取失败，降级为本进程锁: %s", e)
-            return None
+            mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
+            logger.warning("[Concurrency] Redis 分布式锁获取失败，按 Redis 不可用抑制: %s", e)
+            return "", "redis_unavailable"
 
         if loop.time() >= deadline:
             return "", ""
@@ -206,7 +218,7 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
         yield AlertProcessingGateResult(
             suppressed=True,
             queue_size=slot.queue_size,
-            reason="alert_storm_backpressure",
+            reason=slot.reason or "alert_storm_backpressure",
         )
         return
 
@@ -215,11 +227,11 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
     refresh_task: asyncio.Task[None] | None = None
     try:
         lock = await _acquire_distributed_lock(alert_hash)
-        if lock == ("", ""):
+        if lock is not None and lock[0] == "":
             yield AlertProcessingGateResult(
                 suppressed=True,
                 queue_size=slot.queue_size,
-                reason="alert_processing_lock_timeout",
+                reason=lock[1] or "alert_processing_lock_timeout",
             )
             return
         if lock is not None:

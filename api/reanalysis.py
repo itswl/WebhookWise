@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -16,6 +16,7 @@ from services.forwarding.outbox import create_forward_outbox_records, schedule_f
 from services.forwarding.policies import RemoteForwardPolicy
 from services.forwarding.remote import forward_to_remote
 from services.webhooks.forwarding_stage import resolve_forward_decision
+from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.reanalysis")
 
@@ -38,7 +39,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     res = await analyze_webhook_with_ai(ctx, skip_cache=True)
 
     old_imp, new_imp = event.importance, res.get("importance")
-    event.ai_analysis, event.importance = res, new_imp
+    event.ai_analysis, event.importance = dict(res), new_imp
     event.processing_status = "completed"
 
     updated_dups = 0
@@ -47,7 +48,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         dups_res = await session.execute(dups_stmt)
         dups = dups_res.scalars().all()
         for d in dups:
-            d.ai_analysis, d.importance = res, new_imp
+            d.ai_analysis, d.importance = dict(res), new_imp
             d.processing_status = "completed"
         updated_dups = len(dups)
 
@@ -115,7 +116,7 @@ async def manual_forward_webhook(
 
     ctx = await build_webhook_context(event)
     url = data.get("target_url")
-    fwd_res = await forward_to_remote(ctx, event.ai_analysis or {}, url)
+    fwd_res = await forward_to_remote(ctx, cast(AnalysisResult, event.ai_analysis or {}), url)
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
 

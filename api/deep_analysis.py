@@ -19,7 +19,7 @@ from services.analysis.analysis_queries import get_deep_analyses_for_webhook, ge
 from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
 from services.forwarding.remote import post_json_to_remote
 from services.notifications.target_detection import is_feishu_url
-from services.webhooks.types import DeepAnalysisStatus
+from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
 
 logger = get_logger("api.deep_analysis")
 
@@ -35,10 +35,10 @@ def _is_supported_deep_analysis_engine(requested: str) -> bool:
 
 async def _run_openclaw_deep_analysis(
     ctx: JSONDict, headers: dict[str, Any], user_question: str
-) -> tuple[dict[str, Any], str]:
+) -> tuple[AnalysisResult | ForwardResult, str]:
     from services.forwarding.openclaw import analyze_with_openclaw
 
-    webhook_data: dict[str, Any] = {
+    webhook_data: WebhookData = {
         "source": ctx["source"],
         "headers": headers,
         "parsed_data": ctx["parsed_data"],
@@ -131,7 +131,7 @@ async def deep_analyze_webhook(
         webhook_event_id=webhook_id,
         engine=engine_name,
         user_question=payload.get("user_question", ""),
-        analysis_result=res,
+        analysis_result=dict(res),
         status=DeepAnalysisStatus.PENDING if res.get("_pending") else DeepAnalysisStatus.COMPLETED,
         openclaw_run_id=res.get("_openclaw_run_id", ""),
         openclaw_session_key=res.get("_openclaw_session_key", ""),
@@ -225,8 +225,8 @@ async def retry_deep_analysis(
             now = datetime.now()
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
-            record.openclaw_run_id = new_result.get("_openclaw_run_id", "")
-            record.openclaw_session_key = new_result.get("_openclaw_session_key", "")
+            record.openclaw_run_id = str(new_result.get("_openclaw_run_id", ""))
+            record.openclaw_session_key = str(new_result.get("_openclaw_session_key", ""))
             record.duration_seconds = 0
             record.poll_attempts = 0
             record.last_polled_at = None
@@ -240,7 +240,7 @@ async def retry_deep_analysis(
 
         record.status = DeepAnalysisStatus.COMPLETED
         record.engine = engine_name
-        record.analysis_result = new_result
+        record.analysis_result = dict(new_result)
         record.duration_seconds = 0
         await session.flush()
         with contextlib.suppress(Exception):

@@ -22,7 +22,7 @@ def analyze_with_rules(
     policy = policy or RuleAnalysisPolicy.from_config()
     counter = numeric_parse_failure_counter or ALERT_NUMERIC_PARSE_FAILURE_TOTAL
     start_time = time.time()
-    res = {
+    res: AnalysisResult = {
         "source": source,
         "event_type": "unknown",
         "importance": "medium",

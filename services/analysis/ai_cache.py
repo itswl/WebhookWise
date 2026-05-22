@@ -1,6 +1,7 @@
 """Redis-backed AI analysis cache."""
 
 import time
+from typing import cast
 
 from core import json
 from core.logger import get_logger
@@ -33,7 +34,7 @@ async def get_cached_analysis(alert_hash: str, *, policy: AICachePolicy | None =
         if not isinstance(parsed, dict):
             result = "invalid"
             return None
-        res: AnalysisResult = dict(parsed)
+        res = cast(AnalysisResult, dict(parsed))
         counter_key = f"{ck}:hits"
         hits = await redis_incr_with_expire(counter_key, policy.ttl_seconds)
         res.update({"_cache_hit": True, "_cache_hit_count": hits})

@@ -37,3 +37,8 @@ REDIS_OPERATION_DURATION_SECONDS = Histogram(
     ("redis.operation", "redis.status"),
     unit="s",
 )
+REDIS_HEALTH_STATE = Gauge(
+    "redis.health.state",
+    "Current Redis health state as 1 for active and 0 for inactive states",
+    ("redis.state",),
+)

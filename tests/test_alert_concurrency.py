@@ -193,3 +193,39 @@ async def test_queue_slot_reservation_does_not_count_suppressed_requests(
 
     await concurrency._release_processing_slot("hot-alert")
     assert counts["queue:webhook:hot-alert"] == 0
+
+
+@pytest.mark.asyncio
+async def test_queue_slot_reservation_suppresses_on_redis_error(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
+    import core.alert_concurrency as concurrency
+
+    async def failing_eval(*_: object) -> int:
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(temp_config.retry, "PROCESSING_LOCK_FAILFAST_THRESHOLD", 1)
+    monkeypatch.setattr("core.redis_client.redis_eval_int", failing_eval)
+
+    slot = await concurrency._reserve_processing_slot("hot-alert")
+
+    assert slot.suppressed is True
+    assert slot.reason == "redis_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_alert_processing_gate_suppresses_when_redis_lock_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.alert_concurrency as concurrency
+
+    async def reserve_slot(_: str) -> concurrency._QueueSlotReservation:
+        return concurrency._QueueSlotReservation(reserved=False, queue_size=0)
+
+    async def unavailable(*_: object) -> bool:
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(concurrency, "_reserve_processing_slot", reserve_slot)
+    monkeypatch.setattr("core.redis_client.redis_set_nx_ex", unavailable)
+
+    async with concurrency.alert_processing_gate("same-alert") as result:
+        assert result.suppressed is True
+        assert result.reason == "redis_unavailable"

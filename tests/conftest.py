@@ -42,15 +42,18 @@ def reset_default_app_context():
     """Keep AppContext-owned resources isolated between tests."""
     from core.app_context import AppContext, set_default_app_context
     from core.config import UnifiedConfigManager, get_settings
+    from core.redis_health import reset_redis_health
 
     settings = get_settings().model_copy(deep=True)
     context = AppContext(config=UnifiedConfigManager(settings))
+    reset_redis_health()
     set_default_app_context(context)
     app_module = sys.modules.get("core.app")
     if app_module is not None:
         app_module.app.state.app_context = context
     yield
     set_default_app_context(None)
+    reset_redis_health()
 
 
 # ── 外部服务 Mock ─────────────────────────────────────────────────────────────
@@ -104,12 +107,19 @@ def mock_redis(request: pytest.FixtureRequest):
     if _has_marker(request, "real_redis", "real_services"):
         yield None
         return
+
+    async def eval_script(script: str, numkeys: int, *args: object) -> object:
+        if numkeys == 2 and "open_until" in script:
+            return "closed"
+        return 1
+
     mock = AsyncMock()
     mock.get.return_value = None
     mock.set.return_value = True
     mock.setex.return_value = True
     mock.incr.return_value = 1
     mock.expire.return_value = True
+    mock.eval.side_effect = eval_script
     mock.publish.return_value = 0
     pipeline_mock = AsyncMock()
     pipeline_mock.execute.return_value = [1, True]

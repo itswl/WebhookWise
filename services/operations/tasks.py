@@ -98,6 +98,8 @@ def _task_slot_manager() -> TaskSlotManager:
 
 @asynccontextmanager
 async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
+    from core.redis_health import ensure_redis_available, mark_redis_failure
+
     runtime_policy = _task_policy(policy)
     token = f"{runtime_policy.worker_id}:{uuid.uuid4().hex}"
     lease_seconds = _webhook_slot_lease_seconds(runtime_policy)
@@ -106,15 +108,17 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
     slot_manager = _task_slot_manager()
     try:
         while True:
+            if not await ensure_redis_available("tasks:webhook_task_slot"):
+                logger.warning("[Tasks] Redis 全局并发令牌不可用，暂停处理直到 Redis 恢复")
+                await asyncio.sleep(poll_interval)
+                continue
             try:
                 if await slot_manager.acquire(token, limit, lease_seconds):
                     renew_task = asyncio.create_task(slot_manager.renew_until_cancelled(token, lease_seconds))
                     break
             except Exception as e:
-                logger.warning("[Tasks] Redis 全局并发令牌异常，降级为本进程限流: %s", e)
-                async with _local_webhook_task_slot(limit):
-                    yield
-                return
+                mark_redis_failure("tasks:webhook_task_slot", e)
+                logger.warning("[Tasks] Redis 全局并发令牌异常，暂停处理直到 Redis 恢复: %s", e)
             await asyncio.sleep(poll_interval)
 
         yield
@@ -254,16 +258,24 @@ async def _scheduled_task_leader(
     name: str, interval_seconds: int, *, policy: TaskRuntimePolicy | None = None
 ) -> AsyncIterator[bool]:
     """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
+    from core.redis_health import ensure_redis_available, mark_redis_failure
+
     key = scheduled_task_lock(name)
     token = f"{_task_policy(policy).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
+    if not await ensure_redis_available(f"scheduled_task:{name}:leader"):
+        logger.warning("[ScheduledTask] Redis 单实例锁不可用，跳过调度 name=%s", name)
+        yield False
+        return
+
     try:
         from core.redis_client import redis_eval_int, redis_set_nx_ex
 
         acquired = await redis_set_nx_ex(key, token, ttl)
     except Exception as e:
-        logger.warning("[ScheduledTask] 单实例锁异常，降级执行 name=%s error=%s", name, e)
-        yield True
+        mark_redis_failure(f"scheduled_task:{name}:leader", e)
+        logger.warning("[ScheduledTask] 单实例锁异常，跳过调度 name=%s error=%s", name, e)
+        yield False
         return
 
     try:
