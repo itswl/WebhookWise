@@ -244,12 +244,18 @@ async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest
 async def test_resolve_analysis_reuses_redis_dedup_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.webhooks.analysis_resolution as analysis_resolution
     from services.webhooks.deduplication import CachedDuplicate
+    from services.webhooks.repository import DuplicateCheckResult
 
     async def cached_duplicate(_: str) -> CachedDuplicate:
         return CachedDuplicate(123, {"importance": "high", "summary": "cached"})
 
-    async def fail_db_lookup(*_: object, **__: object) -> object:
-        raise AssertionError("cached duplicate should not query PostgreSQL")
+    class Original:
+        id = 123
+
+    original = Original()
+
+    async def window_lookup(*_: object, **__: object) -> DuplicateCheckResult:
+        return DuplicateCheckResult(True, original, False, None)  # type: ignore[arg-type]
 
     async def fail_ai(*_: object, **__: object) -> object:
         raise AssertionError("cached duplicate should not invoke AI")
@@ -258,7 +264,7 @@ async def test_resolve_analysis_reuses_redis_dedup_cache(monkeypatch: pytest.Mon
         return None
 
     monkeypatch.setattr(analysis_resolution, "get_cached_duplicate", cached_duplicate)
-    monkeypatch.setattr(analysis_resolution, "check_duplicate_event", fail_db_lookup)
+    monkeypatch.setattr(analysis_resolution, "check_duplicate_event", window_lookup)
     monkeypatch.setattr(analysis_resolution, "analyze_webhook_with_ai", fail_ai)
     monkeypatch.setattr(analysis_resolution, "log_ai_usage", noop_usage)
 
@@ -266,6 +272,6 @@ async def test_resolve_analysis_reuses_redis_dedup_cache(monkeypatch: pytest.Mon
 
     assert result.is_duplicate is True
     assert result.is_reused is True
-    assert result.original_event is None
+    assert result.original_event is original
     assert result.original_event_id == 123
     assert result.analysis_result["_route_type"] == "redis_reuse"
