@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from sqlalchemy import func, select
 
-from db.session import init_engine, session_scope
+from db.engine import init_engine
+from db.session import session_scope
 from models import WebhookEvent
 from schemas.webhook import webhook_event_to_full_dict
 

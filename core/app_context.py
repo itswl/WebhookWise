@@ -39,7 +39,7 @@ class AppContext:
 
     async def ensure_db(self) -> async_sessionmaker[AsyncSession]:
         if self.session_factory is None or self.db_engine is None:
-            from db.session import build_engine_and_session_factory
+            from db.engine import build_engine_and_session_factory
 
             self.db_engine, self.session_factory = build_engine_and_session_factory(self.config)
         return self.session_factory

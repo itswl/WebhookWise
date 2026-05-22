@@ -80,7 +80,7 @@ def setup_metrics(app: object | None = None) -> None:
 
 def update_db_pool_metrics() -> None:
     try:
-        from db.session import get_db_pool_capacity, get_db_pool_checked_out, get_engine
+        from db.engine import get_db_pool_capacity, get_db_pool_checked_out, get_engine
 
         engine = get_engine()
         if engine is None:

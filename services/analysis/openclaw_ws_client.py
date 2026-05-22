@@ -7,7 +7,6 @@ OpenClaw WebSocket 客户端模块（异步版）
 
 import asyncio
 import base64
-import contextlib
 import json
 import platform
 import time
@@ -24,13 +23,15 @@ logger = get_logger("openclaw_ws")
 
 def _loads_dict(raw: Any) -> dict[str, Any] | None:
     if isinstance(raw, bytes):
-        with contextlib.suppress(Exception):
+        try:
             raw = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
     if not isinstance(raw, str):
         return None
     try:
         obj = json.loads(raw)
-    except Exception:
+    except json.JSONDecodeError:
         return None
     return obj if isinstance(obj, dict) else None
 
@@ -122,7 +123,7 @@ def _build_device_auth(
                 "nonce": nonce,
             },
         }
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.warning("Failed to build device auth: %s", e)
         return None
 
@@ -143,7 +144,7 @@ async def _try_recv_challenge(
                 return nonce_val
     except asyncio.TimeoutError:
         return None
-    except Exception as e:
+    except (RuntimeError, websockets.WebSocketException) as e:
         logger.debug("Error receiving challenge: %s", e)
         return None
     return None
@@ -179,7 +180,8 @@ async def _handshake(
         return False, "handshake_timeout"
     except json.JSONDecodeError:
         return False, "invalid_response"
-    except Exception:
+    except (OSError, RuntimeError, websockets.WebSocketException):
+        logger.debug("OpenClaw WebSocket handshake failed", exc_info=True)
         return False, "handshake_error"
 
 
@@ -285,5 +287,5 @@ async def poll_session_result(
         return {"status": "error", "error": f"Timeout ({timeout}s)"}
     except json.JSONDecodeError as e:
         return {"status": "error", "error": f"Invalid JSON response: {e}"}
-    except Exception as e:
+    except (OSError, RuntimeError, websockets.WebSocketException) as e:
         return {"status": "error", "error": str(e)}
