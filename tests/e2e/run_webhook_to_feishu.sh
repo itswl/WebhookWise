@@ -42,11 +42,10 @@ wait_container_running() {
 wait_container_running scheduler
 
 python - <<'PY'
+import json
 import time
 import urllib.error
 import urllib.request
-
-from core import json
 
 
 def wait_json(url: str, timeout: int = 120):
