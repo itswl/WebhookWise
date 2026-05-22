@@ -15,3 +15,32 @@ storage:
     backend: local
     local:
       path: /tmp/tempo/traces
+
+metrics_generator:
+  ring:
+    kvstore:
+      store: inmemory
+  processor:
+    local_blocks:
+      filter_server_spans: false
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+
+query_frontend:
+  metrics:
+    concurrent_jobs: 8
+    target_bytes_per_job: 1.25e+09
+    interval: 30m
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+        - local-blocks
