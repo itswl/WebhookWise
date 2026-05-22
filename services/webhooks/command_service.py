@@ -161,7 +161,7 @@ async def _save_duplicate_event(
     if original_id is None:
         return None
 
-    original = await session.get(WebhookEvent, original_id) if original_event is not None else None
+    original = await session.get(WebhookEvent, original_id)
     if original:
         original.duplicate_count = (original.duplicate_count or 1) + 1
         original.updated_at = datetime.now()

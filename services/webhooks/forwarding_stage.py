@@ -164,12 +164,15 @@ async def finalize_analysis_transaction(
                     "webhook.suppressed": save_res.is_duplicate and not save_res.beyond_window,
                 },
             ):
+                decision_original = analysis_res.original_event
+                if decision_original is None and save_res.original_id is not None:
+                    decision_original = await session.get(WebhookEvent, save_res.original_id)
                 fwd_dec = await resolve_forward_decision(
                     normalize_importance(final_analysis.get("importance", "")),
                     save_res.is_duplicate and not save_res.beyond_window,
                     save_res.beyond_window,
                     noise,
-                    analysis_res.original_event,
+                    decision_original,
                     ctx.req_ctx.source,
                     session=session,
                     policy=forwarding_policy,

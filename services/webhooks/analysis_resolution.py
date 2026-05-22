@@ -23,28 +23,37 @@ async def resolve_analysis(
 ) -> AnalysisResolution:
     policy = policy or AnalysisResolutionPolicy.from_config()
     cached = await get_cached_duplicate(alert_hash)
-    if cached and cached.analysis and not cached.analysis.get("_degraded"):
-        logger.debug(
-            "[Pipeline] 窗口内复用 Redis 去重缓存 orig_id=%s hash=%s...",
-            cached.original_event_id,
-            alert_hash[:12],
-        )
-        await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
-        return AnalysisResolution(
-            {**cached.analysis, "_route_type": "redis_reuse"},
-            False,
-            True,
-            None,
-            False,
-            True,
-            cached.original_event_id,
-        )
 
     async with session_scope() as session:
         check = await check_duplicate_event(
             alert_hash, session=session, time_window_hours=policy.duplicate_window_hours
         )
     orig, last_beyond = check.original_event, check.last_beyond_window_event
+
+    if cached and cached.analysis and not cached.analysis.get("_degraded"):
+        if check.is_duplicate and not check.beyond_window and orig and cached.original_event_id == orig.id:
+            logger.debug(
+                "[Pipeline] 窗口内复用 Redis 去重缓存 orig_id=%s hash=%s...",
+                cached.original_event_id,
+                alert_hash[:12],
+            )
+            await log_ai_usage(route_type="reuse", alert_hash=alert_hash, source=full_data.get("source", ""))
+            return AnalysisResolution(
+                {**cached.analysis, "_route_type": "redis_reuse"},
+                False,
+                True,
+                orig,
+                False,
+                True,
+                cached.original_event_id,
+            )
+        logger.debug(
+            "[Pipeline] Redis 去重缓存已过窗口或与 DB 不一致，改走 DB 判定 hash=%s... cached_orig=%s db_orig=%s beyond=%s",
+            alert_hash[:12],
+            cached.original_event_id,
+            orig.id if orig else None,
+            check.beyond_window,
+        )
 
     if check.beyond_window and orig:
         if (
