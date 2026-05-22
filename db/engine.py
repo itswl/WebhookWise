@@ -4,13 +4,21 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from core.config import Config, UnifiedConfigManager
+from core.config import UnifiedConfigManager
 from core.logger import get_logger, mask_url
 
 _logger = get_logger("db.engine")
 
 
-def _build_engine_kwargs(config: UnifiedConfigManager = Config) -> dict[str, Any]:
+def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
+    if config is not None:
+        return config
+    from core.app_context import get_default_config
+
+    return get_default_config()
+
+
+def _build_engine_kwargs(config: UnifiedConfigManager) -> dict[str, Any]:
     """返回连接池公共参数"""
     return {
         "echo": False,
@@ -28,7 +36,7 @@ def _build_engine_kwargs(config: UnifiedConfigManager = Config) -> dict[str, Any
     }
 
 
-def _async_url(config: UnifiedConfigManager = Config) -> str:
+def _async_url(config: UnifiedConfigManager) -> str:
     """将 DATABASE_URL 的 driver 前缀安全替换为 asyncpg。
 
     不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
@@ -41,8 +49,9 @@ def _async_url(config: UnifiedConfigManager = Config) -> str:
 
 
 def build_engine_and_session_factory(
-    config: UnifiedConfigManager = Config,
+    config: UnifiedConfigManager | None = None,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    config = _resolve_config(config)
     _logger.info("[DB] 正在初始化异步数据库连接池: %s", mask_url(config.db.DATABASE_URL))
     engine = create_async_engine(_async_url(config), **_build_engine_kwargs(config))
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
@@ -56,7 +65,7 @@ def build_engine_and_session_factory(
     return engine, session_factory
 
 
-async def init_engine(config: UnifiedConfigManager = Config) -> None:
+async def init_engine(config: UnifiedConfigManager | None = None) -> None:
     """Ensure the current AppContext owns a DB engine and session factory."""
     from core.app_context import get_or_create_default_app_context
 

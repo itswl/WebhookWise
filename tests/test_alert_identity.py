@@ -1,5 +1,5 @@
 from adapters.normalized import AlertIdentity, with_alert_identity
-from models.webhook import WebhookEvent
+from services.webhooks.identity import generate_alert_hash
 
 
 def test_generate_hash_uses_adapter_identity_not_payload_noise() -> None:
@@ -12,11 +12,11 @@ def test_generate_hash_uses_adapter_identity_not_payload_noise() -> None:
         AlertIdentity(source="prometheus", name="highcpu", resource="NODE-01", severity="Critical"),
     )
 
-    assert WebhookEvent.generate_hash(first, "prometheus") == WebhookEvent.generate_hash(second, "prometheus")
+    assert generate_alert_hash(first, "prometheus") == generate_alert_hash(second, "prometheus")
 
 
 def test_generate_hash_falls_back_to_payload_when_identity_missing() -> None:
-    first = WebhookEvent.generate_hash({"value": 95}, "custom")
-    second = WebhookEvent.generate_hash({"value": 99}, "custom")
+    first = generate_alert_hash({"value": 95}, "custom")
+    second = generate_alert_hash({"value": 99}, "custom")
 
     assert first != second

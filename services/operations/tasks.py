@@ -409,16 +409,19 @@ async def _run_webhook_ingest_with_failure_handling(ctx: _WebhookTaskContext) ->
 
 async def _run_webhook_task_span(ctx: _WebhookTaskContext) -> str:
     outcome = "completed"
-    with trace_context_from_headers(ctx.trace_headers), otel_span(
-        "worker.webhook_process_task",
-        {
-            "event_id": 0,
-            "source": ctx.source,
-            "retry.count": ctx.ingest_retry_count,
-            "webhook.raw_ingest": True,
-            "worker.task.name": "webhook_process_task",
-        },
-    ) as worker_span:
+    with (
+        trace_context_from_headers(ctx.trace_headers),
+        otel_span(
+            "worker.webhook_process_task",
+            {
+                "event_id": 0,
+                "source": ctx.source,
+                "retry.count": ctx.ingest_retry_count,
+                "webhook.raw_ingest": True,
+                "worker.task.name": "webhook_process_task",
+            },
+        ) as worker_span,
+    ):
         try:
             outcome = await _run_webhook_ingest_with_failure_handling(ctx)
             return outcome
@@ -582,13 +585,13 @@ async def scheduled_forward_outbox_scan() -> None:
 
 @broker.task(task_name="scheduled_data_maintenance", schedule=[{"cron": _maintenance_cron()}])
 async def scheduled_data_maintenance() -> None:
-    from services.operations.data_maintenance import archive_old_data_by_policy
+    from services.operations.data_maintenance import cleanup_old_data_by_policy
 
     async with _scheduled_task_leader("data_maintenance", 86400) as is_leader:
         if not is_leader:
             logger.debug("[ScheduledTask] 跳过重复调度 name=data_maintenance")
             return
-        await _run_data_maintenance_locked(archive_old_data_by_policy())
+        await _run_data_maintenance_locked(cleanup_old_data_by_policy())
 
 
 async def _run_data_maintenance_locked(fn: Awaitable[object]) -> None:

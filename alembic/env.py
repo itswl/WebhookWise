@@ -15,11 +15,10 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from core.config import Config  # noqa: E402
+from core.config import UnifiedConfigManager  # noqa: E402
 from db.session import Base  # noqa: E402
 from models import (  # noqa: E402, F401
     AIUsageLog,
-    ArchivedWebhookEvent,
     DeepAnalysis,
     ForwardOutbox,
     ForwardRule,
@@ -28,6 +27,7 @@ from models import (  # noqa: E402, F401
 
 # Alembic Config object
 config = context.config
+app_config = UnifiedConfigManager()
 
 # 设置日志
 if config.config_file_name is not None:
@@ -39,7 +39,7 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """获取同步数据库 URL（Alembic 使用同步引擎）"""
-    url = Config.db.DATABASE_URL
+    url = app_config.db.DATABASE_URL
     # 将异步驱动替换为同步驱动
     url = url.replace("postgresql+asyncpg://", "postgresql://")
     return url

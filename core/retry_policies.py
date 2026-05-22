@@ -3,7 +3,6 @@
 from typing import Any
 
 import httpx
-import orjson
 import sqlalchemy.exc
 from asyncpg.exceptions import QueryCanceledError
 from openai import (
@@ -19,7 +18,9 @@ from openai import (
 )
 from redis.exceptions import RedisError
 
-_NON_RETRYABLE_ERRORS = (ValueError, KeyError, TypeError, orjson.JSONDecodeError, UnicodeDecodeError)
+from core import json
+
+_NON_RETRYABLE_ERRORS = (ValueError, KeyError, TypeError, json.JSONDecodeError, UnicodeDecodeError)
 _OPENAI_NON_RETRYABLE_ERRORS = (
     AuthenticationError,
     BadRequestError,

@@ -5,8 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from adapters.summary_extractors import extract_summary_fields
 from core.compression import decompress_payload
+from services.webhooks.mongodb_summary import mongodb_summary_fields
 
 from .base import APIResponse, CursorPaginationInfo
 
@@ -90,7 +90,7 @@ def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
         "duplicate_type": duplicate_type,
         "forward_status": getattr(event, "forward_status", None),
         "summary": ai_analysis.get("summary", "") if isinstance(ai_analysis, dict) else None,
-        "alert_info": extract_summary_fields(source, parsed_data),
+        "alert_info": mongodb_summary_fields(parsed_data) if source == "mongodb" else {},
         "created_at": _iso_or_none(getattr(event, "created_at", None)),
         "prev_alert_id": getattr(event, "prev_alert_id", None),
     }

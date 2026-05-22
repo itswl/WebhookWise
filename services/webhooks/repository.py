@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-import orjson
 from sqlalchemy import select
 
+from core import json
 from core.compression import decompress_payload_async
 from db.session import session_scope
 from models import ForwardRule, WebhookEvent
@@ -89,9 +89,9 @@ async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None
     parsed_data = event.parsed_data
     if parsed_data is None and raw_text:
         try:
-            loaded = orjson.loads(raw_text)
+            loaded = json.loads(raw_text)
             parsed_data = loaded if isinstance(loaded, dict) else None
-        except orjson.JSONDecodeError:
+        except json.JSONDecodeError:
             parsed_data = None
     return parsed_data, raw_text
 

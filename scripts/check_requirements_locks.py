@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -30,26 +32,25 @@ def _declared_package_names(path: Path) -> set[str]:
     return names
 
 
-def test_runtime_and_dev_locks_do_not_pin_conflicting_versions() -> None:
+def main() -> None:
     runtime = _locked_versions(PROJECT_ROOT / "requirements.lock")
     dev = _locked_versions(PROJECT_ROOT / "requirements-dev.lock")
-
     conflicts = {
         name: (runtime[name], dev[name]) for name in sorted(runtime.keys() & dev.keys()) if runtime[name] != dev[name]
     }
+    if conflicts:
+        raise SystemExit(f"runtime/dev lock version conflicts: {conflicts}")
 
-    assert conflicts == {}
-
-
-def test_dev_lock_contains_all_direct_dev_requirements() -> None:
     declared = _declared_package_names(PROJECT_ROOT / "requirements-dev.txt")
-    locked = set(_locked_versions(PROJECT_ROOT / "requirements-dev.lock"))
+    missing = declared - set(dev)
+    if missing:
+        raise SystemExit(f"requirements-dev.lock is missing direct dev requirements: {sorted(missing)}")
 
-    assert declared - locked == set()
-
-
-def test_uv_lock_is_not_used_without_project_metadata() -> None:
     pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
     has_project_metadata = "\n[project]\n" in f"\n{pyproject}\n"
+    if (PROJECT_ROOT / "uv.lock").exists() and not has_project_metadata:
+        raise SystemExit("uv.lock exists without [project] metadata; use requirements.lock files instead")
 
-    assert not (PROJECT_ROOT / "uv.lock").exists() or has_project_metadata
+
+if __name__ == "__main__":
+    main()

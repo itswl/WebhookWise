@@ -7,7 +7,6 @@ by simple stdio clients: initialize, tools/list, and tools/call.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import json  # noqa: E402
 from scripts.observability.query_lib import (  # noqa: E402
     PROMQL_PRESETS,
     Endpoints,
@@ -128,7 +128,7 @@ def _text_result(payload: Any) -> dict[str, Any]:
         "content": [
             {
                 "type": "text",
-                "text": json.dumps(payload, ensure_ascii=False, indent=2),
+                "text": json.dumps(payload, indent=True),
             }
         ]
     }
@@ -240,7 +240,7 @@ def main() -> int:
         except Exception as exc:
             response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+            sys.stdout.write(json.dumps(response) + "\n")
             sys.stdout.flush()
     return 0
 

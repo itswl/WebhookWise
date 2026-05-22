@@ -58,13 +58,12 @@ async def test_sanitize_for_ai_async_offloads_deep_nested_large_string(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_sanitize_for_ai_async_can_disable_strip_and_truncate(monkeypatch):
-    from core.config import Config
+async def test_sanitize_for_ai_async_can_disable_strip_and_truncate(monkeypatch, temp_config):
     from core.sensitive_data import REDACTED
     from services.webhooks import payload_sanitizer
 
-    monkeypatch.setattr(Config.ai, "AI_PAYLOAD_MAX_BYTES", 32)
-    monkeypatch.setattr(Config.ai, "AI_PAYLOAD_STRIP_KEYS", "raw_trace")
+    monkeypatch.setattr(temp_config.ai, "AI_PAYLOAD_MAX_BYTES", 32)
+    monkeypatch.setattr(temp_config.ai, "AI_PAYLOAD_STRIP_KEYS", "raw_trace")
 
     payload = {"raw_trace": "x" * 1000, "token": "secret-token"}
     out = await payload_sanitizer.sanitize_for_ai_async(payload, strip_configured_keys=False, truncate=False)

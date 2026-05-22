@@ -1,7 +1,8 @@
-import json
 from pathlib import Path
 
 import yaml
+
+from core import json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -166,7 +167,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     pipeline_steps = (ROOT / "services/webhooks/pipeline_steps.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
     forward_outbox = (ROOT / "services/forwarding/outbox.py").read_text()
-    redis_client = (ROOT / "core/redis_client.py").read_text()
+    redis_metrics = (ROOT / "core/redis_metrics.py").read_text()
     taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
     assert "instrument_sqlalchemy(engine.sync_engine)" in db_engine
@@ -185,24 +186,20 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"pipeline.step": "noise"' in pipeline_steps
     assert '"forward.target_type": (' in forwarding_stage
     assert '"forward.target_type": target_type' in forward_outbox
-    assert '"redis.operation": operation' in redis_client
+    assert '"redis.operation": operation' in redis_metrics
 
 
 def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
     app = (ROOT / "core/app.py").read_text()
     broker = (ROOT / "core/taskiq_broker.py").read_text()
-    circuit_breaker = (ROOT / "core/circuit_breaker.py").read_text()
     forwarding_breakers = (ROOT / "services/forwarding/circuit_breakers.py").read_text()
     entrypoint = (ROOT / "entrypoint.sh").read_text()
     supervisor = (ROOT / "supervisord.conf").read_text()
 
     assert "import services." not in broker
     assert "services.operations.tasks" not in app
-    assert "from core.config import Config" not in broker
-    assert "from core.config import Config" not in circuit_breaker
-    assert "Config.circuit_breaker" not in circuit_breaker
     assert "LazyCircuitBreaker" in forwarding_breakers
-    assert "Config.circuit_breaker" in forwarding_breakers
+    assert "get_default_config" in forwarding_breakers
     assert "services.operations.taskiq_wiring:broker" in entrypoint
     assert "services.operations.taskiq_wiring:scheduler" in entrypoint
     assert "services.operations.taskiq_wiring:broker" in supervisor

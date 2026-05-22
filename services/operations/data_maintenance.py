@@ -2,28 +2,26 @@ import asyncio
 from datetime import datetime, timedelta
 
 import sqlalchemy as sa
-from sqlalchemy import delete, insert, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.sql.base import Executable
+from sqlalchemy import delete, or_, select
 
 from core.logger import get_logger
 from db.session import session_scope
-from models import ArchivedWebhookEvent, WebhookEvent
+from models import WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 
 logger = get_logger("maintenance")
 
 
-async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
+async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
-    根据数据保留策略归档清理过期 webhook 记录。
+    根据数据保留策略清理过期 webhook 记录。
     """
     policy = policy or DataMaintenancePolicy.from_config()
     if not policy.enabled:
-        logger.info("[Maintenance] 数据归档已禁用，跳过。")
+        logger.info("[Maintenance] 数据清理已禁用，跳过。")
         return 0
 
-    total_moved = 0
+    total_deleted = 0
     try:
         now = datetime.now()
 
@@ -54,7 +52,7 @@ async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                     conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{kw}%"))
 
         # 默认保留策略
-        default_threshold = now - timedelta(days=policy.archive_days_default)
+        default_threshold = now - timedelta(days=policy.retention_days_default)
         # 如果既不在重要性策略里，也不在来源策略里，且超过默认天数，也清理
         # 但为了简单，我们直接加一个全局阈值作为主要判断逻辑之一
         conditions.append(WebhookEvent.timestamp < default_threshold)
@@ -65,7 +63,7 @@ async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
 
         batch_limit = 5000
         while True:
-            moved_this_round = 0
+            deleted_this_round = 0
             async with session_scope() as session:
                 # 找出待处理的 ID
                 target_ids = list(
@@ -85,71 +83,22 @@ async def archive_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                 for chunk_start in range(0, len(target_ids), 1000):
                     chunk_ids = target_ids[chunk_start : chunk_start + 1000]
 
-                    # 获取完整对象
-                    events = list(
-                        (await session.scalars(select(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))).all()
-                    )
-
-                    archived_records = []
-                    for e in events:
-                        raw = e.raw_payload
-                        if isinstance(raw, str):
-                            raw = raw.encode("utf-8")
-
-                        archived_records.append(
-                            {
-                                "id": e.id,
-                                "source": e.source,
-                                "client_ip": e.client_ip,
-                                "timestamp": e.timestamp,
-                                "raw_payload": raw,
-                                "headers": e.headers,
-                                "parsed_data": e.parsed_data,
-                                "alert_hash": e.alert_hash,
-                                "ai_analysis": e.ai_analysis,
-                                "importance": e.importance,
-                                "forward_status": e.forward_status,
-                                "is_duplicate": e.is_duplicate,
-                                "duplicate_of": e.duplicate_of,
-                                "duplicate_count": e.duplicate_count,
-                                "beyond_window": e.beyond_window,
-                                "last_notified_at": e.last_notified_at,
-                                "created_at": e.created_at,
-                                "updated_at": e.updated_at,
-                                "archived_at": datetime.now(),
-                            }
-                        )
-
-                    if archived_records:
-                        dialect_name = session.get_bind().dialect.name
-                        if dialect_name == "postgresql":
-                            stmt: Executable = (
-                                pg_insert(ArchivedWebhookEvent)
-                                .values(archived_records)
-                                .on_conflict_do_nothing(index_elements=["id"])
-                            )
-                        elif dialect_name == "sqlite":
-                            stmt = insert(ArchivedWebhookEvent).values(archived_records).prefix_with("OR IGNORE")
-                        else:
-                            stmt = insert(ArchivedWebhookEvent).values(archived_records)
-                        await session.execute(stmt)
-
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
-                    moved_this_round += len(chunk_ids)
-                    total_moved += len(chunk_ids)
+                    deleted_this_round += len(chunk_ids)
+                    total_deleted += len(chunk_ids)
 
-            logger.info("[Maintenance] 已搬迁 %d 条记录...", total_moved)
-            if moved_this_round < batch_limit:
+            logger.info("[Maintenance] 已清理 %d 条记录...", total_deleted)
+            if deleted_this_round < batch_limit:
                 break
             await asyncio.sleep(0.5)
 
-        if total_moved:
-            logger.info("[Maintenance] 归档任务完成！共处理 %d 条记录。", total_moved)
+        if total_deleted:
+            logger.info("[Maintenance] 清理任务完成！共处理 %d 条记录。", total_deleted)
         else:
-            logger.info("[Maintenance] 没有需要归档的数据。")
-        return total_moved
+            logger.info("[Maintenance] 没有需要清理的数据。")
+        return total_deleted
 
     except Exception as e:
-        logger.error("[Maintenance] 归档任务失败: %s", e, exc_info=True)
-        return total_moved
+        logger.error("[Maintenance] 清理任务失败: %s", e, exc_info=True)
+        return total_deleted

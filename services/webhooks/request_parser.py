@@ -2,9 +2,8 @@
 
 from typing import Any
 
-import orjson
-
 from adapters.ecosystem_adapters import normalize_webhook_event
+from core import json
 from services.webhooks.types import WebhookRequestContext
 
 
@@ -18,7 +17,7 @@ def parse_request(
 ) -> WebhookRequestContext:
     src = source or headers.get("x-webhook-source", "unknown")
     if not payload and raw_body:
-        loaded = orjson.loads(raw_body)
+        loaded = json.loads(raw_body)
         payload = loaded if isinstance(loaded, dict) else {}
     norm = normalize_webhook_event(payload, src)
     return WebhookRequestContext(

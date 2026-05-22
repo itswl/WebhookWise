@@ -2,7 +2,8 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
+from core.config import UnifiedConfigManager
 
 _CONFIG_FIELDS: Mapping[str, str] = {
     "default_target_url": "DEFAULT_FORWARD_TARGET_URL",
@@ -36,11 +37,11 @@ _CONFIG_FIELDS: Mapping[str, str] = {
 }
 
 
-def _get_config_value(env_var: str) -> Any:
-    config_info = Config.CONFIG_KEYS.get(env_var)
+def _get_config_value(env_var: str, config: UnifiedConfigManager) -> Any:
+    config_info = config.CONFIG_KEYS.get(env_var)
     if not config_info:
         return ""
-    return getattr(getattr(Config, config_info["sub"]), env_var, "")
+    return getattr(getattr(config, config_info["sub"]), env_var, "")
 
 
 def _get_config_source(env_var: str) -> str:
@@ -48,19 +49,21 @@ def _get_config_source(env_var: str) -> str:
 
 
 def get_current_config() -> dict[str, object]:
+    config = get_default_config()
     response: dict[str, object] = {}
     for field_name, env_var in _CONFIG_FIELDS.items():
-        value = _get_config_value(env_var)
+        value = _get_config_value(env_var, config)
         response[field_name] = "已配置" if env_var == "OPENAI_API_KEY" and value else value
     return response
 
 
 def get_config_sources() -> list[dict[str, object]]:
+    config = get_default_config()
     return [
         {
             "key": key,
             "source": _get_config_source(key),
             "requires_restart": True,
         }
-        for key in sorted(Config.CONFIG_KEYS.keys())
+        for key in sorted(config.CONFIG_KEYS.keys())
     ]

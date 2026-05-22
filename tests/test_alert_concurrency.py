@@ -160,10 +160,9 @@ async def _wait_for_local_lock(concurrency: object, alert_hash: str) -> None:
 
 @pytest.mark.asyncio
 async def test_queue_slot_reservation_does_not_count_suppressed_requests(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, temp_config
 ) -> None:
     import core.alert_concurrency as concurrency
-    from core.config import Config
 
     counts: dict[str, int] = {}
 
@@ -182,7 +181,7 @@ async def test_queue_slot_reservation_does_not_count_suppressed_requests(
             return counts[key]
         return 0
 
-    monkeypatch.setattr(Config.retry, "PROCESSING_LOCK_FAILFAST_THRESHOLD", 1)
+    monkeypatch.setattr(temp_config.retry, "PROCESSING_LOCK_FAILFAST_THRESHOLD", 1)
     monkeypatch.setattr("core.redis_client.redis_eval_int", fake_eval)
 
     first = await concurrency._reserve_processing_slot("hot-alert")

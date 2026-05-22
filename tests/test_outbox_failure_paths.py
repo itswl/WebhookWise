@@ -389,11 +389,14 @@ class TestRunForwardOutboxScan:
 
 
 class TestOpenClawPoller:
+    @pytest.fixture(autouse=True)
+    def _bind_config(self, temp_config) -> None:
+        self.config = temp_config
+
     async def test_poll_openclaw_result_via_http_uses_configured_timeout_and_waits_for_final_text(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
         seen_timeouts: list[tuple[float, float]] = []
@@ -416,9 +419,9 @@ class TestOpenClawPoller:
                 assert kwargs["headers"]["Connection"] == "close"
                 return _Response()
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 3)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 3)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
         result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
@@ -430,14 +433,13 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
                 raise OSError("All connection attempts failed")
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
         result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
@@ -452,15 +454,14 @@ class TestOpenClawPoller:
     ) -> None:
         import httpx
 
-        from core.config import Config
         from services.analysis import openclaw_poller
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
                 raise httpx.ReadTimeout("")
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
         result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
@@ -472,7 +473,6 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
         class _Response:
@@ -485,7 +485,7 @@ class TestOpenClawPoller:
             async def get(self, *_: object, **__: object) -> _Response:
                 return _Response()
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "get_http_client", lambda: _Client())
 
         result = await openclaw_poller.poll_openclaw_result_via_http("session-1", retry_count=1)
@@ -495,10 +495,9 @@ class TestOpenClawPoller:
         assert result["error"] == "Invalid JSON response"
 
     def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from core.config import Config
         from services.analysis.openclaw_poller import _poll_claim_lease_seconds
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_POLL_TIMEOUT", 120)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 120)
 
         assert _poll_claim_lease_seconds() == 390
 
@@ -543,11 +542,10 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "root cause ready", "msg_count": 2}
@@ -577,11 +575,10 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "explicit final", "msg_count": 2, "is_final": True}
@@ -614,12 +611,11 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_TIMEOUT_SECONDS", 900)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_TIMEOUT_SECONDS", 900)
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "manual retry ready", "msg_count": 2}
@@ -650,11 +646,10 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller, openclaw_ws_client
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
 
         async def _http_error(*_: object, **__: object) -> dict[str, object]:
             return {"status": "error", "error": "All connection attempts failed", "retryable": True}
@@ -685,12 +680,11 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller, openclaw_ws_client
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "")
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
 
         async def _http_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
             raise AssertionError("HTTP poll should be skipped when OPENCLAW_HTTP_API_URL is empty")
@@ -723,7 +717,6 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from core.config import Config
         from services.analysis import openclaw_poller
 
         stability_state: dict[str, object] = {
@@ -747,8 +740,8 @@ class TestOpenClawPoller:
         async def _clear(_: int) -> None:
             cleared["value"] = True
 
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
-        monkeypatch.setattr(Config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw_poller, "poll_openclaw_result_via_http", _completed)
         monkeypatch.setattr(openclaw_poller, "_get_poll_stability", _get_stability)
         monkeypatch.setattr(openclaw_poller, "_set_poll_stability", _set_stability)

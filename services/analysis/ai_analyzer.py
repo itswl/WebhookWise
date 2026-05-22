@@ -6,7 +6,6 @@ import httpx
 
 from core.logger import get_logger
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
-from models import WebhookEvent
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
 from services.analysis.ai_policies import AICachePolicy, AIProviderPolicy, RuleAnalysisPolicy
@@ -24,6 +23,7 @@ from services.analysis.analysis_queries import (
     get_deep_analysis_list,
 )
 from services.analysis.rule_analyzer import analyze_with_rules as _analyze_with_rules
+from services.webhooks.identity import generate_alert_hash
 from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("analysis.ai_analyzer")
@@ -168,7 +168,7 @@ async def analyze_webhook_with_ai(
     provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
-        alert_hash = WebhookEvent.generate_hash(parsed, source)
+        alert_hash = generate_alert_hash(parsed, source)
 
     if cache_policy.enabled and not skip_cache:
         cached = await get_cached_analysis(alert_hash, policy=cache_policy)

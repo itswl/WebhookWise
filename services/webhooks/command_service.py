@@ -9,12 +9,15 @@ from fastapi import Request
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import Config
+from core.app_context import AppContext, get_default_config
+from core.compression import compress_payload
+from core.config import UnifiedConfigManager
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.webhooks.deduplication import duplicate_window_hours
+from services.webhooks.identity import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
 
@@ -61,7 +64,8 @@ class _RequestIdResolution:
 
 def get_client_ip(request: Request) -> str:
     """获取客户端 IP 地址。"""
-    if _is_trusted_proxy(request.client.host if request.client else None):
+    security = _request_config(request).security
+    if _is_trusted_proxy(request.client.host if request.client else None, security=security):
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for and (ip := _first_valid_header_ip(forwarded_for)):
             return ip
@@ -69,6 +73,13 @@ def get_client_ip(request: Request) -> str:
         if real_ip and (ip := _first_valid_header_ip(real_ip)):
             return ip
     return request.client.host if request.client else "unknown"
+
+
+def _request_config(request: Request) -> UnifiedConfigManager:
+    context = getattr(request.app.state, "app_context", None)
+    if isinstance(context, AppContext):
+        return context.config
+    return get_default_config()
 
 
 def _first_valid_header_ip(value: str) -> str | None:
@@ -83,19 +94,21 @@ def _first_valid_header_ip(value: str) -> str | None:
     return None
 
 
-def _trusted_proxy_cidrs() -> tuple[str, ...]:
-    return tuple(item.strip() for item in Config.security.TRUSTED_PROXY_CIDRS.split(",") if item.strip())
+def _trusted_proxy_cidrs(security: object) -> tuple[str, ...]:
+    raw = str(getattr(security, "TRUSTED_PROXY_CIDRS", ""))
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
-def _is_trusted_proxy(client_host: str | None) -> bool:
-    if not client_host or not Config.security.TRUST_PROXY_HEADERS:
+def _is_trusted_proxy(client_host: str | None, *, security: object | None = None) -> bool:
+    security = security or get_default_config().security
+    if not client_host or not getattr(security, "TRUST_PROXY_HEADERS", False):
         return False
     try:
         client_ip = ipaddress.ip_address(client_host)
     except ValueError:
-        return client_host in set(_trusted_proxy_cidrs())
+        return client_host in set(_trusted_proxy_cidrs(security))
 
-    for item in _trusted_proxy_cidrs():
+    for item in _trusted_proxy_cidrs(security):
         if not item:
             continue
         try:
@@ -123,6 +136,15 @@ def _resolve_analysis_for_duplicate(
         original.importance = ai_analysis.get("importance")
 
     return final_analysis, final_importance
+
+
+def _stored_raw_payload(raw_payload: bytes | None) -> bytes | None:
+    if raw_payload is None:
+        return None
+    try:
+        return compress_payload(raw_payload.decode("utf-8"))
+    except Exception:
+        return raw_payload
 
 
 async def _save_duplicate_event(
@@ -392,7 +414,7 @@ async def save_webhook_data(
     skip_duplicate_lookup: bool = False,
 ) -> SaveWebhookResult:
     if alert_hash is None:
-        alert_hash = WebhookEvent.generate_hash(data, source)
+        alert_hash = generate_alert_hash(data, source)
     try:
         async with session_scope() as session:
             return await save_webhook_data_in_session(
@@ -438,11 +460,11 @@ async def save_webhook_data_in_session(
 ) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
     if alert_hash is None:
-        alert_hash = WebhookEvent.generate_hash(data, source)
+        alert_hash = generate_alert_hash(data, source)
     payload = _WebhookSaveInput(
         data=data,
         source=source,
-        raw_payload=raw_payload,
+        raw_payload=_stored_raw_payload(raw_payload),
         headers=redact_headers(headers),
         client_ip=client_ip,
         request_id=request_id,

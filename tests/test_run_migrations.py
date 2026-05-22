@@ -56,6 +56,7 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
         "0001_current_schema.py",
         "0002_pluralize_tables.py",
         "0003_drop_system_configs.py",
+        "0004_drop_archived_webhook_events.py",
     ]
     for path in revision_paths:
         revision = re.search(r'^revision: str = "([^"]+)"', path.read_text(), re.MULTILINE)
@@ -69,3 +70,5 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
     assert 'op.rename_table("forward_outbox", "forward_outboxes")' in migration_source
     cleanup_source = revision_paths[2].read_text()
     assert 'op.drop_table("system_configs")' in cleanup_source
+    archive_cleanup_source = revision_paths[3].read_text()
+    assert 'op.drop_table("archived_webhook_events")' in archive_cleanup_source

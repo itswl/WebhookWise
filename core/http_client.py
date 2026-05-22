@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from core.config import Config, UnifiedConfigManager
+from core.config import UnifiedConfigManager
 from core.logger import get_logger
 from core.observability.tracing import build_traceparent, get_current_trace_id
 
@@ -20,9 +20,13 @@ async def _inject_trace_headers(request: httpx.Request) -> None:
 
 
 def build_http_client(
-    config: UnifiedConfigManager = Config,
+    config: UnifiedConfigManager | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.AsyncClient:
+    if config is None:
+        from core.app_context import get_default_config
+
+        config = get_default_config()
     return httpx.AsyncClient(
         timeout=httpx.Timeout(config.forwarding.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
