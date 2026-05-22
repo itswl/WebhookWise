@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
+from contextvars import Token
 from dataclasses import dataclass
 
 from core.log_context import clear_log_context, set_log_context
@@ -359,12 +360,12 @@ def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
     )
 
 
-def _set_webhook_task_fallback_trace(ctx: _WebhookTaskContext) -> object | None:
+def _set_webhook_task_fallback_trace(ctx: _WebhookTaskContext) -> Token[str] | None:
     fallback_trace_id = extract_trace_id_from_headers(ctx.trace_headers) or (ctx.request_id or "")
     return set_fallback_trace_id(fallback_trace_id) if fallback_trace_id else None
 
 
-def _reset_webhook_task_fallback_trace(token: object | None) -> None:
+def _reset_webhook_task_fallback_trace(token: Token[str] | None) -> None:
     if token is None:
         return
     try:
