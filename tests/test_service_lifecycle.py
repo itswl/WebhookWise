@@ -93,7 +93,6 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         calls.append("ai")
 
     services_http_client = http_client
-    monkeypatch.setattr(lifecycle, "initialize_openai_client", initialize_ai_client)
 
     services = await lifecycle.start_runtime_services(
         config,  # type: ignore[arg-type]
@@ -104,6 +103,7 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         initialize_observability=lambda: record("observability"),
         initialize_redis_client=True,
         initialize_ai_client=True,
+        initialize_ai_client_hook=initialize_ai_client,
     )
 
     assert services.http_client is http_client
@@ -141,7 +141,6 @@ async def test_stop_runtime_services_tears_down_requested_dependencies(monkeypat
         calls.append("http.close")
 
     monkeypatch.setattr(AppContext, "close", close_context)
-    monkeypatch.setattr(lifecycle, "reset_openai_client", lambda: record_async("ai.reset"))
     monkeypatch.setattr(lifecycle, "stop_log_listener", lambda: calls.append("logger.stop"))
 
     await lifecycle.stop_runtime_services(
@@ -150,6 +149,7 @@ async def test_stop_runtime_services_tears_down_requested_dependencies(monkeypat
         broker=broker,
         stop_broker=True,
         reset_ai_client=True,
+        reset_ai_client_hook=lambda: record_async("ai.reset"),
         shutdown_observability=lambda: calls.append("observability.shutdown"),
         stop_logger=True,
     )

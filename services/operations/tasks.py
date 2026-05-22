@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from contextvars import Token
 from dataclasses import dataclass
 
+from core import redis_client, redis_health
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.attributes import WEBHOOK_OUTCOME
@@ -42,6 +43,7 @@ from core.redis_client import RedisEvalArg
 from core.redis_keys import scheduled_task_lock, webhook_global_task_slots
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
+from services.forwarding.outbox import configure_forward_outbox_schedulers
 from services.operations.policies import TaskRuntimePolicy
 from services.operations.task_slots import TaskSlotManager
 
@@ -79,9 +81,23 @@ async def _local_webhook_task_slot(limit: int) -> AsyncIterator[None]:
 
 
 async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int | None:
-    from core.redis_client import redis_eval_int
+    return await redis_client.redis_eval_int(script, numkeys, *args)
 
-    return await redis_eval_int(script, numkeys, *args)
+
+async def _enqueue_forward_outbox(outbox_id: int) -> None:
+    await process_forward_outbox_task.kiq(outbox_id=outbox_id)
+
+
+async def _schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
+    from services.operations.taskiq_retry_scheduler import schedule_forward_outbox
+
+    await schedule_forward_outbox(outbox_id, delay_seconds)
+
+
+configure_forward_outbox_schedulers(
+    enqueue_outbox=_enqueue_forward_outbox,
+    schedule_retry=_schedule_forward_outbox_retry,
+)
 
 
 def _task_policy(policy: TaskRuntimePolicy | None = None) -> TaskRuntimePolicy:
@@ -98,8 +114,6 @@ def _task_slot_manager() -> TaskSlotManager:
 
 @asynccontextmanager
 async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
-    from core.redis_health import ensure_redis_available, mark_redis_failure
-
     runtime_policy = _task_policy(policy)
     token = f"{runtime_policy.worker_id}:{uuid.uuid4().hex}"
     lease_seconds = _webhook_slot_lease_seconds(runtime_policy)
@@ -108,7 +122,7 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
     slot_manager = _task_slot_manager()
     try:
         while True:
-            if not await ensure_redis_available("tasks:webhook_task_slot"):
+            if not await redis_health.ensure_redis_available("tasks:webhook_task_slot"):
                 logger.warning("[Tasks] Redis 全局并发令牌不可用，暂停处理直到 Redis 恢复")
                 await asyncio.sleep(poll_interval)
                 continue
@@ -117,7 +131,7 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
                     renew_task = asyncio.create_task(slot_manager.renew_until_cancelled(token, lease_seconds))
                     break
             except Exception as e:
-                mark_redis_failure("tasks:webhook_task_slot", e)
+                redis_health.mark_redis_failure("tasks:webhook_task_slot", e)
                 logger.warning("[Tasks] Redis 全局并发令牌异常，暂停处理直到 Redis 恢复: %s", e)
             await asyncio.sleep(poll_interval)
 
@@ -258,22 +272,18 @@ async def _scheduled_task_leader(
     name: str, interval_seconds: int, *, policy: TaskRuntimePolicy | None = None
 ) -> AsyncIterator[bool]:
     """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
-    from core.redis_health import ensure_redis_available, mark_redis_failure
-
     key = scheduled_task_lock(name)
     token = f"{_task_policy(policy).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
-    if not await ensure_redis_available(f"scheduled_task:{name}:leader"):
+    if not await redis_health.ensure_redis_available(f"scheduled_task:{name}:leader"):
         logger.warning("[ScheduledTask] Redis 单实例锁不可用，跳过调度 name=%s", name)
         yield False
         return
 
     try:
-        from core.redis_client import redis_eval_int, redis_set_nx_ex
-
-        acquired = await redis_set_nx_ex(key, token, ttl)
+        acquired = await redis_client.redis_set_nx_ex(key, token, ttl)
     except Exception as e:
-        mark_redis_failure(f"scheduled_task:{name}:leader", e)
+        redis_health.mark_redis_failure(f"scheduled_task:{name}:leader", e)
         logger.warning("[ScheduledTask] 单实例锁异常，跳过调度 name=%s error=%s", name, e)
         yield False
         return
@@ -283,7 +293,7 @@ async def _scheduled_task_leader(
     finally:
         if acquired:
             with contextlib.suppress(Exception):
-                await redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
+                await redis_client.redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
 
 
 async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:

@@ -17,7 +17,7 @@ from core.observability.metrics import SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
 from core.redis_keys import rate_limit_burst, rate_limit_global, rate_limit_sustained
 from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
-from services.webhooks.command_service import get_client_ip
+from core.request_ip import get_client_ip
 
 logger = get_logger("webhook_security")
 
