@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
 from services.analysis.noise_reduction import NoiseScoringConfig
 from services.webhooks.decisioning import ForwardingPolicy
 
@@ -16,7 +16,7 @@ class AnalysisResolutionPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "AnalysisResolutionPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             duplicate_window_hours=int(config.retry.DUPLICATE_ALERT_TIME_WINDOW),
             recent_beyond_window_reuse_seconds=int(config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS),
@@ -34,7 +34,7 @@ class NoiseReductionPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "NoiseReductionPolicy":
-        config = config or Config.ai
+        config = config or get_default_config().ai
         return cls(
             enabled=bool(config.ENABLE_ALERT_NOISE_REDUCTION),
             window_minutes=max(1, int(config.NOISE_REDUCTION_WINDOW_MINUTES)),
@@ -53,7 +53,7 @@ class WebhookFailurePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "WebhookFailurePolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
             initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
@@ -70,7 +70,7 @@ class PayloadSanitizerPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "PayloadSanitizerPolicy":
-        config = config or Config
+        config = config or get_default_config()
         threshold = int(config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         strip_keys = (
             frozenset(k.strip().lower() for k in config.ai.AI_PAYLOAD_STRIP_KEYS.split(",") if k.strip())
@@ -92,7 +92,7 @@ class WebhookReceivePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
             ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
@@ -101,7 +101,7 @@ class WebhookReceivePolicy:
 
 
 def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy:
-    config = config or Config
+    config = config or get_default_config()
     return ForwardingPolicy(
         notification_cooldown_seconds=config.retry.NOTIFICATION_COOLDOWN_SECONDS,
         enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,

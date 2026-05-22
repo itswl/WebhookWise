@@ -9,12 +9,17 @@ profile-relevant panels also get a Pyroscope link.
 from __future__ import annotations
 
 import argparse
-import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from core import json  # noqa: E402
+
 DEFAULT_DASHBOARDS = (
     ROOT / "grafana/dashboard.json",
     ROOT / "grafana/dashboard-diagnostics.json",
@@ -99,7 +104,7 @@ def primary_label(labels: set[str]) -> str | None:
 def explore_url(datasource: str, query_key: str, query: str, query_type: str, **extra: Any) -> str:
     query_payload = {"refId": "A", query_key: query, "queryType": query_type, **extra}
     left = {"datasource": datasource, "queries": [query_payload], "range": TIME_RANGE}
-    state = json.dumps(left, ensure_ascii=False, separators=(",", ":")).replace("&", "%26")
+    state = json.dumps(left).replace("&", "%26")
     return f"/explore?orgId=1&left={state}"
 
 
@@ -173,7 +178,7 @@ def update_dashboard(path: Path) -> int:
             continue
         panel.setdefault("fieldConfig", {}).setdefault("defaults", {})["links"] = links_for_panel(panel)
         updated += 1
-    path.write_text(json.dumps(dashboard, ensure_ascii=False, indent=2) + "\n")
+    path.write_text(json.dumps(dashboard, indent=True) + "\n")
     return updated
 
 

@@ -6,8 +6,9 @@ from collections.abc import Awaitable, Callable
 from threading import Lock
 from typing import Any, ParamSpec, TypeVar
 
+from core.app_context import get_default_config
 from core.circuit_breaker import CircuitBreaker
-from core.config import Config
+from core.config import UnifiedConfigManager
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -16,18 +17,22 @@ _R = TypeVar("_R")
 class LazyCircuitBreaker:
     """Create the configured breaker on first use, not at module import time."""
 
-    def __init__(self, factory: Callable[[], CircuitBreaker]) -> None:
+    def __init__(self, factory: Callable[[UnifiedConfigManager], CircuitBreaker]) -> None:
         self._factory = factory
         self._lock = Lock()
         self._breaker: CircuitBreaker | None = None
+        self._config_id: int | None = None
 
     def _get(self) -> CircuitBreaker:
+        config = get_default_config()
+        config_id = id(config)
         breaker = self._breaker
-        if breaker is not None:
+        if breaker is not None and self._config_id == config_id:
             return breaker
         with self._lock:
-            if self._breaker is None:
-                self._breaker = self._factory()
+            if self._breaker is None or self._config_id != config_id:
+                self._breaker = self._factory(config)
+                self._config_id = config_id
             return self._breaker
 
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -37,27 +42,27 @@ class LazyCircuitBreaker:
         return getattr(self._get(), name)
 
 
-def _build_feishu_circuit_breaker() -> CircuitBreaker:
+def _build_feishu_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
     return CircuitBreaker(
         name="feishu",
-        failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
-        recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
+        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
+        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
     )
 
 
-def _build_openclaw_circuit_breaker() -> CircuitBreaker:
+def _build_openclaw_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
     return CircuitBreaker(
         name="openclaw",
-        failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
-        recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
+        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
+        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
     )
 
 
-def _build_forward_circuit_breaker() -> CircuitBreaker:
+def _build_forward_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
     return CircuitBreaker(
         name="forward",
-        failure_threshold=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
-        recovery_timeout=Config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
+        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
+        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
     )
 
 

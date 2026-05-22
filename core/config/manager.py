@@ -68,58 +68,61 @@ class UnifiedConfigManager:
 
     CONFIG_KEYS: dict[str, ConfigKeyMeta] = _build_config_keys()
 
-    @property
-    def server(self) -> ServerConfig:
-        return get_settings().server
-
-    @property
-    def tasks(self) -> TaskConfig:
-        return get_settings().tasks
-
-    @property
-    def mq(self) -> MQConfig:
-        return get_settings().mq
-
-    @property
-    def security(self) -> SecurityConfig:
-        return get_settings().security
-
-    @property
-    def db(self) -> DBConfig:
-        return get_settings().db
-
-    @property
-    def redis(self) -> RedisConfig:
-        return get_settings().redis
-
-    @property
-    def ai(self) -> AIConfig:
-        return get_settings().ai
-
-    @property
-    def forwarding(self) -> ForwardingConfig:
-        return get_settings().forwarding
-
-    @property
-    def notifications(self) -> NotificationConfig:
-        return get_settings().notifications
-
-    @property
-    def openclaw(self) -> OpenClawConfig:
-        return get_settings().openclaw
-
-    @property
-    def circuit_breaker(self) -> CircuitBreakerConfig:
-        return get_settings().circuit_breaker
-
-    @property
-    def retry(self) -> RetryConfig:
-        return get_settings().retry
-
-    @property
-    def maintenance(self) -> MaintenanceConfig:
-        return get_settings().maintenance
+    def __init__(self, settings: AppConfig | None = None) -> None:
+        self._settings = settings
 
     @property
     def app(self) -> AppConfig:
-        return get_settings()
+        return self._settings or get_settings()
+
+    @property
+    def server(self) -> ServerConfig:
+        return self.app.server
+
+    @property
+    def tasks(self) -> TaskConfig:
+        return self.app.tasks
+
+    @property
+    def mq(self) -> MQConfig:
+        return self.app.mq
+
+    @property
+    def security(self) -> SecurityConfig:
+        return self.app.security
+
+    @property
+    def db(self) -> DBConfig:
+        return self.app.db
+
+    @property
+    def redis(self) -> RedisConfig:
+        return self.app.redis
+
+    @property
+    def ai(self) -> AIConfig:
+        return self.app.ai
+
+    @property
+    def forwarding(self) -> ForwardingConfig:
+        return self.app.forwarding
+
+    @property
+    def notifications(self) -> NotificationConfig:
+        return self.app.notifications
+
+    @property
+    def openclaw(self) -> OpenClawConfig:
+        return self.app.openclaw
+
+    @property
+    def circuit_breaker(self) -> CircuitBreakerConfig:
+        return self.app.circuit_breaker
+
+    @property
+    def retry(self) -> RetryConfig:
+        return self.app.retry
+
+    @property
+    def maintenance(self) -> MaintenanceConfig:
+        return self.app.maintenance

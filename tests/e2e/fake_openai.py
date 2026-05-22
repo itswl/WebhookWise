@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock
 from typing import Any
 from urllib.parse import urlparse
+
+from core import json
 
 REQUESTS: list[dict[str, Any]] = []
 LOCK = Lock()
@@ -15,7 +16,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "FakeOpenAI/1.0"
 
     def _send_json(self, status: int, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        body = json.dumps_bytes(payload)
         self.send_response(status)
         self.send_header("content-type", "application/json; charset=utf-8")
         self.send_header("content-length", str(len(body)))
@@ -66,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": json.dumps(analysis, ensure_ascii=False)},
+                    "message": {"role": "assistant", "content": json.dumps(analysis)},
                     "finish_reason": "stop",
                 }
             ],

@@ -2,7 +2,7 @@
 
 This module is the boundary where operations code reads process configuration.
 Task runners, pollers and maintenance jobs receive plain values instead of
-reaching into ``Config`` directly.
+reaching into configuration globals directly.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class TaskRuntimePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> TaskRuntimePolicy:
-        config = config or Config
+        config = config or get_default_config()
         server = config.server
         tasks = config.tasks
         retry = config.retry
@@ -48,18 +48,18 @@ class TaskRuntimePolicy:
 @dataclass(frozen=True, slots=True)
 class DataMaintenancePolicy:
     enabled: bool
-    archive_days_default: int
+    retention_days_default: int
     retention_policies: Mapping[str, int]
     source_retention_policies: Mapping[str, int]
     cleanup_keywords: Mapping[str, tuple[str, ...]]
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> DataMaintenancePolicy:
-        config = config or Config
+        config = config or get_default_config()
         maintenance = config.maintenance
         return cls(
-            enabled=bool(maintenance.ENABLE_ARCHIVE_CLEANUP),
-            archive_days_default=int(maintenance.ARCHIVE_DAYS_DEFAULT),
+            enabled=bool(maintenance.ENABLE_DATA_CLEANUP),
+            retention_days_default=int(maintenance.DATA_RETENTION_DAYS_DEFAULT),
             retention_policies=dict(maintenance.RETENTION_POLICIES),
             source_retention_policies=dict(maintenance.SOURCE_RETENTION_POLICIES),
             cleanup_keywords={
@@ -76,7 +76,7 @@ class MetricsPollPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> MetricsPollPolicy:
-        config = config or Config
+        config = config or get_default_config()
         mq = config.mq
         return cls(
             webhook_mq_queue=str(mq.WEBHOOK_MQ_QUEUE),
@@ -90,5 +90,5 @@ class FeishuNotificationPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> FeishuNotificationPolicy:
-        config = config or Config
+        config = config or get_default_config()
         return cls(timeout_seconds=max(1, int(config.notifications.FEISHU_WEBHOOK_TIMEOUT)))

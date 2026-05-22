@@ -19,7 +19,7 @@ logger = get_logger("main")
 
 if __name__ == "__main__":
     config = get_config_manager()
-    # 启动前验证（model_validator 在 Config 实例化时已自动执行）
+    # 启动前验证（model_validator 在 AppConfig 实例化时已自动执行）
     if not asyncio.run(check_database_ready()):
         logger.error("数据库连接失败，请检查配置")
         raise SystemExit(1)

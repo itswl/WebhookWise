@@ -29,7 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from sqlalchemy import select
 
-from core.config import Config
+from core import json
+from core.app_context import get_default_config
 from core.logger import logger
 from db.engine import init_engine
 from db.session import session_scope
@@ -66,7 +67,8 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if not record.openclaw_session_key:
             return False, "缺少 session key"
 
-        if not Config.openclaw.OPENCLAW_HTTP_API_URL:
+        config = get_default_config()
+        if not config.openclaw.OPENCLAW_HTTP_API_URL:
             return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
 
         result = await poll_openclaw_result_via_http(record.openclaw_session_key, retry_count=3)
@@ -83,8 +85,6 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         json_match = re.search(r"\{[\s\S]*\}", text)
 
         if json_match:
-            import json
-
             try:
                 parsed = json.loads(json_match.group())
                 record.result = parsed
@@ -130,7 +130,8 @@ async def main():
         print(f"\n共 {len(records)} 条，使用 --list 跳过实际执行")
         return
 
-    if not Config.openclaw.OPENCLAW_HTTP_API_URL:
+    config = get_default_config()
+    if not config.openclaw.OPENCLAW_HTTP_API_URL:
         print("\n错误：未配置 OPENCLAW_HTTP_API_URL，无法重试")
         sys.exit(1)
 

@@ -13,7 +13,6 @@
 
 import argparse
 import asyncio
-import json
 
 # 确保项目根目录在 path 中
 import os
@@ -23,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from sqlalchemy import func, select
 
+from core import json
 from db.engine import init_engine
 from db.session import session_scope
 from models import WebhookEvent
@@ -30,7 +30,7 @@ from schemas.webhook import webhook_event_to_full_dict
 
 
 def print_json(data):
-    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    print(json.dumps(data, indent=True))
 
 
 async def query_by_id(event_id: int):

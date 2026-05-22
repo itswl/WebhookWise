@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -16,9 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import json  # noqa: E402
+
 
 def _render_schema(schema: dict[str, Any]) -> tuple[str, str]:
-    json_text = json.dumps(schema, ensure_ascii=False, indent=2) + "\n"
+    json_text = json.dumps(schema, indent=True) + "\n"
     yaml_text = yaml.safe_dump(schema, allow_unicode=True, sort_keys=False)
     return json_text, yaml_text
 

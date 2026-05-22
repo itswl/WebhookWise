@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from core.config import Config
+from core.app_context import get_default_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,7 +13,7 @@ class RemoteForwardPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "RemoteForwardPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
             timeout_seconds=int(config.forwarding.FORWARD_TIMEOUT),
@@ -32,7 +32,7 @@ class ForwardOutboxPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "ForwardOutboxPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
             max_attempts=max(1, int(config.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
@@ -73,7 +73,7 @@ class OpenClawTriggerPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "OpenClawTriggerPolicy":
-        config = config or Config
+        config = config or get_default_config()
         return cls(
             enabled=bool(config.openclaw.OPENCLAW_ENABLED),
             data_dir=str(config.server.DATA_DIR),

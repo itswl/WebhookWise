@@ -1,8 +1,8 @@
-import json
 import logging
 import os
 
 import core.logger as logger_module
+from core import json
 from core.logger import JsonFormatter, mask_url
 from core.logging_levels import apply_log_levels
 

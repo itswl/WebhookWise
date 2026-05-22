@@ -12,7 +12,7 @@ from api.deep_analysis import deep_analysis_router
 from api.forwarding import forwarding_router
 from api.reanalysis import reanalysis_router
 from api.webhook import webhook_router
-from core.app_context import AppContext, set_default_app_context
+from core.app_context import AppContext, get_or_create_default_app_context, set_default_app_context
 from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
 from core.logger import get_logger, stop_log_listener
@@ -32,7 +32,7 @@ def _app_config(app: FastAPI) -> UnifiedConfigManager:
 def _app_context(app: FastAPI) -> AppContext:
     context = getattr(app.state, "app_context", None)
     if not isinstance(context, AppContext):
-        context = AppContext()
+        context = get_or_create_default_app_context()
         app.state.app_context = context
     return context
 
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
-app.state.app_context = AppContext()
+app.state.app_context = get_or_create_default_app_context()
 
 
 setup_observability(app)

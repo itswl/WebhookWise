@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
 
-from core.config import Config, UnifiedConfigManager
+from core.config import UnifiedConfigManager
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class AppContext:
-    config: UnifiedConfigManager = Config
+    config: UnifiedConfigManager = field(default_factory=UnifiedConfigManager)
     http_client: httpx.AsyncClient | None = None
     redis_client: RedisClient | None = None
     db_engine: AsyncEngine | None = None
@@ -79,8 +79,14 @@ def get_default_app_context() -> AppContext | None:
     return _default_context
 
 
-def get_or_create_default_app_context(config: UnifiedConfigManager = Config) -> AppContext:
+def get_or_create_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
     global _default_context
-    if _default_context is None or _default_context.config is not config:
+    if _default_context is None:
+        _default_context = AppContext(config=config or UnifiedConfigManager())
+    elif config is not None and _default_context.config is not config:
         _default_context = AppContext(config=config)
     return _default_context
+
+
+def get_default_config() -> UnifiedConfigManager:
+    return get_or_create_default_app_context().config

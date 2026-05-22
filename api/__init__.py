@@ -18,7 +18,7 @@ class InvalidSignatureError(Exception):
 # ── 响应工具 ─────────────────────────────────────────────────────────────────
 
 
-def _ok(data: Any = None, http_status: int = 200, **extra: Any) -> JSONResponse:
+def ok_response(data: Any = None, http_status: int = 200, **extra: Any) -> JSONResponse:
     """Build success JSON response."""
     payload: dict[str, Any] = {"success": True, **(extra if extra else {"data": data})}
     if data is not None and "data" not in extra:
@@ -26,7 +26,7 @@ def _ok(data: Any = None, http_status: int = 200, **extra: Any) -> JSONResponse:
     return JSONResponse(content=payload, status_code=http_status)
 
 
-def _fail(error: str, http_status: int = 400, **extra: Any) -> JSONResponse:
+def fail_response(error: str, http_status: int = 400, **extra: Any) -> JSONResponse:
     """Build error JSON response."""
     payload: dict[str, Any] = {"success": False, "error": error, **extra}
     return JSONResponse(content=payload, status_code=http_status)

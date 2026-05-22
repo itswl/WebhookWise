@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Mapping
 from typing import Any
 
-import orjson
+from core import json
 
 REDACTED = "[REDACTED]"
 
@@ -78,11 +78,11 @@ def redact_raw_payload_text(raw_payload: str | None) -> str | None:
     if raw_payload == "":
         return ""
     try:
-        parsed = orjson.loads(raw_payload)
-    except orjson.JSONDecodeError:
+        parsed = json.loads(raw_payload)
+    except json.JSONDecodeError:
         digest = hashlib.sha256(raw_payload.encode("utf-8", errors="replace")).hexdigest()
         return f"[REDACTED_NON_JSON_PAYLOAD size={len(raw_payload.encode('utf-8'))} sha256={digest}]"
-    return orjson.dumps(redact_nested(parsed)).decode("utf-8")
+    return json.dumps(redact_nested(parsed))
 
 
 def redact_event_dict(data: dict[str, Any]) -> dict[str, Any]:

@@ -240,7 +240,7 @@ curl http://localhost:8000/api/config/sources \
    redis-cli info memory | grep used_memory_human
    ```
 
-3. 检查主表 `webhook_events` 行数：如果很大，说明数据归档未正常执行。归档由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
+3. 检查主表 `webhook_events` 行数：如果很大，说明过期数据清理未正常执行。清理由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
 
 4. Docker 内存问题：`docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
 

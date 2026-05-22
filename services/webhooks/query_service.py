@@ -38,7 +38,7 @@ _SUMMARY_COLUMNS = [
 
 
 def _row_to_summary_dict(row: Any) -> dict[str, Any]:
-    from adapters.summary_extractors import extract_summary_fields
+    from services.webhooks.mongodb_summary import mongodb_summary_fields
 
     ai_analysis = row.ai_analysis
     beyond_window, is_dup = row.beyond_window, row.is_duplicate
@@ -56,7 +56,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "beyond_window": beyond_window,
         "forward_status": row.forward_status,
         "summary": ai_analysis.get("summary", "") if ai_analysis else None,
-        "alert_info": extract_summary_fields(row.source, row.parsed_data),
+        "alert_info": mongodb_summary_fields(row.parsed_data) if row.source == "mongodb" else {},
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "prev_alert_id": row.prev_alert_id,
         "prev_alert_timestamp": prev_ts.isoformat() if prev_ts else None,

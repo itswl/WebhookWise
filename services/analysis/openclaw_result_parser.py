@@ -1,7 +1,6 @@
 """OpenClaw result text parsing helpers."""
 
-import json
-
+from core import json
 from services.webhooks.types import WebhookData
 
 

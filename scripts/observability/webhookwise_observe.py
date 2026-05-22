@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import json  # noqa: E402
 from scripts.observability.query_lib import (  # noqa: E402
     PROMQL_PRESETS,
     Endpoints,
@@ -32,7 +32,7 @@ from scripts.observability.query_lib import (  # noqa: E402
 
 
 def print_json(data: Any) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    print(json.dumps(data, indent=True))
 
 
 def print_table(rows: list[dict[str, Any]], columns: list[str]) -> None:

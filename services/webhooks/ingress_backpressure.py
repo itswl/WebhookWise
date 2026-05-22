@@ -6,11 +6,10 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any
 
-import orjson
-
 from adapters.ecosystem_adapters import normalize_webhook_event
+from core import json
 from core.logger import get_logger
-from models import WebhookEvent
+from services.webhooks.identity import generate_alert_hash
 from services.webhooks.policies import WebhookReceivePolicy
 
 logger = get_logger("ingress_backpressure")
@@ -40,12 +39,12 @@ def _fallback_body_hash(source: str, raw_body: bytes) -> str:
 
 def _ingress_identity(source_hint: str, raw_body: bytes) -> str:
     try:
-        loaded = orjson.loads(raw_body)
+        loaded = json.loads(raw_body)
         payload = loaded if isinstance(loaded, dict) else {}
         if not payload:
             return _fallback_body_hash(source_hint, raw_body)
         normalized = normalize_webhook_event(payload, source_hint)
-        return f"alert:{WebhookEvent.generate_hash(normalized.data, normalized.source)}"
+        return f"alert:{generate_alert_hash(normalized.data, normalized.source)}"
     except Exception as e:
         logger.debug("[IngressBackpressure] 无法解析 ingress identity，使用 body hash: %s", e)
         return _fallback_body_hash(source_hint, raw_body)

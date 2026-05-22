@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 
 import uvloop
 
-from core.config import Config
-from core.logger import get_logger, setup_logger, stop_log_listener
-from core.observability import setup_observability_worker
-from core.service_lifecycle import start_runtime_services, stop_runtime_services
+os.environ.setdefault("RUN_MODE", "worker")
+
+from core.app_context import AppContext, get_or_create_default_app_context, set_default_app_context
+from core.config import UnifiedConfigManager
+from core.logger import get_logger, stop_log_listener
 from services.operations.taskiq_wiring import broker
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -20,27 +22,17 @@ logger = get_logger("worker")
 async def startup() -> None:
     """初始化工作进程环境"""
     logger.info("[Worker] 正在初始化工作进程...")
-    await start_runtime_services(
-        Config,
-        broker=broker,
-        start_broker=True,
-        initialize_logger=setup_logger,
-        initialize_observability=setup_observability_worker,
-        initialize_redis_client=True,
-        initialize_ai_client=True,
-    )
+    context = AppContext(config=UnifiedConfigManager())
+    set_default_app_context(context)
+    await broker.startup()
     logger.info("[Worker] TaskIQ Broker 已启动")
 
 
 async def shutdown() -> None:
     """清理工作进程环境"""
     logger.info("[Worker] 正在关闭工作进程...")
-    await stop_runtime_services(
-        Config,
-        broker=broker,
-        stop_broker=True,
-        reset_ai_client=True,
-    )
+    get_or_create_default_app_context()
+    await broker.shutdown()
     logger.info("[Worker] 关闭完成。")
     stop_log_listener()
 

@@ -43,11 +43,10 @@ async def test_validate_outbound_url_accepts_public_resolved_host(monkeypatch: p
 
 
 @pytest.mark.asyncio
-async def test_validate_outbound_url_enforces_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+async def test_validate_outbound_url_enforces_allowlist(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 
-    monkeypatch.setattr(Config.security, "FORWARD_TARGET_ALLOWLIST", ".allowed.example")
+    monkeypatch.setattr(temp_config.security, "FORWARD_TARGET_ALLOWLIST", ".allowed.example")
 
     with pytest.raises(UnsafeTargetUrlError):
         await validate_outbound_url("https://example.com/hook")

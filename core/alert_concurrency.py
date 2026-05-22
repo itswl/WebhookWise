@@ -90,14 +90,15 @@ async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
 
 
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
-    from core.config import Config
+    from core.app_context import get_default_config
     from core.redis_client import redis_eval_int
 
-    threshold = max(0, int(Config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
+    config = get_default_config()
+    threshold = max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     if not threshold:
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
 
-    window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
+    window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
     try:
         queue_size = await redis_eval_int(
@@ -121,10 +122,11 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
 
 
 async def _release_processing_slot(alert_hash: str) -> None:
-    from core.config import Config
+    from core.app_context import get_default_config
     from core.redis_client import redis_eval_int
 
-    window_seconds = max(1, int(Config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
+    config = get_default_config()
+    window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
     try:
         await redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
@@ -137,17 +139,18 @@ def _lock_key(alert_hash: str) -> str:
 
 
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
-    from core.config import Config
+    from core.app_context import get_default_config
     from core.redis_client import redis_set_nx_ex
 
-    if not Config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
+    config = get_default_config()
+    if not config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
         return None
 
     key = _lock_key(alert_hash)
-    token = f"{Config.server.WORKER_ID}:{uuid.uuid4().hex}"
-    ttl_seconds = max(1, int(Config.retry.PROCESSING_LOCK_TTL_SECONDS))
-    timeout_seconds = max(0.0, float(Config.retry.PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS))
-    poll_interval = max(0.01, float(Config.retry.PROCESSING_LOCK_POLL_INTERVAL_MS) / 1000.0)
+    token = f"{config.server.WORKER_ID}:{uuid.uuid4().hex}"
+    ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
+    timeout_seconds = max(0.0, float(config.retry.PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS))
+    poll_interval = max(0.01, float(config.retry.PROCESSING_LOCK_POLL_INTERVAL_MS) / 1000.0)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
 
@@ -194,7 +197,9 @@ async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> N
 @asynccontextmanager
 async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessingGateResult, None]:
     """Serialize same-alert processing across workers and apply storm backpressure."""
-    from core.config import Config
+    from core.app_context import get_default_config
+
+    config = get_default_config()
 
     slot = await _reserve_processing_slot(alert_hash)
     if slot.suppressed:
@@ -219,7 +224,7 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
             return
         if lock is not None:
             lock_key, lock_token = lock
-            ttl_seconds = max(1, int(Config.retry.PROCESSING_LOCK_TTL_SECONDS))
+            ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
             refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds))
 
         async with _local_alert_lock(alert_hash):

@@ -1,9 +1,10 @@
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
+from core import json
 
 
 def test_redacts_headers_and_nested_payload_fields() -> None:
@@ -73,12 +74,11 @@ async def test_deep_analysis_prompt_uses_shared_loader(tmp_path: Path) -> None:
         await reload_deep_analysis_prompt_template()
 
 
-def test_sanitize_for_ai_redacts_sensitive_nested_fields(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.config import Config
+def test_sanitize_for_ai_redacts_sensitive_nested_fields(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
     from core.sensitive_data import REDACTED
     from services.webhooks.payload_sanitizer import sanitize_for_ai
 
-    monkeypatch.setattr(Config.ai, "AI_PAYLOAD_STRIP_KEYS", "")
+    monkeypatch.setattr(temp_config.ai, "AI_PAYLOAD_STRIP_KEYS", "")
     cleaned = sanitize_for_ai(
         {
             "service": "checkout",
@@ -106,13 +106,14 @@ async def test_forward_to_remote_rejects_private_target() -> None:
 
 
 @pytest.mark.asyncio
-async def test_request_body_limit_middleware_rejects_oversized_body(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_request_body_limit_middleware_rejects_oversized_body(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
     import httpx
 
     from core.app import app
-    from core.config import Config
 
-    monkeypatch.setattr(Config.security, "MAX_WEBHOOK_BODY_BYTES", 4)
+    monkeypatch.setattr(temp_config.security, "MAX_WEBHOOK_BODY_BYTES", 4)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/webhook/prometheus", content=b"12345")
@@ -225,15 +226,14 @@ def test_deep_analysis_view_does_not_render_unsanitized_marked_html() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
     from core.app import app, lifespan
-    from core.config import Config
 
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setattr(Config.security, "API_KEY", "real-api-key")
-    monkeypatch.setattr(Config.security, "ADMIN_WRITE_KEY", "please-change-admin-write-key")
-    monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "real-webhook-secret")
-    monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", True)
+    monkeypatch.setattr(temp_config.security, "API_KEY", "real-api-key")
+    monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "please-change-admin-write-key")
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "real-webhook-secret")
+    monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", True)
 
     with pytest.raises(RuntimeError, match="ADMIN_WRITE_KEY"):
         async with lifespan(app):
@@ -311,15 +311,14 @@ def test_source_hint_is_bounded() -> None:
 
 @pytest.mark.asyncio
 async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
 ) -> None:
     import httpx
 
     from core.app import app
-    from core.config import Config
 
-    monkeypatch.setattr(Config.security, "API_KEY", "api-key")
-    monkeypatch.setattr(Config.security, "ADMIN_WRITE_KEY", "admin-key")
+    monkeypatch.setattr(temp_config.security, "API_KEY", "api-key")
+    monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "admin-key")
 
     async def fake_reload() -> str:
         return "test prompt"
@@ -356,16 +355,17 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_webhook_auth_respects_require_webhook_auth_switch(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
     import httpx
 
     from core.app import app
-    from core.config import Config
     from services.operations.tasks import process_webhook_task
 
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
 
     enqueued: list[str] = []
 
@@ -376,15 +376,15 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: py
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", False)
-        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "configured-but-disabled")
+        monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)
+        monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "configured-but-disabled")
         disabled = await client.post("/webhook/prometheus", json={"alertname": "no-auth"})
 
-        monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", True)
-        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "")
+        monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", True)
+        monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "")
         missing_secret = await client.post("/webhook/prometheus", json={"alertname": "missing-secret"})
 
-        monkeypatch.setattr(Config.security, "WEBHOOK_SECRET", "real-secret")
+        monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "real-secret")
         missing_token = await client.post("/webhook/prometheus", json={"alertname": "missing-token"})
         valid_token = await client.post(
             "/webhook/prometheus",
@@ -401,18 +401,17 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(monkeypatch: py
 
 @pytest.mark.asyncio
 async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
 ) -> None:
     import httpx
 
     from core.app import app
-    from core.config import Config
 
-    monkeypatch.setattr(Config.server, "RUN_MODE", "all")
-    monkeypatch.setattr(Config.security, "REQUIRE_WEBHOOK_AUTH", False)
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
-    monkeypatch.setattr(Config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
+    monkeypatch.setattr(temp_config.server, "RUN_MODE", "all")
+    monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
 
     backpressure_calls: list[dict[str, object]] = []
 

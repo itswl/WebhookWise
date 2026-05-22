@@ -165,7 +165,7 @@ class CircuitBreaker:
                     },
                 )
                 logger.error(
-                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, " "将在 %.1fs 后恢复",
+                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, 将在 %.1fs 后恢复",
                     self.name,
                     self.failure_threshold,
                     self.recovery_timeout,

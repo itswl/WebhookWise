@@ -38,8 +38,8 @@ from core.observability.tracing import (
 from core.observability.tracing import (
     span as otel_span,
 )
-from models import WebhookEvent
 from services.webhooks.decisioning import normalize_importance
+from services.webhooks.identity import generate_alert_hash
 from services.webhooks.pipeline_steps import (
     PipelineProcessingResult,
     WebhookPipelineDependencies,
@@ -238,7 +238,7 @@ async def _process_envelope(
             WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels("parse", state.metric_source, parse_outcome).observe(
                 time.perf_counter() - parse_start
             )
-    alert_hash = WebhookEvent.generate_hash(req_ctx.parsed_data, req_ctx.source)
+    alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
     set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=state.request_id)
     ctx = WebhookProcessContext(
         event_id=None,

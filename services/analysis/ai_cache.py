@@ -2,8 +2,7 @@
 
 import time
 
-import orjson
-
+from core import json
 from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
 from services.analysis.ai_policies import AICachePolicy
@@ -30,7 +29,7 @@ async def get_cached_analysis(alert_hash: str, *, policy: AICachePolicy | None =
         cached_json = await redis_get_str(ck)
         if not cached_json:
             return None
-        parsed = orjson.loads(cached_json)
+        parsed = json.loads(cached_json)
         if not isinstance(parsed, dict):
             result = "invalid"
             return None
@@ -63,7 +62,7 @@ async def save_to_cache(
 
         ck = get_cache_key(alert_hash)
         res_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
-        cached_bytes = orjson.dumps(res_to_cache)
+        cached_bytes = json.dumps_bytes(res_to_cache)
         counter_key = f"{ck}:hits"
         await redis_setex_bytes(ck, policy.ttl_seconds, cached_bytes)
         await redis_setex_str(counter_key, policy.ttl_seconds, "0")
