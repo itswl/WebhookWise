@@ -10,7 +10,7 @@ from adapters.ecosystem_adapters import normalize_webhook_event
 from core import json
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL
-from services.webhooks.identity import generate_alert_hash
+from services.webhooks.deduplication import generate_alert_hash
 from services.webhooks.policies import WebhookReceivePolicy
 
 logger = get_logger("ingress_backpressure")

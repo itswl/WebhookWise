@@ -29,9 +29,34 @@ class Channel(Protocol):
 _registry: dict[str, Channel] | None = None
 
 
+class WebhookChannel:
+    name = "webhook"
+
+    def supports(self, target_url: str) -> bool:
+        return True
+
+    def format(self, ctx: FormatContext) -> dict[str, Any]:
+        return {
+            "webhook": ctx.webhook_data,
+            "analysis": ctx.analysis_result,
+            "is_periodic_reminder": ctx.is_periodic_reminder,
+        }
+
+    async def send(self, url: str, payload: dict[str, Any]) -> SendResult:
+        from services.forwarding.policies import RemoteForwardPolicy
+        from services.forwarding.remote import post_json_to_remote
+
+        return await post_json_to_remote(
+            url,
+            payload,
+            policy=RemoteForwardPolicy.from_config(),
+            validate_target=True,
+            target_type_label=self.name,
+        )
+
+
 def _build_registry() -> dict[str, Channel]:
     from services.channels.feishu import FeishuChannel
-    from services.channels.webhook import WebhookChannel
 
     channels: list[Channel] = [FeishuChannel(), WebhookChannel()]
     return {channel.name: channel for channel in channels}

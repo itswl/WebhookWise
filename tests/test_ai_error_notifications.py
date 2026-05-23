@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.analysis.ai_policies import AIErrorNotificationPolicy
+from services.analysis.analysis_policies import AIErrorNotificationPolicy
 
 
 class _FakeChannel:
@@ -65,7 +65,7 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
 
 
 def test_ai_error_notification_policy_reads_runtime_knobs(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
-    from services.analysis.ai_policies import AIErrorNotificationPolicy
+    from services.analysis.analysis_policies import AIErrorNotificationPolicy
 
     monkeypatch.setattr(temp_config.forwarding, "ENABLE_FORWARD", True)
     monkeypatch.setattr(

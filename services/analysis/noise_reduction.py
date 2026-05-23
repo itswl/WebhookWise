@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from core.logger import get_logger
-from services.analysis.config_models import NoiseScoringConfig
+from services.analysis.analysis_policies import NoiseScoringConfig
 from services.webhooks.types import AnalysisResult
 
 logger = get_logger("analysis.noise_reduction")

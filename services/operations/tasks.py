@@ -39,13 +39,11 @@ from core.observability.tracing import (
     trace_context_from_headers,
 )
 from core.observability.tracing import span as otel_span
-from core.redis_client import RedisEvalArg
 from core.redis_health import scheduled_task_lock, webhook_global_task_slots
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
 from services.forwarding.outbox import configure_forward_outbox_schedulers
-from services.operations.policies import TaskRuntimePolicy
-from services.operations.task_slots import TaskSlotManager
+from services.operations.policies import TaskRuntimePolicy, TaskSlotManager
 
 logger = get_logger("tasks")
 
@@ -80,10 +78,6 @@ async def _local_webhook_task_slot(limit: int) -> AsyncIterator[None]:
         yield
 
 
-async def _redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int | None:
-    return await redis_client.redis_eval_int(script, numkeys, *args)
-
-
 async def _enqueue_forward_outbox(outbox_id: int) -> None:
     await process_forward_outbox_task.kiq(outbox_id=outbox_id)
 
@@ -109,17 +103,14 @@ def _webhook_slot_lease_seconds(policy: TaskRuntimePolicy | None = None) -> int:
 
 
 def _task_slot_manager() -> TaskSlotManager:
-    return TaskSlotManager(key=_WEBHOOK_TASK_SLOT_KEY, eval_int=_redis_eval_int, logger=logger)
+    return TaskSlotManager(_WEBHOOK_TASK_SLOT_KEY)
 
 
 @asynccontextmanager
 async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
-    runtime_policy = _task_policy(policy)
-    token = f"{runtime_policy.worker_id}:{uuid.uuid4().hex}"
-    lease_seconds = _webhook_slot_lease_seconds(runtime_policy)
-    poll_interval = runtime_policy.webhook_task_poll_interval_seconds
-    renew_task: asyncio.Task[None] | None = None
+    poll_interval = _task_policy(policy).webhook_task_poll_interval_seconds
     slot_manager = _task_slot_manager()
+    member: str | None = None
     try:
         while True:
             if not await redis_health.ensure_redis_available("tasks:webhook_task_slot"):
@@ -127,8 +118,8 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
                 await asyncio.sleep(poll_interval)
                 continue
             try:
-                if await slot_manager.acquire(token, limit, lease_seconds):
-                    renew_task = asyncio.create_task(slot_manager.renew_until_cancelled(token, lease_seconds))
+                member = await slot_manager.acquire()
+                if member:
                     break
             except Exception as e:
                 redis_health.mark_redis_failure("tasks:webhook_task_slot", e)
@@ -137,12 +128,9 @@ async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolic
 
         yield
     finally:
-        if renew_task is not None:
-            renew_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await renew_task
-        with contextlib.suppress(Exception):
-            await slot_manager.release(token)
+        if member:
+            with contextlib.suppress(Exception):
+                await slot_manager.release(member)
 
 
 @asynccontextmanager

@@ -3,7 +3,7 @@
 from core.logger import get_logger
 from db.session import session_scope
 from models import AIUsageLog
-from services.analysis.ai_policies import AIProviderPolicy
+from services.analysis.analysis_policies import AIProviderPolicy
 
 logger = get_logger("analysis.ai_usage")
 

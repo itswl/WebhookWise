@@ -10,13 +10,13 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Any
 
+from core import json
 from core.http_client import get_http_client
 from core.logger import get_logger
 from core.observability.metrics import DEEP_ANALYSIS_TOTAL
 from core.observability.tracing import get_current_trace_id
 from services.analysis.openclaw_http import poll_openclaw_final
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
-from services.analysis.openclaw_result_parser import build_analysis_result_from_openclaw_text
 from services.operations.deep_analysis_notifications import (
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
@@ -595,3 +595,36 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     else:
         logger.debug("[Poller] 扫描未发现待调度 OpenClaw 分析")
     return len(ids)
+
+
+def extract_robust_json(text: str) -> str | None:
+    if not isinstance(text, str):
+        return None
+    start_idx = text.find("{")
+    if start_idx == -1:
+        return None
+    stack = 0
+    for i in range(start_idx, len(text)):
+        if text[i] == "{":
+            stack += 1
+        elif text[i] == "}":
+            stack -= 1
+            if stack == 0:
+                return text[start_idx : i + 1]
+    return None
+
+
+def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> WebhookData:
+    parsed_result = None
+    json_text = extract_robust_json(text)
+    if json_text:
+        try:
+            parsed_result = json.loads(json_text)
+        except json.JSONDecodeError:
+            parsed_result = None
+
+    if parsed_result and isinstance(parsed_result, dict):
+        parsed_result["_openclaw_run_id"] = run_id
+        parsed_result["_openclaw_text"] = text
+        return dict(parsed_result)
+    return {"root_cause": text, "_openclaw_text": text}

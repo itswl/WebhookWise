@@ -301,7 +301,7 @@ async def forward_deep_analysis(
 
     from services.channels.base import resolve_channel_name
     from services.channels.feishu import build_deep_analysis_card
-    from services.forwarding.enqueue import enqueue_external_message
+    from services.forwarding.outbox import enqueue_external_message
 
     is_feishu = is_feishu_url(target_url)
     fwd_payload: dict[str, Any] = {
