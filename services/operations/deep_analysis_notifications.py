@@ -3,7 +3,7 @@
 from typing import Any
 
 from core.logger import get_logger, mask_url
-from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
+from services.analysis.openclaw import OpenClawPollPolicy
 from services.channels.feishu import build_deep_analysis_card
 from services.forwarding.outbox import forward_notification
 from services.webhooks.types import WebhookData
@@ -16,10 +16,6 @@ async def send_feishu_deep_analysis(
     analysis_record: dict[str, Any],
     source: str = "",
     webhook_event_id: int = 0,
-    *,
-    timeout_seconds: int | None = None,
-    http_client: Any | None = None,
-    channels: Any | None = None,
 ) -> bool:
     if not webhook_url:
         return False

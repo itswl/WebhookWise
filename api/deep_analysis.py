@@ -36,7 +36,7 @@ def _is_supported_deep_analysis_engine(requested: str) -> bool:
 async def _run_openclaw_deep_analysis(
     ctx: JSONDict, headers: dict[str, Any], user_question: str
 ) -> tuple[AnalysisResult | ForwardResult, str]:
-    from services.forwarding.openclaw import analyze_with_openclaw
+    from services.analysis.openclaw import analyze_with_openclaw
 
     webhook_data: WebhookData = {
         "source": ctx["source"],
@@ -242,7 +242,7 @@ async def retry_deep_analysis(
         logger.info("[DeepAnalysis] 重试后同步完成 analysis_id=%s engine=%s", record.id, engine_name)
         return {"success": True, "message": "分析已完成"}
 
-    from services.analysis.openclaw_poller import clear_openclaw_poll_state
+    from services.analysis.openclaw import clear_openclaw_poll_state
 
     _reset_deep_analysis_for_background_poll(record, datetime.now())
     await session.flush()

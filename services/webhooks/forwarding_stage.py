@@ -113,66 +113,46 @@ async def finalize_analysis_transaction(
     skip_duplicate_lookup = True
 
     outbox_ids: list[int] = []
-    with otel_span(
-        "webhook.persist",
-        {
-            "event_id": ctx.event_id or 0,
-            "source": ctx.req_ctx.source,
-            "alert_hash": ctx.alert_hash[:12],
-            "pipeline.step": "persist",
-        },
-    ):
+    persist_attrs = {
+        "event_id": ctx.event_id or 0,
+        "source": ctx.req_ctx.source,
+        "alert_hash": ctx.alert_hash[:12],
+        "pipeline.step": "persist",
+    }
+    with otel_span("webhook.persist", persist_attrs):
         async with session_scope() as session:
-            with otel_span(
-                "webhook.persist.save",
-                {
-                    "event_id": ctx.event_id or 0,
-                    "source": ctx.req_ctx.source,
-                    "alert_hash": ctx.alert_hash[:12],
-                    "pipeline.step": "persist",
-                },
-            ):
-                save_res = await save_webhook_data_in_session(
-                    session,
-                    input=SaveWebhookInput(
-                        data=ctx.req_ctx.parsed_data,
-                        source=ctx.req_ctx.source,
-                        raw_payload=ctx.req_ctx.payload,
-                        headers=ctx.req_ctx.headers,
-                        client_ip=ctx.req_ctx.client_ip,
-                        request_id=ctx.request_id,
-                        ai_analysis=final_analysis,
-                        alert_hash=ctx.alert_hash,
-                        dedup_key=ctx.dedup_key,
-                        is_duplicate=is_dup_for_save,
-                        original_event_id=original_id_for_save,
-                        skip_duplicate_lookup=skip_duplicate_lookup,
-                    ),
-                )
+            save_res = await save_webhook_data_in_session(
+                session,
+                input=SaveWebhookInput(
+                    data=ctx.req_ctx.parsed_data,
+                    source=ctx.req_ctx.source,
+                    raw_payload=ctx.req_ctx.payload,
+                    headers=ctx.req_ctx.headers,
+                    client_ip=ctx.req_ctx.client_ip,
+                    request_id=ctx.request_id,
+                    ai_analysis=final_analysis,
+                    alert_hash=ctx.alert_hash,
+                    dedup_key=ctx.dedup_key,
+                    is_duplicate=is_dup_for_save,
+                    original_event_id=original_id_for_save,
+                    skip_duplicate_lookup=skip_duplicate_lookup,
+                ),
+            )
 
-            with otel_span(
-                "webhook.persist.forward_decision",
-                {
-                    "event_id": save_res.webhook_id,
-                    "source": ctx.req_ctx.source,
-                    "pipeline.step": "persist",
-                    "webhook.importance": normalize_importance(final_analysis.get("importance", "")),
-                    "webhook.duplicate": save_res.is_duplicate,
-                },
-            ):
-                decision_original = None
-                if save_res.original_id is not None:
-                    decision_original = await session.get(WebhookEvent, save_res.original_id)
-                fwd_dec = await resolve_forward_decision(
-                    normalize_importance(final_analysis.get("importance", "")),
-                    save_res.is_duplicate,
-                    noise,
-                    decision_original,
-                    ctx.req_ctx.source,
-                    parsed_data=ctx.req_ctx.parsed_data,
-                    session=session,
-                    policy=forwarding_policy,
-                )
+            decision_original = None
+            if save_res.original_id is not None:
+                decision_original = await session.get(WebhookEvent, save_res.original_id)
+            fwd_dec = await resolve_forward_decision(
+                normalize_importance(final_analysis.get("importance", "")),
+                save_res.is_duplicate,
+                noise,
+                decision_original,
+                ctx.req_ctx.source,
+                parsed_data=ctx.req_ctx.parsed_data,
+                session=session,
+                policy=forwarding_policy,
+            )
+
             if fwd_dec.should_forward:
                 forward_data = dict(ctx.req_ctx.webhook_full_data)
                 if isinstance(forward_data.get("headers"), dict):
@@ -182,11 +162,9 @@ async def finalize_analysis_transaction(
                 with otel_span(
                     "webhook.persist.outbox",
                     {
-                        "event_id": save_res.webhook_id,
-                        "source": ctx.req_ctx.source,
-                        "pipeline.step": "persist",
+                        **persist_attrs,
                         "forward.target_count": len(fwd_dec.matched_rules) or 1,
-                        "forward.target_type": (first_target_type),
+                        "forward.target_type": first_target_type,
                     },
                 ):
                     fwd_result = await resolve_and_forward(

@@ -178,9 +178,5 @@ def scheduled_task_lock(name: str) -> str:
     return f"scheduled-task-lock:{name}"
 
 
-def webhook_global_task_slots() -> str:
-    return "webhook:global-task-slots"
-
-
 def openclaw_poller_stability(record_id: int) -> str:
     return f"openclaw:poller:stability:{record_id}"

@@ -13,11 +13,6 @@ from services.webhooks.policies import PayloadPolicy
 logger = get_logger("payload_sanitizer")
 
 
-def _get_offload_threshold_bytes(policy: PayloadPolicy | None = None) -> int:
-    """Return the configured payload offload threshold."""
-    return (policy or PayloadPolicy.from_config()).offload_threshold_bytes
-
-
 def _should_offload(data: object, policy: PayloadPolicy, depth: int = 0) -> bool:
     if depth > 2:
         return False

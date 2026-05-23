@@ -4,7 +4,7 @@ import pytest
 
 
 def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
-    from services.forwarding.openclaw import _build_openclaw_prompt_payload
+    from services.analysis.openclaw import _build_openclaw_prompt_payload
 
     payload = {
         "alerts": [
@@ -46,7 +46,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     expected_url: str,
 ) -> None:
     from services.forwarding.circuit_breakers import OpenClawForwardDependencies
-    from services.forwarding.openclaw import analyze_with_openclaw
+    from services.analysis.openclaw import analyze_with_openclaw
     from services.forwarding.policies import OpenClawTriggerPolicy
 
     async def fake_load_prompt() -> str:
@@ -62,7 +62,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
         async def call_async(self, fn, *args, **kwargs):
             return await fn(*args, **kwargs)
 
-    monkeypatch.setattr("services.forwarding.openclaw.load_deep_analysis_prompt_template", fake_load_prompt)
+    monkeypatch.setattr("services.analysis.openclaw.load_deep_analysis_prompt_template", fake_load_prompt)
 
     result = await analyze_with_openclaw(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},

@@ -1,7 +1,6 @@
 """Webhook service policies built from static process configuration."""
 
 from dataclasses import dataclass
-from typing import Any
 
 from core.app_context import get_config_manager
 from services.analysis.analysis_policies import NoiseScoringConfig
@@ -16,14 +15,14 @@ class NoiseReductionPolicy:
     scoring_config: NoiseScoringConfig
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "NoiseReductionPolicy":
-        config = (config or get_config_manager()).noise
+    def from_config(cls) -> "NoiseReductionPolicy":
+        cfg = get_config_manager().noise
         return cls(
-            enabled=bool(config.ENABLE_ALERT_NOISE_REDUCTION),
-            window_minutes=max(1, int(config.NOISE_REDUCTION_WINDOW_MINUTES)),
-            root_cause_min_confidence=float(config.ROOT_CAUSE_MIN_CONFIDENCE),
-            suppress_derived_forward=bool(config.SUPPRESS_DERIVED_ALERT_FORWARD),
-            scoring_config=NoiseScoringConfig.from_config(config),
+            enabled=bool(cfg.ENABLE_ALERT_NOISE_REDUCTION),
+            window_minutes=max(1, int(cfg.NOISE_REDUCTION_WINDOW_MINUTES)),
+            root_cause_min_confidence=float(cfg.ROOT_CAUSE_MIN_CONFIDENCE),
+            suppress_derived_forward=bool(cfg.SUPPRESS_DERIVED_ALERT_FORWARD),
+            scoring_config=NoiseScoringConfig.from_config(cfg),
         )
 
 
@@ -37,14 +36,14 @@ class IngressPolicy:
     ingress_backpressure_fail_open_on_redis_error: bool = False
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "IngressPolicy":
-        config = config or get_config_manager()
+    def from_config(cls) -> "IngressPolicy":
+        cfg = get_config_manager()
         return cls(
-            max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
-            ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
-            ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
+            max_body_bytes=max(0, int(cfg.security.MAX_WEBHOOK_BODY_BYTES or 0)),
+            ingress_backpressure_threshold=max(0, int(cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
+            ingress_backpressure_window_seconds=max(1, int(cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
             ingress_backpressure_fail_open_on_redis_error=bool(
-                config.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR
+                cfg.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR
             ),
         )
 
@@ -58,18 +57,18 @@ class PayloadPolicy:
     max_bytes: int = 0
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "PayloadPolicy":
-        config = config or get_config_manager()
-        threshold = int(config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
+    def from_config(cls) -> "PayloadPolicy":
+        cfg = get_config_manager()
+        threshold = int(cfg.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         strip_keys = (
-            frozenset(k.strip().lower() for k in config.ai.AI_PAYLOAD_STRIP_KEYS.split(",") if k.strip())
-            if config.ai.AI_PAYLOAD_STRIP_KEYS
+            frozenset(k.strip().lower() for k in cfg.ai.AI_PAYLOAD_STRIP_KEYS.split(",") if k.strip())
+            if cfg.ai.AI_PAYLOAD_STRIP_KEYS
             else frozenset()
         )
         return cls(
             offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
             strip_keys=strip_keys,
-            max_bytes=int(config.ai.AI_PAYLOAD_MAX_BYTES),
+            max_bytes=int(cfg.ai.AI_PAYLOAD_MAX_BYTES),
         )
 
 
@@ -83,12 +82,12 @@ class WebhookRetryPolicy:
     backoff_multiplier: float = 2.0
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "WebhookRetryPolicy":
-        config = config or get_config_manager()
+    def from_config(cls) -> "WebhookRetryPolicy":
+        cfg = get_config_manager()
         return cls(
-            max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
-            initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
-            max_delay=int(config.retry.WEBHOOK_RETRY_MAX_DELAY),
-            backoff_multiplier=float(config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
+            max_retries=max(0, int(cfg.retry.WEBHOOK_RETRY_MAX_RETRIES)),
+            initial_delay=int(cfg.retry.WEBHOOK_RETRY_INITIAL_DELAY),
+            max_delay=int(cfg.retry.WEBHOOK_RETRY_MAX_DELAY),
+            backoff_multiplier=float(cfg.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
         )
 

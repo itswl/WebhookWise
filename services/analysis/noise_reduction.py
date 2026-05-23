@@ -9,7 +9,7 @@ from typing import Any
 
 from core.logger import get_logger
 from services.analysis.analysis_policies import NoiseScoringConfig
-from services.webhooks.types import AnalysisResult
+from services.webhooks.types import AnalysisResult, NoiseReductionContext
 
 logger = get_logger("analysis.noise_reduction")
 
@@ -28,17 +28,6 @@ class AlertContext:
     alert_hash: str | None = None
 
 
-@dataclass(frozen=True)
-class NoiseReductionDecision:
-    relation: str
-    root_cause_event_id: int | None
-    confidence: float
-    suppress_forward: bool
-    reason: str
-    related_alert_count: int
-    related_alert_ids: list[int]
-
-
 DEFAULT_SCORING_CONFIG = NoiseScoringConfig(
     source_weight=0.15,
     resource_weight=0.45,
@@ -48,18 +37,6 @@ DEFAULT_SCORING_CONFIG = NoiseScoringConfig(
     severity_downgrade_score=0.03,
     related_min_confidence=0.35,
 )
-
-
-def default_decision() -> NoiseReductionDecision:
-    return NoiseReductionDecision(
-        relation="standalone",
-        root_cause_event_id=None,
-        confidence=0.0,
-        suppress_forward=False,
-        reason="未发现可关联的告警关系",
-        related_alert_count=0,
-        related_alert_ids=[],
-    )
 
 
 def _safe_dict(value: Any) -> dict[str, Any]:
@@ -92,16 +69,6 @@ def _tokenize_text(*values: Any) -> set[str]:
     return tokens
 
 
-def _pick_first(*values: Any) -> str | None:
-    for value in values:
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
-
-
 def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
     ids: set[str] = set()
 
@@ -115,7 +82,7 @@ def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
     for item in resources:
         if not isinstance(item, dict):
             continue
-        candidate = _pick_first(item.get("InstanceId"), item.get("Id"), item.get("id"))
+        candidate = next((str(v).strip() for k in ("InstanceId", "Id", "id") if (v := item.get(k)) and str(v).strip()), None)
         if candidate:
             ids.add(candidate.lower())
 
@@ -179,45 +146,34 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / union_size
 
 
-def _extract_embedding(ctx: AlertContext) -> list[float] | None:
-    for container in (_safe_dict(ctx.analysis), _safe_dict(ctx.parsed_data)):
-        value = container.get("_embedding") or container.get("embedding")
-        if not isinstance(value, list) or not value:
-            continue
-        vector: list[float] = []
-        for item in value:
-            if not isinstance(item, (int, float)):
-                vector = []
-                break
-            vector.append(float(item))
-        if vector:
-            return vector
-    return None
-
-
-def _cosine_similarity(a: list[float] | None, b: list[float] | None) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    score = dot / (norm_a * norm_b)
-    return max(0.0, min(1.0, score))
-
-
 def _semantic_similarity(
     current: AlertContext, candidate: AlertContext, current_tokens: set[str], candidate_tokens: set[str]
 ) -> float:
-    embedding_score = _cosine_similarity(_extract_embedding(current), _extract_embedding(candidate))
+    def _get_embedding(ctx: AlertContext) -> list[float] | None:
+        for container in (_safe_dict(ctx.analysis), _safe_dict(ctx.parsed_data)):
+            value = container.get("_embedding") or container.get("embedding")
+            if not isinstance(value, list) or not value:
+                continue
+            vector: list[float] = []
+            for item in value:
+                if not isinstance(item, (int, float)):
+                    vector = []
+                    break
+                vector.append(float(item))
+            if vector:
+                return vector
+        return None
+
+    emb_a, emb_b = _get_embedding(current), _get_embedding(candidate)
+    embedding_score = 0.0
+    if emb_a and emb_b and len(emb_a) == len(emb_b):
+        dot = sum(x * y for x, y in zip(emb_a, emb_b, strict=True))
+        norm_a = math.sqrt(sum(x * x for x in emb_a))
+        norm_b = math.sqrt(sum(y * y for y in emb_b))
+        if norm_a > 0 and norm_b > 0:
+            embedding_score = max(0.0, min(1.0, dot / (norm_a * norm_b)))
     token_score = _jaccard(current_tokens, candidate_tokens)
     return max(embedding_score, token_score)
-
-
-def _importance_score(value: str) -> float:
-    mapping = {"high": 1.0, "medium": 0.6, "low": 0.2}
-    return mapping.get(str(value).lower(), 0.6)
 
 
 def score_candidate(
@@ -241,8 +197,9 @@ def score_candidate(
         current, candidate, current_tokens, candidate_tokens
     )
 
-    candidate_level = _importance_score(candidate.importance)
-    current_level = _importance_score(current.importance)
+    imp_map = {"high": 1.0, "medium": 0.6, "low": 0.2}
+    candidate_level = imp_map.get(str(candidate.importance).lower(), 0.6)
+    current_level = imp_map.get(str(current.importance).lower(), 0.6)
     severity_score = (
         scoring_config.severity_weight if candidate_level >= current_level else scoring_config.severity_downgrade_score
     )
@@ -281,7 +238,7 @@ def analyze_noise_reduction(
     min_confidence: float,
     suppress_derived: bool,
     scoring_config: NoiseScoringConfig = DEFAULT_SCORING_CONFIG,
-) -> NoiseReductionDecision:
+) -> NoiseReductionContext:
     """
     分析噪声降低
 
@@ -300,7 +257,7 @@ def analyze_noise_reduction(
 
     if not scored:
         logger.info("[Noise] 降噪决策: relation=standalone")
-        return default_decision()
+        return NoiseReductionContext("standalone", None, 0.0, False, "未发现可关联的告警关系", 0, [])
 
     related = [(alert, score) for alert, score in scored if score >= scoring_config.related_min_confidence]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
@@ -312,7 +269,7 @@ def analyze_noise_reduction(
         reason = f"与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）"
 
         logger.info("[Noise] 降噪决策: relation=derived, confidence=%.2f, suppress=%s", best_score, suppress_derived)
-        return NoiseReductionDecision(
+        return NoiseReductionContext(
             relation="derived",
             root_cause_event_id=best_alert.event_id,
             confidence=round(best_score, 4),
@@ -327,7 +284,7 @@ def analyze_noise_reduction(
         reason = f"检测到告警风暴，已关联 {len(related_ids)} 条近邻告警"
 
         logger.info("[Noise] 降噪决策: relation=root_cause, count=%d", len(related_ids))
-        return NoiseReductionDecision(
+        return NoiseReductionContext(
             relation="root_cause",
             root_cause_event_id=current.event_id,
             confidence=round(best_score, 4),
@@ -337,7 +294,7 @@ def analyze_noise_reduction(
             related_alert_ids=related_ids,
         )
 
-    return NoiseReductionDecision(
+    return NoiseReductionContext(
         relation="standalone",
         root_cause_event_id=None,
         confidence=round(best_score, 4),

@@ -24,15 +24,15 @@ class RuleAnalysisPolicy:
     threshold_multiplier: float
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "RuleAnalysisPolicy":
+    def from_config(cls) -> "RuleAnalysisPolicy":
         from core.text import split_csv_lower
 
-        config = (config or get_config_manager()).ai
+        cfg = get_config_manager().ai
         return cls(
-            high_keywords=tuple(split_csv_lower(config.RULE_HIGH_KEYWORDS)),
-            warning_keywords=tuple(split_csv_lower(config.RULE_WARN_KEYWORDS)),
-            metric_keywords=tuple(split_csv_lower(config.RULE_METRIC_KEYWORDS)),
-            threshold_multiplier=float(config.RULE_THRESHOLD_MULTIPLIER or 4.0),
+            high_keywords=tuple(split_csv_lower(cfg.RULE_HIGH_KEYWORDS)),
+            warning_keywords=tuple(split_csv_lower(cfg.RULE_WARN_KEYWORDS)),
+            metric_keywords=tuple(split_csv_lower(cfg.RULE_METRIC_KEYWORDS)),
+            threshold_multiplier=float(cfg.RULE_THRESHOLD_MULTIPLIER or 4.0),
         )
 
 
@@ -44,13 +44,13 @@ class AIErrorNotificationPolicy:
     timeout_seconds: int = 10
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "AIErrorNotificationPolicy":
-        config = config or get_config_manager()
+    def from_config(cls) -> "AIErrorNotificationPolicy":
+        cfg = get_config_manager()
         return cls(
-            enabled=bool(config.forwarding.ENABLE_FORWARD),
-            target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
-            cooldown_seconds=max(1, int(config.notifications.AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS)),
-            timeout_seconds=max(1, int(config.notifications.AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS)),
+            enabled=bool(cfg.forwarding.ENABLE_FORWARD),
+            target_url=str(cfg.forwarding.DEFAULT_FORWARD_TARGET_URL),
+            cooldown_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS)),
+            timeout_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS)),
         )
 
 
@@ -67,18 +67,18 @@ class AIProviderPolicy:
     degradation_enabled: bool
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "AIProviderPolicy":
-        config = (config or get_config_manager()).ai
+    def from_config(cls) -> "AIProviderPolicy":
+        cfg = get_config_manager().ai
         return cls(
-            enabled=bool(config.ENABLE_AI_ANALYSIS),
-            api_key=str(config.OPENAI_API_KEY),
-            api_url=str(config.OPENAI_API_URL),
-            model=str(config.OPENAI_MODEL),
-            system_prompt=str(config.AI_SYSTEM_PROMPT),
-            temperature=float(config.OPENAI_TEMPERATURE),
-            input_cost_per_1k_tokens=float(config.AI_COST_PER_1K_INPUT_TOKENS),
-            output_cost_per_1k_tokens=float(config.AI_COST_PER_1K_OUTPUT_TOKENS),
-            degradation_enabled=bool(config.ENABLE_AI_DEGRADATION),
+            enabled=bool(cfg.ENABLE_AI_ANALYSIS),
+            api_key=str(cfg.OPENAI_API_KEY),
+            api_url=str(cfg.OPENAI_API_URL),
+            model=str(cfg.OPENAI_MODEL),
+            system_prompt=str(cfg.AI_SYSTEM_PROMPT),
+            temperature=float(cfg.OPENAI_TEMPERATURE),
+            input_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_INPUT_TOKENS),
+            output_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_OUTPUT_TOKENS),
+            degradation_enabled=bool(cfg.ENABLE_AI_DEGRADATION),
         )
 
     @property
@@ -98,22 +98,22 @@ class PromptPolicy:
     builtin_source: str
 
     @classmethod
-    def user(cls, config: Any | None = None) -> "PromptPolicy":
-        config = (config or get_config_manager()).ai
+    def user(cls) -> "PromptPolicy":
+        cfg = get_config_manager().ai
         return cls(
-            inline_prompt=str(config.AI_USER_PROMPT),
-            prompt_file=str(config.AI_USER_PROMPT_FILE),
+            inline_prompt=str(cfg.AI_USER_PROMPT),
+            prompt_file=str(cfg.AI_USER_PROMPT_FILE),
             builtin_prompt=DEFAULT_USER_PROMPT_TEMPLATE,
             inline_source="env:AI_USER_PROMPT",
             builtin_source="builtin:user",
         )
 
     @classmethod
-    def deep_analysis(cls, config: Any | None = None) -> "PromptPolicy":
-        config = (config or get_config_manager()).ai
+    def deep_analysis(cls) -> "PromptPolicy":
+        cfg = get_config_manager().ai
         return cls(
-            inline_prompt=str(config.DEEP_ANALYSIS_PROMPT),
-            prompt_file=str(config.DEEP_ANALYSIS_PROMPT_FILE),
+            inline_prompt=str(cfg.DEEP_ANALYSIS_PROMPT),
+            prompt_file=str(cfg.DEEP_ANALYSIS_PROMPT_FILE),
             builtin_prompt=DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE,
             inline_source="env:DEEP_ANALYSIS_PROMPT",
             builtin_source="builtin:deep_analysis",

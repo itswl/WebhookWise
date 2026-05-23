@@ -93,15 +93,7 @@ async def compute_noise(
                 dec.root_cause_event_id,
                 dec.confidence,
             )
-        return NoiseReductionContext(
-            dec.relation,
-            dec.root_cause_event_id,
-            dec.confidence,
-            dec.suppress_forward,
-            dec.reason,
-            dec.related_alert_count,
-            dec.related_alert_ids,
-        )
+        return dec
     finally:
         WEBHOOK_NOISE_EVALUATIONS_TOTAL.labels(metric_source, relation, suppressed).inc()
         WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS.labels(metric_source, relation, suppressed).observe(

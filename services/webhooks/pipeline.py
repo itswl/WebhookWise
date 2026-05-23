@@ -117,13 +117,6 @@ def _record_step_metrics(step: str, metric_source: str, outcome: str, started: f
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
 
 
-class _StepOutcome:
-    __slots__ = ("value",)
-
-    def __init__(self) -> None:
-        self.value = "success"
-
-
 @asynccontextmanager
 async def _pipeline_step(
     *,
@@ -133,41 +126,16 @@ async def _pipeline_step(
     span_attrs: dict[str, Any],
 ) -> Any:
     started = time.perf_counter()
-    outcome = _StepOutcome()
+    outcome: dict[str, str] = {"value": "success"}
     with otel_span(span_name, span_attrs) as span:
         try:
             yield span, outcome
         except Exception:
-            outcome.value = "error"
+            outcome["value"] = "error"
             raise
         finally:
-            _record_step_metrics(step_name, metric_source, outcome.value, started)
+            _record_step_metrics(step_name, metric_source, outcome["value"], started)
 
-
-
-async def _handle_storm_suppression(ctx: WebhookProcessContext, lock_res: object) -> bool:
-    if not getattr(lock_res, "suppressed", False):
-        return False
-    logger.info(
-        "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
-        ctx.event_id,
-        ctx.request_id,
-        getattr(lock_res, "queue_size", 0),
-        getattr(lock_res, "reason", "") or "alert_storm_backpressure",
-    )
-    WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
-    WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
-    attrs = {
-        "event_id": ctx.event_id or 0,
-        "source": ctx.req_ctx.source,
-        "alert_hash": ctx.alert_hash[:12],
-        "webhook.status": "suppressed",
-        "webhook.suppression.reason": getattr(lock_res, "reason", "") or "alert_storm_backpressure",
-        "queue.depth": getattr(lock_res, "queue_size", 0),
-    }
-    emit_event("webhook.storm.suppressed", attrs)
-    record_signal("webhook.ingest", "suppressed", attrs)
-    return True
 
 
 async def _resolve_noise_context(
@@ -298,8 +266,32 @@ async def _run_processing_pipeline(
                 "pipeline.step": "validate",
             },
         ) as (_span, outcome):
-            if await _handle_storm_suppression(ctx, gate_res):
-                outcome.value = "suppressed"
+            if getattr(gate_res, "suppressed", False):
+                logger.info(
+                    "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
+                    ctx.event_id, ctx.request_id,
+                    getattr(gate_res, "queue_size", 0),
+                    getattr(gate_res, "reason", "") or "alert_storm_backpressure",
+                )
+                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
+                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
+                emit_event("webhook.storm.suppressed", {
+                    "event_id": ctx.event_id or 0,
+                    "source": ctx.req_ctx.source,
+                    "alert_hash": ctx.alert_hash[:12],
+                    "webhook.status": "suppressed",
+                    "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
+                    "queue.depth": getattr(gate_res, "queue_size", 0),
+                })
+                record_signal("webhook.ingest", "suppressed", {
+                    "event_id": ctx.event_id or 0,
+                    "source": ctx.req_ctx.source,
+                    "alert_hash": ctx.alert_hash[:12],
+                    "webhook.status": "suppressed",
+                    "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
+                    "queue.depth": getattr(gate_res, "queue_size", 0),
+                })
+                outcome["value"] = "suppressed"
                 return PipelineProcessingResult(suppressed=True)
 
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
@@ -388,21 +380,6 @@ async def handle_webhook_ingest(
     )
 
 
-def _forwarding_log_info(result: PipelineProcessingResult) -> str:
-    fwd_dec = result.forward_decision
-    if fwd_dec is None:
-        return " forward=unknown"
-    if not fwd_dec.should_forward:
-        return f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
-
-    info = f" forward=queued rules={len(fwd_dec.matched_rules)} targets={result.outbox_count}"
-    if result.outbox_count == 0:
-        info = f" forward=no_target rules={len(fwd_dec.matched_rules)} targets=0"
-    if fwd_dec.is_periodic_reminder:
-        info += "(periodic)"
-    return info
-
-
 def _log_completed_processing(
     *,
     ctx: WebhookProcessContext,
@@ -421,10 +398,7 @@ def _log_completed_processing(
         set_log_context(event_id=save_res.webhook_id)
     logger.info(
         "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s",
-        save_res.webhook_id,
-        request_id,
-        save_res.is_duplicate,
-        save_res.original_id,
+        save_res.webhook_id, request_id, save_res.is_duplicate, save_res.original_id,
     )
 
     event_type = "duplicate" if save_res.is_duplicate else "new"
@@ -432,16 +406,22 @@ def _log_completed_processing(
     route_label = final_analysis.get("_route_type", "ai")
     noise_relation = noise.relation
     duration_ms = int((time.perf_counter() - start_perf) * 1000)
+
+    fwd_dec = result.forward_decision
+    if fwd_dec is None:
+        fwd_info = " forward=unknown"
+    elif not fwd_dec.should_forward:
+        fwd_info = f" forward=no skip={fwd_dec.skip_reason or 'unknown'}"
+    else:
+        fwd_info = f" forward=queued rules={len(fwd_dec.matched_rules)} targets={result.outbox_count}"
+        if result.outbox_count == 0:
+            fwd_info = f" forward=no_target rules={len(fwd_dec.matched_rules)} targets=0"
+        if fwd_dec.is_periodic_reminder:
+            fwd_info += "(periodic)"
+
     logger.info(
         "[Pipeline] 处理完成 event_id=%s request_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
-        save_res.webhook_id,
-        request_id,
-        event_type,
-        importance,
-        route_label,
-        noise_relation,
-        _forwarding_log_info(result),
-        duration_ms,
+        save_res.webhook_id, request_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
     )
 
     if span:
@@ -455,13 +435,6 @@ def _log_completed_processing(
         relation=noise_relation,
         suppressed=str(noise.suppress_forward).lower(),
     ).inc()
-
-
-def _record_pipeline_duration(metric_source: str, outcome: str, start_perf: float, span: Any | None) -> None:
-    duration = time.perf_counter() - start_perf
-    if span:
-        span.set_attribute(WEBHOOK_OUTCOME, outcome)
-    WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
 
 
 async def _handle_raw_ingest(
@@ -551,4 +524,7 @@ async def _handle_raw_ingest(
             )
             raise
         finally:
-            _record_pipeline_duration(metric_source, outcome, start_perf, _span)
+            duration = time.perf_counter() - start_perf
+            if _span:
+                _span.set_attribute(WEBHOOK_OUTCOME, outcome)
+            WEBHOOK_PROCESSING_DURATION_SECONDS.labels(source=metric_source, outcome=outcome).observe(duration)
