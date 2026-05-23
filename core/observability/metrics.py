@@ -174,6 +174,11 @@ REDIS_HEALTH_STATE = Gauge(
     "Current Redis health state as 1 for active and 0 for inactive states",
     ("redis.state",),
 )
+REDIS_UNAVAILABLE_TOTAL = Counter(
+    "redis.unavailable",
+    "Redis unavailable degradations by component/action",
+    ("redis.component", "redis.action"),
+)
 
 
 CIRCUIT_BREAKER_REQUESTS_TOTAL = Counter(
@@ -271,6 +276,11 @@ WEBHOOK_PROCESSING_DURATION_SECONDS = Histogram(
     ("webhook.source", "webhook.outcome"),
     unit="s",
 )
+WEBHOOK_ANALYSIS_ROUTE_TOTAL = Counter(
+    "webhook.analysis.route",
+    "Webhook analysis route decisions",
+    ("webhook.source", "webhook.route"),
+)
 WEBHOOK_NOISE_REDUCED_TOTAL = Counter(
     "webhook.suppressed",
     "Number of webhooks evaluated by noise reduction",
@@ -307,6 +317,11 @@ WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
     "webhook.processing.status_count",
     "Webhook event count by processing status",
     ("webhook.status",),
+)
+WEBHOOK_IDENTITY_DEGRADED_TOTAL = Counter(
+    "webhook.identity.degraded",
+    "Webhook identity degraded count (no adapter-produced alert identity)",
+    ("webhook.source",),
 )
 
 
@@ -359,6 +374,7 @@ __all__ = [
     "QUEUE_OPERATION_DURATION_SECONDS",
     "QUEUE_OPERATIONS_TOTAL",
     "REDIS_HEALTH_STATE",
+    "REDIS_UNAVAILABLE_TOTAL",
     "REDIS_OPERATION_DURATION_SECONDS",
     "REDIS_OPERATIONS_TOTAL",
     "SCHEDULED_TASK_DURATION_SECONDS",
@@ -368,6 +384,8 @@ __all__ = [
     "SECURITY_CHECKS_TOTAL",
     "WEBHOOK_DEAD_LETTER_TOTAL",
     "WEBHOOK_INGRESS_PAYLOAD_BYTES",
+    "WEBHOOK_ANALYSIS_ROUTE_TOTAL",
+    "WEBHOOK_IDENTITY_DEGRADED_TOTAL",
     "WEBHOOK_MQ_GROUP_LAG",
     "WEBHOOK_MQ_GROUP_PENDING",
     "WEBHOOK_MQ_STREAM_LENGTH",
@@ -389,4 +407,3 @@ __all__ = [
     "setup_metrics",
     "update_db_pool_metrics",
 ]
-
