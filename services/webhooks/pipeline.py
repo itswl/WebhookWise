@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from core import json
 from core.alert_concurrency import alert_processing_gate
@@ -223,7 +223,7 @@ class _ProcessingRun:
         dedup_result = await resolve_dedup(self.ctx.dedup_key)
 
         if dedup_result.action == "reuse":
-            analysis = dedup_result.analysis or {}
+            analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
             route_type = dedup_result.route_type or "redis_reuse"
             importance = normalize_importance(analysis.get("importance", "unknown"))
             set_log_context(route_type=route_type)

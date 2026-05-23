@@ -96,7 +96,7 @@ async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> di
         result = await session.execute(stmt)
         original = result.scalar_one_or_none()
         if original and _has_reusable_analysis(original.ai_analysis):
-            return {"analysis": dict(original.ai_analysis), "original_event_id": original.id}
+            return {"analysis": dict(original.ai_analysis or {}), "original_event_id": original.id}
     return None
 
 
