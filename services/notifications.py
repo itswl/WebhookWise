@@ -8,13 +8,13 @@ from urllib.parse import urlsplit
 
 from adapters.plugins.feishu_card import build_deep_analysis_card
 from core.circuit_breaker import CircuitBreakerOpenException
+from core.app_context import get_default_config
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.tracing import span as otel_span
 from core.url_security import validate_outbound_url
 from services.forwarding.circuit_breakers import feishu_cb
 from services.forwarding.dependencies import CircuitBreakerLike, ValidateURL
-from services.operations.policies import FeishuNotificationPolicy
 
 
 class AsyncJsonPoster(Protocol):
@@ -58,7 +58,7 @@ logger = get_logger("notifications.feishu")
 class FeishuNotificationChannel:
     http_client: AsyncJsonPoster
     circuit_breaker: CircuitBreakerLike
-    policy: FeishuNotificationPolicy
+    timeout_seconds: int
     validate_url: ValidateURL = validate_outbound_url
     name: str = "feishu"
 
@@ -78,7 +78,7 @@ class FeishuNotificationChannel:
                     return await self.http_client.post(
                         final_url,
                         json=card_payload,
-                        timeout=self.policy.timeout_seconds,
+                        timeout=self.timeout_seconds,
                     )
 
                 response = await self.circuit_breaker.call_async(_do_post)
@@ -119,15 +119,16 @@ class FeishuNotificationChannel:
 def build_notification_channels(
     *,
     http_client: AsyncJsonPoster | None = None,
-    feishu_policy: FeishuNotificationPolicy | None = None,
+    timeout_seconds: int | None = None,
     validate_url: ValidateURL | None = None,
 ) -> list[NotificationChannel]:
     client = http_client or get_http_client()
+    resolved_timeout = int(get_default_config().notifications.FEISHU_WEBHOOK_TIMEOUT) if timeout_seconds is None else int(timeout_seconds)
     return [
         FeishuNotificationChannel(
             http_client=client,
             circuit_breaker=feishu_cb,
-            policy=feishu_policy or FeishuNotificationPolicy.from_config(),
+            timeout_seconds=max(1, resolved_timeout),
             validate_url=validate_url or validate_outbound_url,
         )
     ]
@@ -138,4 +139,3 @@ def find_notification_channel(target_url: str, channels: list[NotificationChanne
         if channel.supports(target_url):
             return channel
     return None
-

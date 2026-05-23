@@ -16,16 +16,20 @@ from core.observability.metrics import (
 from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
-from services.operations.policies import MetricsPollPolicy
+from core.app_context import get_default_config
 
 logger = get_logger("metrics")
 
 
-async def refresh_all_metrics(*, policy: MetricsPollPolicy | None = None) -> None:
+def _default_mq_names() -> tuple[str, str]:
+    mq = get_default_config().mq
+    return str(mq.WEBHOOK_MQ_QUEUE), str(mq.WEBHOOK_MQ_CONSUMER_GROUP)
+
+
+async def refresh_all_metrics(*, mq_queue: str | None = None, mq_consumer_group: str | None = None) -> None:
     """刷新系统指标。"""
-    policy = policy or MetricsPollPolicy.from_config()
     await _refresh_db_status_counts()
-    await _refresh_mq_stats(policy=policy)
+    await _refresh_mq_stats(mq_queue=mq_queue, mq_consumer_group=mq_consumer_group)
     await _refresh_db_event_count()
 
 
@@ -55,13 +59,13 @@ async def _refresh_db_status_counts() -> None:
         WEBHOOK_PROCESSING_STATUS_COUNT.labels(status=status).set(count)
 
 
-async def _refresh_mq_stats(*, policy: MetricsPollPolicy | None = None) -> None:
+async def _refresh_mq_stats(*, mq_queue: str | None = None, mq_consumer_group: str | None = None) -> None:
     """MQ 指标刷新 — TaskIQ 使用 Redis Stream (RedisStreamBroker)。"""
-    policy = policy or MetricsPollPolicy.from_config()
     from core.taskiq_broker import broker
 
-    queue_name = getattr(broker, "queue_name", None) or policy.webhook_mq_queue
-    group_name = getattr(broker, "consumer_group_name", None) or policy.webhook_mq_consumer_group
+    default_queue, default_group = _default_mq_names()
+    queue_name = getattr(broker, "queue_name", None) or mq_queue or default_queue
+    group_name = getattr(broker, "consumer_group_name", None) or mq_consumer_group or default_group
 
     try:
         stream_len = await redis_xlen(queue_name)

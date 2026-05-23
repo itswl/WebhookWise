@@ -38,7 +38,7 @@ _SUMMARY_COLUMNS = [
 
 
 def _row_to_summary_dict(row: Any) -> dict[str, Any]:
-    from services.webhooks.mongodb_summary import mongodb_summary_fields
+    from schemas.webhook import mongodb_summary_fields
 
     ai_analysis = row.ai_analysis
     beyond_window, is_dup = row.beyond_window, row.is_duplicate

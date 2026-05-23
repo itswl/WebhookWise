@@ -4,11 +4,12 @@ from typing import Any
 
 import httpx
 
+from core.app_context import get_default_config
 from core.logger import get_logger
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
-from services.analysis.ai_policies import AICachePolicy, AIProviderPolicy, RuleAnalysisPolicy
+from services.analysis.ai_policies import AIProviderPolicy, RuleAnalysisPolicy
 from services.analysis.ai_prompt import (
     get_prompt_source,
     load_deep_analysis_prompt_template,
@@ -166,14 +167,16 @@ async def analyze_webhook_with_ai(
     *,
     http_client: httpx.AsyncClient | None = None,
 ) -> AnalysisResult:
-    cache_policy = AICachePolicy.from_config()
+    ai_config = get_default_config().ai
+    cache_enabled = bool(ai_config.CACHE_ENABLED)
+    cache_ttl_seconds = int(ai_config.ANALYSIS_CACHE_TTL)
     provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
         alert_hash = generate_alert_hash(parsed, source)
 
-    if cache_policy.enabled and not skip_cache:
-        cached = await get_cached_analysis(alert_hash, policy=cache_policy)
+    if cache_enabled and not skip_cache:
+        cached = await get_cached_analysis(alert_hash, enabled=cache_enabled, ttl_seconds=cache_ttl_seconds)
         if cached:
             hits = cached.get("_cache_hit_count", 1)
             logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
@@ -213,7 +216,7 @@ async def analyze_webhook_with_ai(
             str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
         if not analysis.get("_degraded"):
-            await save_to_cache(alert_hash, analysis, policy=cache_policy)
+            await save_to_cache(alert_hash, analysis, enabled=cache_enabled, ttl_seconds=cache_ttl_seconds)
         await log_ai_usage(
             "ai",
             alert_hash,

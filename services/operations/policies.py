@@ -68,27 +68,3 @@ class DataMaintenancePolicy:
             },
         )
 
-
-@dataclass(frozen=True, slots=True)
-class MetricsPollPolicy:
-    webhook_mq_queue: str
-    webhook_mq_consumer_group: str
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> MetricsPollPolicy:
-        config = config or get_default_config()
-        mq = config.mq
-        return cls(
-            webhook_mq_queue=str(mq.WEBHOOK_MQ_QUEUE),
-            webhook_mq_consumer_group=str(mq.WEBHOOK_MQ_CONSUMER_GROUP),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class FeishuNotificationPolicy:
-    timeout_seconds: int
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> FeishuNotificationPolicy:
-        config = config or get_default_config()
-        return cls(timeout_seconds=max(1, int(config.notifications.FEISHU_WEBHOOK_TIMEOUT)))

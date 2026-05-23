@@ -9,7 +9,6 @@ from core.logger import get_logger, mask_url
 from core.redis_health import ai_error_alert_lock
 from services.analysis.ai_policies import AIErrorNotificationPolicy
 from services.notifications import build_notification_channels, find_notification_channel
-from services.operations.policies import FeishuNotificationPolicy
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")
@@ -74,7 +73,7 @@ async def send_ai_error_alert(
 
         channels = build_notification_channels(
             http_client=http_client,
-            feishu_policy=FeishuNotificationPolicy(timeout_seconds=policy.timeout_seconds),
+            timeout_seconds=policy.timeout_seconds,
         )
         channel = find_notification_channel(policy.target_url, channels)
         if channel is None:
