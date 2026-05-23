@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
-from services.forwarding.policies import ForwardOutboxPolicy
+from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
 
 
@@ -50,9 +50,9 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
 # ── helpers ──────────────────────────────────────────────────────────
 
 
-def _outbox_policy(*, stale_processing_threshold_seconds: int = 60) -> ForwardOutboxPolicy:
-    return ForwardOutboxPolicy(
-        default_target_url="https://example.test/hook",
+def _outbox_policy(*, stale_processing_threshold_seconds: int = 60) -> ForwardDeliveryPolicy:
+    return ForwardDeliveryPolicy(
+        timeout_seconds=10,
         max_attempts=3,
         retry_initial_delay=1,
         retry_max_delay=10,
@@ -349,7 +349,7 @@ class TestRunForwardOutboxScan:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from models import ForwardOutbox
-        from services.forwarding.outbox import run_forward_outbox_scan
+        from services.forwarding.outbox_scanner import run_forward_outbox_scan
 
         scheduled_ids: list[list[int]] = []
 
@@ -378,7 +378,7 @@ class TestRunForwardOutboxScan:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.forwarding.outbox import run_forward_outbox_scan
+        from services.forwarding.outbox_scanner import run_forward_outbox_scan
 
         scheduled_ids: list[list[int]] = []
 
@@ -400,7 +400,7 @@ class TestRunForwardOutboxScan:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from models import ForwardOutbox
-        from services.forwarding.outbox import run_forward_outbox_scan
+        from services.forwarding.outbox_scanner import run_forward_outbox_scan
 
         scheduled_ids: list[list[int]] = []
 

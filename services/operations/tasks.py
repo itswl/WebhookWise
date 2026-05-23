@@ -588,7 +588,7 @@ async def scheduled_metrics_refresh() -> None:
     schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "forward_outbox_scan_interval"}],
 )
 async def scheduled_forward_outbox_scan() -> None:
-    from services.forwarding.outbox import run_forward_outbox_scan
+    from services.forwarding.outbox_scanner import run_forward_outbox_scan
 
     await _run_scheduled("forward_outbox_scan", _background_scan_interval_seconds(), run_forward_outbox_scan())
 

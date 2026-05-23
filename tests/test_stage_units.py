@@ -63,7 +63,7 @@ async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pyt
 @pytest.mark.asyncio
 async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
-    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.remote import forward_to_remote
 
     async def accept_url(url: str) -> str:
@@ -103,7 +103,7 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
         {"source": "unit", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.test/hook",
-        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
+        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
         dependencies=RemoteForwardDependencies(
             http_client=client,
             circuit_breaker=cast(Any, breaker),

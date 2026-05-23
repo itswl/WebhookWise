@@ -17,7 +17,8 @@ from services.webhooks.decisioning import (
     normalize_importance,
     select_forward_rules,
 )
-from services.webhooks.types import ForwardDecision, NoiseReductionContext
+from services.webhooks.decisioning import ForwardDecision
+from services.webhooks.types import NoiseReductionContext
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ def _make_policy(**overrides: object) -> ForwardingPolicy:
         "enable_periodic_reminder": True,
         "reminder_interval_hours": 6,
         "forward_duplicate_alerts": False,
-        "default_target_url": "",
+        
     }
     defaults.update(overrides)
     return ForwardingPolicy(**defaults)  # type: ignore[arg-type]
@@ -229,8 +230,8 @@ class TestDecideForwarding:
         assert not result.should_forward
         assert "降噪" in (result.skip_reason or "")
 
-    def test_high_importance_no_rules_without_default_target_skips(self) -> None:
-        result = self._decide(importance="high", policy=_make_policy(default_target_url=""))
+    def test_high_importance_no_rules_skips(self) -> None:
+        result = self._decide(importance="high")
         assert not result.should_forward
 
     def test_high_importance_no_rules_with_default_target_forwards(self) -> None:

@@ -244,9 +244,9 @@ def test_resilience_and_outbox_operational_metrics_exist() -> None:
     assert metrics.CIRCUIT_BREAKER_STATE.label_keys == ("circuit_breaker.name", "circuit_breaker.state")
     assert metrics.FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.label_keys == ("forward.target_type", "forward.status")
 
-    outbox = (ROOT / "services/forwarding/outbox.py").read_text()
+    scanner = (ROOT / "services/forwarding/outbox_scanner.py").read_text()
     breaker = (ROOT / "core/circuit_breaker.py").read_text()
-    assert "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS" in outbox
+    assert "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS" in scanner
     assert "CIRCUIT_BREAKER_STATE" in breaker
     assert "_record_state_metric" in breaker
 

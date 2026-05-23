@@ -5,10 +5,10 @@ from urllib.parse import urlsplit
 
 from core.app_context import get_config_manager
 from core.logger import mask_url
-from services.channels.base import FormatContext, SendResult
+from services.channels.base import FormatContext
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
-from services.forwarding.policies import RemoteForwardPolicy
-from services.webhooks.types import AnalysisResult, WebhookData
+from services.forwarding.policies import ForwardDeliveryPolicy
+from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 _FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
 _FEISHU_HOSTS = ("feishu.cn", "larksuite.com")
@@ -244,12 +244,13 @@ class FeishuChannel:
             is_periodic_reminder=ctx.is_periodic_reminder,
         )
 
-    async def send(self, url: str, payload: dict[str, Any]) -> SendResult:
+    async def send(self, url: str, payload: dict[str, Any]) -> ForwardResult:
+        from dataclasses import replace
+
         from services.forwarding.remote import post_json_to_remote
 
         timeout_seconds = int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT)
-        base_policy = RemoteForwardPolicy.from_config()
-        policy = RemoteForwardPolicy(default_target_url=base_policy.default_target_url, timeout_seconds=timeout_seconds)
+        policy = replace(ForwardDeliveryPolicy.from_config(), timeout_seconds=timeout_seconds)
         base_dependencies = build_remote_forward_dependencies()
         dependencies = RemoteForwardDependencies(
             http_client=base_dependencies.http_client,

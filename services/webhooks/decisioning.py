@@ -1,18 +1,35 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, Required, TypedDict
 
 from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
 from core.text import split_csv_lower
 from services.webhooks.types import (
     AnalysisResult,
-    ForwardDecision,
-    ForwardRuleTarget,
     NoiseReductionContext,
     NoiseReductionSnapshot,
 )
+
+
+class ForwardRuleTarget(TypedDict, total=False):
+    """Resolved forwarding target snapshot."""
+
+    id: int | None
+    name: Required[str]
+    target_type: Required[str]
+    target_url: Required[str]
+    target_name: str
+    stop_on_match: bool
+
+
+@dataclass
+class ForwardDecision:
+    should_forward: bool
+    skip_reason: str | None
+    is_periodic_reminder: bool
+    matched_rules: list[ForwardRuleTarget] = field(default_factory=list)
 
 
 class NotifiedEvent(Protocol):
@@ -52,7 +69,6 @@ class ForwardingPolicy:
     enable_periodic_reminder: bool
     reminder_interval_hours: int
     forward_duplicate_alerts: bool
-    default_target_url: str = ""
 
 
 @dataclass(frozen=True)

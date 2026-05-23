@@ -39,12 +39,12 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
     await engine.dispose()
 
 
-async def test_create_forward_outbox_records_is_idempotent(
+async def test_resolve_and_forward_is_idempotent(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from models import ForwardOutbox
-    from services.forwarding.outbox import create_forward_outbox_records
-    from services.webhooks.types import ForwardDecision
+    from services.forwarding.outbox import resolve_and_forward
+    from services.webhooks.decisioning import ForwardDecision
 
     decision = ForwardDecision(
         should_forward=True,
@@ -54,19 +54,19 @@ async def test_create_forward_outbox_records_is_idempotent(
     )
 
     async with session_factory.begin() as session:
-        first_ids = await create_forward_outbox_records(
-            session,
+        first = await resolve_and_forward(
+            session=session,
             decision=decision,
-            full_data={"source": "test"},
-            analysis={"summary": "x"},
+            forward_data={"source": "test"},
+            analysis_result={"summary": "x"},
             webhook_id=1,
             orig_id=None,
         )
-        second_ids = await create_forward_outbox_records(
-            session,
+        second = await resolve_and_forward(
+            session=session,
             decision=decision,
-            full_data={"source": "test"},
-            analysis={"summary": "x"},
+            forward_data={"source": "test"},
+            analysis_result={"summary": "x"},
             webhook_id=1,
             orig_id=None,
         )
@@ -74,8 +74,10 @@ async def test_create_forward_outbox_records_is_idempotent(
     async with session_factory() as session:
         rows = (await session.execute(select(ForwardOutbox))).scalars().all()
 
+    first_ids = list(first.get("outbox_ids") or [])
+    second_ids = list(second.get("outbox_ids") or [])
     assert len(first_ids) == 1
-    assert second_ids == []
+    assert second_ids == first_ids  # 幂等返回相同 id
     assert len(rows) == 1
     assert rows[0].status == "pending"
 

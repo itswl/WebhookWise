@@ -13,9 +13,10 @@ from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.dedup import DedupResult, remember_dedup_state
-from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
+from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
+    ForwardDecision,
     ForwardingPolicy,
     ForwardRuleSnapshot,
     decide_forwarding,
@@ -25,7 +26,6 @@ from services.webhooks.policies import forwarding_policy_from_config
 from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
-    ForwardDecision,
     NoiseReductionContext,
     WebhookProcessContext,
 )
@@ -189,14 +189,15 @@ async def finalize_analysis_transaction(
                         "forward.target_type": (first_target_type),
                     },
                 ):
-                    outbox_ids = await create_forward_outbox_records(
-                        session,
+                    fwd_result = await resolve_and_forward(
+                        session=session,
                         decision=fwd_dec,
-                        full_data=forward_data,
-                        analysis=final_analysis,
+                        forward_data=forward_data,
+                        analysis_result=final_analysis,
                         webhook_id=save_res.webhook_id,
                         orig_id=save_res.original_id,
                     )
+                    outbox_ids = list(fwd_result.get("outbox_ids") or [])
                 emit_event(
                     "forward.outbox.queued",
                     {

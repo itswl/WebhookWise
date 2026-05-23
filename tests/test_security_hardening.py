@@ -140,7 +140,7 @@ async def test_security_headers_include_hsts() -> None:
 @pytest.mark.asyncio
 async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
-    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.remote import forward_to_remote
 
     class FakeResponse:
@@ -169,7 +169,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
+        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
         dependencies=RemoteForwardDependencies(FakeHttpClient(), Breaker(), accept_url),
     )
 
@@ -181,7 +181,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
 async def test_forward_revalidates_target_immediately_before_post() -> None:
     from core.url_security import UnsafeTargetUrlError
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
-    from services.forwarding.policies import RemoteForwardPolicy
+    from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.remote import forward_to_remote
 
     validate_calls = 0
@@ -207,7 +207,7 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        policy=RemoteForwardPolicy(default_target_url="", timeout_seconds=2),
+        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
         dependencies=RemoteForwardDependencies(Client(), Breaker(), validate_url),
     )
 
