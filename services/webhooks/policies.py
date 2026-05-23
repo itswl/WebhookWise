@@ -28,23 +28,37 @@ class NoiseReductionPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class WebhookReceivePolicy:
+class IngressPolicy:
+    """入口策略：body 大小限制 + 背压参数。"""
+
     max_body_bytes: int
     ingress_backpressure_threshold: int
     ingress_backpressure_window_seconds: int
     ingress_backpressure_fail_open_on_redis_error: bool = False
-    # From WebhookFailurePolicy
-    max_retries: int = 0
-    initial_delay: int = 5
-    max_delay: int = 300
-    backoff_multiplier: float = 2.0
-    # From PayloadSanitizerPolicy
+
+    @classmethod
+    def from_config(cls, config: Any | None = None) -> "IngressPolicy":
+        config = config or get_config_manager()
+        return cls(
+            max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
+            ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
+            ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
+            ingress_backpressure_fail_open_on_redis_error=bool(
+                config.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PayloadPolicy:
+    """Payload 处理策略：offload 阈值 + AI strip keys + AI max bytes。"""
+
     offload_threshold_bytes: int = 512 * 1024
     strip_keys: frozenset[str] = frozenset()
     max_bytes: int = 0
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
+    def from_config(cls, config: Any | None = None) -> "PayloadPolicy":
         config = config or get_config_manager()
         threshold = int(config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         strip_keys = (
@@ -53,15 +67,63 @@ class WebhookReceivePolicy:
             else frozenset()
         )
         return cls(
-            max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
-            ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
-            ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
-            ingress_backpressure_fail_open_on_redis_error=bool(config.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR),
+            offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
+            strip_keys=strip_keys,
+            max_bytes=int(config.ai.AI_PAYLOAD_MAX_BYTES),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookRetryPolicy:
+    """Webhook 重试策略。"""
+
+    max_retries: int = 0
+    initial_delay: int = 5
+    max_delay: int = 300
+    backoff_multiplier: float = 2.0
+
+    @classmethod
+    def from_config(cls, config: Any | None = None) -> "WebhookRetryPolicy":
+        config = config or get_config_manager()
+        return cls(
             max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
             initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
             max_delay=int(config.retry.WEBHOOK_RETRY_MAX_DELAY),
             backoff_multiplier=float(config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
-            offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
-            strip_keys=strip_keys,
-            max_bytes=int(config.ai.AI_PAYLOAD_MAX_BYTES),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookReceivePolicy:
+    """向后兼容的聚合策略 — 组合 IngressPolicy + PayloadPolicy + WebhookRetryPolicy。"""
+
+    max_body_bytes: int
+    ingress_backpressure_threshold: int
+    ingress_backpressure_window_seconds: int
+    ingress_backpressure_fail_open_on_redis_error: bool = False
+    max_retries: int = 0
+    initial_delay: int = 5
+    max_delay: int = 300
+    backoff_multiplier: float = 2.0
+    offload_threshold_bytes: int = 512 * 1024
+    strip_keys: frozenset[str] = frozenset()
+    max_bytes: int = 0
+
+    @classmethod
+    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
+        ingress = IngressPolicy.from_config(config)
+        payload = PayloadPolicy.from_config(config)
+        retry = WebhookRetryPolicy.from_config(config)
+        return cls(
+            max_body_bytes=ingress.max_body_bytes,
+            ingress_backpressure_threshold=ingress.ingress_backpressure_threshold,
+            ingress_backpressure_window_seconds=ingress.ingress_backpressure_window_seconds,
+            ingress_backpressure_fail_open_on_redis_error=ingress.ingress_backpressure_fail_open_on_redis_error,
+            max_retries=retry.max_retries,
+            initial_delay=retry.initial_delay,
+            max_delay=retry.max_delay,
+            backoff_multiplier=retry.backoff_multiplier,
+            offload_threshold_bytes=payload.offload_threshold_bytes,
+            strip_keys=payload.strip_keys,
+            max_bytes=payload.max_bytes,
         )

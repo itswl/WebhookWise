@@ -5,15 +5,14 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.events import add_span_event, emit_event
 from core.observability.tracing import span as otel_span
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
-from services.dedup import DedupResult, remember_dedup_state
-from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
+from services.dedup import DedupResult
+from services.forwarding.outbox import resolve_and_forward
 from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardDecision,
@@ -108,11 +107,10 @@ async def finalize_analysis_transaction(
     Forwarding intents are persisted in the same transaction as the processed
     webhook state. The network side effect happens later in an outbox worker.
     """
-    is_dup_for_save: bool | None = analysis_res.is_duplicate
+    # resolve_dedup 已经是权威结果（Redis + DB fallback），直接信任
+    is_dup_for_save = analysis_res.is_duplicate
     original_id_for_save = analysis_res.original_event_id
-    skip_duplicate_lookup = bool(analysis_res.is_reused and original_id_for_save is not None)
-    if original_id_for_save is None:
-        is_dup_for_save = None
+    skip_duplicate_lookup = True
 
     outbox_ids: list[int] = []
     with otel_span(
@@ -179,7 +177,7 @@ async def finalize_analysis_transaction(
                 forward_data = dict(ctx.req_ctx.webhook_full_data)
                 if isinstance(forward_data.get("headers"), dict):
                     forward_data["headers"] = redact_headers(forward_data["headers"])
-                first_target_type = fwd_dec.matched_rules[0]["target_type"] if fwd_dec.matched_rules else "default"
+                first_target_type = fwd_dec.matched_rules[0].target_type if fwd_dec.matched_rules else "default"
 
                 with otel_span(
                     "webhook.persist.outbox",
@@ -221,13 +219,4 @@ async def finalize_analysis_transaction(
                     },
                 )
 
-    config = get_config_manager()
-    dedup_ttl = max(60, int(config.retry.DEDUP_WINDOW_SECONDS) * 2)
-    await remember_dedup_state(
-        ctx.dedup_key,
-        original_event_id=save_res.original_id or save_res.webhook_id,
-        analysis=dict(final_analysis),
-        ttl_seconds=dedup_ttl,
-    )
-    await schedule_forward_outbox_many(outbox_ids)
     return FinalizeAnalysisResult(save_res, fwd_dec, outbox_ids)

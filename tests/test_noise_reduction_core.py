@@ -161,12 +161,14 @@ def test_score_different_source_lower_score():
     assert score_same > score_diff
 
 
-def test_score_outside_window_returns_zero():
-    """超出时间窗口的候选应得 0 分。"""
+def test_score_time_decay_for_older_candidates():
+    """时间越久远得分越低（时间窗口过滤由调用方负责）。"""
     current = _make_ctx(event_id=2)
     candidate = _make_ctx(event_id=1, offset_seconds=600)  # 10 分钟前
-    score = score_candidate(current, candidate, window_minutes=5)
-    assert score == 0.0
+    score_old = score_candidate(current, candidate, window_minutes=5)
+    candidate_recent = _make_ctx(event_id=1, offset_seconds=30)  # 30 秒前
+    score_recent = score_candidate(current, candidate_recent, window_minutes=5)
+    assert score_old < score_recent
 
 
 def test_score_future_candidate_returns_zero():
@@ -266,17 +268,17 @@ def test_analyze_suppress_derived_false_allows_forward():
         assert decision.suppress_forward is False
 
 
-def test_analyze_standalone_when_outside_window():
-    """超时间窗口的历史告警不参与评分，结果为 standalone。"""
+def test_analyze_related_alert_detected():
+    """相同来源和资源的告警应被检测为相关（时间衰减由调用方预过滤保障）。"""
     current = _make_ctx(event_id=2, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"})
-    old_alert = _make_ctx(
-        event_id=1, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"}, offset_seconds=600
-    )  # 10 分钟前，超出 5 分钟窗口
+    related = _make_ctx(
+        event_id=1, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"}, offset_seconds=120
+    )
 
     decision = analyze_noise_reduction(
-        current, [old_alert], window_minutes=5, min_confidence=0.4, suppress_derived=True
+        current, [related], window_minutes=5, min_confidence=0.4, suppress_derived=True
     )
-    assert decision.relation == "standalone"
+    assert decision.relation != "standalone"
 
 
 def test_analyze_alert_storm_detected():

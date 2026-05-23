@@ -41,12 +41,12 @@ async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pyt
 
     enqueued: list[dict[str, object]] = []
 
-    async def fake_resolve_and_forward(**kwargs: object) -> dict[str, object]:
+    async def fake_forward_notification(**kwargs: object) -> dict[str, object]:
         enqueued.append(dict(kwargs))
         return {"status": "queued", "outbox_id": len(enqueued)}
 
     import services.operations.deep_analysis_notifications as module
-    monkeypatch.setattr(module, "resolve_and_forward", fake_resolve_and_forward)
+    monkeypatch.setattr(module, "forward_notification", fake_forward_notification)
 
     ok = await send_feishu_deep_analysis(
         "https://open.feishu.cn/open-apis/bot/v2/hook/token",

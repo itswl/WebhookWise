@@ -227,11 +227,11 @@ class TestFinalizeOutboxFailure:
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
         enqueued: list[dict[str, object]] = []
 
-        async def fake_resolve_and_forward(**kwargs: object) -> dict[str, object]:
+        async def fake_forward_notification(**kwargs: object) -> dict[str, object]:
             enqueued.append(dict(kwargs))
             return {"status": "queued", "outbox_id": 1}
 
-        monkeypatch.setattr("services.forwarding.outbox.resolve_and_forward", fake_resolve_and_forward)
+        monkeypatch.setattr("services.forwarding.outbox.forward_notification", fake_forward_notification)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now() - timedelta(seconds=1)
