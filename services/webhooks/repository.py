@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import time as _time
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -14,6 +17,37 @@ from models import ForwardRule, SuppressedRecord, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
 from services.webhooks.types import AnalysisResult
+
+_FORWARD_RULES_CACHE_TTL = 30.0
+
+
+@dataclass(slots=True)
+class _RulesCache:
+    rules: list[ForwardRuleSnapshot] = dataclass_field(default_factory=list)
+    expiry: float = 0.0
+    invalidated: bool = True
+
+
+_cache_lock: asyncio.Lock | None = None
+_rules_cache = _RulesCache()
+
+
+def _get_cache_lock() -> asyncio.Lock:
+    global _cache_lock
+    if _cache_lock is None:
+        _cache_lock = asyncio.Lock()
+    return _cache_lock
+
+
+def _purge_expired_cache() -> None:
+    if _rules_cache.invalidated:
+        return
+    if _rules_cache.expiry <= _time.monotonic():
+        _rules_cache.invalidated = True
+
+
+def invalidate_forward_rules_cache() -> None:
+    _rules_cache.invalidated = True
 
 
 @dataclass(slots=True)
@@ -125,14 +159,30 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
 
 
 async def list_enabled_forward_rules(session: Any | None = None) -> list[ForwardRuleSnapshot]:
+    _purge_expired_cache()
+    cache_lock = _get_cache_lock()
+
+    if not _rules_cache.invalidated:
+        async with cache_lock:
+            if not _rules_cache.invalidated and _rules_cache.expiry > _time.monotonic():
+                return list(_rules_cache.rules)
+
     async def _list(sess: Any) -> list[ForwardRuleSnapshot]:
         stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
         return [_snapshot_forward_rule(rule) for rule in (await sess.execute(stmt)).scalars().all()]
 
+    rules: list[ForwardRuleSnapshot]
     if session is not None:
-        return await _list(session)
-    async with session_scope() as sess:
-        return await _list(sess)
+        rules = await _list(session)
+    else:
+        async with session_scope() as sess:
+            rules = await _list(sess)
+
+    async with cache_lock:
+        _rules_cache.rules = list(rules)
+        _rules_cache.expiry = _time.monotonic() + _FORWARD_RULES_CACHE_TTL
+        _rules_cache.invalidated = False
+    return list(rules)
 
 
 async def list_suppressed_records(

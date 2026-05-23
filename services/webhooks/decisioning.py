@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
+from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
 from core.text import split_csv_lower
 from services.webhooks.types import (
     AnalysisResult,
@@ -175,6 +176,7 @@ def select_forward_rules(
         ):
             continue
         matched_rules.append(rule.to_dict())
+        FORWARD_RULE_MATCH_TOTAL.labels(rule.name, rule.target_type).inc()
         if rule.stop_on_match:
             break
     return matched_rules
