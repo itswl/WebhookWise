@@ -128,6 +128,8 @@ async def worker_startup_event(state: object) -> None:
     if _settings.worker_startup_jitter_seconds > 0:
         await asyncio.sleep(_jitter_rng.uniform(0.0, _settings.worker_startup_jitter_seconds))
 
+    from services.analysis.ai_analyzer import initialize_openai_client
+
     context = init_default_app_context(UnifiedConfigManager())
     await start_runtime_services(
         context.config,
@@ -136,6 +138,7 @@ async def worker_startup_event(state: object) -> None:
         initialize_observability=setup_observability,
         initialize_redis_client=True,
         initialize_ai_client=True,
+        initialize_ai_client_hook=initialize_openai_client,
     )
 
 
@@ -151,10 +154,13 @@ async def worker_shutdown_event(state: object) -> None:
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
 
+    from services.analysis.ai_analyzer import reset_openai_client
+
     context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
     await stop_runtime_services(
         context.config,
         context=context,
         reset_ai_client=True,
+        reset_ai_client_hook=reset_openai_client,
     )
     shutdown_observability()
