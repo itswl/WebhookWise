@@ -171,15 +171,13 @@ async def _save_duplicate_event(
         duplicate_count = original.duplicate_count
         final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(payload.ai_analysis, original, reanalyzed)
     else:
-        res = cast(
-            sqlalchemy.engine.CursorResult[Any],
-            await session.execute(
-                update(WebhookEvent)
-                .where(WebhookEvent.id == original_id)
-                .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now())
-            ),
+        res = await session.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == original_id)
+            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now())
+            .returning(WebhookEvent.id)
         )
-        if not res.rowcount:
+        if res.scalar_one_or_none() is None:
             return None
         duplicate_count = 1
         final_ai_analysis = payload.ai_analysis or {}
