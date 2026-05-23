@@ -42,7 +42,7 @@ async def worker_startup_event(state: object) -> None:
 
 ---
 
-## 2. AppContext 全局单例 + 惰性初始化 = 脆弱的启动顺序
+## 2. AppContext 全局单例 + 惰性初始化 = 脆弱的启动顺序（已修复）
 
 ### 现象
 
@@ -54,12 +54,11 @@ context = get_or_create_default_app_context(config)
 set_default_app_context(context)
 
 # Worker 进程：TaskIQ WORKER_STARTUP 中复用默认 context + start_runtime_services()
-context = get_or_create_default_app_context()
+context = init_default_app_context(UnifiedConfigManager())
 await start_runtime_services(context.config, context=context, ...)
 
-# 各种 service 中：通过 get_default_config() 间接访问
-from core.app_context import get_default_config
-config = get_default_config()
+# 各种 service 中：显式读取静态配置（不依赖 AppContext 全局）
+config = UnifiedConfigManager()
 ```
 
 三个问题：
@@ -70,9 +69,10 @@ config = get_default_config()
 
 ### 修复
 
-- 把 `_default_context` 改为 `ContextVar[AppContext]`，消除模块级可变状态
-- 所有 `get_default_config()` 的调用点改用显式参数传递（在已有重构中随带修改）
-- `ensure_redis_client()` 保持同步（Redis 客户端创建本身不涉及 I/O），但调用方需要处理 Redis 不可用的情况（见 fail-open 改造）
+- 已完成：把 `_default_context` 改为 `ContextVar[AppContext]`，消除模块级可变全局带来的隐式共享问题。
+- 已完成：`get_or_create_default_app_context()` 在默认上下文为空时不再“无参创建新配置”，而是直接报错；默认上下文初始化统一走 `init_default_app_context(...)`（创建点明确且可控）。
+- 已完成：删除 `get_default_config()` 这种“通过 AppContext 间接读配置”的入口，业务代码读取静态配置统一使用 `UnifiedConfigManager()`（底层基于 `get_settings()` 缓存，不会重复读 env）。
+- 保留：`ensure_redis_client()` 仍为同步（创建 client 不涉及 I/O），Redis 可用性由调用方通过 `ensure_redis_available(...)` + fail-open/fail-close 策略处理（见 #6）。
 
 ---
 

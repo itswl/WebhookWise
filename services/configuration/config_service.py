@@ -2,7 +2,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.config import UnifiedConfigManager
 
 _CONFIG_FIELDS: Mapping[str, str] = {
@@ -49,7 +49,7 @@ def _get_config_source(env_var: str) -> str:
 
 
 def get_current_config() -> dict[str, object]:
-    config = get_default_config()
+    config = get_config_manager()
     response: dict[str, object] = {}
     for field_name, env_var in _CONFIG_FIELDS.items():
         value = _get_config_value(env_var, config)
@@ -58,7 +58,7 @@ def get_current_config() -> dict[str, object]:
 
 
 def get_config_sources() -> list[dict[str, object]]:
-    config = get_default_config()
+    config = get_config_manager()
     return [
         {
             "key": key,

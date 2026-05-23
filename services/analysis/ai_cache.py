@@ -4,7 +4,7 @@ import time
 from typing import cast
 
 from core import json
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
 from services.webhooks.types import AnalysisResult
@@ -17,7 +17,7 @@ def get_cache_key(alert_hash: str) -> str:
 
 
 def _resolve_cache_settings(*, enabled: bool | None, ttl_seconds: int | None) -> tuple[bool, int]:
-    config = get_default_config().ai
+    config = get_config_manager().ai
     resolved_enabled = bool(config.CACHE_ENABLED) if enabled is None else bool(enabled)
     resolved_ttl = int(config.ANALYSIS_CACHE_TTL) if ttl_seconds is None else int(ttl_seconds)
     return resolved_enabled, max(1, resolved_ttl)

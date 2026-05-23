@@ -24,9 +24,9 @@ def build_http_client(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.AsyncClient:
     if config is None:
-        from core.app_context import get_default_config
+        from core.app_context import get_config_manager
 
-        config = get_default_config()
+        config = get_config_manager()
     return httpx.AsyncClient(
         timeout=httpx.Timeout(config.forwarding.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
@@ -39,9 +39,11 @@ def build_http_client(
 
 def get_http_client() -> httpx.AsyncClient:
     """Return the AsyncClient owned by the current AppContext."""
-    from core.app_context import get_or_create_default_app_context
+    from core.app_context import get_default_app_context
 
-    context = get_or_create_default_app_context()
+    context = get_default_app_context()
+    if context is None:
+        raise RuntimeError("default AppContext is not initialized")
     if context.http_client is None or context.http_client.is_closed:
         context.http_client = build_http_client(context.config)
         logger.info("[HTTP] 成功初始化上下文异步客户端")
