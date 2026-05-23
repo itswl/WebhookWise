@@ -6,9 +6,9 @@ from typing import Any
 
 from adapters.plugins.feishu_card import build_ai_error_card
 from core.logger import get_logger, mask_url
-from core.redis_keys import ai_error_alert_lock
+from core.redis_health import ai_error_alert_lock
 from services.analysis.ai_policies import AIErrorNotificationPolicy
-from services.notifications.factory import build_notification_channels, find_notification_channel
+from services.notifications import build_notification_channels, find_notification_channel
 from services.operations.policies import FeishuNotificationPolicy
 from services.webhooks.types import WebhookData
 

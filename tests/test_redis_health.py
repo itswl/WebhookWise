@@ -4,7 +4,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_record_redis_operation_updates_shared_health_state() -> None:
     from core.redis_health import RedisHealthState, get_redis_health_snapshot
-    from core.redis_metrics import record_redis_operation
+    from core.redis_client import record_redis_operation
 
     async def ok() -> str:
         return "pong"
@@ -33,6 +33,6 @@ async def test_unavailable_health_state_throttles_recovery_probes(monkeypatch: p
             raise AssertionError("probe should be throttled")
 
     mark_redis_failure("eval", RuntimeError("redis unavailable"))
-    monkeypatch.setattr("core.redis_lifecycle.get_redis", lambda: RedisClient())
+    monkeypatch.setattr("core.redis_client.get_redis", lambda: RedisClient())
 
     assert await ensure_redis_available("test", probe_interval=60) is False

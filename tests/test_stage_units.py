@@ -23,7 +23,7 @@ def test_parse_request_decodes_raw_json_without_database() -> None:
 
 @pytest.mark.asyncio
 async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.notifications.feishu import FeishuNotificationChannel
+    from services.notifications import FeishuNotificationChannel
     from services.operations.policies import FeishuNotificationPolicy
 
     async def fake_validate(url: str) -> str:

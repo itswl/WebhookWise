@@ -167,7 +167,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     pipeline = (ROOT / "services/webhooks/pipeline.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
     forward_outbox = (ROOT / "services/forwarding/outbox.py").read_text()
-    redis_metrics = (ROOT / "core/redis_metrics.py").read_text()
+    redis_metrics = (ROOT / "core/redis_client.py").read_text()
     taskiq_wiring = (ROOT / "services/operations/taskiq_wiring.py").read_text()
 
     assert "instrument_sqlalchemy(engine.sync_engine)" in db_engine
@@ -207,10 +207,10 @@ def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
 
 
 def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeypatch) -> None:
-    import core.observability.metrics.source as source_module
-    from core.observability.metrics.base import _alias_for_key
+    import core.observability.metrics as source_module
+    from core.observability.metrics_base import _alias_for_key
 
-    base = (ROOT / "core/observability/metrics/base.py").read_text()
+    base = (ROOT / "core/observability/metrics_base.py").read_text()
     attributes = (ROOT / "core/observability/attributes.py").read_text()
     assert "alias_map" not in base
     assert "_ALIASES" in attributes
