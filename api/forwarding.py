@@ -17,7 +17,7 @@ from schemas import (
     ForwardRuleListResponse,
     forward_rule_to_dict,
 )
-from services.forwarding.outbox import resolve_and_forward
+from services.forwarding.outbox import forward_notification
 from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
@@ -176,7 +176,7 @@ async def test_forward_rule_endpoint(
         rule.name,
         rule.target_type,
     )
-    result = await resolve_and_forward(
+    result = await forward_notification(
         event_type="rule_test",
         source="test",
         forward_data=test_webhook,

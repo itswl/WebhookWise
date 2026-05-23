@@ -8,17 +8,17 @@ from typing import Any
 from core import json
 from core.logger import get_logger
 from core.sensitive_data import redact_nested
-from services.webhooks.policies import WebhookReceivePolicy
+from services.webhooks.policies import PayloadPolicy
 
 logger = get_logger("payload_sanitizer")
 
 
-def _get_offload_threshold_bytes(policy: WebhookReceivePolicy | None = None) -> int:
+def _get_offload_threshold_bytes(policy: PayloadPolicy | None = None) -> int:
     """Return the configured payload offload threshold."""
-    return (policy or WebhookReceivePolicy.from_config()).offload_threshold_bytes
+    return (policy or PayloadPolicy.from_config()).offload_threshold_bytes
 
 
-def _should_offload(data: object, policy: WebhookReceivePolicy, depth: int = 0) -> bool:
+def _should_offload(data: object, policy: PayloadPolicy, depth: int = 0) -> bool:
     if depth > 2:
         return False
     if data is None:
@@ -57,7 +57,7 @@ async def sanitize_for_ai_async(
 ) -> dict[str, Any]:
     if not parsed_data:
         return parsed_data
-    policy = WebhookReceivePolicy.from_config()
+    policy = PayloadPolicy.from_config()
     if _should_offload(parsed_data, policy):
         res = await asyncio.to_thread(
             sanitize_for_ai,
@@ -75,7 +75,7 @@ def sanitize_for_ai(
     *,
     strip_configured_keys: bool = True,
     truncate: bool = True,
-    policy: WebhookReceivePolicy | None = None,
+    policy: PayloadPolicy | None = None,
 ) -> dict[str, Any]:
     """清洗 parsed_data，移除噪音字段并截断过大内容。
 
@@ -87,7 +87,7 @@ def sanitize_for_ai(
     if not parsed_data:
         return parsed_data
 
-    policy = policy or WebhookReceivePolicy.from_config()
+    policy = policy or PayloadPolicy.from_config()
     strip_keys = set(policy.strip_keys) if strip_configured_keys else set()
 
     # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）

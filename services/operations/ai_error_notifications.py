@@ -8,7 +8,7 @@ from core.logger import get_logger
 from core.redis_health import ai_error_alert_lock
 from services.analysis.analysis_policies import AIErrorNotificationPolicy
 from services.channels.feishu import build_ai_error_card
-from services.forwarding.outbox import resolve_and_forward
+from services.forwarding.outbox import forward_notification
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")
@@ -73,10 +73,9 @@ async def send_ai_error_alert(
 
         event_type = "ai_degraded" if is_degraded else "ai_error"
         logger.info("[AIErrorNotify] 发送 AI 错误通知 degraded=%s", is_degraded)
-        result = await resolve_and_forward(
+        result = await forward_notification(
             event_type=event_type,
             formatted_payload=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
-            wait=False,
         )
         logger.info("[AIErrorNotify] AI 错误通知已入队 outbox_ids=%s", result.get("outbox_ids"))
     except Exception as e:

@@ -300,7 +300,7 @@ async def forward_deep_analysis(
             source = event.source or "unknown"
 
     from services.channels.feishu import build_deep_analysis_card
-    from services.forwarding.outbox import resolve_and_forward
+    from services.forwarding.outbox import forward_notification
 
     is_feishu = is_feishu_url(target_url)
     fwd_payload: dict[str, Any] = {
@@ -328,12 +328,11 @@ async def forward_deep_analysis(
         else fwd_payload
     )
     try:
-        result = await resolve_and_forward(
+        result = await forward_notification(
             event_type="deep_analysis_manual",
             source=source,
             formatted_payload=formatted_payload,
             webhook_id=analysis.webhook_event_id or None,
-            wait=False,
         )
         outbox_id = result.get("outbox_id")
         logger.info(

@@ -27,7 +27,7 @@ from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.decisioning import ForwardDecision, ForwardRuleTarget
+from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
 from services.webhooks.types import (
     AnalysisResult,
     DeepAnalysisStatus,
@@ -58,67 +58,121 @@ def configure_forward_outbox_schedulers(
 
 async def resolve_and_forward(
     *,
-    event_type: str = "webhook_forward",
-    source: str = "",
-    importance: str = "low",
-    is_duplicate: bool = False,
-    parsed_data: dict[str, Any] | None = None,
-    formatted_payload: dict[str, Any] | None = None,
+    session: AsyncSession,
+    decision: ForwardDecision,
     forward_data: dict[str, Any] | None = None,
     analysis_result: AnalysisResult | None = None,
     webhook_id: int | None = None,
     orig_id: int | None = None,
-    wait: bool = False,
-    session: AsyncSession | None = None,
-    decision: ForwardDecision | None = None,
-    is_periodic_reminder: bool = False,
     policy: ForwardDeliveryPolicy | None = None,
 ) -> ForwardResult:
-    """统一转发入口 — 所有外发消息都通过规则匹配决定目标。
-
-    支持两种调用模式：
-    - Pipeline 路径：传入 session + decision（同事务创建 outbox，调用方负责提交和调度）
-    - 独立路径：不传 session，内部完成匹配+创建+调度全流程
-    """
+    """Pipeline 路径：在已有事务中创建 outbox 记录，调用方负责提交和调度。"""
     policy = policy or ForwardDeliveryPolicy.from_config()
     now = datetime.now()
-
-    matched: list[ForwardRuleTarget]
-    periodic: bool
-    if decision is not None:
-        matched = list(decision.matched_rules)
-        periodic = decision.is_periodic_reminder
-    else:
-        from services.webhooks.decisioning import select_forward_rules
-        from services.webhooks.repository import list_enabled_forward_rules
-
-        rules = await list_enabled_forward_rules(session=session)
-        matched = select_forward_rules(
-            rules,
-            event_type=event_type,
-            importance=importance,
-            source=source,
-            is_duplicate=is_duplicate,
-            parsed_data=parsed_data,
-        )
-        periodic = is_periodic_reminder
+    matched = list(decision.matched_rules)
+    periodic = decision.is_periodic_reminder
+    event_type = "webhook_forward"
 
     if not matched:
-        logger.info(
-            "[ResolveForward] 无匹配规则 event_type=%s source=%s importance=%s",
-            event_type,
-            source,
-            importance,
-        )
         return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
 
     outbox_ids: list[int] = []
-    async with _resolve_session(session) as sess:
+    for rule in matched:
+        target_type = str(rule.target_type or "webhook")
+        target_url = str(rule.target_url or "")
+        if target_type != "openclaw" and not target_url:
+            logger.warning("[ResolveForward] 规则 '%s' target_url 为空，跳过", rule.name or rule.id)
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
+            continue
+
+        rule_id = _rule_id(rule)
+        key = _idempotency_key(
+            webhook_id=webhook_id or 0,
+            rule_id=rule_id,
+            target_type=target_type,
+            target_url=target_url,
+            is_periodic_reminder=periodic,
+        )
+        existing = (
+            await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
+        ).scalar_one_or_none()
+        if existing is not None:
+            logger.info("[ResolveForward] 幂等命中 key=%s id=%s", key, existing)
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
+            outbox_ids.append(int(existing))
+            continue
+
+        record = ForwardOutbox(
+            idempotency_key=key,
+            webhook_event_id=webhook_id,
+            original_event_id=orig_id,
+            forward_rule_id=rule_id,
+            rule_name=str(rule.name or rule.id or "default"),
+            target_type=target_type,
+            target_url=target_url,
+            target_name=str(rule.target_name or ""),
+            is_periodic_reminder=periodic,
+            channel_name=target_type,
+            event_type=event_type,
+            status=ForwardOutboxStatus.PENDING,
+            attempts=0,
+            max_attempts=policy.max_attempts,
+            next_attempt_at=now,
+            forward_data=forward_data,
+            analysis_result=analysis_result,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(record)
+        await session.flush()
+        outbox_ids.append(int(record.id))
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
+        logger.info(
+            "[ResolveForward] 已创建转发意图 id=%s event_id=%s event_type=%s rule=%s target=%s",
+            record.id,
+            webhook_id,
+            event_type,
+            rule.name,
+            target_type,
+        )
+
+    if not outbox_ids:
+        return {"status": "skipped", "reason": "所有匹配规则均已存在或无效", "outbox_ids": []}
+    return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
+
+
+async def forward_notification(
+    *,
+    event_type: str,
+    source: str = "",
+    formatted_payload: dict[str, Any] | None = None,
+    forward_data: dict[str, Any] | None = None,
+    analysis_result: AnalysisResult | None = None,
+    webhook_id: int | None = None,
+    wait: bool = False,
+    policy: ForwardDeliveryPolicy | None = None,
+) -> ForwardResult:
+    """独立路径：匹配规则 → 创建 outbox → 调度投递（或同步送达如 wait=True）。"""
+    from services.webhooks.decisioning import select_forward_rules
+    from services.webhooks.repository import list_enabled_forward_rules
+
+    policy = policy or ForwardDeliveryPolicy.from_config()
+    now = datetime.now()
+
+    rules = await list_enabled_forward_rules()
+    matched = select_forward_rules(rules, event_type=event_type, source=source)
+
+    if not matched:
+        logger.info("[ForwardNotify] 无匹配规则 event_type=%s source=%s", event_type, source)
+        return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
+
+    outbox_ids: list[int] = []
+    async with session_scope() as sess:
         for rule in matched:
-            target_type = str(rule.get("target_type", "webhook") or "webhook")
-            target_url = str(rule.get("target_url", "") or "")
+            target_type = str(rule.target_type or "webhook")
+            target_url = str(rule.target_url or "")
             if target_type != "openclaw" and not target_url:
-                logger.warning("[ResolveForward] 规则 '%s' target_url 为空，跳过", rule.get("name", rule.get("id")))
+                logger.warning("[ForwardNotify] 规则 '%s' target_url 为空，跳过", rule.name or rule.id)
                 FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
                 continue
 
@@ -128,13 +182,13 @@ async def resolve_and_forward(
                 rule_id=rule_id,
                 target_type=target_type,
                 target_url=target_url,
-                is_periodic_reminder=periodic,
+                is_periodic_reminder=False,
             )
             existing = (
                 await sess.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
             ).scalar_one_or_none()
             if existing is not None:
-                logger.info("[ResolveForward] 幂等命中 key=%s id=%s", key, existing)
+                logger.info("[ForwardNotify] 幂等命中 key=%s id=%s", key, existing)
                 FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
                 outbox_ids.append(int(existing))
                 continue
@@ -142,13 +196,11 @@ async def resolve_and_forward(
             record = ForwardOutbox(
                 idempotency_key=key,
                 webhook_event_id=webhook_id,
-                original_event_id=orig_id,
                 forward_rule_id=rule_id,
-                rule_name=str(rule.get("name") or rule.get("id") or "default"),
+                rule_name=str(rule.name or rule.id or "default"),
                 target_type=target_type,
                 target_url=target_url,
-                target_name=str(rule.get("target_name", "") or ""),
-                is_periodic_reminder=periodic,
+                target_name=str(rule.target_name or ""),
                 channel_name=target_type,
                 event_type=event_type,
                 status=ForwardOutboxStatus.PENDING,
@@ -157,7 +209,7 @@ async def resolve_and_forward(
                 next_attempt_at=now,
                 forward_data=forward_data,
                 analysis_result=analysis_result,
-                formatted_payload=formatted_payload if decision is None else None,
+                formatted_payload=formatted_payload,
                 created_at=now,
                 updated_at=now,
             )
@@ -166,20 +218,15 @@ async def resolve_and_forward(
             outbox_ids.append(int(record.id))
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
             logger.info(
-                "[ResolveForward] 已创建转发意图 id=%s event_id=%s event_type=%s rule=%s target=%s",
+                "[ForwardNotify] 已创建转发意图 id=%s event_type=%s rule=%s target=%s",
                 record.id,
-                webhook_id,
                 event_type,
-                rule.get("name"),
+                rule.name,
                 target_type,
             )
 
     if not outbox_ids:
         return {"status": "skipped", "reason": "所有匹配规则均已存在或无效", "outbox_ids": []}
-
-    # Pipeline 路径：由调用方提交事务后自行调度
-    if session is not None:
-        return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
 
     if wait:
         results: list[ForwardResult] = []
@@ -187,18 +234,9 @@ async def resolve_and_forward(
             result = await _deliver_one(oid, policy=policy)
             results.append(result)
         return results[0] if results else {"status": "skipped"}
-    else:
-        await schedule_forward_outbox_many(outbox_ids)
-        return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
 
-
-@contextlib.asynccontextmanager
-async def _resolve_session(existing: AsyncSession | None) -> Any:
-    if existing is not None:
-        yield existing
-    else:
-        async with session_scope() as sess:
-            yield sess
+    await schedule_forward_outbox_many(outbox_ids)
+    return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
 
 
 async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> ForwardResult:
@@ -251,13 +289,12 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     return cast(ForwardResult, await channel.send(str(record.target_url or ""), cast(dict[str, Any], payload)))
 
 
-def _rule_id(rule: ForwardRuleTarget) -> int | None:
-    raw = rule.get("id")
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, str):
+def _rule_id(rule: ForwardRuleSnapshot) -> int | None:
+    if isinstance(rule.id, int):
+        return rule.id
+    if isinstance(rule.id, str):
         with contextlib.suppress(ValueError):
-            return int(raw)
+            return int(rule.id)
     return None
 
 
@@ -510,11 +547,10 @@ async def _finalize_outbox_failure(
 
             exhausted_event_type = str(getattr(exhausted_record, "event_type", "") or "")
             if exhausted_event_type not in {"outbox_exhausted"}:
-                await resolve_and_forward(
+                await forward_notification(
                     event_type="outbox_exhausted",
                     formatted_payload=build_delivery_exhausted_card(exhausted_record),
                     webhook_id=exhausted_record.webhook_event_id,
-                    wait=False,
                 )
         except Exception as e:
             logger.warning("[ForwardOutbox] EXHAUSTED 通知入队失败 id=%s error=%s", outbox_id, e)

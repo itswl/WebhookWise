@@ -11,7 +11,7 @@ from core import json
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL
 from services.webhooks.deduplication import generate_alert_hash
-from services.webhooks.policies import WebhookReceivePolicy
+from services.webhooks.policies import IngressPolicy
 
 logger = get_logger("ingress_backpressure")
 
@@ -55,11 +55,11 @@ async def check_ingress_backpressure(
     *,
     source_hint: str,
     raw_body: bytes,
-    policy: WebhookReceivePolicy | None = None,
+    policy: IngressPolicy | None = None,
     redis_eval_int_func: Any | None = None,
 ) -> IngressBackpressureResult:
     """Return whether this request should be dropped before any DB write."""
-    policy = policy or WebhookReceivePolicy.from_config()
+    policy = policy or IngressPolicy.from_config()
     threshold = policy.ingress_backpressure_threshold
     if threshold <= 0:
         return IngressBackpressureResult(False, "", 0, threshold)

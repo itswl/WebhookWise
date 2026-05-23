@@ -44,13 +44,19 @@ async def test_resolve_and_forward_is_idempotent(
 ) -> None:
     from models import ForwardOutbox
     from services.forwarding.outbox import resolve_and_forward
-    from services.webhooks.decisioning import ForwardDecision
+    from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
 
     decision = ForwardDecision(
         should_forward=True,
         skip_reason=None,
         is_periodic_reminder=False,
-        matched_rules=[{"id": 7, "name": "ops", "target_type": "webhook", "target_url": "https://example.test/hook"}],
+        matched_rules=[
+            ForwardRuleSnapshot(
+                id=7, name="ops", match_event_type="", match_importance="", match_source="",
+                match_duplicate="all", match_payload="", target_type="webhook",
+                target_url="https://example.test/hook", stop_on_match=False,
+            )
+        ],
     )
 
     async with session_factory.begin() as session:
