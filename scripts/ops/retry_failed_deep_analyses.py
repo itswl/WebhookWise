@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from sqlalchemy import select
 
 from core import json
-from core.app_context import init_default_app_context
+from core.app_context import get_config_manager, init_default_app_context
 from core.config import UnifiedConfigManager
 from core.logger import get_logger
 from db.engine import init_engine
@@ -134,7 +134,7 @@ async def main():
         print(f"\n共 {len(records)} 条，使用 --list 跳过实际执行")
         return
 
-    config = get_default_config()
+    config = get_config_manager()
     if not config.openclaw.OPENCLAW_HTTP_API_URL:
         print("\n错误：未配置 OPENCLAW_HTTP_API_URL，无法重试")
         sys.exit(1)

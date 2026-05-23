@@ -7,8 +7,8 @@ import logging
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.config import UnifiedConfigManager
 from core.app_context import get_config_manager
+from core.config import UnifiedConfigManager
 from core.logger import get_logger
 
 logger = get_logger("auth")

@@ -7,8 +7,8 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from adapters.plugins.feishu_card import build_deep_analysis_card
-from core.circuit_breaker import CircuitBreakerOpenException
 from core.app_context import get_config_manager
+from core.circuit_breaker import CircuitBreakerOpenException
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.tracing import span as otel_span

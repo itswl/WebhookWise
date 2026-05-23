@@ -12,8 +12,8 @@ from adapters.ecosystem_adapters import initialize_adapters
 from core.app_context import (
     AppContext,
     get_default_app_context,
-    init_default_app_context,
     get_or_create_default_app_context,
+    init_default_app_context,
     set_default_app_context,
 )
 from core.config import UnifiedConfigManager
