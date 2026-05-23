@@ -8,6 +8,16 @@ from typing import Any, Literal
 Signal = Literal["traces", "metrics", "logs"]
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 _FALSE_VALUES = {"0", "false", "no", "off"}
 
 

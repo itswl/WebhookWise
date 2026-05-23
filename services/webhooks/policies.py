@@ -17,7 +17,7 @@ class NoiseReductionPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "NoiseReductionPolicy":
-        config = (config or get_config_manager()).ai
+        config = (config or get_config_manager()).noise
         return cls(
             enabled=bool(config.ENABLE_ALERT_NOISE_REDUCTION),
             window_minutes=max(1, int(config.NOISE_REDUCTION_WINDOW_MINUTES)),
@@ -92,38 +92,3 @@ class WebhookRetryPolicy:
             backoff_multiplier=float(config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
         )
 
-
-@dataclass(frozen=True, slots=True)
-class WebhookReceivePolicy:
-    """向后兼容的聚合策略 — 组合 IngressPolicy + PayloadPolicy + WebhookRetryPolicy。"""
-
-    max_body_bytes: int
-    ingress_backpressure_threshold: int
-    ingress_backpressure_window_seconds: int
-    ingress_backpressure_fail_open_on_redis_error: bool = False
-    max_retries: int = 0
-    initial_delay: int = 5
-    max_delay: int = 300
-    backoff_multiplier: float = 2.0
-    offload_threshold_bytes: int = 512 * 1024
-    strip_keys: frozenset[str] = frozenset()
-    max_bytes: int = 0
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
-        ingress = IngressPolicy.from_config(config)
-        payload = PayloadPolicy.from_config(config)
-        retry = WebhookRetryPolicy.from_config(config)
-        return cls(
-            max_body_bytes=ingress.max_body_bytes,
-            ingress_backpressure_threshold=ingress.ingress_backpressure_threshold,
-            ingress_backpressure_window_seconds=ingress.ingress_backpressure_window_seconds,
-            ingress_backpressure_fail_open_on_redis_error=ingress.ingress_backpressure_fail_open_on_redis_error,
-            max_retries=retry.max_retries,
-            initial_delay=retry.initial_delay,
-            max_delay=retry.max_delay,
-            backoff_multiplier=retry.backoff_multiplier,
-            offload_threshold_bytes=payload.offload_threshold_bytes,
-            strip_keys=payload.strip_keys,
-            max_bytes=payload.max_bytes,
-        )

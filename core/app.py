@@ -11,14 +11,13 @@ from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
 from api.forwarding import forwarding_router
 from api.reanalysis import reanalysis_router
-from api.runtime_wiring import install_runtime_lifecycle_hooks
 from api.webhook import webhook_router
 from core.app_context import AppContext, get_default_app_context, init_default_app_context, set_default_app_context
 from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
 from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
-from core.service_lifecycle import start_runtime_services, stop_runtime_services
+from core.service_lifecycle import configure_runtime_lifecycle_hooks, start_runtime_services, stop_runtime_services
 from core.taskiq_broker import broker
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
 from core.web.startup_checks import validate_startup_security
@@ -50,8 +49,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config.server.RUN_MODE,
         config.ai.ENABLE_AI_ANALYSIS,
     )
+    from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
+
     validate_startup_security(config)
-    install_runtime_lifecycle_hooks()
+    configure_runtime_lifecycle_hooks(
+        initialize_ai_client=initialize_openai_client,
+        reset_ai_client=reset_openai_client,
+    )
     services = await start_runtime_services(
         config,
         context=context,

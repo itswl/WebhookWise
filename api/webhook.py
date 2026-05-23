@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from adapters.ecosystem_adapters import normalize_webhook_event
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
@@ -314,3 +315,21 @@ async def get_webhook_detail_endpoint(
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
+
+JSONDict = dict[str, Any]
+
+
+async def build_webhook_context(event: WebhookEvent) -> JSONDict:
+    from services.webhooks.repository import load_event_payload
+
+    parsed_data, _ = await load_event_payload(event)
+    source = event.source
+    if (not source or source == "unknown") and isinstance(parsed_data, dict):
+        normalized = normalize_webhook_event(parsed_data, None)
+        source, parsed_data = normalized.source or source, normalized.data
+    return {
+        "source": source,
+        "parsed_data": parsed_data,
+        "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+        "client_ip": event.client_ip,
+    }

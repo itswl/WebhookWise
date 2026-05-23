@@ -10,13 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from core.logger import get_logger
-from db.engine import build_engine_and_session_factory as build_engine_and_session_factory
-from db.engine import dispose_engine as dispose_engine
-from db.engine import get_db_pool_capacity as get_db_pool_capacity
-from db.engine import get_db_pool_checked_out as get_db_pool_checked_out
-from db.engine import get_engine as get_engine
-from db.engine import init_engine as init_engine
-from db.engine import test_db_connection as test_db_connection
 
 _logger = get_logger("db.session")
 
@@ -62,7 +55,7 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
     start = time.perf_counter()
     status = "success"
     try:
-        from core.observability.tracing import span as otel_span
+        from core.observability.tracing import otel_span
 
         with otel_span("db.session", {"db.operation": "request_session"}):
             async with session_factory() as session:
@@ -89,7 +82,7 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
     operation = "existing_session" if existing_session else "transaction"
     status = "success"
     try:
-        from core.observability.tracing import span as otel_span
+        from core.observability.tracing import otel_span
 
         with otel_span("db.session", {"db.operation": operation}):
             if existing_session:
@@ -139,14 +132,7 @@ async def count_with_timeout(
 
 __all__ = [
     "Base",
-    "build_engine_and_session_factory",
     "count_with_timeout",
-    "dispose_engine",
-    "get_db_pool_capacity",
-    "get_db_pool_checked_out",
     "get_db_session",
-    "get_engine",
-    "init_engine",
     "session_scope",
-    "test_db_connection",
 ]

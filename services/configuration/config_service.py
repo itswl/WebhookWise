@@ -4,6 +4,7 @@ from typing import Any
 
 from core.app_context import get_config_manager
 from core.config import UnifiedConfigManager
+from core.config.manager import get_config_keys
 
 _CONFIG_FIELDS: Mapping[str, str] = {
     "default_target_url": "DEFAULT_FORWARD_TARGET_URL",
@@ -36,7 +37,7 @@ _CONFIG_FIELDS: Mapping[str, str] = {
 
 
 def _get_config_value(env_var: str, config: UnifiedConfigManager) -> Any:
-    config_info = config.CONFIG_KEYS.get(env_var)
+    config_info = get_config_keys().get(env_var)
     if not config_info:
         return ""
     return getattr(getattr(config, config_info["sub"]), env_var, "")
@@ -63,5 +64,5 @@ def get_config_sources() -> list[dict[str, object]]:
             "source": _get_config_source(key),
             "requires_restart": True,
         }
-        for key in sorted(config.CONFIG_KEYS.keys())
+        for key in sorted(get_config_keys().keys())
     ]

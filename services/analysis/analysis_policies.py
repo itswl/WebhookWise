@@ -16,10 +16,6 @@ DEFAULT_USER_PROMPT_TEMPLATE = """请分析以下 webhook 事件：
 DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE = "请对以下告警进行深度根因分析。"
 
 
-def _split_keywords(value: str) -> tuple[str, ...]:
-    return tuple(part.strip().lower() for part in str(value).split(",") if part.strip())
-
-
 @dataclass(frozen=True, slots=True)
 class RuleAnalysisPolicy:
     high_keywords: tuple[str, ...]
@@ -29,11 +25,13 @@ class RuleAnalysisPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> "RuleAnalysisPolicy":
+        from core.text import split_csv_lower
+
         config = (config or get_config_manager()).ai
         return cls(
-            high_keywords=_split_keywords(config.RULE_HIGH_KEYWORDS),
-            warning_keywords=_split_keywords(config.RULE_WARN_KEYWORDS),
-            metric_keywords=_split_keywords(config.RULE_METRIC_KEYWORDS),
+            high_keywords=tuple(split_csv_lower(config.RULE_HIGH_KEYWORDS)),
+            warning_keywords=tuple(split_csv_lower(config.RULE_WARN_KEYWORDS)),
+            metric_keywords=tuple(split_csv_lower(config.RULE_METRIC_KEYWORDS)),
             threshold_multiplier=float(config.RULE_THRESHOLD_MULTIPLIER or 4.0),
         )
 
@@ -134,12 +132,13 @@ class NoiseScoringConfig:
 
     @classmethod
     def from_config(cls, config: Any) -> "NoiseScoringConfig":
+        noise = getattr(config, "noise", config)  # accept both NoiseConfig and UnifiedConfigManager
         return cls(
-            source_weight=float(config.NOISE_SOURCE_WEIGHT),
-            resource_weight=float(config.NOISE_RESOURCE_WEIGHT),
-            semantic_weight=float(config.NOISE_SEMANTIC_WEIGHT),
-            severity_weight=float(config.NOISE_SEVERITY_WEIGHT),
-            time_weight=float(config.NOISE_TIME_WEIGHT),
-            severity_downgrade_score=float(config.NOISE_SEVERITY_DOWNGRADE_SCORE),
-            related_min_confidence=float(config.NOISE_RELATED_MIN_CONFIDENCE),
+            source_weight=float(noise.NOISE_SOURCE_WEIGHT),
+            resource_weight=float(noise.NOISE_RESOURCE_WEIGHT),
+            semantic_weight=float(noise.NOISE_SEMANTIC_WEIGHT),
+            severity_weight=float(noise.NOISE_SEVERITY_WEIGHT),
+            time_weight=float(noise.NOISE_TIME_WEIGHT),
+            severity_downgrade_score=float(noise.NOISE_SEVERITY_DOWNGRADE_SCORE),
+            related_min_confidence=float(noise.NOISE_RELATED_MIN_CONFIDENCE),
         )

@@ -6,7 +6,7 @@ import logging
 import re
 import threading
 
-from core.observability.env import env_int
+from core.observability.exporters import env_int
 from core.observability.metrics_base import Counter, Gauge, Histogram, setup_meter_provider
 
 SOURCE_LABEL_MAX_LENGTH = 50
