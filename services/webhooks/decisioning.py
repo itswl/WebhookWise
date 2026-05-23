@@ -243,12 +243,12 @@ def decide_forwarding(
     )
 
 
-def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy:
-    config = config or get_config_manager()
+def forwarding_policy_from_config() -> ForwardingPolicy:
+    cfg = get_config_manager()
     return ForwardingPolicy(
-        notification_cooldown_seconds=config.retry.NOTIFICATION_COOLDOWN_SECONDS,
-        enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,
-        reminder_interval_hours=config.retry.REMINDER_INTERVAL_HOURS,
-        forward_duplicate_alerts=config.retry.FORWARD_DUPLICATE_ALERTS,
-        default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
+        notification_cooldown_seconds=cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
+        enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
+        reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
+        forward_duplicate_alerts=cfg.retry.FORWARD_DUPLICATE_ALERTS,
+        default_target_url=str(cfg.forwarding.DEFAULT_FORWARD_TARGET_URL),
     )

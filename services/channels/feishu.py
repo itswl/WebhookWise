@@ -5,7 +5,6 @@ from urllib.parse import urlsplit
 
 from core.app_context import get_config_manager
 from core.logger import mask_url
-from services.channels.base import FormatContext
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
@@ -231,37 +230,24 @@ def build_delivery_exhausted_card(outbox: Any) -> WebhookData:
     }
 
 
-class FeishuChannel:
-    name = "feishu"
+async def send_to_feishu(url: str, payload: dict[str, Any]) -> ForwardResult:
+    from dataclasses import replace
 
-    def supports(self, target_url: str) -> bool:
-        return is_feishu_url(target_url)
+    from services.forwarding.remote import post_json_to_remote
 
-    def format(self, ctx: FormatContext) -> dict[str, Any]:
-        return build_feishu_card(
-            ctx.webhook_data,
-            ctx.analysis_result,
-            is_periodic_reminder=ctx.is_periodic_reminder,
-        )
-
-    async def send(self, url: str, payload: dict[str, Any]) -> ForwardResult:
-        from dataclasses import replace
-
-        from services.forwarding.remote import post_json_to_remote
-
-        timeout_seconds = int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT)
-        policy = replace(ForwardDeliveryPolicy.from_config(), timeout_seconds=timeout_seconds)
-        base_dependencies = build_remote_forward_dependencies()
-        dependencies = RemoteForwardDependencies(
-            http_client=base_dependencies.http_client,
-            circuit_breaker=feishu_cb,
-            validate_url=base_dependencies.validate_url,
-        )
-        return await post_json_to_remote(
-            url,
-            payload,
-            policy=policy,
-            validate_target=True,
-            dependencies=dependencies,
-            target_type_label=self.name,
-        )
+    timeout_seconds = int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT)
+    policy = replace(ForwardDeliveryPolicy.from_config(), timeout_seconds=timeout_seconds)
+    base_dependencies = build_remote_forward_dependencies()
+    dependencies = RemoteForwardDependencies(
+        http_client=base_dependencies.http_client,
+        circuit_breaker=feishu_cb,
+        validate_url=base_dependencies.validate_url,
+    )
+    return await post_json_to_remote(
+        url,
+        payload,
+        policy=policy,
+        validate_target=True,
+        dependencies=dependencies,
+        target_type_label="feishu",
+    )

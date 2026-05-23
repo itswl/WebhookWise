@@ -5,7 +5,6 @@
 - 定时轮询任务：由 TaskIQ Scheduler 触发入队，由 Worker 执行
 """
 
-import asyncio
 import contextlib
 import inspect
 import time
@@ -19,7 +18,7 @@ from core import redis_client, redis_health
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.attributes import WEBHOOK_OUTCOME
-from core.observability.events import emit_event
+from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
     SCHEDULED_TASK_LAG_SECONDS,
@@ -29,29 +28,23 @@ from core.observability.metrics import (
     WORKER_TASK_DURATION_SECONDS,
     WORKER_TASKS_TOTAL,
 )
-from core.observability.events import record_signal
 from core.observability.tracing import (
     build_traceparent,
     extract_trace_id_from_headers,
+    otel_span,
     reset_fallback_trace_id,
     set_fallback_trace_id,
-    set_span_error,
     trace_context_from_headers,
 )
-from core.observability.tracing import otel_span
-from core.redis_health import scheduled_task_lock, webhook_global_task_slots
+from core.redis_health import scheduled_task_lock
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
-from services.forwarding.outbox import outbox_scheduler
-from services.operations.policies import TaskRuntimePolicy, TaskSlotManager
+
+from services.operations.policies import TaskRuntimePolicy
 
 logger = get_logger("tasks")
 
 _last_success_by_name: dict[str, float] = {}
-_webhook_task_semaphore: asyncio.Semaphore | None = None
-_webhook_task_semaphore_limit = 0
-
-_WEBHOOK_TASK_SLOT_KEY = webhook_global_task_slots()
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 
 
@@ -68,78 +61,9 @@ class _WebhookTaskContext:
     trace_headers: dict[str, str]
 
 
-@asynccontextmanager
-async def _local_webhook_task_slot(limit: int) -> AsyncIterator[None]:
-    global _webhook_task_semaphore, _webhook_task_semaphore_limit
-    if _webhook_task_semaphore is None or _webhook_task_semaphore_limit != limit:
-        _webhook_task_semaphore = asyncio.Semaphore(limit)
-        _webhook_task_semaphore_limit = limit
-    async with _webhook_task_semaphore:
-        yield
-
-
-async def _enqueue_forward_outbox(outbox_id: int) -> None:
-    await process_forward_outbox_task.kiq(outbox_id=outbox_id)
-
-
-async def _schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
-    from services.operations.taskiq_retry_scheduler import schedule_forward_outbox
-
-    await schedule_forward_outbox(outbox_id, delay_seconds)
-
-
-outbox_scheduler.enqueue = _enqueue_forward_outbox
-outbox_scheduler.retry = _schedule_forward_outbox_retry
-
 
 def _task_policy(policy: TaskRuntimePolicy | None = None) -> TaskRuntimePolicy:
     return policy or TaskRuntimePolicy.from_config()
-
-
-def _webhook_slot_lease_seconds(policy: TaskRuntimePolicy | None = None) -> int:
-    return _task_policy(policy).webhook_task_slot_lease_seconds
-
-
-def _task_slot_manager() -> TaskSlotManager:
-    return TaskSlotManager(_WEBHOOK_TASK_SLOT_KEY)
-
-
-@asynccontextmanager
-async def _distributed_webhook_task_slot(limit: int, *, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
-    poll_interval = _task_policy(policy).webhook_task_poll_interval_seconds
-    slot_manager = _task_slot_manager()
-    member: str | None = None
-    try:
-        while True:
-            if not await redis_health.ensure_redis_available("tasks:webhook_task_slot"):
-                logger.warning("[Tasks] Redis 全局并发令牌不可用，暂停处理直到 Redis 恢复")
-                await asyncio.sleep(poll_interval)
-                continue
-            try:
-                member = await slot_manager.acquire()
-                if member:
-                    break
-            except Exception as e:
-                redis_health.mark_redis_failure("tasks:webhook_task_slot", e)
-                logger.warning("[Tasks] Redis 全局并发令牌异常，暂停处理直到 Redis 恢复: %s", e)
-            await asyncio.sleep(poll_interval)
-
-        yield
-    finally:
-        if member:
-            with contextlib.suppress(Exception):
-                await slot_manager.release(member)
-
-
-@asynccontextmanager
-async def _webhook_task_slot(*, policy: TaskRuntimePolicy | None = None) -> AsyncIterator[None]:
-    runtime_policy = _task_policy(policy)
-    limit = runtime_policy.max_concurrent_webhook_tasks
-    if limit <= 0:
-        yield
-        return
-    async with _distributed_webhook_task_slot(limit, policy=runtime_policy):
-        yield
 
 
 def _background_scan_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
@@ -370,67 +294,6 @@ def _reset_webhook_task_fallback_trace(token: Token[str] | None) -> None:
         logger.debug("[Tasks] fallback trace context already reset", exc_info=True)
 
 
-async def _run_webhook_ingest_with_failure_handling(ctx: _WebhookTaskContext) -> str:
-    from services.webhooks.pipeline import handle_webhook_ingest
-
-    async with _webhook_task_slot():
-        WEBHOOK_RUNNING_TASKS.inc()
-        try:
-            try:
-                await handle_webhook_ingest(
-                    source=ctx.source,
-                    raw_headers=ctx.raw_headers,
-                    raw_body=ctx.raw_body,
-                    client_ip=ctx.client_ip,
-                    request_id=ctx.request_id,
-                    received_at=ctx.received_at,
-                )
-                return "completed"
-            except Exception as e:
-                await _handle_raw_webhook_failure(
-                    source=ctx.source,
-                    raw_headers=ctx.raw_headers,
-                    raw_body=ctx.raw_body,
-                    client_ip=ctx.client_ip,
-                    request_id=ctx.request_id,
-                    received_at=ctx.received_at,
-                    ingest_retry_count=ctx.ingest_retry_count,
-                    traceparent=ctx.trace_headers["traceparent"] or ctx.traceparent,
-                    err=e,
-                )
-                return "raw_failure_handled"
-        finally:
-            WEBHOOK_RUNNING_TASKS.dec()
-
-
-async def _run_webhook_task_span(ctx: _WebhookTaskContext) -> str:
-    outcome = "completed"
-    with (
-        trace_context_from_headers(ctx.trace_headers),
-        otel_span(
-            "worker.webhook_process_task",
-            {
-                "event_id": 0,
-                "source": ctx.source,
-                "retry.count": ctx.ingest_retry_count,
-                "webhook.raw_ingest": True,
-                "worker.task.name": "webhook_process_task",
-            },
-        ) as worker_span,
-    ):
-        try:
-            outcome = await _run_webhook_ingest_with_failure_handling(ctx)
-            return outcome
-        except Exception as exc:
-            outcome = "error"
-            set_span_error(worker_span, exc)
-            raise
-        finally:
-            if worker_span is not None:
-                worker_span.set_attribute("worker.task.status", outcome)
-                worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
-
-
 def _finish_webhook_task(ctx: _WebhookTaskContext, outcome: str, task_start: float) -> None:
     duration_ms = int((time.perf_counter() - task_start) * 1000)
     logger.info(
@@ -452,7 +315,8 @@ def _finish_webhook_task(ctx: _WebhookTaskContext, outcome: str, task_start: flo
     WORKER_TASK_DURATION_SECONDS.labels("webhook_process_task", outcome).observe(time.perf_counter() - task_start)
 
 
-async def run_webhook_task(
+@broker.task(task_name="webhook_process_task")
+async def process_webhook_task(
     client_ip: str | None = None,
     source_name: str = "unknown",
     raw_headers: dict[str, str] | None = None,
@@ -463,6 +327,8 @@ async def run_webhook_task(
     traceparent: str | None = None,
 ) -> None:
     """Process a raw ingested webhook."""
+    from services.webhooks.pipeline import handle_webhook_ingest
+
     ctx = _build_webhook_task_context(
         client_ip=client_ip,
         source_name=source_name,
@@ -478,7 +344,47 @@ async def run_webhook_task(
     _start_webhook_task(ctx)
     fallback_token = _set_webhook_task_fallback_trace(ctx)
     try:
-        outcome = await _run_webhook_task_span(ctx)
+        with (
+            trace_context_from_headers(ctx.trace_headers),
+            otel_span(
+                "worker.webhook_process_task",
+                {
+                    "event_id": 0,
+                    "source": ctx.source,
+                    "retry.count": ctx.ingest_retry_count,
+                    "webhook.raw_ingest": True,
+                    "worker.task.name": "webhook_process_task",
+                },
+            ) as worker_span,
+        ):
+            WEBHOOK_RUNNING_TASKS.inc()
+            try:
+                await handle_webhook_ingest(
+                    source=ctx.source,
+                    raw_headers=ctx.raw_headers,
+                    raw_body=ctx.raw_body,
+                    client_ip=ctx.client_ip,
+                    request_id=ctx.request_id,
+                    received_at=ctx.received_at,
+                )
+            except Exception as e:
+                await _handle_raw_webhook_failure(
+                    source=ctx.source,
+                    raw_headers=ctx.raw_headers,
+                    raw_body=ctx.raw_body,
+                    client_ip=ctx.client_ip,
+                    request_id=ctx.request_id,
+                    received_at=ctx.received_at,
+                    ingest_retry_count=ctx.ingest_retry_count,
+                    traceparent=ctx.trace_headers["traceparent"] or ctx.traceparent,
+                    err=e,
+                )
+                outcome = "raw_failure_handled"
+            finally:
+                WEBHOOK_RUNNING_TASKS.dec()
+                if worker_span is not None:
+                    worker_span.set_attribute("worker.task.status", outcome)
+                    worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
     except Exception:
         outcome = "error"
         logger.exception(
@@ -490,29 +396,6 @@ async def run_webhook_task(
     finally:
         _reset_webhook_task_fallback_trace(fallback_token)
         _finish_webhook_task(ctx, outcome, task_start)
-
-
-@broker.task(task_name="webhook_process_task")
-async def process_webhook_task(
-    client_ip: str | None = None,
-    source_name: str = "unknown",
-    raw_headers: dict[str, str] | None = None,
-    raw_body: str | None = None,
-    request_id: str | None = None,
-    received_at: str | None = None,
-    ingest_retry_count: int = 0,
-    traceparent: str | None = None,
-) -> None:
-    await run_webhook_task(
-        client_ip=client_ip,
-        source_name=source_name,
-        raw_headers=raw_headers,
-        raw_body=raw_body,
-        request_id=request_id,
-        received_at=received_at,
-        ingest_retry_count=ingest_retry_count,
-        traceparent=traceparent,
-    )
 
 
 async def run_forward_outbox_task(outbox_id: int) -> None:
@@ -539,7 +422,7 @@ async def process_forward_outbox_task(outbox_id: int) -> None:
 @broker.task(task_name="openclaw_poll_task")
 async def poll_openclaw_analysis_task(analysis_id: int) -> None:
     """Poll one pending OpenClaw deep-analysis record."""
-    from services.analysis.openclaw_poller import poll_deep_analysis_once
+    from services.analysis.openclaw import poll_deep_analysis_once
 
     await poll_deep_analysis_once(analysis_id)
 
@@ -549,7 +432,7 @@ async def poll_openclaw_analysis_task(analysis_id: int) -> None:
     schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
 )
 async def scheduled_openclaw_poll_scan() -> None:
-    from services.analysis.openclaw_poller import run_openclaw_poll_scan
+    from services.analysis.openclaw import run_openclaw_poll_scan
 
     await _run_scheduled("openclaw_poll_scan", _background_scan_interval_seconds(), run_openclaw_poll_scan())
 

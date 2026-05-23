@@ -203,10 +203,7 @@ async def analyze_webhook_with_ai(
             provider_policy.model,
             alert_hash[:12],
         )
-        if http_client is not None:
-            analysis, t_in, t_out = await _call_ai_with_retry(parsed, source, http_client=http_client)
-        else:
-            analysis, t_in, t_out = await _call_ai_with_retry(parsed, source)
+        analysis, t_in, t_out = await _call_ai_with_retry(parsed, source, http_client=http_client)
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,

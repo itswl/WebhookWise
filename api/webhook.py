@@ -222,46 +222,24 @@ async def dashboard() -> FileResponse:
     response_model=WebhookReceiveResponse,
     status_code=202,
 )
-async def receive_webhook(
-    request: Request,
-    source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
-) -> JSONDict | JSONResponse:
-    """通用 Webhook 接收入口。"""
-    request_id = get_or_generate_trace_id()
-    set_fallback_trace_id(request_id)
-    source_hint = _normalize_source_hint(source or request.headers.get("x-webhook-source"))
-    clear_log_context()
-    set_log_context(request_id=request_id, source=source_hint)
-
-    return await _receive_and_enqueue_webhook(
-        request=request,
-        source_hint=source_hint,
-        request_id=request_id,
-    )
-
-
 @webhook_router.post(
     "/webhook/{source}",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
     status_code=202,
 )
-async def receive_webhook_with_source(
+async def receive_webhook(
     request: Request,
-    source: str = Path(..., max_length=MAX_SOURCE_LENGTH),
+    source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
 ) -> JSONDict | JSONResponse:
-    """带来源标识的 Webhook 接收入口。"""
+    """Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。"""
     request_id = get_or_generate_trace_id()
     set_fallback_trace_id(request_id)
-    source_hint = _normalize_source_hint(source)
+    path_source = request.path_params.get("source")
+    source_hint = _normalize_source_hint(path_source or source or request.headers.get("x-webhook-source"))
     clear_log_context()
     set_log_context(request_id=request_id, source=source_hint)
-
-    return await _receive_and_enqueue_webhook(
-        request=request,
-        source_hint=source_hint,
-        request_id=request_id,
-    )
+    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
 
 
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
@@ -315,8 +293,6 @@ async def get_webhook_detail_endpoint(
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
-
-JSONDict = dict[str, Any]
 
 
 async def build_webhook_context(event: WebhookEvent) -> JSONDict:

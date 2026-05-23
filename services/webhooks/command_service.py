@@ -5,11 +5,9 @@ from datetime import datetime
 from typing import cast
 
 import sqlalchemy
-from fastapi import Request
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core import request_ip
 from core.app_context import get_config_manager
 from core.compression import compress_payload
 from core.logger import get_logger
@@ -64,10 +62,6 @@ class _RequestIdResolution:
     skip_duplicate_lookup: bool
     completed_result: SaveWebhookResult | None = None
 
-
-def get_client_ip(request: Request) -> str:
-    """Backward-compatible import path for webhook client IP extraction."""
-    return request_ip.get_client_ip(request)
 
 
 def _resolve_analysis_for_duplicate(

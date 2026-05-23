@@ -25,21 +25,12 @@ class LazyCircuitBreaker:
 
     def __init__(self, factory: Callable[[UnifiedConfigManager], CircuitBreaker]) -> None:
         self._factory = factory
-        self._lock = Lock()
         self._breaker: CircuitBreaker | None = None
-        self._config_id: int | None = None
 
     def _get(self) -> CircuitBreaker:
-        config = get_config_manager()
-        config_id = id(config)
-        breaker = self._breaker
-        if breaker is not None and self._config_id == config_id:
-            return breaker
-        with self._lock:
-            if self._breaker is None or self._config_id != config_id:
-                self._breaker = self._factory(config)
-                self._config_id = config_id
-            return self._breaker
+        if self._breaker is None:
+            self._breaker = self._factory(get_config_manager())
+        return self._breaker
 
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
         return await self._get().call_async(func, *args, **kwargs)
