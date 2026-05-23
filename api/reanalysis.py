@@ -16,7 +16,7 @@ from services.forwarding.outbox import create_forward_outbox_records, schedule_f
 from services.forwarding.policies import RemoteForwardPolicy
 from services.forwarding.remote import forward_to_remote
 from services.webhooks.forwarding_stage import resolve_forward_decision
-from services.webhooks.types import AnalysisResult
+from services.webhooks.types import AnalysisResult, ForwardRuleTarget
 
 logger = get_logger("api.reanalysis")
 
@@ -56,7 +56,6 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     decision = await resolve_forward_decision(
         importance=new_imp or "medium",
         is_duplicate=bool(event.is_duplicate),
-        beyond_window=bool(event.beyond_window),
         noise=None,
         orig=None,
         source=event.source or "unknown",
@@ -65,7 +64,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     )
     outbox_ids: list[int] = []
     if decision.should_forward:
-        def _build_formatted_payload(rule: dict[str, Any]) -> tuple[str, dict[str, object]]:
+        def _build_formatted_payload(rule: ForwardRuleTarget) -> tuple[str, dict[str, object]]:
             from services.channels.base import FormatContext, get_channel, resolve_channel_name
 
             target_type = str(rule.get("target_type", "") or "")

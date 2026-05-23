@@ -19,12 +19,21 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _column_exists(table: str, column: str) -> bool:
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    return column in cols
+
+
 def upgrade() -> None:
-    op.add_column("webhook_events", sa.Column("dedup_key", sa.String(length=64), nullable=True))
-    op.create_index("idx_dedup_key_timestamp", "webhook_events", ["dedup_key", "timestamp"])
+    if not _column_exists("webhook_events", "dedup_key"):
+        op.add_column("webhook_events", sa.Column("dedup_key", sa.String(length=64), nullable=True))
+    op.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_dedup_key_timestamp ON webhook_events (dedup_key, timestamp)"))
     op.execute(sa.text("UPDATE webhook_events SET dedup_key = alert_hash WHERE dedup_key IS NULL"))
 
 
 def downgrade() -> None:
-    op.drop_index("idx_dedup_key_timestamp", table_name="webhook_events")
-    op.drop_column("webhook_events", "dedup_key")
+    op.execute(sa.text("DROP INDEX IF EXISTS idx_dedup_key_timestamp"))
+    if _column_exists("webhook_events", "dedup_key"):
+        op.drop_column("webhook_events", "dedup_key")
