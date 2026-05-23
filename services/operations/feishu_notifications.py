@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from core.logger import get_logger
-from services.notifications.channels import AsyncJsonPoster, NotificationChannel
-from services.notifications.factory import build_notification_channels, find_notification_channel
+from services.notifications import (
+    AsyncJsonPoster,
+    NotificationChannel,
+    build_notification_channels,
+    find_notification_channel,
+)
 from services.operations.policies import FeishuNotificationPolicy
 
 logger = get_logger("feishu_notifications")

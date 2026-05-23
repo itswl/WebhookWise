@@ -6,7 +6,7 @@ from typing import Any
 
 from core.observability.logging import setup_logging, shutdown_logging
 from core.observability.metrics import setup_metrics
-from core.observability.metrics.base import shutdown_meter_provider
+from core.observability.metrics_base import shutdown_meter_provider
 from core.observability.profiling import setup_profiling
 from core.observability.tracing import setup_tracing, shutdown_tracing
 

@@ -13,7 +13,7 @@ from core.observability.metrics import (
     WEBHOOK_MQ_STREAM_LENGTH,
     WEBHOOK_PROCESSING_STATUS_COUNT,
 )
-from core.redis_client import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
+from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
 from services.operations.policies import MetricsPollPolicy

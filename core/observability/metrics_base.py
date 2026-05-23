@@ -350,3 +350,4 @@ class Gauge(_MetricBase):
 
     def observe(self, value: int | float, attributes: Mapping[str, str | bool | int | float] | None = None) -> None:
         self.set(value, attributes)
+

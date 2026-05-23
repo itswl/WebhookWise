@@ -11,7 +11,7 @@ import uvloop
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-from core.dependencies import get_config_manager
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.service_lifecycle import check_database_ready
 

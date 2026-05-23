@@ -8,7 +8,7 @@ from typing import Any, cast
 from core.app_context import get_default_config
 from core.logger import get_logger
 from core.redis_client import redis_get_json_dict, redis_setex_json
-from core.redis_keys import webhook_dedupe
+from core.redis_health import webhook_dedupe
 from services.webhooks.types import AnalysisResult
 
 logger = get_logger("webhooks.deduplication")

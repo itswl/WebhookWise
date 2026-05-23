@@ -127,10 +127,7 @@ def mock_redis(request: pytest.FixtureRequest):
     pipeline_mock.expire = AsyncMock()
     pipeline_mock.setex = AsyncMock()
     mock.pipeline.return_value = pipeline_mock
-    with (
-        patch("core.redis_client.get_redis", return_value=mock),
-        patch("core.redis_lifecycle.get_redis", return_value=mock),
-    ):
+    with patch("core.redis_client.get_redis", return_value=mock):
         yield mock
 
 

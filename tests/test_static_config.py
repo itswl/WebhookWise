@@ -48,8 +48,8 @@ def test_full_env_example_covers_direct_environment_reads() -> None:
         ROOT / "core/observability/resource.py",
         ROOT / "core/observability/tracing.py",
         ROOT / "core/observability/logging.py",
-        ROOT / "core/observability/metrics/base.py",
-        ROOT / "core/observability/metrics/source.py",
+        ROOT / "core/observability/metrics_base.py",
+        ROOT / "core/observability/metrics.py",
     ]
     direct_env_keys: set[str] = set()
     for path in source_paths:

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, cast
 from core.logger import get_logger
 
 if TYPE_CHECKING:
-    from core.redis_lifecycle import RedisClient
+    from core.redis_client import RedisClient
 
 logger = get_logger("redis_health")
 
@@ -120,9 +120,9 @@ async def ensure_redis_available(operation: str, *, probe_interval: float = _REC
         _last_probe_monotonic = now
 
         try:
-            from core import redis_lifecycle
+            from core.redis_client import get_redis
 
-            if await _ping_redis(redis_lifecycle.get_redis()):
+            if await _ping_redis(get_redis()):
                 mark_redis_success(f"{operation}:health_probe")
                 logger.info("[RedisHealth] Redis health probe recovered operation=%s", operation)
                 return True
@@ -144,3 +144,43 @@ def reset_redis_health() -> None:
     _last_operation = ""
     _last_probe_monotonic = 0.0
     _record_state_metric()
+
+
+def webhook_dedupe(alert_hash: str) -> str:
+    return f"webhook:dedupe:{alert_hash}"
+
+
+def webhook_processing_queue(alert_hash: str) -> str:
+    return f"queue:webhook:{alert_hash}"
+
+
+def webhook_processing_lock(alert_hash: str) -> str:
+    return f"lock:webhook:alert:{alert_hash}"
+
+
+def rate_limit_burst(client_ip: str) -> str:
+    return f"rl:b:{client_ip}"
+
+
+def rate_limit_sustained(client_ip: str) -> str:
+    return f"rl:s:{client_ip}"
+
+
+def rate_limit_global() -> str:
+    return "rl:g"
+
+
+def ai_error_alert_lock(error_hash: str) -> str:
+    return f"ai_error_alert_lock:{error_hash}"
+
+
+def scheduled_task_lock(name: str) -> str:
+    return f"scheduled-task-lock:{name}"
+
+
+def webhook_global_task_slots() -> str:
+    return "webhook:global-task-slots"
+
+
+def openclaw_poller_stability(record_id: int) -> str:
+    return f"openclaw:poller:stability:{record_id}"

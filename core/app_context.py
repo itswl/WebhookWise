@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
+from fastapi import Request
 
 from core.config import UnifiedConfigManager
 
@@ -90,3 +91,18 @@ def get_or_create_default_app_context(config: UnifiedConfigManager | None = None
 
 def get_default_config() -> UnifiedConfigManager:
     return get_or_create_default_app_context().config
+
+
+def get_config_manager() -> UnifiedConfigManager:
+    return get_or_create_default_app_context().config
+
+
+def get_http_client_dependency(request: Request) -> httpx.AsyncClient:
+    context = getattr(request.app.state, "app_context", None)
+    if isinstance(context, AppContext):
+        client = context.http_client
+        if isinstance(client, httpx.AsyncClient) and not client.is_closed:
+            return client
+    from core.http_client import get_http_client
+
+    return get_http_client()

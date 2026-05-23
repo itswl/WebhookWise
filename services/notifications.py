@@ -1,19 +1,55 @@
-"""Feishu/Lark notification channel implementation."""
+"""Notification channel abstractions and implementations."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from adapters.plugins.feishu_card import build_deep_analysis_card
 from core.circuit_breaker import CircuitBreakerOpenException
+from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.tracing import span as otel_span
 from core.url_security import validate_outbound_url
+from services.forwarding.circuit_breakers import feishu_cb
 from services.forwarding.dependencies import CircuitBreakerLike, ValidateURL
-from services.notifications.channels import AsyncJsonPoster
-from services.notifications.target_detection import is_feishu_url
 from services.operations.policies import FeishuNotificationPolicy
+
+
+class AsyncJsonPoster(Protocol):
+    async def post(self, url: str, *, json: object, timeout: float | int | None = None) -> object: ...
+
+
+class NotificationChannel(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    def supports(self, target_url: str) -> bool: ...
+
+    async def send_card(self, target_url: str, card_payload: object) -> bool: ...
+
+    async def send_deep_analysis(
+        self,
+        target_url: str,
+        analysis_record: dict[str, Any],
+        *,
+        source: str = "",
+        webhook_event_id: int = 0,
+    ) -> bool: ...
+
+
+_FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
+_FEISHU_HOSTS = ("feishu.cn", "larksuite.com")
+
+
+def is_feishu_url(url: str) -> bool:
+    try:
+        host = (urlsplit(str(url)).hostname or "").lower().rstrip(".")
+    except Exception:
+        return False
+    return host in _FEISHU_HOSTS or any(host.endswith(suffix) for suffix in _FEISHU_HOST_SUFFIXES)
+
 
 logger = get_logger("notifications.feishu")
 
@@ -78,3 +114,28 @@ class FeishuNotificationChannel:
             target_url,
             build_deep_analysis_card(analysis_record, source=source, webhook_event_id=webhook_event_id),
         )
+
+
+def build_notification_channels(
+    *,
+    http_client: AsyncJsonPoster | None = None,
+    feishu_policy: FeishuNotificationPolicy | None = None,
+    validate_url: ValidateURL | None = None,
+) -> list[NotificationChannel]:
+    client = http_client or get_http_client()
+    return [
+        FeishuNotificationChannel(
+            http_client=client,
+            circuit_breaker=feishu_cb,
+            policy=feishu_policy or FeishuNotificationPolicy.from_config(),
+            validate_url=validate_url or validate_outbound_url,
+        )
+    ]
+
+
+def find_notification_channel(target_url: str, channels: list[NotificationChannel]) -> NotificationChannel | None:
+    for channel in channels:
+        if channel.supports(target_url):
+            return channel
+    return None
+

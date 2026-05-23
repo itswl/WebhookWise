@@ -11,7 +11,7 @@ from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWAR
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import RemoteForwardPolicy
-from services.notifications.target_detection import is_feishu_url
+from services.notifications import is_feishu_url
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 logger = get_logger("forwarding.remote")
