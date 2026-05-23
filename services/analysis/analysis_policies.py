@@ -38,8 +38,6 @@ class RuleAnalysisPolicy:
 
 @dataclass(frozen=True, slots=True)
 class AIErrorNotificationPolicy:
-    enabled: bool
-    target_url: str
     cooldown_seconds: int = 3600
     timeout_seconds: int = 10
 
@@ -47,8 +45,6 @@ class AIErrorNotificationPolicy:
     def from_config(cls) -> "AIErrorNotificationPolicy":
         cfg = get_config_manager()
         return cls(
-            enabled=bool(cfg.forwarding.ENABLE_FORWARD),
-            target_url=str(cfg.forwarding.DEFAULT_FORWARD_TARGET_URL),
             cooldown_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS)),
             timeout_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS)),
         )

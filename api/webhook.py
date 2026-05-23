@@ -8,12 +8,12 @@ import time
 from datetime import datetime
 from typing import Any
 
-from adapters.ecosystem_adapters import normalize_webhook_event
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.ecosystem_adapters import normalize_webhook_event
 from core.auth import verify_api_key
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -230,7 +230,7 @@ async def dashboard() -> FileResponse:
 )
 async def receive_webhook(
     request: Request,
-    source: str | None = Query(None, max_length=MAX_SOURCE_LENGTH),
+    source: str | None = None,
 ) -> JSONDict | JSONResponse:
     """Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。"""
     request_id = get_or_generate_trace_id()

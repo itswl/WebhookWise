@@ -10,7 +10,6 @@ from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
-from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll_best_effort as _schedule_oc_poll
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
@@ -19,6 +18,7 @@ from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.channels.feishu import is_feishu_url
 from services.forwarding.policies import OpenClawTriggerPolicy
+from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll_best_effort as _schedule_oc_poll
 from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
 
 logger = get_logger("api.deep_analysis")

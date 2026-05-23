@@ -45,6 +45,7 @@ async def test_raw_ingest_failure_schedules_retry(monkeypatch: pytest.MonkeyPatc
         "request_id": "req-raw",
         "received_at": "2026-05-13T12:00:00+08:00",
         "ingest_retry_count": 1,
+        "traceparent": None,
     }
 
 

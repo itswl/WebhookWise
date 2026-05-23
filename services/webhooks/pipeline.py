@@ -183,7 +183,7 @@ async def _resolve_noise_context(
         },
     ) as (_span, _outcome):
         from core.app_context import get_config_manager
-        from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
+        from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
         dedup_ttl = max(60, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) * 2)
         await remember_dedup_state(
@@ -196,11 +196,6 @@ async def _resolve_noise_context(
         analysis_result = await analyze_webhook_with_ai(
             ctx.req_ctx.webhook_full_data,
             http_client=dependencies.http_client,
-        )
-        await log_ai_usage(
-            route_type="ai",
-            alert_hash=ctx.alert_hash,
-            source=ctx.req_ctx.source,
         )
 
     route_type = analysis_result.get("_route_type", "ai")

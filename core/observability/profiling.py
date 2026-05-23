@@ -7,9 +7,8 @@ import os
 import re
 from typing import Any
 
-from core.observability.exporters import env_int
 from core.observability.events import emit_event
-from core.observability.exporters import env_flag
+from core.observability.exporters import env_flag, env_int
 from core.observability.resource import get_deployment_environment, get_service_name, get_service_version
 
 _initialized = False

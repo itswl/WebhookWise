@@ -182,7 +182,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert "worker.task.status" in tasks
     assert '"pipeline.step": "validate"' in pipeline
     assert '"pipeline.step": "noise"' in pipeline
-    assert '"forward.target_type": (' in forwarding_stage
+    assert '"forward.target_type": first_target_type' in forwarding_stage
     assert '"forward.target_type": target_type' in forward_outbox
     assert '"redis.operation": operation' in redis_metrics
 

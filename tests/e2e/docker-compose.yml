@@ -114,7 +114,6 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
@@ -167,7 +166,6 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
@@ -206,7 +204,6 @@ services:
       ENABLE_AI_ANALYSIS: "true"
       CACHE_ENABLED: "true"
       ENABLE_ALERT_NOISE_REDUCTION: "true"
-      DEFAULT_FORWARD_TARGET_URL: http://open.feishu.cn:9000/open-apis/bot/v2/hook/test
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"

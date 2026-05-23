@@ -17,10 +17,8 @@ def test_config_keys_are_derived_from_config_models() -> None:
         "type": "int",
         "sub": "notifications",
     }
-    assert keys["DEFAULT_FORWARD_TARGET_URL"] == {"type": "str", "sub": "forwarding"}
     assert keys["WEBHOOK_MQ_QUEUE"] == {"type": "str", "sub": "mq"}
     assert keys["BACKGROUND_SCAN_INTERVAL_SECONDS"] == {"type": "int", "sub": "tasks"}
-    assert keys["MAX_CONCURRENT_WEBHOOK_TASKS"] == {"type": "int", "sub": "tasks"}
     assert keys["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {
         "type": "int",
         "sub": "circuit_breaker",

@@ -39,7 +39,6 @@ from core.observability.tracing import (
 from core.redis_health import scheduled_task_lock
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
-
 from services.operations.policies import TaskRuntimePolicy
 
 logger = get_logger("tasks")
@@ -62,20 +61,16 @@ class _WebhookTaskContext:
 
 
 
-def _task_policy(policy: TaskRuntimePolicy | None = None) -> TaskRuntimePolicy:
-    return policy or TaskRuntimePolicy.from_config()
+def _background_scan_interval_seconds() -> int:
+    return TaskRuntimePolicy.from_config().background_scan_interval_seconds
 
 
-def _background_scan_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
-    return _task_policy(policy).background_scan_interval_seconds
+def _metrics_refresh_interval_seconds() -> int:
+    return TaskRuntimePolicy.from_config().metrics_refresh_interval_seconds
 
 
-def _metrics_refresh_interval_seconds(policy: TaskRuntimePolicy | None = None) -> int:
-    return _task_policy(policy).metrics_refresh_interval_seconds
-
-
-def _maintenance_cron(policy: TaskRuntimePolicy | None = None) -> str:
-    return f"0 {_task_policy(policy).maintenance_hour} * * *"
+def _maintenance_cron() -> str:
+    return f"0 {TaskRuntimePolicy.from_config().maintenance_hour} * * *"
 
 
 async def _handle_raw_webhook_failure(
@@ -171,7 +166,7 @@ async def _scheduled_task_leader(
 ) -> AsyncIterator[bool]:
     """Best-effort singleton guard for scheduled tasks when scheduler is accidentally scaled."""
     key = scheduled_task_lock(name)
-    token = f"{_task_policy(policy).worker_id}:{uuid.uuid4().hex}"
+    token = f"{(policy or TaskRuntimePolicy.from_config()).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
     if not await redis_health.ensure_redis_available(f"scheduled_task:{name}:leader"):
         logger.warning("[ScheduledTask] Redis 单实例锁不可用，跳过调度 name=%s", name)

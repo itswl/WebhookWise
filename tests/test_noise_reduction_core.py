@@ -14,7 +14,6 @@ from services.analysis.noise_reduction import (
     _jaccard,
     _tokenize_text,
     analyze_noise_reduction,
-    default_decision,
     score_candidate,
 )
 
@@ -317,14 +316,3 @@ def test_analyze_multiple_candidates_picks_highest_score():
 
     if decision.root_cause_event_id is not None:
         assert decision.root_cause_event_id == 3
-
-
-def test_default_decision_fields():
-    """default_decision() 应该返回安全默认值。"""
-    d = default_decision()
-    assert d.relation == "standalone"
-    assert d.suppress_forward is False
-    assert d.confidence == 0.0
-    assert d.root_cause_event_id is None
-    assert d.related_alert_count == 0
-    assert d.related_alert_ids == []

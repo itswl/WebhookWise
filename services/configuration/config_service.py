@@ -7,8 +7,6 @@ from core.config import UnifiedConfigManager
 from core.config.manager import get_config_keys
 
 _CONFIG_FIELDS: Mapping[str, str] = {
-    "default_target_url": "DEFAULT_FORWARD_TARGET_URL",
-    "enable_forward": "ENABLE_FORWARD",
     "enable_ai_analysis": "ENABLE_AI_ANALYSIS",
     "openai_api_key": "OPENAI_API_KEY",
     "openai_api_url": "OPENAI_API_URL",
@@ -57,7 +55,6 @@ def get_current_config() -> dict[str, object]:
 
 
 def get_config_sources() -> list[dict[str, object]]:
-    config = get_config_manager()
     return [
         {
             "key": key,

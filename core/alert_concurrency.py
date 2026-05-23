@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 

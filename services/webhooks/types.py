@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 if TYPE_CHECKING:
-    from models import WebhookEvent
+    pass
 
 
 class AnalysisResult(TypedDict, total=False):

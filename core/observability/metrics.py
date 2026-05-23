@@ -302,10 +302,6 @@ ALERT_NUMERIC_PARSE_FAILURE_TOTAL = Counter(
     "Alert numeric field parse failures during rule analysis",
     ("webhook.source", "webhook.field", "error.reason"),
 )
-WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL = Counter(
-    "webhook.semaphore.timeouts",
-    "Semaphore acquisition timeout count",
-)
 WEBHOOK_STORM_SUPPRESSED_TOTAL = Counter(
     "webhook.storm.suppressed",
     "Webhook storm fail-fast suppression count",
@@ -399,7 +395,6 @@ __all__ = [
     "WEBHOOK_PROCESSING_STATUS_TOTAL",
     "WEBHOOK_RECEIVED_TOTAL",
     "WEBHOOK_RUNNING_TASKS",
-    "WEBHOOK_SEMAPHORE_TIMEOUT_TOTAL",
     "WEBHOOK_STORM_SUPPRESSED_TOTAL",
     "WORKER_TASK_DURATION_SECONDS",
     "WORKER_TASKS_TOTAL",

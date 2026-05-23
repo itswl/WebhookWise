@@ -92,8 +92,9 @@ def _make_eval_helpers(state: _FakeRedisState):
         if current_state == "open":
             open_until = state.get(open_until_key)
             if open_until and current_timestamp >= float(open_until):
-                state.set_kv(state_key, "half_open")
-                return "half_open"
+                state.set_kv(state_key, "closed")
+                state.delete(open_until_key)
+                return "closed"
         return current_state
 
     return _eval_int, _eval_str
@@ -189,7 +190,7 @@ class TestOpeningCircuit:
 
 
 class TestHalfOpenRecovery:
-    async def test_transitions_to_half_open_after_timeout(
+    async def test_transitions_to_closed_after_timeout(
         self, breaker: CircuitBreaker, fake_state: _FakeRedisState
     ) -> None:
         for _ in range(breaker.failure_threshold):
@@ -198,9 +199,9 @@ class TestHalfOpenRecovery:
 
         assert await breaker._check_state_async() == CircuitState.OPEN
         time.sleep(breaker.recovery_timeout + 0.05)
-        assert await breaker._check_state_async() == CircuitState.HALF_OPEN
+        assert await breaker._check_state_async() == CircuitState.CLOSED
 
-    async def test_success_in_half_open_closes_circuit(
+    async def test_success_after_timeout_keeps_closed(
         self, breaker: CircuitBreaker, fake_state: _FakeRedisState
     ) -> None:
         for _ in range(breaker.failure_threshold):
@@ -208,18 +209,22 @@ class TestHalfOpenRecovery:
                 await breaker.call_async(_fail)
 
         time.sleep(breaker.recovery_timeout + 0.05)
-        assert await breaker._check_state_async() == CircuitState.HALF_OPEN
+        assert await breaker._check_state_async() == CircuitState.CLOSED
 
         await breaker.call_async(_succeed)
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
-    async def test_failure_in_half_open_reopens(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+    async def test_failure_after_timeout_reopens_after_threshold(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
         for _ in range(breaker.failure_threshold):
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)
 
         time.sleep(breaker.recovery_timeout + 0.05)
 
+        # First call after timeout transitions to CLOSED via _check_state_async
+        assert await breaker._check_state_async() == CircuitState.CLOSED
+
+        # Subsequent failure increments failures counter (still in window) → tips back to OPEN
         with pytest.raises(ConnectionError):
             await breaker.call_async(_fail)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, ParamSpec, Protocol, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from core.app_context import get_config_manager
 from core.circuit_breaker import CircuitBreaker
@@ -14,10 +14,6 @@ from core.config import UnifiedConfigManager
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 ValidateURL = Callable[[str], Awaitable[str]]
-
-
-class CircuitBreakerLike(Protocol):
-    async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R: ...
 
 
 class LazyCircuitBreaker:
@@ -81,14 +77,14 @@ def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
 @dataclass(frozen=True, slots=True)
 class RemoteForwardDependencies:
     http_client: Any
-    circuit_breaker: CircuitBreakerLike
+    circuit_breaker: Any  # LazyCircuitBreaker or compatible (has call_async)
     validate_url: ValidateURL
 
 
 @dataclass(frozen=True, slots=True)
 class OpenClawForwardDependencies:
     http_client: Any
-    circuit_breaker: CircuitBreakerLike
+    circuit_breaker: Any  # LazyCircuitBreaker or compatible (has call_async)
 
 
 def build_remote_forward_dependencies() -> RemoteForwardDependencies:

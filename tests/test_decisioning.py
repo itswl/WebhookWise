@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from core.text import split_csv_lower
 from services.webhooks.decisioning import (
+    ForwardDecision,
     ForwardingPolicy,
     ForwardRuleSnapshot,
     _rule_matches,
@@ -17,7 +18,6 @@ from services.webhooks.decisioning import (
     normalize_importance,
     select_forward_rules,
 )
-from services.webhooks.decisioning import ForwardDecision
 from services.webhooks.types import NoiseReductionContext
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ def _make_policy(**overrides: object) -> ForwardingPolicy:
         "enable_periodic_reminder": True,
         "reminder_interval_hours": 6,
         "forward_duplicate_alerts": False,
-        
+
     }
     defaults.update(overrides)
     return ForwardingPolicy(**defaults)  # type: ignore[arg-type]
@@ -234,8 +234,9 @@ class TestDecideForwarding:
         result = self._decide(importance="high")
         assert not result.should_forward
 
-    def test_high_importance_no_rules_with_default_target_forwards(self) -> None:
-        result = self._decide(importance="high", policy=_make_policy(default_target_url="http://example.com/hook"))
+    def test_high_importance_with_matched_rule_forwards(self) -> None:
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(importance="high", rules=rules)
         assert result.should_forward
 
     def test_medium_no_rules_no_forward(self) -> None:
@@ -280,14 +281,15 @@ class TestDecideForwarding:
 
     def test_duplicate_cooldown_expired_with_forward_enabled(self) -> None:
         old = datetime.now() - timedelta(seconds=120)
+        rules = [_make_rule(match_importance="high")]
         result = self._decide(
             importance="high",
             is_duplicate=True,
             original_event=_Event(last_notified_at=old),
+            rules=rules,
             policy=_make_policy(
                 forward_duplicate_alerts=True,
                 notification_cooldown_seconds=60,
-                default_target_url="http://example.com/hook",
             ),
         )
         assert result.should_forward
@@ -304,14 +306,15 @@ class TestDecideForwarding:
 
     def test_periodic_reminder_triggers(self) -> None:
         old = datetime.now() - timedelta(hours=7)
+        rules = [_make_rule(match_importance="high")]
         result = self._decide(
             importance="high",
             is_duplicate=True,
             original_event=_Event(last_notified_at=old),
+            rules=rules,
             policy=_make_policy(
                 enable_periodic_reminder=True,
                 reminder_interval_hours=6,
-                default_target_url="http://example.com/hook",
             ),
         )
         assert result.should_forward

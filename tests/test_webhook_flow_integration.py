@@ -76,10 +76,27 @@ async def test_webhook_receive_to_feishu_card_flow(
     monkeypatch.setattr(config.security, "REQUIRE_WEBHOOK_AUTH", False)
     monkeypatch.setattr(config.security, "API_KEY", "integration-read-token")
     monkeypatch.setattr(config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
-    _set_config(
-        monkeypatch, config, "DEFAULT_FORWARD_TARGET_URL", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token"
-    )
     _set_config(monkeypatch, config, "ENABLE_ALERT_NOISE_REDUCTION", False)
+
+    forward_target_url = "https://open.feishu.cn/open-apis/bot/v2/hook/test-token"
+    async with integration_session_factory.begin() as setup_session:
+        from models import ForwardRule
+
+        setup_session.add(
+            ForwardRule(
+                name="integration-default",
+                enabled=True,
+                priority=0,
+                match_event_type="",
+                match_importance="high",
+                match_source="",
+                match_duplicate="all",
+                match_payload="",
+                target_type="feishu",
+                target_url=forward_target_url,
+                stop_on_match=False,
+            )
+        )
 
     async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
         parsed = webhook_data["parsed_data"]
@@ -186,7 +203,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     assert len(posted) == 1
     outbound = posted[0]
-    assert outbound["url"] == config.forwarding.DEFAULT_FORWARD_TARGET_URL
+    assert outbound["url"] == forward_target_url
     card = outbound["json"]
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "red"
@@ -201,15 +218,11 @@ async def test_finalization_skips_outbox_without_target(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from core.config import get_settings
     from models import ForwardOutbox, WebhookEvent
     from services.dedup import DedupResult
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.pipeline import parse_request
     from services.webhooks.types import NoiseReductionContext, WebhookProcessContext
-
-    settings = get_settings()
-    monkeypatch.setattr(settings.forwarding, "DEFAULT_FORWARD_TARGET_URL", "")
 
     payload = {
         "alert_name": "checkout-5xx",
@@ -437,11 +450,29 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     context = get_default_app_context()
     assert context is not None
     config = context.config
-    _set_config(monkeypatch, config, "DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
     _set_config(monkeypatch, config, "ENABLE_PERIODIC_REMINDER", True)
     _set_config(monkeypatch, config, "REMINDER_INTERVAL_HOURS", 1)
     _set_config(monkeypatch, config, "NOTIFICATION_COOLDOWN_SECONDS", 1)
     _set_config(monkeypatch, config, "FORWARD_DUPLICATE_ALERTS", False)
+
+    async with integration_session_factory.begin() as setup_session:
+        from models import ForwardRule
+
+        setup_session.add(
+            ForwardRule(
+                name="reuse-default",
+                enabled=True,
+                priority=0,
+                match_event_type="",
+                match_importance="high",
+                match_source="",
+                match_duplicate="all",
+                match_payload="",
+                target_type="webhook",
+                target_url="https://example.com/hook",
+                stop_on_match=False,
+            )
+        )
 
     async with integration_session_factory.begin() as session:
         original = WebhookEvent(

@@ -8,13 +8,12 @@ from typing import ParamSpec, TypeVar
 import httpx
 
 from core.logger import get_logger
-from core.observability.events import add_span_event
+from core.observability.events import add_span_event, record_signal
 from core.observability.metrics import (
     CIRCUIT_BREAKER_REQUESTS_TOTAL,
     CIRCUIT_BREAKER_STATE,
     CIRCUIT_BREAKER_TRANSITIONS_TOTAL,
 )
-from core.observability.events import record_signal
 from core.redis_lua import (
     CIRCUIT_BREAKER_CHECK_STATE as _CB_CHECK_STATE_LUA,
 )

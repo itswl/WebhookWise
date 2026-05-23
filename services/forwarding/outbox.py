@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import time
-
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -252,7 +251,11 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     if payload is None:
         payload = {}
 
-    from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, get_forward_breaker
+    from services.forwarding.circuit_breakers import (
+        RemoteForwardDependencies,
+        build_remote_forward_dependencies,
+        get_forward_breaker,
+    )
     from services.forwarding.remote import post_json_to_remote
 
     if is_feishu_url(target_url):

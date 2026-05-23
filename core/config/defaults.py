@@ -48,8 +48,6 @@ class TaskConfig(StaticSettings):
     BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
     FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300)
-    MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
-    WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
     WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0)
 
 
@@ -155,8 +153,6 @@ class AIConfig(StaticSettings):
 class ForwardingConfig(StaticSettings):
     """Outbound forwarding defaults."""
 
-    DEFAULT_FORWARD_TARGET_URL: str = Field(default="")
-    ENABLE_FORWARD: bool = Field(default=True)
     FORWARD_TIMEOUT: int = Field(default=10)
 
 

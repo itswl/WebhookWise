@@ -25,10 +25,6 @@ from core.web.startup_checks import validate_startup_security
 logger = get_logger("app")
 
 
-def _app_config(app: FastAPI) -> UnifiedConfigManager:
-    return _app_context(app).config
-
-
 def _app_context(app: FastAPI) -> AppContext:
     context = getattr(app.state, "app_context", None)
     if not isinstance(context, AppContext):
@@ -93,7 +89,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     RequestBodyLimitMiddleware,
-    max_body_bytes_provider=lambda: _app_config(app).security.MAX_WEBHOOK_BODY_BYTES,
+    max_body_bytes_provider=lambda: _app_context(app).config.security.MAX_WEBHOOK_BODY_BYTES,
 )
 
 

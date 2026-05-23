@@ -23,14 +23,11 @@ def _app_context_from_request(request: "Request | None") -> object | None:
 
     default_context = get_default_app_context()
     if request is not None:
-        app = getattr(request, "app", None)
-        state = getattr(app, "state", None)
-        context = getattr(state, "app_context", None)
+        context = getattr(getattr(request.app, "state", None), "app_context", None)
         if isinstance(context, AppContext):
             if context.session_factory is None and default_context is not None:
                 return default_context
             return context
-
     return default_context
 
 
@@ -38,7 +35,6 @@ async def _ensure_session_factory(request: "Request | None" = None) -> async_ses
     context = _app_context_from_request(request)
     if context is None:
         raise RuntimeError("default AppContext is not initialized")
-
     ensure_db = getattr(context, "ensure_db", None)
     if not callable(ensure_db):
         raise RuntimeError("AppContext is missing ensure_db()")
