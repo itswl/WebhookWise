@@ -138,9 +138,9 @@ class JsonFormatter(logging.Formatter):
 def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
     if config is not None:
         return config
-    from core.app_context import get_default_config
+    from core.app_context import get_config_manager
 
-    return get_default_config()
+    return get_config_manager()
 
 
 def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:

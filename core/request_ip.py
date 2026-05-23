@@ -6,7 +6,7 @@ import ipaddress
 
 from fastapi import Request
 
-from core.app_context import AppContext, get_default_config
+from core.app_context import AppContext, get_config_manager
 from core.config import UnifiedConfigManager
 
 
@@ -27,7 +27,7 @@ def _request_config(request: Request) -> UnifiedConfigManager:
     context = getattr(request.app.state, "app_context", None)
     if isinstance(context, AppContext):
         return context.config
-    return get_default_config()
+    return get_config_manager()
 
 
 def _first_valid_header_ip(value: str) -> str | None:
@@ -48,7 +48,7 @@ def _trusted_proxy_cidrs(security: object) -> tuple[str, ...]:
 
 
 def _is_trusted_proxy(client_host: str | None, *, security: object | None = None) -> bool:
-    security = security or get_default_config().security
+    security = security or get_config_manager().security
     if not client_host or not getattr(security, "TRUST_PROXY_HEADERS", False):
         return False
     try:

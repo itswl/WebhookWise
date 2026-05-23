@@ -5,13 +5,14 @@ Handles system configuration, prompt management, and dead-letter replay.
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import fail_response, ok_response
 from adapters.registry import registry as adapter_registry
-from core.app_context import get_default_config
+from core.app_context import AppContext
+from core.config import UnifiedConfigManager
 from core.auth import verify_admin_write
 from core.logger import get_logger
 from core.redis_health import get_redis_health_snapshot
@@ -78,8 +79,9 @@ async def get_config() -> JSONResponse:
 
 
 @admin_router.get("/api/health/deep")
-async def deep_health_check() -> JSONResponse:
-    config = get_default_config()
+async def deep_health_check(request: Request) -> JSONResponse:
+    context = getattr(request.app.state, "app_context", None)
+    config = context.config if isinstance(context, AppContext) else UnifiedConfigManager()
     db_ok = await test_db_connection()
     redis_ok = await redis_ping()
     redis_snapshot = get_redis_health_snapshot()

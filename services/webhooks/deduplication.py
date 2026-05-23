@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
@@ -21,7 +21,7 @@ class CachedDuplicate:
 
 
 def duplicate_window_hours() -> int:
-    return int(get_default_config().retry.DUPLICATE_ALERT_TIME_WINDOW)
+    return int(get_config_manager().retry.DUPLICATE_ALERT_TIME_WINDOW)
 
 
 def _ttl_seconds() -> int:

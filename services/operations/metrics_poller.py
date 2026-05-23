@@ -16,13 +16,13 @@ from core.observability.metrics import (
 from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 
 logger = get_logger("metrics")
 
 
 def _default_mq_names() -> tuple[str, str]:
-    mq = get_default_config().mq
+    mq = get_config_manager().mq
     return str(mq.WEBHOOK_MQ_QUEUE), str(mq.WEBHOOK_MQ_CONSUMER_GROUP)
 
 

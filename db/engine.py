@@ -13,9 +13,9 @@ _logger = get_logger("db.engine")
 def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
     if config is not None:
         return config
-    from core.app_context import get_default_config
+    from core.app_context import get_config_manager
 
-    return get_default_config()
+    return get_config_manager()
 
 
 def _build_engine_kwargs(config: UnifiedConfigManager) -> dict[str, Any]:

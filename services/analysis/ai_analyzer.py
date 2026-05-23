@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from services.analysis import ai_llm_client as _llm_client
@@ -167,7 +167,7 @@ async def analyze_webhook_with_ai(
     *,
     http_client: httpx.AsyncClient | None = None,
 ) -> AnalysisResult:
-    ai_config = get_default_config().ai
+    ai_config = get_config_manager().ai
     cache_enabled = bool(ai_config.CACHE_ENABLED)
     cache_ttl_seconds = int(ai_config.ANALYSIS_CACHE_TTL)
     provider_policy = AIProviderPolicy.from_config()
