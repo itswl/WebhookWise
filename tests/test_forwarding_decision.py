@@ -216,6 +216,7 @@ class _FakeRule:
     def __init__(self, rid, importance="", source="", target_url="https://example.com", stop=False, duplicate="all"):
         self.id = rid
         self.name = f"rule-{rid}"
+        self.match_event_type = ""
         self.match_importance = importance
         self.match_source = source
         self.match_duplicate = duplicate

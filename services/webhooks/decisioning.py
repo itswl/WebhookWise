@@ -23,6 +23,7 @@ class NotifiedEvent(Protocol):
 class ForwardRuleSnapshot:
     id: int | None
     name: str
+    match_event_type: str
     match_importance: str
     match_source: str
     match_duplicate: str
@@ -87,11 +88,14 @@ def build_final_analysis(analysis_result: AnalysisResult, noise: NoiseReductionC
 def _rule_matches(
     rule: ForwardRuleSnapshot,
     *,
-    importance: str,
-    source: str,
-    is_duplicate: bool,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
 ) -> bool:
+    if rule.match_event_type and event_type not in split_csv_lower(rule.match_event_type):
+        return False
     if rule.match_importance and importance not in split_csv_lower(rule.match_importance):
         return False
     if rule.match_source and source.lower() not in split_csv_lower(rule.match_source):
@@ -160,15 +164,17 @@ def _payload_matches(match_payload: str, parsed_data: dict[str, Any]) -> bool:
 def select_forward_rules(
     rules: list[ForwardRuleSnapshot],
     *,
-    importance: str,
-    source: str,
-    is_duplicate: bool,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
 ) -> list[ForwardRuleTarget]:
     matched_rules: list[ForwardRuleTarget] = []
     for rule in rules:
         if not _rule_matches(
             rule,
+            event_type=event_type,
             importance=importance,
             source=source,
             is_duplicate=is_duplicate,
@@ -220,11 +226,12 @@ def _decide_duplicate_alert(
 
 def decide_forwarding(
     *,
-    importance: str,
-    is_duplicate: bool,
-    noise: NoiseReductionContext | None,
-    original_event: NotifiedEvent | None,
-    source: str,
+    event_type: str = "",
+    importance: str = "",
+    is_duplicate: bool = False,
+    noise: NoiseReductionContext | None = None,
+    original_event: NotifiedEvent | None = None,
+    source: str = "",
     rules: list[ForwardRuleSnapshot],
     policy: ForwardingPolicy,
     parsed_data: dict[str, Any] | None = None,
@@ -235,6 +242,7 @@ def decide_forwarding(
 
     matched_rules = select_forward_rules(
         rules,
+        event_type=event_type,
         importance=importance,
         source=source,
         is_duplicate=is_duplicate,

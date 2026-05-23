@@ -5,7 +5,7 @@ from typing import Any
 from core.logger import get_logger, mask_url
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
 from services.channels.feishu import build_deep_analysis_card
-from services.forwarding.outbox import enqueue_external_message
+from services.forwarding.outbox import resolve_and_forward
 from services.webhooks.types import WebhookData
 
 logger = get_logger("deep_analysis_notifications")
@@ -25,13 +25,12 @@ async def send_feishu_deep_analysis(
         return False
     try:
         payload = build_deep_analysis_card(analysis_record, source=source, webhook_event_id=webhook_event_id)
-        await enqueue_external_message(
-            channel_name="feishu",
-            target_url=webhook_url,
+        await resolve_and_forward(
             event_type="deep_analysis",
+            source=source,
             formatted_payload=payload,
             webhook_id=webhook_event_id or None,
-            idempotency_hint=f"deep_analysis:{analysis_record.get('engine', '')}:{webhook_event_id}",
+            wait=False,
         )
         return True
     except Exception as e:

@@ -49,6 +49,7 @@ async def resolve_forward_decision(
     parsed_data: dict[str, Any] | None = None,
     session: AsyncSession | None = None,
     policy: ForwardingPolicy | None = None,
+    event_type: str = "webhook_forward",
 ) -> ForwardDecision:
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
@@ -62,6 +63,7 @@ async def resolve_forward_decision(
         logger.warning("[Forward] 匹配转发规则失败: %s", e)
 
     decision = decide_forwarding(
+        event_type=event_type,
         importance=importance,
         is_duplicate=is_duplicate,
         noise=noise,

@@ -244,7 +244,7 @@ async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.
 async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import reanalysis
 
-    event = SimpleNamespace(id=1, ai_analysis={"summary": "ok"}, forward_status=None)
+    event = SimpleNamespace(id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None)
 
     class FakeSession:
         committed = False
@@ -260,13 +260,13 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     async def fake_context(item: object) -> dict[str, object]:
         return {"source": "test", "parsed_data": {}}
 
-    async def fake_forward(webhook_data: object, analysis: object, target_url: str | None) -> dict[str, object]:
-        captured["target_url"] = target_url
-        return {"status": "success"}
+    async def fake_forward(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"status": "success", "outbox_id": 1}
 
     fake_session = FakeSession()
     monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
-    monkeypatch.setattr(reanalysis, "forward_to_remote", fake_forward)
+    monkeypatch.setattr(reanalysis, "resolve_and_forward", fake_forward)
 
     result = await reanalysis.manual_forward_webhook(
         1,
@@ -275,7 +275,8 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     )
 
     assert result["success"] is True
-    assert captured["target_url"] == "https://example.com/hook"
+    assert captured.get("event_type") == "manual_forward"
+    assert captured.get("webhook_id") == 1
     assert event.forward_status == "success"
     assert fake_session.committed is True
 

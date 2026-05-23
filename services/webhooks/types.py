@@ -62,6 +62,8 @@ class ForwardResult(TypedDict, total=False):
     message: str
     status_code: int
     response: dict[str, Any]
+    outbox_id: int
+    outbox_ids: list[int]
     _pending: bool
     _openclaw_run_id: Any
     _openclaw_session_key: str

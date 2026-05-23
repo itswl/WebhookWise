@@ -33,11 +33,11 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
 
     monkeypatch.setattr("core.redis_client.redis_set_nx_ex", fake_set_nx_ex)
 
-    async def fake_enqueue_external_message(**kwargs: object) -> int:
+    async def fake_resolve_and_forward(**kwargs: object) -> dict[str, object]:
         enqueued.append(dict(kwargs))
-        return len(enqueued)
+        return {"status": "queued", "outbox_id": len(enqueued)}
 
-    monkeypatch.setattr(notifications, "enqueue_external_message", fake_enqueue_external_message)
+    monkeypatch.setattr(notifications, "resolve_and_forward", fake_resolve_and_forward)
 
     policy = AIErrorNotificationPolicy(
         enabled=True,

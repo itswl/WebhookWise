@@ -147,6 +147,7 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
     return ForwardRuleSnapshot(
         id=rule.id,
         name=rule.name,
+        match_event_type=getattr(rule, "match_event_type", "") or "",
         match_importance=rule.match_importance,
         match_source=rule.match_source,
         match_duplicate=rule.match_duplicate,

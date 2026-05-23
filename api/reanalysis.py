@@ -7,14 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook_context import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
-from core.logger import get_logger, mask_url
+from core.logger import get_logger
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
-from services.forwarding.policies import RemoteForwardPolicy
-from services.forwarding.remote import forward_to_remote
+from services.forwarding.outbox import create_forward_outbox_records, resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
 from services.webhooks.types import AnalysisResult
 
@@ -115,8 +113,14 @@ async def manual_forward_webhook(
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
-    url = data.get("target_url")
-    fwd_res = await forward_to_remote(ctx, cast(AnalysisResult, event.ai_analysis or {}), url)
+    fwd_res = await resolve_and_forward(
+        event_type="manual_forward",
+        source=event.source or "unknown",
+        forward_data=ctx,
+        analysis_result=cast(AnalysisResult, event.ai_analysis or {}),
+        webhook_id=event.id,
+        wait=True,
+    )
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
 
@@ -135,6 +139,5 @@ async def manual_forward_webhook(
             },
         )
 
-    target_url = url or RemoteForwardPolicy.from_config().default_target_url
-    logger.info("[Reanalysis] 手动转发完成 webhook_id=%s target=%s", webhook_id, mask_url(target_url))
-    return {"success": True, "data": fwd_res, "message": f"已转发至 {mask_url(target_url)}"}
+    logger.info("[Reanalysis] 手动转发完成 webhook_id=%s result=%s", webhook_id, fwd_res.get("status"))
+    return {"success": True, "data": fwd_res, "message": "转发完成"}
