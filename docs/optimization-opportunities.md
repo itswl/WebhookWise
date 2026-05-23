@@ -57,8 +57,8 @@ set_default_app_context(context)
 context = init_default_app_context(UnifiedConfigManager())
 await start_runtime_services(context.config, context=context, ...)
 
-# 各种 service 中：显式读取静态配置（不依赖 AppContext 全局）
-config = UnifiedConfigManager()
+# 各种 service 中：读取当前运行时配置（测试/启动时可注入；无默认 context 时回退到静态配置）
+config = get_config_manager()
 ```
 
 三个问题：
@@ -71,7 +71,7 @@ config = UnifiedConfigManager()
 
 - 已完成：把 `_default_context` 改为 `ContextVar[AppContext]`，消除模块级可变全局带来的隐式共享问题。
 - 已完成：`get_or_create_default_app_context()` 在默认上下文为空时不再“无参创建新配置”，而是直接报错；默认上下文初始化统一走 `init_default_app_context(...)`（创建点明确且可控）。
-- 已完成：删除 `get_default_config()` 这种“通过 AppContext 间接读配置”的入口，业务代码读取静态配置统一使用 `UnifiedConfigManager()`（底层基于 `get_settings()` 缓存，不会重复读 env）。
+- 已完成：删除 `get_default_config()` 这种“通过 AppContext 间接读配置”的入口，业务代码统一通过 `get_config_manager()` 取当前运行时配置（默认 context 为空时回退到静态配置，且不会重复读 env）。
 - 保留：`ensure_redis_client()` 仍为同步（创建 client 不涉及 I/O），Redis 可用性由调用方通过 `ensure_redis_available(...)` + fail-open/fail-close 策略处理（见 #6）。
 
 ---
@@ -328,12 +328,12 @@ Prometheus webhook payload 通常在 2KB-10KB 之间。4KB 以下的 payload 不
 
 | # | 问题 | 位置 | 建议 |
 |---|------|------|------|
-| 1 | `worker.py`（编程式入口）没有复用 TaskIQ 的 runtime lifecycle；`shutdown()` 里还会 `get_or_create_default_app_context()` | `worker.py` | 要么标记为仅开发用途，要么让它复用 `start_runtime_services/stop_runtime_services`（避免重复建 config/context） |
-| 2 | healthcheck 路径在日志/trace 上的过滤策略需要统一认知 | `core/web/middleware.py` / `core/observability/tracing.py` | 当前 tracing 默认已通过 `FastAPIInstrumentor(excluded_urls="/live,/ready,...")` 排除 healthcheck span；middleware 也跳过 `/live`、`/ready` 的 access log。建议补充文档说明，并确认 `OTEL_INCLUDE_HEALTHCHECKS` 未被意外开启 |
-| 3 | `SecurityHeadersMiddleware` 的 HSTS 头强制了 `includeSubDomains`，对纯 API 服务不必要 | `middleware.py:29` | 改为可配置或默认不加 `includeSubDomains` |
-| 4 | `WebhookEvent.fill_fields()` 用 setattr + 字段白名单，比直接赋值慢，且每次写入都更新 `updated_at` | `models/webhook.py:65-79` | 简单场景下直接用构造函数 |
-| 5 | `request_parser.py` 在 payload 为空且 raw_body 非空时解析 JSON，但 raw_body 可能已经被解码又编码多次 | `request_parser.py:19-21` | 在 API 层传递已解析的 dict，不要反复序列化 |
-| 6 | `entrypoint.sh` 的 jemalloc 加载逻辑使用了 `LD_PRELOAD`，在 musl libc 环境下可能失败 | `entrypoint.sh:7-9` | 检查 `ldd` 输出或忽略加载失败 |
+| 1 | `worker.py`（编程式入口）未复用 TaskIQ 的 runtime lifecycle | `worker.py` | 已修复：worker.py 复用 `start_runtime_services/stop_runtime_services`，并避免关闭阶段重复建 config/context |
+| 2 | healthcheck 路径在日志/trace 上的过滤策略需要统一认知 | `core/web/middleware.py` / `core/observability/tracing.py` | 已修复：access log 默认跳过 `/live`、`/ready`、`/static/*`；tracing 默认排除 `/live,/ready,/static`，仅在 `OTEL_INCLUDE_HEALTHCHECKS=true` 或覆盖 `OTEL_EXCLUDED_URLS` 时才采集 healthcheck span |
+| 3 | `SecurityHeadersMiddleware` 的 HSTS 头强制了 `includeSubDomains`，对纯 API 服务不必要 | `core/web/middleware.py` | 已修复：`HSTS_INCLUDE_SUBDOMAINS` 可配置（默认 false），默认只发送 `max-age=31536000` |
+| 4 | `WebhookEvent.fill_fields()` 用 setattr + 字段白名单，比直接赋值慢，且每次写入都更新 `updated_at` | `models/webhook.py` | 已修复：字段白名单缓存 + 仅在值变化时写入；不再强制写 `updated_at`（交给 ORM onupdate） |
+| 5 | `request_parser.py` 在 payload 为空且 raw_body 非空时解析 JSON，但 raw_body 可能已经被解码又编码多次 | `services/webhooks/pipeline.py` / `services/webhooks/request_parser.py` | 已修复：raw ingest 在 pipeline 入口尝试一次 JSON 解析并传入 payload，避免 parse_request 反复 loads |
+| 6 | `entrypoint.sh` 的 jemalloc 加载逻辑使用了 `LD_PRELOAD`，在 musl libc 环境下可能失败 | `entrypoint.sh` | 已修复：在 musl 环境或二进制不兼容时自动跳过 jemalloc preload |
 
 ---
 

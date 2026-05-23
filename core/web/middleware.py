@@ -27,7 +27,6 @@ class SecurityHeadersMiddleware:
         (b"x-content-type-options", b"nosniff"),
         (b"x-frame-options", b"DENY"),
         (b"referrer-policy", b"no-referrer"),
-        (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
     ]
 
     def __init__(self, app: ASGIApp) -> None:
@@ -45,6 +44,12 @@ class SecurityHeadersMiddleware:
                 for name, value in self._EXTRA_HEADERS:
                     if name.lower() not in existing_names:
                         headers.append((name, value))
+                if b"strict-transport-security" not in existing_names:
+                    from core.app_context import get_config_manager
+
+                    include_subdomains = bool(get_config_manager().security.HSTS_INCLUDE_SUBDOMAINS)
+                    hsts_value = b"max-age=31536000; includeSubDomains" if include_subdomains else b"max-age=31536000"
+                    headers.append((b"strict-transport-security", hsts_value))
                 message["headers"] = headers
             await send(message)
 
