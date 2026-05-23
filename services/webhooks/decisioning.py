@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from core.app_context import get_config_manager
 from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
@@ -12,6 +12,9 @@ from services.webhooks.types import (
     NoiseReductionContext,
 )
 
+if TYPE_CHECKING:
+    from models import WebhookEvent
+
 
 @dataclass
 class ForwardDecision:
@@ -19,10 +22,6 @@ class ForwardDecision:
     skip_reason: str | None
     is_periodic_reminder: bool
     matched_rules: list[ForwardRuleSnapshot] = field(default_factory=list)
-
-
-class NotifiedEvent(Protocol):
-    last_notified_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -204,7 +203,7 @@ def decide_forwarding(
     importance: str = "",
     is_duplicate: bool = False,
     noise: NoiseReductionContext | None = None,
-    original_event: NotifiedEvent | None = None,
+    original_event: WebhookEvent | None = None,
     source: str = "",
     rules: list[ForwardRuleSnapshot],
     policy: ForwardingPolicy,

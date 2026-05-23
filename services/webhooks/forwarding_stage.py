@@ -53,11 +53,7 @@ async def resolve_forward_decision(
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
     try:
-        rules = (
-            await list_enabled_forward_rules(session=session)
-            if session is not None
-            else await list_enabled_forward_rules()
-        )
+        rules = await list_enabled_forward_rules(session=session)
     except Exception as e:
         logger.warning("[Forward] 匹配转发规则失败: %s", e)
 

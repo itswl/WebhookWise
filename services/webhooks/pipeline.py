@@ -23,7 +23,7 @@ from core.observability.attributes import (
     WEBHOOK_ROUTE,
     WEBHOOK_SOURCE,
 )
-from core.observability.events import emit_event
+from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
     WEBHOOK_ANALYSIS_ROUTE_TOTAL,
     WEBHOOK_NOISE_EVALUATIONS_TOTAL,
@@ -35,14 +35,13 @@ from core.observability.metrics import (
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
-from core.observability.events import record_signal
 from core.observability.tracing import (
     generate_trace_id,
     get_current_trace_id,
+    otel_span,
     set_fallback_trace_id,
     set_span_error,
 )
-from core.observability.tracing import otel_span
 from services.dedup import DedupResult, generate_event_keys, remember_dedup_state, resolve_dedup
 from services.forwarding.outbox import schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult

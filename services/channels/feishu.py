@@ -63,7 +63,7 @@ def build_feishu_card(
     rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
     event_type_display = f"{event_type}" if event_type and rule_name else event_type or rule_name or "—"
 
-    timestamp = webhook_data.get("timestamp", "") or ""
+    timestamp = webhook_data.get("timestamp", "")
 
     summary = analysis_result.get("summary", "")
     impact = analysis_result.get("impact_scope", "") or analysis_result.get("impact", "")
@@ -189,8 +189,8 @@ def build_delivery_exhausted_card(outbox: Any) -> WebhookData:
     event_id = getattr(outbox, "webhook_event_id", None)
     target_type = getattr(outbox, "target_type", "") or getattr(outbox, "channel_name", "")
     target_url = getattr(outbox, "target_url", "") or ""
-    attempts = getattr(outbox, "attempts", 0) or 0
-    max_attempts = getattr(outbox, "max_attempts", 0) or 0
+    attempts = getattr(outbox, "attempts", 0)
+    max_attempts = getattr(outbox, "max_attempts", 0)
     last_error = str(getattr(outbox, "last_error", "") or "")[:500]
     title = "🚨 转发重试耗尽"
     return {

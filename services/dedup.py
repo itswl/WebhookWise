@@ -69,12 +69,8 @@ async def remember_dedup_state(
     original_event_id: int,
     analysis: dict[str, Any] | None,
     ttl_seconds: int,
-    *,
-    now: float | None = None,
 ) -> None:
-    import time as _time
-
-    current_time = now or _time.time()
+    current_time = time.time()
     existing = await get_dedup_state(dedup_key)
     count = (existing.count + 1) if existing else 1
     first_seen_at = existing.first_seen_at if existing else current_time
