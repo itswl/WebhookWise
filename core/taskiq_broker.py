@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
+import secrets
 from dataclasses import dataclass
 
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqScheduler
@@ -20,6 +20,7 @@ from core.config.defaults import get_settings
 from core.logging_levels import apply_log_levels
 
 logger = logging.getLogger("webhook_service.taskiq")
+_jitter_rng = secrets.SystemRandom()
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +126,7 @@ async def worker_startup_event(state: object) -> None:
     from core.service_lifecycle import start_runtime_services
 
     if _settings.worker_startup_jitter_seconds > 0:
-        await asyncio.sleep(random.uniform(0.0, _settings.worker_startup_jitter_seconds))
+        await asyncio.sleep(_jitter_rng.uniform(0.0, _settings.worker_startup_jitter_seconds))
 
     context = init_default_app_context(UnifiedConfigManager())
     await start_runtime_services(
