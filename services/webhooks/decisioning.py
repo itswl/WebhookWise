@@ -180,25 +180,16 @@ def select_forward_rules(
     return matched_rules
 
 
-def _low_importance_reason(prefix: str, importance: str) -> str:
-    return (
-        f"{prefix}：重要性为 {importance}，非高风险事件不自动转发"
-        if prefix
-        else f"重要性为 {importance}，非高风险事件不自动转发"
-    )
-
-
-def _decide_new_alert(*, base_should_forward: bool, importance: str) -> _ForwardDecisionState:
+def _decide_new_alert(*, base_should_forward: bool) -> _ForwardDecisionState:
     return _ForwardDecisionState(
         should_forward=base_should_forward,
-        skip_reason=None if base_should_forward else _low_importance_reason("", importance),
+        skip_reason=None if base_should_forward else "未匹配转发规则",
     )
 
 
 def _decide_duplicate_alert(
     *,
     base_should_forward: bool,
-    importance: str,
     seconds_since_notify: float | None,
     policy: ForwardingPolicy,
 ) -> _ForwardDecisionState:
@@ -213,7 +204,7 @@ def _decide_duplicate_alert(
         return _ForwardDecisionState(
             should_forward=base_should_forward,
             is_periodic_reminder=True,
-            skip_reason=None if base_should_forward else _low_importance_reason("定期提醒", importance),
+            skip_reason=None if base_should_forward else "定期提醒：未匹配转发规则",
         )
 
     if not policy.forward_duplicate_alerts:
@@ -221,7 +212,7 @@ def _decide_duplicate_alert(
 
     return _ForwardDecisionState(
         should_forward=base_should_forward,
-        skip_reason=None if base_should_forward else _low_importance_reason("窗口内重复告警", importance),
+        skip_reason=None if base_should_forward else "窗口内重复告警，未匹配转发规则",
     )
 
 
@@ -248,8 +239,7 @@ def decide_forwarding(
         parsed_data=parsed_data,
     )
     current_time = now or datetime.now()
-    has_delivery_target = bool(matched_rules) or bool(policy.default_target_url)
-    base_should_fwd = (importance == "high" and has_delivery_target) or bool(matched_rules)
+    base_should_fwd = bool(matched_rules)
 
     last_notified_at = original_event.last_notified_at if original_event else None
     seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
@@ -257,14 +247,13 @@ def decide_forwarding(
     if is_duplicate:
         state = _decide_duplicate_alert(
             base_should_forward=base_should_fwd,
-            importance=importance,
             seconds_since_notify=seconds_since_notify,
             policy=policy,
         )
     else:
-        state = _decide_new_alert(base_should_forward=base_should_fwd, importance=importance)
+        state = _decide_new_alert(base_should_forward=base_should_fwd)
 
-    final_forward = False if state.suppressed else (state.should_forward or bool(matched_rules))
+    final_forward = False if state.suppressed else state.should_forward
     return ForwardDecision(
         should_forward=final_forward,
         skip_reason=state.skip_reason if not final_forward else None,
