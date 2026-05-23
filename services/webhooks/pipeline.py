@@ -225,6 +225,7 @@ class _ProcessingRun:
         if dedup_result.action == "reuse":
             analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
             route_type = dedup_result.route_type or "redis_reuse"
+            analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
             importance = normalize_importance(analysis.get("importance", "unknown"))
             set_log_context(route_type=route_type)
             WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(self.ctx.metric_source, route_type).inc()

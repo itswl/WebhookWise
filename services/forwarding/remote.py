@@ -131,6 +131,8 @@ async def post_json_to_remote(
     target_type_label: str = "raw_json",
 ) -> ForwardResult:
     """Post an already-built JSON payload to a remote webhook target."""
+    from services.forwarding.circuit_breakers import get_forward_breaker
+
     started = time.perf_counter()
     status = "unknown"
     policy = policy or RemoteForwardPolicy.from_config()
@@ -139,6 +141,12 @@ async def post_json_to_remote(
         dependencies = RemoteForwardDependencies(
             http_client=http_client,
             circuit_breaker=dependencies.circuit_breaker,
+            validate_url=dependencies.validate_url,
+        )
+    if target_url:
+        dependencies = RemoteForwardDependencies(
+            http_client=dependencies.http_client,
+            circuit_breaker=get_forward_breaker(target_url),
             validate_url=dependencies.validate_url,
         )
     url = target_url

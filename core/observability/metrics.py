@@ -110,6 +110,11 @@ FORWARD_OUTBOX_RECORDS_TOTAL = Counter(
     "Forwarding outbox lifecycle count",
     ("forward.target_type", "forward.status"),
 )
+FORWARD_RULE_MATCH_TOTAL = Counter(
+    "forward.rule.matches",
+    "Forward rule match count",
+    ("forward.rule_name", "forward.target_type"),
+)
 FORWARD_OUTBOX_PROCESS_DURATION_SECONDS = Histogram(
     "forward.outbox.process.duration",
     "Forwarding outbox processing duration",
@@ -366,6 +371,7 @@ __all__ = [
     "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS",
     "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS",
     "FORWARD_OUTBOX_RECORDS_TOTAL",
+    "FORWARD_RULE_MATCH_TOTAL",
     "Gauge",
     "Histogram",
     "OBSERVABILITY_EVENTS_TOTAL",

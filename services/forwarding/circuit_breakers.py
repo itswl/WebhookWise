@@ -74,7 +74,20 @@ def _build_forward_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreak
 
 feishu_cb = LazyCircuitBreaker(_build_feishu_circuit_breaker)
 openclaw_cb = LazyCircuitBreaker(_build_openclaw_circuit_breaker)
-forward_cb = LazyCircuitBreaker(_build_forward_circuit_breaker)
+
+_host_breakers: dict[str, LazyCircuitBreaker] = {}
+_host_breakers_lock = Lock()
+
+
+def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
+    from urllib.parse import urlsplit
+
+    host = urlsplit(target_url).hostname or "_default_"
+    if host not in _host_breakers:
+        with _host_breakers_lock:
+            if host not in _host_breakers:
+                _host_breakers[host] = LazyCircuitBreaker(_build_forward_circuit_breaker)
+    return _host_breakers[host]
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +109,7 @@ def build_remote_forward_dependencies() -> RemoteForwardDependencies:
 
     return RemoteForwardDependencies(
         http_client=get_http_client(),
-        circuit_breaker=forward_cb,
+        circuit_breaker=get_forward_breaker("_default_"),
         validate_url=validate_outbound_url,
     )
 
