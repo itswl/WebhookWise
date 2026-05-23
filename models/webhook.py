@@ -67,7 +67,7 @@ class WebhookEvent(Base):
         valid_fields = getattr(type(self), "_VALID_FIELDS", None)
         if valid_fields is None:
             valid_fields = frozenset(type(self).__mapper__.column_attrs.keys())
-            setattr(type(self), "_VALID_FIELDS", valid_fields)
+            type(self)._VALID_FIELDS = valid_fields
         unknown_fields = sorted(k for k in kwargs if k not in valid_fields)
         if unknown_fields:
             raise ValueError(f"未知 WebhookEvent 字段: {','.join(unknown_fields)}")

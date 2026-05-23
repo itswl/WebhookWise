@@ -15,7 +15,7 @@ class NoiseScoringConfig:
     related_min_confidence: float
 
     @classmethod
-    def from_config(cls, config: Any) -> "NoiseScoringConfig":
+    def from_config(cls, config: Any) -> NoiseScoringConfig:
         return cls(
             source_weight=float(config.NOISE_SOURCE_WEIGHT),
             resource_weight=float(config.NOISE_RESOURCE_WEIGHT),

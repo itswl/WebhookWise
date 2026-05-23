@@ -5,6 +5,7 @@ from __future__ import annotations
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import (
     DATABASE_EVENTS_COUNT,
@@ -16,7 +17,6 @@ from core.observability.metrics import (
 from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import session_scope
 from models import WebhookEvent
-from core.app_context import get_config_manager
 
 logger = get_logger("metrics")
 
