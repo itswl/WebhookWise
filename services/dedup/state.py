@@ -15,6 +15,10 @@ class DedupState:
     count: int
     analysis: dict[str, Any] | None
 
+    @property
+    def is_pending(self) -> bool:
+        return self.original_event_id <= 0
+
     def is_active(self, now: float, window_seconds: int) -> bool:
         return (now - self.last_seen_at) <= window_seconds
 
@@ -33,8 +37,6 @@ async def get_dedup_state(dedup_key: str) -> DedupState | None:
     try:
         original_event_id = int(payload.get("original_event_id") or 0)
     except (TypeError, ValueError):
-        return None
-    if original_event_id <= 0:
         return None
 
     analysis = payload.get("analysis")
