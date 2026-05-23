@@ -51,7 +51,9 @@ async def test_save_webhook_data_propagates_database_failures(monkeypatch):
     monkeypatch.setattr("services.webhooks.command_service.session_scope", FailingSessionScope)
 
     with pytest.raises(RuntimeError, match="database unavailable"):
-        await save_webhook_data({"alert": "down"}, source="test", alert_hash="hash")
+        from services.webhooks.command_service import SaveWebhookInput
+
+        await save_webhook_data(input=SaveWebhookInput(data={"alert": "down"}, source="test", alert_hash="hash"))
 
 
 @pytest.mark.asyncio

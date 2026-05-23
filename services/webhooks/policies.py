@@ -5,7 +5,6 @@ from typing import Any
 
 from core.app_context import get_config_manager
 from services.analysis.analysis_policies import NoiseScoringConfig
-from services.webhooks.decisioning import ForwardingPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,31 +28,23 @@ class NoiseReductionPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class WebhookFailurePolicy:
-    max_retries: int
-    initial_delay: int
-    max_delay: int
-    backoff_multiplier: float
+class WebhookReceivePolicy:
+    max_body_bytes: int
+    ingress_backpressure_threshold: int
+    ingress_backpressure_window_seconds: int
+    ingress_backpressure_fail_open_on_redis_error: bool = False
+    # From WebhookFailurePolicy
+    max_retries: int = 0
+    initial_delay: int = 5
+    max_delay: int = 300
+    backoff_multiplier: float = 2.0
+    # From PayloadSanitizerPolicy
+    offload_threshold_bytes: int = 512 * 1024
+    strip_keys: frozenset[str] = frozenset()
+    max_bytes: int = 0
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "WebhookFailurePolicy":
-        config = config or get_config_manager()
-        return cls(
-            max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
-            initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
-            max_delay=int(config.retry.WEBHOOK_RETRY_MAX_DELAY),
-            backoff_multiplier=float(config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class PayloadSanitizerPolicy:
-    offload_threshold_bytes: int
-    strip_keys: frozenset[str]
-    max_bytes: int
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "PayloadSanitizerPolicy":
+    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
         config = config or get_config_manager()
         threshold = int(config.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         strip_keys = (
@@ -62,35 +53,15 @@ class PayloadSanitizerPolicy:
             else frozenset()
         )
         return cls(
-            offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
-            strip_keys=strip_keys,
-            max_bytes=int(config.ai.AI_PAYLOAD_MAX_BYTES),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class WebhookReceivePolicy:
-    max_body_bytes: int
-    ingress_backpressure_threshold: int
-    ingress_backpressure_window_seconds: int
-    ingress_backpressure_fail_open_on_redis_error: bool = False
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "WebhookReceivePolicy":
-        config = config or get_config_manager()
-        return cls(
             max_body_bytes=max(0, int(config.security.MAX_WEBHOOK_BODY_BYTES or 0)),
             ingress_backpressure_threshold=max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
             ingress_backpressure_window_seconds=max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
             ingress_backpressure_fail_open_on_redis_error=bool(config.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR),
+            max_retries=max(0, int(config.retry.WEBHOOK_RETRY_MAX_RETRIES)),
+            initial_delay=int(config.retry.WEBHOOK_RETRY_INITIAL_DELAY),
+            max_delay=int(config.retry.WEBHOOK_RETRY_MAX_DELAY),
+            backoff_multiplier=float(config.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
+            offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
+            strip_keys=strip_keys,
+            max_bytes=int(config.ai.AI_PAYLOAD_MAX_BYTES),
         )
-
-
-def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy:
-    config = config or get_config_manager()
-    return ForwardingPolicy(
-        notification_cooldown_seconds=config.retry.NOTIFICATION_COOLDOWN_SECONDS,
-        enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,
-        reminder_interval_hours=config.retry.REMINDER_INTERVAL_HOURS,
-        forward_duplicate_alerts=config.retry.FORWARD_DUPLICATE_ALERTS,
-    )

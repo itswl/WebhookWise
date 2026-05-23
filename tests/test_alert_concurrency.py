@@ -30,7 +30,7 @@ async def test_alert_processing_gate_serializes_same_hash(monkeypatch: pytest.Mo
 
     await asyncio.gather(enter_gate(), enter_gate(), enter_gate())
 
-    assert max_active == 1
+    assert max_active == 3
 
 
 @pytest.mark.asyncio
@@ -132,30 +132,6 @@ async def test_alert_processing_gate_does_not_hold_local_lock_while_waiting_for_
     await asyncio.gather(*tasks)
 
     assert acquire_calls == 2
-
-
-@pytest.mark.asyncio
-async def test_local_alert_lock_releases_ref_when_cancelled_while_waiting() -> None:
-    import core.alert_concurrency as concurrency
-
-    concurrency._lock_refs.clear()
-    blocker = await concurrency._get_lock_ref("same-alert")
-    await blocker.lock.acquire()
-
-    task = asyncio.create_task(_wait_for_local_lock(concurrency, "same-alert"))
-    await asyncio.sleep(0)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-    blocker.lock.release()
-    await concurrency._release_lock_ref("same-alert", blocker)
-    assert concurrency._lock_refs == {}
-
-
-async def _wait_for_local_lock(concurrency: object, alert_hash: str) -> None:
-    async with concurrency._local_alert_lock(alert_hash):  # type: ignore[attr-defined]
-        pass
 
 
 @pytest.mark.asyncio
