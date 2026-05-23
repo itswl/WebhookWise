@@ -3,12 +3,12 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_task_slot_manager_uses_lua_registry_scripts() -> None:
-    from services.operations.policies import _ACQUIRE_SLOT_LUA, _RELEASE_SLOT_LUA
+    from core.redis_lua import TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE
 
-    assert _ACQUIRE_SLOT_LUA
-    assert _RELEASE_SLOT_LUA
-    assert "ZCARD" in _ACQUIRE_SLOT_LUA
-    assert "ZREM" in _RELEASE_SLOT_LUA
+    assert TASK_SLOT_ACQUIRE
+    assert TASK_SLOT_RELEASE
+    assert "zcard" in TASK_SLOT_ACQUIRE.lower()
+    assert "zrem" in TASK_SLOT_RELEASE.lower()
 
 
 @pytest.mark.asyncio
@@ -28,10 +28,10 @@ async def test_webhook_task_slot_uses_redis_global_slot(monkeypatch: pytest.Monk
 
     async with tasks._webhook_task_slot():
         assert len(calls) >= 1
-        assert "ZCARD" in calls[0]
+        assert "zcard" in calls[0].lower()
 
     assert len(calls) >= 2
-    assert "ZREM" in calls[-1]
+    assert "zrem" in calls[-1].lower()
 
 
 @pytest.mark.asyncio

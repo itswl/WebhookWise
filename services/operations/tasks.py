@@ -172,9 +172,9 @@ async def _handle_raw_webhook_failure(
     from core.retry_policies import retry_policy
     from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_ingest_retry
     from services.webhooks.ingest_failure import record_raw_ingest_dead_letter
-    from services.webhooks.policies import WebhookFailurePolicy
+    from services.webhooks.policies import WebhookReceivePolicy
 
-    policy = WebhookFailurePolicy.from_config()
+    policy = WebhookReceivePolicy.from_config()
     retryable = retry_policy.should_retry(err)
     next_retry_count = max(0, int(ingest_retry_count)) + 1
 

@@ -92,33 +92,33 @@ class AIProviderPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class AIPromptPolicy:
+class PromptPolicy:
     inline_prompt: str
     prompt_file: str
-    builtin_prompt: str = DEFAULT_USER_PROMPT_TEMPLATE
-    inline_source: str = "env:AI_USER_PROMPT"
-    builtin_source: str = "builtin:user"
+    builtin_prompt: str
+    inline_source: str
+    builtin_source: str
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "AIPromptPolicy":
+    def user(cls, config: Any | None = None) -> "PromptPolicy":
         config = (config or get_config_manager()).ai
-        return cls(inline_prompt=str(config.AI_USER_PROMPT), prompt_file=str(config.AI_USER_PROMPT_FILE))
-
-
-@dataclass(frozen=True, slots=True)
-class DeepAnalysisPromptPolicy:
-    inline_prompt: str
-    prompt_file: str
-    builtin_prompt: str = DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE
-    inline_source: str = "env:DEEP_ANALYSIS_PROMPT"
-    builtin_source: str = "builtin:deep_analysis"
+        return cls(
+            inline_prompt=str(config.AI_USER_PROMPT),
+            prompt_file=str(config.AI_USER_PROMPT_FILE),
+            builtin_prompt=DEFAULT_USER_PROMPT_TEMPLATE,
+            inline_source="env:AI_USER_PROMPT",
+            builtin_source="builtin:user",
+        )
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "DeepAnalysisPromptPolicy":
+    def deep_analysis(cls, config: Any | None = None) -> "PromptPolicy":
         config = (config or get_config_manager()).ai
         return cls(
             inline_prompt=str(config.DEEP_ANALYSIS_PROMPT),
             prompt_file=str(config.DEEP_ANALYSIS_PROMPT_FILE),
+            builtin_prompt=DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE,
+            inline_source="env:DEEP_ANALYSIS_PROMPT",
+            builtin_source="builtin:deep_analysis",
         )
 
 

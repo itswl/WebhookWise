@@ -2,10 +2,9 @@
 
 import asyncio
 from pathlib import Path
-from typing import Protocol
 
 from core.logger import get_logger
-from services.analysis.analysis_policies import AIPromptPolicy, DeepAnalysisPromptPolicy
+from services.analysis.analysis_policies import PromptPolicy
 
 logger = get_logger("analysis.ai_prompt")
 
@@ -15,23 +14,6 @@ _prompt_sources: dict[str, str] = {}
 
 USER_PROMPT_KIND = "user"
 DEEP_ANALYSIS_PROMPT_KIND = "deep_analysis"
-
-
-class _PromptPolicy(Protocol):
-    @property
-    def inline_prompt(self) -> str: ...
-
-    @property
-    def prompt_file(self) -> str: ...
-
-    @property
-    def builtin_prompt(self) -> str: ...
-
-    @property
-    def inline_source(self) -> str: ...
-
-    @property
-    def builtin_source(self) -> str: ...
 
 
 def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:
@@ -46,7 +28,7 @@ def resolve_prompt_path(prompt_file: str) -> Path:
     return project_root / file_path
 
 
-async def _load_prompt_template(kind: str, policy: _PromptPolicy) -> str:
+async def _load_prompt_template(kind: str, policy: PromptPolicy) -> str:
     async with _prompt_template_lock:
         cached = _prompt_templates.get(kind)
         if cached is not None:
@@ -74,22 +56,22 @@ async def _load_prompt_template(kind: str, policy: _PromptPolicy) -> str:
         return policy.builtin_prompt
 
 
-async def load_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
-    return await _load_prompt_template(USER_PROMPT_KIND, policy or AIPromptPolicy.from_config())
+async def load_user_prompt_template(policy: PromptPolicy | None = None) -> str:
+    return await _load_prompt_template(USER_PROMPT_KIND, policy or PromptPolicy.user())
 
 
-async def load_deep_analysis_prompt_template(policy: DeepAnalysisPromptPolicy | None = None) -> str:
-    return await _load_prompt_template(DEEP_ANALYSIS_PROMPT_KIND, policy or DeepAnalysisPromptPolicy.from_config())
+async def load_deep_analysis_prompt_template(policy: PromptPolicy | None = None) -> str:
+    return await _load_prompt_template(DEEP_ANALYSIS_PROMPT_KIND, policy or PromptPolicy.deep_analysis())
 
 
-async def reload_user_prompt_template(policy: AIPromptPolicy | None = None) -> str:
+async def reload_user_prompt_template(policy: PromptPolicy | None = None) -> str:
     async with _prompt_template_lock:
         _prompt_templates.pop(USER_PROMPT_KIND, None)
         _prompt_sources.pop(USER_PROMPT_KIND, None)
     return await load_user_prompt_template(policy=policy)
 
 
-async def reload_deep_analysis_prompt_template(policy: DeepAnalysisPromptPolicy | None = None) -> str:
+async def reload_deep_analysis_prompt_template(policy: PromptPolicy | None = None) -> str:
     async with _prompt_template_lock:
         _prompt_templates.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
         _prompt_sources.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
