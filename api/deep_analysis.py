@@ -299,9 +299,8 @@ async def forward_deep_analysis(
         if event:
             source = event.source or "unknown"
 
-    from services.channels.base import resolve_channel_name
     from services.channels.feishu import build_deep_analysis_card
-    from services.forwarding.outbox import enqueue_external_message
+    from services.forwarding.outbox import resolve_and_forward
 
     is_feishu = is_feishu_url(target_url)
     fwd_payload: dict[str, Any] = {
@@ -328,16 +327,15 @@ async def forward_deep_analysis(
         if is_feishu
         else fwd_payload
     )
-    channel_name = resolve_channel_name("feishu" if is_feishu else "webhook", target_url)
     try:
-        outbox_id = await enqueue_external_message(
-            channel_name=channel_name,
-            target_url=target_url,
+        result = await resolve_and_forward(
             event_type="deep_analysis_manual",
+            source=source,
             formatted_payload=formatted_payload,
             webhook_id=analysis.webhook_event_id or None,
-            idempotency_hint=f"deep_analysis_manual:{analysis_id}:{target_url}",
+            wait=False,
         )
+        outbox_id = result.get("outbox_id")
         logger.info(
             "[DeepAnalysis] 手动转发已入队 analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
             analysis_id,

@@ -25,6 +25,7 @@ from services.webhooks.types import ForwardDecision, NoiseReductionContext
 def _make_rule(
     *,
     name: str = "test-rule",
+    match_event_type: str = "",
     match_importance: str = "",
     match_source: str = "",
     match_duplicate: str = "all",
@@ -37,6 +38,7 @@ def _make_rule(
     return ForwardRuleSnapshot(
         id=rule_id,
         name=name,
+        match_event_type=match_event_type,
         match_importance=match_importance,
         match_source=match_source,
         match_duplicate=match_duplicate,

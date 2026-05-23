@@ -17,7 +17,7 @@ from schemas import (
     ForwardRuleListResponse,
     forward_rule_to_dict,
 )
-from services.forwarding.remote import forward_to_remote
+from services.forwarding.outbox import resolve_and_forward
 from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
@@ -170,24 +170,19 @@ async def test_forward_rule_endpoint(
     test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
     test_analysis: AnalysisResult = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
 
-    if rule.target_type == "openclaw":
-        from services.forwarding.openclaw import forward_to_openclaw
-
-        logger.info("[ForwardAPI] 测试 OpenClaw 转发规则 rule_id=%s name=%s", rule.id, rule.name)
-        result = await forward_to_openclaw(test_webhook, test_analysis)
-    else:
-        try:
-            target_url = await _validated_target_url(rule.target_type, rule.target_url)
-        except UnsafeTargetUrlError as e:
-            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
-        logger.info(
-            "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s target=%s",
-            rule.id,
-            rule.name,
-            rule.target_type,
-            mask_url(target_url),
-        )
-        result = await forward_to_remote(test_webhook, test_analysis, target_url=target_url)
+    logger.info(
+        "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s",
+        rule.id,
+        rule.name,
+        rule.target_type,
+    )
+    result = await resolve_and_forward(
+        event_type="rule_test",
+        source="test",
+        forward_data=test_webhook,
+        analysis_result=test_analysis,
+        wait=True,
+    )
 
     if result.get("status") == "success" or result.get("_pending"):
         return {"success": True, "message": "测试消息已发送", "detail": result}

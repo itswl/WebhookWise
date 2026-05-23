@@ -19,6 +19,7 @@ class ForwardRule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)
 
+    match_event_type: Mapped[str] = mapped_column(String(200), default="")
     match_importance: Mapped[str] = mapped_column(String(50), default="")
     match_duplicate: Mapped[str] = mapped_column(String(20), default="all")
     match_source: Mapped[str] = mapped_column(String(200), default="")
