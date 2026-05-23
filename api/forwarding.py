@@ -82,6 +82,7 @@ async def create_forward_rule_endpoint(
         match_importance=payload.get("match_importance", ""),
         match_duplicate=payload.get("match_duplicate", "all"),
         match_source=payload.get("match_source", ""),
+        match_payload=payload.get("match_payload", ""),
         target_url=target_url,
         target_name=payload.get("target_name", ""),
         stop_on_match=payload.get("stop_on_match", False),

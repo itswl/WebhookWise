@@ -29,8 +29,6 @@ class EventEnvelope:
 class DuplicateCheckResult:
     is_duplicate: bool
     original_event: WebhookEvent | None
-    beyond_window: bool
-    last_beyond_window_event: WebhookEvent | None
 
 
 async def check_duplicate_event(
@@ -52,23 +50,10 @@ async def check_duplicate_event(
     recent_res = await session.execute(recent_stmt)
     any_event = recent_res.scalar_one_or_none()
 
-    last_beyond_stmt = (
-        select(WebhookEvent)
-        .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.beyond_window.is_(True))
-        .order_by(WebhookEvent.timestamp.desc())
-        .limit(1)
-    )
-    last_beyond_res = await session.execute(last_beyond_stmt)
-    last_beyond = last_beyond_res.scalar_one_or_none()
-
     if any_event:
         original_id = any_event.duplicate_of if any_event.is_duplicate else any_event.id
         original = await session.get(WebhookEvent, original_id) if original_id else any_event
-        if original is None:
-            original = any_event
-        window_start = last_beyond.timestamp if last_beyond else original.timestamp
-        is_within = (now - window_start).total_seconds() / 3600 <= time_window_hours
-        return DuplicateCheckResult(True, original, not is_within, last_beyond)
+        return DuplicateCheckResult(True, original or any_event)
 
     history_stmt = (
         select(WebhookEvent)
@@ -80,8 +65,8 @@ async def check_duplicate_event(
     history = history_res.scalar_one_or_none()
 
     if history:
-        return DuplicateCheckResult(False, history, True, last_beyond)
-    return DuplicateCheckResult(False, None, False, None)
+        return DuplicateCheckResult(False, history)
+    return DuplicateCheckResult(False, None)
 
 
 async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None, str]:
@@ -130,6 +115,7 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
         match_importance=rule.match_importance,
         match_source=rule.match_source,
         match_duplicate=rule.match_duplicate,
+        match_payload=getattr(rule, "match_payload", "") or "",
         target_type=rule.target_type,
         target_url=rule.target_url,
         stop_on_match=rule.stop_on_match,

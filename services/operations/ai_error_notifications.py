@@ -4,11 +4,12 @@ import hashlib
 import re
 from typing import Any
 
-from adapters.plugins.feishu_card import build_ai_error_card
 from core.logger import get_logger, mask_url
 from core.redis_health import ai_error_alert_lock
 from services.analysis.ai_policies import AIErrorNotificationPolicy
-from services.notifications import build_notification_channels, find_notification_channel
+from services.channels.base import resolve_channel_name
+from services.channels.feishu import build_ai_error_card
+from services.forwarding.enqueue import enqueue_external_message
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")
@@ -71,19 +72,16 @@ async def send_ai_error_alert(
         if not await redis_set_nx_ex(lock_key, "1", policy.cooldown_seconds):
             return
 
-        channels = build_notification_channels(
-            http_client=http_client,
-            timeout_seconds=policy.timeout_seconds,
-        )
-        channel = find_notification_channel(policy.target_url, channels)
-        if channel is None:
-            logger.debug("[AIErrorNotify] 通知目标没有匹配渠道 target=%s", mask_url(policy.target_url))
-            return
+        channel_name = resolve_channel_name("feishu", policy.target_url)
         logger.info("[AIErrorNotify] 发送 AI 错误通知 target=%s degraded=%s", mask_url(policy.target_url), is_degraded)
-        success = await channel.send_card(
-            policy.target_url,
-            build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
+        outbox_id = await enqueue_external_message(
+            channel_name=channel_name,
+            target_url=policy.target_url,
+            event_type="ai_degraded" if is_degraded else "ai_error",
+            formatted_payload=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
+            webhook_id=None,
+            idempotency_hint=dedupe_key,
         )
-        logger.info("[AIErrorNotify] AI 错误通知完成 target=%s success=%s", mask_url(policy.target_url), success)
+        logger.info("[AIErrorNotify] AI 错误通知已入队 target=%s outbox_id=%s", mask_url(policy.target_url), outbox_id)
     except Exception as e:
         logger.error("[AIErrorNotify] 发送 AI 错误通知失败: %s", e)

@@ -6,7 +6,7 @@ from models.webhook import WebhookEvent
 from services.webhooks.command_service import SaveWebhookResult, _resolve_request_id, save_webhook_data
 
 
-def test_build_event_beyond_window_flag_can_be_persisted():
+def test_build_event_fill_fields_works():
     event = WebhookEvent()
     event.fill_fields(
         source="test",
@@ -21,10 +21,9 @@ def test_build_event_beyond_window_flag_can_be_persisted():
         is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=True,
         last_notified_at=datetime.now(),
     )
-    assert event.beyond_window is True
+    assert event.is_duplicate is True
 
 
 def test_fill_fields_rejects_unknown_fields() -> None:
@@ -35,9 +34,9 @@ def test_fill_fields_rejects_unknown_fields() -> None:
 
 
 def test_save_result_uses_database_event_ids_only():
-    result = SaveWebhookResult(1, True, 10, True)
+    result = SaveWebhookResult(1, True, 10)
     assert result.webhook_id == 1
-    assert result.beyond_window is True
+    assert result.original_id == 10
 
 
 @pytest.mark.asyncio
@@ -65,7 +64,6 @@ async def test_resolve_request_id_returns_completed_result_without_resave() -> N
         processing_status="completed",
         is_duplicate=True,
         duplicate_of=7,
-        beyond_window=True,
     )
 
     class _Result:
@@ -82,6 +80,6 @@ async def test_resolve_request_id_returns_completed_result_without_resave() -> N
         skip_duplicate_lookup=False,
     )
 
-    assert resolved.completed_result == SaveWebhookResult(42, True, 7, True)
+    assert resolved.completed_result == SaveWebhookResult(42, True, 7)
     assert resolved.existing_event_id == 42
     assert resolved.skip_duplicate_lookup is True

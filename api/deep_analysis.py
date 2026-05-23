@@ -16,9 +16,8 @@ from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
-from services.forwarding.remote import post_json_to_remote
-from services.notifications import is_feishu_url
+from services.channels.feishu import is_feishu_url
+from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
 
 logger = get_logger("api.deep_analysis")
@@ -300,29 +299,12 @@ async def forward_deep_analysis(
         if event:
             source = event.source or "unknown"
 
+    from services.channels.base import resolve_channel_name
+    from services.channels.feishu import build_deep_analysis_card
+    from services.forwarding.enqueue import enqueue_external_message
+
     is_feishu = is_feishu_url(target_url)
-    if is_feishu:
-        from services.operations.feishu_notifications import send_feishu_deep_analysis
-
-        ok = await send_feishu_deep_analysis(
-            webhook_url=target_url,
-            analysis_record={
-                "analysis_result": analysis.analysis_result,
-                "engine": analysis.engine,
-                "duration_seconds": analysis.duration_seconds,
-            },
-            source=source,
-            webhook_event_id=analysis.webhook_event_id or 0,
-            http_client=http_client,
-        )
-        if ok:
-            logger.info(
-                "[DeepAnalysis] 已发送到飞书 analysis_id=%s webhook_id=%s", analysis_id, analysis.webhook_event_id
-            )
-            return {"success": True, "message": "已发送到飞书"}
-        return JSONResponse(status_code=502, content={"success": False, "error": "深度分析结果飞书发送失败"})
-
-    fwd_payload = {
+    fwd_payload: dict[str, Any] = {
         "type": "deep_analysis",
         "analysis_id": analysis_id,
         "source": source,
@@ -332,28 +314,43 @@ async def forward_deep_analysis(
         "duration_seconds": analysis.duration_seconds,
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
     }
+
+    formatted_payload = (
+        build_deep_analysis_card(
+            {
+                "analysis_result": analysis.analysis_result,
+                "engine": analysis.engine,
+                "duration_seconds": analysis.duration_seconds,
+            },
+            source=source,
+            webhook_event_id=analysis.webhook_event_id or 0,
+        )
+        if is_feishu
+        else fwd_payload
+    )
+    channel_name = resolve_channel_name("feishu" if is_feishu else "webhook", target_url)
     try:
-        result = await post_json_to_remote(
-            target_url,
-            fwd_payload,
-            policy=RemoteForwardPolicy.from_config(),
-            validate_target=False,
+        outbox_id = await enqueue_external_message(
+            channel_name=channel_name,
+            target_url=target_url,
+            event_type="deep_analysis_manual",
+            formatted_payload=formatted_payload,
+            webhook_id=analysis.webhook_event_id or None,
+            idempotency_hint=f"deep_analysis_manual:{analysis_id}:{target_url}",
         )
-        if result.get("status") == "success":
-            logger.info(
-                "[DeepAnalysis] 手动转发完成 analysis_id=%s webhook_id=%s status_code=%s target=%s",
-                analysis_id,
-                analysis.webhook_event_id,
-                result.get("status_code"),
-                mask_url(target_url),
-            )
-            return {"success": True, "message": f"已转发 (HTTP {result.get('status_code')})"}
-        return JSONResponse(
-            status_code=502,
-            content={"success": False, "error": result.get("message") or f"转发失败: {result.get('status')}"},
+        logger.info(
+            "[DeepAnalysis] 手动转发已入队 analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
+            analysis_id,
+            analysis.webhook_event_id,
+            outbox_id,
+            mask_url(target_url),
         )
+        return {"success": True, "message": "已入队转发", "outbox_id": outbox_id}
     except Exception as e:
         logger.error(
-            "[DeepAnalysis] 转发深度分析失败 analysis_id=%s target=%s error=%s", analysis_id, mask_url(target_url), e
+            "[DeepAnalysis] 转发深度分析入队失败 analysis_id=%s target=%s error=%s",
+            analysis_id,
+            mask_url(target_url),
+            e,
         )
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

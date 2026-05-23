@@ -9,22 +9,6 @@ from services.webhooks.decisioning import ForwardingPolicy
 
 
 @dataclass(frozen=True, slots=True)
-class AnalysisResolutionPolicy:
-    duplicate_window_hours: int
-    recent_beyond_window_reuse_seconds: int
-    reanalyze_after_time_window: bool
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "AnalysisResolutionPolicy":
-        config = config or get_config_manager()
-        return cls(
-            duplicate_window_hours=int(config.retry.DUPLICATE_ALERT_TIME_WINDOW),
-            recent_beyond_window_reuse_seconds=int(config.retry.RECENT_BEYOND_WINDOW_REUSE_SECONDS),
-            reanalyze_after_time_window=bool(config.retry.REANALYZE_AFTER_TIME_WINDOW),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class NoiseReductionPolicy:
     enabled: bool
     window_minutes: int
@@ -109,5 +93,5 @@ def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy
         enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,
         reminder_interval_hours=config.retry.REMINDER_INTERVAL_HOURS,
         forward_duplicate_alerts=config.retry.FORWARD_DUPLICATE_ALERTS,
-        forward_after_time_window=config.retry.FORWARD_AFTER_TIME_WINDOW,
+        default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
     )

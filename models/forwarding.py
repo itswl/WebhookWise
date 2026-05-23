@@ -22,6 +22,7 @@ class ForwardRule(Base):
     match_importance: Mapped[str] = mapped_column(String(50), default="")
     match_duplicate: Mapped[str] = mapped_column(String(20), default="all")
     match_source: Mapped[str] = mapped_column(String(200), default="")
+    match_payload: Mapped[str] = mapped_column(String(512), default="")
 
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)
     target_url: Mapped[str] = mapped_column(String(500), default="")
@@ -46,8 +47,8 @@ class ForwardOutbox(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
-    webhook_event_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=False, index=True
+    webhook_event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=True, index=True
     )
     original_event_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True
@@ -62,6 +63,9 @@ class ForwardOutbox(Base):
     target_name: Mapped[str] = mapped_column(String(100), default="")
     is_periodic_reminder: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    channel_name: Mapped[str] = mapped_column(String(32), default="")
+    event_type: Mapped[str] = mapped_column(String(32), default="")
+
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
@@ -72,6 +76,7 @@ class ForwardOutbox(Base):
 
     forward_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     analysis_result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    formatted_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     response_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)

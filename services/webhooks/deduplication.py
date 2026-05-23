@@ -21,7 +21,7 @@ class CachedDuplicate:
 
 
 def duplicate_window_hours() -> int:
-    return int(get_config_manager().retry.DUPLICATE_ALERT_TIME_WINDOW)
+    return max(1, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) // 3600)
 
 
 def _ttl_seconds() -> int:

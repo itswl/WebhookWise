@@ -20,6 +20,7 @@ class ForwardRuleSchema(BaseModel):
     match_importance: str | None = None
     match_duplicate: str | None = None
     match_source: str | None = None
+    match_payload: str | None = None
     target_type: str
     target_url: str
     target_name: str | None = None
