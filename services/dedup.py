@@ -1,4 +1,7 @@
+"""Webhook deduplication — Redis-first sliding window with DB fallback."""
+
 import asyncio
+import contextlib
 import hashlib
 import time
 from dataclasses import dataclass
@@ -9,10 +12,88 @@ from core import json
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
+from core.redis_client import redis_get_json_dict, redis_setex_json
+from core.redis_health import webhook_dedupe
 from db.session import session_scope
-from services.dedup.state import get_dedup_state
 
-logger = get_logger("dedup.resolver")
+logger = get_logger("dedup")
+
+# ── Dedup state (Redis operations) ───────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class DedupState:
+    dedup_key: str
+    original_event_id: int
+    first_seen_at: float
+    last_seen_at: float
+    count: int
+    analysis: dict[str, Any] | None
+
+    @property
+    def is_pending(self) -> bool:
+        return self.original_event_id <= 0
+
+    def is_active(self, now: float, window_seconds: int) -> bool:
+        return (now - self.last_seen_at) <= window_seconds
+
+
+def _dedup_state_key(dedup_key: str) -> str:
+    return webhook_dedupe(dedup_key)
+
+
+async def get_dedup_state(dedup_key: str) -> DedupState | None:
+    try:
+        payload = await redis_get_json_dict(_dedup_state_key(dedup_key))
+    except Exception:
+        return None
+    if not payload:
+        return None
+    try:
+        original_event_id = int(payload.get("original_event_id") or 0)
+    except (TypeError, ValueError):
+        return None
+
+    analysis = payload.get("analysis")
+    return DedupState(
+        dedup_key=dedup_key,
+        original_event_id=original_event_id,
+        first_seen_at=float(payload.get("first_seen_at") or 0),
+        last_seen_at=float(payload.get("last_seen_at") or 0),
+        count=int(payload.get("count") or 1),
+        analysis=analysis if isinstance(analysis, dict) else None,
+    )
+
+
+async def remember_dedup_state(
+    dedup_key: str,
+    original_event_id: int,
+    analysis: dict[str, Any] | None,
+    ttl_seconds: int,
+    *,
+    now: float | None = None,
+) -> None:
+    import time as _time
+
+    current_time = now or _time.time()
+    existing = await get_dedup_state(dedup_key)
+    count = (existing.count + 1) if existing else 1
+    first_seen_at = existing.first_seen_at if existing else current_time
+
+    payload: dict[str, Any] = {
+        "dedup_key": dedup_key,
+        "original_event_id": original_event_id,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": current_time,
+        "count": count,
+    }
+    if analysis:
+        payload["analysis"] = analysis
+    with contextlib.suppress(Exception):
+        await redis_setex_json(_dedup_state_key(dedup_key), max(60, ttl_seconds), payload)
+
+
+# ── Dedup resolver ───────────────────────────────────────────────────────────
 
 
 class DedupAction(StrEnum):
@@ -25,7 +106,6 @@ class DedupResult:
     action: DedupAction
     analysis: dict[str, Any] | None
     original_event_id: int | None
-    is_reused: bool
     route_type: str = ""
 
     @property
@@ -71,17 +151,13 @@ def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
     return fallback_hash, fallback_hash
 
 
-def generate_dedup_key(data: dict[str, Any], source: str, alert_hash: str) -> str:
-    _, dedup_key = generate_event_keys(data, source)
-    return dedup_key
+def generate_alert_hash(data: dict, source: str) -> str:
+    """Convenience wrapper — returns only the alert_hash portion of generate_event_keys."""
+    return generate_event_keys(data, source)[0]
 
 
 def _dedup_window_seconds() -> int:
     return int(get_config_manager().retry.DEDUP_WINDOW_SECONDS)
-
-
-def _ttl_seconds() -> int:
-    return max(60, _dedup_window_seconds() * 2)
 
 
 def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
@@ -108,7 +184,6 @@ async def _poll_pending_state(dedup_key: str, window_seconds: int, deadline: flo
                 action=DedupAction.REUSE,
                 analysis=state.analysis,
                 original_event_id=state.original_event_id,
-                is_reused=True,
                 route_type="redis_reuse",
             )
     return None
@@ -158,7 +233,6 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
                 action=DedupAction.REUSE,
                 analysis=state.analysis,
                 original_event_id=state.original_event_id,
-                is_reused=True,
                 route_type="redis_reuse",
             )
 
@@ -183,7 +257,6 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
             action=DedupAction.REUSE,
             analysis=db_result["analysis"],
             original_event_id=db_result["original_event_id"],
-            is_reused=False,
             route_type="db_reuse",
         )
 
@@ -191,5 +264,15 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
         action=DedupAction.NEW,
         analysis=None,
         original_event_id=None,
-        is_reused=False,
     )
+
+
+__all__ = [
+    "DedupResult",
+    "DedupState",
+    "generate_alert_hash",
+    "generate_event_keys",
+    "get_dedup_state",
+    "remember_dedup_state",
+    "resolve_dedup",
+]

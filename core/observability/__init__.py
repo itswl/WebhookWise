@@ -18,14 +18,6 @@ def setup_observability(app: Any | None = None, *, service_name: str | None = No
     setup_profiling(service_name=service_name)
 
 
-def setup_observability_worker(*, service_name: str | None = None) -> None:
-    setup_observability(None, service_name=service_name)
-
-
-def setup_observability_scheduler(*, service_name: str | None = None) -> None:
-    setup_observability(None, service_name=service_name)
-
-
 def shutdown_observability() -> None:
     shutdown_logging()
     shutdown_meter_provider()

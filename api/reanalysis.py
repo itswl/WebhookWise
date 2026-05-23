@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.webhook_context import JSONDict, build_webhook_context
+from api.webhook import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.logger import get_logger
 from db.session import get_db_session

@@ -10,31 +10,32 @@ def _env_keys(path: Path) -> set[str]:
 
 
 def test_config_keys_are_derived_from_config_models() -> None:
-    from core.config import UnifiedConfigManager
+    from core.config.manager import get_config_keys
 
-    assert UnifiedConfigManager.CONFIG_KEYS["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {
+    keys = get_config_keys()
+    assert keys["AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS"] == {
         "type": "int",
         "sub": "notifications",
     }
-    assert UnifiedConfigManager.CONFIG_KEYS["DEFAULT_FORWARD_TARGET_URL"] == {"type": "str", "sub": "forwarding"}
-    assert UnifiedConfigManager.CONFIG_KEYS["WEBHOOK_MQ_QUEUE"] == {"type": "str", "sub": "mq"}
-    assert UnifiedConfigManager.CONFIG_KEYS["BACKGROUND_SCAN_INTERVAL_SECONDS"] == {"type": "int", "sub": "tasks"}
-    assert UnifiedConfigManager.CONFIG_KEYS["MAX_CONCURRENT_WEBHOOK_TASKS"] == {"type": "int", "sub": "tasks"}
-    assert UnifiedConfigManager.CONFIG_KEYS["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {
+    assert keys["DEFAULT_FORWARD_TARGET_URL"] == {"type": "str", "sub": "forwarding"}
+    assert keys["WEBHOOK_MQ_QUEUE"] == {"type": "str", "sub": "mq"}
+    assert keys["BACKGROUND_SCAN_INTERVAL_SECONDS"] == {"type": "int", "sub": "tasks"}
+    assert keys["MAX_CONCURRENT_WEBHOOK_TASKS"] == {"type": "int", "sub": "tasks"}
+    assert keys["CIRCUIT_BREAKER_FEISHU_THRESHOLD"] == {
         "type": "int",
         "sub": "circuit_breaker",
     }
-    assert UnifiedConfigManager.CONFIG_KEYS["DATA_RETENTION_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
-    assert UnifiedConfigManager.CONFIG_KEYS["DATABASE_URL"] == {"type": "str", "sub": "db"}
-    assert UnifiedConfigManager.CONFIG_KEYS["OPENAI_API_KEY"] == {"type": "str", "sub": "ai"}
+    assert keys["DATA_RETENTION_DAYS_DEFAULT"] == {"type": "int", "sub": "maintenance"}
+    assert keys["DATABASE_URL"] == {"type": "str", "sub": "db"}
+    assert keys["OPENAI_API_KEY"] == {"type": "str", "sub": "ai"}
 
 
 def test_full_env_example_covers_config_model_keys() -> None:
-    from core.config import UnifiedConfigManager
+    from core.config.manager import get_config_keys
 
     env_keys = _env_keys(ROOT / ".env.example.all")
 
-    assert sorted(set(UnifiedConfigManager.CONFIG_KEYS) - env_keys) == []
+    assert sorted(set(get_config_keys()) - env_keys) == []
 
 
 def test_full_env_example_covers_direct_environment_reads() -> None:
@@ -85,10 +86,11 @@ def test_minimal_env_example_stays_small() -> None:
 
 
 def test_removed_dynamic_config_switches_are_not_config_fields() -> None:
-    from core.config import UnifiedConfigManager
+    from core.config.manager import get_config_keys
 
-    assert "ENABLE_RUNTIME_CONFIG" not in UnifiedConfigManager.CONFIG_KEYS
-    assert "ALLOW_RUNTIME_CONNECTION_CONFIG" not in UnifiedConfigManager.CONFIG_KEYS
+    keys = get_config_keys()
+    assert "ENABLE_RUNTIME_CONFIG" not in keys
+    assert "ALLOW_RUNTIME_CONNECTION_CONFIG" not in keys
 
 
 def test_config_sources_are_static_and_restart_required(monkeypatch) -> None:

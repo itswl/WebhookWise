@@ -29,7 +29,7 @@ from core.observability.metrics import (
     WORKER_TASK_DURATION_SECONDS,
     WORKER_TASKS_TOTAL,
 )
-from core.observability.signals import record_signal
+from core.observability.events import record_signal
 from core.observability.tracing import (
     build_traceparent,
     extract_trace_id_from_headers,
@@ -38,11 +38,11 @@ from core.observability.tracing import (
     set_span_error,
     trace_context_from_headers,
 )
-from core.observability.tracing import span as otel_span
+from core.observability.tracing import otel_span
 from core.redis_health import scheduled_task_lock, webhook_global_task_slots
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
-from services.forwarding.outbox import configure_forward_outbox_schedulers
+from services.forwarding.outbox import outbox_scheduler
 from services.operations.policies import TaskRuntimePolicy, TaskSlotManager
 
 logger = get_logger("tasks")
@@ -88,10 +88,8 @@ async def _schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> 
     await schedule_forward_outbox(outbox_id, delay_seconds)
 
 
-configure_forward_outbox_schedulers(
-    enqueue_outbox=_enqueue_forward_outbox,
-    schedule_retry=_schedule_forward_outbox_retry,
-)
+outbox_scheduler.enqueue = _enqueue_forward_outbox
+outbox_scheduler.retry = _schedule_forward_outbox_retry
 
 
 def _task_policy(policy: TaskRuntimePolicy | None = None) -> TaskRuntimePolicy:
@@ -186,29 +184,17 @@ async def _handle_raw_webhook_failure(
             multiplier=policy.backoff_multiplier,
         )
         try:
-            if traceparent:
-                await schedule_webhook_ingest_retry(
-                    delay_seconds=delay,
-                    source=source,
-                    raw_headers=raw_headers,
-                    raw_body=raw_body,
-                    client_ip=client_ip,
-                    request_id=request_id,
-                    received_at=received_at,
-                    ingest_retry_count=next_retry_count,
-                    traceparent=traceparent,
-                )
-            else:
-                await schedule_webhook_ingest_retry(
-                    delay_seconds=delay,
-                    source=source,
-                    raw_headers=raw_headers,
-                    raw_body=raw_body,
-                    client_ip=client_ip,
-                    request_id=request_id,
-                    received_at=received_at,
-                    ingest_retry_count=next_retry_count,
-                )
+            await schedule_webhook_ingest_retry(
+                delay_seconds=delay,
+                source=source,
+                raw_headers=raw_headers,
+                raw_body=raw_body,
+                client_ip=client_ip,
+                request_id=request_id,
+                received_at=received_at,
+                ingest_retry_count=next_retry_count,
+                traceparent=traceparent,
+            )
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
             logger.error(
                 "[Tasks] raw webhook 处理失败，已调度重试 request_id=%s source=%s retry=%s/%s delay=%ss error=%s",
@@ -597,26 +583,4 @@ async def scheduled_forward_outbox_scan() -> None:
 async def scheduled_data_maintenance() -> None:
     from services.operations.data_maintenance import cleanup_old_data_by_policy
 
-    async with _scheduled_task_leader("data_maintenance", 86400) as is_leader:
-        if not is_leader:
-            logger.debug("[ScheduledTask] 跳过重复调度 name=data_maintenance")
-            return
-        await _run_data_maintenance_locked(cleanup_old_data_by_policy())
-
-
-async def _run_data_maintenance_locked(fn: Awaitable[object]) -> None:
-    start = time.time()
-    status = "success"
-    with otel_span("scheduler.run", {"scheduler.task.name": "data_maintenance"}) as scheduler_span:
-        try:
-            await fn
-            SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name="data_maintenance").set(time.time())
-            SCHEDULED_TASK_LAG_SECONDS.labels(name="data_maintenance").set(0.0)
-        except Exception:
-            status = "error"
-            raise
-        finally:
-            if scheduler_span is not None:
-                scheduler_span.set_attribute("scheduler.task.status", status)
-            SCHEDULED_TASK_RUNS_TOTAL.labels(name="data_maintenance", status=status).inc()
-            SCHEDULED_TASK_DURATION_SECONDS.labels(name="data_maintenance").observe(time.time() - start)
+    await _run_scheduled("data_maintenance", 86400, cleanup_old_data_by_policy())

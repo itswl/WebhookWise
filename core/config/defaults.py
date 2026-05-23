@@ -106,14 +106,9 @@ class RedisConfig(StaticSettings):
     REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30)
 
 
-class AIConfig(StaticSettings):
-    """OpenAI + AI 分析 + 降噪"""
+class NoiseConfig(StaticSettings):
+    """告警降噪参数"""
 
-    ENABLE_AI_ANALYSIS: bool = Field(default=True)
-    OPENAI_API_KEY: str = Field(default="")
-    OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
-    OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
-    AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
     ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
     NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
     ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
@@ -125,6 +120,16 @@ class AIConfig(StaticSettings):
     NOISE_TIME_WEIGHT: float = Field(default=0.20)
     NOISE_SEVERITY_DOWNGRADE_SCORE: float = Field(default=0.03)
     SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
+
+
+class AIConfig(StaticSettings):
+    """OpenAI + AI 分析"""
+
+    ENABLE_AI_ANALYSIS: bool = Field(default=True)
+    OPENAI_API_KEY: str = Field(default="")
+    OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
+    OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
+    AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
     AI_PAYLOAD_MAX_BYTES: int = Field(default=32768)
     AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
     RULE_HIGH_KEYWORDS: str = Field(default="error,failure,critical,alert,错误,失败,故障")
@@ -246,6 +251,7 @@ class AppConfig(StaticSettings):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     db: DBConfig = Field(default_factory=DBConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     forwarding: ForwardingConfig = Field(default_factory=ForwardingConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
@@ -261,6 +267,7 @@ class AppConfig(StaticSettings):
         "security",
         "db",
         "redis",
+        "noise",
         "ai",
         "forwarding",
         "notifications",

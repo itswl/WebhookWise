@@ -9,7 +9,7 @@ from typing import Any
 
 from core.observability.attributes import normalize_attributes
 from core.observability.exporters import otel_enabled
-from core.observability.metrics import OBSERVABILITY_EVENTS_TOTAL
+from core.observability.metrics import OBSERVABILITY_EVENTS_TOTAL, OBSERVABILITY_SIGNAL_TOTAL
 
 
 def add_span_event(name: str, attributes: Mapping[str, Any] | None = None) -> None:
@@ -41,3 +41,11 @@ def emit_event(
     OBSERVABILITY_EVENTS_TOTAL.labels(name).inc()
     add_span_event(name, normalized)
     logging.getLogger("webhook_service.events").log(severity, body or name, extra=normalized)
+
+
+def record_signal(name: str, state: str, attributes: Mapping[str, Any] | None = None) -> None:
+    attrs = dict(attributes or {})
+    attrs["signal.name"] = name
+    attrs["signal.state"] = state
+    OBSERVABILITY_SIGNAL_TOTAL.labels(name, state).inc()
+    emit_event(f"{name}.{state}", attrs, body=f"{name} signal changed to {state}")

@@ -278,3 +278,6 @@ def set_current_span_error(error: BaseException | str) -> None:
         context = current.get_span_context()
         if context and context.is_valid:
             set_span_error(current, error)
+
+
+otel_span = span
