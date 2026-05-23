@@ -14,15 +14,15 @@ from db.session import session_scope
 from models import WebhookEvent
 from services.dedup import DedupResult, remember_dedup_state
 from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
-from services.webhooks.command_service import SaveWebhookResult, save_webhook_data_in_session
+from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardDecision,
     ForwardingPolicy,
     ForwardRuleSnapshot,
     decide_forwarding,
+    forwarding_policy_from_config,
     normalize_importance,
 )
-from services.webhooks.policies import forwarding_policy_from_config
 from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
@@ -136,18 +136,20 @@ async def finalize_analysis_transaction(
             ):
                 save_res = await save_webhook_data_in_session(
                     session,
-                    data=ctx.req_ctx.parsed_data,
-                    source=ctx.req_ctx.source,
-                    raw_payload=ctx.req_ctx.payload,
-                    headers=ctx.req_ctx.headers,
-                    client_ip=ctx.req_ctx.client_ip,
-                    request_id=ctx.request_id,
-                    ai_analysis=final_analysis,
-                    alert_hash=ctx.alert_hash,
-                    dedup_key=ctx.dedup_key,
-                    is_duplicate=is_dup_for_save,
-                    original_event_id=original_id_for_save,
-                    skip_duplicate_lookup=skip_duplicate_lookup,
+                    input=SaveWebhookInput(
+                        data=ctx.req_ctx.parsed_data,
+                        source=ctx.req_ctx.source,
+                        raw_payload=ctx.req_ctx.payload,
+                        headers=ctx.req_ctx.headers,
+                        client_ip=ctx.req_ctx.client_ip,
+                        request_id=ctx.request_id,
+                        ai_analysis=final_analysis,
+                        alert_hash=ctx.alert_hash,
+                        dedup_key=ctx.dedup_key,
+                        is_duplicate=is_dup_for_save,
+                        original_event_id=original_id_for_save,
+                        skip_duplicate_lookup=skip_duplicate_lookup,
+                    ),
                 )
 
             with otel_span(

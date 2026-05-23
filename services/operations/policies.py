@@ -14,6 +14,7 @@ from typing import Any
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.redis_client import redis_eval_int
+from core.redis_lua import TASK_SLOT_ACQUIRE, TASK_SLOT_RELEASE
 
 logger = get_logger("operations.policies")
 
@@ -73,30 +74,6 @@ class DataMaintenancePolicy:
         )
 
 
-_ACQUIRE_SLOT_LUA = """
-local slot_key = KEYS[1]
-local ttl = tonumber(ARGV[1])
-local max_slots = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
-
-redis.call('ZREMRANGEBYSCORE', slot_key, '-inf', now)
-local current = redis.call('ZCARD', slot_key)
-if current >= max_slots then
-    return 0
-end
-local member = now .. ':' .. tostring(current + 1)
-redis.call('ZADD', slot_key, now + ttl, member)
-redis.call('EXPIRE', slot_key, ttl * 3)
-return 1
-"""
-
-_RELEASE_SLOT_LUA = """
-local slot_key = KEYS[1]
-local member = ARGV[1]
-redis.call('ZREM', slot_key, member)
-return 1
-"""
-
 
 class TaskSlotManager:
     def __init__(self, slot_name: str) -> None:
@@ -114,16 +91,20 @@ class TaskSlotManager:
             return "unlimited"
         try:
             now = int(time_mod.time())
+            ttl = policy.webhook_task_slot_lease_seconds
+            member = f"{now}:{id(self)}"
             result = await redis_eval_int(
-                _ACQUIRE_SLOT_LUA,
+                TASK_SLOT_ACQUIRE,
                 1,
                 self._slot_key,
-                str(policy.webhook_task_slot_lease_seconds),
-                str(policy.max_concurrent_webhook_tasks),
                 str(now),
+                str(policy.max_concurrent_webhook_tasks),
+                str(now + ttl),
+                member,
+                str(ttl * 3),
             )
             if result and result > 0:
-                return f"{now}:{result}"
+                return member
             return None
         except Exception as e:
             logger.warning("[TaskSlotManager] acquire slot=%s failed: %s", self._slot_key, e)
@@ -131,6 +112,6 @@ class TaskSlotManager:
 
     async def release(self, member: str) -> None:
         try:
-            await redis_eval_int(_RELEASE_SLOT_LUA, 1, self._slot_key, member)
+            await redis_eval_int(TASK_SLOT_RELEASE, 1, self._slot_key, member)
         except Exception as e:
             logger.warning("[TaskSlotManager] release slot=%s failed: %s", self._slot_key, e)

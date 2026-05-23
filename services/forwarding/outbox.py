@@ -354,7 +354,7 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
         },
     ) as outbox_span:
         try:
-            result = await _send_outbox_record(record)
+            result = await deliver_outbox_record(record)
         except Exception as e:
             status = "failed"
             set_span_error(outbox_span, e)
@@ -375,10 +375,6 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
             outbox_span.set_attribute("forward.status", status)
     FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
-
-
-async def _send_outbox_record(record: ForwardOutbox) -> ForwardResult:
-    return await deliver_outbox_record(record)
 
 
 async def requeue_forward_outbox(outbox_id: int) -> bool:

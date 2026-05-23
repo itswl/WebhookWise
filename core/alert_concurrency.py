@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
@@ -46,49 +45,6 @@ class _QueueSlotReservation:
     queue_size: int = 0
     suppressed: bool = False
     reason: str = ""
-
-
-@dataclass(slots=True)
-class _LockRef:
-    lock: asyncio.Lock
-    users: int = 0
-
-
-_lock_refs: dict[str, _LockRef] = {}
-_lock_refs_guard = asyncio.Lock()
-
-
-async def _get_lock_ref(alert_hash: str) -> _LockRef:
-    async with _lock_refs_guard:
-        ref = _lock_refs.get(alert_hash)
-        if ref is None:
-            ref = _LockRef(asyncio.Lock())
-            _lock_refs[alert_hash] = ref
-        ref.users += 1
-        return ref
-
-
-async def _release_lock_ref(alert_hash: str, ref: _LockRef) -> None:
-    async with _lock_refs_guard:
-        ref.users -= 1
-        if ref.users <= 0 and _lock_refs.get(alert_hash) is ref:
-            _lock_refs.pop(alert_hash, None)
-
-
-@asynccontextmanager
-async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
-    ref: _LockRef | None = None
-    acquired = False
-    try:
-        ref = await _get_lock_ref(alert_hash)
-        await ref.lock.acquire()
-        acquired = True
-        yield
-    finally:
-        if acquired and ref is not None:
-            ref.lock.release()
-        if ref is not None:
-            await _release_lock_ref(alert_hash, ref)
 
 
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
@@ -224,8 +180,7 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
             ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
             refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds))
 
-        async with _local_alert_lock(alert_hash):
-            yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
+        yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
     finally:
         if refresh_task:
             refresh_task.cancel()

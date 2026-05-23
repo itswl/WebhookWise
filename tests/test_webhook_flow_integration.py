@@ -267,7 +267,7 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
     integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from models import WebhookEvent
-    from services.webhooks.command_service import save_webhook_data_in_session
+    from services.webhooks.command_service import SaveWebhookInput, save_webhook_data_in_session
 
     async with integration_session_factory.begin() as session:
         existing = WebhookEvent(
@@ -287,11 +287,13 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
 
         saved = await save_webhook_data_in_session(
             session,
-            data={"alert_name": "checkout-5xx"},
-            source="prometheus",
-            request_id="req-idempotent",
-            ai_analysis={"importance": "low", "summary": "should not overwrite"},
-            alert_hash="same-hash",
+            input=SaveWebhookInput(
+                data={"alert_name": "checkout-5xx"},
+                source="prometheus",
+                request_id="req-idempotent",
+                ai_analysis={"importance": "low", "summary": "should not overwrite"},
+                alert_hash="same-hash",
+            ),
         )
 
     async with integration_session_factory() as session:
@@ -377,7 +379,7 @@ async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
     integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from models import WebhookEvent
-    from services.webhooks.command_service import save_webhook_data_in_session
+    from services.webhooks.command_service import SaveWebhookInput, save_webhook_data_in_session
 
     async with integration_session_factory.begin() as session:
         original = WebhookEvent(
@@ -397,14 +399,16 @@ async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
 
         saved = await save_webhook_data_in_session(
             session,
-            data={"RuleId": "disk"},
-            source="volcengine",
-            request_id="redis-reuse-count-request",
-            ai_analysis={"importance": "high", "summary": "disk still high"},
-            alert_hash="redis-reuse-count-hash",
-            is_duplicate=True,
-            original_event_id=original_id,
-            skip_duplicate_lookup=True,
+            input=SaveWebhookInput(
+                data={"RuleId": "disk"},
+                source="volcengine",
+                request_id="redis-reuse-count-request",
+                ai_analysis={"importance": "high", "summary": "disk still high"},
+                alert_hash="redis-reuse-count-hash",
+                is_duplicate=True,
+                original_event_id=original_id,
+                skip_duplicate_lookup=True,
+            ),
         )
 
     async with integration_session_factory() as session:

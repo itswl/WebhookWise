@@ -286,11 +286,6 @@ WEBHOOK_ANALYSIS_ROUTE_TOTAL = Counter(
     "Webhook analysis route decisions",
     ("webhook.source", "webhook.route"),
 )
-WEBHOOK_NOISE_REDUCED_TOTAL = Counter(
-    "webhook.suppressed",
-    "Number of webhooks evaluated by noise reduction",
-    ("webhook.source", "webhook.relation", "webhook.suppressed"),
-)
 WEBHOOK_NOISE_EVALUATIONS_TOTAL = Counter(
     "webhook.noise.evaluations",
     "Noise-reduction evaluation count",
@@ -397,7 +392,6 @@ __all__ = [
     "WEBHOOK_MQ_STREAM_LENGTH",
     "WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS",
     "WEBHOOK_NOISE_EVALUATIONS_TOTAL",
-    "WEBHOOK_NOISE_REDUCED_TOTAL",
     "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS",
     "WEBHOOK_PIPELINE_STEP_TOTAL",
     "WEBHOOK_PROCESSING_DURATION_SECONDS",

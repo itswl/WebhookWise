@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, Required, TypedDict
 
+from core.app_context import get_config_manager
 from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
 from core.text import split_csv_lower
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
-    NoiseReductionSnapshot,
 )
 
 
@@ -50,18 +50,6 @@ class ForwardRuleSnapshot:
     stop_on_match: bool
     target_name: str = ""
 
-    def to_dict(self) -> ForwardRuleTarget:
-        data: ForwardRuleTarget = {
-            "id": self.id,
-            "name": self.name,
-            "target_type": self.target_type,
-            "target_url": self.target_url,
-            "stop_on_match": self.stop_on_match,
-        }
-        if self.target_name:
-            data["target_name"] = self.target_name
-        return data
-
 
 @dataclass(frozen=True)
 class ForwardingPolicy:
@@ -69,14 +57,7 @@ class ForwardingPolicy:
     enable_periodic_reminder: bool
     reminder_interval_hours: int
     forward_duplicate_alerts: bool
-
-
-@dataclass(frozen=True)
-class _ForwardDecisionState:
-    should_forward: bool = False
-    skip_reason: str | None = None
-    is_periodic_reminder: bool = False
-    suppressed: bool = False
+    default_target_url: str = ""
 
 
 def normalize_importance(value: Any) -> str:
@@ -88,16 +69,7 @@ def normalize_importance(value: Any) -> str:
 
 def build_final_analysis(analysis_result: AnalysisResult, noise: NoiseReductionContext) -> AnalysisResult:
     final_analysis = analysis_result.copy()
-    noise_snapshot: NoiseReductionSnapshot = {
-        "relation": noise.relation,
-        "root_cause_event_id": noise.root_cause_event_id,
-        "confidence": noise.confidence,
-        "suppress_forward": noise.suppress_forward,
-        "reason": noise.reason,
-        "related_alert_count": noise.related_alert_count,
-        "related_alert_ids": noise.related_alert_ids,
-    }
-    final_analysis["noise_reduction"] = noise_snapshot
+    final_analysis["noise_reduction"] = asdict(noise)
     return final_analysis
 
 
@@ -197,18 +169,20 @@ def select_forward_rules(
             parsed_data=parsed_data,
         ):
             continue
-        matched_rules.append(rule.to_dict())
+        target: ForwardRuleTarget = {
+            "id": rule.id,
+            "name": rule.name,
+            "target_type": rule.target_type,
+            "target_url": rule.target_url,
+            "stop_on_match": rule.stop_on_match,
+        }
+        if rule.target_name:
+            target["target_name"] = rule.target_name
+        matched_rules.append(target)
         FORWARD_RULE_MATCH_TOTAL.labels(rule.name, rule.target_type).inc()
         if rule.stop_on_match:
             break
     return matched_rules
-
-
-def _decide_new_alert(*, base_should_forward: bool) -> _ForwardDecisionState:
-    return _ForwardDecisionState(
-        should_forward=base_should_forward,
-        skip_reason=None if base_should_forward else "未匹配转发规则",
-    )
 
 
 def _decide_duplicate_alert(
@@ -216,27 +190,31 @@ def _decide_duplicate_alert(
     base_should_forward: bool,
     seconds_since_notify: float | None,
     policy: ForwardingPolicy,
-) -> _ForwardDecisionState:
+    matched_rules: list[ForwardRuleTarget],
+) -> ForwardDecision:
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
-        return _ForwardDecisionState(suppressed=True, skip_reason="窗口内重复告警，刚刚已转发")
+        return ForwardDecision(False, "窗口内重复告警，刚刚已转发", False)
 
     if (
         policy.enable_periodic_reminder
         and seconds_since_notify is not None
         and seconds_since_notify / 3600 >= policy.reminder_interval_hours
     ):
-        return _ForwardDecisionState(
-            should_forward=base_should_forward,
-            is_periodic_reminder=True,
-            skip_reason=None if base_should_forward else "定期提醒：未匹配转发规则",
+        return ForwardDecision(
+            base_should_forward,
+            None if base_should_forward else "定期提醒：未匹配转发规则",
+            True,
+            matched_rules=matched_rules,
         )
 
     if not policy.forward_duplicate_alerts:
-        return _ForwardDecisionState(suppressed=True, skip_reason="窗口内重复告警，配置跳过转发")
+        return ForwardDecision(False, "窗口内重复告警，配置跳过转发", False)
 
-    return _ForwardDecisionState(
-        should_forward=base_should_forward,
-        skip_reason=None if base_should_forward else "窗口内重复告警，未匹配转发规则",
+    return ForwardDecision(
+        base_should_forward,
+        None if base_should_forward else "窗口内重复告警，未匹配转发规则",
+        False,
+        matched_rules=matched_rules,
     )
 
 
@@ -267,22 +245,30 @@ def decide_forwarding(
     current_time = now or datetime.now()
     base_should_fwd = bool(matched_rules)
 
-    last_notified_at = original_event.last_notified_at if original_event else None
-    seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
-
     if is_duplicate:
-        state = _decide_duplicate_alert(
+        last_notified_at = original_event.last_notified_at if original_event else None
+        seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
+        return _decide_duplicate_alert(
             base_should_forward=base_should_fwd,
             seconds_since_notify=seconds_since_notify,
             policy=policy,
+            matched_rules=matched_rules,
         )
-    else:
-        state = _decide_new_alert(base_should_forward=base_should_fwd)
 
-    final_forward = False if state.suppressed else state.should_forward
     return ForwardDecision(
-        should_forward=final_forward,
-        skip_reason=state.skip_reason if not final_forward else None,
-        is_periodic_reminder=state.is_periodic_reminder,
-        matched_rules=matched_rules if not state.suppressed else [],
+        base_should_fwd,
+        None if base_should_fwd else "未匹配转发规则",
+        False,
+        matched_rules=matched_rules,
+    )
+
+
+def forwarding_policy_from_config(config: Any | None = None) -> ForwardingPolicy:
+    config = config or get_config_manager()
+    return ForwardingPolicy(
+        notification_cooldown_seconds=config.retry.NOTIFICATION_COOLDOWN_SECONDS,
+        enable_periodic_reminder=config.retry.ENABLE_PERIODIC_REMINDER,
+        reminder_interval_hours=config.retry.REMINDER_INTERVAL_HOURS,
+        forward_duplicate_alerts=config.retry.FORWARD_DUPLICATE_ALERTS,
+        default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
     )

@@ -7,7 +7,7 @@ async def test_raw_ingest_failure_schedules_retry(monkeypatch: pytest.MonkeyPatc
     import services.operations.taskiq_retry_scheduler as scheduler
     import services.operations.tasks as tasks
     import services.webhooks.ingest_failure as ingest_failure
-    from services.webhooks.policies import WebhookFailurePolicy
+    from services.webhooks.policies import WebhookReceivePolicy
 
     calls: dict[str, object] = {}
 
@@ -20,9 +20,9 @@ async def test_raw_ingest_failure_schedules_retry(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(scheduler, "schedule_webhook_ingest_retry", fake_schedule)
     monkeypatch.setattr(ingest_failure, "record_raw_ingest_dead_letter", fail_dead_letter)
     monkeypatch.setattr(
-        WebhookFailurePolicy,
+        WebhookReceivePolicy,
         "from_config",
-        classmethod(lambda cls: cls(max_retries=5, initial_delay=30, max_delay=900, backoff_multiplier=2.0)),
+        classmethod(lambda cls: cls(max_body_bytes=0, ingress_backpressure_threshold=0, ingress_backpressure_window_seconds=60, max_retries=5, initial_delay=30, max_delay=900, backoff_multiplier=2.0)),
     )
 
     await tasks._handle_raw_webhook_failure(

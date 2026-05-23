@@ -2,25 +2,10 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 if TYPE_CHECKING:
     from models import WebhookEvent
-
-
-JsonScalar: TypeAlias = str | int | float | bool | None
-JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-JsonObject: TypeAlias = dict[str, JsonValue]
-
-
-class NoiseReductionSnapshot(TypedDict):
-    relation: str
-    root_cause_event_id: int | None
-    confidence: float
-    suppress_forward: bool
-    reason: str
-    related_alert_count: int
-    related_alert_ids: list[int]
 
 
 class AnalysisResult(TypedDict, total=False):
@@ -35,7 +20,7 @@ class AnalysisResult(TypedDict, total=False):
     actions: list[str]
     risks: list[str]
     monitoring_suggestions: list[str]
-    noise_reduction: NoiseReductionSnapshot
+    noise_reduction: dict[str, Any]
     _route_type: Literal["ai", "cache", "rule", "redis_reuse", "db_reuse"]
     _degraded: bool
     _degraded_reason: str
@@ -93,17 +78,6 @@ class DeepAnalysisStatus(StrEnum):
     TIMEOUT = "timeout"
     DEGRADED = "degraded"
     ERROR = "error"
-
-
-@dataclass(frozen=True)
-class AnalysisResolution:
-    analysis_result: AnalysisResult
-    reanalyzed: bool
-    is_duplicate: bool
-    original_event: "WebhookEvent | None"
-    beyond_window: bool
-    is_reused: bool = False  # True 表示从 Redis 缓存复用其他 Worker 的分析结果
-    original_event_id: int | None = None
 
 
 @dataclass(frozen=True)

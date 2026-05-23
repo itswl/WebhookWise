@@ -58,14 +58,17 @@ async def test_deep_analysis_prompt_uses_shared_loader(tmp_path: Path) -> None:
         get_prompt_source,
         reload_deep_analysis_prompt_template,
     )
-    from services.analysis.analysis_policies import DeepAnalysisPromptPolicy
+    from services.analysis.analysis_policies import PromptPolicy
 
     prompt_file = tmp_path / "deep_analysis_prompt.txt"
     prompt_file.write_text("managed deep analysis prompt", encoding="utf-8")
 
     try:
         template = await reload_deep_analysis_prompt_template(
-            DeepAnalysisPromptPolicy(inline_prompt="", prompt_file=str(prompt_file))
+            PromptPolicy(
+                inline_prompt="", prompt_file=str(prompt_file),
+                builtin_prompt="", inline_source="", builtin_source="",
+            )
         )
 
         assert template == "managed deep analysis prompt"
