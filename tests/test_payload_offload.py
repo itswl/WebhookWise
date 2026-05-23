@@ -13,7 +13,7 @@ async def test_sanitize_for_ai_async_offloads_large_payload(monkeypatch):
 
     monkeypatch.setattr(payload_sanitizer.asyncio, "to_thread", fake_to_thread)
 
-    threshold = payload_sanitizer._get_offload_threshold_bytes()
+    threshold = payload_sanitizer.PayloadPolicy.from_config().offload_threshold_bytes
     big = {"raw": "x" * threshold}
     out = await payload_sanitizer.sanitize_for_ai_async(big)
     assert out
@@ -50,7 +50,7 @@ async def test_sanitize_for_ai_async_offloads_deep_nested_large_string(monkeypat
 
     monkeypatch.setattr(payload_sanitizer.asyncio, "to_thread", fake_to_thread)
 
-    threshold = payload_sanitizer._get_offload_threshold_bytes()
+    threshold = payload_sanitizer.PayloadPolicy.from_config().offload_threshold_bytes
     nested = {"event": "pod_crash", "detail": {"raw_log": "x" * threshold}}
     out = await payload_sanitizer.sanitize_for_ai_async(nested)
     assert out

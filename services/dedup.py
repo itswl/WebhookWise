@@ -1,6 +1,5 @@
 """Webhook deduplication — Redis-first sliding window with DB fallback."""
 
-import asyncio
 import contextlib
 import hashlib
 import time
@@ -166,29 +165,6 @@ def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
     return not analysis.get("_degraded") and not analysis.get("_pending")
 
 
-_PENDING_POLL_INTERVAL_S = 0.2
-_PENDING_MAX_WAIT_S = 8.0
-
-
-async def _poll_pending_state(dedup_key: str, window_seconds: int, deadline: float) -> DedupResult | None:
-    while time.time() < deadline:
-        await asyncio.sleep(_PENDING_POLL_INTERVAL_S)
-        state = await get_dedup_state(dedup_key)
-        if state and state.is_active(time.time(), window_seconds) and _has_reusable_analysis(state.analysis):
-            logger.debug(
-                "[Dedup] 轮询等待完成 dedup_key=%s orig_id=%s",
-                dedup_key[:32] if dedup_key else "-",
-                state.original_event_id,
-            )
-            return DedupResult(
-                action=DedupAction.REUSE,
-                analysis=state.analysis,
-                original_event_id=state.original_event_id,
-                route_type="redis_reuse",
-            )
-    return None
-
-
 async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> dict[str, Any] | None:
     from datetime import datetime, timedelta
 
@@ -235,16 +211,6 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
                 original_event_id=state.original_event_id,
                 route_type="redis_reuse",
             )
-
-        if state.is_pending:
-            deadline = time.time() + _PENDING_MAX_WAIT_S
-            logger.debug(
-                "[Dedup] 发现进行中的去重状态，轮询等待 dedup_key=%s",
-                dedup_key[:32] if dedup_key else "-",
-            )
-            poll_result = await _poll_pending_state(dedup_key, window_seconds, deadline)
-            if poll_result:
-                return poll_result
 
     db_result = await _find_original_by_dedup_key(dedup_key, window_seconds)
     if db_result:

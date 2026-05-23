@@ -29,9 +29,8 @@ logger = get_logger("circuit_breaker")
 
 
 class CircuitState(Enum):
-    CLOSED = "closed"  # 正常，允许请求通过
-    OPEN = "open"  # 熔断，拒绝所有请求
-    HALF_OPEN = "half_open"  # 半开，允许试探请求
+    CLOSED = "closed"
+    OPEN = "open"
 
 
 class CircuitBreakerOpenException(RuntimeError):
@@ -164,10 +163,6 @@ class CircuitBreaker:
             result = await func(*args, **kwargs)
             CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "success").inc()
             await self._record_success()
-            if current_state == CircuitState.HALF_OPEN:
-                CIRCUIT_BREAKER_TRANSITIONS_TOTAL.labels(self.name, CircuitState.CLOSED.value).inc()
-                self._record_state_metric(CircuitState.CLOSED)
-                record_signal("circuit_breaker", "closed", {"circuit_breaker.name": self.name})
             return result
         except self.expected_exceptions as e:
             CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "failure").inc()

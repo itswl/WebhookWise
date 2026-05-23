@@ -108,7 +108,7 @@ async def test_sliding_window_rate_limit_lua_rejects_after_limit(real_redis: red
     assert await real_redis.eval(SLIDING_WINDOW_RATE_LIMIT, 1, prefix, 60, 2, now + 2) == -1
 
 
-async def test_circuit_breaker_lua_transitions_open_half_open_closed(real_redis: redis.Redis) -> None:
+async def test_circuit_breaker_lua_transitions_open_closed(real_redis: redis.Redis) -> None:
     from core.redis_lua import (
         CIRCUIT_BREAKER_CHECK_STATE,
         CIRCUIT_BREAKER_RECORD_FAILURE,
@@ -148,8 +148,11 @@ async def test_circuit_breaker_lua_transitions_open_half_open_closed(real_redis:
         == 1
     )
     assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "1000") == "open"
-    assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "2000") == "half_open"
+    # timeout 后直接恢复为 closed（已去掉 HALF_OPEN 状态）
+    assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "2000") == "closed"
 
+    # record_success 在 closed 状态下是 no-op，但 state_key 已被 check_state 置为 closed
+    await real_redis.set(state_key, "open")
     assert await real_redis.eval(CIRCUIT_BREAKER_RECORD_SUCCESS, 3, failures_key, state_key, open_until_key) == 0
     assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "2001") == "closed"
     assert await real_redis.exists(failures_key) == 0

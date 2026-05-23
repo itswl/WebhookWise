@@ -29,7 +29,7 @@ def _trust_local_proxy(monkeypatch, temp_config):
 
 
 def test_get_client_ip_from_x_forwarded_for(monkeypatch, temp_config):
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     _trust_local_proxy(monkeypatch, temp_config)
     req = _make_request({"x-forwarded-for": "1.2.3.4, 10.0.0.1"})
@@ -37,7 +37,7 @@ def test_get_client_ip_from_x_forwarded_for(monkeypatch, temp_config):
 
 
 def test_get_client_ip_strips_whitespace(monkeypatch, temp_config):
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     _trust_local_proxy(monkeypatch, temp_config)
     req = _make_request({"x-forwarded-for": "  5.6.7.8 , 192.168.1.1"})
@@ -45,7 +45,7 @@ def test_get_client_ip_strips_whitespace(monkeypatch, temp_config):
 
 
 def test_get_client_ip_from_x_real_ip(monkeypatch, temp_config):
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     _trust_local_proxy(monkeypatch, temp_config)
     req = _make_request({"x-real-ip": "9.10.11.12"})
@@ -53,7 +53,7 @@ def test_get_client_ip_from_x_real_ip(monkeypatch, temp_config):
 
 
 def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip(monkeypatch, temp_config):
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     _trust_local_proxy(monkeypatch, temp_config)
     req = _make_request({"x-forwarded-for": "1.1.1.1", "x-real-ip": "2.2.2.2"})
@@ -61,7 +61,7 @@ def test_get_client_ip_prefers_x_forwarded_for_over_x_real_ip(monkeypatch, temp_
 
 
 def test_get_client_ip_ignores_proxy_headers_from_untrusted_peer(monkeypatch, temp_config):
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     monkeypatch.setattr(temp_config.security, "TRUST_PROXY_HEADERS", True)
     monkeypatch.setattr(temp_config.security, "TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
@@ -70,14 +70,14 @@ def test_get_client_ip_ignores_proxy_headers_from_untrusted_peer(monkeypatch, te
 
 
 def test_get_client_ip_falls_back_to_client_host():
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     req = _make_request({}, client_host="192.168.0.5")
     assert get_client_ip(req) == "192.168.0.5"
 
 
 def test_get_client_ip_no_client_returns_unknown():
-    from services.webhooks.command_service import get_client_ip
+    from core.request_ip import get_client_ip
 
     req = MagicMock()
     req.headers = {}

@@ -11,7 +11,6 @@ import ipaddress
 import socket
 import time
 from dataclasses import dataclass
-from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from core.app_context import get_config_manager
@@ -38,11 +37,11 @@ class OutboundURLPolicy:
     target_allowlist: tuple[str, ...]
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> OutboundURLPolicy:
-        config = (config or get_config_manager()).security
+    def from_config(cls) -> OutboundURLPolicy:
+        cfg = get_config_manager().security
         return cls(
-            allow_private_target_urls=bool(config.ALLOW_PRIVATE_TARGET_URLS),
-            target_allowlist=tuple(split_csv_lower(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
+            allow_private_target_urls=bool(cfg.ALLOW_PRIVATE_TARGET_URLS),
+            target_allowlist=tuple(split_csv_lower(str(cfg.FORWARD_TARGET_ALLOWLIST or ""))),
         )
 
 

@@ -30,94 +30,30 @@ async def forward_to_remote(
     policy: ForwardDeliveryPolicy | None = None,
     dependencies: RemoteForwardDependencies | None = None,
 ) -> ForwardResult:
-    """转发分析结果到远程 Webhook URL。"""
-    started = time.perf_counter()
-    status = "unknown"
-    target_type = "unknown"
-    policy = policy or ForwardDeliveryPolicy.from_config()
-    dependencies = dependencies or build_remote_forward_dependencies()
-    if http_client is not None:
-        dependencies = RemoteForwardDependencies(
-            http_client=http_client,
-            circuit_breaker=dependencies.circuit_breaker,
-            validate_url=dependencies.validate_url,
-        )
+    """转发分析结果到远程 Webhook URL — 构建 payload 后委托给 post_json_to_remote。"""
+    from services.channels.feishu import build_feishu_card, is_feishu_url
+
     if not target_url:
-        logger.info("[Forward] 无转发 URL，跳过")
-        status = "skipped"
-        _record_delivery(target_type, status, started)
         return {"status": "skipped", "reason": "no_target_url"}
-    url = target_url
-    try:
-        url = await dependencies.validate_url(url)
-    except UnsafeTargetUrlError as e:
-        logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
-        status = "invalid_target"
-        _record_delivery(target_type, status, started)
-        return {"status": "invalid_target", "message": str(e)}
-
-    from services.channels.base import FormatContext, resolve_channel
-
-    channel = resolve_channel("", url)
-    target_type = channel.name
-    payload = channel.format(
-        FormatContext(
-            webhook_data=webhook_data,
-            analysis_result=analysis_result,
-            is_periodic_reminder=is_periodic_reminder,
-        )
-    )
-
-    async def _do_post() -> httpx.Response:
-        final_url = await dependencies.validate_url(url)
-        logger.info(
-            "[Forward] 开始转发 target=%s target_type=%s periodic=%s",
-            mask_url(final_url),
-            target_type,
-            is_periodic_reminder,
-        )
-        resp = cast(
-            httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)
-        )
-        resp.raise_for_status()
-        return resp
-
-    response: httpx.Response | None = None
-    try:
-        response = await dependencies.circuit_breaker.call_async(_do_post)
-        resp_payload: dict[str, Any] = {}
-        if response.content:
-            try:
-                raw_json = response.json()
-                resp_payload = raw_json if isinstance(raw_json, dict) else {"_raw": raw_json}
-            except ValueError:
-                resp_payload = {"_raw": response.text[:1000]}
-        status = "success"
-        return {
-            "status": "success",
-            "status_code": response.status_code,
-            "response": resp_payload,
+    target_type = "feishu" if is_feishu_url(target_url) else "webhook"
+    payload: dict[str, Any]
+    if target_type == "feishu":
+        payload = build_feishu_card(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
+    else:
+        payload = {
+            "webhook": webhook_data,
+            "analysis": analysis_result,
+            "is_periodic_reminder": is_periodic_reminder,
         }
-    except UnsafeTargetUrlError as e:
-        logger.warning("[Forward] 目标 URL 发送前安全校验失败 target=%s error=%s", mask_url(url), e)
-        status = "invalid_target"
-        return {"status": "invalid_target", "message": str(e)}
-    except CircuitBreakerOpenException:
-        logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
-        status = "circuit_broken"
-        return {"status": "circuit_broken", "message": "熔断器已开启"}
-    except Exception as e:
-        logger.error("[Forward] 转发失败 target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
-        status = "failed"
-        return {"status": "failed", "message": str(e)}
-    finally:
-        _record_delivery(target_type, status, started)
-        if response is not None:
-            logger.info(
-                "[Forward] 转发完成 target=%s status_code=%s",
-                mask_url(url),
-                response.status_code,
-            )
+    return await post_json_to_remote(
+        target_url,
+        payload,
+        http_client=http_client,
+        policy=policy,
+        validate_target=True,
+        dependencies=dependencies,
+        target_type_label=target_type,
+    )
 
 
 async def post_json_to_remote(
@@ -131,8 +67,6 @@ async def post_json_to_remote(
     target_type_label: str = "raw_json",
 ) -> ForwardResult:
     """Post an already-built JSON payload to a remote webhook target."""
-    from services.forwarding.circuit_breakers import get_forward_breaker
-
     started = time.perf_counter()
     status = "unknown"
     policy = policy or ForwardDeliveryPolicy.from_config()
@@ -141,12 +75,6 @@ async def post_json_to_remote(
         dependencies = RemoteForwardDependencies(
             http_client=http_client,
             circuit_breaker=dependencies.circuit_breaker,
-            validate_url=dependencies.validate_url,
-        )
-    if target_url:
-        dependencies = RemoteForwardDependencies(
-            http_client=dependencies.http_client,
-            circuit_breaker=get_forward_breaker(target_url),
             validate_url=dependencies.validate_url,
         )
     url = target_url

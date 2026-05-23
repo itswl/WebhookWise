@@ -102,25 +102,16 @@ async def enforce_webhook_rate_limit(
     now = time.time()
     tightest: _TierResult | None = None
 
+    tiers: list[tuple[str, int, int]] = []
     if burst > 0:
-        prefix = rate_limit_burst(client_ip)
-        res = await _check_tier(prefix, _BURST_WINDOW_SECONDS, burst, now)
-        if not res.allowed:
-            return client_ip, res
-        if tightest is None or res.remaining < tightest.remaining:
-            tightest = res
-
+        tiers.append((rate_limit_burst(client_ip), _BURST_WINDOW_SECONDS, burst))
     if per_minute > 0:
-        prefix = rate_limit_sustained(client_ip)
-        res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, per_minute, now)
-        if not res.allowed:
-            return client_ip, res
-        if tightest is None or res.remaining < tightest.remaining:
-            tightest = res
-
+        tiers.append((rate_limit_sustained(client_ip), _SUSTAINED_WINDOW_SECONDS, per_minute))
     if global_per_minute > 0:
-        prefix = rate_limit_global()
-        res = await _check_tier(prefix, _SUSTAINED_WINDOW_SECONDS, global_per_minute, now)
+        tiers.append((rate_limit_global(), _SUSTAINED_WINDOW_SECONDS, global_per_minute))
+
+    for prefix, window, limit in tiers:
+        res = await _check_tier(prefix, window, limit, now)
         if not res.allowed:
             return client_ip, res
         if tightest is None or res.remaining < tightest.remaining:
@@ -188,22 +179,16 @@ async def check_rate_limit_dep(
 ) -> None:
     """FastAPI Depends：检查速率限制（滑动窗口，三级限流）"""
     try:
-        sec = config.security
-        if (
-            sec.WEBHOOK_RATE_LIMIT_PER_MINUTE > 0
-            or sec.WEBHOOK_RATE_LIMIT_BURST > 0
-            or sec.WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE > 0
-        ):
-            from core.redis_health import ensure_redis_available
+        from core.redis_health import ensure_redis_available
 
-            if not await ensure_redis_available("webhook_security:rate_limit"):
-                if sec.RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR:
-                    REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "allowed").inc()
-                    SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_allowed").inc()
-                    return
-                REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "rejected").inc()
-                SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_rejected").inc()
-                raise HTTPException(status_code=503, detail="Rate limit backend unavailable")
+        if not await ensure_redis_available("webhook_security:rate_limit"):
+            if config.security.RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR:
+                REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "allowed").inc()
+                SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_allowed").inc()
+                return
+            REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "rejected").inc()
+            SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_rejected").inc()
+            raise HTTPException(status_code=503, detail="Rate limit backend unavailable")
 
         limited_ip, tier = await enforce_webhook_rate_limit(request, security_config=config.security)
         if tier:

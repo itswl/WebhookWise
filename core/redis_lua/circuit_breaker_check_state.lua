@@ -5,8 +5,9 @@ end
 if state == "open" then
     local open_until = redis.call("get", KEYS[2])
     if open_until and tonumber(ARGV[1]) >= tonumber(open_until) then
-        redis.call("set", KEYS[1], "half_open")
-        return "half_open"
+        redis.call("set", KEYS[1], "closed")
+        redis.call("del", KEYS[2])
+        return "closed"
     end
 end
 return state
