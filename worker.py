@@ -31,7 +31,6 @@ async def startup() -> None:
 async def shutdown() -> None:
     """清理工作进程环境"""
     logger.info("[Worker] 正在关闭工作进程...")
-    get_or_create_default_app_context()
     await broker.shutdown()
     logger.info("[Worker] 关闭完成。")
     stop_log_listener()

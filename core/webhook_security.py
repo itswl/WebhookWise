@@ -13,7 +13,7 @@ from api import InvalidSignatureError
 from core.config import SecurityConfig, UnifiedConfigManager
 from core.app_context import get_config_manager
 from core.logger import get_logger
-from core.observability.metrics import SECURITY_CHECKS_TOTAL
+from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
 from core.redis_health import rate_limit_burst, rate_limit_global, rate_limit_sustained
 from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
@@ -163,6 +163,7 @@ async def verify_webhook_auth_dep(
 
     # 2. 读取 body 并验证签名
     raw_body = await request.body()
+    request.state.raw_body = raw_body
     headers: dict[str, str] = dict(request.headers)
     try:
         ensure_webhook_auth(headers, raw_body, secret=config.security.WEBHOOK_SECRET)
@@ -187,6 +188,23 @@ async def check_rate_limit_dep(
 ) -> None:
     """FastAPI Depends：检查速率限制（滑动窗口，三级限流）"""
     try:
+        sec = config.security
+        if (
+            sec.WEBHOOK_RATE_LIMIT_PER_MINUTE > 0
+            or sec.WEBHOOK_RATE_LIMIT_BURST > 0
+            or sec.WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE > 0
+        ):
+            from core.redis_health import ensure_redis_available
+
+            if not await ensure_redis_available("webhook_security:rate_limit"):
+                if sec.RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR:
+                    REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "allowed").inc()
+                    SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_allowed").inc()
+                    return
+                REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "rejected").inc()
+                SECURITY_CHECKS_TOTAL.labels("rate_limit", "redis_unavailable_rejected").inc()
+                raise HTTPException(status_code=503, detail="Rate limit backend unavailable")
+
         limited_ip, tier = await enforce_webhook_rate_limit(request, security_config=config.security)
         if tier:
             response.headers["X-RateLimit-Limit"] = str(tier.limit)
@@ -205,5 +223,14 @@ async def check_rate_limit_dep(
     except HTTPException:
         raise
     except Exception as e:
+        from core.redis_health import mark_redis_failure
+
+        mark_redis_failure("webhook_security:rate_limit", e)
         logger.error("限流检查异常（降级放行）: %s", e, exc_info=True)
-        SECURITY_CHECKS_TOTAL.labels("rate_limit", "error_allowed").inc()
+        if config.security.RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR:
+            REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "allowed").inc()
+            SECURITY_CHECKS_TOTAL.labels("rate_limit", "error_allowed").inc()
+            return
+        REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "rejected").inc()
+        SECURITY_CHECKS_TOTAL.labels("rate_limit", "error_rejected").inc()
+        raise HTTPException(status_code=503, detail="Rate limit backend unavailable") from None

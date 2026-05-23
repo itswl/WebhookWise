@@ -108,5 +108,13 @@ class AdapterRegistry:
 
         self._discovered = True
 
+    def status(self) -> dict[str, int | bool]:
+        return {
+            "discovered": self._discovered,
+            "detectors": len(self._detectors),
+            "normalizers": len(self._normalizers),
+            "aliases": len(self._aliases),
+        }
+
 
 registry = AdapterRegistry()

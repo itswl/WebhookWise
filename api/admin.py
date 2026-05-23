@@ -10,9 +10,15 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import fail_response, ok_response
+from adapters.registry import registry as adapter_registry
+from core.app_context import get_default_config
 from core.auth import verify_admin_write
 from core.logger import get_logger
+from core.redis_health import get_redis_health_snapshot
+from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
 from db.session import get_db_session
+from db.engine import test_db_connection
+from core.redis_client import redis_ping
 from models import WebhookEvent
 from schemas import (
     ConfigResponse,
@@ -69,6 +75,62 @@ async def get_config() -> JSONResponse:
     except Exception as e:
         logger.error("获取配置失败: %s", e)
         return fail_response(str(e), 500)
+
+
+@admin_router.get("/api/health/deep")
+async def deep_health_check() -> JSONResponse:
+    config = get_default_config()
+    db_ok = await test_db_connection()
+    redis_ok = await redis_ping()
+    redis_snapshot = get_redis_health_snapshot()
+    queue_stream = config.mq.WEBHOOK_MQ_QUEUE
+    queue_group = config.mq.WEBHOOK_MQ_CONSUMER_GROUP
+
+    queue_depth: int | None = None
+    queue_pending: int | None = None
+    queue_lag: int | None = None
+    queue_ok = False
+    try:
+        queue_depth = await redis_xlen(queue_stream)
+        queue_pending = await redis_xpending_pending(queue_stream, queue_group)
+        queue_lag = await redis_xinfo_group_lag(queue_stream, queue_group)
+        queue_ok = True
+    except Exception as e:
+        logger.warning("[HealthDeep] 读取队列状态失败: %s", e)
+
+    adapter_status = adapter_registry.status()
+
+    ai_configured = bool(config.ai.OPENAI_API_KEY)
+    deep_ok = db_ok and redis_ok and queue_ok
+    return ok_response(
+        http_status=200 if deep_ok else 503,
+        data={
+            "status": "ok" if deep_ok else "degraded",
+            "database": {"ok": db_ok},
+            "redis": {
+                "ok": redis_ok,
+                "health": {
+                    "state": redis_snapshot.state.value,
+                    "consecutive_failures": redis_snapshot.consecutive_failures,
+                    "last_success_at": redis_snapshot.last_success_at,
+                    "last_failure_at": redis_snapshot.last_failure_at,
+                    "last_error": redis_snapshot.last_error,
+                    "last_operation": redis_snapshot.last_operation,
+                },
+            },
+            "queue": {
+                "ok": queue_ok,
+                "stream": queue_stream,
+                "group": queue_group,
+                "depth": queue_depth,
+                "pending": queue_pending,
+                "lag": queue_lag,
+            },
+            "adapters": adapter_status,
+            "ai": {"enabled": bool(config.ai.ENABLE_AI_ANALYSIS), "configured": ai_configured},
+            "openclaw": {"enabled": bool(config.openclaw.OPENCLAW_ENABLED), "configured": bool(config.openclaw.OPENCLAW_GATEWAY_TOKEN)},
+        },
+    )
 
 
 @admin_router.get("/api/config/sources", response_model=ConfigSourcesResponse)

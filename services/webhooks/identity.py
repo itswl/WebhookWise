@@ -18,7 +18,10 @@ def generate_alert_hash(data: dict[str, Any], source: str) -> str:
         key_fields: dict[str, object] = dict(identity)
         key_fields.setdefault("source", source.strip().lower())
     else:
-        logger.warning("缺少 adapter 产出的告警 identity，使用完整 payload hash 兜底 source=%s", source)
+        from core.observability.metrics import WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
+
+        WEBHOOK_IDENTITY_DEGRADED_TOTAL.labels(sanitize_source(source)).inc()
+        logger.debug("缺少 adapter 产出的告警 identity，使用完整 payload hash 兜底 source=%s", source)
         key_fields = {"source": source.strip().lower(), "payload": data}
 
     return hashlib.sha256(json.dumps_bytes(key_fields, sort_keys=True)).hexdigest()

@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 from dataclasses import dataclass
 
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqScheduler
@@ -34,6 +36,7 @@ class TaskiqBrokerSettings:
     run_mode: str
     log_level: str
     third_party_log_level: str
+    worker_startup_jitter_seconds: float
 
 
 def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
@@ -54,6 +57,7 @@ def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
         run_mode=settings.server.RUN_MODE,
         log_level=settings.server.LOG_LEVEL,
         third_party_log_level=settings.server.THIRD_PARTY_LOG_LEVEL,
+        worker_startup_jitter_seconds=float(settings.tasks.WORKER_STARTUP_JITTER_SECONDS or 0.0),
     )
 
 
@@ -118,6 +122,9 @@ async def worker_startup_event(state: object) -> None:
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
     from core.service_lifecycle import start_runtime_services
+
+    if _settings.worker_startup_jitter_seconds > 0:
+        await asyncio.sleep(random.uniform(0.0, _settings.worker_startup_jitter_seconds))
 
     context = get_or_create_default_app_context()
     await start_runtime_services(

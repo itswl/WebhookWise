@@ -4,18 +4,18 @@
 
 ---
 
-## 1. Worker 进程适配器未初始化（Bug）
+## 1. Worker 进程适配器初始化（已修复）
 
-### 现象
+### 现象（历史问题）
 
 `entrypoint.sh` 中 worker 模式启动：
 ```bash
 taskiq worker services.operations.taskiq_wiring:broker
 ```
 
-TaskIQ 导入 `taskiq_wiring.py`，触发 `_tasks` 模块导入，间接拉起了 `pipeline.py → request_parser.py → ecosystem_adapters.py` 的导入链。但 `initialize_adapters()` —— 实际调用 `register_simple_adapters()` 和 `registry.auto_discover()` 的函数 —— **只在 API 进程的 lifespan 中调用**（`start_runtime_services()`），Worker 进程不会调用它。
+历史上确实存在“API 进程会初始化 adapters，而 Worker 进程不会”的风险路径：Worker 仅导入任务模块但不触发 `initialize_adapters()`。
 
-### 影响
+### 影响（若发生）
 
 Worker 处理 webhook 时，`normalize_webhook_event()` 找不到任何适配器，所有 payload 进入 passthrough 路径——没有 `_alert_identity`。导致：
 
@@ -24,23 +24,21 @@ Worker 处理 webhook 时，`normalize_webhook_event()` 找不到任何适配器
 - AI 分析每次都被触发，缓存复用率为零
 - AI 成本飙升，但运维从 metrics 中看不到任何异常（降级没有暴露为指标）
 
-### 修复
+### 当前状态（已修复）
 
-`worker.py` 的 `startup()` 或 `taskiq_wiring.py` 中加一行：
-
-```python
-# worker.py startup()
-from adapters.ecosystem_adapters import initialize_adapters
-initialize_adapters()
-```
-
-或者更彻底：在 `taskiq_wiring.py` 中直接调用（因为这个模块无论如何都会被 worker 进程导入）：
+当前 Worker 进程通过 TaskIQ lifecycle event 做 runtime 初始化：在 `core/taskiq_broker.py` 的 `WORKER_STARTUP` 事件中调用 `start_runtime_services(...)`，默认会执行 `initialize_adapters()`，因此 TaskIQ CLI 启动 Worker 时不会再出现“无适配器”的情况。
 
 ```python
-# services/operations/taskiq_wiring.py
-from adapters.ecosystem_adapters import initialize_adapters
-initialize_adapters()  # 确保 worker 进程也有适配器
+# core/taskiq_broker.py
+@broker.on_event(TaskiqEvents.WORKER_STARTUP)
+async def worker_startup_event(state: object) -> None:
+    ...
+    await start_runtime_services(..., initialize_redis_client=True, initialize_ai_client=True)
 ```
+
+### 仍需注意（脚本入口）
+
+仓库里仍有 `worker.py` 这种“编程式启动”入口，它当前没有走 `start_runtime_services()`，如果未来有人用它来启动 worker，需要改为复用 `core/taskiq_broker.py` 的 event 初始化逻辑或显式调用 `initialize_adapters()`。
 
 ---
 
@@ -55,9 +53,9 @@ initialize_adapters()  # 确保 worker 进程也有适配器
 context = get_or_create_default_app_context(config)
 set_default_app_context(context)
 
-# Worker 进程：直接在模块顶层创建
-context = AppContext(config=UnifiedConfigManager())
-set_default_app_context(context)
+# Worker 进程：TaskIQ WORKER_STARTUP 中复用默认 context + start_runtime_services()
+context = get_or_create_default_app_context()
+await start_runtime_services(context.config, context=context, ...)
 
 # 各种 service 中：通过 get_default_config() 间接访问
 from core.app_context import get_default_config
@@ -67,7 +65,7 @@ config = get_default_config()
 三个问题：
 
 - **`_default_context` 是模块级可变全局变量** — 同一进程中所有协程共享，但 Python 的 contextvars 和模块级变量是不同的隔离层次
-- **`get_or_create_default_app_context` 在无参调用时创建一个新的 `UnifiedConfigManager()`** — 它会读 `.env` 文件、执行 `model_validator`，这在 `worker.py` 的 `shutdown()` 函数中也被调用了：`get_or_create_default_app_context()` 只是为了拿到 context 来 close，但它会重新读配置、建对象
+- **`get_or_create_default_app_context()` 在无参调用时会创建一个新的 `UnifiedConfigManager()`** — 这会读 `.env`、执行校验并构建配置对象；如果只是为了 close 资源（例如 `worker.py` 的 `shutdown()`），这会引入不必要的二次初始化
 - **`ensure_redis_client()` 是同步的** — `context.ensure_redis_client()` 不等待 Redis 就绪，但 `ensure_http_client()` 和 `ensure_db()` 是异步的。不一致
 
 ### 修复
@@ -80,12 +78,12 @@ config = get_default_config()
 
 ## 3. 日志 JSON 格式在 import 时执行副作用
 
-### 现象
+### 现象（历史问题）
 
-`core/logger.py:226`：
+历史上 `core/logger.py` 在模块 import 时执行 `setup_logger()`，导致：
 
 ```python
-logger = setup_logger()  # 模块 import 时执行
+logger = setup_logger()
 ```
 
 副作用包括：
@@ -98,7 +96,7 @@ logger = setup_logger()  # 模块 import 时执行
 
 ### 修复
 
-不在 import 时调 `setup_logger()`，改为在 `start_runtime_services()` 中显式调用 `setup_logger()`。所有 logger 使用者通过 `get_logger(name)` 获取子 logger（这不触发 setup）。
+已完成：`setup_logger()` 不再在 import 时执行，改为在 runtime 启动阶段显式初始化（API/Worker 都通过 `start_runtime_services()` 传入 `initialize_logger=setup_logger`）。所有使用点统一通过 `get_logger(name)` 获取 logger。
 
 ---
 
@@ -123,28 +121,27 @@ ensure_webhook_auth(headers, raw_body, ...)
 
 ### 修复
 
-`verify_webhook_auth_dep` 返回 body bytes 或使用 `request.state` 传递已验证的 body：
+当前路由把 `verify_webhook_auth_dep` 放在 `dependencies=[Depends(...)]` 里（不接收返回值）。因此更可行的方案是把已读取的 body 放到 `request.state`，路由内部优先复用：
 
 ```python
-async def verify_webhook_auth_dep(request: Request, config=...) -> bytes:
+async def verify_webhook_auth_dep(request: Request, config=...) -> None:
     raw_body = await request.body()
     # ... 验证 ...
-    return raw_body
+    request.state.raw_body = raw_body
 
 # 路由中
-async def receive_webhook(request: Request, raw_body: bytes = Depends(verify_webhook_auth_dep)):
-    # 直接用 raw_body，不再读 request.body()
+raw_body = getattr(request.state, "raw_body", None) or await request.body()
 ```
 
-或者更简单：把签名验证和 body 读取合并到一个依赖中，下游只传递 `headers` 和 `raw_body_str`。
+如果愿意调整路由签名（不再使用 `dependencies=[...]`，改为参数依赖注入），也可以让依赖函数直接返回 `raw_body`，路由参数接收，避免 state。
 
 ---
 
 ## 5. Pipeline 中指标记录模板代码过多
 
-### 现象
+### 现象（历史问题）
 
-`pipeline.py` 每个步骤都有重复的模式：
+历史上 `pipeline.py` 每个步骤都有重复的“计时 + span + outcome + metrics”模板代码。
 
 ```python
 # parse
@@ -179,35 +176,11 @@ with otel_span("webhook.analyze", ...):
 
 ### 修复
 
-抽一个简单的 context manager：
-
-```python
-@asynccontextmanager
-async def pipeline_step(name: str, source: str, span_attrs: dict = None):
-    started = time.perf_counter()
-    outcome = "success"
-    with otel_span(f"webhook.{name}", span_attrs or {}):
-        try:
-            yield
-        except Exception:
-            outcome = "error"
-            raise
-        finally:
-            WEBHOOK_PIPELINE_STEP_TOTAL.labels(name, source, outcome).inc()
-            WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(name, source, outcome).observe(
-                time.perf_counter() - started
-            )
-
-# 使用
-async with pipeline_step("parse", metric_source):
-    req_ctx = parse_request(...)
-```
-
-`pipeline.py` 的 `_handle_raw_ingest` 从 90 行缩减到 ~50 行。
+已完成：`services/webhooks/pipeline.py` 内已抽出 `_pipeline_step(...)` async context manager，用于统一模板逻辑，减少复制粘贴风险。
 
 ---
 
-## 6. 速率限制 fail-open，但背压检查 fail-close（不一致）
+## 6. 速率限制 fail-open，但背压检查 fail-close（已修复：策略显式配置化）
 
 ### 现象
 
@@ -221,7 +194,20 @@ if not await ensure_redis_available(...):
     return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 ```
 
-同一个 Redis 不可用的场景，两个组件行为相反。虽然已经在整体重构报告中计划统一改 fail-open，但这个不一致本身就是一个潜在的生产问题。
+同一个 Redis 不可用的场景，两个组件行为相反：
+
+- 速率限制是“业务保护”，Redis 不可用时 fail-open（放行），避免因为依赖异常直接拒绝所有请求。
+- ingress backpressure 是“系统自我保护”（避免 DB/队列雪崩），Redis 不可用时 fail-close（抑制），宁可丢弃也不让系统被打穿。
+
+这两种策略单独看都合理，但缺少明确的“系统级约束”：运维很难预测 Redis 故障时整体表现，且告警/指标侧也不一定能快速定位当前是哪条降级路径。
+
+### 修复
+
+- 已完成：把“Redis 故障时的降级策略”落到配置项，避免行为隐式/难以预期：
+  - `RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR`（默认 true）：限流 Redis 不可用时是否降级放行
+  - `INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR`（默认 false）：ingress 背压 Redis 不可用时是否降级放行
+- 已完成：补齐基础可观测性，Redis 不可用触发降级时计数：
+  - `redis.unavailable{redis.component="rate_limit|ingress_backpressure",redis.action="allowed|rejected|suppressed"}`
 
 ---
 
@@ -252,9 +238,16 @@ logger.info("[Pipeline] 分析完成 event_id=%s ...")
 
 这些都打在 INFO 级别。如果系统每天处理 10 万条 webhook，其中 8 万条是去重复用的，会产生大量 INFO 日志。去重复用应该降到 DEBUG 级别，新事件和抑制事件保留 INFO。这样运维可以快速扫描 INFO 日志定位真正需要关注的事件。
 
+### 修复
+
+- 已完成：将“分析复用/identity 缺失兜底”类日志下调为 DEBUG，同时新增指标用于观测：
+  - `webhook.analysis.route{webhook.route="redis_reuse|db_reuse|ai"}`（统计分析路径分布）
+  - `webhook.identity.degraded{webhook.source="..."}`（统计 identity 降级次数）
+- 保留“新分析完成”“被抑制/被拒绝”“入队失败”等日志为 INFO/WARNING/ERROR
+
 ---
 
-## 8. 缺少 pipeline 级别的健康检查
+## 8. 缺少 pipeline 级别的健康检查（已实现 /api/health/deep）
 
 ### 现象
 
@@ -267,69 +260,67 @@ logger.info("[Pipeline] 分析完成 event_id=%s ...")
 
 没有端到端的 pipeline 健康检查。无法回答"系统能否成功处理一条 webhook"。如果 AI API key 过期、适配器挂了、或 Worker 积压严重，`/ready` 仍然返回 200。
 
-### 建议
+### 修复
 
-加一个 `/health/deep` 端点（带 admin 认证），做以下检查：
+- 保持 `/ready` 轻量（它已经被 K8s probe、`scripts/healthcheck.py` 等使用），不要把“昂贵/有副作用”的检查塞进去。
+- 已实现一个独立的诊断端点：`GET /api/health/deep`（走 admin 路由并要求 API Key），用于排障/巡检，当前包含：
 
 1. DB 连接
-2. Redis 连接 + Stream 状态
-3. Worker 队列积压（pending count）
-4. AI API 可达性（发一个最小请求，可选）
-5. 最近 N 分钟内的处理成功率
+2. Redis 连接 + Stream 状态（depth/pending/lag）
+3. 适配器注册数量（只做“自检”，不做外部请求）
+4. AI/OpenClaw 配置状态（只校验 key/token 是否为空）
 
-不做主动检查，只是暴露指标供外部监控系统决策。
+这类端点的定位是“诊断工具”，不是 readiness gate。
 
 ---
 
-## 9. 冷启动时的并发尖峰风险
+## 9. 冷启动时的并发尖峰风险（已实现：可配置 warm-up jitter）
 
 ### 现象
 
 当前 Worker 有本地 + 分布式双层并发控制。但如果 Worker 进程重启（例如部署新版本），Redis Stream 中积压的消息会被瞬间取出处理。分布式槽位限制（`MAX_CONCURRENT_WEBHOOK_TASKS=30`）有效，但如果有很多 Worker 实例同时重启，每个都会尝试抢占槽位。
 
-### 建议
+### 修复
 
-在 Worker 启动时加一个随机的 warm-up delay（0-5s），错开多个 Worker 同时抢槽位：
+已实现：在 TaskIQ Worker 启动事件里支持随机 warm-up delay（错开多个 Worker 同时抢槽位/抢 pending），通过配置控制：
 
-```python
-# worker.py startup()
-jitter = random.uniform(0, 5)
-await asyncio.sleep(jitter)
-await broker.startup()
-```
+`WORKER_STARTUP_JITTER_SECONDS`（默认 0，关闭；设置为 5 表示 [0,5) 秒抖动）。
 
 这不是大问题（槽位本身就是并发控制），但在大规模部署时可以减少 Redis 的瞬时压力。
 
 ---
 
-## 10. 压缩阈值可能与实际 payload 大小不匹配
+## 10. 压缩阈值可能与实际 payload 大小不匹配（已修复：阈值配置化）
 
-### 现象
+### 现象（历史问题）
 
 ```python
-# compression.py
+# core/compression.py
 COMPRESS_THRESHOLD_BYTES = 4096
 ```
 
 Prometheus webhook payload 通常在 2KB-10KB 之间。4KB 以下的 payload 不压缩，直接存 bytes。但 `WebhookEvent.raw_payload` 是 `LargeBinary`，PostgreSQL 的 TOAST 机制会在 2KB 左右触发。所以 2KB-4KB 之间的 payload 不会被 Zstd 压缩也不会被 TOAST 压缩，两者都没享受到。
 
-### 建议
+### 修复
 
-把 `COMPRESS_THRESHOLD_BYTES` 降到 2048 或者改为可配置。
+已完成：把阈值改为可配置，并将“压缩阈值”和“异步解压阈值”拆分成两个参数：
+
+- `PAYLOAD_COMPRESS_THRESHOLD_BYTES`：低于该阈值不压缩（节省 CPU）
+- `PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES`：超过该阈值解压卸载到线程池（避免阻塞事件循环）
 
 ---
 
 ## 11. 建议新增的 metrics
 
-当前已有 40+ 个 Prometheus 指标，覆盖质量很高。以下是缺失的关键指标：
+当前已有 40+ 个指标。这里建议先区分“已存在但文档没写清楚”的指标，以及“确实缺失”的指标。
 
-| 指标 | 用途 |
-|------|------|
-| `DEDUP_HIT_RATE` | 去重命中率 (redis_hits / total_lookups)，监控去重是否有效 |
-| `IDENTITY_DEGRADED_TOTAL` | 适配器未产出 identity 的次数，监控 hash 质量 |
-| `AI_ANALYSIS_REUSE_RATE` | 分析结果复用率 (reused / total)，监控缓存效率 |
-| `PIPELINE_BACKLOG_DEPTH` | Worker 队列积压深度 |
-| `OUTBOX_AGE_MAX_SECONDS` | 最老的未投递 outbox 记录的年龄 |
+| 指标 | 用途 | 当前状态 |
+|------|------|----------|
+| `PIPELINE_BACKLOG_DEPTH` | Worker 队列积压深度 | 已存在：`queue.depth` / `queue.pending` / `queue.lag` |
+| `OUTBOX_AGE_MAX_SECONDS` | 最老的未投递 outbox 记录的年龄 | 已存在：`forward.outbox.backlog.age` |
+| `AI_ANALYSIS_REUSE_RATE` | 分析结果复用率（redis/db reuse） | 已实现基础打点：`webhook.analysis.route`（可衍生计算 reuse/total） |
+| `DEDUP_HIT_RATE` | 去重/复用是否有效（命中率） | 已实现基础打点：`webhook.analysis.route`（可衍生计算） |
+| `IDENTITY_DEGRADED_TOTAL` | 适配器未产出 identity 的次数，监控 hash 质量 | 已实现：`webhook.identity.degraded` |
 
 ---
 
@@ -337,8 +328,8 @@ Prometheus webhook payload 通常在 2KB-10KB 之间。4KB 以下的 payload 不
 
 | # | 问题 | 位置 | 建议 |
 |---|------|------|------|
-| 1 | `worker.py` 的 `shutdown()` 中调用 `get_or_create_default_app_context()` 可能创建不必要的实例 | `worker.py:35` | 存为局部变量，shutdown 时复用 |
-| 2 | `TraceContextMiddleware` 的 `finally` 中对 `/live`、`/ready` 做了特殊处理不记录日志，但对 OTEL tracing span 没有对应的过滤 | `middleware.py:165` | 保持一致：health check 路径也不创建 root span |
+| 1 | `worker.py`（编程式入口）没有复用 TaskIQ 的 runtime lifecycle；`shutdown()` 里还会 `get_or_create_default_app_context()` | `worker.py` | 要么标记为仅开发用途，要么让它复用 `start_runtime_services/stop_runtime_services`（避免重复建 config/context） |
+| 2 | healthcheck 路径在日志/trace 上的过滤策略需要统一认知 | `core/web/middleware.py` / `core/observability/tracing.py` | 当前 tracing 默认已通过 `FastAPIInstrumentor(excluded_urls="/live,/ready,...")` 排除 healthcheck span；middleware 也跳过 `/live`、`/ready` 的 access log。建议补充文档说明，并确认 `OTEL_INCLUDE_HEALTHCHECKS` 未被意外开启 |
 | 3 | `SecurityHeadersMiddleware` 的 HSTS 头强制了 `includeSubDomains`，对纯 API 服务不必要 | `middleware.py:29` | 改为可配置或默认不加 `includeSubDomains` |
 | 4 | `WebhookEvent.fill_fields()` 用 setattr + 字段白名单，比直接赋值慢，且每次写入都更新 `updated_at` | `models/webhook.py:65-79` | 简单场景下直接用构造函数 |
 | 5 | `request_parser.py` 在 payload 为空且 raw_body 非空时解析 JSON，但 raw_body 可能已经被解码又编码多次 | `request_parser.py:19-21` | 在 API 层传递已解析的 dict，不要反复序列化 |
@@ -348,14 +339,14 @@ Prometheus webhook payload 通常在 2KB-10KB 之间。4KB 以下的 payload 不
 
 ## 优先级汇总
 
-| 优先级 | 问题 | 影响 |
-|--------|------|------|
-| **P0** | Worker 适配器未初始化 | 去重全线失效 + AI 成本飙升 |
-| **P1** | 双重 body 读取 | 潜在的 Starlette 兼容性问题 |
-| **P1** | 日志 body 复用打到 INFO | 高吞吐时日志爆炸 |
-| **P2** | Pipeline 模板代码过多 | 维护负担 |
-| **P2** | backpressure/rate-limit fail 行为不一致 | 运维困惑 |
-| **P2** | 冷启动并发尖峰 | Redis 瞬时压力 |
-| **P3** | 缺少 pipeline 健康检查 | 生产排障效率 |
-| **P3** | 压缩阈值不够精确 | 存储效率 |
-| **P3** | 其他小问题 | 代码质量 |
+| 优先级 | 问题 | 影响 | 状态 |
+|--------|------|------|------|
+| **P0** | 双重 body 读取 | 潜在的 Starlette 兼容性问题 + 额外内存复制 | 已修复 |
+| **P1** | backpressure/rate-limit fail 行为不一致 | Redis 故障时系统行为难以预期 | 已修复（策略配置化 + 指标） |
+| **P1** | 日志 body 复用打到 INFO | 高吞吐时日志爆炸 | 已修复（复用类日志降级 + metrics） |
+| **P2** | 缺少 pipeline 健康检查 | 生产排障效率 | 已实现（/api/health/deep） |
+| **P2** | 冷启动并发尖峰 | Redis 瞬时压力 | 已实现（启动 jitter 配置） |
+| **P3** | 压缩阈值不够精确 | 存储效率 | 已修复（阈值配置化） |
+| **P3** | Worker 适配器初始化 | 去重全线失效 + AI 成本飙升 | 已修复 |
+| **P3** | 日志 import-time 副作用 | fork 场景潜在问题 | 已修复 |
+| **P3** | Pipeline 模板代码过多 | 维护负担 | 已修复 |

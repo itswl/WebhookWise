@@ -9,6 +9,7 @@ from typing import Any
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core import json
 from core.logger import get_logger
+from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL
 from services.webhooks.identity import generate_alert_hash
 from services.webhooks.policies import WebhookReceivePolicy
 
@@ -71,6 +72,11 @@ async def check_ingress_backpressure(
             from core.redis_health import ensure_redis_available
 
             if not await ensure_redis_available("ingress_backpressure:counter"):
+                if policy.ingress_backpressure_fail_open_on_redis_error:
+                    REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "allowed").inc()
+                    logger.warning("[IngressBackpressure] Redis 不可用，ingress 降级放行 key=%s", key)
+                    return IngressBackpressureResult(False, key, 0, threshold, reason="redis_unavailable_fail_open")
+                REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "suppressed").inc()
                 logger.warning("[IngressBackpressure] Redis 不可用，ingress 按背压抑制 key=%s", key)
                 return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
@@ -83,6 +89,11 @@ async def check_ingress_backpressure(
         from core.redis_health import mark_redis_failure
 
         mark_redis_failure("ingress_backpressure:counter", e)
+        if policy.ingress_backpressure_fail_open_on_redis_error:
+            REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "allowed").inc()
+            logger.warning("[IngressBackpressure] Redis 计数失败，ingress 降级放行: %s", e)
+            return IngressBackpressureResult(False, key, 0, threshold, reason="redis_unavailable_fail_open")
+        REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "suppressed").inc()
         logger.warning("[IngressBackpressure] Redis 计数失败，ingress 按背压抑制: %s", e)
         return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
