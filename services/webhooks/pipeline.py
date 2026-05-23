@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from core import json
 from core.alert_concurrency import alert_processing_gate
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -300,9 +301,17 @@ async def handle_webhook_ingest(
         len(raw_body.encode("utf-8")),
         received_at or "",
     )
+    payload: dict[str, Any] | None = None
+    if raw_body:
+        try:
+            loaded = json.loads(raw_body)
+            payload = loaded if isinstance(loaded, dict) else None
+        except Exception:
+            payload = None
+
     env = EventEnvelope(
         headers=dict(raw_headers or {}),
-        payload=None,
+        payload=payload,
         raw_body=raw_body.encode("utf-8"),
         source=source,
         event_ts=received_at or datetime.now().astimezone().isoformat(timespec="seconds"),

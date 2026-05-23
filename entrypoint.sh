@@ -6,7 +6,13 @@ set -e
 # 动态加载 jemalloc（适配 x86_64/aarch64）
 JEMALLOC_PATH=$(find /usr/lib -name "libjemalloc.so.2" -print -quit 2>/dev/null)
 if [ -n "$JEMALLOC_PATH" ]; then
-    export LD_PRELOAD="$JEMALLOC_PATH"
+    if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
+        echo "jemalloc preload skipped (musl libc detected)"
+    elif command -v ldd >/dev/null 2>&1 && ! ldd "$JEMALLOC_PATH" >/dev/null 2>&1; then
+        echo "jemalloc preload skipped (incompatible binary)"
+    else
+        export LD_PRELOAD="$JEMALLOC_PATH${LD_PRELOAD:+:$LD_PRELOAD}"
+    fi
 fi
 
 export API_WORKERS="${API_WORKERS:-4}"

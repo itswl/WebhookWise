@@ -134,7 +134,7 @@ async def test_security_headers_include_hsts() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
-    assert response.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
+    assert response.headers["strict-transport-security"] == "max-age=31536000"
 
 
 @pytest.mark.asyncio

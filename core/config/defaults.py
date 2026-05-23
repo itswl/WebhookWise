@@ -73,6 +73,7 @@ class SecurityConfig(StaticSettings):
     ALLOW_UNAUTHENTICATED_ADMIN: bool = Field(default=False)
     ALLOW_UNAUTHENTICATED_WEBHOOK: bool = Field(default=False)
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
+    HSTS_INCLUDE_SUBDOMAINS: bool = Field(default=False)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
