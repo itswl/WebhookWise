@@ -12,7 +12,7 @@ from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
+from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
 from services.webhooks.types import AnalysisResult
 
@@ -114,7 +114,7 @@ async def manual_forward_webhook(
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
-    fwd_res = await resolve_and_forward(
+    fwd_res = await forward_notification(
         event_type="manual_forward",
         source=event.source or "unknown",
         forward_data=ctx,

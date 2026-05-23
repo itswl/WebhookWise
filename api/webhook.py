@@ -35,7 +35,7 @@ from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from schemas.webhook import webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
-from services.webhooks.policies import WebhookReceivePolicy
+from services.webhooks.policies import IngressPolicy
 from services.webhooks.query_service import list_webhook_summaries
 
 logger = get_logger("api.webhook")
@@ -54,9 +54,9 @@ def _normalize_source_hint(value: str | None) -> str:
 
 
 def _payload_too_large_response(
-    raw_body: bytes, source_hint: str, *, policy: WebhookReceivePolicy | None = None
+    raw_body: bytes, source_hint: str, *, policy: IngressPolicy | None = None
 ) -> JSONResponse | None:
-    policy = policy or WebhookReceivePolicy.from_config()
+    policy = policy or IngressPolicy.from_config()
     if policy.max_body_bytes and len(raw_body) > policy.max_body_bytes:
         src = sanitize_source(source_hint)
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="rejected_size").inc()

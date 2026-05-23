@@ -231,8 +231,6 @@ def score_candidate(
 
     elapsed = (current.timestamp - candidate.timestamp).total_seconds()
     window_seconds = max(window_minutes, 1) * 60
-    if elapsed > window_seconds:
-        return 0.0
 
     current_resources, current_tokens = _extract_features(current)
     candidate_resources, candidate_tokens = _extract_features(candidate)

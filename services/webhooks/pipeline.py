@@ -45,10 +45,10 @@ from core.observability.tracing import (
 from core.observability.tracing import (
     span as otel_span,
 )
-from services.dedup import DedupResult, generate_dedup_key, remember_dedup_state, resolve_dedup
+from services.dedup import DedupResult, generate_event_keys, remember_dedup_state, resolve_dedup
+from services.forwarding.outbox import schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult
 from services.webhooks.decisioning import ForwardDecision, ForwardingPolicy, build_final_analysis, normalize_importance
-from services.webhooks.deduplication import generate_alert_hash
 from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.noise_stage import compute_noise
 from services.webhooks.policies import NoiseReductionPolicy
@@ -128,15 +128,15 @@ async def _pipeline_step(
     span_attrs: dict[str, Any],
 ) -> Any:
     started = time.perf_counter()
-    step_outcome = "success"
+    outcome: list[str] = ["success"]
     with otel_span(span_name, span_attrs) as span:
         try:
-            yield span, step_outcome
+            yield span, outcome
         except Exception:
-            step_outcome = "error"
+            outcome[0] = "error"
             raise
         finally:
-            _record_step_metrics(step_name, metric_source, step_outcome, started)
+            _record_step_metrics(step_name, metric_source, outcome[0], started)
 
 
 
@@ -209,7 +209,7 @@ async def _resolve_noise_context(
             "alert_hash": ctx.alert_hash[:12],
             "pipeline.step": "analysis",
         },
-    ) as (_span, _step_outcome):
+    ) as (_span, _outcome):
         from core.app_context import get_config_manager
         from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
 
@@ -266,7 +266,7 @@ async def _resolve_noise_context(
             "alert_hash": ctx.alert_hash[:12],
             "pipeline.step": "noise",
         },
-    ) as (_span, _step_outcome):
+    ) as (_span, _outcome):
         noise = await compute_noise(
             ctx.alert_hash,
             ctx.req_ctx.source,
@@ -292,9 +292,9 @@ async def _run_processing_pipeline(
                 "alert_hash": ctx.alert_hash[:12],
                 "pipeline.step": "validate",
             },
-        ) as (_span, step_outcome):
+        ) as (_span, outcome):
             if await _handle_storm_suppression(ctx, gate_res):
-                step_outcome = "suppressed"
+                outcome[0] = "suppressed"
                 return PipelineProcessingResult(suppressed=True)
 
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
@@ -314,6 +314,18 @@ async def _run_processing_pipeline(
             raise
         finally:
             _record_step_metrics("persist", ctx.metric_source, persist_outcome, persist_started)
+
+        from core.app_context import get_config_manager
+
+        config = get_config_manager()
+        dedup_ttl = max(60, int(config.retry.DEDUP_WINDOW_SECONDS) * 2)
+        await remember_dedup_state(
+            ctx.dedup_key,
+            original_event_id=finalize_res.save_result.original_id or finalize_res.save_result.webhook_id,
+            analysis=dict(final_analysis),
+            ttl_seconds=dedup_ttl,
+        )
+        await schedule_forward_outbox_many(finalize_res.outbox_ids)
 
         return PipelineProcessingResult(
             suppressed=False,
@@ -471,7 +483,7 @@ async def _handle_raw_ingest(
                 metric_source=metric_source,
                 span_name="webhook.parse",
                 span_attrs={"source": envelope.source or "unknown", "event_id": 0, "pipeline.step": "parse"},
-            ) as (parse_span, step_outcome):
+            ) as (parse_span, _outcome):
                 try:
                     req_ctx = parse_request(
                         client_ip,
@@ -482,12 +494,10 @@ async def _handle_raw_ingest(
                         envelope.event_ts,
                     )
                 except Exception as exc:
-                    step_outcome = "error"
                     set_span_error(parse_span, exc)
                     raise
 
-            alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
-            dedup_key = generate_dedup_key(req_ctx.parsed_data, req_ctx.source, alert_hash)
+            alert_hash, dedup_key = generate_event_keys(req_ctx.parsed_data, req_ctx.source)
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
                 event_id=None,

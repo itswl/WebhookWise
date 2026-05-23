@@ -253,7 +253,7 @@ async def test_stop_on_match_limits_rules():
         decision = await resolve_forward_decision("high", False, None, None, "prometheus")
     assert decision.should_forward is True
     assert len(decision.matched_rules) == 1
-    assert decision.matched_rules[0]["id"] == 1
+    assert decision.matched_rules[0].id == 1
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Protocol, Required, TypedDict
+from typing import Any, Protocol
 
 from core.app_context import get_config_manager
 from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
@@ -13,23 +13,12 @@ from services.webhooks.types import (
 )
 
 
-class ForwardRuleTarget(TypedDict, total=False):
-    """Resolved forwarding target snapshot."""
-
-    id: int | None
-    name: Required[str]
-    target_type: Required[str]
-    target_url: Required[str]
-    target_name: str
-    stop_on_match: bool
-
-
 @dataclass
 class ForwardDecision:
     should_forward: bool
     skip_reason: str | None
     is_periodic_reminder: bool
-    matched_rules: list[ForwardRuleTarget] = field(default_factory=list)
+    matched_rules: list[ForwardRuleSnapshot] = field(default_factory=list)
 
 
 class NotifiedEvent(Protocol):
@@ -157,8 +146,8 @@ def select_forward_rules(
     source: str = "",
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
-) -> list[ForwardRuleTarget]:
-    matched_rules: list[ForwardRuleTarget] = []
+) -> list[ForwardRuleSnapshot]:
+    matched_rules: list[ForwardRuleSnapshot] = []
     for rule in rules:
         if not _rule_matches(
             rule,
@@ -169,16 +158,7 @@ def select_forward_rules(
             parsed_data=parsed_data,
         ):
             continue
-        target: ForwardRuleTarget = {
-            "id": rule.id,
-            "name": rule.name,
-            "target_type": rule.target_type,
-            "target_url": rule.target_url,
-            "stop_on_match": rule.stop_on_match,
-        }
-        if rule.target_name:
-            target["target_name"] = rule.target_name
-        matched_rules.append(target)
+        matched_rules.append(rule)
         FORWARD_RULE_MATCH_TOTAL.labels(rule.name, rule.target_type).inc()
         if rule.stop_on_match:
             break
@@ -190,7 +170,7 @@ def _decide_duplicate_alert(
     base_should_forward: bool,
     seconds_since_notify: float | None,
     policy: ForwardingPolicy,
-    matched_rules: list[ForwardRuleTarget],
+    matched_rules: list[ForwardRuleSnapshot],
 ) -> ForwardDecision:
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
         return ForwardDecision(False, "窗口内重复告警，刚刚已转发", False)

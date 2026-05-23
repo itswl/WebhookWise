@@ -33,31 +33,47 @@ class DedupResult:
         return self.action == DedupAction.REUSE
 
 
-def generate_dedup_key(data: dict[str, Any], source: str, alert_hash: str) -> str:
+def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
+    """一次提取 identity 同时生成 alert_hash 和 dedup_key。"""
     from adapters.normalized import extract_alert_identity
 
     identity = extract_alert_identity(data)
     if identity:
-        key_fields: dict[str, object] = {}
+        alert_key_fields: dict[str, object] = dict(identity)
+        alert_key_fields.setdefault("source", source.strip().lower())
+        alert_hash = hashlib.sha256(json.dumps_bytes(alert_key_fields, sort_keys=True)).hexdigest()
+
+        dedup_key_fields: dict[str, object] = {}
         source_value = str(identity.get("source", source)).strip().lower()
         name_value = str(identity.get("name", "")).strip()
         if source_value:
-            key_fields["source"] = source_value
+            dedup_key_fields["source"] = source_value
         if name_value:
-            key_fields["name"] = name_value
+            dedup_key_fields["name"] = name_value
         resource = str(identity.get("resource", "") or "").strip()
         if resource:
-            key_fields["resource"] = resource
+            dedup_key_fields["resource"] = resource
         fingerprint = str(identity.get("fingerprint", "") or "").strip()
         if fingerprint:
-            key_fields["fingerprint"] = fingerprint
-        if not key_fields:
-            return alert_hash
-        return hashlib.sha256(json.dumps_bytes(key_fields, sort_keys=True)).hexdigest()
+            dedup_key_fields["fingerprint"] = fingerprint
+
+        dedup_key = (
+            hashlib.sha256(json.dumps_bytes(dedup_key_fields, sort_keys=True)).hexdigest()
+            if dedup_key_fields
+            else alert_hash
+        )
+        return alert_hash, dedup_key
 
     WEBHOOK_IDENTITY_DEGRADED_TOTAL.labels(sanitize_source(source)).inc()
-    logger.debug("缺少 adapter 产出的告警 identity，使用 alert_hash 作为 dedup_key source=%s", source)
-    return alert_hash
+    logger.debug("缺少 adapter 产出的告警 identity，使用完整 payload hash 兜底 source=%s", source)
+    fallback_key_fields: dict[str, object] = {"source": source.strip().lower(), "payload": data}
+    fallback_hash = hashlib.sha256(json.dumps_bytes(fallback_key_fields, sort_keys=True)).hexdigest()
+    return fallback_hash, fallback_hash
+
+
+def generate_dedup_key(data: dict[str, Any], source: str, alert_hash: str) -> str:
+    _, dedup_key = generate_event_keys(data, source)
+    return dedup_key
 
 
 def _dedup_window_seconds() -> int:

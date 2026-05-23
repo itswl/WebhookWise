@@ -269,7 +269,7 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
 
     fake_session = FakeSession()
     monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
-    monkeypatch.setattr(reanalysis, "resolve_and_forward", fake_forward)
+    monkeypatch.setattr(reanalysis, "forward_notification", fake_forward)
 
     result = await reanalysis.manual_forward_webhook(
         1,

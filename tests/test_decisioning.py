@@ -177,7 +177,7 @@ class TestSelectForwardRules:
         ]
         result = select_forward_rules(rules, importance="high", source="x", is_duplicate=False)
         assert len(result) == 1
-        assert result[0]["name"] == "a"
+        assert result[0].name == "a"
 
     def test_continues_without_stop(self) -> None:
         rules = [
