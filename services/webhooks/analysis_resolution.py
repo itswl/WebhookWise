@@ -1,6 +1,6 @@
 """AI analysis resolution stage for webhook processing."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -96,13 +96,6 @@ class _ResolutionState:
     @property
     def in_window_analysis_reusable(self) -> bool:
         return _has_reusable_analysis(_event_analysis(self.in_window_reuse_event))
-
-
-@dataclass(frozen=True, slots=True)
-class _DecisionRule:
-    action: _AnalysisAction
-    matches: Callable[[_ResolutionState], bool]
-    build: Callable[[_ResolutionState], _ResolutionPlan]
 
 
 def _event_analysis(event: Any | None) -> Mapping[str, Any] | None:
@@ -239,26 +232,6 @@ def _matches_in_window_reuse(state: _ResolutionState) -> bool:
     return state.check.is_duplicate and state.original_event is not None and state.in_window_analysis_reusable
 
 
-def _matches_analyze(_: _ResolutionState) -> bool:
-    return True
-
-
-_DECISION_TABLE: tuple[_DecisionRule, ...] = (
-    # Ordered by reuse preference; AI analysis is the explicit default.
-    _DecisionRule(_AnalysisAction.REUSE_REDIS_CACHE, _matches_redis_cache, _redis_cache_plan),
-    _DecisionRule(
-        _AnalysisAction.REUSE_RECENT_BEYOND_WINDOW, _matches_recent_beyond_window, _recent_beyond_window_plan
-    ),
-    _DecisionRule(
-        _AnalysisAction.REUSE_ORIGINAL_BEYOND_WINDOW,
-        _matches_original_beyond_window,
-        _original_beyond_window_plan,
-    ),
-    _DecisionRule(_AnalysisAction.REUSE_IN_WINDOW, _matches_in_window_reuse, _in_window_reuse_plan),
-    _DecisionRule(_AnalysisAction.ANALYZE, _matches_analyze, _analyze_plan),
-)
-
-
 def _plan_analysis_resolution(
     cached: CachedDuplicate | None,
     check: DuplicateCheckResult,
@@ -267,10 +240,15 @@ def _plan_analysis_resolution(
     now: datetime | None = None,
 ) -> _ResolutionPlan:
     state = _ResolutionState(cached=cached, check=check, policy=policy, now=now or datetime.now())
-    for rule in _DECISION_TABLE:
-        if rule.matches(state):
-            return rule.build(state)
-    raise AssertionError("analysis resolution decision table has no default rule")
+    if _matches_redis_cache(state):
+        return _redis_cache_plan(state)
+    if _matches_recent_beyond_window(state):
+        return _recent_beyond_window_plan(state)
+    if _matches_original_beyond_window(state):
+        return _original_beyond_window_plan(state)
+    if _matches_in_window_reuse(state):
+        return _in_window_reuse_plan(state)
+    return _analyze_plan(state)
 
 
 def _log_reuse_plan(plan: _ResolutionPlan, alert_hash: str) -> None:

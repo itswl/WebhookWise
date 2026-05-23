@@ -201,6 +201,7 @@ def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:
 
 _log_listener: QueueListener | None = None
 _logger_pid: int | None = None
+_root_logger: logging.Logger | None = None
 
 
 def stop_log_listener() -> None:
@@ -214,13 +215,14 @@ def stop_log_listener() -> None:
 
 def get_logger(name: str) -> logging.Logger:
     """获取子模块 logger，继承主 logger 配置"""
+    global _root_logger
+    _root_logger = setup_logger()
     if name == "webhook_service":
-        return setup_logger()
+        return _root_logger
 
     # 创建子 logger
     child_logger = logging.getLogger(f"webhook_service.{name}")
     return child_logger
 
 
-# 创建全局 logger 实例
-logger = setup_logger()
+logger = logging.getLogger("webhook_service")
