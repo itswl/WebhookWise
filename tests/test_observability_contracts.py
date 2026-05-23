@@ -199,7 +199,7 @@ def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
     assert "import services." not in broker
     assert "services.operations.tasks" not in app
     assert "LazyCircuitBreaker" in forwarding_breakers
-    assert "get_default_config" in forwarding_breakers
+    assert "get_default_config" not in forwarding_breakers
     assert "services.operations.taskiq_wiring:broker" in entrypoint
     assert "services.operations.taskiq_wiring:scheduler" in entrypoint
     assert "services.operations.taskiq_wiring:broker" in supervisor

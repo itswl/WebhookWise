@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from threading import Lock
 from typing import Any, ParamSpec, TypeVar
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.circuit_breaker import CircuitBreaker
 from core.config import UnifiedConfigManager
 
@@ -24,7 +24,7 @@ class LazyCircuitBreaker:
         self._config_id: int | None = None
 
     def _get(self) -> CircuitBreaker:
-        config = get_default_config()
+        config = get_config_manager()
         config_id = id(config)
         breaker = self._breaker
         if breaker is not None and self._config_id == config_id:

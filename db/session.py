@@ -44,9 +44,7 @@ def _app_context_from_request(request: "Request | None") -> object | None:
 async def _ensure_session_factory(request: "Request | None" = None) -> async_sessionmaker[AsyncSession]:
     context = _app_context_from_request(request)
     if context is None:
-        from core.app_context import get_or_create_default_app_context
-
-        context = get_or_create_default_app_context()
+        raise RuntimeError("default AppContext is not initialized")
 
     ensure_db = getattr(context, "ensure_db", None)
     if not callable(ensure_db):

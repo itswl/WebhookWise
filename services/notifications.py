@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from adapters.plugins.feishu_card import build_deep_analysis_card
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.tracing import span as otel_span
@@ -123,7 +123,11 @@ def build_notification_channels(
     validate_url: ValidateURL | None = None,
 ) -> list[NotificationChannel]:
     client = http_client or get_http_client()
-    resolved_timeout = int(get_default_config().notifications.FEISHU_WEBHOOK_TIMEOUT) if timeout_seconds is None else int(timeout_seconds)
+    resolved_timeout = (
+        int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT)
+        if timeout_seconds is None
+        else int(timeout_seconds)
+    )
     return [
         FeishuNotificationChannel(
             http_client=client,

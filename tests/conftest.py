@@ -137,6 +137,8 @@ def mock_redis(request: pytest.FixtureRequest):
 @pytest.fixture
 def temp_config():
     """Return this test's isolated AppContext configuration manager."""
-    from core.app_context import get_default_config
+    from core.app_context import get_default_app_context
 
-    yield get_default_config()
+    context = get_default_app_context()
+    assert context is not None
+    yield context.config

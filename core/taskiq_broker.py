@@ -118,7 +118,8 @@ async def worker_startup_event(state: object) -> None:
         logger.debug("[TaskIQ] 跳过 worker runtime 初始化 run_mode=%s", _settings.run_mode)
         return
 
-    from core.app_context import get_or_create_default_app_context
+    from core.app_context import init_default_app_context
+    from core.config import UnifiedConfigManager
     from core.logger import setup_logger
     from core.observability import setup_observability_worker
     from core.service_lifecycle import start_runtime_services
@@ -126,7 +127,7 @@ async def worker_startup_event(state: object) -> None:
     if _settings.worker_startup_jitter_seconds > 0:
         await asyncio.sleep(random.uniform(0.0, _settings.worker_startup_jitter_seconds))
 
-    context = get_or_create_default_app_context()
+    context = init_default_app_context(UnifiedConfigManager())
     await start_runtime_services(
         context.config,
         context=context,
@@ -144,11 +145,12 @@ async def worker_shutdown_event(state: object) -> None:
         logger.debug("[TaskIQ] 跳过 worker runtime 关闭 run_mode=%s", _settings.run_mode)
         return
 
-    from core.app_context import get_or_create_default_app_context
+    from core.app_context import get_default_app_context, init_default_app_context
+    from core.config import UnifiedConfigManager
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
 
-    context = get_or_create_default_app_context()
+    context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
     await stop_runtime_services(
         context.config,
         context=context,

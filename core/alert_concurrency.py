@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from core import redis_client, redis_health
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.redis_health import webhook_processing_lock, webhook_processing_queue
 from core.redis_lua import (
@@ -92,7 +92,7 @@ async def _local_alert_lock(alert_hash: str) -> AsyncGenerator[None, None]:
 
 
 async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
-    config = get_default_config()
+    config = get_config_manager()
     threshold = max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     if not threshold:
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
@@ -126,7 +126,7 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
 
 
 async def _release_processing_slot(alert_hash: str) -> None:
-    config = get_default_config()
+    config = get_config_manager()
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(alert_hash)
     try:
@@ -140,7 +140,7 @@ def _lock_key(alert_hash: str) -> str:
 
 
 async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
-    config = get_default_config()
+    config = get_config_manager()
     if not config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
         return None
 
@@ -196,7 +196,7 @@ async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> N
 @asynccontextmanager
 async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessingGateResult, None]:
     """Serialize same-alert processing across workers and apply storm backpressure."""
-    config = get_default_config()
+    config = get_config_manager()
 
     slot = await _reserve_processing_slot(alert_hash)
     if slot.suppressed:

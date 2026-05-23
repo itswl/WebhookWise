@@ -12,6 +12,7 @@ from adapters.ecosystem_adapters import initialize_adapters
 from core.app_context import (
     AppContext,
     get_default_app_context,
+    init_default_app_context,
     get_or_create_default_app_context,
     set_default_app_context,
 )
@@ -54,7 +55,7 @@ def configure_runtime_lifecycle_hooks(
 
 
 async def check_database_ready(context: AppContext | None = None) -> bool:
-    context = context or get_or_create_default_app_context()
+    context = context or init_default_app_context(UnifiedConfigManager())
     set_default_app_context(context)
     await context.ensure_db()
     return await test_db_connection()

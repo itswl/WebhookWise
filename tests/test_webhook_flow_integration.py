@@ -60,13 +60,15 @@ async def test_webhook_receive_to_feishu_card_flow(
     monkeypatch.setenv("OTEL_ENABLED", "false")
 
     from core.app import app
-    from core.app_context import get_default_config
+    from core.app_context import get_default_app_context
     from models import WebhookEvent
     from services.forwarding.outbox import process_forward_outbox_by_id
     from services.operations.tasks import process_forward_outbox_task, process_webhook_task
     from services.webhooks.pipeline import handle_webhook_ingest
 
-    config = get_default_config()
+    context = get_default_app_context()
+    assert context is not None
+    config = context.config
     app.state.app_context.config = config
     monkeypatch.setattr(config.security, "WEBHOOK_SECRET", "")
     monkeypatch.setattr(config.security, "REQUIRE_WEBHOOK_AUTH", False)
@@ -422,12 +424,14 @@ async def test_redis_reuse_does_not_bypass_expired_duplicate_window(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from core.app_context import get_default_config
+    from core.app_context import get_default_app_context
     from models import WebhookEvent
     from services.webhooks.analysis_resolution import resolve_analysis
     from services.webhooks.deduplication import CachedDuplicate
 
-    config = get_default_config()
+    context = get_default_app_context()
+    assert context is not None
+    config = context.config
     _set_config(monkeypatch, config, "DUPLICATE_ALERT_TIME_WINDOW", 4)
     _set_config(monkeypatch, config, "REANALYZE_AFTER_TIME_WINDOW", True)
 
@@ -476,13 +480,15 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from core.app_context import get_default_config
+    from core.app_context import get_default_app_context
     from models import ForwardOutbox, WebhookEvent
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.request_parser import parse_request
     from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
 
-    config = get_default_config()
+    context = get_default_app_context()
+    assert context is not None
+    config = context.config
     _set_config(monkeypatch, config, "DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
     _set_config(monkeypatch, config, "ENABLE_PERIODIC_REMINDER", True)
     _set_config(monkeypatch, config, "REMINDER_INTERVAL_HOURS", 1)

@@ -27,9 +27,9 @@ RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
     if config is not None:
         return config
-    from core.app_context import get_default_config
+    from core.app_context import get_config_manager
 
-    return get_default_config()
+    return get_config_manager()
 
 
 def build_redis_client(config: UnifiedConfigManager | None = None) -> RedisClient:
@@ -49,9 +49,11 @@ def build_redis_client(config: UnifiedConfigManager | None = None) -> RedisClien
 
 
 def get_redis() -> RedisClient:
-    from core.app_context import get_or_create_default_app_context
+    from core.app_context import get_default_app_context
 
-    context = get_or_create_default_app_context()
+    context = get_default_app_context()
+    if context is None:
+        raise RuntimeError("default AppContext is not initialized")
     return context.ensure_redis_client()
 
 

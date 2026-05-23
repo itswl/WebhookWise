@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -68,33 +69,40 @@ class AppContext:
             self.http_client = None
 
 
-_default_context: AppContext | None = None
+_default_context: ContextVar[AppContext | None] = ContextVar("default_app_context", default=None)
 
 
 def set_default_app_context(context: AppContext | None) -> None:
-    global _default_context
-    _default_context = context
+    _default_context.set(context)
 
 
 def get_default_app_context() -> AppContext | None:
-    return _default_context
+    return _default_context.get()
+
+
+def init_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
+    context = AppContext(config=config or UnifiedConfigManager())
+    _default_context.set(context)
+    return context
 
 
 def get_or_create_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
-    global _default_context
-    if _default_context is None:
-        _default_context = AppContext(config=config or UnifiedConfigManager())
-    elif config is not None and _default_context.config is not config:
-        _default_context = AppContext(config=config)
-    return _default_context
-
-
-def get_default_config() -> UnifiedConfigManager:
-    return get_or_create_default_app_context().config
+    context = _default_context.get()
+    if context is None:
+        if config is None:
+            raise RuntimeError("default AppContext is not initialized")
+        context = AppContext(config=config)
+        _default_context.set(context)
+        return context
+    if config is not None and context.config is not config:
+        context = AppContext(config=config)
+        _default_context.set(context)
+    return context
 
 
 def get_config_manager() -> UnifiedConfigManager:
-    return get_or_create_default_app_context().config
+    context = get_default_app_context()
+    return context.config if context is not None else UnifiedConfigManager()
 
 
 def get_http_client_dependency(request: Request) -> httpx.AsyncClient:

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class TaskRuntimePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> TaskRuntimePolicy:
-        config = config or get_default_config()
+        config = config or get_config_manager()
         server = config.server
         tasks = config.tasks
         retry = config.retry
@@ -55,7 +55,7 @@ class DataMaintenancePolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> DataMaintenancePolicy:
-        config = config or get_default_config()
+        config = config or get_config_manager()
         maintenance = config.maintenance
         return cls(
             enabled=bool(maintenance.ENABLE_DATA_CLEANUP),
@@ -67,4 +67,3 @@ class DataMaintenancePolicy:
                 for field, keywords in maintenance.CLEANUP_KEYWORDS.items()
             },
         )
-

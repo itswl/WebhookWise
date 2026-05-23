@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from core.app_context import get_default_config
+from core.app_context import get_config_manager
 from core.text import split_csv_lower
 
 
@@ -39,7 +39,7 @@ class OutboundURLPolicy:
 
     @classmethod
     def from_config(cls, config: Any | None = None) -> OutboundURLPolicy:
-        config = config or get_default_config().security
+        config = (config or get_config_manager()).security
         return cls(
             allow_private_target_urls=bool(config.ALLOW_PRIVATE_TARGET_URLS),
             target_allowlist=tuple(split_csv_lower(str(config.FORWARD_TARGET_ALLOWLIST or ""))),
