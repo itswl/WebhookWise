@@ -89,14 +89,9 @@ def init_default_app_context(config: UnifiedConfigManager | None = None) -> AppC
 def get_or_create_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
     context = _default_context.get()
     if context is None:
-        if config is None:
-            raise RuntimeError("default AppContext is not initialized")
-        context = AppContext(config=config)
-        _default_context.set(context)
-        return context
+        return init_default_app_context(config)
     if config is not None and context.config is not config:
-        context = AppContext(config=config)
-        _default_context.set(context)
+        return init_default_app_context(config)
     return context
 
 

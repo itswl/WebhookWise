@@ -31,7 +31,7 @@ from core.observability.metrics import (
 from core.observability.tracing import get_current_trace_id
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.circuit_breakers import OpenClawForwardDependencies, build_openclaw_forward_dependencies
-from services.forwarding.policies import ForwardDeliveryPolicy, OpenClawTriggerPolicy
+from services.forwarding.policies import OpenClawTriggerPolicy
 from services.operations.deep_analysis_notifications import (
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
@@ -66,7 +66,7 @@ class OpenClawPollPolicy:
     notification_webhook_url: str
 
     @classmethod
-    def from_config(cls) -> "OpenClawPollPolicy":
+    def from_config(cls) -> OpenClawPollPolicy:
         cfg = get_config_manager()
         return cls(
             timeout_seconds=int(cfg.openclaw.OPENCLAW_TIMEOUT_SECONDS),
@@ -138,7 +138,7 @@ class OpenClawWsPolicy:
     nonce_timeout: float
 
     @classmethod
-    def from_config(cls) -> "OpenClawWsPolicy":
+    def from_config(cls) -> OpenClawWsPolicy:
         cfg = get_config_manager()
         return cls(
             device_id=str(cfg.openclaw.OPENCLAW_DEVICE_ID),
@@ -853,6 +853,7 @@ async def _claim_openclaw_poll(
     analysis_id: int, *, policy: OpenClawPollPolicy | None = None
 ) -> tuple[WebhookData | None, int | None]:
     from sqlalchemy import select, update
+
     from db.session import session_scope
     from models import DeepAnalysis
 
@@ -978,6 +979,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
 
 async def run_openclaw_poll_scan(limit: int = 100) -> int:
     from sqlalchemy import select
+
     from db.session import session_scope
     from models import DeepAnalysis
 

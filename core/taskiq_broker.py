@@ -153,7 +153,6 @@ async def worker_shutdown_event(state: object) -> None:
     from core.config import UnifiedConfigManager
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
-
     from services.analysis.ai_analyzer import reset_openai_client
 
     context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())

@@ -57,10 +57,8 @@ async def send_ai_error_alert(
     policy: AIErrorNotificationPolicy | None = None,
     http_client: Any | None = None,
 ) -> None:
-    """Send a rate-limited AI error/degradation alert to the configured operations target."""
+    """Send a rate-limited AI error/degradation alert via configured forward rules."""
     policy = policy or AIErrorNotificationPolicy.from_config()
-    if not policy.enabled or not policy.target_url:
-        return
 
     try:
         from core.redis_client import redis_set_nx_ex

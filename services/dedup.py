@@ -37,13 +37,9 @@ class DedupState:
         return (now - self.last_seen_at) <= window_seconds
 
 
-def _dedup_state_key(dedup_key: str) -> str:
-    return webhook_dedupe(dedup_key)
-
-
 async def get_dedup_state(dedup_key: str) -> DedupState | None:
     try:
-        payload = await redis_get_json_dict(_dedup_state_key(dedup_key))
+        payload = await redis_get_json_dict(webhook_dedupe(dedup_key))
     except Exception:
         return None
     if not payload:
@@ -85,7 +81,7 @@ async def remember_dedup_state(
     if analysis:
         payload["analysis"] = analysis
     with contextlib.suppress(Exception):
-        await redis_setex_json(_dedup_state_key(dedup_key), max(60, ttl_seconds), payload)
+        await redis_setex_json(webhook_dedupe(dedup_key), max(60, ttl_seconds), payload)
 
 
 # ── Dedup resolver ───────────────────────────────────────────────────────────
@@ -193,20 +189,19 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
     now = time.time()
 
     state = await get_dedup_state(dedup_key)
-    if state and state.is_active(now, window_seconds):
-        if _has_reusable_analysis(state.analysis):
-            logger.debug(
-                "[Dedup] Redis 滑动窗口命中 dedup_key=%s orig_id=%s count=%d",
-                dedup_key[:32] if dedup_key else "-",
-                state.original_event_id,
-                state.count,
-            )
-            return DedupResult(
-                action=DedupAction.REUSE,
-                analysis=state.analysis,
-                original_event_id=state.original_event_id,
-                route_type="redis_reuse",
-            )
+    if state and state.is_active(now, window_seconds) and _has_reusable_analysis(state.analysis):
+        logger.debug(
+            "[Dedup] Redis 滑动窗口命中 dedup_key=%s orig_id=%s count=%d",
+            dedup_key[:32] if dedup_key else "-",
+            state.original_event_id,
+            state.count,
+        )
+        return DedupResult(
+            action=DedupAction.REUSE,
+            analysis=state.analysis,
+            original_event_id=state.original_event_id,
+            route_type="redis_reuse",
+        )
 
     db_result = await _find_original_by_dedup_key(dedup_key, window_seconds)
     if db_result:

@@ -7,12 +7,13 @@ import ipaddress
 from fastapi import Request
 
 from core.app_context import AppContext, get_config_manager
-from core.config import UnifiedConfigManager
 
 
 def get_client_ip(request: Request) -> str:
     """Return the trusted client IP for a FastAPI request."""
-    security = _request_config(request).security
+    context = getattr(request.app.state, "app_context", None)
+    config = context.config if isinstance(context, AppContext) else get_config_manager()
+    security = config.security
     if _is_trusted_proxy(request.client.host if request.client else None, security=security):
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for and (ip := _first_valid_header_ip(forwarded_for)):
@@ -21,13 +22,6 @@ def get_client_ip(request: Request) -> str:
         if real_ip and (ip := _first_valid_header_ip(real_ip)):
             return ip
     return request.client.host if request.client else "unknown"
-
-
-def _request_config(request: Request) -> UnifiedConfigManager:
-    context = getattr(request.app.state, "app_context", None)
-    if isinstance(context, AppContext):
-        return context.config
-    return get_config_manager()
 
 
 def _first_valid_header_ip(value: str) -> str | None:

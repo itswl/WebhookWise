@@ -22,7 +22,7 @@ async def test_ai_policy_refusal_degrades_to_rules_even_when_global_degradation_
     monkeypatch.setattr(temp_config.ai, "ENABLE_AI_DEGRADATION", False)
 
     async def fail_with_policy_refusal(
-        parsed_data: dict[str, object], source: str
+        parsed_data: dict[str, object], source: str, **kwargs: object
     ) -> tuple[dict[str, object], int, int]:
         raise _FakePermissionDenied("The request is prohibited due to a violation of provider Terms Of Service.")
 
@@ -61,7 +61,7 @@ async def test_ai_generic_error_still_raises_when_global_degradation_disabled(
     monkeypatch.setattr(temp_config.ai, "ENABLE_AI_DEGRADATION", False)
     monkeypatch.setattr(ai_analyzer, "_send_ai_error_alert", AsyncMock())
 
-    async def fail_generically(parsed_data: dict[str, object], source: str) -> tuple[dict[str, object], int, int]:
+    async def fail_generically(parsed_data: dict[str, object], source: str, **kwargs: object) -> tuple[dict[str, object], int, int]:
         raise RuntimeError("unexpected provider failure")
 
     monkeypatch.setattr(ai_analyzer, "_call_ai_with_retry", fail_generically)

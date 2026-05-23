@@ -58,15 +58,11 @@ def _set_config(key: str, value: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_high_importance_new_alert_forwards():
-    """高重要性新告警默认应该转发。"""
-    context = get_default_app_context()
-    assert context is not None
-    orig_target = context.config.forwarding.DEFAULT_FORWARD_TARGET_URL
-    _set_config("DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+async def test_high_importance_with_matched_rule_forwards():
+    """高重要性 + 匹配规则应转发。"""
+    rule = _FakeRule(1, importance="high")
+    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("high", False, None, None, "prometheus")
-    _set_config("DEFAULT_FORWARD_TARGET_URL", orig_target)
     assert decision.should_forward is True
 
 
@@ -76,7 +72,7 @@ async def test_medium_importance_no_rules_does_not_forward():
     with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     assert decision.should_forward is False
-    assert "非高风险" in (decision.skip_reason or "")
+    assert "未匹配转发规则" in (decision.skip_reason or "")
 
 
 @pytest.mark.asyncio
@@ -108,15 +104,11 @@ async def test_noise_suppression_overrides_high_importance():
 
 @pytest.mark.asyncio
 async def test_noise_no_suppress_allows_forward():
-    """降噪不抑制时，high 告警正常转发。"""
+    """降噪不抑制时，high 告警 + 匹配规则正常转发。"""
     noise = _Noise(suppress=False)
-    context = get_default_app_context()
-    assert context is not None
-    orig_target = context.config.forwarding.DEFAULT_FORWARD_TARGET_URL
-    _set_config("DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+    rule = _FakeRule(1, importance="high")
+    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("high", False, noise, None, "prometheus")
-    _set_config("DEFAULT_FORWARD_TARGET_URL", orig_target)
     assert decision.should_forward is True
 
 
@@ -167,19 +159,17 @@ async def test_duplicate_forward_enabled_forwards():
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
-    orig_target = context.config.forwarding.DEFAULT_FORWARD_TARGET_URL
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
     _set_config("FORWARD_DUPLICATE_ALERTS", True)
     _set_config("ENABLE_PERIODIC_REMINDER", False)
-    _set_config("DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
+    rule = _FakeRule(1, importance="high")
     try:
         event = _Event(last_notified_at=None)
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
+        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        _set_config("DEFAULT_FORWARD_TARGET_URL", orig_target)
         _set_config("FORWARD_DUPLICATE_ALERTS", False)
         _set_config("ENABLE_PERIODIC_REMINDER", False)
 
@@ -191,21 +181,19 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     orig_interval = context.config.retry.REMINDER_INTERVAL_HOURS
-    orig_target = context.config.forwarding.DEFAULT_FORWARD_TARGET_URL
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
     _set_config("FORWARD_DUPLICATE_ALERTS", False)
     _set_config("ENABLE_PERIODIC_REMINDER", True)
     _set_config("REMINDER_INTERVAL_HOURS", 6)
-    _set_config("DEFAULT_FORWARD_TARGET_URL", "https://example.com/hook")
+    rule = _FakeRule(1, importance="high")
     try:
         event = _Event(last_notified_at=datetime.now() - timedelta(hours=7))
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([])):
+        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is True
         assert decision.is_periodic_reminder is True
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        _set_config("DEFAULT_FORWARD_TARGET_URL", orig_target)
         _set_config("FORWARD_DUPLICATE_ALERTS", False)
         _set_config("ENABLE_PERIODIC_REMINDER", False)
         _set_config("REMINDER_INTERVAL_HOURS", orig_interval)
