@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 import sqlalchemy
 from fastapi import Request
@@ -171,10 +171,13 @@ async def _save_duplicate_event(
         duplicate_count = original.duplicate_count
         final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(payload.ai_analysis, original, reanalyzed)
     else:
-        res = await session.execute(
-            update(WebhookEvent)
-            .where(WebhookEvent.id == original_id)
-            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now())
+        res = cast(
+            sqlalchemy.engine.CursorResult[Any],
+            await session.execute(
+                update(WebhookEvent)
+                .where(WebhookEvent.id == original_id)
+                .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now())
+            ),
         )
         if not res.rowcount:
             return None
@@ -191,7 +194,7 @@ async def _save_duplicate_event(
                 original_id=original_id,
                 duplicate_count=duplicate_count,
                 beyond_window=duplicate_status.beyond_window,
-                ai_analysis=cast(AnalysisResult, final_ai_analysis),
+                ai_analysis=final_ai_analysis,
                 importance=final_importance,
             )
             await session.flush()
@@ -204,7 +207,7 @@ async def _save_duplicate_event(
         original_id=original_id,
         duplicate_count=duplicate_count,
         beyond_window=duplicate_status.beyond_window,
-        ai_analysis=cast(AnalysisResult, final_ai_analysis),
+        ai_analysis=final_ai_analysis,
         importance=final_importance,
     )
     session.add(duplicate_event)
