@@ -11,7 +11,6 @@ from services.notifications import (
     build_notification_channels,
     find_notification_channel,
 )
-from services.operations.policies import FeishuNotificationPolicy
 
 logger = get_logger("feishu_notifications")
 
@@ -22,14 +21,14 @@ async def send_feishu_deep_analysis(
     source: str = "",
     webhook_event_id: int = 0,
     *,
-    policy: FeishuNotificationPolicy | None = None,
+    timeout_seconds: int | None = None,
     http_client: AsyncJsonPoster | None = None,
     channels: list[NotificationChannel] | None = None,
 ) -> bool:
     """Send a deep-analysis card to a configured Feishu/Lark webhook."""
     if not webhook_url:
         return False
-    channels = channels or build_notification_channels(http_client=http_client, feishu_policy=policy)
+    channels = channels or build_notification_channels(http_client=http_client, timeout_seconds=timeout_seconds)
     channel = find_notification_channel(webhook_url, channels)
     if channel is None:
         logger.debug("未找到支持该 URL 的通知渠道: %s", webhook_url)

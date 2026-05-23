@@ -6,7 +6,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from core.compression import decompress_payload
-from services.webhooks.mongodb_summary import mongodb_summary_fields
 
 from .base import APIResponse, CursorPaginationInfo
 
@@ -65,6 +64,17 @@ class HealthResponse(APIResponse[HealthData]):
 
 def _iso_or_none(value: object) -> str | None:
     return value.isoformat() if isinstance(value, datetime) else None
+
+
+def mongodb_summary_fields(parsed_data: Any | None) -> dict[str, Any]:
+    if not parsed_data or not isinstance(parsed_data, dict):
+        return {}
+    monitor = parsed_data.get("监控项")
+    return {
+        "host": monitor.get("主机", "") if isinstance(monitor, dict) else "",
+        "metric": monitor.get("监控项", "") if isinstance(monitor, dict) else "",
+        "value": parsed_data.get("当前值", ""),
+    }
 
 
 def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
