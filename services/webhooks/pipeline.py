@@ -25,6 +25,7 @@ from core.observability.attributes import (
 from core.observability.events import emit_event
 from core.observability.metrics import (
     WEBHOOK_NOISE_REDUCED_TOTAL,
+    WEBHOOK_ANALYSIS_ROUTE_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
@@ -210,9 +211,10 @@ class _ProcessingRun:
         route_type = analysis_res.analysis_result.get("_route_type", "ai")
         importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
         set_log_context(route_type=route_type)
+        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(self.ctx.metric_source, route_type).inc()
 
         if analysis_res.is_reused:
-            logger.info(
+            logger.debug(
                 "[Pipeline] 分析结果复用(redis) event_id=%s request_id=%s importance=%s",
                 self.ctx.event_id,
                 self.ctx.request_id,

@@ -75,7 +75,8 @@ async def _receive_and_enqueue_webhook(
         client_ip = get_client_ip(request)
     except Exception:
         client_ip = "unknown"
-    raw_body = await request.body()
+    state = getattr(request, "state", None)
+    raw_body = (getattr(state, "raw_body", None) if state is not None else None) or await request.body()
     content_length = request.headers.get("content-length", "")
     content_type = request.headers.get("content-type", "")
     method = str(getattr(request, "method", ""))

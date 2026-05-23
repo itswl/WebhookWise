@@ -32,6 +32,8 @@ class ServerConfig(StaticSettings):
     LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
+    PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096)
+    PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES: int = Field(default=4096)
 
     @model_validator(mode="after")
     def _derive_debug_default(self) -> ServerConfig:
@@ -48,6 +50,7 @@ class TaskConfig(StaticSettings):
     FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300)
     MAX_CONCURRENT_WEBHOOK_TASKS: int = Field(default=30)
     WEBHOOK_TASK_SLOT_LEASE_SECONDS: int = Field(default=1800)
+    WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0)
 
 
 class MQConfig(StaticSettings):
@@ -73,6 +76,7 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
+    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True)
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
@@ -221,6 +225,7 @@ class RetryConfig(StaticSettings):
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
+    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False)
     RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
