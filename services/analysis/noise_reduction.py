@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from core.logger import get_logger
+from services.analysis.config_models import NoiseScoringConfig
 from services.webhooks.types import AnalysisResult
 
 logger = get_logger("analysis.noise_reduction")
@@ -36,29 +37,6 @@ class NoiseReductionDecision:
     reason: str
     related_alert_count: int
     related_alert_ids: list[int]
-
-
-@dataclass(frozen=True)
-class NoiseScoringConfig:
-    source_weight: float
-    resource_weight: float
-    semantic_weight: float
-    severity_weight: float
-    time_weight: float
-    severity_downgrade_score: float
-    related_min_confidence: float
-
-    @classmethod
-    def from_config(cls, config: Any) -> NoiseScoringConfig:
-        return cls(
-            source_weight=float(config.NOISE_SOURCE_WEIGHT),
-            resource_weight=float(config.NOISE_RESOURCE_WEIGHT),
-            semantic_weight=float(config.NOISE_SEMANTIC_WEIGHT),
-            severity_weight=float(config.NOISE_SEVERITY_WEIGHT),
-            time_weight=float(config.NOISE_TIME_WEIGHT),
-            severity_downgrade_score=float(config.NOISE_SEVERITY_DOWNGRADE_SCORE),
-            related_min_confidence=float(config.NOISE_RELATED_MIN_CONFIDENCE),
-        )
 
 
 DEFAULT_SCORING_CONFIG = NoiseScoringConfig(

@@ -57,17 +57,6 @@ class AIErrorNotificationPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class AICachePolicy:
-    enabled: bool
-    ttl_seconds: int
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "AICachePolicy":
-        config = config or get_default_config().ai
-        return cls(enabled=bool(config.CACHE_ENABLED), ttl_seconds=int(config.ANALYSIS_CACHE_TTL))
-
-
-@dataclass(frozen=True, slots=True)
 class AIProviderPolicy:
     enabled: bool
     api_key: str
