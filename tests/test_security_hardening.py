@@ -177,7 +177,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
     )
 
     assert result["status"] == "success"
-    assert result["response"] == {"_raw": "ok"}
+    assert result.get("status_code") == 200
 
 
 @pytest.mark.asyncio

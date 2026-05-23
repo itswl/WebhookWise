@@ -9,13 +9,9 @@ import orjson
 JSONDecodeError = orjson.JSONDecodeError
 
 
-def _default(value: Any) -> str:
-    return str(value)
-
-
 def dumps_bytes(value: Any, *, sort_keys: bool = False) -> bytes:
     option = orjson.OPT_SORT_KEYS if sort_keys else 0
-    return orjson.dumps(value, option=option, default=_default)
+    return orjson.dumps(value, option=option, default=str)
 
 
 def dumps(value: Any, *, sort_keys: bool = False, indent: bool = False) -> str:
@@ -24,7 +20,7 @@ def dumps(value: Any, *, sort_keys: bool = False, indent: bool = False) -> str:
         option |= orjson.OPT_SORT_KEYS
     if indent:
         option |= orjson.OPT_INDENT_2
-    return orjson.dumps(value, option=option, default=_default).decode("utf-8")
+    return orjson.dumps(value, option=option, default=str).decode("utf-8")
 
 
 def loads(data: str | bytes | bytearray | memoryview) -> Any:

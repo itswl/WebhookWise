@@ -16,11 +16,6 @@ from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 logger = get_logger("forwarding.remote")
 
 
-def _record_delivery(target_type: str, status: str, started: float) -> None:
-    FORWARD_DELIVERY_TOTAL.labels(target_type, status).inc()
-    FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
-
-
 async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
@@ -84,7 +79,8 @@ async def post_json_to_remote(
         except UnsafeTargetUrlError as e:
             logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
             status = "invalid_target"
-            _record_delivery(target_type_label, status, started)
+            FORWARD_DELIVERY_TOTAL.labels(target_type_label, status).inc()
+            FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
@@ -116,4 +112,5 @@ async def post_json_to_remote(
         status = "failed"
         return {"status": "failed", "message": str(e)}
     finally:
-        _record_delivery(target_type_label, status, started)
+        FORWARD_DELIVERY_TOTAL.labels(target_type_label, status).inc()
+        FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)

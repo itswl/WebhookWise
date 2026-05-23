@@ -1,12 +1,14 @@
 """Deep-analysis completion notification side effects."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from core.logger import get_logger, mask_url
-from services.analysis.openclaw import OpenClawPollPolicy
 from services.channels.feishu import build_deep_analysis_card
 from services.forwarding.outbox import forward_notification
 from services.webhooks.types import WebhookData
+
+if TYPE_CHECKING:
+    from services.analysis.openclaw import OpenClawPollPolicy
 
 logger = get_logger("deep_analysis_notifications")
 
@@ -37,9 +39,11 @@ async def send_deep_analysis_success_notification(
     record_dict: WebhookData,
     source: str = "",
     *,
-    policy: OpenClawPollPolicy | None = None,
+    policy: "OpenClawPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for completed deep analysis."""
+    from services.analysis.openclaw import OpenClawPollPolicy
+
     policy = policy or OpenClawPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
     if not webhook_url:
@@ -93,9 +97,11 @@ async def send_deep_analysis_failure_notification(
     record_dict: WebhookData,
     reason: str = "",
     *,
-    policy: OpenClawPollPolicy | None = None,
+    policy: "OpenClawPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for failed deep analysis."""
+    from services.analysis.openclaw import OpenClawPollPolicy
+
     policy = policy or OpenClawPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
     if not webhook_url:

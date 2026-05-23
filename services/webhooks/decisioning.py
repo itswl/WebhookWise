@@ -45,7 +45,6 @@ class ForwardingPolicy:
     enable_periodic_reminder: bool
     reminder_interval_hours: int
     forward_duplicate_alerts: bool
-    default_target_url: str = ""
 
 
 def normalize_importance(value: Any) -> str:
@@ -249,5 +248,4 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
         reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
         forward_duplicate_alerts=cfg.retry.FORWARD_DUPLICATE_ALERTS,
-        default_target_url=str(cfg.forwarding.DEFAULT_FORWARD_TARGET_URL),
     )

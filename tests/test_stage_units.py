@@ -53,7 +53,6 @@ async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pyt
         {"analysis_result": {}, "engine": "openclaw"},
         source="grafana",
         webhook_event_id=7,
-        channels=None,
     )
 
     assert ok is True
