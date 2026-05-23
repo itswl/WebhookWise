@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook_context import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
-from core.dependencies import get_http_client_dependency
+from core.app_context import get_http_client_dependency
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
@@ -18,7 +18,7 @@ from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.forwarding.policies import OpenClawTriggerPolicy, RemoteForwardPolicy
 from services.forwarding.remote import post_json_to_remote
-from services.notifications.target_detection import is_feishu_url
+from services.notifications import is_feishu_url
 from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
 
 logger = get_logger("api.deep_analysis")

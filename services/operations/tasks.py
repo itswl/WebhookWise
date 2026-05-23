@@ -40,7 +40,7 @@ from core.observability.tracing import (
 )
 from core.observability.tracing import span as otel_span
 from core.redis_client import RedisEvalArg
-from core.redis_keys import scheduled_task_lock, webhook_global_task_slots
+from core.redis_health import scheduled_task_lock, webhook_global_task_slots
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
 from core.taskiq_broker import broker
 from services.forwarding.outbox import configure_forward_outbox_schedulers

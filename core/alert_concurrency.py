@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from core import redis_client, redis_health
 from core.app_context import get_default_config
 from core.logger import get_logger
-from core.redis_keys import webhook_processing_lock, webhook_processing_queue
+from core.redis_health import webhook_processing_lock, webhook_processing_queue
 from core.redis_lua import (
     ALERT_REFRESH_LOCK_IF_OWNER as _REFRESH_IF_OWNER_LUA,
 )
