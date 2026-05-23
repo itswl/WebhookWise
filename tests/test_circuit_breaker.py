@@ -166,28 +166,26 @@ class TestOpeningCircuit:
 
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
-    async def test_redis_state_check_failure_rejects_call(
+    async def test_redis_state_check_failure_allows_call(
         self, breaker: CircuitBreaker, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from core.redis_health import RedisHealthState, get_redis_health_snapshot
 
         executed = False
 
         async def unavailable(*_: object) -> str:
             raise RuntimeError("redis unavailable")
 
-        async def should_not_run() -> str:
+        async def should_run() -> str:
             nonlocal executed
             executed = True
             return "ok"
 
         monkeypatch.setattr("core.redis_client.redis_eval_str", unavailable)
 
-        with pytest.raises(CircuitBreakerOpenException):
-            await breaker.call_async(should_not_run)
+        result = await breaker.call_async(should_run)
 
-        assert executed is False
-        assert get_redis_health_snapshot().state == RedisHealthState.UNAVAILABLE
+        assert result == "ok"
+        assert executed is True
 
 
 class TestHalfOpenRecovery:

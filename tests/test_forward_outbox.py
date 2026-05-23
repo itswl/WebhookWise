@@ -93,20 +93,21 @@ async def test_process_forward_outbox_marks_sent(
             webhook_event_id=1,
             target_type="webhook",
             target_url="https://example.test/hook",
+            channel_name="webhook",
+            event_type="webhook_forward",
             status="pending",
             attempts=0,
             max_attempts=2,
-            forward_data={"source": "test"},
-            analysis_result={"summary": "x"},
+            formatted_payload={"hello": "world"},
         )
         session.add(record)
         await session.flush()
         outbox_id = record.id
 
-    async def fake_forward_to_remote(**_: Any) -> dict[str, Any]:
+    async def fake_post_json_to_remote(*_: Any, **__: Any) -> dict[str, Any]:
         return {"status": "success", "status_code": 200}
 
-    monkeypatch.setattr("services.forwarding.remote.forward_to_remote", fake_forward_to_remote)
+    monkeypatch.setattr("services.forwarding.remote.post_json_to_remote", fake_post_json_to_remote)
 
     await process_forward_outbox_by_id(outbox_id)
 

@@ -35,6 +35,7 @@ class WebhookEvent(Base):
     parsed_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    dedup_key: Mapped[str | None] = mapped_column(String(64), index=True)
 
     ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     importance: Mapped[str | None] = mapped_column(String(20))
@@ -54,13 +55,15 @@ class WebhookEvent(Base):
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
     duplicate_of: Mapped[int | None] = mapped_column(Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"))
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
-    beyond_window: Mapped[bool] = mapped_column(Boolean, default=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    __table_args__ = (Index("idx_hash_timestamp", "alert_hash", "timestamp"),)
+    __table_args__ = (
+        Index("idx_hash_timestamp", "alert_hash", "timestamp"),
+        Index("idx_dedup_key_timestamp", "dedup_key", "timestamp"),
+    )
 
     def fill_fields(self, **kwargs: object) -> None:
         """统一填充字段"""

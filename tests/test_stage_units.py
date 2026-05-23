@@ -23,89 +23,42 @@ def test_parse_request_decodes_raw_json_without_database() -> None:
 
 @pytest.mark.asyncio
 async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.notifications import FeishuNotificationChannel
+    from services.channels.feishu import build_deep_analysis_card
 
-    async def fake_validate(url: str) -> str:
-        return url
-
-    class Response:
-        status_code = 200
-
-    class Client:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, Any]] = []
-
-        async def post(self, url: str, *, json: object, timeout: float | int | None = None) -> Response:
-            self.calls.append({"url": url, "json": json, "timeout": timeout})
-            return Response()
-
-    class Breaker:
-        async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> object:
-            return await func(*args, **kwargs)
-
-    client = Client()
-    channel = FeishuNotificationChannel(
-        http_client=client,
-        circuit_breaker=Breaker(),  # type: ignore[arg-type]
-        timeout_seconds=3,
-        validate_url=fake_validate,
-    )
-
-    ok = await channel.send_deep_analysis(
-        "https://open.feishu.cn/open-apis/bot/v2/hook/token",
+    card = build_deep_analysis_card(
         {"analysis_result": {"root_cause": "x", "impact": "y", "confidence": 0.8}, "engine": "openclaw"},
         source="prometheus",
         webhook_event_id=42,
     )
 
-    assert ok is True
-    assert client.calls[0]["timeout"] == 3
-    assert client.calls[0]["json"]["msg_type"] == "interactive"
-    assert "ID: 42" in client.calls[0]["json"]["card"]["elements"][-1]["elements"][0]["content"]
+    assert card["msg_type"] == "interactive"
+    assert "ID: 42" in card["card"]["elements"][-1]["elements"][0]["content"]
 
 
 @pytest.mark.asyncio
 async def test_feishu_facade_uses_supplied_notification_channel() -> None:
     from services.operations.feishu_notifications import send_feishu_deep_analysis
 
-    class Channel:
-        name = "test"
+    enqueued: list[dict[str, object]] = []
 
-        def __init__(self) -> None:
-            self.called = False
+    async def fake_enqueue_external_message(**kwargs: object) -> int:
+        enqueued.append(dict(kwargs))
+        return len(enqueued)
 
-        def supports(self, target_url: str) -> bool:
-            return target_url == "https://open.feishu.cn/open-apis/bot/v2/hook/token"
+    import services.operations.feishu_notifications as module
 
-        async def send_card(self, target_url: str, card_payload: object) -> bool:
-            raise AssertionError("facade should call send_deep_analysis for this path")
-
-        async def send_deep_analysis(
-            self,
-            target_url: str,
-            analysis_record: dict[str, Any],
-            *,
-            source: str = "",
-            webhook_event_id: int = 0,
-        ) -> bool:
-            self.called = True
-            assert source == "grafana"
-            assert webhook_event_id == 7
-            assert analysis_record["engine"] == "openclaw"
-            return True
-
-    channel = Channel()
+    module.enqueue_external_message = fake_enqueue_external_message  # type: ignore[assignment]
 
     ok = await send_feishu_deep_analysis(
         "https://open.feishu.cn/open-apis/bot/v2/hook/token",
         {"analysis_result": {}, "engine": "openclaw"},
         source="grafana",
         webhook_event_id=7,
-        channels=[channel],
+        channels=None,
     )
 
     assert ok is True
-    assert channel.called is True
+    assert len(enqueued) == 1
 
 
 @pytest.mark.asyncio
@@ -260,40 +213,3 @@ async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest
     assert result["event_id"] is None
     assert result["request_id"] == "req-suppressed"
     assert "suppressed" in result["message"]
-
-
-@pytest.mark.asyncio
-async def test_resolve_analysis_reuses_redis_dedup_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    import services.webhooks.analysis_resolution as analysis_resolution
-    from services.webhooks.deduplication import CachedDuplicate
-    from services.webhooks.repository import DuplicateCheckResult
-
-    async def cached_duplicate(_: str) -> CachedDuplicate:
-        return CachedDuplicate(123, {"importance": "high", "summary": "cached"})
-
-    class Original:
-        id = 123
-
-    original = Original()
-
-    async def window_lookup(*_: object, **__: object) -> DuplicateCheckResult:
-        return DuplicateCheckResult(True, original, False, None)  # type: ignore[arg-type]
-
-    async def fail_ai(*_: object, **__: object) -> object:
-        raise AssertionError("cached duplicate should not invoke AI")
-
-    async def noop_usage(*_: object, **__: object) -> None:
-        return None
-
-    monkeypatch.setattr(analysis_resolution, "get_cached_duplicate", cached_duplicate)
-    monkeypatch.setattr(analysis_resolution, "check_duplicate_event", window_lookup)
-    monkeypatch.setattr(analysis_resolution, "analyze_webhook_with_ai", fail_ai)
-    monkeypatch.setattr(analysis_resolution, "log_ai_usage", noop_usage)
-
-    result = await analysis_resolution.resolve_analysis("same-hash", {"source": "prometheus"})
-
-    assert result.is_duplicate is True
-    assert result.is_reused is True
-    assert result.original_event is original
-    assert result.original_event_id == 123
-    assert result.analysis_result["_route_type"] == "redis_reuse"

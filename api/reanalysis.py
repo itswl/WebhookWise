@@ -60,10 +60,29 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         noise=None,
         orig=None,
         source=event.source or "unknown",
+        parsed_data=cast(dict[str, Any], fwd_ctx.get("parsed_data") or {}),
         session=session,
     )
     outbox_ids: list[int] = []
     if decision.should_forward:
+        def _build_formatted_payload(rule: dict[str, Any]) -> tuple[str, dict[str, object]]:
+            from services.channels.base import FormatContext, get_channel, resolve_channel_name
+
+            target_type = str(rule.get("target_type", "") or "")
+            target_url = str(rule.get("target_url", "") or "")
+            channel_name = resolve_channel_name(target_type, target_url)
+            channel = get_channel(channel_name)
+            if channel is None:
+                return channel_name, {}
+            payload = channel.format(
+                FormatContext(
+                    webhook_data=fwd_ctx,
+                    analysis_result=res,
+                    is_periodic_reminder=decision.is_periodic_reminder,
+                )
+            )
+            return channel_name, payload
+
         outbox_ids = await create_forward_outbox_records(
             session,
             decision=decision,
@@ -71,6 +90,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
             analysis=res,
             webhook_id=event.id,
             orig_id=None,
+            payload_builder=_build_formatted_payload,
         )
     else:
         logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)

@@ -39,7 +39,6 @@ async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]
                 importance="high",
                 is_duplicate=False,
                 duplicate_count=1,
-                beyond_window=False,
             )
             session.add(event)
         await session.commit()

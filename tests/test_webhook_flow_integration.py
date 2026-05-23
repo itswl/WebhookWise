@@ -89,7 +89,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             "event_type": "integration_test_alert",
         }
 
-    monkeypatch.setattr("services.webhooks.analysis_resolution.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
+    monkeypatch.setattr("services.analysis.ai_analyzer.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
 
     posted: list[dict[str, Any]] = []
 
@@ -201,9 +201,10 @@ async def test_finalization_skips_outbox_without_target(
 ) -> None:
     from core.config import get_settings
     from models import ForwardOutbox, WebhookEvent
+    from services.dedup import DedupResult
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.request_parser import parse_request
-    from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
+    from services.webhooks.types import NoiseReductionContext, WebhookProcessContext
 
     settings = get_settings()
     monkeypatch.setattr(settings.forwarding, "DEFAULT_FORWARD_TARGET_URL", "")
@@ -229,13 +230,13 @@ async def test_finalization_skips_outbox_without_target(
         metric_source="prometheus",
         req_ctx=req_ctx,
         alert_hash=alert_hash,
+        dedup_key=alert_hash,
     )
-    analysis_res = AnalysisResolution(
-        {"importance": "high", "summary": "should rollback", "event_type": "test"},
-        True,
-        False,
-        None,
-        False,
+    analysis_res = DedupResult(
+        action="new",
+        analysis={"importance": "high", "summary": "should rollback", "event_type": "test"},
+        original_event_id=None,
+        is_reused=False,
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
 
@@ -251,7 +252,7 @@ async def test_finalization_skips_outbox_without_target(
         outboxes = (await session.execute(select(ForwardOutbox))).scalars().all()
 
     assert fwd_dec is not None
-    assert fwd_dec.should_forward is True
+    assert fwd_dec.should_forward is False
     assert finalize_res.outbox_ids == []
     async with integration_session_factory() as session:
         saved_event = await session.get(WebhookEvent, save_res.webhook_id)
@@ -279,7 +280,6 @@ async def test_save_webhook_is_idempotent_for_existing_request_id(
             importance="high",
             is_duplicate=False,
             duplicate_count=1,
-            beyond_window=False,
         )
         session.add(existing)
         await session.flush()
@@ -330,7 +330,6 @@ async def test_data_maintenance_archives_old_events_before_delete(
             forward_status="sent",
             is_duplicate=False,
             duplicate_count=1,
-            beyond_window=False,
         )
         fresh_event = WebhookEvent(
             request_id="req-fresh-archive",
@@ -391,7 +390,6 @@ async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
             importance="high",
             is_duplicate=False,
             duplicate_count=41,
-            beyond_window=False,
         )
         session.add(original)
         await session.flush()
@@ -420,71 +418,16 @@ async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
     assert duplicate.duplicate_of == original_id
 
 
-async def test_redis_reuse_does_not_bypass_expired_duplicate_window(
-    integration_session_factory: async_sessionmaker[AsyncSession],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from core.app_context import get_default_app_context
-    from models import WebhookEvent
-    from services.webhooks.analysis_resolution import resolve_analysis
-    from services.webhooks.deduplication import CachedDuplicate
-
-    context = get_default_app_context()
-    assert context is not None
-    config = context.config
-    _set_config(monkeypatch, config, "DUPLICATE_ALERT_TIME_WINDOW", 4)
-    _set_config(monkeypatch, config, "REANALYZE_AFTER_TIME_WINDOW", True)
-
-    async with integration_session_factory.begin() as session:
-        original = WebhookEvent(
-            source="volcengine",
-            client_ip="127.0.0.1",
-            timestamp=datetime.now() - timedelta(hours=5),
-            processing_status="completed",
-            alert_hash="redis-expired-window-hash",
-            parsed_data={"RuleId": "disk"},
-            ai_analysis={"importance": "high", "summary": "cached old analysis"},
-            importance="high",
-            is_duplicate=False,
-            duplicate_count=1,
-            beyond_window=False,
-        )
-        session.add(original)
-        await session.flush()
-        original_id = original.id
-
-    async def fake_cached_duplicate(alert_hash: str) -> CachedDuplicate | None:
-        return CachedDuplicate(original_id, {"importance": "high", "summary": "cached should be ignored"})
-
-    async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
-        return {"importance": "high", "summary": "fresh beyond-window analysis"}
-
-    monkeypatch.setattr("services.webhooks.analysis_resolution.get_cached_duplicate", fake_cached_duplicate)
-    monkeypatch.setattr("services.webhooks.analysis_resolution.analyze_webhook_with_ai", fake_analyze_webhook_with_ai)
-
-    result = await resolve_analysis(
-        "redis-expired-window-hash",
-        {"source": "volcengine", "parsed_data": {"RuleId": "disk"}},
-    )
-
-    assert result.reanalyzed is True
-    assert result.is_reused is False
-    assert result.is_duplicate is False
-    assert result.beyond_window is True
-    assert result.original_event is not None
-    assert result.original_event.id == original_id
-    assert result.analysis_result["summary"] == "fresh beyond-window analysis"
-
-
 async def test_reused_analysis_queues_periodic_forward_outbox(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from core.app_context import get_default_app_context
     from models import ForwardOutbox, WebhookEvent
+    from services.dedup import DedupResult
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
     from services.webhooks.request_parser import parse_request
-    from services.webhooks.types import AnalysisResolution, NoiseReductionContext, WebhookProcessContext
+    from services.webhooks.types import NoiseReductionContext, WebhookProcessContext
 
     context = get_default_app_context()
     assert context is not None
@@ -520,15 +463,14 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
         metric_source="prometheus",
         req_ctx=req_ctx,
         alert_hash="reuse-hash",
+        dedup_key="reuse-hash",
     )
-    analysis_res = AnalysisResolution(
-        {"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
-        reanalyzed=False,
-        is_duplicate=True,
-        original_event=None,
-        beyond_window=False,
-        is_reused=True,
+    analysis_res = DedupResult(
+        action="reuse",
+        analysis={"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
         original_event_id=original_id,
+        is_reused=True,
+        route_type="db_reuse",
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
 

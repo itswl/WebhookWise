@@ -219,11 +219,26 @@ class TestFinalizeOutboxFailure:
     ) -> None:
         from models import ForwardOutbox
         from services.forwarding.outbox import _claim_outbox, _finalize_outbox_failure
+        from services.webhooks.types import ForwardOutboxStatus
 
         async def _noop(*_: object, **__: object) -> None:
             pass
 
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
+        from core.app_context import get_config_manager
+
+        monkeypatch.setattr(
+            get_config_manager().notifications,
+            "DEEP_ANALYSIS_FEISHU_WEBHOOK",
+            "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+        )
+        enqueued: list[dict[str, object]] = []
+
+        async def fake_enqueue_external_message(**kwargs: object) -> int:
+            enqueued.append(dict(kwargs))
+            return 1
+
+        monkeypatch.setattr("services.forwarding.enqueue.enqueue_external_message", fake_enqueue_external_message)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now() - timedelta(seconds=1)
@@ -235,6 +250,39 @@ class TestFinalizeOutboxFailure:
             record = await session.get(ForwardOutbox, outbox_id)
             assert record is not None
             assert record.status == ForwardOutboxStatus.EXHAUSTED
+        assert len(enqueued) == 1
+
+
+class TestRequeueOutbox:
+    async def test_requeue_exhausted_outbox_resets_attempts(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from models import ForwardOutbox
+        from services.forwarding.outbox import requeue_forward_outbox
+        from services.webhooks.types import ForwardOutboxStatus
+
+        async def _noop(*_: object, **__: object) -> None:
+            pass
+
+        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _noop)
+
+        outbox_id = await _insert_outbox(
+            session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now() - timedelta(seconds=1)
+        )
+        async with session_factory.begin() as session:
+            record = await session.get(ForwardOutbox, outbox_id)
+            assert record is not None
+            record.status = ForwardOutboxStatus.EXHAUSTED
+
+        assert await requeue_forward_outbox(outbox_id) is True
+
+        async with session_factory() as session:
+            updated = await session.get(ForwardOutbox, outbox_id)
+            assert updated is not None
+            assert updated.status == ForwardOutboxStatus.RETRYING
+            assert updated.attempts == 0
 
 
 # ── _finalize_outbox_success ─────────────────────────────────────────

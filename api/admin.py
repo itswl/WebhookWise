@@ -38,9 +38,11 @@ from services.analysis.ai_analyzer import (
     reload_user_prompt_template,
 )
 from services.configuration.config_service import get_config_sources, get_current_config
+from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, list_dead_letters
 from services.webhooks.repository import load_event_payload
+from services.webhooks.suppressed_service import count_suppressed_records, list_suppressed_records
 
 logger = get_logger("api.admin")
 
@@ -215,6 +217,37 @@ async def get_dead_letters_endpoint(
         )
     except Exception as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
+        return fail_response(str(e), 500)
+
+
+@admin_router.post(
+    "/api/admin/outbox/{outbox_id}/retry",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
+    try:
+        if await requeue_forward_outbox(outbox_id):
+            logger.info("[Admin] outbox 已重新入队 id=%s", outbox_id)
+            return ok_response(http_status=200, message="outbox 已重新入队", data={"outbox_id": outbox_id})
+        return fail_response("outbox 不存在或状态不可重试", 400)
+    except Exception as e:
+        logger.error("[Admin] outbox 重新入队失败 id=%s error=%s", outbox_id, e, exc_info=True)
+        return fail_response(str(e), 500)
+
+
+@admin_router.get("/api/admin/suppressed")
+async def list_suppressed_endpoint(
+    session: AsyncSession = Depends(get_db_session),
+    minutes: int = Query(60, ge=1, le=24 * 60),
+    limit: int = Query(100, ge=1, le=500),
+) -> JSONResponse:
+    try:
+        items = await list_suppressed_records(session, since_minutes=minutes, limit=limit)
+        total = await count_suppressed_records(session, since_minutes=minutes)
+        return ok_response(http_status=200, data={"total": total, "items": items})
+    except Exception as e:
+        logger.error("查询 suppressed_records 失败: %s", e, exc_info=True)
         return fail_response(str(e), 500)
 
 

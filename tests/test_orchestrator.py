@@ -226,9 +226,9 @@ def test_row_to_summary_dict_duplicate_beyond_window():
     row = _make_row(is_duplicate=True, duplicate_of=5, beyond_window=True)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
-    assert d["beyond_window"] is True
-    assert d["duplicate_type"] == "beyond_window"
-    assert d["is_within_window"] is False
+    assert d["beyond_window"] is False
+    assert d["duplicate_type"] == "within_window"
+    assert d["is_within_window"] is True
 
 
 def test_row_to_summary_dict_summary_from_ai_analysis():

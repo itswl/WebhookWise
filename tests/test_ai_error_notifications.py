@@ -20,8 +20,8 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
 ) -> None:
     from services.operations import ai_error_notifications as notifications
 
-    channel = _FakeChannel()
     seen_locks: set[str] = set()
+    enqueued: list[dict[str, object]] = []
 
     async def fake_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
         assert value == "1"
@@ -32,8 +32,12 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
         return True
 
     monkeypatch.setattr("core.redis_client.redis_set_nx_ex", fake_set_nx_ex)
-    monkeypatch.setattr(notifications, "build_notification_channels", lambda **_: [channel])
-    monkeypatch.setattr(notifications, "find_notification_channel", lambda target_url, channels: channel)
+
+    async def fake_enqueue_external_message(**kwargs: object) -> int:
+        enqueued.append(dict(kwargs))
+        return len(enqueued)
+
+    monkeypatch.setattr(notifications, "enqueue_external_message", fake_enqueue_external_message)
 
     policy = AIErrorNotificationPolicy(
         enabled=True,
@@ -56,7 +60,7 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
         policy=policy,
     )
 
-    assert len(channel.cards) == 1
+    assert len(enqueued) == 1
     assert len(seen_locks) == 1
 
 

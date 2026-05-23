@@ -10,6 +10,8 @@ from core.observability.metrics import (
     WEBHOOK_NOISE_EVALUATIONS_TOTAL,
     sanitize_source,
 )
+from db.session import session_scope
+from models import SuppressedRecord
 from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
 from services.webhooks.decisioning import normalize_importance
 from services.webhooks.policies import NoiseReductionPolicy
@@ -68,6 +70,22 @@ async def compute_noise(
                 dec.confidence,
                 dec.reason,
             )
+            try:
+                async with session_scope() as session:
+                    session.add(
+                        SuppressedRecord(
+                            alert_hash=alert_hash,
+                            source=source,
+                            relation=dec.relation,
+                            root_cause_event_id=dec.root_cause_event_id,
+                            reason=str(dec.reason or "")[:500],
+                            related_alert_ids=list(dec.related_alert_ids or []),
+                            confidence=float(dec.confidence or 0.0),
+                            created_at=now,
+                        )
+                    )
+            except Exception as e:
+                logger.warning("[Noise] 写入 suppressed_records 失败: %s", e)
         elif dec.relation != "standalone":
             logger.debug(
                 "[Noise] 关联但不抑制 relation=%s root_cause_id=%s confidence=%.2f",

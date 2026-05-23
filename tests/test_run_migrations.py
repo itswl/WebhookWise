@@ -58,22 +58,27 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
         "0003_drop_system_configs.py",
         "0004_drop_archived_webhook_events.py",
         "0005_create_archived_webhook_events.py",
+        "0006_channel_outbox_refactor.py",
+        "0007_forward_rule_match_payload.py",
+        "0008_create_suppressed_records.py",
+        "0009_add_dedup_key.py",
     ]
+    by_name = {path.name: path for path in revision_paths}
     for path in revision_paths:
         revision = re.search(r'^revision: str = "([^"]+)"', path.read_text(), re.MULTILINE)
         assert revision is not None
         assert len(revision.group(1)) <= 32
-    source = revision_paths[0].read_text()
+    source = by_name["0001_current_schema.py"].read_text()
     assert "Base.metadata.create_all" in source
     assert "Base.metadata.drop_all" in source
-    migration_source = revision_paths[1].read_text()
+    migration_source = by_name["0002_pluralize_tables.py"].read_text()
     assert 'op.rename_table("ai_usage_log", "ai_usage_logs")' in migration_source
     assert 'op.rename_table("forward_outbox", "forward_outboxes")' in migration_source
-    cleanup_source = revision_paths[2].read_text()
+    cleanup_source = by_name["0003_drop_system_configs.py"].read_text()
     assert 'op.drop_table("system_configs")' in cleanup_source
-    archive_cleanup_source = revision_paths[3].read_text()
+    archive_cleanup_source = by_name["0004_drop_archived_webhook_events.py"].read_text()
     assert 'op.drop_table("archived_webhook_events")' in archive_cleanup_source
-    archive_create_source = revision_paths[4].read_text()
+    archive_create_source = by_name["0005_create_archived_webhook_events.py"].read_text()
     assert "op.create_table(" in archive_create_source
     assert '"archived_webhook_events"' in archive_create_source
     assert "processing_status" in archive_create_source
