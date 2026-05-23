@@ -17,7 +17,7 @@ from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
 from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
-from core.service_lifecycle import configure_runtime_lifecycle_hooks, start_runtime_services, stop_runtime_services
+from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from core.taskiq_broker import broker
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
 from core.web.startup_checks import validate_startup_security
@@ -52,16 +52,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
 
     validate_startup_security(config)
-    configure_runtime_lifecycle_hooks(
-        initialize_ai_client=initialize_openai_client,
-        reset_ai_client=reset_openai_client,
-    )
     services = await start_runtime_services(
         config,
         context=context,
         broker=broker,
         start_broker=True,
         initialize_ai_client=True,
+        initialize_ai_client_hook=initialize_openai_client,
     )
     app.state.app_context = services.app_context
     logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
@@ -76,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             broker=broker,
             stop_broker=True,
             reset_ai_client=True,
+            reset_ai_client_hook=reset_openai_client,
         )
         logger.info("[App] 关闭完成 worker_id=%s", _WORKER_ID)
         shutdown_observability()

@@ -30,7 +30,7 @@ class _Noise:
 
 
 def _make_rules_loader(rules: list):
-    async def _loader():
+    async def _loader(**_: object):
         return rules
 
     return _loader

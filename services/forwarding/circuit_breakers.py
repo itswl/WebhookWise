@@ -35,9 +35,6 @@ class LazyCircuitBreaker:
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
         return await self._get().call_async(func, *args, **kwargs)
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._get(), name)
-
 
 def _build_feishu_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
     return CircuitBreaker(
