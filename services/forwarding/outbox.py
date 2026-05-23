@@ -14,12 +14,11 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import get_logger
 from core.observability.metrics import (
-    FORWARD_OUTBOX_BACKLOG_AGE_SECONDS,
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
 )
@@ -27,14 +26,13 @@ from core.observability.tracing import set_span_error
 from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import ForwardOutbox, WebhookEvent
-from services.forwarding.policies import ForwardOutboxPolicy
+from services.forwarding.policies import ForwardDeliveryPolicy
+from services.webhooks.decisioning import ForwardDecision, ForwardRuleTarget
 from services.webhooks.types import (
     AnalysisResult,
     DeepAnalysisStatus,
-    ForwardDecision,
     ForwardOutboxStatus,
     ForwardResult,
-    ForwardRuleTarget,
     WebhookData,
 )
 
@@ -72,29 +70,38 @@ async def resolve_and_forward(
     orig_id: int | None = None,
     wait: bool = False,
     session: AsyncSession | None = None,
-    policy: ForwardOutboxPolicy | None = None,
+    decision: ForwardDecision | None = None,
+    is_periodic_reminder: bool = False,
+    policy: ForwardDeliveryPolicy | None = None,
 ) -> ForwardResult:
     """统一转发入口 — 所有外发消息都通过规则匹配决定目标。
 
-    1. 加载启用转发规则，按 event_type + source + importance + duplicate 匹配
-    2. 为每条匹配规则写入 outbox 审计记录
-    3. wait=False 异步入队，wait=True 同步送达并返回结果
+    支持两种调用模式：
+    - Pipeline 路径：传入 session + decision（同事务创建 outbox，调用方负责提交和调度）
+    - 独立路径：不传 session，内部完成匹配+创建+调度全流程
     """
-    from services.webhooks.decisioning import select_forward_rules
-    from services.webhooks.repository import list_enabled_forward_rules
-
-    policy = policy or ForwardOutboxPolicy.from_config()
+    policy = policy or ForwardDeliveryPolicy.from_config()
     now = datetime.now()
 
-    rules = await list_enabled_forward_rules(session=session)
-    matched = select_forward_rules(
-        rules,
-        event_type=event_type,
-        importance=importance,
-        source=source,
-        is_duplicate=is_duplicate,
-        parsed_data=parsed_data,
-    )
+    matched: list[ForwardRuleTarget]
+    periodic: bool
+    if decision is not None:
+        matched = list(decision.matched_rules)
+        periodic = decision.is_periodic_reminder
+    else:
+        from services.webhooks.decisioning import select_forward_rules
+        from services.webhooks.repository import list_enabled_forward_rules
+
+        rules = await list_enabled_forward_rules(session=session)
+        matched = select_forward_rules(
+            rules,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
+        )
+        periodic = is_periodic_reminder
 
     if not matched:
         logger.info(
@@ -103,7 +110,7 @@ async def resolve_and_forward(
             source,
             importance,
         )
-        return {"status": "skipped", "reason": "未匹配转发规则"}
+        return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
 
     outbox_ids: list[int] = []
     async with _resolve_session(session) as sess:
@@ -111,9 +118,7 @@ async def resolve_and_forward(
             target_type = str(rule.get("target_type", "webhook") or "webhook")
             target_url = str(rule.get("target_url", "") or "")
             if target_type != "openclaw" and not target_url:
-                logger.warning(
-                    "[ResolveForward] 规则 '%s' target_url 为空，跳过", rule.get("name", rule.get("id"))
-                )
+                logger.warning("[ResolveForward] 规则 '%s' target_url 为空，跳过", rule.get("name", rule.get("id")))
                 FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
                 continue
 
@@ -123,7 +128,7 @@ async def resolve_and_forward(
                 rule_id=rule_id,
                 target_type=target_type,
                 target_url=target_url,
-                is_periodic_reminder=False,
+                is_periodic_reminder=periodic,
             )
             existing = (
                 await sess.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
@@ -143,7 +148,7 @@ async def resolve_and_forward(
                 target_type=target_type,
                 target_url=target_url,
                 target_name=str(rule.get("target_name", "") or ""),
-                is_periodic_reminder=False,
+                is_periodic_reminder=periodic,
                 channel_name=target_type,
                 event_type=event_type,
                 status=ForwardOutboxStatus.PENDING,
@@ -152,7 +157,7 @@ async def resolve_and_forward(
                 next_attempt_at=now,
                 forward_data=forward_data,
                 analysis_result=analysis_result,
-                formatted_payload=formatted_payload,
+                formatted_payload=formatted_payload if decision is None else None,
                 created_at=now,
                 updated_at=now,
             )
@@ -170,7 +175,11 @@ async def resolve_and_forward(
             )
 
     if not outbox_ids:
-        return {"status": "skipped", "reason": "所有匹配规则均已存在或无效"}
+        return {"status": "skipped", "reason": "所有匹配规则均已存在或无效", "outbox_ids": []}
+
+    # Pipeline 路径：由调用方提交事务后自行调度
+    if session is not None:
+        return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
 
     if wait:
         results: list[ForwardResult] = []
@@ -192,7 +201,7 @@ async def _resolve_session(existing: AsyncSession | None) -> Any:
             yield sess
 
 
-async def _deliver_one(outbox_id: int, *, policy: ForwardOutboxPolicy) -> ForwardResult:
+async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> ForwardResult:
     """同步送达一条 outbox 记录并更新状态。"""
     record = await _claim_outbox(outbox_id, policy=policy)
     if record is None:
@@ -221,12 +230,11 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
         analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
         return await forward_to_openclaw(forward_data, analysis)
 
-    from services.channels.base import FormatContext, get_channel, resolve_channel_name
+    from services.channels.base import FormatContext, resolve_channel
 
-    resolved_name = resolve_channel_name(channel_name, str(record.target_url or ""))
-    channel = get_channel(resolved_name)
+    channel = resolve_channel(channel_name, str(record.target_url or ""))
     if channel is None:
-        return {"status": "failed", "message": f"unknown_channel:{resolved_name}"}
+        return {"status": "failed", "message": f"unknown_channel:{channel_name}"}
     payload = record.formatted_payload
     if not isinstance(payload, dict):
         payload = None
@@ -240,7 +248,7 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
         )
     if payload is None:
         payload = {}
-    return await channel.send(str(record.target_url or ""), cast(dict[str, Any], payload))
+    return cast(ForwardResult, await channel.send(str(record.target_url or ""), cast(dict[str, Any], payload)))
 
 
 def _rule_id(rule: ForwardRuleTarget) -> int | None:
@@ -264,88 +272,6 @@ def _idempotency_key(
     raw = f"{webhook_id}|{rule_id or 'default'}|{target_type}|{target_url}|{int(is_periodic_reminder)}"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"forward:{webhook_id}:{digest[:32]}"
-
-
-def _iter_target_rules(decision: ForwardDecision, policy: ForwardOutboxPolicy) -> list[ForwardRuleTarget]:
-    if decision.matched_rules:
-        return list(decision.matched_rules)
-    return [policy.default_rule()]
-
-
-async def create_forward_outbox_records(
-    session: AsyncSession,
-    *,
-    decision: ForwardDecision,
-    full_data: dict[str, Any],
-    analysis: AnalysisResult,
-    webhook_id: int,
-    orig_id: int | None,
-    policy: ForwardOutboxPolicy | None = None,
-    event_type: str = "webhook_forward",
-) -> list[int]:
-    """Create forwarding intents inside the caller's DB transaction."""
-    if not decision.should_forward:
-        return []
-
-    policy = policy or ForwardOutboxPolicy.from_config()
-    created_ids: list[int] = []
-    now = datetime.now()
-    max_attempts = policy.max_attempts
-    for rule in _iter_target_rules(decision, policy):
-        target_type = str(rule.get("target_type", "webhook") or "webhook")
-        target_url = str(rule.get("target_url", "") or "")
-        if target_type != "openclaw" and not target_url:
-            logger.warning("[ForwardOutbox] 规则 '%s' target_url 为空，跳过意图创建", rule.get("name", rule.get("id")))
-            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
-            continue
-
-        rule_id = _rule_id(rule)
-        stored_target_type = target_type if target_type == "openclaw" else target_type
-        key = _idempotency_key(
-            webhook_id=webhook_id,
-            rule_id=rule_id,
-            target_type=stored_target_type,
-            target_url=target_url,
-            is_periodic_reminder=decision.is_periodic_reminder,
-        )
-        existing = (
-            await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
-        ).scalar_one_or_none()
-        if existing is not None:
-            logger.info("[ForwardOutbox] 意图已存在 key=%s id=%s", key, existing)
-            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
-            continue
-
-        record = ForwardOutbox(
-            idempotency_key=key,
-            webhook_event_id=webhook_id,
-            original_event_id=orig_id,
-            forward_rule_id=rule_id,
-            rule_name=str(rule.get("name") or rule.get("id") or "default"),
-            target_type=stored_target_type,
-            target_url=target_url,
-            target_name=str(rule.get("target_name", "") or ""),
-            is_periodic_reminder=decision.is_periodic_reminder,
-            channel_name=stored_target_type,
-            event_type=event_type,
-            status=ForwardOutboxStatus.PENDING,
-            attempts=0,
-            max_attempts=max_attempts,
-            next_attempt_at=now,
-            forward_data=full_data,
-            analysis_result=analysis,
-            formatted_payload=None,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(record)
-        await session.flush()
-        created_ids.append(record.id)
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
-        logger.info(
-            "[ForwardOutbox] 已创建转发意图 id=%s event_id=%s target_type=%s", record.id, webhook_id, target_type
-        )
-    return created_ids
 
 
 async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
@@ -378,53 +304,13 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
         logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务补扫", outbox_id, e)
 
 
-def _expires_before(now: datetime, policy: ForwardOutboxPolicy) -> datetime | None:
-    if policy.max_delivery_age_seconds <= 0:
-        return None
-    return now - timedelta(seconds=policy.max_delivery_age_seconds)
+async def _claim_outbox(outbox_id: int, *, policy: ForwardDeliveryPolicy | None = None) -> ForwardOutbox | None:
+    from services.forwarding.outbox_scanner import expire_outbox_if_old
 
-
-async def _expire_outbox_if_old(
-    session: AsyncSession,
-    outbox_id: int,
-    *,
-    now: datetime,
-    policy: ForwardOutboxPolicy,
-) -> bool:
-    cutoff = _expires_before(now, policy)
-    if cutoff is None:
-        return False
-    stmt = (
-        update(ForwardOutbox)
-        .where(ForwardOutbox.id == outbox_id)
-        .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
-        .where(ForwardOutbox.created_at < cutoff)
-        .values(
-            status=ForwardOutboxStatus.EXPIRED,
-            next_attempt_at=None,
-            updated_at=now,
-            last_error=f"forward delivery expired after {policy.max_delivery_age_seconds}s",
-        )
-        .returning(ForwardOutbox)
-    )
-    expired = (await session.execute(stmt)).scalar_one_or_none()
-    if not expired:
-        return False
-    FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(expired.target_type or "unknown"), "expired").inc()
-    logger.warning(
-        "[ForwardOutbox] 转发意图已过期 id=%s event_id=%s age_limit=%ss",
-        expired.id,
-        expired.webhook_event_id,
-        policy.max_delivery_age_seconds,
-    )
-    return True
-
-
-async def _claim_outbox(outbox_id: int, *, policy: ForwardOutboxPolicy | None = None) -> ForwardOutbox | None:
     now = datetime.now()
-    policy = policy or ForwardOutboxPolicy.from_config()
+    policy = policy or ForwardDeliveryPolicy.from_config()
     async with session_scope() as session:
-        if await _expire_outbox_if_old(session, outbox_id, now=now, policy=policy):
+        if await expire_outbox_if_old(session, outbox_id, now=now, policy=policy):
             return None
         stmt = (
             update(ForwardOutbox)
@@ -585,13 +471,13 @@ async def _schedule_openclaw_poll_best_effort(analysis_id: int) -> None:
 
 
 async def _finalize_outbox_failure(
-    outbox_id: int, error_msg: str, *, policy: ForwardOutboxPolicy | None = None
+    outbox_id: int, error_msg: str, *, policy: ForwardDeliveryPolicy | None = None
 ) -> None:
     now = datetime.now()
     retry_outbox_id: int | None = None
     retry_delay: int | None = None
     exhausted_record: ForwardOutbox | None = None
-    policy = policy or ForwardOutboxPolicy.from_config()
+    policy = policy or ForwardDeliveryPolicy.from_config()
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
         if not record or record.status in (
@@ -640,98 +526,3 @@ async def _finalize_outbox_failure(
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 
 
-async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardOutboxPolicy, limit: int) -> int:
-    cutoff = _expires_before(now, policy)
-    if cutoff is None or limit <= 0:
-        return 0
-    stmt = (
-        update(ForwardOutbox)
-        .where(
-            ForwardOutbox.id.in_(
-                select(ForwardOutbox.id)
-                .where(
-                    ForwardOutbox.status.in_(
-                        [ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING, ForwardOutboxStatus.PROCESSING]
-                    )
-                )
-                .where(ForwardOutbox.created_at < cutoff)
-                .order_by(ForwardOutbox.created_at.asc(), ForwardOutbox.id.asc())
-                .limit(limit)
-            )
-        )
-        .values(
-            status=ForwardOutboxStatus.EXPIRED,
-            next_attempt_at=None,
-            updated_at=now,
-            last_error=f"forward delivery expired after {policy.max_delivery_age_seconds}s",
-        )
-        .returning(ForwardOutbox)
-    )
-    expired_records = list((await session.execute(stmt)).scalars().all())
-    if expired_records:
-        for record in expired_records:
-            FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "expired").inc()
-        logger.warning("[ForwardOutbox] 批量过期转发意图 count=%s", len(expired_records))
-    return len(expired_records)
-
-
-async def _refresh_outbox_backlog_metrics(session: AsyncSession, *, now: datetime) -> None:
-    active_statuses = [
-        ForwardOutboxStatus.PENDING,
-        ForwardOutboxStatus.RETRYING,
-        ForwardOutboxStatus.PROCESSING,
-    ]
-    rows = (
-        await session.execute(
-            select(
-                ForwardOutbox.target_type,
-                ForwardOutbox.status,
-                func.min(ForwardOutbox.created_at),
-            )
-            .where(ForwardOutbox.status.in_(active_statuses))
-            .group_by(ForwardOutbox.target_type, ForwardOutbox.status)
-        )
-    ).all()
-    max_age = 0.0
-    for target_type, status, oldest_created_at in rows:
-        if oldest_created_at is None:
-            continue
-        status_value = status.value if isinstance(status, ForwardOutboxStatus) else str(status or "unknown")
-        age_seconds = max(0.0, (now - oldest_created_at).total_seconds())
-        max_age = max(max_age, age_seconds)
-        FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels(str(target_type or "unknown"), status_value).set(age_seconds)
-    FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels("all", "active").set(max_age)
-
-
-async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardOutboxPolicy | None = None) -> int:
-    """Queue due outbox records and recover stale processing rows."""
-    now = datetime.now()
-    policy = policy or ForwardOutboxPolicy.from_config()
-    stale_before = now - timedelta(seconds=policy.stale_processing_threshold_seconds)
-    async with session_scope() as session:
-        expired_count = await _expire_due_outboxes(session, now=now, policy=policy, limit=limit)
-        await _refresh_outbox_backlog_metrics(session, now=now)
-        await session.execute(
-            update(ForwardOutbox)
-            .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
-            .where(ForwardOutbox.updated_at < stale_before)
-            .values(
-                status=ForwardOutboxStatus.RETRYING,
-                next_attempt_at=now,
-                updated_at=now,
-                last_error="recovered_stale_processing",
-            )
-        )
-        stmt = (
-            select(ForwardOutbox.id)
-            .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
-            .where((ForwardOutbox.next_attempt_at.is_(None)) | (ForwardOutbox.next_attempt_at <= now))
-            .order_by(ForwardOutbox.next_attempt_at.asc(), ForwardOutbox.id.asc())
-            .limit(limit)
-        )
-        ids = list((await session.execute(stmt)).scalars().all())
-    await schedule_forward_outbox_many(ids)
-    FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_queued").inc(len(ids))
-    if expired_count:
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_expired").inc(expired_count)
-    return expired_count + len(ids)

@@ -12,7 +12,7 @@ from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.forwarding.outbox import create_forward_outbox_records, resolve_and_forward, schedule_forward_outbox_many
+from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
 from services.webhooks.types import AnalysisResult
 
@@ -62,15 +62,16 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
     )
     outbox_ids: list[int] = []
     if decision.should_forward:
-        outbox_ids = await create_forward_outbox_records(
-            session,
+        fwd_result = await resolve_and_forward(
+            session=session,
             decision=decision,
-            full_data=fwd_ctx,
-            analysis=res,
+            forward_data=fwd_ctx,
+            analysis_result=res,
             webhook_id=event.id,
-            orig_id=None,
         )
+        outbox_ids = list(fwd_result.get("outbox_ids") or [])
     else:
+        outbox_ids = []
         logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
 
     await session.commit()

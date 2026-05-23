@@ -10,7 +10,7 @@ from core.logger import get_logger, mask_url
 from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies
-from services.forwarding.policies import RemoteForwardPolicy
+from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 logger = get_logger("forwarding.remote")
@@ -27,14 +27,14 @@ async def forward_to_remote(
     target_url: str | None = None,
     is_periodic_reminder: bool = False,
     http_client: httpx.AsyncClient | None = None,
-    policy: RemoteForwardPolicy | None = None,
+    policy: ForwardDeliveryPolicy | None = None,
     dependencies: RemoteForwardDependencies | None = None,
 ) -> ForwardResult:
     """转发分析结果到远程 Webhook URL。"""
     started = time.perf_counter()
     status = "unknown"
     target_type = "unknown"
-    policy = policy or RemoteForwardPolicy.from_config()
+    policy = policy or ForwardDeliveryPolicy.from_config()
     dependencies = dependencies or build_remote_forward_dependencies()
     if http_client is not None:
         dependencies = RemoteForwardDependencies(
@@ -42,12 +42,12 @@ async def forward_to_remote(
             circuit_breaker=dependencies.circuit_breaker,
             validate_url=dependencies.validate_url,
         )
-    url = target_url or policy.default_target_url
-    if not url:
+    if not target_url:
         logger.info("[Forward] 无转发 URL，跳过")
         status = "skipped"
         _record_delivery(target_type, status, started)
-        return {"status": "skipped", "reason": "no_default_target_url"}
+        return {"status": "skipped", "reason": "no_target_url"}
+    url = target_url
     try:
         url = await dependencies.validate_url(url)
     except UnsafeTargetUrlError as e:
@@ -56,9 +56,9 @@ async def forward_to_remote(
         _record_delivery(target_type, status, started)
         return {"status": "invalid_target", "message": str(e)}
 
-    from services.channels.base import FormatContext, find_channel_for_target
+    from services.channels.base import FormatContext, resolve_channel
 
-    channel = find_channel_for_target(url)
+    channel = resolve_channel("", url)
     target_type = channel.name
     payload = channel.format(
         FormatContext(
@@ -125,7 +125,7 @@ async def post_json_to_remote(
     payload: dict[str, Any],
     *,
     http_client: httpx.AsyncClient | None = None,
-    policy: RemoteForwardPolicy | None = None,
+    policy: ForwardDeliveryPolicy | None = None,
     validate_target: bool = True,
     dependencies: RemoteForwardDependencies | None = None,
     target_type_label: str = "raw_json",
@@ -135,7 +135,7 @@ async def post_json_to_remote(
 
     started = time.perf_counter()
     status = "unknown"
-    policy = policy or RemoteForwardPolicy.from_config()
+    policy = policy or ForwardDeliveryPolicy.from_config()
     dependencies = dependencies or build_remote_forward_dependencies()
     if http_client is not None:
         dependencies = RemoteForwardDependencies(

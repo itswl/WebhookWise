@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeAlias
+from typing import Any
 
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
-
-SendResult: TypeAlias = ForwardResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,25 +13,8 @@ class FormatContext:
     is_periodic_reminder: bool = False
 
 
-class Channel(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    def supports(self, target_url: str) -> bool: ...
-
-    def format(self, ctx: FormatContext) -> dict[str, Any]: ...
-
-    async def send(self, url: str, payload: dict[str, Any]) -> SendResult: ...
-
-
-_registry: dict[str, Channel] | None = None
-
-
 class WebhookChannel:
     name = "webhook"
-
-    def supports(self, target_url: str) -> bool:
-        return True
 
     def format(self, ctx: FormatContext) -> dict[str, Any]:
         return {
@@ -42,50 +23,47 @@ class WebhookChannel:
             "is_periodic_reminder": ctx.is_periodic_reminder,
         }
 
-    async def send(self, url: str, payload: dict[str, Any]) -> SendResult:
-        from services.forwarding.policies import RemoteForwardPolicy
+    async def send(self, url: str, payload: dict[str, Any]) -> ForwardResult:
+        from services.forwarding.policies import ForwardDeliveryPolicy
         from services.forwarding.remote import post_json_to_remote
 
         return await post_json_to_remote(
             url,
             payload,
-            policy=RemoteForwardPolicy.from_config(),
+            policy=ForwardDeliveryPolicy.from_config(),
             validate_target=True,
             target_type_label=self.name,
         )
 
 
-def _build_registry() -> dict[str, Channel]:
-    from services.channels.feishu import FeishuChannel
-
-    channels: list[Channel] = [FeishuChannel(), WebhookChannel()]
-    return {channel.name: channel for channel in channels}
+_feishu_channel: Any = None
+_webhook_channel: WebhookChannel | None = None
 
 
-def get_channel_registry() -> dict[str, Channel]:
-    global _registry
-    if _registry is None:
-        _registry = _build_registry()
-    return _registry
+def _get_feishu_channel() -> Any:
+    global _feishu_channel
+    if _feishu_channel is None:
+        from services.channels.feishu import FeishuChannel
+
+        _feishu_channel = FeishuChannel()
+    return _feishu_channel
 
 
-def get_channel(name: str) -> Channel | None:
-    return get_channel_registry().get(name)
+def _get_webhook_channel() -> WebhookChannel:
+    global _webhook_channel
+    if _webhook_channel is None:
+        _webhook_channel = WebhookChannel()
+    return _webhook_channel
 
 
-def resolve_channel_name(target_type: str, target_url: str) -> str:
-    registry = get_channel_registry()
-    if target_type in registry and target_type not in {"", "default", "webhook"}:
-        return target_type
-    for channel in registry.values():
-        if channel.supports(target_url):
-            return channel.name
-    return "webhook"
+def resolve_channel(target_type: str, target_url: str) -> Any:
+    """根据 target_type 或 URL 解析 Channel 实例。"""
+    if target_type == "feishu":
+        return _get_feishu_channel()
+    if target_type == "openclaw":
+        return None  # openclaw handled in deliver_outbox_record
+    from services.channels.feishu import is_feishu_url
 
-
-def find_channel_for_target(target_url: str) -> Channel:
-    registry = get_channel_registry()
-    for channel in registry.values():
-        if channel.supports(target_url):
-            return channel
-    return registry["webhook"]
+    if is_feishu_url(target_url):
+        return _get_feishu_channel()
+    return _get_webhook_channel()

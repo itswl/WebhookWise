@@ -4,26 +4,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.app_context import get_config_manager
-from services.webhooks.types import ForwardRuleTarget
 
 
 @dataclass(frozen=True, slots=True)
-class RemoteForwardPolicy:
-    default_target_url: str
+class ForwardDeliveryPolicy:
+    """投递行为配置：超时、重试、过期。所有外发路径共用。"""
+
     timeout_seconds: int
-
-    @classmethod
-    def from_config(cls, config: Any | None = None) -> "RemoteForwardPolicy":
-        config = config or get_config_manager()
-        return cls(
-            default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
-            timeout_seconds=int(config.forwarding.FORWARD_TIMEOUT),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ForwardOutboxPolicy:
-    default_target_url: str
     max_attempts: int
     retry_initial_delay: int
     retry_max_delay: int
@@ -32,10 +19,10 @@ class ForwardOutboxPolicy:
     max_delivery_age_seconds: int
 
     @classmethod
-    def from_config(cls, config: Any | None = None) -> "ForwardOutboxPolicy":
+    def from_config(cls, config: Any | None = None) -> "ForwardDeliveryPolicy":
         config = config or get_config_manager()
         return cls(
-            default_target_url=str(config.forwarding.DEFAULT_FORWARD_TARGET_URL),
+            timeout_seconds=int(config.forwarding.FORWARD_TIMEOUT),
             max_attempts=max(1, int(config.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
             retry_initial_delay=int(config.retry.FORWARD_RETRY_INITIAL_DELAY),
             retry_max_delay=int(config.retry.FORWARD_RETRY_MAX_DELAY),
@@ -53,9 +40,6 @@ class ForwardOutboxPolicy:
             max_delay=self.retry_max_delay,
             multiplier=self.retry_backoff_multiplier,
         )
-
-    def default_rule(self) -> ForwardRuleTarget:
-        return {"name": "default", "target_url": self.default_target_url, "target_type": "webhook"}
 
 
 @dataclass(frozen=True, slots=True)

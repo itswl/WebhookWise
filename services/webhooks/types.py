@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal, Required, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
     from models import WebhookEvent
@@ -41,17 +41,6 @@ class AnalysisResult(TypedDict, total=False):
     _degraded_reason: str
     _cache_hit: bool
     _cache_hit_count: int
-
-
-class ForwardRuleTarget(TypedDict, total=False):
-    """Resolved forwarding target snapshot stored in ForwardDecision."""
-
-    id: int | None
-    name: Required[str]
-    target_type: Required[str]
-    target_url: Required[str]
-    target_name: str
-    stop_on_match: bool
 
 
 class ForwardResult(TypedDict, total=False):
@@ -136,14 +125,6 @@ class WebhookProcessContext:
     req_ctx: WebhookRequestContext
     alert_hash: str
     dedup_key: str
-
-
-@dataclass
-class ForwardDecision:
-    should_forward: bool
-    skip_reason: str | None
-    is_periodic_reminder: bool
-    matched_rules: list[ForwardRuleTarget] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

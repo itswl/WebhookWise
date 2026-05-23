@@ -47,7 +47,7 @@ from core.observability.tracing import (
 )
 from services.dedup import DedupResult, generate_dedup_key, remember_dedup_state, resolve_dedup
 from services.webhooks.command_service import SaveWebhookResult
-from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
+from services.webhooks.decisioning import ForwardDecision, ForwardingPolicy, build_final_analysis, normalize_importance
 from services.webhooks.deduplication import generate_alert_hash
 from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.noise_stage import compute_noise
@@ -55,7 +55,6 @@ from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import EventEnvelope
 from services.webhooks.types import (
     AnalysisResult,
-    ForwardDecision,
     NoiseReductionContext,
     WebhookProcessContext,
     WebhookProcessingStatus,
