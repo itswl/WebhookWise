@@ -225,20 +225,13 @@ class TestFinalizeOutboxFailure:
             pass
 
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
-        from core.app_context import get_config_manager
-
-        monkeypatch.setattr(
-            get_config_manager().notifications,
-            "DEEP_ANALYSIS_FEISHU_WEBHOOK",
-            "https://open.feishu.cn/open-apis/bot/v2/hook/test",
-        )
         enqueued: list[dict[str, object]] = []
 
-        async def fake_enqueue_external_message(**kwargs: object) -> int:
+        async def fake_resolve_and_forward(**kwargs: object) -> dict[str, object]:
             enqueued.append(dict(kwargs))
-            return 1
+            return {"status": "queued", "outbox_id": 1}
 
-        monkeypatch.setattr("services.forwarding.outbox.enqueue_external_message", fake_enqueue_external_message)
+        monkeypatch.setattr("services.forwarding.outbox.resolve_and_forward", fake_resolve_and_forward)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now() - timedelta(seconds=1)

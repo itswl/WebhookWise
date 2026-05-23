@@ -62,6 +62,7 @@ def test_alembic_history_is_a_current_schema_baseline() -> None:
         "0007_forward_rule_match_payload.py",
         "0008_create_suppressed_records.py",
         "0009_add_dedup_key.py",
+        "0010_add_match_event_type.py",
     ]
     by_name = {path.name: path for path in revision_paths}
     for path in revision_paths:

@@ -4,12 +4,11 @@ import hashlib
 import re
 from typing import Any
 
-from core.logger import get_logger, mask_url
+from core.logger import get_logger
 from core.redis_health import ai_error_alert_lock
 from services.analysis.analysis_policies import AIErrorNotificationPolicy
-from services.channels.base import resolve_channel_name
 from services.channels.feishu import build_ai_error_card
-from services.forwarding.outbox import enqueue_external_message
+from services.forwarding.outbox import resolve_and_forward
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")
@@ -72,16 +71,13 @@ async def send_ai_error_alert(
         if not await redis_set_nx_ex(lock_key, "1", policy.cooldown_seconds):
             return
 
-        channel_name = resolve_channel_name("feishu", policy.target_url)
-        logger.info("[AIErrorNotify] 发送 AI 错误通知 target=%s degraded=%s", mask_url(policy.target_url), is_degraded)
-        outbox_id = await enqueue_external_message(
-            channel_name=channel_name,
-            target_url=policy.target_url,
-            event_type="ai_degraded" if is_degraded else "ai_error",
+        event_type = "ai_degraded" if is_degraded else "ai_error"
+        logger.info("[AIErrorNotify] 发送 AI 错误通知 degraded=%s", is_degraded)
+        result = await resolve_and_forward(
+            event_type=event_type,
             formatted_payload=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
-            webhook_id=None,
-            idempotency_hint=dedupe_key,
+            wait=False,
         )
-        logger.info("[AIErrorNotify] AI 错误通知已入队 target=%s outbox_id=%s", mask_url(policy.target_url), outbox_id)
+        logger.info("[AIErrorNotify] AI 错误通知已入队 outbox_ids=%s", result.get("outbox_ids"))
     except Exception as e:
         logger.error("[AIErrorNotify] 发送 AI 错误通知失败: %s", e)
