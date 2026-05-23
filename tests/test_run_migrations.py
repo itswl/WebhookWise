@@ -11,7 +11,7 @@ import scripts.run_migrations as migrations
 async def test_wait_for_database_disposes_engine_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    async def fake_init_engine() -> None:
+    async def fake_init_engine(config: Any | None = None) -> None:
         calls.append("init")
 
     async def fake_test_db_connection() -> bool:
