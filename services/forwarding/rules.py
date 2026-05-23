@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ForwardRule
+from services.webhooks.repository import invalidate_forward_rules_cache
 
 
 async def get_forward_rules(session: AsyncSession) -> list[ForwardRule]:
@@ -44,6 +45,7 @@ async def create_forward_rule(
     )
     session.add(rule)
     await session.flush()
+    invalidate_forward_rules_cache()
     return rule
 
 
@@ -77,6 +79,7 @@ async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict
 
     rule.updated_at = datetime.now()
     await session.flush()
+    invalidate_forward_rules_cache()
     return rule
 
 
@@ -85,4 +88,5 @@ async def delete_forward_rule(session: AsyncSession, rule_id: int) -> bool:
     if not rule:
         return False
     await session.delete(rule)
+    invalidate_forward_rules_cache()
     return True

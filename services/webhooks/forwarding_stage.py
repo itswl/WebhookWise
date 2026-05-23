@@ -26,7 +26,6 @@ from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     ForwardDecision,
-    ForwardRuleTarget,
     NoiseReductionContext,
     WebhookProcessContext,
 )
@@ -178,24 +177,6 @@ async def finalize_analysis_transaction(
                     forward_data["headers"] = redact_headers(forward_data["headers"])
                 first_target_type = fwd_dec.matched_rules[0]["target_type"] if fwd_dec.matched_rules else "default"
 
-                def _build_formatted_payload(rule: ForwardRuleTarget) -> tuple[str, dict[str, object]]:
-                    from services.channels.base import FormatContext, get_channel, resolve_channel_name
-
-                    target_type = str(rule.get("target_type", "") or "")
-                    target_url = str(rule.get("target_url", "") or "")
-                    channel_name = resolve_channel_name(target_type, target_url)
-                    channel = get_channel(channel_name)
-                    if channel is None:
-                        return channel_name, {}
-                    payload = channel.format(
-                        FormatContext(
-                            webhook_data=forward_data,
-                            analysis_result=final_analysis,
-                            is_periodic_reminder=fwd_dec.is_periodic_reminder,
-                        )
-                    )
-                    return channel_name, payload
-
                 with otel_span(
                     "webhook.persist.outbox",
                     {
@@ -213,7 +194,6 @@ async def finalize_analysis_transaction(
                         analysis=final_analysis,
                         webhook_id=save_res.webhook_id,
                         orig_id=save_res.original_id,
-                        payload_builder=_build_formatted_payload,
                     )
                 emit_event(
                     "forward.outbox.queued",

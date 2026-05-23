@@ -42,7 +42,6 @@ logger = get_logger("forward_outbox")
 
 ForwardOutboxEnqueuer = Callable[[int], Awaitable[None]]
 ForwardOutboxRetryScheduler = Callable[[int, int], Awaitable[None]]
-FormattedPayloadBuilder = Callable[[ForwardRuleTarget], tuple[str, dict[str, Any]]]
 
 _forward_outbox_enqueuer: ForwardOutboxEnqueuer | None = None
 _forward_outbox_retry_scheduler: ForwardOutboxRetryScheduler | None = None
@@ -162,7 +161,6 @@ async def create_forward_outbox_records(
     webhook_id: int,
     orig_id: int | None,
     policy: ForwardOutboxPolicy | None = None,
-    payload_builder: FormattedPayloadBuilder | None = None,
     event_type: str = "webhook_forward",
 ) -> list[int]:
     """Create forwarding intents inside the caller's DB transaction."""
@@ -182,34 +180,7 @@ async def create_forward_outbox_records(
             continue
 
         rule_id = _rule_id(rule)
-        channel_name = target_type
-        formatted_payload: dict[str, Any] | None = None
-        if target_type != "openclaw":
-            try:
-                if payload_builder is not None:
-                    channel_name, formatted_payload = payload_builder(rule)
-                else:
-                    from services.channels.base import FormatContext, get_channel, resolve_channel_name
-
-                    resolved_name = resolve_channel_name(target_type, target_url)
-                    channel = get_channel(resolved_name)
-                    if channel is not None:
-                        channel_name = resolved_name
-                        formatted_payload = channel.format(
-                            FormatContext(
-                                webhook_data=cast(WebhookData, dict(full_data)),
-                                analysis_result=analysis,
-                                is_periodic_reminder=decision.is_periodic_reminder,
-                            )
-                        )
-            except Exception as e:
-                logger.warning(
-                    "[ForwardOutbox] 构建 formatted_payload 失败 rule=%s error=%s",
-                    rule.get("name", rule.get("id")),
-                    e,
-                )
-
-        stored_target_type = target_type if target_type == "openclaw" else channel_name
+        stored_target_type = target_type if target_type == "openclaw" else target_type
         key = _idempotency_key(
             webhook_id=webhook_id,
             rule_id=rule_id,
@@ -235,7 +206,6 @@ async def create_forward_outbox_records(
             target_url=target_url,
             target_name=str(rule.get("target_name", "") or ""),
             is_periodic_reminder=decision.is_periodic_reminder,
-            channel_name=channel_name,
             event_type=event_type,
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
@@ -243,7 +213,7 @@ async def create_forward_outbox_records(
             next_attempt_at=now,
             forward_data=full_data,
             analysis_result=analysis,
-            formatted_payload=formatted_payload,
+            formatted_payload=None,
             created_at=now,
             updated_at=now,
         )
