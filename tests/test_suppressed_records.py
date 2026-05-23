@@ -47,7 +47,7 @@ async def test_compute_noise_persists_suppressed_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from models import SuppressedRecord
-    from services.analysis.config_models import NoiseScoringConfig
+    from services.analysis.analysis_policies import NoiseScoringConfig
     from services.webhooks.noise_stage import compute_noise
     from services.webhooks.policies import NoiseReductionPolicy
 
@@ -109,7 +109,7 @@ async def test_suppressed_service_lists_records(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from models import SuppressedRecord
-    from services.webhooks.suppressed_service import list_suppressed_records
+    from services.webhooks.repository import list_suppressed_records
 
     now = datetime.now()
     async with session_factory.begin() as session:

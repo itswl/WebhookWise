@@ -1,17 +1,21 @@
-"""Operational policy objects.
+"""Operational policy objects and concurrency primitives.
 
-This module is the boundary where operations code reads process configuration.
-Task runners, pollers and maintenance jobs receive plain values instead of
-reaching into configuration globals directly.
+This module is the boundary where operations code reads process configuration
+and manages Redis-backed concurrency slots.
 """
 
 from __future__ import annotations
 
+import time as time_mod
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from core.app_context import get_config_manager
+from core.logger import get_logger
+from core.redis_client import redis_eval_int
+
+logger = get_logger("operations.policies")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,3 +71,66 @@ class DataMaintenancePolicy:
                 for field, keywords in maintenance.CLEANUP_KEYWORDS.items()
             },
         )
+
+
+_ACQUIRE_SLOT_LUA = """
+local slot_key = KEYS[1]
+local ttl = tonumber(ARGV[1])
+local max_slots = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+
+redis.call('ZREMRANGEBYSCORE', slot_key, '-inf', now)
+local current = redis.call('ZCARD', slot_key)
+if current >= max_slots then
+    return 0
+end
+local member = now .. ':' .. tostring(current + 1)
+redis.call('ZADD', slot_key, now + ttl, member)
+redis.call('EXPIRE', slot_key, ttl * 3)
+return 1
+"""
+
+_RELEASE_SLOT_LUA = """
+local slot_key = KEYS[1]
+local member = ARGV[1]
+redis.call('ZREM', slot_key, member)
+return 1
+"""
+
+
+class TaskSlotManager:
+    def __init__(self, slot_name: str) -> None:
+        self._slot_key = f"task_slot:{slot_name}"
+        self._policy: TaskRuntimePolicy | None = None
+
+    def _get_policy(self) -> TaskRuntimePolicy:
+        if self._policy is None:
+            self._policy = TaskRuntimePolicy.from_config()
+        return self._policy
+
+    async def acquire(self) -> str | None:
+        policy = self._get_policy()
+        if policy.max_concurrent_webhook_tasks <= 0:
+            return "unlimited"
+        try:
+            now = int(time_mod.time())
+            result = await redis_eval_int(
+                _ACQUIRE_SLOT_LUA,
+                1,
+                self._slot_key,
+                str(policy.webhook_task_slot_lease_seconds),
+                str(policy.max_concurrent_webhook_tasks),
+                str(now),
+            )
+            if result and result > 0:
+                return f"{now}:{result}"
+            return None
+        except Exception as e:
+            logger.warning("[TaskSlotManager] acquire slot=%s failed: %s", self._slot_key, e)
+            return "failopen"
+
+    async def release(self, member: str) -> None:
+        try:
+            await redis_eval_int(_RELEASE_SLOT_LUA, 1, self._slot_key, member)
+        except Exception as e:
+            logger.warning("[TaskSlotManager] release slot=%s failed: %s", self._slot_key, e)

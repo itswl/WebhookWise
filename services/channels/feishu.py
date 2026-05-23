@@ -6,8 +6,7 @@ from urllib.parse import urlsplit
 from core.app_context import get_config_manager
 from core.logger import mask_url
 from services.channels.base import FormatContext, SendResult
-from services.forwarding.circuit_breakers import feishu_cb
-from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
+from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import RemoteForwardPolicy
 from services.webhooks.types import AnalysisResult, WebhookData
 

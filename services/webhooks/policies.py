@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.app_context import get_config_manager
-from services.analysis.config_models import NoiseScoringConfig
+from services.analysis.analysis_policies import NoiseScoringConfig
 from services.webhooks.decisioning import ForwardingPolicy
 
 

@@ -4,7 +4,7 @@ import pytest
 
 
 def test_parse_request_decodes_raw_json_without_database() -> None:
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     ctx = parse_request(
         client_ip="203.0.113.10",
@@ -36,8 +36,8 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
 
 
 @pytest.mark.asyncio
-async def test_feishu_facade_uses_supplied_notification_channel() -> None:
-    from services.operations.feishu_notifications import send_feishu_deep_analysis
+async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from services.operations.deep_analysis_notifications import send_feishu_deep_analysis
 
     enqueued: list[dict[str, object]] = []
 
@@ -45,9 +45,8 @@ async def test_feishu_facade_uses_supplied_notification_channel() -> None:
         enqueued.append(dict(kwargs))
         return len(enqueued)
 
-    import services.operations.feishu_notifications as module
-
-    module.enqueue_external_message = fake_enqueue_external_message  # type: ignore[assignment]
+    import services.operations.deep_analysis_notifications as module
+    monkeypatch.setattr(module, "enqueue_external_message", fake_enqueue_external_message)
 
     ok = await send_feishu_deep_analysis(
         "https://open.feishu.cn/open-apis/bot/v2/hook/token",
@@ -63,7 +62,7 @@ async def test_feishu_facade_uses_supplied_notification_channel() -> None:
 
 @pytest.mark.asyncio
 async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
-    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import RemoteForwardPolicy
     from services.forwarding.remote import forward_to_remote
 

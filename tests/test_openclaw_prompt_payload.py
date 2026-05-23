@@ -45,7 +45,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     response_payload: dict[str, str],
     expected_url: str,
 ) -> None:
-    from services.forwarding.dependencies import OpenClawForwardDependencies
+    from services.forwarding.circuit_breakers import OpenClawForwardDependencies
     from services.forwarding.openclaw import analyze_with_openclaw
     from services.forwarding.policies import OpenClawTriggerPolicy
 

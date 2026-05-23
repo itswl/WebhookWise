@@ -9,7 +9,6 @@ from core.logger import get_logger
 from core.observability.metrics import AI_DEGRADATIONS_TOTAL, ALERT_NUMERIC_PARSE_FAILURE_TOTAL
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
-from services.analysis.ai_policies import AIProviderPolicy, RuleAnalysisPolicy
 from services.analysis.ai_prompt import (
     get_prompt_source,
     load_deep_analysis_prompt_template,
@@ -18,13 +17,14 @@ from services.analysis.ai_prompt import (
     reload_user_prompt_template,
 )
 from services.analysis.ai_usage import log_ai_usage
+from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPolicy
 from services.analysis.analysis_queries import (
     get_ai_usage_stats,
     get_deep_analyses_for_webhook,
     get_deep_analysis_list,
 )
 from services.analysis.rule_analyzer import analyze_with_rules as _analyze_with_rules
-from services.webhooks.identity import generate_alert_hash
+from services.webhooks.deduplication import generate_alert_hash
 from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("analysis.ai_analyzer")

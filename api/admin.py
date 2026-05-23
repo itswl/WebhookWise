@@ -41,8 +41,7 @@ from services.configuration.config_service import get_config_sources, get_curren
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, list_dead_letters
-from services.webhooks.repository import load_event_payload
-from services.webhooks.suppressed_service import count_suppressed_records, list_suppressed_records
+from services.webhooks.repository import count_suppressed_records, list_suppressed_records, load_event_payload
 
 logger = get_logger("api.admin")
 

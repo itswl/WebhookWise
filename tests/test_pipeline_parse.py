@@ -15,7 +15,7 @@ from core import json
 
 
 def test_parse_request_uses_source_hint():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     payload = {
         "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
@@ -25,7 +25,7 @@ def test_parse_request_uses_source_hint():
 
 
 def test_parse_request_infers_source_from_header():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     payload = {
         "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
@@ -37,7 +37,7 @@ def test_parse_request_infers_source_from_header():
 
 
 def test_parse_request_parses_raw_body_when_no_payload():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     data = {"alertname": "MemHigh", "severity": "warning"}
     raw = json.dumps_bytes(data)
@@ -46,14 +46,14 @@ def test_parse_request_parses_raw_body_when_no_payload():
 
 
 def test_parse_request_sets_client_ip():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     ctx = parse_request("10.0.0.1", {}, {"foo": "bar"}, b"", "unknown", None)
     assert ctx.client_ip == "10.0.0.1"
 
 
 def test_parse_request_sets_headers():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     headers = {"content-type": "application/json", "x-request-id": "abc123"}
     ctx = parse_request("1.2.3.4", headers, {"foo": "bar"}, b"", "unknown", None)
@@ -61,7 +61,7 @@ def test_parse_request_sets_headers():
 
 
 def test_parse_request_full_data_contains_source():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     ctx = parse_request("1.2.3.4", {}, {"foo": "bar"}, b"", "github", None)
     assert "source" in ctx.webhook_full_data
@@ -69,7 +69,7 @@ def test_parse_request_full_data_contains_source():
 
 
 def test_parse_request_timestamp_passed_through():
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
 
     ts = "2025-01-01T12:00:00Z"
     ctx = parse_request("1.2.3.4", {}, {}, b"", "unknown", ts)

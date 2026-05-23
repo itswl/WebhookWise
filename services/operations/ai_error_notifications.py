@@ -6,10 +6,10 @@ from typing import Any
 
 from core.logger import get_logger, mask_url
 from core.redis_health import ai_error_alert_lock
-from services.analysis.ai_policies import AIErrorNotificationPolicy
+from services.analysis.analysis_policies import AIErrorNotificationPolicy
 from services.channels.base import resolve_channel_name
 from services.channels.feishu import build_ai_error_card
-from services.forwarding.enqueue import enqueue_external_message
+from services.forwarding.outbox import enqueue_external_message
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")

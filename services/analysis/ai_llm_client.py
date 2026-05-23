@@ -25,8 +25,8 @@ from core.observability.metrics import (
 from core.observability.tracing import set_span_error
 from core.observability.tracing import span as otel_span
 from schemas import WebhookAnalysisResult
-from services.analysis.ai_policies import AIProviderPolicy
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
+from services.analysis.analysis_policies import AIProviderPolicy
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult
 

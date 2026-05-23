@@ -53,12 +53,12 @@ def test_default_prompt_path_resolves_from_project_root() -> None:
 
 @pytest.mark.asyncio
 async def test_deep_analysis_prompt_uses_shared_loader(tmp_path: Path) -> None:
-    from services.analysis.ai_policies import DeepAnalysisPromptPolicy
     from services.analysis.ai_prompt import (
         DEEP_ANALYSIS_PROMPT_KIND,
         get_prompt_source,
         reload_deep_analysis_prompt_template,
     )
+    from services.analysis.analysis_policies import DeepAnalysisPromptPolicy
 
     prompt_file = tmp_path / "deep_analysis_prompt.txt"
     prompt_file.write_text("managed deep analysis prompt", encoding="utf-8")
@@ -139,7 +139,7 @@ async def test_security_headers_include_hsts() -> None:
 
 @pytest.mark.asyncio
 async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import RemoteForwardPolicy
     from services.forwarding.remote import forward_to_remote
 
@@ -180,7 +180,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
 @pytest.mark.asyncio
 async def test_forward_revalidates_target_immediately_before_post() -> None:
     from core.url_security import UnsafeTargetUrlError
-    from services.forwarding.dependencies import RemoteForwardDependencies
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import RemoteForwardPolicy
     from services.forwarding.remote import forward_to_remote
 

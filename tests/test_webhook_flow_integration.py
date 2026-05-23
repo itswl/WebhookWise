@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
-from services.webhooks.identity import generate_alert_hash
+from services.webhooks.deduplication import generate_alert_hash
 
 
 @compiles(JSONB, "sqlite")
@@ -203,7 +203,7 @@ async def test_finalization_skips_outbox_without_target(
     from models import ForwardOutbox, WebhookEvent
     from services.dedup import DedupResult
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
     from services.webhooks.types import NoiseReductionContext, WebhookProcessContext
 
     settings = get_settings()
@@ -426,7 +426,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     from models import ForwardOutbox, WebhookEvent
     from services.dedup import DedupResult
     from services.webhooks.forwarding_stage import finalize_analysis_transaction
-    from services.webhooks.request_parser import parse_request
+    from services.webhooks.pipeline import parse_request
     from services.webhooks.types import NoiseReductionContext, WebhookProcessContext
 
     context = get_default_app_context()

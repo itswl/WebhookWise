@@ -12,7 +12,7 @@ from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import get_logger, mask_url
 from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWARD_DELIVERY_TOTAL
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
-from services.forwarding.dependencies import OpenClawForwardDependencies, build_openclaw_forward_dependencies
+from services.forwarding.circuit_breakers import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 

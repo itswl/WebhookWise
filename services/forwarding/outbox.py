@@ -27,7 +27,6 @@ from core.observability.tracing import set_span_error
 from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import ForwardOutbox, WebhookEvent
-from services.forwarding.deliver import deliver_outbox_record
 from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.types import (
     AnalysisResult,
@@ -58,6 +57,58 @@ def configure_forward_outbox_schedulers(
     global _forward_outbox_enqueuer, _forward_outbox_retry_scheduler
     _forward_outbox_enqueuer = enqueue_outbox
     _forward_outbox_retry_scheduler = schedule_retry
+
+
+async def enqueue_external_message(
+    *,
+    channel_name: str,
+    target_url: str,
+    event_type: str,
+    formatted_payload: dict[str, Any],
+    webhook_id: int | None = None,
+    idempotency_hint: str = "",
+) -> int:
+    outbox_id = await create_external_outbox_record(
+        channel_name=channel_name,
+        target_url=target_url,
+        event_type=event_type,
+        formatted_payload=formatted_payload,
+        webhook_id=webhook_id,
+        idempotency_hint=idempotency_hint,
+    )
+    await schedule_forward_outbox_many([outbox_id])
+    return outbox_id
+
+
+async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
+    channel_name = str(record.channel_name or record.target_type or "")
+    if channel_name == "openclaw":
+        from services.forwarding.openclaw import forward_to_openclaw
+
+        forward_data = cast(WebhookData, dict(record.forward_data or {}))
+        analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
+        return await forward_to_openclaw(forward_data, analysis)
+
+    from services.channels.base import FormatContext, get_channel, resolve_channel_name
+
+    resolved_name = resolve_channel_name(channel_name, str(record.target_url or ""))
+    channel = get_channel(resolved_name)
+    if channel is None:
+        return {"status": "failed", "message": f"unknown_channel:{resolved_name}"}
+    payload = record.formatted_payload
+    if not isinstance(payload, dict):
+        payload = None
+    if payload is None and isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
+        payload = channel.format(
+            FormatContext(
+                webhook_data=cast(WebhookData, dict(record.forward_data)),
+                analysis_result=cast(AnalysisResult, dict(record.analysis_result)),
+                is_periodic_reminder=bool(record.is_periodic_reminder),
+            )
+        )
+    if payload is None:
+        payload = {}
+    return await channel.send(str(record.target_url or ""), cast(dict[str, Any], payload))
 
 
 def _rule_id(rule: ForwardRuleTarget) -> int | None:
@@ -536,7 +587,6 @@ async def _finalize_outbox_failure(
         try:
             from core.app_context import get_config_manager
             from services.channels.feishu import build_delivery_exhausted_card
-            from services.forwarding.enqueue import enqueue_external_message
 
             config = get_config_manager()
             target_url = str(config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK or "").strip()

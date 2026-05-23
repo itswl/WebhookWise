@@ -270,7 +270,7 @@ def test_analyze_with_rules_metric_threshold_promotes_to_high():
 
 def test_analyze_with_rules_accepts_explicit_policy():
     from services.analysis.ai_analyzer import analyze_with_rules
-    from services.analysis.ai_policies import RuleAnalysisPolicy
+    from services.analysis.analysis_policies import RuleAnalysisPolicy
 
     res = analyze_with_rules(
         {"RuleName": "QueueDepth", "CurrentValue": 31, "Threshold": 10},
