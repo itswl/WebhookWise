@@ -31,11 +31,13 @@ from sqlalchemy import select
 
 from core import json
 from core.app_context import get_default_config
-from core.logger import logger
+from core.logger import get_logger
 from db.engine import init_engine
 from db.session import session_scope
 from models import DeepAnalysis
 from services.analysis.openclaw_poller import poll_openclaw_result_via_http
+
+logger = get_logger("scripts.retry_failed_deep_analyses")
 
 
 async def find_failed_records(webhook_id=None, limit=None):

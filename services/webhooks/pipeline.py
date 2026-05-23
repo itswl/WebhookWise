@@ -5,6 +5,7 @@ final persistence and forwarding intent creation.
 """
 
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -88,6 +89,32 @@ def _record_step_metrics(step: str, metric_source: str, outcome: str, started: f
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
 
 
+@dataclass(slots=True)
+class _StepContext:
+    outcome: str = "success"
+
+
+@asynccontextmanager
+async def _pipeline_step(
+    *,
+    step_name: str,
+    metric_source: str,
+    span_name: str,
+    span_attrs: dict[str, Any],
+) -> Any:
+    started = time.perf_counter()
+    ctx = _StepContext()
+    with otel_span(span_name, span_attrs) as span:
+        try:
+            yield span, ctx
+        except Exception:
+            ctx.outcome = "error"
+            raise
+        finally:
+            _record_step_metrics(step_name, metric_source, ctx.outcome, started)
+
+
+
 @dataclass(frozen=True, slots=True)
 class _ProcessingRun:
     ctx: WebhookProcessContext
@@ -95,26 +122,20 @@ class _ProcessingRun:
 
     async def run(self) -> PipelineProcessingResult:
         async with alert_processing_gate(self.ctx.alert_hash) as gate_res:
-            validation_started = time.perf_counter()
-            validation_outcome = "success"
-            with otel_span(
-                "webhook.validate",
-                {
+            async with _pipeline_step(
+                step_name="validate",
+                metric_source=self.ctx.metric_source,
+                span_name="webhook.validate",
+                span_attrs={
                     "event_id": self.ctx.event_id or 0,
                     "source": self.ctx.req_ctx.source,
                     "alert_hash": self.ctx.alert_hash[:12],
                     "pipeline.step": "validate",
                 },
-            ):
-                try:
-                    if await self._handle_storm_suppression(gate_res):
-                        validation_outcome = "suppressed"
-                        return PipelineProcessingResult(suppressed=True)
-                except Exception:
-                    validation_outcome = "error"
-                    raise
-                finally:
-                    _record_step_metrics("validate", self.ctx.metric_source, validation_outcome, validation_started)
+            ) as (_span, step_ctx):
+                if await self._handle_storm_suppression(gate_res):
+                    step_ctx.outcome = "suppressed"
+                    return PipelineProcessingResult(suppressed=True)
 
             analysis, noise, analysis_res = await self._resolve_noise_context()
             final_analysis = build_final_analysis(analysis, noise)
@@ -168,29 +189,23 @@ class _ProcessingRun:
         return True
 
     async def _resolve_noise_context(self) -> tuple[AnalysisResult, NoiseReductionContext, AnalysisResolution]:
-        started = time.perf_counter()
-        outcome = "success"
-        with otel_span(
-            "webhook.analyze",
-            {
+        async with _pipeline_step(
+            step_name="analysis",
+            metric_source=self.ctx.metric_source,
+            span_name="webhook.analyze",
+            span_attrs={
                 "event_id": self.ctx.event_id or 0,
                 "source": self.ctx.req_ctx.source,
                 "alert_hash": self.ctx.alert_hash[:12],
                 "pipeline.step": "analysis",
             },
-        ):
-            try:
-                analysis_res = await resolve_analysis(
-                    self.ctx.alert_hash,
-                    self.ctx.req_ctx.webhook_full_data,
-                    policy=self.dependencies.analysis_policy,
-                    http_client=self.dependencies.http_client,
-                )
-            except Exception:
-                outcome = "error"
-                raise
-            finally:
-                _record_step_metrics("analysis", self.ctx.metric_source, outcome, started)
+        ) as (_span, _step_ctx):
+            analysis_res = await resolve_analysis(
+                self.ctx.alert_hash,
+                self.ctx.req_ctx.webhook_full_data,
+                policy=self.dependencies.analysis_policy,
+                http_client=self.dependencies.http_client,
+            )
 
         route_type = analysis_res.analysis_result.get("_route_type", "ai")
         importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
@@ -238,30 +253,24 @@ class _ProcessingRun:
             },
         )
 
-        noise_started = time.perf_counter()
-        noise_outcome = "success"
-        with otel_span(
-            "webhook.noise",
-            {
+        async with _pipeline_step(
+            step_name="noise",
+            metric_source=self.ctx.metric_source,
+            span_name="webhook.noise",
+            span_attrs={
                 "event_id": self.ctx.event_id or 0,
                 "source": self.ctx.req_ctx.source,
                 "alert_hash": self.ctx.alert_hash[:12],
                 "pipeline.step": "noise",
             },
-        ):
-            try:
-                noise = await compute_noise(
-                    self.ctx.alert_hash,
-                    self.ctx.req_ctx.source,
-                    self.ctx.req_ctx.parsed_data,
-                    analysis_res.analysis_result,
-                    policy=self.dependencies.noise_policy,
-                )
-            except Exception:
-                noise_outcome = "error"
-                raise
-            finally:
-                _record_step_metrics("noise", self.ctx.metric_source, noise_outcome, noise_started)
+        ) as (_span, _step_ctx):
+            noise = await compute_noise(
+                self.ctx.alert_hash,
+                self.ctx.req_ctx.source,
+                self.ctx.req_ctx.parsed_data,
+                analysis_res.analysis_result,
+                policy=self.dependencies.noise_policy,
+            )
 
         return analysis_res.analysis_result, noise, analysis_res
 
@@ -400,12 +409,12 @@ async def _handle_raw_ingest(
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-            parse_start = time.perf_counter()
-            parse_outcome = "success"
-            with otel_span(
-                "webhook.parse",
-                {"source": envelope.source or "unknown", "event_id": 0, "pipeline.step": "parse"},
-            ) as parse_span:
+            async with _pipeline_step(
+                step_name="parse",
+                metric_source=metric_source,
+                span_name="webhook.parse",
+                span_attrs={"source": envelope.source or "unknown", "event_id": 0, "pipeline.step": "parse"},
+            ) as (parse_span, step_ctx):
                 try:
                     req_ctx = parse_request(
                         client_ip,
@@ -416,11 +425,9 @@ async def _handle_raw_ingest(
                         envelope.event_ts,
                     )
                 except Exception as exc:
-                    parse_outcome = "error"
+                    step_ctx.outcome = "error"
                     set_span_error(parse_span, exc)
                     raise
-                finally:
-                    _record_step_metrics("parse", metric_source, parse_outcome, parse_start)
 
             alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
