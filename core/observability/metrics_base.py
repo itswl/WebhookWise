@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from core.observability.attributes import normalize_attribute_key, normalize_attribute_value
-from core.observability.env import env_int
+from core.observability.exporters import env_int
 from core.observability.exporters import build_metric_exporter, otel_enabled
 from core.observability.resource import build_resource
 

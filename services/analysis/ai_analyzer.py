@@ -24,7 +24,7 @@ from services.analysis.analysis_queries import (
     get_deep_analysis_list,
 )
 from services.analysis.rule_analyzer import analyze_with_rules as _analyze_with_rules
-from services.webhooks.deduplication import generate_alert_hash
+from services.dedup import generate_alert_hash
 from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("analysis.ai_analyzer")

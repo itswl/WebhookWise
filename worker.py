@@ -13,7 +13,7 @@ os.environ.setdefault("RUN_MODE", "worker")
 from core.app_context import get_default_app_context, init_default_app_context
 from core.config import UnifiedConfigManager
 from core.logger import get_logger, setup_logger, stop_log_listener
-from core.observability import setup_observability_worker, shutdown_observability
+from core.observability import setup_observability, shutdown_observability
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from services.operations.taskiq_wiring import broker
 
@@ -32,7 +32,7 @@ async def startup() -> None:
         broker=broker,
         start_broker=True,
         initialize_logger=setup_logger,
-        initialize_observability=setup_observability_worker,
+        initialize_observability=setup_observability,
         initialize_redis_client=True,
         initialize_ai_client=True,
     )

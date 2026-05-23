@@ -10,12 +10,13 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import request_ip
+from core.app_context import get_config_manager
 from core.compression import compress_payload
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
-from services.webhooks.deduplication import duplicate_window_hours, generate_alert_hash
+from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
 
@@ -325,7 +326,7 @@ async def _resolve_duplicate_status(
     check = await check_duplicate_event(
         payload.alert_hash,
         session=session,
-        time_window_hours=duplicate_window_hours(),
+        time_window_hours=max(1, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) // 3600),
     )
     return _DuplicateStatus(
         check.is_duplicate,

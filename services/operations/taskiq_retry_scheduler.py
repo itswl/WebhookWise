@@ -63,39 +63,22 @@ async def schedule_webhook_ingest_retry(
     schedule_id = _raw_ingest_schedule_id(request_id, source, raw_body)
     await dynamic_schedule_source.delete_schedule(schedule_id)
     run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    kwargs: dict[str, object] = dict(
+        source_name=source,
+        raw_headers=raw_headers,
+        raw_body=raw_body,
+        client_ip=client_ip,
+        request_id=request_id,
+        received_at=received_at,
+        ingest_retry_count=ingest_retry_count,
+    )
     if traceparent:
-        await (
-            process_webhook_task.kicker()
-            .with_schedule_id(schedule_id)
-            .schedule_by_time(
-                dynamic_schedule_source,
-                run_at,
-                source_name=source,
-                raw_headers=raw_headers,
-                raw_body=raw_body,
-                client_ip=client_ip,
-                request_id=request_id,
-                received_at=received_at,
-                ingest_retry_count=ingest_retry_count,
-                traceparent=traceparent,
-            )
-        )
-    else:
-        await (
-            process_webhook_task.kicker()
-            .with_schedule_id(schedule_id)
-            .schedule_by_time(
-                dynamic_schedule_source,
-                run_at,
-                source_name=source,
-                raw_headers=raw_headers,
-                raw_body=raw_body,
-                client_ip=client_ip,
-                request_id=request_id,
-                received_at=received_at,
-                ingest_retry_count=ingest_retry_count,
-            )
-        )
+        kwargs["traceparent"] = traceparent
+    await (
+        process_webhook_task.kicker()
+        .with_schedule_id(schedule_id)
+        .schedule_by_time(dynamic_schedule_source, run_at, **kwargs)
+    )
 
 
 async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
@@ -132,3 +115,12 @@ async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
             analysis_id=analysis_id,
         )
     )
+
+
+async def schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: int | None = None) -> None:
+    try:
+        if delay_seconds is None:
+            delay_seconds = compute_openclaw_poll_delay(0)
+        await schedule_openclaw_poll(analysis_id, delay_seconds)
+    except Exception as e:
+        logger.warning("[OpenClaw] poll 调度失败 analysis_id=%s error=%s", analysis_id, e)

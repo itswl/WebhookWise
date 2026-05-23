@@ -30,42 +30,6 @@ def _expires_before(now: datetime, policy: ForwardDeliveryPolicy) -> datetime | 
     return now - timedelta(seconds=policy.max_delivery_age_seconds)
 
 
-async def expire_outbox_if_old(
-    session: AsyncSession,
-    outbox_id: int,
-    *,
-    now: datetime,
-    policy: ForwardDeliveryPolicy,
-) -> bool:
-    cutoff = _expires_before(now, policy)
-    if cutoff is None:
-        return False
-    stmt = (
-        update(ForwardOutbox)
-        .where(ForwardOutbox.id == outbox_id)
-        .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
-        .where(ForwardOutbox.created_at < cutoff)
-        .values(
-            status=ForwardOutboxStatus.EXPIRED,
-            next_attempt_at=None,
-            updated_at=now,
-            last_error=f"forward delivery expired after {policy.max_delivery_age_seconds}s",
-        )
-        .returning(ForwardOutbox)
-    )
-    expired = (await session.execute(stmt)).scalar_one_or_none()
-    if not expired:
-        return False
-    FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(expired.target_type or "unknown"), "expired").inc()
-    logger.warning(
-        "[OutboxScanner] 转发意图已过期 id=%s event_id=%s age_limit=%ss",
-        expired.id,
-        expired.webhook_event_id,
-        policy.max_delivery_age_seconds,
-    )
-    return True
-
-
 async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardDeliveryPolicy, limit: int) -> int:
     cutoff = _expires_before(now, policy)
     if cutoff is None or limit <= 0:

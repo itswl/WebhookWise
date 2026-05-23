@@ -22,8 +22,7 @@ from core.observability.metrics import (
     OPENAI_ERRORS_TOTAL,
     sanitize_source,
 )
-from core.observability.tracing import set_span_error
-from core.observability.tracing import span as otel_span
+from core.observability.tracing import otel_span, set_span_error
 from schemas import WebhookAnalysisResult
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.analysis.analysis_policies import AIProviderPolicy

@@ -43,14 +43,6 @@ class ForwardResult(TypedDict, total=False):
     _openclaw_session_key: str
     _degraded: bool
     _degraded_reason: str
-    source: str
-    event_type: str
-    importance: str
-    summary: str
-    impact_scope: str | None
-    actions: list[str]
-    risks: list[str]
-    monitoring_suggestions: list[str]
 
 
 class WebhookProcessingStatus(StrEnum):

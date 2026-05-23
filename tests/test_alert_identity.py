@@ -1,5 +1,5 @@
 from adapters.normalized import AlertIdentity, with_alert_identity
-from services.webhooks.deduplication import generate_alert_hash
+from services.dedup import generate_alert_hash
 
 
 def test_generate_hash_uses_adapter_identity_not_payload_noise() -> None:

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict, get_args, get_origin
+from functools import lru_cache
+from typing import Any, Literal, TypedDict, get_args, get_origin
 
 from pydantic_settings import BaseSettings
 
@@ -34,23 +35,22 @@ def _config_type_for_annotation(annotation: object) -> ConfigValueType | None:
     return None
 
 
-def _build_config_keys() -> dict[str, ConfigKeyMeta]:
+@lru_cache
+def get_config_keys() -> dict[str, ConfigKeyMeta]:
     settings = get_settings()
-    config_keys: dict[str, ConfigKeyMeta] = {}
+    keys: dict[str, ConfigKeyMeta] = {}
     for sub_name in settings._SUB_NAMES:
         sub_config: BaseSettings = getattr(settings, sub_name)
         for key, field in type(sub_config).model_fields.items():
             value_type = _config_type_for_annotation(field.annotation)
             if value_type is None:
                 continue
-            config_keys[key] = {"type": value_type, "sub": sub_name}
-    return config_keys
+            keys[key] = {"type": value_type, "sub": sub_name}
+    return keys
 
 
 class UnifiedConfigManager:
     """Read-only access to process configuration loaded at startup."""
-
-    CONFIG_KEYS: dict[str, ConfigKeyMeta] = _build_config_keys()
 
     def __init__(self, settings: AppConfig | None = None) -> None:
         self._settings = settings

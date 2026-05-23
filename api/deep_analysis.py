@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.webhook_context import JSONDict, build_webhook_context
+from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
+from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll_best_effort as _schedule_oc_poll
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
@@ -76,13 +77,6 @@ def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
     return delay
 
 
-async def _schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: int) -> None:
-    try:
-        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
-
-        await schedule_openclaw_poll(analysis_id, delay_seconds)
-    except Exception as e:
-        logger.warning("[DeepAnalysis] OpenClaw poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
 
 
 def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime) -> None:
@@ -142,7 +136,7 @@ async def deep_analyze_webhook(
     record_data = deep_analysis_to_dict(record)
     await session.commit()
     if poll_delay is not None:
-        await _schedule_openclaw_poll_best_effort(analysis_id, poll_delay)
+        await _schedule_oc_poll(analysis_id, poll_delay)
     logger.info(
         "[DeepAnalysis] 手动分析记录已创建 analysis_id=%s webhook_id=%s status=%s engine=%s poll_delay=%s",
         analysis_id,
@@ -233,7 +227,7 @@ async def retry_deep_analysis(
             poll_delay = _prepare_openclaw_poll_if_pending(record)
             await session.commit()
             if poll_delay is not None:
-                await _schedule_openclaw_poll_best_effort(record.id, poll_delay)
+                await _schedule_oc_poll(record.id, poll_delay)
             logger.info("[DeepAnalysis] 已重新发起后台分析 analysis_id=%s poll_delay=%s", record.id, poll_delay)
             return {"success": True, "message": "已重新发起分析任务，请等待结果"}
 
@@ -256,7 +250,7 @@ async def retry_deep_analysis(
     await session.commit()
     with contextlib.suppress(Exception):
         await clear_openclaw_poll_state(int(record.id))
-    await _schedule_openclaw_poll_best_effort(int(record.id), 0)
+    await _schedule_oc_poll(int(record.id), 0)
     logger.info("[DeepAnalysis] 已提交后台拉取 analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id)
     return {"success": True, "message": "已提交后台拉取，请稍后刷新查看结果", "data": record_data}
 

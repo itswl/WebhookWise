@@ -119,7 +119,7 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
 @pytest.mark.asyncio
 async def test_ingress_backpressure_suppresses_after_threshold() -> None:
     from services.webhooks.ingress_backpressure import check_ingress_backpressure
-    from services.webhooks.policies import WebhookReceivePolicy
+    from services.webhooks.policies import IngressPolicy
 
     calls = 0
 
@@ -128,7 +128,7 @@ async def test_ingress_backpressure_suppresses_after_threshold() -> None:
         calls += 1
         return calls
 
-    policy = WebhookReceivePolicy(
+    policy = IngressPolicy(
         max_body_bytes=1024,
         ingress_backpressure_threshold=1,
         ingress_backpressure_window_seconds=60,
@@ -155,7 +155,7 @@ async def test_ingress_backpressure_suppresses_after_threshold() -> None:
 @pytest.mark.asyncio
 async def test_ingress_backpressure_suppresses_on_redis_error() -> None:
     from services.webhooks.ingress_backpressure import check_ingress_backpressure
-    from services.webhooks.policies import WebhookReceivePolicy
+    from services.webhooks.policies import IngressPolicy
 
     async def failing_eval(*_: object) -> int:
         raise RuntimeError("redis unavailable")
@@ -163,7 +163,7 @@ async def test_ingress_backpressure_suppresses_on_redis_error() -> None:
     result = await check_ingress_backpressure(
         source_hint="prometheus",
         raw_body=b'{"alertname":"HighCPU","instance":"a"}',
-        policy=WebhookReceivePolicy(
+        policy=IngressPolicy(
             max_body_bytes=1024,
             ingress_backpressure_threshold=1,
             ingress_backpressure_window_seconds=60,

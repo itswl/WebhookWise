@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.webhook_context import JSONDict
+from api.webhook import JSONDict
 from db.session import get_db_session
 from schemas import AIUsageResponse
 from services.analysis.analysis_queries import get_ai_usage_stats

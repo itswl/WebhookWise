@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import get_logger
 from core.observability.events import add_span_event, emit_event
-from core.observability.tracing import span as otel_span
+from core.observability.tracing import otel_span
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent

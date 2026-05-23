@@ -31,7 +31,7 @@ THIRD_PARTY_LOGGER_NAMES = (
 )
 
 
-def resolve_log_level(value: str | int | None, default: int = logging.INFO) -> int:
+def _resolve_level(value: str | int | None, default: int) -> int:
     if isinstance(value, int):
         return value
     if value:
@@ -44,8 +44,8 @@ def apply_log_levels(
     third_party_level: str | int | None = "WARNING",
 ) -> None:
     """Apply project and dependency logger levels consistently."""
-    app_level_no = resolve_log_level(app_level, logging.INFO)
-    third_party_level_no = resolve_log_level(third_party_level, logging.WARNING)
+    app_level_no = _resolve_level(app_level, logging.INFO)
+    third_party_level_no = _resolve_level(third_party_level, logging.WARNING)
 
     logging.getLogger().setLevel(third_party_level_no)
     for logger_name in THIRD_PARTY_LOGGER_NAMES:

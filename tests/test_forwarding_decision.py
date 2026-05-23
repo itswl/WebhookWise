@@ -45,10 +45,12 @@ def _restore_static_config(temp_config):
 
 
 def _set_config(key: str, value: object) -> None:
+    from core.config.manager import get_config_keys
+
     context = get_default_app_context()
     assert context is not None
     config = context.config
-    config_info = config.CONFIG_KEYS[key]
+    config_info = get_config_keys()[key]
     setattr(getattr(config, config_info["sub"]), key, value)
 
 

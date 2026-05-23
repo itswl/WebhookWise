@@ -35,16 +35,14 @@ from core.observability.metrics import (
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
-from core.observability.signals import record_signal
+from core.observability.events import record_signal
 from core.observability.tracing import (
     generate_trace_id,
     get_current_trace_id,
     set_fallback_trace_id,
     set_span_error,
 )
-from core.observability.tracing import (
-    span as otel_span,
-)
+from core.observability.tracing import otel_span
 from services.dedup import DedupResult, generate_event_keys, remember_dedup_state, resolve_dedup
 from services.forwarding.outbox import schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult
@@ -119,6 +117,13 @@ def _record_step_metrics(step: str, metric_source: str, outcome: str, started: f
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
 
 
+class _StepOutcome:
+    __slots__ = ("value",)
+
+    def __init__(self) -> None:
+        self.value = "success"
+
+
 @asynccontextmanager
 async def _pipeline_step(
     *,
@@ -128,15 +133,15 @@ async def _pipeline_step(
     span_attrs: dict[str, Any],
 ) -> Any:
     started = time.perf_counter()
-    outcome: list[str] = ["success"]
+    outcome = _StepOutcome()
     with otel_span(span_name, span_attrs) as span:
         try:
             yield span, outcome
         except Exception:
-            outcome[0] = "error"
+            outcome.value = "error"
             raise
         finally:
-            _record_step_metrics(step_name, metric_source, outcome[0], started)
+            _record_step_metrics(step_name, metric_source, outcome.value, started)
 
 
 
@@ -294,7 +299,7 @@ async def _run_processing_pipeline(
             },
         ) as (_span, outcome):
             if await _handle_storm_suppression(ctx, gate_res):
-                outcome[0] = "suppressed"
+                outcome.value = "suppressed"
                 return PipelineProcessingResult(suppressed=True)
 
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)

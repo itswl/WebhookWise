@@ -107,9 +107,9 @@ scheduler = TaskiqScheduler(
 )
 
 if _settings.run_mode == "scheduler":
-    from core.observability import setup_observability_scheduler
+    from core.observability import setup_observability
 
-    setup_observability_scheduler()
+    setup_observability()
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
@@ -122,7 +122,7 @@ async def worker_startup_event(state: object) -> None:
     from core.app_context import init_default_app_context
     from core.config import UnifiedConfigManager
     from core.logger import setup_logger
-    from core.observability import setup_observability_worker
+    from core.observability import setup_observability
     from core.service_lifecycle import start_runtime_services
 
     if _settings.worker_startup_jitter_seconds > 0:
@@ -133,7 +133,7 @@ async def worker_startup_event(state: object) -> None:
         context.config,
         context=context,
         initialize_logger=setup_logger,
-        initialize_observability=setup_observability_worker,
+        initialize_observability=setup_observability,
         initialize_redis_client=True,
         initialize_ai_client=True,
     )

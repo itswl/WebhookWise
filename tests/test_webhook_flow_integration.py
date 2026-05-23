@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
-from services.webhooks.deduplication import generate_alert_hash
+from services.dedup import generate_alert_hash
 
 
 @compiles(JSONB, "sqlite")
@@ -21,7 +21,9 @@ def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
 
 
 def _set_config(monkeypatch: pytest.MonkeyPatch, config: Any, key: str, value: object) -> None:
-    config_info = config.CONFIG_KEYS[key]
+    from core.config.manager import get_config_keys
+
+    config_info = get_config_keys()[key]
     monkeypatch.setattr(getattr(config, config_info["sub"]), key, value)
 
 
@@ -236,7 +238,6 @@ async def test_finalization_skips_outbox_without_target(
         action="new",
         analysis={"importance": "high", "summary": "should rollback", "event_type": "test"},
         original_event_id=None,
-        is_reused=False,
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
 
@@ -473,7 +474,6 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
         action="reuse",
         analysis={"importance": "high", "summary": "reused", "_route_type": "db_reuse"},
         original_event_id=original_id,
-        is_reused=True,
         route_type="db_reuse",
     )
     noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])

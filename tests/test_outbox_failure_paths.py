@@ -293,7 +293,7 @@ class TestFinalizeOutboxSuccess:
         async def _noop(*_: object) -> None:
             pass
 
-        monkeypatch.setattr("services.forwarding.outbox._schedule_openclaw_poll_best_effort", _noop)
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
 
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now() - timedelta(seconds=1))
         record = await _claim_outbox(outbox_id)
@@ -317,7 +317,7 @@ class TestFinalizeOutboxSuccess:
         async def _noop(*_: object) -> None:
             pass
 
-        monkeypatch.setattr("services.forwarding.outbox._schedule_openclaw_poll_best_effort", _noop)
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
 
         outbox_id = await _insert_outbox(
             session_factory,

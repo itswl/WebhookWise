@@ -14,7 +14,7 @@ from core.observability.metrics import (
     CIRCUIT_BREAKER_STATE,
     CIRCUIT_BREAKER_TRANSITIONS_TOTAL,
 )
-from core.observability.signals import record_signal
+from core.observability.events import record_signal
 from core.redis_lua import (
     CIRCUIT_BREAKER_CHECK_STATE as _CB_CHECK_STATE_LUA,
 )

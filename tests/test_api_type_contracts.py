@@ -210,7 +210,7 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     async def fail_if_called(*_: object, **__: object) -> tuple[dict[str, object], str]:
         raise AssertionError("retry with an existing session_key should not block on remote analysis")
 
-    monkeypatch.setattr(deep_analysis, "_schedule_openclaw_poll_best_effort", fake_schedule)
+    monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", fake_schedule)
     monkeypatch.setattr("services.analysis.openclaw_poller.clear_openclaw_poll_state", fake_clear)
     monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_if_called)
 
