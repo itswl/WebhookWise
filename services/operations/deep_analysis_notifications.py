@@ -1,10 +1,42 @@
 """Deep-analysis completion notification side effects."""
 
+from typing import Any
+
 from core.logger import get_logger, mask_url
 from services.analysis.openclaw_poll_policy import OpenClawPollPolicy
+from services.channels.feishu import build_deep_analysis_card
+from services.forwarding.outbox import enqueue_external_message
 from services.webhooks.types import WebhookData
 
 logger = get_logger("deep_analysis_notifications")
+
+
+async def send_feishu_deep_analysis(
+    webhook_url: str,
+    analysis_record: dict[str, Any],
+    source: str = "",
+    webhook_event_id: int = 0,
+    *,
+    timeout_seconds: int | None = None,
+    http_client: Any | None = None,
+    channels: Any | None = None,
+) -> bool:
+    if not webhook_url:
+        return False
+    try:
+        payload = build_deep_analysis_card(analysis_record, source=source, webhook_event_id=webhook_event_id)
+        await enqueue_external_message(
+            channel_name="feishu",
+            target_url=webhook_url,
+            event_type="deep_analysis",
+            formatted_payload=payload,
+            webhook_id=webhook_event_id or None,
+            idempotency_hint=f"deep_analysis:{analysis_record.get('engine', '')}:{webhook_event_id}",
+        )
+        return True
+    except Exception as e:
+        logger.warning("深度分析通知入队失败: %s", e)
+        return False
 
 
 async def send_deep_analysis_success_notification(
@@ -18,8 +50,6 @@ async def send_deep_analysis_success_notification(
     webhook_url = policy.notification_webhook_url
     if not webhook_url:
         return
-
-    from services.operations.feishu_notifications import send_feishu_deep_analysis
 
     try:
         event_id = int(record_dict["webhook_event_id"])
@@ -76,8 +106,6 @@ async def send_deep_analysis_failure_notification(
     webhook_url = policy.notification_webhook_url
     if not webhook_url:
         return
-
-    from services.operations.feishu_notifications import send_feishu_deep_analysis
 
     try:
         event_id = int(record_dict["webhook_event_id"])

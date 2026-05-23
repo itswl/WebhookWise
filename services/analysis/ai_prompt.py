@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from core.logger import get_logger
-from services.analysis.ai_policies import AIPromptPolicy, DeepAnalysisPromptPolicy
+from services.analysis.analysis_policies import AIPromptPolicy, DeepAnalysisPromptPolicy
 
 logger = get_logger("analysis.ai_prompt")
 
