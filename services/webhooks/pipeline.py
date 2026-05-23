@@ -45,7 +45,7 @@ from core.observability.tracing import (
 from core.observability.tracing import (
     span as otel_span,
 )
-from services.dedup import DedupResult, generate_dedup_key, resolve_dedup
+from services.dedup import DedupResult, generate_dedup_key, remember_dedup_state, resolve_dedup
 from services.webhooks.command_service import SaveWebhookResult
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
 from services.webhooks.deduplication import generate_alert_hash
@@ -261,7 +261,16 @@ class _ProcessingRun:
                 "pipeline.step": "analysis",
             },
         ) as (_span, _step_ctx):
+            from core.app_context import get_config_manager
             from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
+
+            dedup_ttl = max(60, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) * 2)
+            await remember_dedup_state(
+                self.ctx.dedup_key,
+                original_event_id=0,
+                analysis={"_degraded": True, "_pending": True},
+                ttl_seconds=dedup_ttl,
+            )
 
             analysis_result = await analyze_webhook_with_ai(
                 self.ctx.req_ctx.webhook_full_data,
