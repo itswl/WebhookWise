@@ -3,8 +3,8 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_record_redis_operation_updates_shared_health_state() -> None:
-    from core.redis_health import RedisHealthState, get_redis_health_snapshot
     from core.redis_client import record_redis_operation
+    from core.redis_health import RedisHealthState, get_redis_health_snapshot
 
     async def ok() -> str:
         return "pong"

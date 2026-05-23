@@ -25,8 +25,8 @@ from core.observability.attributes import (
 )
 from core.observability.events import emit_event
 from core.observability.metrics import (
-    WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_ANALYSIS_ROUTE_TOTAL,
+    WEBHOOK_NOISE_REDUCED_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,

@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from fastapi import Depends, HTTPException, Request, Response
 
 from api import InvalidSignatureError
-from core.config import SecurityConfig, UnifiedConfigManager
 from core.app_context import get_config_manager
+from core.config import SecurityConfig, UnifiedConfigManager
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
