@@ -26,6 +26,7 @@ from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     ForwardDecision,
+    ForwardRuleTarget,
     NoiseReductionContext,
     WebhookProcessContext,
 )
@@ -177,7 +178,7 @@ async def finalize_analysis_transaction(
                     forward_data["headers"] = redact_headers(forward_data["headers"])
                 first_target_type = fwd_dec.matched_rules[0]["target_type"] if fwd_dec.matched_rules else "default"
 
-                def _build_formatted_payload(rule: ForwardRuleSnapshot) -> tuple[str, dict[str, object]]:
+                def _build_formatted_payload(rule: ForwardRuleTarget) -> tuple[str, dict[str, object]]:
                     from services.channels.base import FormatContext, get_channel, resolve_channel_name
 
                     target_type = str(rule.get("target_type", "") or "")
@@ -240,7 +241,7 @@ async def finalize_analysis_transaction(
     await remember_dedup_state(
         ctx.dedup_key,
         original_event_id=save_res.original_id or save_res.webhook_id,
-        analysis=final_analysis,
+        analysis=dict(final_analysis),
         ttl_seconds=dedup_ttl,
     )
     await schedule_forward_outbox_many(outbox_ids)
