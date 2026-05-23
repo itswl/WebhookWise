@@ -74,8 +74,8 @@ class CircuitBreaker:
         from core.redis_health import ensure_redis_available, mark_redis_failure
 
         if not await ensure_redis_available(f"circuit_breaker:{self.name}:check_state"):
-            logger.warning("CircuitBreaker [%s] Redis 不可用，按 OPEN 处理", self.name)
-            state = CircuitState.OPEN
+            logger.warning("CircuitBreaker [%s] Redis 不可用，降级放行", self.name)
+            state = CircuitState.CLOSED
             self._record_state_metric(state)
             return state
 
@@ -88,8 +88,8 @@ class CircuitBreaker:
             state = CircuitState(state_str) if state_str else CircuitState.CLOSED
         except Exception as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:check_state", e)
-            logger.warning("CircuitBreaker [%s] Redis 检查状态失败，按 OPEN 处理: %s", self.name, e)
-            state = CircuitState.OPEN
+            logger.warning("CircuitBreaker [%s] Redis 检查状态失败，降级放行: %s", self.name, e)
+            state = CircuitState.CLOSED
         self._record_state_metric(state)
         return state
 

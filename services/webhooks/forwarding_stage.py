@@ -1,15 +1,18 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.events import add_span_event, emit_event
 from core.observability.tracing import span as otel_span
 from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
+from services.dedup import DedupResult, remember_dedup_state
 from services.forwarding.outbox import create_forward_outbox_records, schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
@@ -18,11 +21,9 @@ from services.webhooks.decisioning import (
     decide_forwarding,
     normalize_importance,
 )
-from services.webhooks.deduplication import remember_duplicate_source
 from services.webhooks.policies import forwarding_policy_from_config
 from services.webhooks.repository import list_enabled_forward_rules
 from services.webhooks.types import (
-    AnalysisResolution,
     AnalysisResult,
     ForwardDecision,
     NoiseReductionContext,
@@ -42,10 +43,10 @@ class FinalizeAnalysisResult:
 async def resolve_forward_decision(
     importance: str,
     is_duplicate: bool,
-    beyond_window: bool,
     noise: NoiseReductionContext | None,
     orig: WebhookEvent | None,
     source: str,
+    parsed_data: dict[str, Any] | None = None,
     session: AsyncSession | None = None,
     policy: ForwardingPolicy | None = None,
 ) -> ForwardDecision:
@@ -63,31 +64,29 @@ async def resolve_forward_decision(
     decision = decide_forwarding(
         importance=importance,
         is_duplicate=is_duplicate,
-        beyond_window=beyond_window,
         noise=noise,
         original_event=orig,
         source=source,
         rules=rules,
         policy=policy or forwarding_policy_from_config(),
+        parsed_data=parsed_data,
     )
 
     if decision.should_forward:
         logger.info(
-            "[Forward] 决策=转发 source=%s importance=%s duplicate=%s beyond_window=%s is_periodic=%s matched_rules=%d",
+            "[Forward] 决策=转发 source=%s importance=%s duplicate=%s is_periodic=%s matched_rules=%d",
             source,
             importance,
             is_duplicate,
-            beyond_window,
             decision.is_periodic_reminder,
             len(decision.matched_rules),
         )
     else:
         logger.info(
-            "[Forward] 决策=跳过 source=%s importance=%s duplicate=%s beyond_window=%s reason=%s",
+            "[Forward] 决策=跳过 source=%s importance=%s duplicate=%s reason=%s",
             source,
             importance,
             is_duplicate,
-            beyond_window,
             decision.skip_reason or "no_match",
         )
 
@@ -96,7 +95,7 @@ async def resolve_forward_decision(
 
 async def finalize_analysis_transaction(
     ctx: WebhookProcessContext,
-    analysis_res: AnalysisResolution,
+    analysis_res: DedupResult,
     final_analysis: AnalysisResult,
     noise: NoiseReductionContext,
     *,
@@ -107,14 +106,11 @@ async def finalize_analysis_transaction(
     Forwarding intents are persisted in the same transaction as the processed
     webhook state. The network side effect happens later in an outbox worker.
     """
-    is_dup_for_save: bool | None = analysis_res.is_duplicate or analysis_res.beyond_window
-    original_for_save = analysis_res.original_event
-    original_id_for_save = analysis_res.original_event_id or (original_for_save.id if original_for_save else None)
-    beyond_for_save = analysis_res.beyond_window
-    skip_duplicate_lookup = bool(analysis_res.is_reused and original_for_save is None and original_id_for_save)
-    if original_for_save is None and original_id_for_save is None:
+    is_dup_for_save: bool | None = analysis_res.is_duplicate
+    original_id_for_save = analysis_res.original_event_id
+    skip_duplicate_lookup = bool(analysis_res.is_reused and original_id_for_save is not None)
+    if original_id_for_save is None:
         is_dup_for_save = None
-        beyond_for_save = False
 
     outbox_ids: list[int] = []
     with otel_span(
@@ -146,11 +142,9 @@ async def finalize_analysis_transaction(
                     request_id=ctx.request_id,
                     ai_analysis=final_analysis,
                     alert_hash=ctx.alert_hash,
+                    dedup_key=ctx.dedup_key,
                     is_duplicate=is_dup_for_save,
-                    original_event=original_for_save,
                     original_event_id=original_id_for_save,
-                    beyond_window=beyond_for_save,
-                    reanalyzed=analysis_res.reanalyzed,
                     skip_duplicate_lookup=skip_duplicate_lookup,
                 )
 
@@ -161,19 +155,19 @@ async def finalize_analysis_transaction(
                     "source": ctx.req_ctx.source,
                     "pipeline.step": "persist",
                     "webhook.importance": normalize_importance(final_analysis.get("importance", "")),
-                    "webhook.suppressed": save_res.is_duplicate and not save_res.beyond_window,
+                    "webhook.duplicate": save_res.is_duplicate,
                 },
             ):
-                decision_original = analysis_res.original_event
-                if decision_original is None and save_res.original_id is not None:
+                decision_original = None
+                if save_res.original_id is not None:
                     decision_original = await session.get(WebhookEvent, save_res.original_id)
                 fwd_dec = await resolve_forward_decision(
                     normalize_importance(final_analysis.get("importance", "")),
-                    save_res.is_duplicate and not save_res.beyond_window,
-                    save_res.beyond_window,
+                    save_res.is_duplicate,
                     noise,
                     decision_original,
                     ctx.req_ctx.source,
+                    parsed_data=ctx.req_ctx.parsed_data,
                     session=session,
                     policy=forwarding_policy,
                 )
@@ -182,6 +176,25 @@ async def finalize_analysis_transaction(
                 if isinstance(forward_data.get("headers"), dict):
                     forward_data["headers"] = redact_headers(forward_data["headers"])
                 first_target_type = fwd_dec.matched_rules[0]["target_type"] if fwd_dec.matched_rules else "default"
+
+                def _build_formatted_payload(rule: ForwardRuleSnapshot) -> tuple[str, dict[str, object]]:
+                    from services.channels.base import FormatContext, get_channel, resolve_channel_name
+
+                    target_type = str(rule.get("target_type", "") or "")
+                    target_url = str(rule.get("target_url", "") or "")
+                    channel_name = resolve_channel_name(target_type, target_url)
+                    channel = get_channel(channel_name)
+                    if channel is None:
+                        return channel_name, {}
+                    payload = channel.format(
+                        FormatContext(
+                            webhook_data=forward_data,
+                            analysis_result=final_analysis,
+                            is_periodic_reminder=fwd_dec.is_periodic_reminder,
+                        )
+                    )
+                    return channel_name, payload
+
                 with otel_span(
                     "webhook.persist.outbox",
                     {
@@ -199,6 +212,7 @@ async def finalize_analysis_transaction(
                         analysis=final_analysis,
                         webhook_id=save_res.webhook_id,
                         orig_id=save_res.original_id,
+                        payload_builder=_build_formatted_payload,
                     )
                 emit_event(
                     "forward.outbox.queued",
@@ -220,10 +234,14 @@ async def finalize_analysis_transaction(
                         "forward.skip_reason": fwd_dec.skip_reason or "unknown",
                     },
                 )
-    await remember_duplicate_source(
-        ctx.alert_hash,
+
+    config = get_config_manager()
+    dedup_ttl = max(60, int(config.retry.DEDUP_WINDOW_SECONDS) * 2)
+    await remember_dedup_state(
+        ctx.dedup_key,
         original_event_id=save_res.original_id or save_res.webhook_id,
         analysis=final_analysis,
+        ttl_seconds=dedup_ttl,
     )
     await schedule_forward_outbox_many(outbox_ids)
     return FinalizeAnalysisResult(save_res, fwd_dec, outbox_ids)

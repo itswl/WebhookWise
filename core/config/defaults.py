@@ -214,10 +214,8 @@ class MaintenanceConfig(StaticSettings):
 class RetryConfig(StaticSettings):
     """重试 + 去重 + 周期提醒"""
 
-    DUPLICATE_ALERT_TIME_WINDOW: int = Field(default=24)
+    DEDUP_WINDOW_SECONDS: int = Field(default=14400)
     FORWARD_DUPLICATE_ALERTS: bool = Field(default=False)
-    REANALYZE_AFTER_TIME_WINDOW: bool = Field(default=True)
-    FORWARD_AFTER_TIME_WINDOW: bool = Field(default=True)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
     PROCESSING_LOCK_DISTRIBUTED_ENABLED: bool = Field(default=True)
@@ -226,8 +224,7 @@ class RetryConfig(StaticSettings):
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
-    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False)
-    RECENT_BEYOND_WINDOW_REUSE_SECONDS: int = Field(default=30)
+    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True)
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)

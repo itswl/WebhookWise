@@ -133,6 +133,7 @@ class WebhookProcessContext:
     metric_source: str
     req_ctx: WebhookRequestContext
     alert_hash: str
+    dedup_key: str
 
 
 @dataclass

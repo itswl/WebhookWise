@@ -45,17 +45,16 @@ from core.observability.tracing import (
 from core.observability.tracing import (
     span as otel_span,
 )
-from services.webhooks.analysis_resolution import resolve_analysis
+from services.dedup import DedupResult, generate_dedup_key, resolve_dedup
 from services.webhooks.command_service import SaveWebhookResult
 from services.webhooks.decisioning import ForwardingPolicy, build_final_analysis, normalize_importance
 from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.identity import generate_alert_hash
 from services.webhooks.noise_stage import compute_noise
-from services.webhooks.policies import AnalysisResolutionPolicy, NoiseReductionPolicy
+from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import EventEnvelope
 from services.webhooks.request_parser import parse_request
 from services.webhooks.types import (
-    AnalysisResolution,
     AnalysisResult,
     ForwardDecision,
     NoiseReductionContext,
@@ -70,7 +69,6 @@ logger = get_logger("webhooks.pipeline")
 
 @dataclass(frozen=True, slots=True)
 class WebhookPipelineDependencies:
-    analysis_policy: AnalysisResolutionPolicy | None = None
     noise_policy: NoiseReductionPolicy | None = None
     forwarding_policy: ForwardingPolicy | None = None
     http_client: Any | None = None
@@ -190,36 +188,21 @@ class _ProcessingRun:
         record_signal("webhook.ingest", "suppressed", attrs)
         return True
 
-    async def _resolve_noise_context(self) -> tuple[AnalysisResult, NoiseReductionContext, AnalysisResolution]:
-        async with _pipeline_step(
-            step_name="analysis",
-            metric_source=self.ctx.metric_source,
-            span_name="webhook.analyze",
-            span_attrs={
-                "event_id": self.ctx.event_id or 0,
-                "source": self.ctx.req_ctx.source,
-                "alert_hash": self.ctx.alert_hash[:12],
-                "pipeline.step": "analysis",
-            },
-        ) as (_span, _step_ctx):
-            analysis_res = await resolve_analysis(
-                self.ctx.alert_hash,
-                self.ctx.req_ctx.webhook_full_data,
-                policy=self.dependencies.analysis_policy,
-                http_client=self.dependencies.http_client,
-            )
+    async def _resolve_noise_context(self) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
+        dedup_result = await resolve_dedup(self.ctx.dedup_key)
 
-        route_type = analysis_res.analysis_result.get("_route_type", "ai")
-        importance = normalize_importance(analysis_res.analysis_result.get("importance", "unknown"))
-        set_log_context(route_type=route_type)
-        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(self.ctx.metric_source, route_type).inc()
-
-        if analysis_res.is_reused:
+        if dedup_result.action == "reuse":
+            analysis = dedup_result.analysis or {}
+            route_type = dedup_result.route_type or "redis_reuse"
+            importance = normalize_importance(analysis.get("importance", "unknown"))
+            set_log_context(route_type=route_type)
+            WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(self.ctx.metric_source, route_type).inc()
             logger.debug(
-                "[Pipeline] 分析结果复用(redis) event_id=%s request_id=%s importance=%s",
+                "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
                 self.ctx.event_id,
                 self.ctx.request_id,
                 importance,
+                route_type,
             )
             emit_event(
                 "webhook.analysis.reused",
@@ -231,10 +214,38 @@ class _ProcessingRun:
                 },
             )
             return (
-                analysis_res.analysis_result,
+                analysis,
                 NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, []),
-                analysis_res,
+                dedup_result,
             )
+
+        async with _pipeline_step(
+            step_name="analysis",
+            metric_source=self.ctx.metric_source,
+            span_name="webhook.analyze",
+            span_attrs={
+                "event_id": self.ctx.event_id or 0,
+                "source": self.ctx.req_ctx.source,
+                "alert_hash": self.ctx.alert_hash[:12],
+                "pipeline.step": "analysis",
+            },
+        ) as (_span, _step_ctx):
+            from services.analysis.ai_analyzer import analyze_webhook_with_ai, log_ai_usage
+
+            analysis_result = await analyze_webhook_with_ai(
+                self.ctx.req_ctx.webhook_full_data,
+                http_client=self.dependencies.http_client,
+            )
+            await log_ai_usage(
+                route_type="ai",
+                alert_hash=self.ctx.alert_hash,
+                source=self.ctx.req_ctx.source,
+            )
+
+        route_type = analysis_result.get("_route_type", "ai")
+        importance = normalize_importance(analysis_result.get("importance", "unknown"))
+        set_log_context(route_type=route_type)
+        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(self.ctx.metric_source, route_type).inc()
 
         logger.info(
             "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
@@ -242,7 +253,7 @@ class _ProcessingRun:
             self.ctx.request_id,
             route_type,
             importance,
-            analysis_res.analysis_result.get("_degraded", False),
+            analysis_result.get("_degraded", False),
         )
         emit_event(
             "webhook.analysis.completed",
@@ -252,7 +263,7 @@ class _ProcessingRun:
                 "alert_hash": self.ctx.alert_hash[:12],
                 "importance": importance,
                 "webhook.route": route_type,
-                "ai.degraded": bool(analysis_res.analysis_result.get("_degraded", False)),
+                "ai.degraded": bool(analysis_result.get("_degraded", False)),
             },
         )
 
@@ -271,11 +282,11 @@ class _ProcessingRun:
                 self.ctx.alert_hash,
                 self.ctx.req_ctx.source,
                 self.ctx.req_ctx.parsed_data,
-                analysis_res.analysis_result,
+                analysis_result,
                 policy=self.dependencies.noise_policy,
             )
 
-        return analysis_res.analysis_result, noise, analysis_res
+        return analysis_result, noise, dedup_result
 
 
 async def handle_webhook_ingest(
@@ -356,15 +367,14 @@ def _log_completed_processing(
     if ctx.event_id is None:
         set_log_context(event_id=save_res.webhook_id)
     logger.info(
-        "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s beyond_window=%s",
+        "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s",
         save_res.webhook_id,
         request_id,
         save_res.is_duplicate,
         save_res.original_id,
-        save_res.beyond_window,
     )
 
-    event_type = "beyond_window" if save_res.beyond_window else ("duplicate" if save_res.is_duplicate else "new")
+    event_type = "duplicate" if save_res.is_duplicate else "new"
     importance = normalize_importance(final_analysis.get("importance", "unknown"))
     route_label = final_analysis.get("_route_type", "ai")
     noise_relation = noise.relation
@@ -441,6 +451,7 @@ async def _handle_raw_ingest(
                     raise
 
             alert_hash = generate_alert_hash(req_ctx.parsed_data, req_ctx.source)
+            dedup_key = generate_dedup_key(req_ctx.parsed_data, req_ctx.source, alert_hash)
             set_log_context(alert_hash=alert_hash, source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
                 event_id=None,
@@ -449,6 +460,7 @@ async def _handle_raw_ingest(
                 metric_source=metric_source,
                 req_ctx=req_ctx,
                 alert_hash=alert_hash,
+                dedup_key=dedup_key,
             )
             logger.info(
                 "[Pipeline] 开始处理 request_id=%s source=%s adapter=%s body_size=%d",

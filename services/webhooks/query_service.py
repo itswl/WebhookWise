@@ -27,7 +27,6 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.is_duplicate,
     WebhookEvent.duplicate_of,
     WebhookEvent.duplicate_count,
-    WebhookEvent.beyond_window,
     WebhookEvent.forward_status,
     WebhookEvent.ai_analysis,
     WebhookEvent.parsed_data,
@@ -41,7 +40,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     from schemas.webhook import mongodb_summary_fields
 
     ai_analysis = row.ai_analysis
-    beyond_window, is_dup = row.beyond_window, row.is_duplicate
+    is_dup = row.is_duplicate
     prev_ts = getattr(row, "prev_alert_timestamp", None)
     return {
         "id": row.id,
@@ -53,16 +52,16 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "is_duplicate": is_dup,
         "duplicate_of": row.duplicate_of,
         "duplicate_count": row.duplicate_count,
-        "beyond_window": beyond_window,
+        "beyond_window": False,
         "forward_status": row.forward_status,
         "summary": ai_analysis.get("summary", "") if ai_analysis else None,
         "alert_info": mongodb_summary_fields(row.parsed_data) if row.source == "mongodb" else {},
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "prev_alert_id": row.prev_alert_id,
         "prev_alert_timestamp": prev_ts.isoformat() if prev_ts else None,
-        "beyond_time_window": beyond_window,
-        "is_within_window": is_dup and not beyond_window,
-        "duplicate_type": ("beyond_window" if beyond_window else "within_window") if is_dup else "new",
+        "beyond_time_window": False,
+        "is_within_window": bool(is_dup),
+        "duplicate_type": "within_window" if is_dup else "new",
     }
 
 

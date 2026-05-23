@@ -27,6 +27,7 @@ from core.observability.tracing import set_span_error
 from core.observability.tracing import span as otel_span
 from db.session import session_scope
 from models import ForwardOutbox, WebhookEvent
+from services.forwarding.deliver import deliver_outbox_record
 from services.forwarding.policies import ForwardOutboxPolicy
 from services.webhooks.types import (
     AnalysisResult,
@@ -42,6 +43,7 @@ logger = get_logger("forward_outbox")
 
 ForwardOutboxEnqueuer = Callable[[int], Awaitable[None]]
 ForwardOutboxRetryScheduler = Callable[[int, int], Awaitable[None]]
+FormattedPayloadBuilder = Callable[[ForwardRuleTarget], tuple[str, dict[str, Any]]]
 
 _forward_outbox_enqueuer: ForwardOutboxEnqueuer | None = None
 _forward_outbox_retry_scheduler: ForwardOutboxRetryScheduler | None = None
@@ -81,6 +83,19 @@ def _idempotency_key(
     return f"forward:{webhook_id}:{digest[:32]}"
 
 
+def _external_idempotency_key(
+    *,
+    channel_name: str,
+    target_url: str,
+    event_type: str,
+    webhook_id: int | None,
+    hint: str,
+) -> str:
+    raw = f"{webhook_id or 'none'}|{channel_name}|{target_url}|{event_type}|{hint}"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"external:{event_type}:{digest[:32]}"
+
+
 def _iter_target_rules(decision: ForwardDecision, policy: ForwardOutboxPolicy) -> list[ForwardRuleTarget]:
     if decision.matched_rules:
         return list(decision.matched_rules)
@@ -96,6 +111,8 @@ async def create_forward_outbox_records(
     webhook_id: int,
     orig_id: int | None,
     policy: ForwardOutboxPolicy | None = None,
+    payload_builder: FormattedPayloadBuilder | None = None,
+    event_type: str = "webhook_forward",
 ) -> list[int]:
     """Create forwarding intents inside the caller's DB transaction."""
     if not decision.should_forward:
@@ -114,10 +131,38 @@ async def create_forward_outbox_records(
             continue
 
         rule_id = _rule_id(rule)
+        channel_name = target_type
+        formatted_payload: dict[str, Any] | None = None
+        if target_type != "openclaw":
+            try:
+                if payload_builder is not None:
+                    channel_name, formatted_payload = payload_builder(rule)
+                else:
+                    from services.channels.base import FormatContext, get_channel, resolve_channel_name
+
+                    resolved_name = resolve_channel_name(target_type, target_url)
+                    channel = get_channel(resolved_name)
+                    if channel is not None:
+                        channel_name = resolved_name
+                        formatted_payload = channel.format(
+                            FormatContext(
+                                webhook_data=cast(WebhookData, dict(full_data)),
+                                analysis_result=analysis,
+                                is_periodic_reminder=decision.is_periodic_reminder,
+                            )
+                        )
+            except Exception as e:
+                logger.warning(
+                    "[ForwardOutbox] 构建 formatted_payload 失败 rule=%s error=%s",
+                    rule.get("name", rule.get("id")),
+                    e,
+                )
+
+        stored_target_type = target_type if target_type == "openclaw" else channel_name
         key = _idempotency_key(
             webhook_id=webhook_id,
             rule_id=rule_id,
-            target_type=target_type,
+            target_type=stored_target_type,
             target_url=target_url,
             is_periodic_reminder=decision.is_periodic_reminder,
         )
@@ -135,16 +180,19 @@ async def create_forward_outbox_records(
             original_event_id=orig_id,
             forward_rule_id=rule_id,
             rule_name=str(rule.get("name") or rule.get("id") or "default"),
-            target_type=target_type,
+            target_type=stored_target_type,
             target_url=target_url,
             target_name=str(rule.get("target_name", "") or ""),
             is_periodic_reminder=decision.is_periodic_reminder,
+            channel_name=channel_name,
+            event_type=event_type,
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
             max_attempts=max_attempts,
             next_attempt_at=now,
             forward_data=full_data,
             analysis_result=analysis,
+            formatted_payload=formatted_payload,
             created_at=now,
             updated_at=now,
         )
@@ -302,21 +350,87 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
 
 
 async def _send_outbox_record(record: ForwardOutbox) -> ForwardResult:
-    forward_data = cast(WebhookData, dict(record.forward_data or {}))
-    analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
-    if record.target_type == "openclaw":
-        from services.forwarding.openclaw import forward_to_openclaw
+    return await deliver_outbox_record(record)
 
-        return await forward_to_openclaw(forward_data, analysis)
 
-    from services.forwarding.remote import forward_to_remote
+async def requeue_forward_outbox(outbox_id: int) -> bool:
+    now = datetime.now()
+    updated = False
+    async with session_scope() as session:
+        record = await session.get(ForwardOutbox, outbox_id)
+        if record is None:
+            return False
+        status_value = (
+            record.status.value if isinstance(record.status, ForwardOutboxStatus) else str(record.status or "")
+        )
+        if status_value not in {
+            ForwardOutboxStatus.EXHAUSTED.value,
+            ForwardOutboxStatus.EXPIRED.value,
+            ForwardOutboxStatus.RETRYING.value,
+            ForwardOutboxStatus.PENDING.value,
+        }:
+            return False
+        record.status = ForwardOutboxStatus.RETRYING
+        record.next_attempt_at = now
+        record.updated_at = now
+        record.attempts = 0
+        record.last_error = "manual_retry"
+        updated = True
+    if updated:
+        await schedule_forward_outbox_many([outbox_id])
+    return updated
 
-    return await forward_to_remote(
-        webhook_data=forward_data,
-        analysis_result=analysis,
-        target_url=record.target_url,
-        is_periodic_reminder=bool(record.is_periodic_reminder),
+
+async def create_external_outbox_record(
+    *,
+    channel_name: str,
+    target_url: str,
+    event_type: str,
+    formatted_payload: dict[str, Any],
+    webhook_id: int | None = None,
+    idempotency_hint: str = "",
+    policy: ForwardOutboxPolicy | None = None,
+) -> int:
+    policy = policy or ForwardOutboxPolicy.from_config()
+    now = datetime.now()
+    key = _external_idempotency_key(
+        channel_name=channel_name,
+        target_url=target_url,
+        event_type=event_type,
+        webhook_id=webhook_id,
+        hint=idempotency_hint,
     )
+    async with session_scope() as session:
+        existing = (
+            await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return int(existing)
+        record = ForwardOutbox(
+            idempotency_key=key,
+            webhook_event_id=webhook_id,
+            original_event_id=None,
+            forward_rule_id=None,
+            rule_name="external",
+            target_type=channel_name,
+            target_url=target_url,
+            target_name="",
+            is_periodic_reminder=False,
+            channel_name=channel_name,
+            event_type=event_type,
+            status=ForwardOutboxStatus.PENDING,
+            attempts=0,
+            max_attempts=policy.max_attempts,
+            next_attempt_at=now,
+            forward_data=None,
+            analysis_result=None,
+            formatted_payload=formatted_payload,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(record)
+        await session.flush()
+        return int(record.id)
 
 
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
@@ -386,6 +500,7 @@ async def _finalize_outbox_failure(
     now = datetime.now()
     retry_outbox_id: int | None = None
     retry_delay: int | None = None
+    exhausted_record: ForwardOutbox | None = None
     policy = policy or ForwardOutboxPolicy.from_config()
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
@@ -399,6 +514,7 @@ async def _finalize_outbox_failure(
         record.updated_at = now
         if record.attempts >= record.max_attempts:
             record.status = ForwardOutboxStatus.EXHAUSTED
+            record.next_attempt_at = None
             logger.warning(
                 "[ForwardOutbox] 转发耗尽 id=%s attempts=%s/%s error=%s",
                 record.id,
@@ -407,15 +523,35 @@ async def _finalize_outbox_failure(
                 error_msg,
             )
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "exhausted").inc()
-            return
+            exhausted_record = record
+        else:
+            delay = policy.delay_for_attempt(record.attempts)
+            record.status = ForwardOutboxStatus.RETRYING
+            record.next_attempt_at = now + timedelta(seconds=delay)
+            retry_outbox_id = record.id
+            retry_delay = delay
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "retrying").inc()
+            logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
+    if exhausted_record is not None:
+        try:
+            from core.app_context import get_config_manager
+            from services.channels.feishu import build_delivery_exhausted_card
+            from services.forwarding.enqueue import enqueue_external_message
 
-        delay = policy.delay_for_attempt(record.attempts)
-        record.status = ForwardOutboxStatus.RETRYING
-        record.next_attempt_at = now + timedelta(seconds=delay)
-        retry_outbox_id = record.id
-        retry_delay = delay
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "retrying").inc()
-        logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
+            config = get_config_manager()
+            target_url = str(config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK or "").strip()
+            event_type = str(getattr(exhausted_record, "event_type", "") or "")
+            if target_url and event_type not in {"outbox_exhausted"}:
+                await enqueue_external_message(
+                    channel_name="feishu",
+                    target_url=target_url,
+                    event_type="outbox_exhausted",
+                    formatted_payload=build_delivery_exhausted_card(exhausted_record),
+                    webhook_id=exhausted_record.webhook_event_id,
+                    idempotency_hint=f"outbox_exhausted:{outbox_id}",
+                )
+        except Exception as e:
+            logger.warning("[ForwardOutbox] EXHAUSTED 通知入队失败 id=%s error=%s", outbox_id, e)
     if retry_outbox_id is not None and retry_delay is not None:
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 

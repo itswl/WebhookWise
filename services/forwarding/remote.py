@@ -11,7 +11,6 @@ from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWAR
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.dependencies import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import RemoteForwardPolicy
-from services.notifications import is_feishu_url
 from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 logger = get_logger("forwarding.remote")
@@ -31,7 +30,7 @@ async def forward_to_remote(
     policy: RemoteForwardPolicy | None = None,
     dependencies: RemoteForwardDependencies | None = None,
 ) -> ForwardResult:
-    """转发分析结果到远程 Webhook URL (支持飞书卡片自动格式化)。"""
+    """转发分析结果到远程 Webhook URL。"""
     started = time.perf_counter()
     status = "unknown"
     target_type = "unknown"
@@ -57,14 +56,17 @@ async def forward_to_remote(
         _record_delivery(target_type, status, started)
         return {"status": "invalid_target", "message": str(e)}
 
-    is_feishu = is_feishu_url(url)
-    target_type = "feishu" if is_feishu else "webhook"
-    if is_feishu:
-        from adapters.plugins.feishu_card import build_feishu_card
+    from services.channels.base import FormatContext, find_channel_for_target
 
-        payload = build_feishu_card(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
-    else:
-        payload = {"webhook": webhook_data, "analysis": analysis_result, "is_periodic_reminder": is_periodic_reminder}
+    channel = find_channel_for_target(url)
+    target_type = channel.name
+    payload = channel.format(
+        FormatContext(
+            webhook_data=webhook_data,
+            analysis_result=analysis_result,
+            is_periodic_reminder=is_periodic_reminder,
+        )
+    )
 
     async def _do_post() -> httpx.Response:
         final_url = await dependencies.validate_url(url)
@@ -126,6 +128,7 @@ async def post_json_to_remote(
     policy: RemoteForwardPolicy | None = None,
     validate_target: bool = True,
     dependencies: RemoteForwardDependencies | None = None,
+    target_type_label: str = "raw_json",
 ) -> ForwardResult:
     """Post an already-built JSON payload to a remote webhook target."""
     started = time.perf_counter()
@@ -145,7 +148,7 @@ async def post_json_to_remote(
         except UnsafeTargetUrlError as e:
             logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
             status = "invalid_target"
-            _record_delivery("raw_json", status, started)
+            _record_delivery(target_type_label, status, started)
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
@@ -175,4 +178,4 @@ async def post_json_to_remote(
         status = "failed"
         return {"status": "failed", "message": str(e)}
     finally:
-        _record_delivery("raw_json", status, started)
+        _record_delivery(target_type_label, status, started)

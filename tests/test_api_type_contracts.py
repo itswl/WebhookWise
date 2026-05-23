@@ -47,7 +47,6 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
         is_duplicate=False,
         duplicate_of=None,
         duplicate_count=1,
-        beyond_window=False,
         prev_alert_id=None,
     )
     e2 = WebhookEvent(
@@ -59,7 +58,6 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
         is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=False,
         prev_alert_id=1,
     )
     session.add_all([e1, e2])
@@ -91,7 +89,6 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
         is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        beyond_window=True,
         prev_alert_id=1,
     )
     session.add(event)
@@ -126,7 +123,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     by_id = {i["webhook_event_id"]: i for i in items}
     assert by_id[event.id]["source"] == "prometheus"
     assert by_id[event.id]["is_duplicate"] is True
-    assert by_id[event.id]["beyond_window"] is True
+    assert by_id[event.id]["beyond_window"] is False
 
     assert by_id[999]["source"] is None
     assert by_id[999]["is_duplicate"] is False
@@ -145,7 +142,6 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
         processing_status="completed",
         is_duplicate=False,
         duplicate_count=1,
-        beyond_window=False,
     )
     session.add(event)
     await session.flush()
@@ -181,7 +177,6 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
         processing_status="completed",
         is_duplicate=False,
         duplicate_count=1,
-        beyond_window=False,
     )
     session.add(event)
     await session.flush()
