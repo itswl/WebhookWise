@@ -465,6 +465,22 @@
   border-color: var(--primary);
 }
 
+.form-checkbox.importance-check {
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 0;
+  display: inline-flex;
+}
+
+.importance-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
 .form-checkbox input[type="checkbox"]:checked::after {
   content: '✓';
   color: white;

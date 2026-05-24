@@ -392,74 +392,92 @@
 
     <!-- 转发规则模态框 -->
     <div class="modal" id="ruleFormModal">
-        <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-content" style="max-width: 680px;">
             <div class="modal-header">
                 <h2 class="modal-title" id="ruleFormTitle">新增转发规则</h2>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="ruleFormId">
+
+                <!-- 基本信息 -->
                 <div class="form-group">
                     <label class="form-label">规则名称 *</label>
-                    <input type="text" class="form-input" id="ruleFormName" placeholder="例如：高优转飞书运维群">
+                    <input type="text" class="form-input" id="ruleFormName" placeholder="例如：高优转飞书运维群" autocomplete="off">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">优先级</label>
-                    <input type="number" class="form-input" id="ruleFormPriority" placeholder="10" value="10" min="0" max="100">
-                    <small style="color: var(--text-secondary); font-size: 12px;">数字越大优先级越高，先匹配</small>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">优先级</label>
+                        <input type="number" class="form-input" id="ruleFormPriority" value="10" min="0" max="100">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">越大越优先匹配</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">事件类型</label>
+                        <input type="text" class="form-input" id="ruleFormEventType" placeholder="默认 webhook_forward" autocomplete="off">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">逗号分隔，空=全部</small>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">匹配条件 - 重要性</label>
-                    <div style="display: flex; gap: 15px;">
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+
+                <!-- 匹配条件 -->
+                <div style="margin: 1.25rem 0 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">命中条件</span>
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label">重要性</label>
+                    <div style="display: flex; gap: 12px; padding-top: 2px;">
+                        <label class="importance-check">
                             <input type="checkbox" id="ruleFormImportanceHigh" value="high"> 高
                         </label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <label class="importance-check">
                             <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> 中
                         </label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <label class="importance-check">
                             <input type="checkbox" id="ruleFormImportanceLow" value="low"> 低
                         </label>
                     </div>
-                    <small style="color: var(--text-secondary); font-size: 12px;">不选=匹配全部</small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">匹配条件 - 告警状态</label>
+                    <label class="form-label">告警状态</label>
                     <select class="form-input" id="ruleFormDuplicate">
-                        <option value="all">全部</option>
-                        <option value="new">新告警</option>
-                        <option value="duplicate">窗口内重复</option>
-                        <option value="beyond_window">窗口外重复</option>
+                        <option value="all">全部（新告警 + 重复）</option>
+                        <option value="new">仅新告警</option>
+                        <option value="duplicate">仅重复告警</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">匹配条件 - 来源</label>
-                    <input type="text" class="form-input" id="ruleFormSource" placeholder="逗号分隔多个来源，空=全部">
-                    <small style="color: var(--text-secondary); font-size: 12px;">例如：prometheus,alertmanager</small>
+                    <label class="form-label">来源</label>
+                    <input type="text" class="form-input" id="ruleFormSource" placeholder="逗号分隔，空=全部来源" autocomplete="off">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">匹配条件 - Payload (JSON Path)</label>
-                    <input type="text" class="form-input" id="ruleFormPayload" placeholder="例如：$.status == 'firing'，空=不限制">
-                    <small style="color: var(--text-secondary); font-size: 12px;">JMESPath 表达式匹配 payload 内容</small>
+                    <label class="form-label">Payload 匹配</label>
+                    <input type="text" class="form-input" id="ruleFormPayload" placeholder="例如：severity=critical，空=不限制" autocomplete="off">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">key=value 逗号分隔，支持嵌套路径如 status=firing</small>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">目标类型 *</label>
-                    <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
-                        <option value="feishu">飞书</option>
-                        <option value="openclaw">OpenClaw</option>
-                        <option value="webhook">Webhook</option>
-                    </select>
+
+                <!-- 转发目标 -->
+                <div style="margin: 1.25rem 0 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">转发目标</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">目标类型 *</label>
+                        <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
+                            <option value="feishu">飞书</option>
+                            <option value="openclaw">OpenClaw</option>
+                            <option value="webhook">Webhook</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">目标名称</label>
+                        <input type="text" class="form-input" id="ruleFormTargetName" placeholder="例如：运维飞书群" autocomplete="off">
+                    </div>
                 </div>
                 <div class="form-group" id="ruleFormTargetUrlGroup">
                     <label class="form-label">目标地址 *</label>
-                    <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/...">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">目标名称</label>
-                    <input type="text" class="form-input" id="ruleFormTargetName" placeholder="例如：运维飞书群">
+                    <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" autocomplete="off">
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormStopOnMatch">
-                    <label for="ruleFormStopOnMatch">匹配后停止继续匹配其他规则</label>
+                    <label for="ruleFormStopOnMatch">命中后停止匹配后续规则</label>
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormEnabled" checked>
