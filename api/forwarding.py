@@ -183,6 +183,7 @@ async def test_forward_rule_endpoint(
         forward_data=test_webhook,
         analysis_result=test_analysis,
         wait=True,
+        target_url=rule.target_url or "",
     )
 
     if result.get("status") == "success" or result.get("_pending"):
