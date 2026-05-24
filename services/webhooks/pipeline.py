@@ -35,6 +35,7 @@ from core.observability.metrics import (
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
+from core.datetime_utils import utcnow
 from core.observability.tracing import (
     generate_trace_id,
     get_current_trace_id,
@@ -367,7 +368,7 @@ async def handle_webhook_ingest(
         payload=payload,
         raw_body=raw_body.encode("utf-8"),
         source=source,
-        event_ts=received_at or datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
+        event_ts=received_at or utcnow().isoformat(timespec="seconds"),
         request_id=request_id,
     )
     await _handle_raw_ingest(

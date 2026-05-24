@@ -14,6 +14,7 @@ from core.observability.metrics import WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
 from db.session import session_scope
+from core.datetime_utils import utcnow
 
 logger = get_logger("dedup")
 
@@ -173,7 +174,7 @@ async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> di
 
     from models import WebhookEvent
 
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     threshold = now - timedelta(seconds=window_seconds)
     async with session_scope() as session:
         stmt = (

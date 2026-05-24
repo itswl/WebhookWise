@@ -13,6 +13,7 @@ from core.compression import compress_payload
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
+from core.datetime_utils import utcnow
 from models import WebhookEvent
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
@@ -166,14 +167,14 @@ async def _save_duplicate_event(
     original = await session.get(WebhookEvent, original_id)
     if original:
         original.duplicate_count = (original.duplicate_count or 1) + 1
-        original.updated_at = datetime.now(tz=timezone.utc)
+        original.updated_at = utcnow()
         duplicate_count = original.duplicate_count
         final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(payload.ai_analysis, original, reanalyzed)
     else:
         res = await session.execute(
             update(WebhookEvent)
             .where(WebhookEvent.id == original_id)
-            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now(tz=timezone.utc))
+            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=utcnow())
             .returning(WebhookEvent.id)
         )
         if res.scalar_one_or_none() is None:
@@ -252,7 +253,7 @@ async def _update_existing_event(
                 if event is None:
                     raise RuntimeError("WebhookEvent not found") from e
                 original.duplicate_count = (original.duplicate_count or 1) + 1
-                original.updated_at = datetime.now(tz=timezone.utc)
+                original.updated_at = utcnow()
 
                 _fill_duplicate_event(
                     event,

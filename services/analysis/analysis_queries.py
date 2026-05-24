@@ -7,12 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import count_with_timeout
+from core.datetime_utils import utcnow
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import deep_analysis_to_dict
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     if period == "day":
         delta = timedelta(days=1)
     elif period == "week":

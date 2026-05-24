@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
+from core.datetime_utils import utcnow
 
 
 class ForwardRule(Base):
@@ -31,8 +32,8 @@ class ForwardRule(Base):
 
     stop_on_match: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
 
     __table_args__ = (Index("idx_forward_rules_priority", "priority"),)
 
@@ -70,7 +71,7 @@ class ForwardOutbox(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
-    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_error: Mapped[str | None] = mapped_column(Text)
@@ -80,8 +81,8 @@ class ForwardOutbox(Base):
     formatted_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     response_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
 
     __table_args__ = (
         Index(

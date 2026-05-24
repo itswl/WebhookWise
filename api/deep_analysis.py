@@ -12,6 +12,7 @@ from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
+from core.datetime_utils import utcnow
 from models import DeepAnalysis, WebhookEvent
 from schemas import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
@@ -73,7 +74,7 @@ def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
     from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
     delay = compute_openclaw_poll_delay(record.poll_attempts or 0)
-    record.next_poll_at = datetime.now(tz=timezone.utc) + timedelta(seconds=delay)
+    record.next_poll_at = utcnow() + timedelta(seconds=delay)
     return delay
 
 
@@ -215,7 +216,7 @@ async def retry_deep_analysis(
             ctx, event.headers or {}, record.user_question or ""
         )
         if new_result.get("_pending"):
-            now = datetime.now(tz=timezone.utc)
+            now = utcnow()
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
             record.openclaw_run_id = str(new_result.get("_openclaw_run_id", ""))
@@ -244,7 +245,7 @@ async def retry_deep_analysis(
 
     from services.analysis.openclaw import clear_openclaw_poll_state
 
-    _reset_deep_analysis_for_background_poll(record, datetime.now(tz=timezone.utc))
+    _reset_deep_analysis_for_background_poll(record, utcnow())
     await session.flush()
     record_data = deep_analysis_to_dict(record)
     await session.commit()
