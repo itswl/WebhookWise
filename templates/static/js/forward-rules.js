@@ -149,10 +149,11 @@ function renderRuleCard(rule) {
                 <!-- 匹配条件区 -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
                     <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 命中条件</div>
+                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>事件类型:</strong> ' + escapeHtml(rule.match_event_type) + '</div>' : ''}
                     <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
-                    <div><strong>事件来源:</strong> ${sourceText}</div>
-                    ${rule.match_payload ? '<div style="margin-top:0.5rem;"><strong>Payload:</strong> <code>' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
+                    <div style="margin-bottom: 0.5rem;"><strong>来源:</strong> ${sourceText}</div>
+                    ${rule.match_payload ? '<div><strong>Payload:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
                 </div>
 
                 <!-- 转发目标区 -->
@@ -198,9 +199,8 @@ function formatImportance(importance) {
 function formatDuplicateStatus(status) {
     const map = {
         'all': '全部',
-        'new': '新告警',
-        'duplicate': '窗口内重复',
-        'beyond_window': '窗口外重复'
+        'new': '仅新告警',
+        'duplicate': '仅重复告警'
     };
     return map[status] || status || '全部';
 }
@@ -239,6 +239,7 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormId').value = '';
     document.getElementById('ruleFormName').value = '';
     document.getElementById('ruleFormPriority').value = '10';
+    document.getElementById('ruleFormEventType').value = '';
     document.getElementById('ruleFormImportanceHigh').checked = false;
     document.getElementById('ruleFormImportanceMedium').checked = false;
     document.getElementById('ruleFormImportanceLow').checked = false;
@@ -262,6 +263,7 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormId').value = rule.id;
             document.getElementById('ruleFormName').value = rule.name || '';
             document.getElementById('ruleFormPriority').value = rule.priority || 10;
+            document.getElementById('ruleFormEventType').value = rule.match_event_type || '';
 
             // 设置重要性复选框
             if (rule.match_importance) {
@@ -347,6 +349,7 @@ async function saveRule() {
         name: name,
         enabled: document.getElementById('ruleFormEnabled').checked,
         priority: priority,
+        match_event_type: document.getElementById('ruleFormEventType').value.trim(),
         match_importance: importances.join(','),
         match_duplicate: document.getElementById('ruleFormDuplicate').value,
         match_source: document.getElementById('ruleFormSource').value.trim(),
