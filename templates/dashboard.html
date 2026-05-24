@@ -8,7 +8,6 @@
     <!-- 外部样式表 -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/components.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -159,9 +158,6 @@
         <div id="aiCostTab" class="tab-content" style="display: none;">
             <div class="ai-cost-section">
                 <div class="section-title">AI 成本监控</div>
-                <div style="margin-bottom: 1.5rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem;">
-                    <canvas id="aiCostChart" height="200" style="max-height:240px; width:100%;"></canvas>
-                </div>
                 <div class="ai-period-selector" style="margin-bottom: 20px;">
                     <button class="btn" data-ai-period="day">日</button>
                     <button class="btn" data-ai-period="week">周</button>

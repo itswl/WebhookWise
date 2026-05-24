@@ -5,7 +5,6 @@
 
 const AICostModule = {
     currentPeriod: 'day',
-    _chart: null,
 
     /**
      * 初始化模块
@@ -223,50 +222,6 @@ const AICostModule = {
         `;
 
         container.innerHTML = html;
-
-        // 渲染柱状图
-        this.renderChart(data);
-    },
-
-    /**
-     * 渲染路由分布柱状图
-     */
-    renderChart(data) {
-        var canvas = document.getElementById('aiCostChart');
-        if (!canvas || typeof Chart === 'undefined') return;
-        var ctx = canvas.getContext('2d');
-        if (this._chart) this._chart.destroy();
-
-        var labels = ['AI Engine', 'Cache Hit', 'Dedup', 'Rule'];
-        var values = [
-            this.safeGet(data, 'route_breakdown.ai', 0),
-            this.safeGet(data, 'route_breakdown.cache', 0),
-            this.safeGet(data, 'route_breakdown.reuse', 0),
-            this.safeGet(data, 'route_breakdown.rule', 0)
-        ];
-        if (values.every(function(v) { return v === 0; })) return;
-
-        this._chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '调用次数',
-                    data: values,
-                    backgroundColor: ['#4f46e5', '#059669', '#d97706', '#94a3b8'],
-                    borderRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, grid: { color: '#e2e8f0' } },
-                    x: { grid: { display: false } }
-                }
-            }
-        });
     },
 
     /**
