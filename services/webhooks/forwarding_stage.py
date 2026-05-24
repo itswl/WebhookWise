@@ -104,8 +104,14 @@ async def finalize_analysis_transaction(
     webhook state. The network side effect happens later in an outbox worker.
     """
     # resolve_dedup 已经是权威结果（Redis + DB fallback），直接信任
-    is_dup_for_save = analysis_res.is_duplicate
-    original_id_for_save = analysis_res.original_event_id
+    if analysis_res.is_rechain:
+        is_dup_for_save = False
+        original_id_for_save = None
+        prev_alert_id_for_save = analysis_res.original_event_id
+    else:
+        is_dup_for_save = analysis_res.is_duplicate
+        original_id_for_save = analysis_res.original_event_id
+        prev_alert_id_for_save = None
     skip_duplicate_lookup = True
 
     outbox_ids: list[int] = []
@@ -132,6 +138,7 @@ async def finalize_analysis_transaction(
                     is_duplicate=is_dup_for_save,
                     original_event_id=original_id_for_save,
                     skip_duplicate_lookup=skip_duplicate_lookup,
+                    prev_alert_id=prev_alert_id_for_save,
                 ),
             )
 
