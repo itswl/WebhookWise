@@ -481,6 +481,34 @@
   user-select: none;
 }
 
+.event-type-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.event-type-check:hover {
+  background: var(--primary-bg);
+  border-color: var(--primary-light);
+  color: var(--text-main);
+}
+
+.event-type-check input[type="checkbox"] {
+  width: 0.9rem;
+  height: 0.9rem;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
 .form-checkbox input[type="checkbox"]:checked::after {
   content: '✓';
   color: white;
