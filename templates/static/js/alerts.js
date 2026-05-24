@@ -365,8 +365,8 @@ const AlertsModule = {
             }
             // 转发状态徽章
             if (webhook.forward_status) {
-                var fwdLabels = { 'pending': '待转发', 'forwarded': '已转发', 'failed': '转发失败', 'queued': '已入队', 'success': '已送达', 'skipped': '已跳过' };
-                var fwdClass = (webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
+                var fwdLabels = { 'pending': '待转发', 'queued': '已入队', 'skipped': '已跳过', 'forwarded': '已转发', 'sent': '已送达', 'failed': '转发失败', 'success': '已送达' };
+                var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
                 html += '<span class="badge ' + fwdClass + '" title="转发状态">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
