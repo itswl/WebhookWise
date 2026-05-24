@@ -149,6 +149,11 @@ async def finalize_analysis_transaction(
                 policy=forwarding_policy,
             )
 
+            # 更新告警事件的转发状态
+            evt = await session.get(WebhookEvent, save_res.webhook_id)
+            if evt:
+                evt.forward_status = "queued" if fwd_dec.should_forward else "skipped"
+
             if fwd_dec.should_forward:
                 forward_data = dict(ctx.req_ctx.webhook_full_data)
                 if isinstance(forward_data.get("headers"), dict):
