@@ -28,6 +28,9 @@
                 <button class="nav-tab" data-tab="deep-analyses">
                     <span>🔬</span> 深度分析
                 </button>
+                <button class="nav-tab" data-tab="outbox">
+                    <span>📤</span> 转发队列
+                </button>
                 <button class="nav-tab" data-tab="forward-rules">
                     <span>⚙️</span> 转发规则
                 </button>
@@ -203,6 +206,31 @@
                     <div style="text-align: center; padding: 40px; color: #888;">点击「深度分析」标签加载数据...</div>
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- 转发队列 Tab -->
+        <div id="outboxTab" class="tab-content" style="display: none;">
+            <div class="outbox-section" style="padding: 20px 0;">
+                <div class="section-header">
+                    <div class="section-title">转发队列</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="outboxStatusFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                            <option value="">全部状态</option>
+                            <option value="pending">待投递</option>
+                            <option value="processing">投递中</option>
+                            <option value="retrying">重试中</option>
+                            <option value="sent">已送达</option>
+                            <option value="exhausted">已耗尽</option>
+                            <option value="expired">已过期</option>
+                        </select>
+                        <button class="btn" onclick="OutboxModule.load()">🔄 刷新</button>
+                    </div>
+                </div>
+                <div id="outboxList">
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">点击「转发队列」标签加载数据...</div>
+                </div>
+                <div id="outboxPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -521,6 +549,7 @@
     <script src="/static/js/ai-cost.js"></script>
     <script src="/static/js/forward-rules.js"></script>
     <script src="/static/js/deep-analyses.js"></script>
+    <script src="/static/js/outbox.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
