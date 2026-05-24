@@ -54,22 +54,6 @@ _AI_POLICY_REFUSAL_MARKERS = (
 )
 
 
-async def initialize_openai_client(
-    policy: AIProviderPolicy | None = None, *, http_client: httpx.AsyncClient | None = None
-) -> None:
-    await _llm_client.initialize_openai_client(policy=policy, http_client=http_client)
-
-
-async def reset_openai_client() -> None:
-    await _llm_client.reset_openai_client()
-
-
-async def _call_ai_with_retry(
-    parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
-) -> tuple[AnalysisResult, int, int]:
-    return await _llm_client._call_ai_with_retry(parsed_data, source, http_client=http_client)
-
-
 def _iter_exception_chain(root: BaseException) -> list[BaseException]:
     visited: set[int] = set()
     out: list[BaseException] = []
@@ -289,7 +273,7 @@ async def analyze_webhook_with_ai(
             provider_policy.model,
             alert_hash[:12],
         )
-        analysis, t_in, t_out = await _call_ai_with_retry(parsed, source, http_client=http_client)
+        analysis, t_in, t_out = await _llm_client._call_ai_with_retry(parsed, source, http_client=http_client)
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,

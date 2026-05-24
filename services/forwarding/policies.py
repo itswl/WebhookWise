@@ -21,7 +21,7 @@ class ForwardDeliveryPolicy:
     def from_config(cls) -> "ForwardDeliveryPolicy":
         cfg = get_config_manager()
         return cls(
-            timeout_seconds=int(cfg.forwarding.FORWARD_TIMEOUT),
+            timeout_seconds=int(cfg.retry.FORWARD_TIMEOUT),
             max_attempts=max(1, int(cfg.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
             retry_initial_delay=int(cfg.retry.FORWARD_RETRY_INITIAL_DELAY),
             retry_max_delay=int(cfg.retry.FORWARD_RETRY_MAX_DELAY),

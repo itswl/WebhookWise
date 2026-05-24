@@ -127,40 +127,37 @@ async def test_duplicate_in_cooldown_skips():
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
-        assert "刚刚已转发" in (decision.skip_reason or "")
+        assert "冷却" in (decision.skip_reason or "")
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig)
 
 
 @pytest.mark.asyncio
-async def test_duplicate_forward_disabled_skips():
-    """FORWARD_DUPLICATE_ALERTS=False 时窗口内重复不转发。"""
+async def test_duplicate_no_matched_rules_skips():
+    """无规则匹配的重复告警不转发。"""
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config("FORWARD_DUPLICATE_ALERTS", False)
     _set_config("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
         with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
-        assert "跳过转发" in (decision.skip_reason or "")
+        assert "未匹配" in (decision.skip_reason or "")
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        _set_config("FORWARD_DUPLICATE_ALERTS", False)
         _set_config("ENABLE_PERIODIC_REMINDER", False)
 
 
 @pytest.mark.asyncio
-async def test_duplicate_forward_enabled_forwards():
-    """FORWARD_DUPLICATE_ALERTS=True 且不在冷却期，应转发。"""
+async def test_duplicate_with_matched_rules_forwards():
+    """有规则匹配且不在冷却期，重复告警应转发。"""
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config("FORWARD_DUPLICATE_ALERTS", True)
     _set_config("ENABLE_PERIODIC_REMINDER", False)
     rule = _FakeRule(1, importance="high")
     try:
@@ -170,7 +167,6 @@ async def test_duplicate_forward_enabled_forwards():
         assert decision.should_forward is True
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        _set_config("FORWARD_DUPLICATE_ALERTS", False)
         _set_config("ENABLE_PERIODIC_REMINDER", False)
 
 
@@ -182,7 +178,6 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     orig_interval = context.config.retry.REMINDER_INTERVAL_HOURS
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config("FORWARD_DUPLICATE_ALERTS", False)
     _set_config("ENABLE_PERIODIC_REMINDER", True)
     _set_config("REMINDER_INTERVAL_HOURS", 6)
     rule = _FakeRule(1, importance="high")
@@ -194,7 +189,6 @@ async def test_duplicate_periodic_reminder_triggers_forward():
         assert decision.is_periodic_reminder is True
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig_cooldown)
-        _set_config("FORWARD_DUPLICATE_ALERTS", False)
         _set_config("ENABLE_PERIODIC_REMINDER", False)
         _set_config("REMINDER_INTERVAL_HOURS", orig_interval)
 

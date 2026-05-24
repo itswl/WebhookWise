@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config.server.RUN_MODE,
         config.ai.ENABLE_AI_ANALYSIS,
     )
-    from services.analysis.ai_analyzer import initialize_openai_client, reset_openai_client
+    from services.analysis.ai_llm_client import initialize_openai_client, reset_openai_client
 
     validate_startup_security(config)
     services = await start_runtime_services(
