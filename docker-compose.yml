@@ -172,6 +172,12 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
       OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+    healthcheck:
+      test: ["CMD", "python3", "-m", "scripts.healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 40s
     volumes:
       - ./.env:/app/.env
       - ./logs:/app/logs
