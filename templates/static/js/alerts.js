@@ -673,6 +673,75 @@ const AlertsModule = {
         this.displayCurrentPage();
     },
 
+    _clearFiltersForFocus() {
+        const searchInput = document.getElementById('searchInput');
+        const importanceFilter = document.getElementById('importanceFilter');
+        const sourceFilter = document.getElementById('sourceFilter');
+        const duplicateFilter = document.getElementById('duplicateFilter');
+        if (searchInput) searchInput.value = '';
+        if (importanceFilter) importanceFilter.value = '';
+        if (sourceFilter) sourceFilter.value = '';
+        if (duplicateFilter) duplicateFilter.value = '';
+    },
+
+    _revealAlertItem(id) {
+        const alertItem = document.querySelector('.alert-item[data-id="' + id + '"]');
+        if (!alertItem) return false;
+        alertItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!alertItem.classList.contains('expanded')) {
+            alertItem.classList.add('expanded');
+        }
+        alertItem.classList.add('alert-focus');
+        setTimeout(function() {
+            alertItem.classList.remove('alert-focus');
+        }, 1800);
+
+        const webhook = this.alerts.find(w => w.id == id);
+        if (webhook && !webhook.parsed_data && !webhook.ai_analysis) {
+            this.loadFullAlertData(id, alertItem);
+        }
+        return true;
+    },
+
+    async focusAlertById(id) {
+        if (!id) return false;
+        if (this._revealAlertItem(id)) return true;
+
+        let index = this.filteredAlerts.findIndex(w => w.id == id);
+        if (index === -1) {
+            this._clearFiltersForFocus();
+            this.filteredAlerts = this.alerts.slice();
+            index = this.filteredAlerts.findIndex(w => w.id == id);
+        }
+
+        if (index === -1) {
+            try {
+                const result = await API.getWebhook(id);
+                if (result.success && result.data) {
+                    this.alerts = [result.data].concat(this.alerts.filter(w => w.id != id));
+                    this._clearFiltersForFocus();
+                    this.filteredAlerts = this.alerts.slice();
+                    index = 0;
+                    this.updateStats();
+                }
+            } catch (error) {
+                console.error('定位告警失败:', error);
+                showError('定位告警失败: ' + error.message);
+                return false;
+            }
+        }
+
+        if (index === -1) {
+            showError('未找到告警 #' + id);
+            return false;
+        }
+
+        this.currentPage = Math.floor(index / this.pageSize) + 1;
+        this.displayCurrentPage();
+        setTimeout(() => this._revealAlertItem(id), 50);
+        return true;
+    },
+
     /**
      * 加载单条告警的完整数据
      */

@@ -615,6 +615,7 @@ async def list_outbox_records(
             {
                 "id": r.id,
                 "webhook_event_id": r.webhook_event_id,
+                "original_event_id": r.original_event_id,
                 "rule_name": r.rule_name,
                 "target_type": r.target_type,
                 "target_url": _mask_url_for_display(r.target_url or ""),
