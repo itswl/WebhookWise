@@ -4,7 +4,7 @@ Forwarding API Routes.
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -191,3 +191,24 @@ async def test_forward_rule_endpoint(
         return JSONResponse(status_code=400, content={"success": False, "error": "目标 URL 未配置"})
     else:
         return JSONResponse(status_code=502, content={"success": False, "error": result.get("message", "发送失败")})
+
+
+# ── Outbox Queries ─────────────────────────────────────────────────────────
+
+
+@forwarding_router.get("/api/outbox")
+async def list_outbox_endpoint(
+    page: int = Query(1, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=200),
+    status: str = Query(""),
+    event_type: str = Query(""),
+) -> JSONDict:
+    """查询转发队列记录。"""
+    from services.forwarding.outbox import list_outbox_records
+
+    try:
+        data = await list_outbox_records(page=page, page_size=page_size, status=status, event_type=event_type)
+        return {"success": True, "data": data}
+    except Exception as e:
+        logger.error("查询 outbox 列表失败: %s", e)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
