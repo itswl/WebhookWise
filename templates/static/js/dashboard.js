@@ -140,6 +140,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
+        'outbox': 'outboxTab',
         'forward-rules': 'forwardRulesTab'
     };
 
@@ -169,6 +170,14 @@ function switchMainTab(tabId) {
         case 'deep-analyses':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.load();
+            }
+            break;
+        case 'outbox':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof OutboxModule !== 'undefined') {
+                OutboxModule.load();
             }
             break;
         case 'forward-rules':

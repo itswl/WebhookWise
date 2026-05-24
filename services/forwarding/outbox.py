@@ -565,3 +565,83 @@ async def _finalize_outbox_failure(
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 
 
+# ── Outbox Queries ──────────────────────────────────────────────────────────
+
+
+async def list_outbox_records(
+    *,
+    page: int = 1,
+    page_size: int = 20,
+    status: str = "",
+    event_type: str = "",
+) -> dict[str, Any]:
+    """分页查询转发队列记录。"""
+    from sqlalchemy import func
+
+    page = max(1, min(page, 100))
+    page_size = max(1, min(page_size, 200))
+
+    filters = []
+    if status:
+        filters.append(ForwardOutbox.status == status)
+    if event_type:
+        filters.append(ForwardOutbox.event_type == event_type)
+
+    async with session_scope() as session:
+        count_q = select(func.count()).select_from(ForwardOutbox)
+        for f in filters:
+            count_q = count_q.where(f)
+        total = (await session.execute(count_q)).scalar() or 0
+
+        query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
+        for f in filters:
+            query = query.where(f)
+        query = query.offset((page - 1) * page_size).limit(page_size)
+        rows = (await session.execute(query)).scalars().all()
+
+        items = []
+        for r in rows:
+            items.append({
+                "id": r.id,
+                "webhook_event_id": r.webhook_event_id,
+                "rule_name": r.rule_name,
+                "target_type": r.target_type,
+                "target_url": _mask_url_for_display(r.target_url or ""),
+                "target_name": r.target_name,
+                "event_type": r.event_type,
+                "status": r.status,
+                "attempts": r.attempts,
+                "max_attempts": r.max_attempts,
+                "next_attempt_at": r.next_attempt_at.isoformat() if r.next_attempt_at else None,
+                "last_attempt_at": r.last_attempt_at.isoformat() if r.last_attempt_at else None,
+                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                "last_error": (r.last_error or "")[:200],
+                "is_periodic_reminder": r.is_periodic_reminder,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": max(1, (total + page_size - 1) // page_size) if total else 1,
+    }
+
+
+def _mask_url_for_display(url: str) -> str:
+    if not url:
+        return ""
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.hostname:
+            path = parsed.path or ""
+            qs = ("?" + parsed.query) if parsed.query else ""
+            if len(path) > 40:
+                path = path[:40] + "…"
+            return f"{parsed.scheme}://{parsed.hostname}{path}{qs}"
+    except Exception:
+        pass
+    return url[:80] + ("…" if len(url) > 80 else "")

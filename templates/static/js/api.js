@@ -396,5 +396,30 @@ const API = {
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
+    },
+
+    // ========== 转发队列 API ==========
+
+    /**
+     * 获取转发队列记录
+     */
+    async getOutbox(params = {}) {
+        const q = new URLSearchParams();
+        if (params.page) q.append('page', params.page);
+        if (params.page_size) q.append('page_size', params.page_size);
+        if (params.status) q.append('status', params.status);
+        if (params.event_type) q.append('event_type', params.event_type);
+        const response = await this.authenticatedFetch('/api/outbox?' + q.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * 重试失败的转发记录
+     */
+    async retryOutbox(id) {
+        const response = await this.authenticatedFetch('/api/admin/outbox/' + id + '/retry', { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
     }
 };
