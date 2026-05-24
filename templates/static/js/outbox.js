@@ -72,10 +72,12 @@ var OutboxModule = (function() {
             var targetType = targetLabels[r.target_type] || r.target_type || '-';
             var eventType = eventLabels[r.event_type] || r.event_type || '-';
             var time = r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-';
+            var alertTargetId = r.original_event_id || r.webhook_event_id;
+            var alertTitle = r.original_event_id ? '查看原始告警 #' + r.original_event_id : '查看告警';
 
             html += '<tr class="outbox-row" data-id="' + r.id + '" onclick="OutboxModule.toggleDetail(' + r.id + ')">';
             html += '<td class="outbox-id">#' + r.id + '</td>';
-            html += '<td>' + (r.webhook_event_id ? '<a href="#" onclick="event.stopPropagation();OutboxModule.goToAlert(' + r.webhook_event_id + ')" title="查看告警">#' + r.webhook_event_id + '</a>' : '-') + '</td>';
+            html += '<td>' + (r.webhook_event_id ? '<a href="#" onclick="event.preventDefault();event.stopPropagation();OutboxModule.goToAlert(' + alertTargetId + ')" title="' + escapeHtml(alertTitle) + '">#' + r.webhook_event_id + '</a>' : '-') + '</td>';
             html += '<td title="' + escapeHtml(r.rule_name || '') + '">' + escapeHtml((r.rule_name || '') .substring(0, 20) || '-') + '</td>';
             html += '<td title="' + escapeHtml(r.target_url || '') + '">' + escapeHtml(targetType) + (r.target_name ? ' <span class="text-muted text-xs">' + escapeHtml(r.target_name) + '</span>' : '') + '</td>';
             html += '<td>' + escapeHtml(eventType) + (r.is_periodic_reminder ? ' <span class="badge" style="font-size:0.6rem;padding:1px 4px;">周期</span>' : '') + '</td>';
@@ -153,9 +155,16 @@ var OutboxModule = (function() {
         // 切换到告警 Tab 并展开对应告警
         if (typeof switchMainTab === 'function') switchMainTab('alerts');
         setTimeout(function() {
+            if (typeof AlertsModule !== 'undefined' && typeof AlertsModule.focusAlertById === 'function') {
+                AlertsModule.focusAlertById(webhookId);
+                return;
+            }
             var item = document.querySelector('.alert-item[data-id="' + webhookId + '"]');
-            if (item && !item.classList.contains('expanded')) {
-                item.querySelector('.alert-header').click();
+            if (item) {
+                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (!item.classList.contains('expanded')) {
+                    item.querySelector('.alert-header').click();
+                }
             }
         }, 500);
     }
