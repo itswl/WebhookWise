@@ -329,6 +329,7 @@ const AlertsModule = {
             html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || ('告警 #' + webhook.id))) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
+            html += '<span class="alert-meta-item">🆔 #' + escapeHtml(String(webhook.id)) + '</span>';
             html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
             // 显示主机信息（如果有）
