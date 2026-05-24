@@ -149,6 +149,7 @@ async def _resolve_noise_context(
         importance = normalize_importance(analysis.get("importance", "unknown"))
         set_log_context(route_type=route_type)
         WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
+        await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
         logger.debug(
             "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
             ctx.event_id,
@@ -184,6 +185,7 @@ async def _resolve_noise_context(
     ) as (_span, _outcome):
         from core.app_context import get_config_manager
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
+from services.analysis.ai_usage import log_ai_usage
 
         dedup_ttl = max(60, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) * 2)
         await remember_dedup_state(
