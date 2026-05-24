@@ -39,14 +39,12 @@ class RuleAnalysisPolicy:
 @dataclass(frozen=True, slots=True)
 class AIErrorNotificationPolicy:
     cooldown_seconds: int = 3600
-    timeout_seconds: int = 10
 
     @classmethod
     def from_config(cls) -> "AIErrorNotificationPolicy":
         cfg = get_config_manager()
         return cls(
             cooldown_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS)),
-            timeout_seconds=max(1, int(cfg.notifications.AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS)),
         )
 
 

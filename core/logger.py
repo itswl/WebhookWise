@@ -135,18 +135,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload)
 
 
-def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
-    if config is not None:
-        return config
-    from core.app_context import get_config_manager
-
-    return get_config_manager()
-
-
 def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:
     """初始化全局日志系统"""
     global _log_listener, _logger_pid
-    config = _resolve_config(config)
+    if config is None:
+        from core.app_context import get_config_manager
+
+        config = get_config_manager()
     apply_log_levels(config.server.LOG_LEVEL, config.server.THIRD_PARTY_LOG_LEVEL)
     logger = logging.getLogger("webhook_service")
 

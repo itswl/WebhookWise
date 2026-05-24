@@ -50,7 +50,6 @@ async def compute_noise(
             parsed,
             analysis,
             now,
-            alert_hash,
         )
         dec = analyze_noise_reduction(
             curr,

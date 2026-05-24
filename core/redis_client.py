@@ -24,16 +24,11 @@ T = TypeVar("T")
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 
-def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
-    if config is not None:
-        return config
-    from core.app_context import get_config_manager
-
-    return get_config_manager()
-
-
 def build_redis_client(config: UnifiedConfigManager | None = None) -> RedisClient:
-    config = _resolve_config(config)
+    if config is None:
+        from core.app_context import get_config_manager
+
+        config = get_config_manager()
     pool: Any = redis.ConnectionPool.from_url(
         config.redis.REDIS_URL,
         decode_responses=True,
@@ -57,11 +52,6 @@ def get_redis() -> RedisClient:
     return context.ensure_redis_client()
 
 
-async def _await_if_needed(value: object) -> None:
-    if inspect.isawaitable(value):
-        await cast(Awaitable[object], value)
-
-
 async def dispose_redis() -> None:
     from core.app_context import get_default_app_context
 
@@ -77,12 +67,16 @@ async def close_redis_client(client: RedisClient) -> None:
     with contextlib.suppress(Exception):
         close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
         if callable(close_fn):
-            await _await_if_needed(close_fn())
+            result = close_fn()
+            if inspect.isawaitable(result):
+                await cast(Awaitable[object], result)
     with contextlib.suppress(Exception):
         pool = getattr(client, "connection_pool", None)
         disconnect_fn = getattr(pool, "disconnect", None)
         if callable(disconnect_fn):
-            await _await_if_needed(disconnect_fn())
+            result = disconnect_fn()
+            if inspect.isawaitable(result):
+                await cast(Awaitable[object], result)
 
 
 def parse_int(raw: object) -> int | None:

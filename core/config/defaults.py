@@ -162,7 +162,6 @@ class NotificationConfig(StaticSettings):
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
-    AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS: int = Field(default=10)
 
 
 class OpenClawConfig(StaticSettings):

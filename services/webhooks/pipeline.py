@@ -474,7 +474,6 @@ async def _handle_raw_ingest(
             ctx = WebhookProcessContext(
                 event_id=None,
                 request_id=request_id,
-                client_ip=client_ip,
                 metric_source=metric_source,
                 req_ctx=req_ctx,
                 alert_hash=alert_hash,
