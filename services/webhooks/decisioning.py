@@ -44,7 +44,6 @@ class ForwardingPolicy:
     notification_cooldown_seconds: int
     enable_periodic_reminder: bool
     reminder_interval_hours: int
-    forward_duplicate_alerts: bool
 
 
 def normalize_importance(value: Any) -> str:
@@ -170,9 +169,11 @@ def _decide_duplicate_alert(
     policy: ForwardingPolicy,
     matched_rules: list[ForwardRuleSnapshot],
 ) -> ForwardDecision:
+    # 冷却期（60s）：刚刚通知过不再重复发，防止短时间通知风暴
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
-        return ForwardDecision(False, "窗口内重复告警，刚刚已转发", False)
+        return ForwardDecision(False, "刚已通知，冷却中", False)
 
+    # 周期提醒（6h）：同一告警持续存在，定时重通知
     if (
         policy.enable_periodic_reminder
         and seconds_since_notify is not None
@@ -185,15 +186,12 @@ def _decide_duplicate_alert(
             matched_rules=matched_rules,
         )
 
-    if not policy.forward_duplicate_alerts:
-        return ForwardDecision(False, "窗口内重复告警，配置跳过转发", False)
+    # 规则已经通过 match_duplicate 决定了是否匹配重复告警，
+    # 不需要额外全局开关来覆盖规则匹配结果。
+    if base_should_forward:
+        return ForwardDecision(True, None, False, matched_rules=matched_rules)
 
-    return ForwardDecision(
-        base_should_forward,
-        None if base_should_forward else "窗口内重复告警，未匹配转发规则",
-        False,
-        matched_rules=matched_rules,
-    )
+    return ForwardDecision(False, "重复告警：未匹配转发规则", False)
 
 
 def decide_forwarding(
@@ -247,5 +245,4 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         notification_cooldown_seconds=cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
         enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
         reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
-        forward_duplicate_alerts=cfg.retry.FORWARD_DUPLICATE_ALERTS,
     )
