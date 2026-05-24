@@ -107,11 +107,21 @@ async def manual_forward_webhook(
     webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
     data = data or {}
-    logger.info("[Reanalysis] 手动转发请求 webhook_id=%s", webhook_id)
+    target_url = str(data.get("target_url", "")).strip() if data.get("target_url") else ""
+    logger.info("[Reanalysis] 手动转发请求 webhook_id=%s target=%s", webhook_id, target_url[:80] if target_url else "(rule-based)")
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         logger.warning("[Reanalysis] 手动转发失败，事件不存在 webhook_id=%s", webhook_id)
         raise HTTPException(404, "Webhook not found")
+
+    if target_url:
+        if not target_url.startswith(("http://", "https://")):
+            return JSONResponse(status_code=400, content={"success": False, "error": "URL 格式无效"})
+        from core.url_security import UnsafeTargetUrlError, validate_outbound_url
+        try:
+            target_url = await validate_outbound_url(target_url)
+        except UnsafeTargetUrlError as e:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     ctx = await build_webhook_context(event)
     fwd_res = await forward_notification(
@@ -121,6 +131,7 @@ async def manual_forward_webhook(
         analysis_result=cast(AnalysisResult, event.ai_analysis or {}),
         webhook_id=event.id,
         wait=True,
+        target_url=target_url,
     )
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
