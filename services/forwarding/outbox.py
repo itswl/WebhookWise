@@ -165,6 +165,9 @@ async def forward_notification(
     wait: bool = False,
     policy: ForwardDeliveryPolicy | None = None,
     target_url: str = "",
+    importance: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
 ) -> ForwardResult:
     """独立路径：匹配规则 → 创建 outbox → 调度投递（或同步送达如 wait=True）。
 
@@ -183,7 +186,10 @@ async def forward_notification(
         )]
     else:
         rules = await list_enabled_forward_rules()
-        matched = select_forward_rules(rules, event_type=event_type, source=source)
+        matched = select_forward_rules(
+            rules, event_type=event_type, importance=importance,
+            source=source, is_duplicate=is_duplicate, parsed_data=parsed_data,
+        )
     if not matched:
         reason = "未匹配转发规则" if not target_url else "目标 URL 为空"
         logger.info("[ForwardNotify] 无匹配规则 event_type=%s source=%s", event_type, source)
@@ -264,11 +270,7 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     if payload is None:
         payload = {}
 
-    from services.forwarding.circuit_breakers import (
-        RemoteForwardDependencies,
-        build_remote_forward_dependencies,
-        get_forward_breaker,
-    )
+    from services.forwarding.circuit_breakers import build_remote_forward_dependencies
     from services.forwarding.remote import post_json_to_remote
 
     if is_feishu_url(target_url):
@@ -276,12 +278,7 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
 
         return cast(ForwardResult, await send_to_feishu(target_url, cast(dict[str, Any], payload)))
 
-    base = build_remote_forward_dependencies()
-    deps = RemoteForwardDependencies(
-        http_client=base.http_client,
-        circuit_breaker=get_forward_breaker(target_url),
-        validate_url=base.validate_url,
-    )
+    deps = build_remote_forward_dependencies(target_url)
     return cast(ForwardResult, await post_json_to_remote(target_url, cast(dict[str, Any], payload), dependencies=deps, target_type_label=channel_name or "webhook"))
 
 

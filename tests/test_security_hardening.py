@@ -247,7 +247,7 @@ async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.
 async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import reanalysis
 
-    event = SimpleNamespace(id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None)
+    event = SimpleNamespace(id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False)
 
     class FakeSession:
         committed = False
@@ -270,6 +270,10 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     fake_session = FakeSession()
     monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
     monkeypatch.setattr(reanalysis, "forward_notification", fake_forward)
+    # URL validation rejects example.com — bypass for test
+    async def _pass_through(url: str, **kw: object) -> str:
+        return url
+    monkeypatch.setattr(reanalysis, "validate_outbound_url", _pass_through)
 
     result = await reanalysis.manual_forward_webhook(
         1,

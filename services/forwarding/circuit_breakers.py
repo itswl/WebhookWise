@@ -87,13 +87,13 @@ class OpenClawForwardDependencies:
     circuit_breaker: Any  # LazyCircuitBreaker or compatible (has call_async)
 
 
-def build_remote_forward_dependencies() -> RemoteForwardDependencies:
+def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDependencies:
     from core.http_client import get_http_client
     from core.url_security import validate_outbound_url
 
     return RemoteForwardDependencies(
         http_client=get_http_client(),
-        circuit_breaker=get_forward_breaker("_default_"),
+        circuit_breaker=get_forward_breaker(target_url or "_default_"),
         validate_url=validate_outbound_url,
     )
 

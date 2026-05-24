@@ -28,7 +28,7 @@ def build_http_client(
 
         config = get_config_manager()
     return httpx.AsyncClient(
-        timeout=httpx.Timeout(config.forwarding.FORWARD_TIMEOUT, connect=10.0),
+        timeout=httpx.Timeout(config.retry.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
         follow_redirects=False,
         trust_env=False,
