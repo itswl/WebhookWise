@@ -363,6 +363,12 @@ const AlertsModule = {
             } else {
                 html += '<span class="badge badge-new">新告警</span>';
             }
+            // 转发状态徽章
+            if (webhook.forward_status) {
+                var fwdLabels = { 'pending': '待转发', 'forwarded': '已转发', 'failed': '转发失败', 'queued': '已入队', 'success': '已送达', 'skipped': '已跳过' };
+                var fwdClass = (webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
+                html += '<span class="badge ' + fwdClass + '" title="转发状态">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
+            }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 重新分析</button>';
@@ -448,11 +454,20 @@ const AlertsModule = {
         let html = '<div class="info-grid">';
         html += '<div class="info-item"><div class="info-label">告警 ID</div><div class="info-value">#' + webhook.id + '</div></div>';
         html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
+        if (webhook.request_id) {
+            html += '<div class="info-item"><div class="info-label">请求 ID</div><div class="info-value" style="font-size:0.75rem;word-break:break-all;">' + escapeHtml(String(webhook.request_id)) + '</div></div>';
+        }
+        if (webhook.alert_hash) {
+            html += '<div class="info-item"><div class="info-label">告警指纹</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
+        }
         html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
         const statusMap = { received: '已接收', analyzing: '分析中', completed: '已完成', failed: '失败', dead_letter: '死信' };
         const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
         html += '<div class="info-item"><div class="info-label">处理状态</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
+        if (webhook.updated_at) {
+            html += '<div class="info-item"><div class="info-label">最后更新</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
+        }
         if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
             const failure = webhook.failure_reason || webhook.error_message || '-';
             html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">失败原因</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
@@ -707,6 +722,17 @@ const AlertsModule = {
                     }
                 }
 
+                // 追加请求头显示
+                if (dataTab && fullData.headers && Object.keys(fullData.headers).length > 0) {
+                    var filteredHeaders = {};
+                    Object.keys(fullData.headers).forEach(function(k) {
+                        if (!k.startsWith('x-forwarded') && k !== 'traceparent') filteredHeaders[k] = fullData.headers[k];
+                    });
+                    if (Object.keys(filteredHeaders).length > 0) {
+                        dataTab.innerHTML += '<div style="margin-top:1rem;">' + renderJSONBlock(filteredHeaders, '请求头') + '</div>';
+                    }
+                }
+
                 // 更新 AI 分析标签页
                 if (aiTab && fullData.ai_analysis) {
                     aiTab.innerHTML = this.renderAIAnalysis(fullData.ai_analysis);
@@ -852,13 +878,13 @@ const AlertsModule = {
                 // 检查是否为 pending 状态（OpenClaw 异步等待结果）
                 if (record.status === 'pending') {
                     // 分析中状态卡片
-                    html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius:8px; color:white;">';
+                    html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid #bae6fd; border-radius:8px; color:var(--info);">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw 正在分析中...</div>';
                     if (record.openclaw_run_id) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
+                        html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">Run ID: ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
                     }
-                    html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
+                    html += '<div style="font-size:0.9em; opacity:0.85;">结果将自动更新，请稍后刷新页面</div>';
                     html += '</div>';
                 } else {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3

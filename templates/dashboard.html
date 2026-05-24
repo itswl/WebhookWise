@@ -8,183 +8,7 @@
     <!-- 外部样式表 -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/components.css">
-
-        <style>
-    /* 深度分析可折叠卡片 - Modernized & Spaced */
-    .da-card {
-        border: 1px solid #cbd5e1; /* 加深边框，明确卡片边界 */
-        border-radius: var(--radius-lg);
-        margin-bottom: 1.5rem; /* 增大卡片之间的上下间距 */
-        background: #ffffff;
-        overflow: hidden;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); /* 加深常态阴影 */
-    }
-    .da-card:hover {
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-        border-color: #94a3b8;
-        transform: translateY(-2px);
-    }
-    .da-card-expanded {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 1px var(--primary), 0 10px 15px -3px rgba(79, 70, 229, 0.1); /* 展开时使用主题色高光边框 */
-    }
-
-    /* 折叠行 */
-    .da-summary {
-        display: flex;
-        align-items: center;
-        padding: 1.25rem 1.5rem; /* 增加内部留白 */
-        cursor: pointer;
-        gap: 1rem;
-        background: #f8fafc; /* 使用更明显的淡灰蓝底色，区分内容区 */
-        border-bottom: 1px solid transparent;
-        transition: background 0.2s;
-    }
-    .da-summary:hover { background: #f3f4f6; }
-    .da-card-expanded .da-summary {
-        border-bottom-color: var(--border);
-        background: var(--bg-surface);
-    }
-
-    .da-id {
-        font-weight: 600;
-        color: var(--text-muted);
-        width: 60px;
-        font-size: 0.875rem;
-    }
-    .da-engine {
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        background: #e0e7ff;
-        color: var(--primary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .da-engine-openclaw { background: #dbeafe; color: #4338ca; }
-    .da-engine-local { background: #f3f4f6; color: #4b5563; }
-    .da-engine-hermes { background: #fae8ff; color: #4c1d95; }
-
-    .da-question {
-        flex-grow: 1;
-        color: var(--text-main);
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 0.95rem;
-    }
-
-    .da-status {
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-    }
-    .da-status-completed { background: var(--success-bg); color: var(--success); }
-    .da-status-pending { background: var(--warning-bg); color: var(--warning); animation: pulse 2s infinite;}
-    .da-status-failed { background: var(--danger-bg); color: var(--danger); }
-
-    .da-time { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; }
-    .da-duration { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; font-family: monospace;}
-
-    /* 详细信息行 */
-    .da-summary-details {
-        margin-top: 1rem;
-        padding: 1.25rem;
-        background: #f8fafc;
-        border-radius: var(--radius-md);
-        border-left: 4px solid var(--primary);
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
-        font-size: 0.875rem;
-        line-height: 1.6;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
-    }
-    .da-summary-root { color: var(--text-main); }
-    .da-summary-impact { color: var(--text-muted); }
-    .da-summary-recs { color: var(--success); }
-    .da-summary-conf { font-weight: 600; color: var(--primary); }
-
-    /* 展开内容 */
-    .da-details {
-        display: none;
-        padding: 1.5rem;
-        border-top: 1px solid var(--border);
-        background: var(--bg-surface);
-    }
-    .da-card-expanded .da-details {
-        display: block;
-        animation: slideDown 0.3s ease-out forwards;
-    }
-
-    .da-section { margin-bottom: 1.5rem; }
-    .da-section h4 {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-        margin-bottom: 0.5rem;
-    }
-    .da-section p { margin: 0.5rem 0; white-space: pre-wrap; color: var(--text-main); font-size: 0.95rem; }
-    .da-section ul { margin: 0.5rem 0; padding-left: 1.5rem; color: var(--text-main); font-size: 0.95rem;}
-    .da-section li { margin: 0.25rem 0; }
-
-    .da-analysis-content {
-        background: #1f2937;
-        color: #e5e7eb;
-        padding: 1.25rem;
-        border-radius: var(--radius-md);
-        font-size: 0.875rem;
-        font-family: 'Fira Code', 'Consolas', monospace;
-        max-height: 500px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
-    }
-
-    .da-analysis-content::-webkit-scrollbar { height: 8px; width: 8px; }
-    .da-analysis-content::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
-
-    .da-confidence { color: var(--text-muted); font-size: 0.85em; margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem;}
-
-    /* 按钮 */
-    .da-btn-row {
-        margin-top: 1.5rem;
-        padding-top: 1.25rem;
-        border-top: 1px dashed var(--border);
-        display: flex;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-    }
-
-    /* 分页 */
-    .da-pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 2rem; padding: 1rem;}
-    .da-page-btn {
-        border: 1px solid var(--border);
-        background: var(--bg-surface);
-        border-radius: var(--radius-md);
-        min-width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 0.875rem;
-        color: var(--text-main);
-        font-weight: 500;
-        transition: all 0.2s;
-    }
-    .da-page-btn:hover:not(.da-page-btn-disabled) { background: var(--bg-base); border-color: #d1d5db; }
-    .da-page-btn-active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);}
-    .da-page-btn-disabled { color: #9ca3af; cursor: not-allowed; background: #f9fafb; border-color: #e5e7eb;}
-    .da-page-ellipsis { color: var(--text-muted); padding: 0 0.5rem; font-weight: bold;}
-    .da-total { color: var(--text-muted); font-size: 0.875rem; margin-left: 1rem; font-weight: 500;}
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -332,6 +156,9 @@
         <div id="aiCostTab" class="tab-content" style="display: none;">
             <div class="ai-cost-section">
                 <div class="section-title">AI 成本监控</div>
+                <div style="margin-bottom: 1.5rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem;">
+                    <canvas id="aiCostChart" height="200" style="max-height:240px; width:100%;"></canvas>
+                </div>
                 <div class="ai-period-selector" style="margin-bottom: 20px;">
                     <button class="btn" data-ai-period="day">日</button>
                     <button class="btn" data-ai-period="week">周</button>
@@ -452,20 +279,20 @@
                     <label for="configForwardDuplicate">转发重复告警</label>
                 </div>
                 <div class="form-checkbox">
-                    <input type="checkbox" id="configReanalyzeAfterWindow">
-                    <label for="configReanalyzeAfterWindow">超窗口后重新 AI 分析</label>
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configForwardAfterWindow">
-                    <label for="configForwardAfterWindow">超窗口后转发</label>
-                </div>
-                <div class="form-checkbox">
                     <input type="checkbox" id="configEnableNoiseReduction">
                     <label for="configEnableNoiseReduction">启用智能降噪</label>
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="configSuppressDerivedForward">
                     <label for="configSuppressDerivedForward">抑制衍生告警自动转发</label>
+                </div>
+                <div class="form-checkbox">
+                    <input type="checkbox" id="configEnablePeriodicReminder">
+                    <label for="configEnablePeriodicReminder">启用周期提醒（持续告警定时重通知）</label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">提醒间隔（小时）</label>
+                    <input type="number" class="form-input" id="configReminderInterval" min="1" max="168" step="1">
                 </div>
                 <div class="form-group">
                     <label class="form-label">降噪关联窗口（分钟）</label>
@@ -474,6 +301,31 @@
                 <div class="form-group">
                     <label class="form-label">根因置信度阈值（0-1）</label>
                     <input type="number" class="form-input" id="configRootCauseConfidence" placeholder="0.65" min="0" max="1" step="0.01">
+                </div>
+
+                <!-- 降噪权重（只读） -->
+                <div class="form-group" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <label class="form-label" style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">降噪权重配置</label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">来源权重</label>
+                    <input type="number" class="form-input" id="configNoiseSourceWeight" step="0.01" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">资源权重</label>
+                    <input type="number" class="form-input" id="configNoiseResourceWeight" step="0.01" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">语义相似度权重</label>
+                    <input type="number" class="form-input" id="configNoiseSemanticWeight" step="0.01" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">严重性权重</label>
+                    <input type="number" class="form-input" id="configNoiseSeverityWeight" step="0.01" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">时间相关性权重</label>
+                    <input type="number" class="form-input" id="configNoiseTimeWeight" step="0.01" min="0" max="1">
                 </div>
             </div>
             <div class="modal-footer">
@@ -583,6 +435,11 @@
                     <label class="form-label">匹配条件 - 来源</label>
                     <input type="text" class="form-input" id="ruleFormSource" placeholder="逗号分隔多个来源，空=全部">
                     <small style="color: var(--text-secondary); font-size: 12px;">例如：prometheus,alertmanager</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">匹配条件 - Payload (JSON Path)</label>
+                    <input type="text" class="form-input" id="ruleFormPayload" placeholder="例如：$.status == 'firing'，空=不限制">
+                    <small style="color: var(--text-secondary); font-size: 12px;">JMESPath 表达式匹配 payload 内容</small>
                 </div>
                 <div class="form-group">
                     <label class="form-label">目标类型 *</label>
