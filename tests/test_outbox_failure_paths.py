@@ -306,6 +306,58 @@ class TestFinalizeOutboxSuccess:
         assert updated.status == ForwardOutboxStatus.SENT
         assert updated.sent_at is not None
 
+    async def test_marks_current_and_original_events_sent(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from models import WebhookEvent
+        from services.forwarding.outbox import _claim_outbox, _finalize_outbox_success
+
+        async def _noop(*_: object) -> None:
+            pass
+
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
+
+        async with session_factory.begin() as session:
+            original = WebhookEvent(
+                source="volcengine",
+                request_id="orig-1",
+                forward_status="queued",
+                is_duplicate=False,
+            )
+            duplicate = WebhookEvent(
+                source="volcengine",
+                request_id="dup-1",
+                forward_status="queued",
+                is_duplicate=True,
+            )
+            session.add_all([original, duplicate])
+            await session.flush()
+            original_id = original.id
+            duplicate_id = duplicate.id
+
+        outbox_id = await _insert_outbox(
+            session_factory,
+            webhook_event_id=duplicate_id,
+            original_event_id=original_id,
+            next_attempt_at=datetime.now() - timedelta(seconds=1),
+        )
+        record = await _claim_outbox(outbox_id)
+        assert record is not None
+        await _finalize_outbox_success(record, {"status": "success", "status_code": 200})
+
+        async with session_factory() as session:
+            original = await session.get(WebhookEvent, original_id)
+            duplicate = await session.get(WebhookEvent, duplicate_id)
+
+        assert original is not None
+        assert duplicate is not None
+        assert original.forward_status == "sent"
+        assert duplicate.forward_status == "sent"
+        assert original.last_notified_at is not None
+        assert duplicate.last_notified_at is not None
+
     async def test_creates_deep_analysis_for_openclaw(
         self,
         session_factory: async_sessionmaker[AsyncSession],

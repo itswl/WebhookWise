@@ -388,6 +388,11 @@ def _is_outbox_terminal(status: ForwardOutboxStatus | str | None) -> bool:
     return status in _TERMINAL_OUTBOX_STATUSES
 
 
+def _related_webhook_event_ids(record: ForwardOutbox) -> list[int]:
+    ids = [record.webhook_event_id, record.original_event_id]
+    return list(dict.fromkeys(int(i) for i in ids if i))
+
+
 def _is_forward_success(result: ForwardResult) -> bool:
     return result.get("status") == "success" or bool(result.get("_pending"))
 
@@ -493,11 +498,11 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             await session.flush()
             openclaw_analysis_id = analysis_record.id
 
-        notified_event_id = current.original_event_id or current.webhook_event_id
-        if notified_event_id:
+        notified_event_ids = _related_webhook_event_ids(current)
+        if notified_event_ids:
             await session.execute(
                 update(WebhookEvent)
-                .where(WebhookEvent.id == notified_event_id)
+                .where(WebhookEvent.id.in_(notified_event_ids))
                 .values(last_notified_at=now, forward_status="sent")
             )
 
@@ -540,11 +545,11 @@ async def _finalize_outbox_failure(
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "exhausted").inc()
             exhausted_record = record
             # 更新关联告警的转发状态
-            evt_id = record.original_event_id or record.webhook_event_id
-            if evt_id:
+            evt_ids = _related_webhook_event_ids(record)
+            if evt_ids:
                 await session.execute(
                     update(WebhookEvent)
-                    .where(WebhookEvent.id == evt_id)
+                    .where(WebhookEvent.id.in_(evt_ids))
                     .values(forward_status="failed")
                 )
         else:
@@ -606,9 +611,8 @@ async def list_outbox_records(
         query = query.offset((page - 1) * page_size).limit(page_size)
         rows = (await session.execute(query)).scalars().all()
 
-        items = []
-        for r in rows:
-            items.append({
+        items = [
+            {
                 "id": r.id,
                 "webhook_event_id": r.webhook_event_id,
                 "rule_name": r.rule_name,
@@ -625,7 +629,9 @@ async def list_outbox_records(
                 "last_error": (r.last_error or "")[:200],
                 "is_periodic_reminder": r.is_periodic_reminder,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
-            })
+            }
+            for r in rows
+        ]
 
     return {
         "items": items,

@@ -76,6 +76,50 @@ async def test_webhooks_cursor_prev_alert_timestamp(session):
     assert oldest["prev_alert_id"] is None
 
 
+async def test_webhook_summary_uses_sent_outbox_status_for_duplicate(session):
+    from models import ForwardOutbox, WebhookEvent
+    from services.webhooks.query_service import list_webhook_summaries
+
+    original = WebhookEvent(
+        source="test",
+        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+        importance="high",
+        processing_status="completed",
+        forward_status="queued",
+        is_duplicate=False,
+        duplicate_count=1,
+    )
+    duplicate = WebhookEvent(
+        source="test",
+        timestamp=datetime(2026, 1, 1, 0, 1, 0),
+        importance="high",
+        processing_status="completed",
+        forward_status="queued",
+        is_duplicate=True,
+        duplicate_count=2,
+    )
+    session.add_all([original, duplicate])
+    await session.flush()
+    duplicate.duplicate_of = original.id
+    outbox = ForwardOutbox(
+        idempotency_key="forward:summary-status",
+        webhook_event_id=duplicate.id,
+        original_event_id=original.id,
+        target_type="webhook",
+        status="sent",
+        attempts=1,
+        max_attempts=3,
+    )
+    session.add(outbox)
+    await session.commit()
+
+    items, _, _ = await list_webhook_summaries(page_size=200, session=session)
+    status_by_id = {item["id"]: item["forward_status"] for item in items}
+
+    assert status_by_id[original.id] == "sent"
+    assert status_by_id[duplicate.id] == "sent"
+
+
 async def test_deep_analyses_list_fields(session, monkeypatch):
     from api.deep_analysis import list_all_deep_analyses
     from models import DeepAnalysis, WebhookEvent
