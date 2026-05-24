@@ -61,7 +61,7 @@ var DeepAnalysesModule = (function() {
 
         var alertTypeTag = '';
         if (record.is_duplicate) {
-            alertTypeTag = record.beyond_window ? '<span class="badge" style="background: #f1f5f9; color: #475569; font-size: 0.7rem;">🔁 窗口外重复</span>' : '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">🔁 窗口内重复</span>';
+            alertTypeTag = '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">🔁 重复告警</span>';
         } else {
             alertTypeTag = '<span class="badge" style="background: #dcfce7; color: #059669; font-size: 0.7rem;">🆕 新告警</span>';
         }

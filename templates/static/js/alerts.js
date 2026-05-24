@@ -358,10 +358,8 @@ const AlertsModule = {
             html += '</div></div>';
             html += '<div class="alert-right">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
-            if (duplicateType === 'beyond_window') {
-                html += '<span class="badge badge-duplicate badge-duplicate-beyond" title="超过时间窗口的重复告警">窗口外重复</span>';
-            } else if (duplicateType === 'within_window') {
-                html += '<span class="badge badge-duplicate badge-duplicate-within" title="时间窗口内的重复告警">窗口内重复</span>';
+            if (isDuplicate) {
+                html += '<span class="badge badge-duplicate" title="重复告警">重复告警</span>';
             } else {
                 html += '<span class="badge badge-new">新告警</span>';
             }
@@ -470,11 +468,7 @@ const AlertsModule = {
             }
             html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
 
-            // 显示重复类型
-            let duplicateType = '未知';
-            if (webhook.duplicate_type === 'beyond_window') duplicateType = '窗口外重复（超过时间窗口）';
-            if (webhook.duplicate_type === 'within_window') duplicateType = '窗口内重复（时间窗口内）';
-            html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">' + escapeHtml(String(duplicateType)) + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">重复告警</div></div>';
         }
         html += '</div>';
         return html;
@@ -866,16 +860,6 @@ const AlertsModule = {
                     }
                     html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">结果将自动更新，请稍后刷新页面</div>';
                     html += '</div>';
-                } else if (analysis.status === 'triggered') {
-                    // \u7279\u6b8a\u5361\u7247\u6837\u5f0f\uff1a\u5df2\u89e6\u53d1 OpenClaw \u5206\u6790
-                    html += '<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px; color:white;">';
-                    html += '<div style="font-size:2em; margin-bottom:12px;">\ud83d\ude80</div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">\u5df2\u89e6\u53d1 OpenClaw \u5206\u6790</div>';
-                    if (analysis.runId) {
-                        html += '<div style="font-size:0.8em; color:rgba(255,255,255,0.7); margin-bottom:12px;">Run ID: ' + escapeHtml(String(analysis.runId)) + '</div>';
-                    }
-                    html += '<div style="font-size:0.9em; color:rgba(255,255,255,0.9);">\u5206\u6790\u7ed3\u679c\u8bf7\u5728 OpenClaw \u63a7\u5236\u53f0\u67e5\u770b</div>';
-                    html += '</div>';
                 } else {
                     // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
                     // 如果有完整的 OpenClaw 文本，优先渲染 markdown
@@ -942,12 +926,12 @@ const AlertsModule = {
         try {
             const result = await API.deepAnalyze(id, question, 'openclaw');
             if (result.success && result.data) {
-                const analysisResult = result.data.analysis || {};
+                const record = result.data;
+                const analysisResult = record.analysis_result || {};
 
-                // 检查是否为 triggered 状态（OpenClaw 异步触发）
-                if (analysisResult.status === 'triggered') {
-                    // 显示友好的浮层提示（不用 alert）
-                    this.showTriggeredNotification(analysisResult.runId);
+                // 检查是否为 pending 状态（OpenClaw 异步等待结果）
+                if (record.status === 'pending' || analysisResult._pending) {
+                    this.showTriggeredNotification(analysisResult._openclaw_run_id || record.openclaw_run_id);
                 }
 
                 // 分析完成，切换到深度分析标签页并刷新数据

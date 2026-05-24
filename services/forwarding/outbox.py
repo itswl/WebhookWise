@@ -164,17 +164,30 @@ async def forward_notification(
     webhook_id: int | None = None,
     wait: bool = False,
     policy: ForwardDeliveryPolicy | None = None,
+    target_url: str = "",
 ) -> ForwardResult:
-    """独立路径：匹配规则 → 创建 outbox → 调度投递（或同步送达如 wait=True）。"""
-    from services.webhooks.decisioning import select_forward_rules
+    """独立路径：匹配规则 → 创建 outbox → 调度投递（或同步送达如 wait=True）。
+
+    当 target_url 非空时跳过规则匹配，直接投递到该 URL。
+    """
+    from services.webhooks.decisioning import ForwardRuleSnapshot, select_forward_rules
     from services.webhooks.repository import list_enabled_forward_rules
 
     policy = policy or ForwardDeliveryPolicy.from_config()
-    rules = await list_enabled_forward_rules()
-    matched = select_forward_rules(rules, event_type=event_type, source=source)
+
+    if target_url:
+        matched = [ForwardRuleSnapshot(
+            id=None, name="manual_forward", match_event_type="", match_importance="",
+            match_source="", match_duplicate="", match_payload="",
+            target_type="webhook", target_url=target_url, stop_on_match=True, target_name="",
+        )]
+    else:
+        rules = await list_enabled_forward_rules()
+        matched = select_forward_rules(rules, event_type=event_type, source=source)
     if not matched:
+        reason = "未匹配转发规则" if not target_url else "目标 URL 为空"
         logger.info("[ForwardNotify] 无匹配规则 event_type=%s source=%s", event_type, source)
-        return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
+        return {"status": "skipped", "reason": reason, "outbox_ids": []}
 
     async with session_scope() as sess:
         outbox_ids = await _create_outbox_records(
