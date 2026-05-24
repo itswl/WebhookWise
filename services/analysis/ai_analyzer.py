@@ -15,7 +15,7 @@ from core.observability.metrics import (
     sanitize_source,
 )
 from services.analysis import ai_llm_client as _llm_client
-from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
+from services.analysis.ai_cache import get_cached_analysis, save_to_cache
 from services.analysis.ai_prompt import (
     get_prompt_source,
     load_deep_analysis_prompt_template,
@@ -25,11 +25,6 @@ from services.analysis.ai_prompt import (
 )
 from services.analysis.ai_usage import log_ai_usage
 from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPolicy
-from services.analysis.analysis_queries import (
-    get_ai_usage_stats,
-    get_deep_analyses_for_webhook,
-    get_deep_analysis_list,
-)
 from services.dedup import generate_alert_hash
 from services.webhooks.types import AnalysisResult, WebhookData
 
@@ -38,11 +33,6 @@ logger = get_logger("analysis.ai_analyzer")
 __all__ = [
     "analyze_webhook_with_ai",
     "analyze_with_rules",
-    "get_cache_key",
-    "get_ai_usage_stats",
-    "get_cached_analysis",
-    "get_deep_analyses_for_webhook",
-    "get_deep_analysis_list",
     "get_prompt_source",
     "initialize_openai_client",
     "load_deep_analysis_prompt_template",
@@ -51,7 +41,6 @@ __all__ = [
     "reload_deep_analysis_prompt_template",
     "reload_user_prompt_template",
     "reset_openai_client",
-    "save_to_cache",
 ]
 
 _AI_POLICY_REFUSAL_MARKERS = (

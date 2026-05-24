@@ -10,14 +10,6 @@ from core.logger import get_logger, mask_url
 _logger = get_logger("db.engine")
 
 
-def _resolve_config(config: UnifiedConfigManager | None) -> UnifiedConfigManager:
-    if config is not None:
-        return config
-    from core.app_context import get_config_manager
-
-    return get_config_manager()
-
-
 def _build_engine_kwargs(config: UnifiedConfigManager) -> dict[str, Any]:
     """返回连接池公共参数"""
     return {
@@ -51,7 +43,10 @@ def _async_url(config: UnifiedConfigManager) -> str:
 def build_engine_and_session_factory(
     config: UnifiedConfigManager | None = None,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-    config = _resolve_config(config)
+    if config is None:
+        from core.app_context import get_config_manager
+
+        config = get_config_manager()
     _logger.info("[DB] 正在初始化异步数据库连接池: %s", mask_url(config.db.DATABASE_URL))
     engine = create_async_engine(_async_url(config), **_build_engine_kwargs(config))
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

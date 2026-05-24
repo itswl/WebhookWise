@@ -103,7 +103,6 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
                 cast(dict[str, Any], e.parsed_data or {}),
                 cast(AnalysisResult, e.ai_analysis or {}),
                 e.timestamp or now,
-                e.alert_hash,
             )
             for e in res.scalars().all()
         ]

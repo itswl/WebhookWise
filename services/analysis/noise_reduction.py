@@ -25,7 +25,6 @@ class AlertContext:
     parsed_data: AlertPayload
     analysis: AnalysisResult
     timestamp: datetime
-    alert_hash: str | None = None
 
 
 DEFAULT_SCORING_CONFIG = NoiseScoringConfig(

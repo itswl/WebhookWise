@@ -84,9 +84,5 @@ class ReanalysisResponse(BaseModel):
     message: str | None = None
 
 
-def _model_dump_json_dict(schema: BaseModel) -> dict[str, Any]:
-    return schema.model_dump(mode="json")
-
-
 def deep_analysis_to_dict(record: Any) -> dict[str, Any]:
-    return _model_dump_json_dict(DeepAnalysisRecord.model_validate(record))
+    return DeepAnalysisRecord.model_validate(record).model_dump(mode="json")

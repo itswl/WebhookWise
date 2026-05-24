@@ -22,16 +22,11 @@ logger = get_logger("dedup")
 
 @dataclass(frozen=True, slots=True)
 class DedupState:
-    dedup_key: str
     original_event_id: int
     first_seen_at: float
     last_seen_at: float
     count: int
     analysis: dict[str, Any] | None
-
-    @property
-    def is_pending(self) -> bool:
-        return self.original_event_id <= 0
 
     def is_active(self, now: float, window_seconds: int) -> bool:
         return (now - self.last_seen_at) <= window_seconds
@@ -51,7 +46,6 @@ async def get_dedup_state(dedup_key: str) -> DedupState | None:
 
     analysis = payload.get("analysis")
     return DedupState(
-        dedup_key=dedup_key,
         original_event_id=original_event_id,
         first_seen_at=float(payload.get("first_seen_at") or 0),
         last_seen_at=float(payload.get("last_seen_at") or 0),

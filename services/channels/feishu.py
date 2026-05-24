@@ -66,7 +66,7 @@ def build_feishu_card(
     timestamp = webhook_data.get("timestamp", "")
 
     summary = analysis_result.get("summary", "")
-    impact = analysis_result.get("impact_scope", "") or analysis_result.get("impact", "")
+    impact = analysis_result.get("impact_scope", "")
     actions = analysis_result.get("actions") or []
     if isinstance(actions, list):
         suggestion = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(actions) if a) if actions else ""
