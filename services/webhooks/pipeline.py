@@ -143,7 +143,21 @@ async def _resolve_noise_context(
 ) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
     dedup_result = await resolve_dedup(ctx.dedup_key)
 
-    if dedup_result.action == "reuse":
+    if dedup_result.action in ("reuse", "rechain"):
+        analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
+        route_type = dedup_result.route_type or "redis_reuse"
+        analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
+        importance = normalize_importance(analysis.get("importance", "unknown"))
+        set_log_context(route_type=route_type)
+        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
+        await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
+        logger.debug(
+            "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
+            ctx.event_id,
+            ctx.request_id,
+            importance,
+            route_type,
+        )
         analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
         route_type = dedup_result.route_type or "redis_reuse"
         analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
@@ -314,9 +328,10 @@ async def _run_processing_pipeline(
         dedup_ttl = max(60, int(config.retry.DEDUP_WINDOW_SECONDS) * 2)
         await remember_dedup_state(
             ctx.dedup_key,
-            original_event_id=finalize_res.save_result.original_id or finalize_res.save_result.webhook_id,
+            original_event_id=finalize_res.save_result.webhook_id,
             analysis=dict(final_analysis),
             ttl_seconds=dedup_ttl,
+            reset_chain=analysis_res.is_rechain,
         )
         await schedule_forward_outbox_many(finalize_res.outbox_ids)
 

@@ -47,6 +47,7 @@ class SaveWebhookInput:
     original_event_id: int | None = None
     reanalyzed: bool = False
     skip_duplicate_lookup: bool = False
+    prev_alert_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +145,7 @@ def _fill_completed_event(
         is_duplicate=False,
         duplicate_count=1,
         last_notified_at=None,
+        prev_alert_id=payload.prev_alert_id,
     )
 
 
@@ -357,6 +359,7 @@ async def save_webhook_data_in_session(
         forward_status=input.forward_status,
         alert_hash=input.alert_hash or generate_alert_hash(input.data, input.source),
         dedup_key=input.dedup_key,
+        prev_alert_id=input.prev_alert_id,
     )
     request_resolution = await _resolve_request_id(
         session,
