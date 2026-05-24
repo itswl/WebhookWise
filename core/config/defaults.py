@@ -150,12 +150,6 @@ class AIConfig(StaticSettings):
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
 
 
-class ForwardingConfig(StaticSettings):
-    """Outbound forwarding defaults."""
-
-    FORWARD_TIMEOUT: int = Field(default=10)
-
-
 class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
 
@@ -235,6 +229,7 @@ class RetryConfig(StaticSettings):
     FORWARD_RETRY_MAX_DELAY: int = Field(default=3600)
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800)
+    FORWARD_TIMEOUT: int = Field(default=10)
 
 
 class AppConfig(StaticSettings):
@@ -248,7 +243,6 @@ class AppConfig(StaticSettings):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
-    forwarding: ForwardingConfig = Field(default_factory=ForwardingConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
@@ -264,7 +258,6 @@ class AppConfig(StaticSettings):
         "redis",
         "noise",
         "ai",
-        "forwarding",
         "notifications",
         "openclaw",
         "circuit_breaker",

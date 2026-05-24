@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.webhook import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.logger import get_logger
+from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas import ReanalysisResponse
@@ -117,7 +118,6 @@ async def manual_forward_webhook(
     if target_url:
         if not target_url.startswith(("http://", "https://")):
             return JSONResponse(status_code=400, content={"success": False, "error": "URL 格式无效"})
-        from core.url_security import UnsafeTargetUrlError, validate_outbound_url
         try:
             target_url = await validate_outbound_url(target_url)
         except UnsafeTargetUrlError as e:
@@ -132,6 +132,9 @@ async def manual_forward_webhook(
         webhook_id=event.id,
         wait=True,
         target_url=target_url,
+        importance=event.importance or "",
+        is_duplicate=bool(event.is_duplicate),
+        parsed_data=cast(dict[str, Any], ctx.get("parsed_data") or {}),
     )
     event.forward_status = fwd_res.get("status", "unknown")
     await session.commit()
