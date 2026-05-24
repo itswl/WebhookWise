@@ -42,6 +42,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     ai_analysis = row.ai_analysis
     is_dup = row.is_duplicate
     prev_ts = getattr(row, "prev_alert_timestamp", None)
+    duplicate_type = "within_window" if is_dup else "new"
     return {
         "id": row.id,
         "request_id": row.request_id,
@@ -59,9 +60,8 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "prev_alert_id": row.prev_alert_id,
         "prev_alert_timestamp": prev_ts.isoformat() if prev_ts else None,
-        "beyond_time_window": False,
         "is_within_window": bool(is_dup),
-        "duplicate_type": "within_window" if is_dup else "new",
+        "duplicate_type": duplicate_type,
     }
 
 
