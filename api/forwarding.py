@@ -2,7 +2,7 @@
 Forwarding API Routes.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -17,7 +17,6 @@ from schemas import (
     ForwardRuleListResponse,
     forward_rule_to_dict,
 )
-from services.forwarding.outbox import forward_notification
 from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
@@ -25,7 +24,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
-from services.webhooks.types import AnalysisResult, WebhookData
+from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 logger = get_logger("api.forwarding")
 
@@ -168,30 +167,42 @@ async def test_forward_rule_endpoint(
     if not rule:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
 
+    target_url = str(rule.target_url or "").strip()
+    if not target_url:
+        return JSONResponse(status_code=400, content={"success": False, "error": "规则未配置目标 URL"})
+
     test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
     test_analysis: AnalysisResult = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
 
     logger.info(
-        "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s",
-        rule.id,
-        rule.name,
-        rule.target_type,
-    )
-    result = await forward_notification(
-        event_type="rule_test",
-        source="test",
-        forward_data=test_webhook,
-        analysis_result=test_analysis,
-        wait=True,
-        target_url=rule.target_url or "",
+        "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s target=%s",
+        rule.id, rule.name, rule.target_type, mask_url(target_url),
     )
 
-    if result.get("status") == "success" or result.get("_pending"):
-        return {"success": True, "message": "测试消息已发送", "detail": result}
-    elif result.get("status") == "skipped":
-        return JSONResponse(status_code=400, content={"success": False, "error": "目标 URL 未配置"})
-    else:
-        return JSONResponse(status_code=502, content={"success": False, "error": result.get("message", "发送失败")})
+    # 测试通道直连目标 URL，不走 Outbox 幂等链路，确保每次测试都真实发送
+    from services.channels.feishu import build_feishu_card, is_feishu_url, send_to_feishu
+    from services.forwarding.remote import post_json_to_remote
+
+    try:
+        if is_feishu_url(target_url):
+            payload = build_feishu_card(test_webhook, test_analysis)
+            result = cast(ForwardResult, await send_to_feishu(target_url, cast(dict[str, Any], payload)))
+        else:
+            payload = {"webhook": test_webhook, "analysis": test_analysis}
+            result = cast(ForwardResult, await post_json_to_remote(
+                target_url, cast(dict[str, Any], payload),
+                target_type_label=rule.target_type or "webhook",
+            ))
+    except Exception as e:
+        logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
+        return JSONResponse(status_code=502, content={"success": False, "error": f"发送失败: {e}"})
+
+    if result.get("status") == "success":
+        return {"success": True, "message": "测试消息已送达", "detail": result}
+    return JSONResponse(
+        status_code=502,
+        content={"success": False, "error": result.get("message") or f"发送失败: {result.get('status')}"},
+    )
 
 
 # ── Outbox Queries ─────────────────────────────────────────────────────────
