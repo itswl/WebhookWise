@@ -164,3 +164,20 @@ function showError(message) {
         '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' +
         escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">重试</button></div>';
 }
+
+/**
+ * 显示 Toast 通知
+ * @param {string} message - 通知消息
+ * @param {string} type - 类型：'success' | 'error' | 'info'
+ */
+function showToast(message, type) {
+    type = type || 'info';
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('toast-exit');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+}

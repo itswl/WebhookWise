@@ -86,7 +86,11 @@ var DeepAnalysesModule = (function() {
             }
         } else if (record.status === 'pending') {
             const runIdText = record.openclaw_run_id ? `(Run ID: <span style="font-family: monospace;">${escapeHtml(record.openclaw_run_id.substring(0,8))}</span>)` : '';
-            html += `<div style="color: var(--warning); font-size: 0.95rem; font-weight: 500; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>`;
+            var pollInfo = [];
+            if (record.poll_attempts != null) pollInfo.push('轮询 ' + record.poll_attempts + ' 次');
+            if (record.last_polled_at) pollInfo.push('上次 ' + new Date(record.last_polled_at).toLocaleTimeString('zh-CN'));
+            const pollText = pollInfo.length > 0 ? `<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">${pollInfo.join(' · ')}</div>` : '';
+            html += `<div style="color: var(--warning); font-size: 0.95rem; font-weight: 500; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>${pollText}`;
         } else if (record.status === 'failed') {
             let errorMsg = analysis.root_cause || analysis.error || analysis.failure_reason || '未知错误';
             if (errorMsg.length > 100) errorMsg = errorMsg.substring(0, 100) + '...';
