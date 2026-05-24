@@ -11,6 +11,7 @@ from core.observability.metrics import (
     sanitize_source,
 )
 from db.session import session_scope
+from core.datetime_utils import utcnow
 from models import SuppressedRecord
 from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
 from services.webhooks.decisioning import normalize_importance
@@ -37,7 +38,7 @@ async def compute_noise(
     try:
         if not policy.enabled:
             return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, [])
-        now = datetime.now(tz=timezone.utc)
+        now = utcnow()
         try:
             recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)
         except Exception as e:

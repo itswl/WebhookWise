@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
+from core.datetime_utils import utcnow
 from typing import Any, cast
 
 import httpx
@@ -329,8 +330,8 @@ async def test_data_maintenance_archives_old_events_before_delete(
     from services.operations.data_maintenance import cleanup_old_data_by_policy
     from services.operations.policies import DataMaintenancePolicy
 
-    old_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=40)
-    fresh_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    old_timestamp = utcnow() - timedelta(days=40)
+    fresh_timestamp = utcnow() - timedelta(days=1)
     async with integration_session_factory.begin() as session:
         old_event = WebhookEvent(
             request_id="req-old-archive",
@@ -487,7 +488,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
             importance="high",
             is_duplicate=False,
             duplicate_count=1,
-            last_notified_at=datetime.now(tz=timezone.utc) - timedelta(hours=2),
+            last_notified_at=utcnow() - timedelta(hours=2),
         )
         session.add(original)
         await session.flush()

@@ -20,7 +20,7 @@ import websockets
 
 from core import json
 from core.app_context import get_config_manager
-from core.datetime_utils import ensure_utc
+from core.datetime_utils import utcnow
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
@@ -108,7 +108,7 @@ class OpenClawPollPolicy:
     def clamp_delay_to_timeout(self, delay_seconds: int, created_at: datetime | None) -> int:
         if created_at is None:
             return delay_seconds
-        elapsed = (datetime.now(tz=timezone.utc) - ensure_utc(created_at)).total_seconds()
+        elapsed = (utcnow() - created_at).total_seconds()
         remaining = int(self.timeout_seconds - elapsed)
         if remaining <= 0:
             return 1
@@ -516,7 +516,7 @@ async def _safe_notify(coro: Any) -> None:
 
 
 def _seconds_until(target: datetime) -> int:
-    return max(1, int((ensure_utc(target) - datetime.now(tz=timezone.utc)).total_seconds()))
+    return max(1, int((target - utcnow()).total_seconds()))
 
 
 def _clamp_poll_delay_to_timeout(
@@ -604,7 +604,7 @@ def _poll_skip(record_id: int) -> WebhookData:
 
 
 def _elapsed_since(started_at: datetime | None, *, default: float = 0.0) -> float:
-    return (datetime.now(tz=timezone.utc) - ensure_utc(started_at)).total_seconds() if started_at else default
+    return (utcnow() - started_at).total_seconds() if started_at else default
 
 
 async def _failure_update_with_notification(
@@ -859,7 +859,7 @@ async def _claim_openclaw_poll(
     from models import DeepAnalysis
 
     policy = policy or OpenClawPollPolicy.from_config()
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     lease_until = now + timedelta(seconds=_poll_claim_lease_seconds(policy))
     async with session_scope() as session:
         result = await session.execute(
@@ -880,7 +880,7 @@ async def _claim_openclaw_poll(
                 .where(DeepAnalysis.status == DeepAnalysisStatus.PENDING)
             )
         ).scalar_one_or_none()
-        if next_poll_at and ensure_utc(next_poll_at) > now:
+        if next_poll_at and next_poll_at > now:
             return None, _seconds_until(next_poll_at)
     return None, None
 
@@ -903,7 +903,7 @@ async def _schedule_next_openclaw_poll(
     delay = _clamp_poll_delay_to_timeout(
         compute_openclaw_poll_delay(poll_attempts, policy=policy), created_at, policy=policy
     )
-    next_poll_at = datetime.now(tz=timezone.utc) + timedelta(seconds=delay)
+    next_poll_at = utcnow() + timedelta(seconds=delay)
     async with session_scope() as session:
         record = await session.get(DeepAnalysis, analysis_id)
         if not record or record.status != DeepAnalysisStatus.PENDING:
@@ -984,7 +984,7 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     from db.session import session_scope
     from models import DeepAnalysis
 
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     async with session_scope() as session:
         stmt = (
             select(DeepAnalysis.id)

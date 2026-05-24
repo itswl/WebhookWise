@@ -6,6 +6,7 @@ from sqlalchemy import delete, or_, select
 
 from core.logger import get_logger
 from db.session import session_scope
+from core.datetime_utils import utcnow
 from models import ArchivedWebhookEvent, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 
@@ -54,7 +55,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
 
     total_archived = 0
     try:
-        now = datetime.now(tz=timezone.utc)
+        now = utcnow()
 
         # 1. 构建复合查询条件
         # 我们寻找符合以下任一条件的记录：
@@ -125,7 +126,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                     if not events:
                         continue
 
-                    archived_at = datetime.now(tz=timezone.utc)
+                    archived_at = utcnow()
                     archive_rows = [_archive_row(event, archived_at) for event in events]
                     await session.execute(sa.insert(ArchivedWebhookEvent), archive_rows)
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))

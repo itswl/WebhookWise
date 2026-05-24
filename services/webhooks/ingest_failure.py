@@ -11,6 +11,7 @@ from core import json
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
+from core.datetime_utils import utcnow
 from models import WebhookEvent
 from services.webhooks.types import WebhookProcessingStatus
 
@@ -73,7 +74,7 @@ async def record_raw_ingest_dead_letter(
         retry_count=max(0, int(retry_count)),
         failure_reason="retry_exhausted" if retryable else "fat_err",
         error_message=_safe_error_message(err),
-        timestamp=_parse_received_at(received_at) or datetime.now(tz=timezone.utc),
+        timestamp=_parse_received_at(received_at) or utcnow(),
     )
 
     try:
@@ -116,7 +117,7 @@ async def _update_existing_dead_letter(
                 failure_reason="retry_exhausted" if retryable else "fat_err",
                 error_message=_safe_error_message(err),
                 next_retry_at=None,
-                updated_at=datetime.now(tz=timezone.utc),
+                updated_at=utcnow(),
             )
             .returning(WebhookEvent.id)
         )

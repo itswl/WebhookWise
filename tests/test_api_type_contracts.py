@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from core.datetime_utils import utcnow
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
@@ -225,7 +226,7 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     session.add(event)
     await session.flush()
 
-    old_created_at = datetime.now(tz=timezone.utc) - timedelta(hours=2)
+    old_created_at = utcnow() - timedelta(hours=2)
     record = DeepAnalysis(
         webhook_event_id=event.id,
         engine="openclaw",
@@ -258,7 +259,7 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     monkeypatch.setattr("services.analysis.openclaw.clear_openclaw_poll_state", fake_clear)
     monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_if_called)
 
-    started = datetime.now(tz=timezone.utc)
+    started = utcnow()
     resp = await deep_analysis.retry_deep_analysis(record.id, session=session)
 
     assert resp["success"] is True

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core import json
 from core.compression import decompress_payload_async
 from db.session import count_with_timeout, session_scope
+from core.datetime_utils import utcnow
 from models import ForwardRule, SuppressedRecord, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
@@ -39,7 +40,7 @@ async def check_duplicate_event(
     time_window_hours: int = 24,
 ) -> DuplicateCheckResult:
     """Check duplicate state for one alert hash within a time window."""
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     threshold = now - timedelta(hours=time_window_hours)
 
     recent_stmt = (
@@ -165,7 +166,7 @@ async def list_suppressed_records(
     since_minutes: int = 60,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    since = datetime.now(tz=timezone.utc) - timedelta(minutes=max(1, since_minutes))
+    since = utcnow() - timedelta(minutes=max(1, since_minutes))
     stmt = (
         select(SuppressedRecord)
         .where(SuppressedRecord.created_at >= since)
@@ -191,6 +192,6 @@ async def list_suppressed_records(
 
 
 async def count_suppressed_records(session: AsyncSession, *, since_minutes: int = 60) -> int | None:
-    since = datetime.now(tz=timezone.utc) - timedelta(minutes=max(1, since_minutes))
+    since = utcnow() - timedelta(minutes=max(1, since_minutes))
     stmt = select(func.count()).select_from(SuppressedRecord).where(SuppressedRecord.created_at >= since)
     return await count_with_timeout(session, stmt)

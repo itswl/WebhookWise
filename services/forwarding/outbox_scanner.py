@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import ensure_utc
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import (
     FORWARD_OUTBOX_BACKLOG_AGE_SECONDS,
@@ -82,7 +82,7 @@ async def _refresh_outbox_backlog_metrics(session: AsyncSession, *, now: datetim
         if oldest_created_at is None:
             continue
         status_value = status.value if isinstance(status, ForwardOutboxStatus) else str(status or "unknown")
-        age_seconds = max(0.0, (now - ensure_utc(oldest_created_at)).total_seconds())
+        age_seconds = max(0.0, (now - oldest_created_at).total_seconds())
         max_age = max(max_age, age_seconds)
         FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels(str(target_type or "unknown"), status_value).set(age_seconds)
     FORWARD_OUTBOX_BACKLOG_AGE_SECONDS.labels("all", "active").set(max_age)
@@ -90,7 +90,7 @@ async def _refresh_outbox_backlog_metrics(session: AsyncSession, *, now: datetim
 
 async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardDeliveryPolicy | None = None) -> int:
     """Queue due outbox records and recover stale processing rows."""
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     policy = policy or ForwardDeliveryPolicy.from_config()
     stale_before = now - timedelta(seconds=policy.stale_processing_threshold_seconds)
     async with session_scope() as session:

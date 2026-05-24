@@ -22,6 +22,7 @@ from core.observability.metrics import (
 )
 from core.observability.tracing import otel_span, set_span_error
 from db.session import session_scope
+from core.datetime_utils import utcnow
 from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
@@ -51,7 +52,7 @@ async def _create_outbox_records(
     log_tag: str,
 ) -> list[int]:
     """Create outbox records for matched rules within an existing session."""
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     outbox_ids: list[int] = []
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")
@@ -359,7 +360,7 @@ async def _expire_outbox_if_old(
 
 
 async def _claim_outbox(outbox_id: int, *, policy: ForwardDeliveryPolicy | None = None) -> ForwardOutbox | None:
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     policy = policy or ForwardDeliveryPolicy.from_config()
     async with session_scope() as session:
         if await _expire_outbox_if_old(session, outbox_id, now=now, policy=policy):
@@ -439,7 +440,7 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
 
 
 async def requeue_forward_outbox(outbox_id: int) -> bool:
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     updated = False
     async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
@@ -467,7 +468,7 @@ async def requeue_forward_outbox(outbox_id: int) -> bool:
 
 
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     openclaw_analysis_id: int | None = None
     async with session_scope() as session:
         current = await session.get(ForwardOutbox, record.id)
@@ -521,7 +522,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
 async def _finalize_outbox_failure(
     outbox_id: int, error_msg: str, *, policy: ForwardDeliveryPolicy | None = None
 ) -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     retry_outbox_id: int | None = None
     retry_delay: int | None = None
     exhausted_record: ForwardOutbox | None = None
