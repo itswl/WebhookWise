@@ -3,10 +3,10 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import WebhookEvent
+from models import ForwardOutbox, WebhookEvent
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
 _prev_ts_subq = (
@@ -65,6 +65,36 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _merge_forward_status(current: str | None, outbox_status: str | None) -> str | None:
+    if outbox_status == "sent":
+        return "sent"
+    if outbox_status in {"exhausted", "expired"} and current in {"queued", "pending", "retrying", None}:
+        return "failed"
+    return current
+
+
+async def _apply_outbox_forward_statuses(session: AsyncSession, items: list[dict[str, Any]]) -> None:
+    event_ids = [int(item["id"]) for item in items if item.get("id")]
+    if not event_ids:
+        return
+    event_id_set = set(event_ids)
+
+    query = select(ForwardOutbox.webhook_event_id, ForwardOutbox.original_event_id, ForwardOutbox.status).where(
+        or_(ForwardOutbox.webhook_event_id.in_(event_ids), ForwardOutbox.original_event_id.in_(event_ids))
+    )
+    rows = (await session.execute(query)).all()
+    status_by_event_id: dict[int, str | None] = {}
+    for row in rows:
+        for event_id in (row.webhook_event_id, row.original_event_id):
+            if event_id in event_id_set:
+                event_int = int(event_id)
+                status_by_event_id[event_int] = _merge_forward_status(status_by_event_id.get(event_int), row.status)
+
+    for item in items:
+        event_id = int(item["id"])
+        item["forward_status"] = _merge_forward_status(item.get("forward_status"), status_by_event_id.get(event_id))
+
+
 async def list_webhook_summaries(
     session: AsyncSession,
     *,
@@ -90,6 +120,7 @@ async def list_webhook_summaries(
     if has_more:
         rows = rows[:page_size]
     items = [_row_to_summary_dict(r) for r in rows]
+    await _apply_outbox_forward_statuses(session, items)
     return items, has_more, (rows[-1].id if has_more and rows else None)
 
 
