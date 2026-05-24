@@ -152,6 +152,7 @@ function renderRuleCard(rule) {
                     <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
                     <div><strong>事件来源:</strong> ${sourceText}</div>
+                    ${rule.match_payload ? '<div style="margin-top:0.5rem;"><strong>Payload:</strong> <code>' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
                 </div>
 
                 <!-- 转发目标区 -->
@@ -243,6 +244,7 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormImportanceLow').checked = false;
     document.getElementById('ruleFormDuplicate').value = 'all';
     document.getElementById('ruleFormSource').value = '';
+    document.getElementById('ruleFormPayload').value = '';
     document.getElementById('ruleFormTargetType').value = 'feishu';
     document.getElementById('ruleFormTargetUrl').value = '';
     document.getElementById('ruleFormTargetName').value = '';
@@ -271,6 +273,7 @@ function showRuleForm(ruleId) {
 
             document.getElementById('ruleFormDuplicate').value = rule.match_duplicate || 'all';
             document.getElementById('ruleFormSource').value = rule.match_source || '';
+            document.getElementById('ruleFormPayload').value = rule.match_payload || '';
             document.getElementById('ruleFormTargetType').value = rule.target_type || 'feishu';
             document.getElementById('ruleFormTargetUrl').value = rule.target_url || '';
             document.getElementById('ruleFormTargetName').value = rule.target_name || '';
@@ -347,6 +350,7 @@ async function saveRule() {
         match_importance: importances.join(','),
         match_duplicate: document.getElementById('ruleFormDuplicate').value,
         match_source: document.getElementById('ruleFormSource').value.trim(),
+        match_payload: document.getElementById('ruleFormPayload').value.trim(),
         target_type: targetType,
         target_url: targetType === 'openclaw' ? '' : targetUrl,
         target_name: targetName,

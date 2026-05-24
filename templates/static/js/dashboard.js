@@ -234,10 +234,15 @@ async function openConfigModal() {
             document.getElementById('configForwardDuplicate').checked = c.forward_duplicate_alerts;
             document.getElementById('configEnableNoiseReduction').checked = c.enable_alert_noise_reduction;
             document.getElementById('configSuppressDerivedForward').checked = c.suppress_derived_alert_forward;
+            document.getElementById('configEnablePeriodicReminder').checked = c.enable_periodic_reminder ?? true;
+            document.getElementById('configReminderInterval').value = c.reminder_interval_hours ?? 6;
             document.getElementById('configNoiseWindow').value = c.noise_reduction_window_minutes || 5;
             document.getElementById('configRootCauseConfidence').value = c.root_cause_min_confidence ?? 0.65;
-            document.getElementById('configReanalyzeAfterWindow').checked = c.reanalyze_after_time_window || false;
-            document.getElementById('configForwardAfterWindow').checked = c.forward_after_time_window || false;
+            document.getElementById('configNoiseSourceWeight').value = c.noise_source_weight ?? 0.15;
+            document.getElementById('configNoiseResourceWeight').value = c.noise_resource_weight ?? 0.45;
+            document.getElementById('configNoiseSemanticWeight').value = c.noise_semantic_weight ?? 0.25;
+            document.getElementById('configNoiseSeverityWeight').value = c.noise_severity_weight ?? 0.10;
+            document.getElementById('configNoiseTimeWeight').value = c.noise_time_weight ?? 0.20;
             document.getElementById('configLogLevel').value = c.log_level || 'INFO';
             document.getElementById('configAiSystemPrompt').value = c.ai_system_prompt || '';
             setConfigModalReadonly();

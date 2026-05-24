@@ -17,6 +17,7 @@ class ForwardRuleSchema(BaseModel):
     name: str
     enabled: bool
     priority: int
+    match_event_type: str | None = None
     match_importance: str | None = None
     match_duplicate: str | None = None
     match_source: str | None = None
