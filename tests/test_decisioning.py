@@ -71,8 +71,6 @@ def _make_policy(**overrides: object) -> ForwardingPolicy:
         "notification_cooldown_seconds": 60,
         "enable_periodic_reminder": True,
         "reminder_interval_hours": 6,
-        "forward_duplicate_alerts": False,
-
     }
     defaults.update(overrides)
     return ForwardingPolicy(**defaults)  # type: ignore[arg-type]
@@ -275,11 +273,11 @@ class TestDecideForwarding:
             importance="high",
             is_duplicate=True,
             original_event=_Event(last_notified_at=recent),
-            policy=_make_policy(forward_duplicate_alerts=True, notification_cooldown_seconds=60),
+            policy=_make_policy(notification_cooldown_seconds=60),
         )
         assert not result.should_forward
 
-    def test_duplicate_cooldown_expired_with_forward_enabled(self) -> None:
+    def test_duplicate_cooldown_expired_with_matched_rules_forwards(self) -> None:
         old = datetime.now() - timedelta(seconds=120)
         rules = [_make_rule(match_importance="high")]
         result = self._decide(
@@ -287,20 +285,17 @@ class TestDecideForwarding:
             is_duplicate=True,
             original_event=_Event(last_notified_at=old),
             rules=rules,
-            policy=_make_policy(
-                forward_duplicate_alerts=True,
-                notification_cooldown_seconds=60,
-            ),
+            policy=_make_policy(notification_cooldown_seconds=60),
         )
         assert result.should_forward
 
-    def test_duplicate_forward_disabled(self) -> None:
+    def test_duplicate_no_matched_rules_skips(self) -> None:
         old = datetime.now() - timedelta(seconds=120)
         result = self._decide(
             importance="high",
             is_duplicate=True,
             original_event=_Event(last_notified_at=old),
-            policy=_make_policy(forward_duplicate_alerts=False),
+            policy=_make_policy(),
         )
         assert not result.should_forward
 
