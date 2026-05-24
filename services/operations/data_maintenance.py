@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import sqlalchemy as sa
 from sqlalchemy import delete, or_, select
@@ -54,7 +54,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
 
     total_archived = 0
     try:
-        now = datetime.now()
+        now = datetime.now(tz=timezone.utc)
 
         # 1. 构建复合查询条件
         # 我们寻找符合以下任一条件的记录：
@@ -125,7 +125,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                     if not events:
                         continue
 
-                    archived_at = datetime.now()
+                    archived_at = datetime.now(tz=timezone.utc)
                     archive_rows = [_archive_row(event, archived_at) for event in events]
                     await session.execute(sa.insert(ArchivedWebhookEvent), archive_rows)
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))

@@ -88,6 +88,8 @@ async def create_forward_rule_endpoint(
         stop_on_match=payload.get("stop_on_match", False),
     )
     await session.commit()
+    from services.webhooks.repository import invalidate_forward_rules_cache
+    invalidate_forward_rules_cache()
     logger.info(
         "[ForwardAPI] 转发规则已创建 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
@@ -129,6 +131,8 @@ async def update_forward_rule_endpoint(
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
+    from services.webhooks.repository import invalidate_forward_rules_cache
+    invalidate_forward_rules_cache()
     logger.info(
         "[ForwardAPI] 转发规则已更新 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
@@ -151,6 +155,8 @@ async def delete_forward_rule_endpoint(
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
+    from services.webhooks.repository import invalidate_forward_rules_cache
+    invalidate_forward_rules_cache()
     logger.info("[ForwardAPI] 转发规则已删除 rule_id=%s", rule_id)
     return {"success": True, "message": "规则已删除"}
 

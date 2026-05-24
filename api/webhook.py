@@ -5,7 +5,7 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -128,7 +128,7 @@ async def _receive_and_enqueue_webhook(
 
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
-    received_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    received_at = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
 
     task_kwargs: dict[str, Any] = {
         "source_name": source_hint,

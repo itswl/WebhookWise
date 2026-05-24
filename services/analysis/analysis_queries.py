@@ -1,6 +1,6 @@
 """Read-side queries for AI usage and deep-analysis records."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -12,7 +12,7 @@ from schemas import deep_analysis_to_dict
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
-    now = datetime.now()
+    now = datetime.now(tz=timezone.utc)
     if period == "day":
         delta = timedelta(days=1)
     elif period == "week":

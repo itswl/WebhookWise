@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
@@ -73,7 +73,7 @@ async def record_raw_ingest_dead_letter(
         retry_count=max(0, int(retry_count)),
         failure_reason="retry_exhausted" if retryable else "fat_err",
         error_message=_safe_error_message(err),
-        timestamp=_parse_received_at(received_at) or datetime.now(),
+        timestamp=_parse_received_at(received_at) or datetime.now(tz=timezone.utc),
     )
 
     try:
@@ -116,7 +116,7 @@ async def _update_existing_dead_letter(
                 failure_reason="retry_exhausted" if retryable else "fat_err",
                 error_message=_safe_error_message(err),
                 next_retry_at=None,
-                updated_at=datetime.now(),
+                updated_at=datetime.now(tz=timezone.utc),
             )
             .returning(WebhookEvent.id)
         )
