@@ -42,6 +42,7 @@ from core.observability.tracing import (
     set_fallback_trace_id,
     set_span_error,
 )
+from services.analysis.ai_usage import log_ai_usage
 from services.dedup import DedupResult, generate_event_keys, remember_dedup_state, resolve_dedup
 from services.forwarding.outbox import schedule_forward_outbox_many
 from services.webhooks.command_service import SaveWebhookResult
@@ -185,7 +186,6 @@ async def _resolve_noise_context(
     ) as (_span, _outcome):
         from core.app_context import get_config_manager
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.analysis.ai_usage import log_ai_usage
 
         dedup_ttl = max(60, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) * 2)
         await remember_dedup_state(
