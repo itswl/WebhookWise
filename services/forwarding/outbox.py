@@ -496,7 +496,9 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         notified_event_id = current.original_event_id or current.webhook_event_id
         if notified_event_id:
             await session.execute(
-                update(WebhookEvent).where(WebhookEvent.id == notified_event_id).values(last_notified_at=now)
+                update(WebhookEvent)
+                .where(WebhookEvent.id == notified_event_id)
+                .values(last_notified_at=now, forward_status="sent")
             )
 
         logger.info(
@@ -537,6 +539,14 @@ async def _finalize_outbox_failure(
             )
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "exhausted").inc()
             exhausted_record = record
+            # 更新关联告警的转发状态
+            evt_id = record.original_event_id or record.webhook_event_id
+            if evt_id:
+                await session.execute(
+                    update(WebhookEvent)
+                    .where(WebhookEvent.id == evt_id)
+                    .values(forward_status="failed")
+                )
         else:
             delay = policy.delay_for_attempt(record.attempts)
             record.status = ForwardOutboxStatus.RETRYING
