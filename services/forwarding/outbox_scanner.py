@@ -24,16 +24,10 @@ from services.webhooks.types import ForwardOutboxStatus
 logger = get_logger("outbox_scanner")
 
 
-def _expires_before(now: datetime, policy: ForwardDeliveryPolicy) -> datetime | None:
-    if policy.max_delivery_age_seconds <= 0:
-        return None
-    return now - timedelta(seconds=policy.max_delivery_age_seconds)
-
-
 async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardDeliveryPolicy, limit: int) -> int:
-    cutoff = _expires_before(now, policy)
-    if cutoff is None or limit <= 0:
+    if policy.max_delivery_age_seconds <= 0 or limit <= 0:
         return 0
+    cutoff = now - timedelta(seconds=policy.max_delivery_age_seconds)
     stmt = (
         update(ForwardOutbox)
         .where(

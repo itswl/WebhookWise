@@ -10,23 +10,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from core.app_context import get_config_manager
 from core.config import UnifiedConfigManager
 from core.logger import get_logger
+from core.sensitive_data import redact_headers
 
 logger = get_logger("auth")
 
 security = HTTPBearer(auto_error=False)
 _AUTH_DEPENDENCY = Security(security)
 _CONFIG_DEPENDENCY = Depends(get_config_manager)
-
-
-def _redact_headers(headers: dict[str, object]) -> dict[str, object]:
-    redacted: dict[str, object] = {}
-    for k, v in headers.items():
-        lk = str(k).lower()
-        if lk in {"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"}:
-            redacted[k] = "[REDACTED]"
-        else:
-            redacted[k] = v
-    return redacted
 
 
 def _body_meta(body: bytes) -> dict[str, object]:
@@ -72,7 +62,7 @@ async def verify_api_key(
                 client_ip,
                 request.url.path,
                 request.method,
-                _redact_headers(dict(request.headers)),
+                redact_headers(dict(request.headers)),
                 _body_meta(body_bytes),
             )
         raise HTTPException(

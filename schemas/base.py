@@ -17,5 +17,4 @@ class APIResponse(BaseModel, Generic[T]):
 class CursorPaginationInfo(BaseModel):
     next_cursor: int | None = None
     has_more: bool = False
-    limit: int | None = None
     page_size: int | None = None

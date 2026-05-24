@@ -41,7 +41,6 @@ async def test_ai_error_alert_cooldown_groups_volatile_provider_errors(
 
     policy = AIErrorNotificationPolicy(
         cooldown_seconds=300,
-        timeout_seconds=3,
     )
     webhook_data = {"source": "volcengine", "parsed_data": {"RuleName": "OpenRouterDown"}}
 
@@ -66,9 +65,7 @@ def test_ai_error_notification_policy_reads_runtime_knobs(monkeypatch: pytest.Mo
     from services.analysis.analysis_policies import AIErrorNotificationPolicy
 
     monkeypatch.setattr(temp_config.notifications, "AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS", 123)
-    monkeypatch.setattr(temp_config.notifications, "AI_ERROR_NOTIFICATION_TIMEOUT_SECONDS", 7)
 
     policy = AIErrorNotificationPolicy.from_config()
 
     assert policy.cooldown_seconds == 123
-    assert policy.timeout_seconds == 7

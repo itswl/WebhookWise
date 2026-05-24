@@ -2,10 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, Literal, TypedDict
 
 
 class AnalysisResult(TypedDict, total=False):
@@ -16,7 +13,6 @@ class AnalysisResult(TypedDict, total=False):
     importance: str
     summary: str
     impact_scope: str | None
-    impact: str
     actions: list[str]
     risks: list[str]
     monitoring_suggestions: list[str]
@@ -35,7 +31,6 @@ class ForwardResult(TypedDict, total=False):
     reason: str
     message: str
     status_code: int
-    response: dict[str, Any]
     outbox_id: int
     outbox_ids: list[int]
     _pending: bool
@@ -86,7 +81,6 @@ class WebhookRequestContext:
 class WebhookProcessContext:
     event_id: int | None
     request_id: str | None
-    client_ip: str
     metric_source: str
     req_ctx: WebhookRequestContext
     alert_hash: str

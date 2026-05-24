@@ -241,7 +241,6 @@ async def test_finalization_skips_outbox_without_target(
     ctx = WebhookProcessContext(
         event_id=None,
         request_id="req-finalize-test",
-        client_ip="127.0.0.1",
         metric_source="prometheus",
         req_ctx=req_ctx,
         alert_hash=alert_hash,
@@ -495,7 +494,6 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     ctx = WebhookProcessContext(
         event_id=None,
         request_id="req-reuse-test",
-        client_ip="127.0.0.1",
         metric_source="prometheus",
         req_ctx=req_ctx,
         alert_hash="reuse-hash",
