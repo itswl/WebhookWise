@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -21,7 +21,7 @@ def test_build_event_fill_fields_works():
         is_duplicate=True,
         duplicate_of=1,
         duplicate_count=2,
-        last_notified_at=datetime.now(),
+        last_notified_at=datetime.now(tz=timezone.utc),
     )
     assert event.is_duplicate is True
 

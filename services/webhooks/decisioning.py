@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from core.app_context import get_config_manager
@@ -218,11 +218,13 @@ def decide_forwarding(
         is_duplicate=is_duplicate,
         parsed_data=parsed_data,
     )
-    current_time = now or datetime.now()
+    current_time = now or datetime.now(tz=timezone.utc)
     base_should_fwd = bool(matched_rules)
 
     if is_duplicate:
         last_notified_at = original_event.last_notified_at if original_event else None
+        if last_notified_at is not None and last_notified_at.tzinfo is None:
+            last_notified_at = last_notified_at.replace(tzinfo=timezone.utc)
         seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
         return _decide_duplicate_alert(
             base_should_forward=base_should_fwd,

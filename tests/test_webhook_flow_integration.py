@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 import httpx
@@ -97,6 +97,8 @@ async def test_webhook_receive_to_feishu_card_flow(
                 stop_on_match=False,
             )
         )
+        from services.webhooks.repository import invalidate_forward_rules_cache
+        invalidate_forward_rules_cache()
 
     async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
         parsed = webhook_data["parsed_data"]
@@ -327,8 +329,8 @@ async def test_data_maintenance_archives_old_events_before_delete(
     from services.operations.data_maintenance import cleanup_old_data_by_policy
     from services.operations.policies import DataMaintenancePolicy
 
-    old_timestamp = datetime.now() - timedelta(days=40)
-    fresh_timestamp = datetime.now() - timedelta(days=1)
+    old_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=40)
+    fresh_timestamp = datetime.now(tz=timezone.utc) - timedelta(days=1)
     async with integration_session_factory.begin() as session:
         old_event = WebhookEvent(
             request_id="req-old-archive",
@@ -472,6 +474,8 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
                 stop_on_match=False,
             )
         )
+        from services.webhooks.repository import invalidate_forward_rules_cache
+        invalidate_forward_rules_cache()
 
     async with integration_session_factory.begin() as session:
         original = WebhookEvent(
@@ -483,7 +487,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
             importance="high",
             is_duplicate=False,
             duplicate_count=1,
-            last_notified_at=datetime.now() - timedelta(hours=2),
+            last_notified_at=datetime.now(tz=timezone.utc) - timedelta(hours=2),
         )
         session.add(original)
         await session.flush()

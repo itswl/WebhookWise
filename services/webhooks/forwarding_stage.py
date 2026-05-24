@@ -22,7 +22,7 @@ from services.webhooks.decisioning import (
     forwarding_policy_from_config,
     normalize_importance,
 )
-from services.webhooks.repository import list_enabled_forward_rules
+from services.webhooks.repository import get_cached_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
@@ -53,7 +53,7 @@ async def resolve_forward_decision(
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
     try:
-        rules = await list_enabled_forward_rules(session=session)
+        rules = await get_cached_forward_rules(session=session)
     except Exception as e:
         logger.warning("[Forward] 匹配转发规则失败: %s", e)
 

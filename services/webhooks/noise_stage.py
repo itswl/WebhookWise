@@ -1,7 +1,7 @@
 """Noise-reduction stage for webhook processing."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from core.logger import get_logger
@@ -37,7 +37,7 @@ async def compute_noise(
     try:
         if not policy.enabled:
             return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, [])
-        now = datetime.now()
+        now = datetime.now(tz=timezone.utc)
         try:
             recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)
         except Exception as e:

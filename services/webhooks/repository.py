@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 from sqlalchemy import func, select
@@ -39,7 +39,7 @@ async def check_duplicate_event(
     time_window_hours: int = 24,
 ) -> DuplicateCheckResult:
     """Check duplicate state for one alert hash within a time window."""
-    now = datetime.now()
+    now = datetime.now(tz=timezone.utc)
     threshold = now - timedelta(hours=time_window_hours)
 
     recent_stmt = (
@@ -135,13 +135,37 @@ async def list_enabled_forward_rules(session: Any | None = None) -> list[Forward
         return await _list(sess)
 
 
+_rules_cache: list[ForwardRuleSnapshot] | None = None
+_rules_cache_at: float = 0.0
+_RULES_CACHE_TTL: float = 30.0
+
+
+def invalidate_forward_rules_cache() -> None:
+    global _rules_cache, _rules_cache_at
+    _rules_cache = None
+    _rules_cache_at = 0.0
+
+
+async def get_cached_forward_rules(session: Any | None = None) -> list[ForwardRuleSnapshot]:
+    import time
+
+    global _rules_cache, _rules_cache_at
+    now = time.monotonic()
+    if _rules_cache is not None and (now - _rules_cache_at) < _RULES_CACHE_TTL:
+        return _rules_cache
+    rules = await list_enabled_forward_rules(session=session)
+    _rules_cache = rules
+    _rules_cache_at = now
+    return rules
+
+
 async def list_suppressed_records(
     session: AsyncSession,
     *,
     since_minutes: int = 60,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    since = datetime.now() - timedelta(minutes=max(1, since_minutes))
+    since = datetime.now(tz=timezone.utc) - timedelta(minutes=max(1, since_minutes))
     stmt = (
         select(SuppressedRecord)
         .where(SuppressedRecord.created_at >= since)
@@ -167,6 +191,6 @@ async def list_suppressed_records(
 
 
 async def count_suppressed_records(session: AsyncSession, *, since_minutes: int = 60) -> int | None:
-    since = datetime.now() - timedelta(minutes=max(1, since_minutes))
+    since = datetime.now(tz=timezone.utc) - timedelta(minutes=max(1, since_minutes))
     stmt = select(func.count()).select_from(SuppressedRecord).where(SuppressedRecord.created_at >= since)
     return await count_with_timeout(session, stmt)
