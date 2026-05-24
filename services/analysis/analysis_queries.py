@@ -50,10 +50,11 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
     )
     cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
 
+    # 汇总所有复用/缓存命中（redis_reuse, db_reuse, cache, reuse）
+    reuses = route_breakdown.get("redis_reuse", 0) + route_breakdown.get("db_reuse", 0)
     cache_hits = route_breakdown.get("cache", 0)
-    reuse_hits = route_breakdown.get("reuse", 0)
-    total_hits = cache_hits + reuse_hits
-    avg_hits = round(reuse_hits / cache_entries, 2) if cache_entries > 0 else 0.0
+    total_hits = reuses + cache_hits
+    avg_hits = round(total_hits / cache_entries, 2) if cache_entries > 0 else 0.0
     hit_rate = round(total_hits / max(total, 1) * 100, 2)
 
     ai_calls = route_breakdown.get("ai", 0)
