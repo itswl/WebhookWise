@@ -149,7 +149,7 @@ function renderRuleCard(rule) {
                 <!-- 匹配条件区 -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
                     <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 命中条件</div>
-                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>事件类型:</strong> ' + escapeHtml(rule.match_event_type) + '</div>' : ''}
+                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>事件类型:</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(t) { var m = { webhook_forward: '告警转发', manual_forward: '手动转发', ai_error: 'AI错误', ai_degraded: 'AI降级', deep_analysis: '深度分析', outbox_exhausted: '转发耗尽', rule_test: '测试' }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[t.trim()] || t.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
                     <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>来源:</strong> ${sourceText}</div>
@@ -239,7 +239,10 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormId').value = '';
     document.getElementById('ruleFormName').value = '';
     document.getElementById('ruleFormPriority').value = '10';
-    document.getElementById('ruleFormEventType').value = '';
+    // 重置事件类型复选框
+    ['ruleFormEvtForward', 'ruleFormEvtManual', 'ruleFormEvtAIError', 'ruleFormEvtAIDegraded', 'ruleFormEvtDeep', 'ruleFormEvtExhausted'].forEach(function(id) {
+        document.getElementById(id).checked = false;
+    });
     document.getElementById('ruleFormImportanceHigh').checked = false;
     document.getElementById('ruleFormImportanceMedium').checked = false;
     document.getElementById('ruleFormImportanceLow').checked = false;
@@ -263,7 +266,21 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormId').value = rule.id;
             document.getElementById('ruleFormName').value = rule.name || '';
             document.getElementById('ruleFormPriority').value = rule.priority || 10;
-            document.getElementById('ruleFormEventType').value = rule.match_event_type || '';
+
+            // 设置事件类型复选框
+            var eventTypes = (rule.match_event_type || '').split(',').map(function(s) { return s.trim(); });
+            var evtCheckIds = {
+                'webhook_forward': 'ruleFormEvtForward',
+                'manual_forward': 'ruleFormEvtManual',
+                'ai_error': 'ruleFormEvtAIError',
+                'ai_degraded': 'ruleFormEvtAIDegraded',
+                'deep_analysis': 'ruleFormEvtDeep',
+                'outbox_exhausted': 'ruleFormEvtExhausted'
+            };
+            eventTypes.forEach(function(et) {
+                var id = evtCheckIds[et];
+                if (id) document.getElementById(id).checked = true;
+            });
 
             // 设置重要性复选框
             if (rule.match_importance) {
@@ -349,7 +366,11 @@ async function saveRule() {
         name: name,
         enabled: document.getElementById('ruleFormEnabled').checked,
         priority: priority,
-        match_event_type: document.getElementById('ruleFormEventType').value.trim(),
+        match_event_type: [
+            'ruleFormEvtForward', 'ruleFormEvtManual', 'ruleFormEvtAIError',
+            'ruleFormEvtAIDegraded', 'ruleFormEvtDeep', 'ruleFormEvtExhausted'
+        ].filter(function(id) { return document.getElementById(id).checked; })
+         .map(function(id) { return document.getElementById(id).value; }).join(','),
         match_importance: importances.join(','),
         match_duplicate: document.getElementById('ruleFormDuplicate').value,
         match_source: document.getElementById('ruleFormSource').value.trim(),
