@@ -5,8 +5,8 @@ Reuses the SQLite session-factory pattern from test_forward_outbox.py.
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
+from core.datetime_utils import utcnow
 
-from core.datetime_utils import ensure_utc
 
 import pytest
 from sqlalchemy import select
@@ -79,7 +79,7 @@ async def _insert_outbox(
 ) -> int:
     from models import ForwardOutbox
 
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     async with session_factory.begin() as session:
         record = ForwardOutbox(
             idempotency_key=f"forward:test-{now.timestamp()}",
@@ -133,7 +133,7 @@ class TestClaimOutbox:
     async def test_claims_pending_with_past_attempt_at(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
-        outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=10))
+        outbox_id = await _insert_outbox(session_factory, next_attempt_at=utcnow() - timedelta(seconds=10))
         record = await _claim_outbox(outbox_id)
         assert record is not None
         assert record.status == ForwardOutboxStatus.PROCESSING
@@ -149,7 +149,7 @@ class TestClaimOutbox:
     async def test_returns_none_for_future_attempt_at(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         from services.forwarding.outbox import _claim_outbox
 
-        outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now(tz=timezone.utc) + timedelta(hours=1))
+        outbox_id = await _insert_outbox(session_factory, next_attempt_at=utcnow() + timedelta(hours=1))
         record = await _claim_outbox(outbox_id)
         assert record is None
 
@@ -157,10 +157,10 @@ class TestClaimOutbox:
         from models import ForwardOutbox
         from services.forwarding.outbox import _claim_outbox
 
-        created_at = datetime.now(tz=timezone.utc) - timedelta(minutes=31)
+        created_at = utcnow() - timedelta(minutes=31)
         outbox_id = await _insert_outbox(
             session_factory,
-            next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1),
+            next_attempt_at=utcnow() - timedelta(seconds=1),
             created_at=created_at,
             updated_at=created_at,
         )
@@ -177,7 +177,7 @@ class TestClaimOutbox:
         from services.forwarding.outbox import _claim_outbox
 
         outbox_id = await _insert_outbox(
-            session_factory, status=ForwardOutboxStatus.RETRYING, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+            session_factory, status=ForwardOutboxStatus.RETRYING, next_attempt_at=utcnow() - timedelta(seconds=1)
         )
         record = await _claim_outbox(outbox_id)
         assert record is not None
@@ -202,7 +202,7 @@ class TestFinalizeOutboxFailure:
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
 
         outbox_id = await _insert_outbox(
-            session_factory, attempts=0, max_attempts=3, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+            session_factory, attempts=0, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)
         )
         await _claim_outbox(outbox_id)
         await _finalize_outbox_failure(outbox_id, "test error")
@@ -212,7 +212,7 @@ class TestFinalizeOutboxFailure:
         assert record is not None
         assert record.status == ForwardOutboxStatus.RETRYING
         assert record.next_attempt_at is not None
-        assert ensure_utc(record.next_attempt_at) > datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+        assert record.next_attempt_at > utcnow() - timedelta(seconds=1)
 
     async def test_transitions_to_exhausted_at_max_attempts(
         self,
@@ -236,7 +236,7 @@ class TestFinalizeOutboxFailure:
         monkeypatch.setattr("services.forwarding.outbox.forward_notification", fake_forward_notification)
 
         outbox_id = await _insert_outbox(
-            session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+            session_factory, attempts=2, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)
         )
         await _claim_outbox(outbox_id)  # attempts becomes 3
         await _finalize_outbox_failure(outbox_id, "exhausted")
@@ -264,7 +264,7 @@ class TestRequeueOutbox:
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _noop)
 
         outbox_id = await _insert_outbox(
-            session_factory, attempts=2, max_attempts=3, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1)
+            session_factory, attempts=2, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)
         )
         async with session_factory.begin() as session:
             record = await session.get(ForwardOutbox, outbox_id)
@@ -297,7 +297,7 @@ class TestFinalizeOutboxSuccess:
 
         monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
 
-        outbox_id = await _insert_outbox(session_factory, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1))
+        outbox_id = await _insert_outbox(session_factory, next_attempt_at=utcnow() - timedelta(seconds=1))
         record = await _claim_outbox(outbox_id)
         assert record is not None
         await _finalize_outbox_success(record, {"status": "success", "status_code": 200})
@@ -343,7 +343,7 @@ class TestFinalizeOutboxSuccess:
             session_factory,
             webhook_event_id=duplicate_id,
             original_event_id=original_id,
-            next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1),
+            next_attempt_at=utcnow() - timedelta(seconds=1),
         )
         record = await _claim_outbox(outbox_id)
         assert record is not None
@@ -378,7 +378,7 @@ class TestFinalizeOutboxSuccess:
             webhook_event_id=37769,
             original_event_id=37291,
             target_type="openclaw",
-            next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1),
+            next_attempt_at=utcnow() - timedelta(seconds=1),
         )
         record = await _claim_outbox(outbox_id)
         assert record is not None
@@ -426,7 +426,7 @@ class TestRunForwardOutboxScan:
 
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
 
-        stale_time = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        stale_time = utcnow() - timedelta(hours=1)
         await _insert_outbox(
             session_factory,
             status=ForwardOutboxStatus.PROCESSING,
@@ -455,7 +455,7 @@ class TestRunForwardOutboxScan:
 
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
 
-        await _insert_outbox(session_factory, next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=10))
+        await _insert_outbox(session_factory, next_attempt_at=utcnow() - timedelta(seconds=10))
 
         await run_forward_outbox_scan(policy=_outbox_policy(stale_processing_threshold_seconds=60))
 
@@ -477,10 +477,10 @@ class TestRunForwardOutboxScan:
 
         monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
 
-        old = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        old = utcnow() - timedelta(hours=1)
         await _insert_outbox(
             session_factory,
-            next_attempt_at=datetime.now(tz=timezone.utc) - timedelta(seconds=10),
+            next_attempt_at=utcnow() - timedelta(seconds=10),
             created_at=old,
             updated_at=old,
         )
@@ -624,7 +624,7 @@ class TestOpenClawPoller:
                 status=DeepAnalysisStatus.PENDING,
                 openclaw_session_key="session-1",
                 openclaw_run_id="run-1",
-                next_poll_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1),
+                next_poll_at=utcnow() - timedelta(seconds=1),
                 poll_attempts=0,
             )
             session.add(record)
@@ -645,7 +645,7 @@ class TestOpenClawPoller:
             updated = await session.get(DeepAnalysis, analysis_id)
         assert updated is not None
         assert updated.next_poll_at is not None
-        assert ensure_utc(updated.next_poll_at) > datetime.now(tz=timezone.utc)
+        assert updated.next_poll_at > utcnow()
 
     async def test_poll_single_record_completes_immediately_when_stability_hits_is_one(
         self,
@@ -668,7 +668,7 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
                 "duration_seconds": 0,
@@ -705,7 +705,7 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
                 "duration_seconds": 0,
@@ -738,10 +738,10 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc) - timedelta(hours=2),
+                "created_at": utcnow() - timedelta(hours=2),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": {
-                    openclaw.MANUAL_RETRY_STARTED_AT_KEY: datetime.now(tz=timezone.utc).isoformat(),
+                    openclaw.MANUAL_RETRY_STARTED_AT_KEY: utcnow().isoformat(),
                 },
                 "duration_seconds": 0,
             }
@@ -776,7 +776,7 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
                 "duration_seconds": 0,
@@ -811,7 +811,7 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
                 "duration_seconds": 0,
@@ -863,7 +863,7 @@ class TestOpenClawPoller:
                 "engine": "openclaw",
                 "openclaw_session_key": "session-1",
                 "openclaw_run_id": "run-1",
-                "created_at": datetime.now(tz=timezone.utc),
+                "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
                 "duration_seconds": 0,

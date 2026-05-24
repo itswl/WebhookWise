@@ -6,6 +6,7 @@ tests/test_forwarding_decision.py
 """
 
 from datetime import datetime, timedelta, timezone
+from core.datetime_utils import utcnow
 from unittest.mock import patch
 
 import pytest
@@ -123,7 +124,7 @@ async def test_duplicate_in_cooldown_skips():
     orig = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
-        event = _Event(last_notified_at=datetime.now(tz=timezone.utc) - timedelta(seconds=10))
+        event = _Event(last_notified_at=utcnow() - timedelta(seconds=10))
         with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
@@ -182,7 +183,7 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     _set_config("REMINDER_INTERVAL_HOURS", 6)
     rule = _FakeRule(1, importance="high")
     try:
-        event = _Event(last_notified_at=datetime.now(tz=timezone.utc) - timedelta(hours=7))
+        event = _Event(last_notified_at=utcnow() - timedelta(hours=7))
         with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is True

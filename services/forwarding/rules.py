@@ -1,6 +1,7 @@
 """Forwarding rule CRUD."""
 
 from datetime import datetime, timezone
+from core.datetime_utils import utcnow
 from typing import Any
 
 from sqlalchemy import select
@@ -78,7 +79,7 @@ async def update_forward_rule(session: AsyncSession, rule_id: int, payload: dict
         if field in payload:
             setattr(rule, field, payload[field])
 
-    rule.updated_at = datetime.now(tz=timezone.utc)
+    rule.updated_at = utcnow()
     await session.flush()
     return rule
 

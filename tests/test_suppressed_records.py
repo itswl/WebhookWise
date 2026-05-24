@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+from core.datetime_utils import utcnow
 
 import pytest
 from sqlalchemy import select
@@ -111,7 +112,7 @@ async def test_suppressed_service_lists_records(
     from models import SuppressedRecord
     from services.webhooks.repository import list_suppressed_records
 
-    now = datetime.now(tz=timezone.utc)
+    now = utcnow()
     async with session_factory.begin() as session:
         session.add(
             SuppressedRecord(

@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
+from core.datetime_utils import utcnow
 
 
 class WebhookEvent(Base):
@@ -57,8 +58,8 @@ class WebhookEvent(Base):
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
 
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
@@ -80,9 +81,9 @@ class WebhookEvent(Base):
             if getattr(self, k) != v:
                 setattr(self, k, v)
         if not self.timestamp:
-            self.timestamp = datetime.now(tz=timezone.utc)
+            self.timestamp = utcnow()
         if not self.created_at:
-            self.created_at = datetime.now(tz=timezone.utc)
+            self.created_at = utcnow()
 
 
 class ArchivedWebhookEvent(Base):

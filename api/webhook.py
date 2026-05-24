@@ -31,6 +31,7 @@ from core.sensitive_data import redact_event_dict
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.engine import test_db_connection
 from db.session import get_db_session
+from core.datetime_utils import utcnow
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from schemas.webhook import webhook_event_to_full_dict
@@ -128,7 +129,7 @@ async def _receive_and_enqueue_webhook(
 
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
-    received_at = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+    received_at = utcnow().isoformat(timespec="seconds")
 
     task_kwargs: dict[str, Any] = {
         "source_name": source_hint,
