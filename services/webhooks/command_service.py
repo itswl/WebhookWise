@@ -1,7 +1,7 @@
 """Webhook 命令服务：接收、保存与状态重放。"""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import cast
 
 import sqlalchemy
@@ -166,14 +166,14 @@ async def _save_duplicate_event(
     original = await session.get(WebhookEvent, original_id)
     if original:
         original.duplicate_count = (original.duplicate_count or 1) + 1
-        original.updated_at = datetime.now()
+        original.updated_at = datetime.now(tz=timezone.utc)
         duplicate_count = original.duplicate_count
         final_ai_analysis, final_importance = _resolve_analysis_for_duplicate(payload.ai_analysis, original, reanalyzed)
     else:
         res = await session.execute(
             update(WebhookEvent)
             .where(WebhookEvent.id == original_id)
-            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now())
+            .values(duplicate_count=WebhookEvent.duplicate_count + 1, updated_at=datetime.now(tz=timezone.utc))
             .returning(WebhookEvent.id)
         )
         if res.scalar_one_or_none() is None:
@@ -252,7 +252,7 @@ async def _update_existing_event(
                 if event is None:
                     raise RuntimeError("WebhookEvent not found") from e
                 original.duplicate_count = (original.duplicate_count or 1) + 1
-                original.updated_at = datetime.now()
+                original.updated_at = datetime.now(tz=timezone.utc)
 
                 _fill_duplicate_event(
                     event,

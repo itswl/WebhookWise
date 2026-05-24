@@ -7,7 +7,7 @@ final persistence and forwarding intent creation.
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from core import json
@@ -144,20 +144,6 @@ async def _resolve_noise_context(
     dedup_result = await resolve_dedup(ctx.dedup_key)
 
     if dedup_result.action in ("reuse", "rechain"):
-        analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
-        route_type = dedup_result.route_type or "redis_reuse"
-        analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
-        importance = normalize_importance(analysis.get("importance", "unknown"))
-        set_log_context(route_type=route_type)
-        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
-        await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
-        logger.debug(
-            "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
-            ctx.event_id,
-            ctx.request_id,
-            importance,
-            route_type,
-        )
         analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
         route_type = dedup_result.route_type or "redis_reuse"
         analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
@@ -381,7 +367,7 @@ async def handle_webhook_ingest(
         payload=payload,
         raw_body=raw_body.encode("utf-8"),
         source=source,
-        event_ts=received_at or datetime.now().astimezone().isoformat(timespec="seconds"),
+        event_ts=received_at or datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
         request_id=request_id,
     )
     await _handle_raw_ingest(

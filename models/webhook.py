@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -57,8 +57,8 @@ class WebhookEvent(Base):
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
 
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
@@ -80,9 +80,9 @@ class WebhookEvent(Base):
             if getattr(self, k) != v:
                 setattr(self, k, v)
         if not self.timestamp:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(tz=timezone.utc)
         if not self.created_at:
-            self.created_at = datetime.now()
+            self.created_at = datetime.now(tz=timezone.utc)
 
 
 class ArchivedWebhookEvent(Base):

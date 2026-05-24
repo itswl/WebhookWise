@@ -5,7 +5,7 @@ tests/test_forwarding_decision.py
 这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -61,7 +61,7 @@ def _set_config(key: str, value: object) -> None:
 async def test_high_importance_with_matched_rule_forwards():
     """高重要性 + 匹配规则应转发。"""
     rule = _FakeRule(1, importance="high")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("high", False, None, None, "prometheus")
     assert decision.should_forward is True
 
@@ -69,7 +69,7 @@ async def test_high_importance_with_matched_rule_forwards():
 @pytest.mark.asyncio
 async def test_medium_importance_no_rules_does_not_forward():
     """无规则、medium 重要性不自动转发。"""
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     assert decision.should_forward is False
     assert "未匹配转发规则" in (decision.skip_reason or "")
@@ -77,14 +77,14 @@ async def test_medium_importance_no_rules_does_not_forward():
 
 @pytest.mark.asyncio
 async def test_low_importance_no_rules_does_not_forward():
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("low", False, None, None, "prometheus")
     assert decision.should_forward is False
 
 
 @pytest.mark.asyncio
 async def test_unknown_importance_does_not_forward():
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("", False, None, None, "prometheus")
     assert decision.should_forward is False
 
@@ -96,7 +96,7 @@ async def test_unknown_importance_does_not_forward():
 async def test_noise_suppression_overrides_high_importance():
     """降噪决策抑制转发时，即使是 high 重要性也不转发。"""
     noise = _Noise(suppress=True, reason="衍生告警")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("high", False, noise, None, "prometheus")
     assert decision.should_forward is False
     assert "智能降噪抑制转发" in (decision.skip_reason or "")
@@ -107,7 +107,7 @@ async def test_noise_no_suppress_allows_forward():
     """降噪不抑制时，high 告警 + 匹配规则正常转发。"""
     noise = _Noise(suppress=False)
     rule = _FakeRule(1, importance="high")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("high", False, noise, None, "prometheus")
     assert decision.should_forward is True
 
@@ -123,8 +123,8 @@ async def test_duplicate_in_cooldown_skips():
     orig = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
     _set_config("NOTIFICATION_COOLDOWN_SECONDS", 300)
     try:
-        event = _Event(last_notified_at=datetime.now() - timedelta(seconds=10))
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+        event = _Event(last_notified_at=datetime.now(tz=timezone.utc) - timedelta(seconds=10))
+        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
         assert "冷却" in (decision.skip_reason or "")
@@ -142,7 +142,7 @@ async def test_duplicate_no_matched_rules_skips():
     _set_config("ENABLE_PERIODIC_REMINDER", False)
     try:
         event = _Event(last_notified_at=None)
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", NO_RULES):
+        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
         assert "未匹配" in (decision.skip_reason or "")
@@ -162,7 +162,7 @@ async def test_duplicate_with_matched_rules_forwards():
     rule = _FakeRule(1, importance="high")
     try:
         event = _Event(last_notified_at=None)
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is True
     finally:
@@ -182,8 +182,8 @@ async def test_duplicate_periodic_reminder_triggers_forward():
     _set_config("REMINDER_INTERVAL_HOURS", 6)
     rule = _FakeRule(1, importance="high")
     try:
-        event = _Event(last_notified_at=datetime.now() - timedelta(hours=7))
-        with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+        event = _Event(last_notified_at=datetime.now(tz=timezone.utc) - timedelta(hours=7))
+        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is True
         assert decision.is_periodic_reminder is True
@@ -222,7 +222,7 @@ class _FakeRule:
 async def test_matched_rule_enables_medium_forward():
     """有匹配规则时，即使是 medium 重要性也应转发。"""
     rule = _FakeRule(1, importance="medium")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     assert decision.should_forward is True
     assert len(decision.matched_rules) == 1
@@ -233,7 +233,7 @@ async def test_stop_on_match_limits_rules():
     """stop_on_match=True 时只取第一条规则。"""
     rule1 = _FakeRule(1, importance="high", target_url="https://a.com", stop=True)
     rule2 = _FakeRule(2, importance="high", target_url="https://b.com", stop=False)
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule1, rule2])):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule1, rule2])):
         decision = await resolve_forward_decision("high", False, None, None, "prometheus")
     assert decision.should_forward is True
     assert len(decision.matched_rules) == 1
@@ -244,7 +244,7 @@ async def test_stop_on_match_limits_rules():
 async def test_source_filter_excludes_non_matching_source():
     """规则限定 source 时，不匹配的来源不触发规则。"""
     rule = _FakeRule(1, importance="medium", source="grafana")
-    with patch("services.webhooks.forwarding_stage.list_enabled_forward_rules", _make_rules_loader([rule])):
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     # prometheus 来源不匹配 grafana 规则，medium 无规则命中，不转发
     assert decision.should_forward is False

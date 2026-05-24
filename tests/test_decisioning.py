@@ -5,7 +5,7 @@ unit tests because the functions have no side effects and encode all
 forwarding / rule-matching logic.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from core.text import split_csv_lower
 from services.webhooks.decisioning import (
@@ -219,7 +219,7 @@ class TestDecideForwarding:
             rules=rules or [],
             policy=policy or _make_policy(),
             parsed_data=parsed_data,
-            now=now or datetime.now(),
+            now=now or datetime.now(tz=timezone.utc),
         )
 
     def test_noise_suppress_overrides_all(self) -> None:
@@ -268,7 +268,7 @@ class TestDecideForwarding:
         assert not rejected.should_forward
 
     def test_duplicate_in_cooldown_suppresses(self) -> None:
-        recent = datetime.now() - timedelta(seconds=10)
+        recent = datetime.now(tz=timezone.utc) - timedelta(seconds=10)
         result = self._decide(
             importance="high",
             is_duplicate=True,
@@ -278,7 +278,7 @@ class TestDecideForwarding:
         assert not result.should_forward
 
     def test_duplicate_cooldown_expired_with_matched_rules_forwards(self) -> None:
-        old = datetime.now() - timedelta(seconds=120)
+        old = datetime.now(tz=timezone.utc) - timedelta(seconds=120)
         rules = [_make_rule(match_importance="high")]
         result = self._decide(
             importance="high",
@@ -290,7 +290,7 @@ class TestDecideForwarding:
         assert result.should_forward
 
     def test_duplicate_no_matched_rules_skips(self) -> None:
-        old = datetime.now() - timedelta(seconds=120)
+        old = datetime.now(tz=timezone.utc) - timedelta(seconds=120)
         result = self._decide(
             importance="high",
             is_duplicate=True,
@@ -300,7 +300,7 @@ class TestDecideForwarding:
         assert not result.should_forward
 
     def test_periodic_reminder_triggers(self) -> None:
-        old = datetime.now() - timedelta(hours=7)
+        old = datetime.now(tz=timezone.utc) - timedelta(hours=7)
         rules = [_make_rule(match_importance="high")]
         result = self._decide(
             importance="high",

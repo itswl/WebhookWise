@@ -167,13 +167,13 @@ def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
 
 
 async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> dict[str, Any] | None:
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import select
 
     from models import WebhookEvent
 
-    now = datetime.now()
+    now = datetime.now(tz=timezone.utc)
     threshold = now - timedelta(seconds=window_seconds)
     async with session_scope() as session:
         stmt = (

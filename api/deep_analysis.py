@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -73,7 +73,7 @@ def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
     from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
     delay = compute_openclaw_poll_delay(record.poll_attempts or 0)
-    record.next_poll_at = datetime.now() + timedelta(seconds=delay)
+    record.next_poll_at = datetime.now(tz=timezone.utc) + timedelta(seconds=delay)
     return delay
 
 
@@ -215,7 +215,7 @@ async def retry_deep_analysis(
             ctx, event.headers or {}, record.user_question or ""
         )
         if new_result.get("_pending"):
-            now = datetime.now()
+            now = datetime.now(tz=timezone.utc)
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
             record.openclaw_run_id = str(new_result.get("_openclaw_run_id", ""))
@@ -244,7 +244,7 @@ async def retry_deep_analysis(
 
     from services.analysis.openclaw import clear_openclaw_poll_state
 
-    _reset_deep_analysis_for_background_poll(record, datetime.now())
+    _reset_deep_analysis_for_background_poll(record, datetime.now(tz=timezone.utc))
     await session.flush()
     record_data = deep_analysis_to_dict(record)
     await session.commit()
