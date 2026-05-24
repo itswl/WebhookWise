@@ -327,8 +327,17 @@ async def forward_deep_analysis(
             source=source,
             formatted_payload=formatted_payload,
             webhook_id=analysis.webhook_event_id or None,
+            target_url=target_url,
         )
         outbox_id = result.get("outbox_id")
+        status = result.get("status", "")
+        if status == "skipped":
+            reason = result.get("reason", "未知")
+            logger.warning(
+                "[DeepAnalysis] 手动转发被跳过 analysis_id=%s target=%s reason=%s",
+                analysis_id, mask_url(target_url), reason,
+            )
+            return JSONResponse(status_code=400, content={"success": False, "error": f"转发失败: {reason}"})
         logger.info(
             "[DeepAnalysis] 手动转发已入队 analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
             analysis_id,
