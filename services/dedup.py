@@ -59,11 +59,17 @@ async def remember_dedup_state(
     original_event_id: int,
     analysis: dict[str, Any] | None,
     ttl_seconds: int,
+    *,
+    reset_chain: bool = False,
 ) -> None:
     current_time = time.time()
     existing = await get_dedup_state(dedup_key)
-    count = (existing.count + 1) if existing else 1
-    first_seen_at = existing.first_seen_at if existing else current_time
+    if reset_chain:
+        count = 1
+        first_seen_at = current_time
+    else:
+        count = (existing.count + 1) if existing else 1
+        first_seen_at = existing.first_seen_at if existing else current_time
 
     payload: dict[str, Any] = {
         "dedup_key": dedup_key,
@@ -84,6 +90,7 @@ async def remember_dedup_state(
 class DedupAction(StrEnum):
     NEW = "new"
     REUSE = "reuse"
+    RECHAIN = "rechain"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +103,10 @@ class DedupResult:
     @property
     def is_duplicate(self) -> bool:
         return self.action == DedupAction.REUSE
+
+    @property
+    def is_rechain(self) -> bool:
+        return self.action == DedupAction.RECHAIN
 
 
 def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
@@ -145,6 +156,10 @@ def _dedup_window_seconds() -> int:
     return int(get_config_manager().retry.DEDUP_WINDOW_SECONDS)
 
 
+def _analysis_reuse_window_seconds() -> int:
+    return int(get_config_manager().retry.ANALYSIS_REUSE_WINDOW_SECONDS)
+
+
 def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
     if not analysis:
         return False
@@ -179,25 +194,49 @@ async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> di
 
 
 async def resolve_dedup(dedup_key: str) -> DedupResult:
-    window_seconds = _dedup_window_seconds()
+    dedup_window = _dedup_window_seconds()
+    analysis_reuse_window = _analysis_reuse_window_seconds()
     now = time.time()
 
     state = await get_dedup_state(dedup_key)
-    if state and state.is_active(now, window_seconds) and _has_reusable_analysis(state.analysis):
-        logger.debug(
-            "[Dedup] Redis 滑动窗口命中 dedup_key=%s orig_id=%s count=%d",
-            dedup_key[:32] if dedup_key else "-",
-            state.original_event_id,
-            state.count,
-        )
-        return DedupResult(
-            action=DedupAction.REUSE,
-            analysis=state.analysis,
-            original_event_id=state.original_event_id,
-            route_type="redis_reuse",
-        )
+    if state and _has_reusable_analysis(state.analysis):
+        first_seen_elapsed = now - state.first_seen_at
+        last_seen_elapsed = now - state.last_seen_at
 
-    db_result = await _find_original_by_dedup_key(dedup_key, window_seconds)
+        # RECHAIN: dedup 窗口过期但 AI 分析仍在复用窗口内 → 创建新告警但复用分析
+        if first_seen_elapsed > dedup_window and last_seen_elapsed <= dedup_window and first_seen_elapsed <= analysis_reuse_window:
+            logger.info(
+                "[Dedup] 告警链超窗口，重建链 dedup_key=%s orig_id=%s first_seen_elapsed=%ds dedup_window=%ds analysis_window=%ds count=%d",
+                dedup_key[:32] if dedup_key else "-",
+                state.original_event_id,
+                int(first_seen_elapsed),
+                dedup_window,
+                analysis_reuse_window,
+                state.count,
+            )
+            return DedupResult(
+                action=DedupAction.RECHAIN,
+                analysis=state.analysis,
+                original_event_id=state.original_event_id,
+                route_type="rechain",
+            )
+
+        # REUSE: 常规去重窗口命中
+        if state.is_active(now, dedup_window):
+            logger.debug(
+                "[Dedup] Redis 滑动窗口命中 dedup_key=%s orig_id=%s count=%d",
+                dedup_key[:32] if dedup_key else "-",
+                state.original_event_id,
+                state.count,
+            )
+            return DedupResult(
+                action=DedupAction.REUSE,
+                analysis=state.analysis,
+                original_event_id=state.original_event_id,
+                route_type="redis_reuse",
+            )
+
+    db_result = await _find_original_by_dedup_key(dedup_key, dedup_window)
     if db_result:
         logger.debug(
             "[Dedup] DB fallback 命中 dedup_key=%s orig_id=%s",
