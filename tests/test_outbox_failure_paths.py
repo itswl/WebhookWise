@@ -391,6 +391,20 @@ class TestFinalizeOutboxSuccess:
         assert deep.openclaw_run_id == "run-1"
 
 
+async def test_list_outbox_records_includes_original_event_id(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from services.forwarding.outbox import list_outbox_records
+
+    outbox_id = await _insert_outbox(session_factory, webhook_event_id=42763, original_event_id=42672)
+
+    data = await list_outbox_records(page=1, page_size=10)
+    row = next(item for item in data["items"] if item["id"] == outbox_id)
+
+    assert row["webhook_event_id"] == 42763
+    assert row["original_event_id"] == 42672
+
+
 # ── run_forward_outbox_scan ──────────────────────────────────────────
 
 
