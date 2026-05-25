@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
 from core.app_context import get_config_manager
+from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import ForwardDeliveryPolicy
@@ -11,6 +13,7 @@ from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
 
 _FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
 _FEISHU_HOSTS = ("feishu.cn", "larksuite.com")
+_CHINA_TZ = timezone(timedelta(hours=8), "UTC+8")
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {
@@ -35,6 +38,18 @@ def _float_or_zero(value: object) -> float:
         except ValueError:
             return 0.0
     return 0.0
+
+
+def _format_card_time(value: object) -> str:
+    if isinstance(value, datetime):
+        parsed = naive_utc(value)
+    elif isinstance(value, str):
+        parsed = parse_utc_datetime(value)
+        if parsed is None:
+            return value
+    else:
+        return str(value) if value else ""
+    return parsed.replace(tzinfo=UTC).astimezone(_CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S UTC+8")
 
 
 def is_feishu_url(url: str) -> bool:
@@ -63,7 +78,7 @@ def build_feishu_card(
     rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
     event_type_display = f"{event_type}" if event_type and rule_name else event_type or rule_name or "—"
 
-    timestamp = webhook_data.get("timestamp", "")
+    timestamp = _format_card_time(webhook_data.get("timestamp", ""))
 
     summary = analysis_result.get("summary", "")
     impact = analysis_result.get("impact_scope", "")

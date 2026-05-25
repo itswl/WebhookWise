@@ -126,6 +126,8 @@ def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     diagnostics = json.loads((ROOT / "grafana/dashboard-diagnostics.json").read_text())
     assert dashboard["title"] == "WebhookWise AIOps 基础大盘"
     assert diagnostics["title"] == "WebhookWise AIOps 深度诊断大盘"
+    assert dashboard["timezone"] == "browser"
+    assert diagnostics["timezone"] == "browser"
     titles = {panel["title"] for panel in dashboard["panels"]}
     assert "SLO、告警与链路闭环 (SLO / Alerts / Correlation)" in titles
     assert "API 可用性 SLO 5m" in titles

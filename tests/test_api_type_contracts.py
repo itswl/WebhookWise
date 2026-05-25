@@ -37,6 +37,16 @@ def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
     assert offenders == []
 
 
+def test_feishu_card_formats_utc_timestamp_as_china_time():
+    from services.notifications.feishu import build_feishu_card
+
+    card = build_feishu_card(
+        {"source": "prometheus", "timestamp": "2026-05-25T07:54:06Z", "parsed_data": {"event_type": "alert"}},
+        {"importance": "high", "summary": "test"},
+    )
+    assert "2026-05-25 15:54:06 UTC+8" in str(card)
+
+
 @pytest.fixture()
 async def session(monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
