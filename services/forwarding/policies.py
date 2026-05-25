@@ -44,7 +44,6 @@ class ForwardDeliveryPolicy:
 @dataclass(frozen=True, slots=True)
 class OpenClawTriggerPolicy:
     enabled: bool
-    data_dir: str
     timeout_seconds: int
     platform: str
     gateway_url: str
@@ -60,7 +59,6 @@ class OpenClawTriggerPolicy:
         cfg = get_config_manager()
         return cls(
             enabled=bool(cfg.openclaw.OPENCLAW_ENABLED),
-            data_dir=str(cfg.server.DATA_DIR),
             timeout_seconds=int(cfg.openclaw.OPENCLAW_TIMEOUT_SECONDS),
             platform=str(cfg.ai.DEEP_ANALYSIS_PLATFORM).lower(),
             gateway_url=str(cfg.openclaw.OPENCLAW_GATEWAY_URL),

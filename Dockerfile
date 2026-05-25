@@ -62,7 +62,7 @@ COPY alembic/ ./alembic/
 # 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录并设置权限
-RUN mkdir -p logs webhooks_data && \
+RUN mkdir -p logs && \
     chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
