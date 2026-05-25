@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import json
 from core.compression import decompress_payload_async
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from db.session import count_with_timeout, session_scope
 from models import ForwardRule, SuppressedRecord, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
@@ -184,7 +184,7 @@ async def list_suppressed_records(
             "reason": r.reason,
             "related_alert_ids": list(r.related_alert_ids or []),
             "confidence": r.confidence,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": utc_isoformat(r.created_at),
         }
         for r in rows
     ]

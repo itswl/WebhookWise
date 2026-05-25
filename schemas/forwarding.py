@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from core.datetime_utils import utc_isoformat
+
 from .base import APIResponse
 
 
@@ -39,4 +41,8 @@ class ForwardRuleDetailResponse(APIResponse[ForwardRuleSchema]):
 
 
 def forward_rule_to_dict(rule: Any) -> dict[str, Any]:
-    return ForwardRuleSchema.model_validate(rule).model_dump(mode="json")
+    data = ForwardRuleSchema.model_validate(rule).model_dump()
+    for field in ("created_at", "updated_at"):
+        if isinstance(data.get(field), datetime):
+            data[field] = utc_isoformat(data[field])
+    return data

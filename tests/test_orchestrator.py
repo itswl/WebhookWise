@@ -203,7 +203,9 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
     # timestamp 和 created_at 应为 ISO 格式字符串（可被 JSON 序列化）
     assert isinstance(d["timestamp"], str)
     assert "T" in d["timestamp"]
+    assert d["timestamp"].endswith("Z")
     assert isinstance(d["created_at"], str)
+    assert d["created_at"].endswith("Z")
 
 
 def test_row_to_summary_dict_duplicate_within_window():

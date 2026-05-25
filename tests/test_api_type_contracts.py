@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
@@ -12,6 +12,13 @@ pytest.importorskip("fastapi")
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
+
+
+def test_utc_isoformat_marks_naive_datetimes_as_utc():
+    from core.datetime_utils import utc_isoformat
+
+    assert utc_isoformat(datetime(2026, 1, 1, 0, 0, 0)) == "2026-01-01T00:00:00Z"
+    assert utc_isoformat(datetime(2026, 1, 1, 8, 0, 0, tzinfo=UTC)) == "2026-01-01T08:00:00Z"
 
 
 @pytest.fixture()

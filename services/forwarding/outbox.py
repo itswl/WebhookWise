@@ -15,7 +15,7 @@ from typing import Any, cast
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import get_logger
 from core.observability.attributes import FORWARD_STATUS, FORWARD_TARGET_TYPE, WEBHOOK_EVENT_ID
 from core.observability.metrics import (
@@ -643,12 +643,12 @@ async def list_outbox_records(
                 "status": r.status,
                 "attempts": r.attempts,
                 "max_attempts": r.max_attempts,
-                "next_attempt_at": r.next_attempt_at.isoformat() if r.next_attempt_at else None,
-                "last_attempt_at": r.last_attempt_at.isoformat() if r.last_attempt_at else None,
-                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                "next_attempt_at": utc_isoformat(r.next_attempt_at),
+                "last_attempt_at": utc_isoformat(r.last_attempt_at),
+                "sent_at": utc_isoformat(r.sent_at),
                 "last_error": (r.last_error or "")[:200],
                 "is_periodic_reminder": r.is_periodic_reminder,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": utc_isoformat(r.created_at),
             }
             for r in rows
         ]
