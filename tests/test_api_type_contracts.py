@@ -1,10 +1,11 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 
-from core.datetime_utils import utcnow
+from core.datetime_utils import parse_utc_datetime, utcnow
 
 pytest.importorskip("fastapi")
 
@@ -19,6 +20,21 @@ def test_utc_isoformat_marks_naive_datetimes_as_utc():
 
     assert utc_isoformat(datetime(2026, 1, 1, 0, 0, 0)) == "2026-01-01T00:00:00Z"
     assert utc_isoformat(datetime(2026, 1, 1, 8, 0, 0, tzinfo=UTC)) == "2026-01-01T08:00:00Z"
+
+
+def test_parse_utc_datetime_normalizes_explicit_offsets_to_naive_utc():
+    assert parse_utc_datetime("2026-01-01T08:00:00+08:00") == datetime(2026, 1, 1, 0, 0, 0)
+    assert parse_utc_datetime("2026-01-01T00:00:00Z") == datetime(2026, 1, 1, 0, 0, 0)
+
+
+def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
+    offenders = []
+    for path in (Path(__file__).resolve().parents[1] / "models").glob("*.py"):
+        text = path.read_text()
+        offenders.extend(
+            f"{path.name}: {needle}" for needle in ("default=datetime.now", "default=func.now()") if needle in text
+        )
+    assert offenders == []
 
 
 @pytest.fixture()
@@ -276,7 +292,10 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     assert record.status == DeepAnalysisStatus.PENDING
     assert isinstance(record.analysis_result, dict)
     retry_started_at = record.analysis_result[deep_analysis.MANUAL_RETRY_STARTED_AT_KEY]
-    assert datetime.fromisoformat(str(retry_started_at)) >= started
+    assert isinstance(retry_started_at, str)
+    assert retry_started_at.endswith("Z")
+    parsed_retry_started_at = parse_utc_datetime(retry_started_at)
+    assert parsed_retry_started_at is not None and parsed_retry_started_at >= started
     assert record.duration_seconds == 0
     assert record.poll_attempts == 0
     assert record.last_polled_at is None

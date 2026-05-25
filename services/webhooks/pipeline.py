@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from core import json
 from core.alert_concurrency import alert_processing_gate
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.attributes import (
@@ -463,7 +463,7 @@ async def handle_webhook_ingest(
             payload=payload,
             raw_body=raw_body.encode("utf-8"),
             source=source,
-            event_ts=received_at or utcnow().isoformat(timespec="seconds"),
+            event_ts=received_at or utc_isoformat(utcnow()),
             request_id=request_id,
         )
         await _handle_raw_ingest(

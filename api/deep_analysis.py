@@ -80,7 +80,7 @@ def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
 
 def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime) -> None:
     record.status = DeepAnalysisStatus.PENDING
-    record.analysis_result = {MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
+    record.analysis_result = {MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
     record.duration_seconds = 0
     record.poll_attempts = 0
     record.last_polled_at = None
@@ -216,7 +216,7 @@ async def retry_deep_analysis(
         if new_result.get("_pending"):
             now = utcnow()
             record.status = DeepAnalysisStatus.PENDING
-            record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: now.isoformat()}
+            record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
             record.openclaw_run_id = str(new_result.get("_openclaw_run_id", ""))
             record.openclaw_session_key = str(new_result.get("_openclaw_session_key", ""))
             record.duration_seconds = 0
