@@ -8,7 +8,7 @@ import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 
 from core import json
-from core.datetime_utils import utcnow
+from core.datetime_utils import parse_utc_datetime, utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
@@ -31,12 +31,7 @@ def _parse_raw_body(raw_body: str) -> dict[str, object] | None:
 
 
 def _parse_received_at(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
+    return parse_utc_datetime(value)
 
 
 async def record_raw_ingest_dead_letter(

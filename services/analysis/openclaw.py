@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import contextlib
 import hashlib
 import hmac as hmac_mod
 import platform
@@ -21,7 +20,7 @@ import websockets
 from core import json
 from core.app_context import get_config_manager
 from core.circuit_breaker import CircuitBreakerOpenException
-from core.datetime_utils import utcnow
+from core.datetime_utils import parse_utc_datetime, utcnow
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.metrics import (
@@ -561,8 +560,9 @@ def _poll_timeout_started_at(rec: WebhookData) -> datetime | None:
     if isinstance(analysis_result, dict):
         manual_retry_started_at = analysis_result.get(MANUAL_RETRY_STARTED_AT_KEY)
         if isinstance(manual_retry_started_at, str) and manual_retry_started_at:
-            with contextlib.suppress(ValueError):
-                return datetime.fromisoformat(manual_retry_started_at)
+            parsed = parse_utc_datetime(manual_retry_started_at)
+            if parsed is not None:
+                return parsed
     created_at = rec.get("created_at")
     return created_at if isinstance(created_at, datetime) else None
 

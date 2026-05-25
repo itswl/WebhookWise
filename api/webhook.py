@@ -139,7 +139,7 @@ async def _receive_and_enqueue_webhook(
 
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
-    received_at = utcnow().isoformat(timespec="seconds")
+    received_at = utc_isoformat(utcnow())
 
     trace_headers = inject_trace_headers(
         {},

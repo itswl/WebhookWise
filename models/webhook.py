@@ -29,7 +29,7 @@ class WebhookEvent(Base):
     request_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     client_ip: Mapped[str | None] = mapped_column(String(50))
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     raw_payload: Mapped[bytes | None] = mapped_column(LargeBinary)
     headers: Mapped[dict[str, object] | None] = mapped_column(JSONB)
@@ -122,6 +122,6 @@ class ArchivedWebhookEvent(Base):
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    archived_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
+    archived_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)

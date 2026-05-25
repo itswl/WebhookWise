@@ -11,12 +11,12 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.datetime_utils import utcnow
 from db.session import Base
 
 
@@ -26,7 +26,7 @@ class AIUsageLog(Base):
     __tablename__ = "ai_usage_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime | None] = mapped_column(DateTime, default=func.now(), index=True)
+    timestamp: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), index=True)
     model: Mapped[str | None] = mapped_column(String(100))
     tokens_in: Mapped[int] = mapped_column(Integer, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)
@@ -57,7 +57,7 @@ class DeepAnalysis(Base):
     user_question: Mapped[str] = mapped_column(Text, default="")
     analysis_result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     duration_seconds: Mapped[float] = mapped_column(Float, default=0)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
     openclaw_run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     openclaw_session_key: Mapped[str | None] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)

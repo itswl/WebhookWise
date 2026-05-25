@@ -8,9 +8,27 @@ def utcnow() -> datetime:
     return datetime.now(tz=UTC).replace(tzinfo=None)
 
 
+def naive_utc(value: datetime) -> datetime:
+    """Normalize aware datetimes to naive UTC; treat naive inputs as UTC."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def parse_utc_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO datetime string into the project's naive-UTC convention."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return naive_utc(parsed)
+
+
 def utc_isoformat(value: datetime | None) -> str | None:
     """Serialize a datetime as explicit UTC for browser-safe API responses."""
     if value is None:
         return None
-    value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    value = naive_utc(value).replace(tzinfo=UTC)
     return value.isoformat().replace("+00:00", "Z")

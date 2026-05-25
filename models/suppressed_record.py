@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, Float, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.datetime_utils import utcnow
 from db.session import Base
 
 
@@ -20,10 +21,9 @@ class SuppressedRecord(Base):
     reason: Mapped[str] = mapped_column(String(500), default="")
     related_alert_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
 
     __table_args__ = (
         Index("idx_suppressed_records_created_at", "created_at"),
         Index("idx_suppressed_records_hash_created", "alert_hash", "created_at"),
     )
-
