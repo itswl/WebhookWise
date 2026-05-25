@@ -41,6 +41,7 @@ def _float_or_zero(value: object) -> float:
 
 
 def _format_card_time(value: object) -> str:
+    parsed: datetime | None
     if isinstance(value, datetime):
         parsed = naive_utc(value)
     elif isinstance(value, str):
