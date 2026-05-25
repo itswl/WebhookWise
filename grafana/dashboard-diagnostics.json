@@ -3801,7 +3801,7 @@
     "to": "now"
   },
   "timepicker": {},
-  "timezone": "",
+  "timezone": "browser",
   "title": "WebhookWise AIOps 深度诊断大盘",
   "uid": "webhook-wise-aiops-diagnostics",
   "version": 2,
