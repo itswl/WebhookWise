@@ -1,12 +1,11 @@
 """Forwarding rule CRUD."""
 
-from datetime import datetime, timezone
-from core.datetime_utils import utcnow
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.datetime_utils import utcnow
 from models import ForwardRule
 
 

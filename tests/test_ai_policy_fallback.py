@@ -28,7 +28,7 @@ async def test_ai_policy_refusal_degrades_to_rules_even_when_global_degradation_
 
     send_alert = AsyncMock()
     log_usage = AsyncMock()
-    monkeypatch.setattr(ai_analyzer, "_call_ai_with_retry", fail_with_policy_refusal)
+    monkeypatch.setattr(ai_analyzer._llm_client, "_call_ai_with_retry", fail_with_policy_refusal)
     monkeypatch.setattr(ai_analyzer, "_send_ai_error_alert", send_alert)
     monkeypatch.setattr(ai_analyzer, "log_ai_usage", log_usage)
 
@@ -61,10 +61,12 @@ async def test_ai_generic_error_still_raises_when_global_degradation_disabled(
     monkeypatch.setattr(temp_config.ai, "ENABLE_AI_DEGRADATION", False)
     monkeypatch.setattr(ai_analyzer, "_send_ai_error_alert", AsyncMock())
 
-    async def fail_generically(parsed_data: dict[str, object], source: str, **kwargs: object) -> tuple[dict[str, object], int, int]:
+    async def fail_generically(
+        parsed_data: dict[str, object], source: str, **kwargs: object
+    ) -> tuple[dict[str, object], int, int]:
         raise RuntimeError("unexpected provider failure")
 
-    monkeypatch.setattr(ai_analyzer, "_call_ai_with_retry", fail_generically)
+    monkeypatch.setattr(ai_analyzer._llm_client, "_call_ai_with_retry", fail_generically)
 
     with pytest.raises(RuntimeError, match="unexpected provider failure"):
         await ai_analyzer.analyze_webhook_with_ai(

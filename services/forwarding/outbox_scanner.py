@@ -5,7 +5,7 @@ Called by the scheduled task in services/operations/tasks.py.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +25,9 @@ from services.webhooks.types import ForwardOutboxStatus
 logger = get_logger("outbox_scanner")
 
 
-async def _expire_due_outboxes(session: AsyncSession, *, now: datetime, policy: ForwardDeliveryPolicy, limit: int) -> int:
+async def _expire_due_outboxes(
+    session: AsyncSession, *, now: datetime, policy: ForwardDeliveryPolicy, limit: int
+) -> int:
     if policy.max_delivery_age_seconds <= 0 or limit <= 0:
         return 0
     cutoff = now - timedelta(seconds=policy.max_delivery_age_seconds)

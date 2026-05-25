@@ -158,7 +158,6 @@ def _make_row(
     is_duplicate=False,
     duplicate_of=None,
     duplicate_count=0,
-    beyond_window=False,
     forward_status="success",
     ai_analysis=None,
     parsed_data=None,
@@ -174,7 +173,6 @@ def _make_row(
     row.is_duplicate = is_duplicate
     row.duplicate_of = duplicate_of
     row.duplicate_count = duplicate_count
-    row.beyond_window = beyond_window
     row.forward_status = forward_status
     row.ai_analysis = ai_analysis
     row.parsed_data = parsed_data or {}
@@ -194,7 +192,6 @@ def test_row_to_summary_dict_basic_fields():
     assert d["source"] == "prometheus"
     assert d["importance"] == "high"
     assert d["is_duplicate"] is False
-    assert d["beyond_window"] is False
     assert d["duplicate_type"] == "new"
 
 
@@ -212,21 +209,9 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
 def test_row_to_summary_dict_duplicate_within_window():
     from services.webhooks.query_service import _row_to_summary_dict
 
-    row = _make_row(is_duplicate=True, duplicate_of=5, beyond_window=False)
+    row = _make_row(is_duplicate=True, duplicate_of=5)
     d = _row_to_summary_dict(row)
     assert d["is_duplicate"] is True
-    assert d["beyond_window"] is False
-    assert d["duplicate_type"] == "within_window"
-    assert d["is_within_window"] is True
-
-
-def test_row_to_summary_dict_duplicate_beyond_window():
-    from services.webhooks.query_service import _row_to_summary_dict
-
-    row = _make_row(is_duplicate=True, duplicate_of=5, beyond_window=True)
-    d = _row_to_summary_dict(row)
-    assert d["is_duplicate"] is True
-    assert d["beyond_window"] is False
     assert d["duplicate_type"] == "within_window"
     assert d["is_within_window"] is True
 

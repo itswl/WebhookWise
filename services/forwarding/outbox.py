@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import (
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
@@ -22,7 +23,6 @@ from core.observability.metrics import (
 )
 from core.observability.tracing import otel_span, set_span_error
 from db.session import session_scope
-from core.datetime_utils import utcnow
 from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
@@ -180,16 +180,30 @@ async def forward_notification(
     policy = policy or ForwardDeliveryPolicy.from_config()
 
     if target_url:
-        matched = [ForwardRuleSnapshot(
-            id=None, name="manual_forward", match_event_type="", match_importance="",
-            match_source="", match_duplicate="", match_payload="",
-            target_type="webhook", target_url=target_url, stop_on_match=True, target_name="",
-        )]
+        matched = [
+            ForwardRuleSnapshot(
+                id=None,
+                name="manual_forward",
+                match_event_type="",
+                match_importance="",
+                match_source="",
+                match_duplicate="",
+                match_payload="",
+                target_type="webhook",
+                target_url=target_url,
+                stop_on_match=True,
+                target_name="",
+            )
+        ]
     else:
         rules = await list_enabled_forward_rules()
         matched = select_forward_rules(
-            rules, event_type=event_type, importance=importance,
-            source=source, is_duplicate=is_duplicate, parsed_data=parsed_data,
+            rules,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
         )
     if not matched:
         reason = "未匹配转发规则" if not target_url else "目标 URL 为空"
@@ -255,7 +269,7 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
         return await forward_to_openclaw(forward_data, analysis)
 
     target_url = str(record.target_url or "")
-    from services.channels.feishu import build_feishu_card, is_feishu_url
+    from services.notifications.feishu import build_feishu_card, is_feishu_url
 
     payload = record.formatted_payload
     if not isinstance(payload, dict):
@@ -275,12 +289,17 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     from services.forwarding.remote import post_json_to_remote
 
     if is_feishu_url(target_url):
-        from services.channels.feishu import send_to_feishu
+        from services.notifications.feishu import send_to_feishu
 
         return cast(ForwardResult, await send_to_feishu(target_url, cast(dict[str, Any], payload)))
 
     deps = build_remote_forward_dependencies(target_url)
-    return cast(ForwardResult, await post_json_to_remote(target_url, cast(dict[str, Any], payload), dependencies=deps, target_type_label=channel_name or "webhook"))
+    return cast(
+        ForwardResult,
+        await post_json_to_remote(
+            target_url, cast(dict[str, Any], payload), dependencies=deps, target_type_label=channel_name or "webhook"
+        ),
+    )
 
 
 def _idempotency_key(
@@ -549,9 +568,7 @@ async def _finalize_outbox_failure(
             evt_ids = _related_webhook_event_ids(record)
             if evt_ids:
                 await session.execute(
-                    update(WebhookEvent)
-                    .where(WebhookEvent.id.in_(evt_ids))
-                    .values(forward_status="failed")
+                    update(WebhookEvent).where(WebhookEvent.id.in_(evt_ids)).values(forward_status="failed")
                 )
         else:
             delay = policy.delay_for_attempt(record.attempts)
@@ -563,7 +580,7 @@ async def _finalize_outbox_failure(
             logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
     if exhausted_record is not None:
         try:
-            from services.channels.feishu import build_delivery_exhausted_card
+            from services.notifications.feishu import build_delivery_exhausted_card
 
             exhausted_event_type = str(getattr(exhausted_record, "event_type", "") or "")
             if exhausted_event_type not in {"outbox_exhausted"}:

@@ -64,26 +64,36 @@ async def schedule_webhook_ingest_retry(
     """Schedule a raw webhook retry without requiring a pre-existing DB event."""
     from services.operations.tasks import process_webhook_task
 
-    kwargs: dict[str, object] = dict(
-        source_name=source, raw_headers=raw_headers, raw_body=raw_body,
-        client_ip=client_ip, request_id=request_id, received_at=received_at,
-        ingest_retry_count=ingest_retry_count,
-    )
+    kwargs: dict[str, object] = {
+        "source_name": source,
+        "raw_headers": raw_headers,
+        "raw_body": raw_body,
+        "client_ip": client_ip,
+        "request_id": request_id,
+        "received_at": received_at,
+        "ingest_retry_count": ingest_retry_count,
+    }
     if traceparent:
         kwargs["traceparent"] = traceparent
-    await _schedule_by_time(_raw_ingest_schedule_id(request_id, source, raw_body), delay_seconds, process_webhook_task, **kwargs)
+    await _schedule_by_time(
+        _raw_ingest_schedule_id(request_id, source, raw_body), delay_seconds, process_webhook_task, **kwargs
+    )
 
 
 async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
     from services.operations.tasks import process_forward_outbox_task
 
-    await _schedule_by_time(f"forward-outbox:{outbox_id}", delay_seconds, process_forward_outbox_task, outbox_id=outbox_id)
+    await _schedule_by_time(
+        f"forward-outbox:{outbox_id}", delay_seconds, process_forward_outbox_task, outbox_id=outbox_id
+    )
 
 
 async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
     from services.operations.tasks import poll_openclaw_analysis_task
 
-    await _schedule_by_time(f"openclaw-poll:{analysis_id}", delay_seconds, poll_openclaw_analysis_task, analysis_id=analysis_id)
+    await _schedule_by_time(
+        f"openclaw-poll:{analysis_id}", delay_seconds, poll_openclaw_analysis_task, analysis_id=analysis_id
+    )
 
 
 async def schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: int | None = None) -> None:

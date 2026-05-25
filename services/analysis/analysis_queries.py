@@ -1,13 +1,13 @@
 """Read-side queries for AI usage and deep-analysis records."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.session import count_with_timeout
 from core.datetime_utils import utcnow
+from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas import deep_analysis_to_dict
 
@@ -125,7 +125,6 @@ async def get_deep_analysis_list(
         item = deep_analysis_to_dict(rec)
         item["source"] = evt.source if evt else None
         item["is_duplicate"] = evt.is_duplicate if evt else False
-        item["beyond_window"] = False
         items.append(item)
     next_cursor = items[-1]["id"] if items else None
     return {

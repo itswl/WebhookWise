@@ -34,13 +34,11 @@ __all__ = [
     "analyze_webhook_with_ai",
     "analyze_with_rules",
     "get_prompt_source",
-    "initialize_openai_client",
     "load_deep_analysis_prompt_template",
     "load_user_prompt_template",
     "log_ai_usage",
     "reload_deep_analysis_prompt_template",
     "reload_user_prompt_template",
-    "reset_openai_client",
 ]
 
 _AI_POLICY_REFUSAL_MARKERS = (

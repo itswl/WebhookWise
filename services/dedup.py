@@ -9,12 +9,12 @@ from typing import Any
 
 from core import json
 from core.app_context import get_config_manager
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
 from db.session import session_scope
-from core.datetime_utils import utcnow
 
 logger = get_logger("dedup")
 
@@ -168,7 +168,7 @@ def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
 
 
 async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> dict[str, Any] | None:
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     from sqlalchemy import select
 
@@ -205,7 +205,11 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
         last_seen_elapsed = now - state.last_seen_at
 
         # RECHAIN: dedup 窗口过期但 AI 分析仍在复用窗口内 → 创建新告警但复用分析
-        if first_seen_elapsed > dedup_window and last_seen_elapsed <= dedup_window and first_seen_elapsed <= analysis_reuse_window:
+        if (
+            first_seen_elapsed > dedup_window
+            and last_seen_elapsed <= dedup_window
+            and first_seen_elapsed <= analysis_reuse_window
+        ):
             logger.info(
                 "[Dedup] 告警链超窗口，重建链 dedup_key=%s orig_id=%s first_seen_elapsed=%ds dedup_window=%ds analysis_window=%ds count=%d",
                 dedup_key[:32] if dedup_key else "-",

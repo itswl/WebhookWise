@@ -3,8 +3,8 @@
 from typing import TYPE_CHECKING, Any
 
 from core.logger import get_logger, mask_url
-from services.channels.feishu import build_deep_analysis_card
 from services.forwarding.outbox import forward_notification
+from services.notifications.feishu import build_deep_analysis_card
 from services.webhooks.types import WebhookData
 
 if TYPE_CHECKING:

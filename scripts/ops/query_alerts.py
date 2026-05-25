@@ -87,7 +87,7 @@ async def query_by_hash(alert_hash: str):
             ts = d.get("timestamp", "")[:19]
             imp = d.get("importance", "-")
             dup = "🔁" if d.get("is_duplicate") else "🆕"
-            print(f"  [{dup}] #{d['id']} | {ts} | {imp} | beyond_window={d.get('beyond_window')}")
+            print(f"  [{dup}] #{d['id']} | {ts} | {imp}")
 
 
 async def query_stats():
