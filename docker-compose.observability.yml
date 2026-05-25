@@ -22,7 +22,7 @@ services:
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       PYROSCOPE_APPLICATION_NAME: webhookwise-api
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
-      REQUIRE_WEBHOOK_AUTH: "false"
+      REQUIRE_WEBHOOK_AUTH: ${REQUIRE_WEBHOOK_AUTH:-true}
     depends_on:
       alloy:
         condition: service_started
