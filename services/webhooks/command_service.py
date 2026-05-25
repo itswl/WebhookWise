@@ -319,8 +319,9 @@ async def _resolve_duplicate_status(
     if is_duplicate is not None or skip_duplicate_lookup:
         return _DuplicateStatus(bool(is_duplicate), original_event, original_event_id)
 
+    alert_hash = payload.alert_hash or generate_alert_hash(payload.data, payload.source)
     check = await check_duplicate_event(
-        payload.alert_hash,
+        alert_hash,
         session=session,
         time_window_hours=max(1, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) // 3600),
     )

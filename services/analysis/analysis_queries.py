@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utcnow
 from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
-from schemas import deep_analysis_to_dict
+from schemas.analysis import deep_analysis_to_dict
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:

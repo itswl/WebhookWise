@@ -27,6 +27,7 @@ redis_data/
 *.tmp
 .coverage
 htmlcov/
+build/
 .DS_Store
 .qoder/
 openclaw-main/

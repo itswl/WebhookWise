@@ -104,9 +104,8 @@ services:
       DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
       REDIS_URL: redis://redis:6379/0
       WEBHOOK_SECRET: ""
-      API_KEY: ""
-      ADMIN_WRITE_KEY: ""
-      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      API_KEY: e2e-api-key
+      ADMIN_WRITE_KEY: e2e-admin-write-key
       WEBHOOK_RATE_LIMIT_PER_MINUTE: "0"
       OPENAI_API_KEY: e2e-test-key
       OPENAI_API_URL: http://fake-openai:9001/v1
@@ -158,8 +157,8 @@ services:
       DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
       REDIS_URL: redis://redis:6379/0
       WEBHOOK_SECRET: ""
-      API_KEY: ""
-      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      API_KEY: e2e-api-key
+      ADMIN_WRITE_KEY: e2e-admin-write-key
       OPENAI_API_KEY: e2e-test-key
       OPENAI_API_URL: http://fake-openai:9001/v1
       OPENAI_MODEL: e2e/fake-model
@@ -196,8 +195,8 @@ services:
       DATABASE_URL: postgresql://webhook_user:postgres@postgres:5432/webhooks
       REDIS_URL: redis://redis:6379/0
       WEBHOOK_SECRET: ""
-      API_KEY: ""
-      ALLOW_UNAUTHENTICATED_ADMIN: "true"
+      API_KEY: e2e-api-key
+      ADMIN_WRITE_KEY: e2e-admin-write-key
       OPENAI_API_KEY: e2e-test-key
       OPENAI_API_URL: http://fake-openai:9001/v1
       OPENAI_MODEL: e2e/fake-model

@@ -1,7 +1,4 @@
-import importlib
-import pkgutil
 from collections.abc import Callable
-from pathlib import Path
 from typing import TypeVar
 
 from core.logger import get_logger
@@ -20,7 +17,6 @@ class AdapterRegistry:
         self._detectors: list[tuple[str, Callable[[WebhookData], bool]]] = []
         self._normalizers: dict[str, Callable[[WebhookData], WebhookData]] = {}
         self._aliases: dict[str, str] = {}
-        self._discovered: bool = False
 
     def register(self, source_name: str, *, aliases: set[str] | None = None) -> Callable[[_FNorm], _FNorm]:
         """装饰器：注册一个生态适配器，可选提供别名集合。"""
@@ -81,36 +77,8 @@ class AdapterRegistry:
             return data
         return normalizer(data)
 
-    def auto_discover(self) -> None:
-        """自动导入 adapters/plugins/ 下所有 .py 模块，触发装饰器注册。
-
-        幂等：多次调用只执行一次导入。
-        """
-        if self._discovered:
-            return
-
-        plugins_dir = Path(__file__).parent / "plugins"
-        if not plugins_dir.is_dir():
-            logger.warning("[Adapter Registry] plugins directory not found")
-            self._discovered = True
-            return
-
-        package_name = "adapters.plugins"
-        for module_info in pkgutil.iter_modules([str(plugins_dir)]):
-            if module_info.name.startswith("_"):
-                continue
-            module_full = f"{package_name}.{module_info.name}"
-            try:
-                importlib.import_module(module_full)
-                logger.debug("[Adapter Registry] Auto-discovered: %s", module_full)
-            except Exception:
-                logger.exception("[Adapter Registry] Failed to import %s", module_full)
-
-        self._discovered = True
-
-    def status(self) -> dict[str, int | bool]:
+    def status(self) -> dict[str, int]:
         return {
-            "discovered": self._discovered,
             "detectors": len(self._detectors),
             "normalizers": len(self._normalizers),
             "aliases": len(self._aliases),

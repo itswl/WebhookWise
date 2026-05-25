@@ -2,7 +2,7 @@
 Forwarding API Routes.
 """
 
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
@@ -12,7 +12,7 @@ from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
-from schemas import (
+from schemas.forwarding import (
     ForwardRuleDetailResponse,
     ForwardRuleListResponse,
     forward_rule_to_dict,
@@ -24,7 +24,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
-from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
+from services.webhooks.types import AnalysisResult, WebhookData
 
 logger = get_logger("api.forwarding")
 
@@ -198,16 +198,13 @@ async def test_forward_rule_endpoint(
     try:
         if is_feishu_url(target_url):
             payload = build_feishu_card(test_webhook, test_analysis)
-            result = cast(ForwardResult, await send_to_feishu(target_url, cast(dict[str, Any], payload)))
+            result = await send_to_feishu(target_url, payload)
         else:
             payload = {"webhook": test_webhook, "analysis": test_analysis}
-            result = cast(
-                ForwardResult,
-                await post_json_to_remote(
-                    target_url,
-                    cast(dict[str, Any], payload),
-                    target_type_label=rule.target_type or "webhook",
-                ),
+            result = await post_json_to_remote(
+                target_url,
+                payload,
+                target_type_label=rule.target_type or "webhook",
             )
     except Exception as e:
         logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
@@ -224,13 +221,13 @@ async def test_forward_rule_endpoint(
 # ── Outbox Queries ─────────────────────────────────────────────────────────
 
 
-@forwarding_router.get("/api/outbox")
+@forwarding_router.get("/api/outbox", response_model=None)
 async def list_outbox_endpoint(
     page: int = Query(1, ge=1, le=100),
     page_size: int = Query(20, ge=1, le=200),
     status: str = Query(""),
     event_type: str = Query(""),
-) -> JSONDict:
+) -> JSONDict | JSONResponse:
     """查询转发队列记录。"""
     from services.forwarding.outbox import list_outbox_records
 

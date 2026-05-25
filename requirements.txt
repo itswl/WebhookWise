@@ -6,9 +6,6 @@ httpx==0.27.0
 redis==7.4.0
 python-dotenv>=1.2.2
 gunicorn>=22.0.0
-supervisor==4.2.5
-# supervisor 4.x imports pkg_resources; setuptools 81+ removed it.
-setuptools<81
 openai==1.14.0
 psycopg2-binary==2.9.10
 asyncpg==0.30.0

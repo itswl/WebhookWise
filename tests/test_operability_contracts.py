@@ -64,7 +64,7 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
 
     webhook_env = compose["services"]["webhook-service"]["environment"]
     assert webhook_env["REQUIRE_WEBHOOK_AUTH"] == "false"
-    assert webhook_env["ALLOW_UNAUTHENTICATED_WEBHOOK"] == "true"
+    assert "ALLOW_UNAUTHENTICATED_WEBHOOK" not in webhook_env
 
     receiver = next(item for item in alertmanager["receivers"] if item["name"] == "webhookwise-local")
     webhook_config = receiver["webhook_configs"][0]

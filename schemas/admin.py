@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel
-
-from .base import APIResponse
 
 
 class DeadLetterItem(BaseModel):
@@ -47,20 +43,6 @@ class ReplayAllResponse(BaseModel):
     message: str
     replayed: int
     event_ids: list[int] = []
-
-
-class ConfigResponse(APIResponse[dict[str, Any]]):
-    """配置读取响应"""
-
-
-class ConfigSourceItem(BaseModel):
-    key: str
-    source: str
-    requires_restart: bool = False
-
-
-class ConfigSourcesResponse(APIResponse[list[ConfigSourceItem]]):
-    """配置来源响应"""
 
 
 class PromptGetResponse(BaseModel):
