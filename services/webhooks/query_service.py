@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.datetime_utils import utc_isoformat
 from models import ForwardOutbox, WebhookEvent
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
@@ -45,16 +46,16 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "request_id": row.request_id,
         "source": row.source,
         "client_ip": row.client_ip,
-        "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+        "timestamp": utc_isoformat(row.timestamp),
         "importance": row.importance,
         "is_duplicate": is_dup,
         "duplicate_of": row.duplicate_of,
         "duplicate_count": row.duplicate_count,
         "forward_status": row.forward_status,
         "summary": ai_analysis.get("summary", "") if ai_analysis else None,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": utc_isoformat(row.created_at),
         "prev_alert_id": row.prev_alert_id,
-        "prev_alert_timestamp": prev_ts.isoformat() if prev_ts else None,
+        "prev_alert_timestamp": utc_isoformat(prev_ts),
         "is_within_window": bool(is_dup),
         "duplicate_type": duplicate_type,
     }
@@ -142,7 +143,7 @@ async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int
         d = dict(row._mapping)
         for k in ("timestamp", "created_at"):
             if isinstance(d.get(k), datetime):
-                d[k] = d[k].isoformat()
+                d[k] = utc_isoformat(d[k])
         rows.append(d)
     return rows
 
