@@ -244,18 +244,6 @@ const API = {
         return await response.json();
     },
 
-    // ========== 配置相关 API ==========
-
-    /**
-     * 获取系统配置
-     * @returns {Promise<object>} 配置数据
-     */
-    async getConfig() {
-        const response = await this.authenticatedFetch('/api/config');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
     // ========== 深度分析 API ==========
 
     /**

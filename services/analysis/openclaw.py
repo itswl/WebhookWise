@@ -1330,7 +1330,7 @@ async def forward_to_openclaw(
         return result
 
     try:
-        res = await dependencies.circuit_breaker.call_async(_do_request)
+        res = cast(ForwardResult, await dependencies.circuit_breaker.call_async(_do_request))
         status = str(res.get("status") or ("pending" if res.get("_pending") else "success"))
         return res
     except CircuitBreakerOpenException:

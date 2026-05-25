@@ -278,7 +278,7 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
 
 
 def test_webhook_analysis_result_to_dict_dumps_enum_to_string():
-    from schemas import Importance, WebhookAnalysisResult
+    from schemas.analysis import Importance, WebhookAnalysisResult
 
     r = WebhookAnalysisResult(
         source="prometheus",

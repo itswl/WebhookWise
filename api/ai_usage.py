@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.webhook import JSONDict
 from db.session import get_db_session
-from schemas import AIUsageResponse
+from schemas.ai_usage import AIUsageResponse
 from services.analysis.analysis_queries import get_ai_usage_stats
 
 ai_usage_router = APIRouter()

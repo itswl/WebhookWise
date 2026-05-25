@@ -84,12 +84,6 @@ function bindGlobalEvents() {
         });
     }
 
-    // 配置按钮
-    const configBtn = document.getElementById('configBtn');
-    if (configBtn) {
-        configBtn.addEventListener('click', openConfigModal);
-    }
-
     // 模态框外部点击关闭
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
@@ -224,50 +218,6 @@ function toggleAutoRefresh() {
     }
 }
 
-/**
- * 打开配置模态框
- */
-async function openConfigModal() {
-    try {
-        const result = await API.getConfig();
-
-        if (result.success) {
-            const c = result.data;
-            document.getElementById('configOpenaiApiKey').value = c.openai_api_key === '已配置' ? '' : c.openai_api_key || '';
-            document.getElementById('configOpenaiApiUrl').value = c.openai_api_url || '';
-            document.getElementById('configOpenaiModel').value = c.openai_model || '';
-            document.getElementById('configDedupWindowSeconds').value = c.dedup_window_seconds || 14400;
-            document.getElementById('configEnableAi').checked = c.enable_ai_analysis;
-            document.getElementById('configForwardDuplicate').checked = c.forward_duplicate_alerts;
-            document.getElementById('configEnableNoiseReduction').checked = c.enable_alert_noise_reduction;
-            document.getElementById('configSuppressDerivedForward').checked = c.suppress_derived_alert_forward;
-            document.getElementById('configEnablePeriodicReminder').checked = c.enable_periodic_reminder ?? true;
-            document.getElementById('configReminderInterval').value = c.reminder_interval_hours ?? 6;
-            document.getElementById('configNoiseWindow').value = c.noise_reduction_window_minutes || 5;
-            document.getElementById('configRootCauseConfidence').value = c.root_cause_min_confidence ?? 0.65;
-            document.getElementById('configNoiseSourceWeight').value = c.noise_source_weight ?? 0.15;
-            document.getElementById('configNoiseResourceWeight').value = c.noise_resource_weight ?? 0.45;
-            document.getElementById('configNoiseSemanticWeight').value = c.noise_semantic_weight ?? 0.25;
-            document.getElementById('configNoiseSeverityWeight').value = c.noise_severity_weight ?? 0.10;
-            document.getElementById('configNoiseTimeWeight').value = c.noise_time_weight ?? 0.20;
-            document.getElementById('configLogLevel').value = c.log_level || 'INFO';
-            document.getElementById('configAiSystemPrompt').value = c.ai_system_prompt || '';
-            setConfigModalReadonly();
-
-            document.getElementById('configModal').classList.add('active');
-        }
-    } catch (error) {
-        alert('获取配置失败: ' + error.message);
-    }
-}
-
-/**
- * 关闭配置模态框
- */
-function closeConfigModal() {
-    document.getElementById('configModal').classList.remove('active');
-}
-
 function openAuthModal() {
     const apiKeyInput = document.getElementById('authApiKey');
     const adminWriteKeyInput = document.getElementById('authAdminWriteKey');
@@ -321,14 +271,6 @@ function updateAuthButtonState() {
     if (authBtnText) {
         authBtnText.textContent = status.read && status.write ? '凭证已保存' : '凭证';
     }
-}
-
-function setConfigModalReadonly() {
-    const modal = document.getElementById('configModal');
-    if (!modal) return;
-    modal.querySelectorAll('input, textarea, select').forEach((element) => {
-        element.disabled = true;
-    });
 }
 
 /**

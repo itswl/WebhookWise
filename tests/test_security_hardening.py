@@ -358,7 +358,7 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        read_with_admin = await client.get("/api/config", headers={"Authorization": "Bearer admin-key"})
+        read_with_admin = await client.get("/api/prompt", headers={"Authorization": "Bearer admin-key"})
         write_with_api = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer api-key"})
         write_with_admin = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer admin-key"})
 
@@ -438,7 +438,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
 
     from core.app import app
 
-    monkeypatch.setattr(temp_config.server, "RUN_MODE", "all")
+    monkeypatch.setattr(temp_config.server, "RUN_MODE", "api")
     monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)
     monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
     monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)

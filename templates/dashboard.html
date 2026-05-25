@@ -51,10 +51,6 @@
                     <span>🔐</span>
                     <span id="authBtnText">凭证</span>
                 </button>
-                <button class="btn btn-primary" onclick="openConfigModal()">
-                    <span>⚙️</span>
-                    <span>配置</span>
-                </button>
             </div>
         </div>
     </nav>
@@ -250,106 +246,6 @@
 
     </div>
 
-    <!-- 配置模态框 -->
-    <div class="modal" id="configModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">系统配置（只读）</h2>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">OpenAI API Key</label>
-                    <input type="password" class="form-input" id="configOpenaiApiKey" placeholder="sk-...">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">API 地址</label>
-                    <input type="text" class="form-input" id="configOpenaiApiUrl" placeholder="https://openrouter.ai/api/v1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">日志级别</label>
-                    <select class="form-input" id="configLogLevel">
-                        <option value="DEBUG">DEBUG</option>
-                        <option value="INFO" selected>INFO</option>
-                        <option value="WARNING">WARNING</option>
-                        <option value="ERROR">ERROR</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">AI 模型</label>
-                    <input type="text" class="form-input" id="configOpenaiModel" placeholder="anthropic/claude-sonnet-4">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">AI 系统提示词</label>
-                    <textarea class="form-input" id="configAiSystemPrompt" rows="3" placeholder="自定义 AI 系统提示词..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">去重窗口（秒）</label>
-                    <input type="number" class="form-input" id="configDedupWindowSeconds" placeholder="14400" min="1">
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configEnableAi">
-                    <label for="configEnableAi">启用 AI 分析</label>
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configForwardDuplicate">
-                    <label for="configForwardDuplicate">转发重复告警</label>
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configEnableNoiseReduction">
-                    <label for="configEnableNoiseReduction">启用智能降噪</label>
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configSuppressDerivedForward">
-                    <label for="configSuppressDerivedForward">抑制衍生告警自动转发</label>
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configEnablePeriodicReminder">
-                    <label for="configEnablePeriodicReminder">启用周期提醒（持续告警定时重通知）</label>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">提醒间隔（小时）</label>
-                    <input type="number" class="form-input" id="configReminderInterval" min="1" max="168" step="1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">降噪关联窗口（分钟）</label>
-                    <input type="number" class="form-input" id="configNoiseWindow" placeholder="5" min="1" max="60">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">根因置信度阈值（0-1）</label>
-                    <input type="number" class="form-input" id="configRootCauseConfidence" placeholder="0.65" min="0" max="1" step="0.01">
-                </div>
-
-                <!-- 降噪权重（只读） -->
-                <div class="form-group" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <label class="form-label" style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">降噪权重配置</label>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">来源权重</label>
-                    <input type="number" class="form-input" id="configNoiseSourceWeight" step="0.01" min="0" max="1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">资源权重</label>
-                    <input type="number" class="form-input" id="configNoiseResourceWeight" step="0.01" min="0" max="1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">语义相似度权重</label>
-                    <input type="number" class="form-input" id="configNoiseSemanticWeight" step="0.01" min="0" max="1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">严重性权重</label>
-                    <input type="number" class="form-input" id="configNoiseSeverityWeight" step="0.01" min="0" max="1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">时间相关性权重</label>
-                    <input type="number" class="form-input" id="configNoiseTimeWeight" step="0.01" min="0" max="1">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" onclick="closeConfigModal()">关闭</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 凭证模态框 -->
     <div class="modal" id="authModal">
         <div class="modal-content">
@@ -361,7 +257,7 @@
                     <label class="form-label">API_KEY（只读）</label>
                     <input type="password" class="form-input" id="authApiKey" placeholder="用于 GET 查询，留空表示不修改">
                     <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
-                        告警列表、配置查看、AI 成本、转发规则列表等只读请求使用此 key。
+                        告警列表、AI 成本、转发规则列表等只读请求使用此 key。
                     </p>
                 </div>
                 <div class="form-group">

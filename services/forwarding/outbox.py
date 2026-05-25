@@ -291,14 +291,14 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     if is_feishu_url(target_url):
         from services.notifications.feishu import send_to_feishu
 
-        return cast(ForwardResult, await send_to_feishu(target_url, cast(dict[str, Any], payload)))
+        return await send_to_feishu(target_url, payload)
 
     deps = build_remote_forward_dependencies(target_url)
-    return cast(
-        ForwardResult,
-        await post_json_to_remote(
-            target_url, cast(dict[str, Any], payload), dependencies=deps, target_type_label=channel_name or "webhook"
-        ),
+    return await post_json_to_remote(
+        target_url,
+        payload,
+        dependencies=deps,
+        target_type_label=channel_name or "webhook",
     )
 
 
@@ -674,6 +674,6 @@ def _mask_url_for_display(url: str) -> str:
             if len(path) > 40:
                 path = path[:40] + "…"
             return f"{parsed.scheme}://{parsed.hostname}{path}{qs}"
-    except Exception:
-        pass
+    except ValueError as e:
+        logger.debug("[ForwardOutbox] 展示 URL 解析失败: %s", e)
     return url[:80] + ("…" if len(url) > 80 else "")

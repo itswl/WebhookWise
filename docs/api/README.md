@@ -6,13 +6,10 @@ FastAPI exposes interactive OpenAPI docs automatically when the API service is r
 - ReDoc: `http://localhost:8000/redoc`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
 
-Offline exports are kept here:
-
-- `openapi.json`
-- `openapi.yaml`
-
-Regenerate them from the repository root when API contracts change:
+Offline exports are generated on demand and are not checked in:
 
 ```bash
 OTEL_ENABLED=false python scripts/export_openapi.py
 ```
+
+The default output directory is `build/openapi`. Pass `--output-dir <dir>` to write somewhere else.

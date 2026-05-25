@@ -30,11 +30,6 @@ case "${RUN_MODE:-api}" in
         echo "Starting in TaskIQ Scheduler mode..."
         exec taskiq scheduler --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" services.operations.taskiq_wiring:scheduler --update-interval 5 --loop-interval 1
         ;;
-    all)
-        echo "Starting in all-in-one supervisor mode..."
-        export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources.*:UserWarning}"
-        exec supervisord -c /app/supervisord.conf
-        ;;
     api|"")
         echo "Starting in API mode..."
         exec "$@"

@@ -63,7 +63,6 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_KEY: ${API_KEY}
       REQUIRE_WEBHOOK_AUTH: ${REQUIRE_WEBHOOK_AUTH:-true}
-      ALLOW_UNAUTHENTICATED_WEBHOOK: ${ALLOW_UNAUTHENTICATED_WEBHOOK:-false}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}

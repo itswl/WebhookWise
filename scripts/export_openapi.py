@@ -58,7 +58,7 @@ def check_openapi(output_dir: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", default="docs/api", help="Directory for openapi.json and openapi.yaml")
+    parser.add_argument("--output-dir", default="build/openapi", help="Directory for openapi.json and openapi.yaml")
     parser.add_argument("--check", action="store_true", help="Fail when exported OpenAPI docs are stale")
     args = parser.parse_args()
 

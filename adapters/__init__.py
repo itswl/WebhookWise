@@ -1,3 +1,3 @@
-"""Webhook source normalization and plugin adapter package."""
+"""Webhook source normalization package."""
 
 __all__: list[str] = []

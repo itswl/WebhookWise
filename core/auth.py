@@ -40,8 +40,6 @@ async def verify_api_key(
     """验证管理 API Bearer Token。"""
     api_key = config.security.API_KEY
     if not api_key:
-        if config.security.ALLOW_UNAUTHENTICATED_ADMIN:
-            return True
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API_KEY is not configured",
@@ -82,8 +80,6 @@ async def verify_admin_write(
     """验证 Admin 写操作 Bearer Token。"""
     admin_write_key = config.security.ADMIN_WRITE_KEY
     if not admin_write_key:
-        if config.security.ALLOW_UNAUTHENTICATED_ADMIN:
-            return True
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="ADMIN_WRITE_KEY is not configured",

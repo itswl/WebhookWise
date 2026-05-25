@@ -11,7 +11,7 @@ from core.logger import get_logger
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import WebhookEvent
-from schemas import ReanalysisResponse
+from schemas.analysis import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
@@ -109,7 +109,11 @@ async def manual_forward_webhook(
 ) -> JSONDict | JSONResponse:
     data = data or {}
     target_url = str(data.get("target_url", "")).strip() if data.get("target_url") else ""
-    logger.info("[Reanalysis] 手动转发请求 webhook_id=%s target=%s", webhook_id, target_url[:80] if target_url else "(rule-based)")
+    logger.info(
+        "[Reanalysis] 手动转发请求 webhook_id=%s target=%s",
+        webhook_id,
+        target_url[:80] if target_url else "(rule-based)",
+    )
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         logger.warning("[Reanalysis] 手动转发失败，事件不存在 webhook_id=%s", webhook_id)

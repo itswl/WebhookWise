@@ -192,7 +192,6 @@ def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     forwarding_breakers = (ROOT / "services/forwarding/circuit_breakers.py").read_text()
     entrypoint = (ROOT / "entrypoint.sh").read_text()
-    supervisor = (ROOT / "supervisord.conf").read_text()
 
     assert "import services." not in broker
     assert "services.operations.tasks" not in app
@@ -200,8 +199,6 @@ def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
     assert "get_default_config" not in forwarding_breakers
     assert "services.operations.taskiq_wiring:broker" in entrypoint
     assert "services.operations.taskiq_wiring:scheduler" in entrypoint
-    assert "services.operations.taskiq_wiring:broker" in supervisor
-    assert "services.operations.taskiq_wiring:scheduler" in supervisor
 
 
 def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeypatch) -> None:

@@ -114,14 +114,10 @@ The default topology is one process per application container:
 - `worker`: TaskIQ worker process, horizontally scalable.
 - `scheduler`: singleton TaskIQ scheduler.
 
-`docker-compose.supervisor.yml` is an explicit all-in-one override for small
-single-host deployments and demos. It must remain optional. Production changes
-should preserve the default multi-container path and should not require
-`RUN_MODE=all`.
-
-Deployment shape must not introduce a second runtime semantic path. All
-topologies use the same TaskIQ/Redis queue, dynamic scheduling, Redis-backed
-cache, and distributed locking behavior.
+Deployment changes should preserve the multi-container path and avoid adding a
+second runtime semantic path. API, worker, and scheduler processes use the same
+TaskIQ/Redis queue, dynamic scheduling, Redis-backed cache, and distributed
+locking behavior.
 
 ## Dependency Policy
 

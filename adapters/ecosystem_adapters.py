@@ -130,7 +130,7 @@ def _pick_first_resource(resources: list[dict[str, Any]]) -> str | None:
     return None
 
 
-# ── 统一适配器实现 (由插件发现机制调用) ──────────────────────────────────────────────
+# ── 统一适配器实现 ──────────────────────────────────────────────────────────────
 
 
 def register_simple_adapters() -> None:
@@ -315,17 +315,90 @@ def register_simple_adapters() -> None:
             ),
         )
 
+    # 6. 飞书卡片（火山引擎日志服务等）
+    @registry.register_detector("feishu_card")
+    def _detect_feishu_card(data: WebhookData) -> bool:
+        return data.get("msg_type") == "interactive" and isinstance(data.get("card"), dict)
+
+    @registry.register("feishu_card", aliases={"feishu_card", "volcengine_log"})
+    def _norm_feishu_card(data: WebhookData) -> WebhookData:
+        card = data.get("card", {})
+        card = card if isinstance(card, Mapping) else {}
+        header = card.get("header", {})
+        elements = card.get("elements", [])
+
+        header_title = ""
+        if isinstance(header, Mapping):
+            title_obj = header.get("title", {})
+            if isinstance(title_obj, Mapping):
+                header_title = str(title_obj.get("content", "") or "").strip()
+            elif isinstance(title_obj, str):
+                header_title = title_obj.strip()
+
+        content_text = ""
+        if isinstance(elements, list):
+            for elem in elements:
+                if isinstance(elem, Mapping) and elem.get("tag") == "markdown":
+                    content_text = str(elem.get("content", "") or "").strip()
+                    break
+
+        alert_strategy = ""
+        log_topic = ""
+        alert_level = ""
+        first_trigger_time = ""
+        trigger_condition = ""
+        query_result = ""
+
+        for line in content_text.split("\n"):
+            line = line.strip()
+            if "告警策略：" in line:
+                alert_strategy = line.split("告警策略：", 1)[1].strip()
+            elif "告警日志主题：" in line:
+                log_topic = line.split("告警日志主题：", 1)[1].strip()
+            elif "告警级别：" in line:
+                alert_level = line.split("告警级别：", 1)[1].strip()
+            elif "首次触发时间：" in line:
+                first_trigger_time = line.split("首次触发时间：", 1)[1].strip()
+            elif "触发条件：" in line:
+                trigger_condition = line.split("触发条件：", 1)[1].strip()
+            elif "当前查询结果：" in line:
+                query_result = line.split("当前查询结果：", 1)[1].strip()
+
+        normalized = dict(data)
+        normalized.update(
+            {
+                "Type": "FeishuCard",
+                "RuleName": alert_strategy or header_title or "feishu_alert",
+                "alert_name": alert_strategy or header_title or "feishu_alert",
+                "Level": normalize_level(alert_level),
+                "MetricName": log_topic or "feishu_log_alert",
+                "event": "alert",
+                "event_type": "feishu_card_alert",
+                "alert_id": alert_strategy,
+            }
+        )
+
+        if first_trigger_time:
+            normalized["first_trigger_time"] = first_trigger_time
+        if trigger_condition:
+            normalized["trigger_condition"] = trigger_condition
+        if query_result:
+            normalized["query_result"] = query_result
+        if log_topic:
+            normalized["Resources"] = [{"InstanceId": log_topic}]
+        if content_text:
+            normalized["summary"] = content_text
+
+        return normalized
+
 
 def initialize_adapters() -> None:
-    """Initialize built-in and plugin adapters during process startup."""
+    """Initialize built-in adapters during process startup."""
     global _initialized
     if _initialized:
         return
 
-    from adapters.registry import registry
-
     register_simple_adapters()
-    registry.auto_discover()
     _initialized = True
     logger.info("[Adapter] 适配器注册完成")
 

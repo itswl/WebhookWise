@@ -148,7 +148,7 @@ def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
     return fallback_hash, fallback_hash
 
 
-def generate_alert_hash(data: dict, source: str) -> str:
+def generate_alert_hash(data: dict[str, Any], source: str) -> str:
     """Convenience wrapper — returns only the alert_hash portion of generate_event_keys."""
     return generate_event_keys(data, source)[0]
 
