@@ -65,6 +65,33 @@ wait_json("http://localhost:18080/ready")
 wait_json("http://localhost:19090/ready")
 wait_json("http://localhost:19091/ready")
 
+rule_payload = {
+    "name": "e2e-feishu-high-alerts",
+    "enabled": True,
+    "priority": 100,
+    "match_importance": "high",
+    "match_source": "prometheus",
+    "match_duplicate": "all",
+    "target_type": "feishu",
+    "target_url": "http://open.feishu.cn:9000/open-apis/bot/v2/hook/e2e-token",
+    "target_name": "fake-feishu",
+}
+rule_request = urllib.request.Request(
+    "http://localhost:18080/api/forward-rules",
+    data=json.dumps(rule_payload).encode("utf-8"),
+    headers={
+        "authorization": "Bearer e2e-admin-write-key",
+        "content-type": "application/json",
+    },
+    method="POST",
+)
+with urllib.request.urlopen(rule_request, timeout=10) as resp:
+    if resp.status not in (200, 201):
+        raise SystemExit(f"unexpected forward rule status: {resp.status}")
+    rule_response = json.loads(resp.read().decode("utf-8"))
+    if not rule_response.get("success"):
+        raise SystemExit(f"failed to create forward rule: {rule_response}")
+
 payload = {
     "alert_name": "checkout-critical-5xx",
     "event_type": "prometheus_alert",
