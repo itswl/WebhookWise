@@ -35,6 +35,287 @@
         "x": 0,
         "y": 0
       },
+      "id": 150,
+      "panels": [],
+      "title": "数据新鲜度与覆盖率 (Freshness / Coverage)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "核心遥测最后一次样本距现在的秒数。正常情况下 API/worker/scheduler 应在分钟级内更新；Beyla 取决于最近流量。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          },
+          "unit": "s",
+          "links": [
+            {
+              "title": "查看相关日志",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "查看相关 Trace",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "id": 151,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max(timestamp(http_server_request_duration_seconds_count{service_name=\"webhookwise-api\"}))",
+          "legendFormat": "api metrics age",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max(timestamp(worker_task_runs_total{service_name=\"webhookwise-worker\"}))",
+          "legendFormat": "worker metrics age",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max(timestamp(scheduler_task_runs_total))",
+          "legendFormat": "scheduler task metrics age",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max(timestamp(traces_span_metrics_calls_total{source=\"beyla\", service_name=\"webhookwise-api\"}))",
+          "legendFormat": "beyla metrics age",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "核心遥测新鲜度 (Seconds Since Last Sample)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "展示容易被误认为“缺数据”的可选信号。Faro/k6 为 0 代表当前时间范围没有对应事件或压测运行；recording rules 和 Alloy 为采集链路健康信号。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "links": [
+            {
+              "title": "查看相关日志",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "查看相关 Trace",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "k6 missing (1=yes)"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "id": 152,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(faro_receiver_events_total[6h])) or sum(increase(faro_receiver_measurements_total[6h])) or vector(0)",
+          "legendFormat": "faro events 6h",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "absent(k6_http_req_duration_p95) or vector(0)",
+          "legendFormat": "k6 missing (1=yes)",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count({__name__=~\"webhookwise:.*\"})",
+          "legendFormat": "recording rules",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max(alloy_config_last_load_successful)",
+          "legendFormat": "alloy config ok",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "可选信号覆盖 (Optional Signal Coverage)",
+      "type": "stat"
+    },
+    {
+      "description": "线上数据覆盖说明",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 153,
+      "options": {
+        "content": "### 读数说明\n\n- Prometheus 只直接抓取 Alloy 和 Prometheus；API、worker、scheduler 指标通过 OTLP/Alloy remote write 进入。\n- Faro = 0 表示当前时间范围没有浏览器 RUM 事件，需要从前端初始化或真实浏览器访问量排查。\n- k6 missing = 1 表示当前 Prometheus 没有近期 k6 smoke/load 指标，运行压测后会自动出现。\n- scheduler_task_runs_total 目前在生产标签里可能归到 webhookwise-worker，面板用任务指标本身判断新鲜度。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "13.0.1",
+      "title": "No data / 0 如何解读",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
       "id": 160,
       "panels": [],
       "title": "可观测后端、RUM、Beyla 与压测 (Telemetry Backends / RUM / eBPF / k6)",
@@ -45,7 +326,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "",
+      "description": "Faro RUM 数据来自前端浏览器埋点。当前生产如果显示 0，表示所选时间范围内没有 RUM 事件进入 Grafana Faro，不代表 API/worker 指标断采。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -113,7 +394,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 1
+        "y": 10
       },
       "id": 161,
       "options": {
@@ -251,7 +532,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 1
+        "y": 10
       },
       "id": 162,
       "options": {
@@ -356,7 +637,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 1
+        "y": 10
       },
       "id": 163,
       "options": {
@@ -466,7 +747,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 9
+        "y": 18
       },
       "id": 164,
       "options": {
@@ -503,7 +784,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "k6 writes stale markers after a run, so range functions are used intentionally.",
+      "description": "k6 指标只在压测运行后出现；No data 或 0 通常表示所选时间范围内没有执行 smoke/load profile。这里故意使用 range 函数读取最近一次样本，避免 stale marker 误导。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -570,7 +851,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 9
+        "y": 18
       },
       "id": 165,
       "options": {
@@ -621,7 +902,7 @@
           "refId": "C"
         }
       ],
-      "title": "k6 Smoke 压测结果",
+      "title": "k6 Smoke 压测结果（最近一次运行）",
       "type": "timeseries"
     },
     {
@@ -696,7 +977,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 9
+        "y": 18
       },
       "id": 166,
       "options": {
@@ -756,7 +1037,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 26
       },
       "id": 170,
       "panels": [],
@@ -815,7 +1096,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 18
+        "y": 27
       },
       "id": 171,
       "options": {
@@ -926,7 +1207,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 18
+        "y": 27
       },
       "id": 172,
       "options": {
@@ -1036,7 +1317,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 18
+        "y": 27
       },
       "id": 173,
       "options": {
@@ -1074,7 +1355,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 35
       },
       "id": 180,
       "panels": [],
@@ -1154,7 +1435,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 27
+        "y": 36
       },
       "id": 181,
       "options": {
@@ -1259,7 +1540,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 27
+        "y": 36
       },
       "id": 182,
       "options": {
@@ -1369,7 +1650,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 27
+        "y": 36
       },
       "id": 183,
       "options": {
@@ -1479,7 +1760,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 35
+        "y": 44
       },
       "id": 184,
       "options": {
@@ -1589,7 +1870,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 35
+        "y": 44
       },
       "id": 185,
       "options": {
@@ -1694,7 +1975,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 35
+        "y": 44
       },
       "id": 186,
       "options": {
@@ -1732,7 +2013,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 52
       },
       "id": 190,
       "panels": [],
@@ -1817,7 +2098,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 44
+        "y": 53
       },
       "id": 191,
       "options": {
@@ -1922,7 +2203,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 44
+        "y": 53
       },
       "id": 192,
       "options": {
@@ -2032,7 +2313,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 44
+        "y": 53
       },
       "id": 193,
       "options": {
@@ -2142,7 +2423,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 52
+        "y": 61
       },
       "id": 194,
       "options": {
@@ -2247,7 +2528,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 52
+        "y": 61
       },
       "id": 195,
       "options": {
@@ -2357,7 +2638,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 52
+        "y": 61
       },
       "id": 196,
       "options": {
@@ -2467,7 +2748,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 60
+        "y": 69
       },
       "id": 197,
       "options": {
@@ -2550,7 +2831,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 60
+        "y": 69
       },
       "id": 198,
       "options": {
@@ -2657,7 +2938,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 60
+        "y": 69
       },
       "id": 199,
       "options": {
@@ -2695,7 +2976,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 68
+        "y": 77
       },
       "id": 210,
       "panels": [],
@@ -2775,7 +3056,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 69
+        "y": 78
       },
       "id": 211,
       "options": {
@@ -2880,7 +3161,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 69
+        "y": 78
       },
       "id": 212,
       "options": {
@@ -2990,7 +3271,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 69
+        "y": 78
       },
       "id": 213,
       "options": {
@@ -3106,7 +3387,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 77
+        "y": 86
       },
       "id": 214,
       "options": {
@@ -3222,7 +3503,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 77
+        "y": 86
       },
       "id": 215,
       "options": {
@@ -3327,7 +3608,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 85
+        "y": 94
       },
       "id": 216,
       "options": {
@@ -3432,7 +3713,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 77
+        "y": 86
       },
       "id": 217,
       "options": {
@@ -3523,6 +3804,6 @@
   "timezone": "",
   "title": "WebhookWise AIOps 深度诊断大盘",
   "uid": "webhook-wise-aiops-diagnostics",
-  "version": 1,
+  "version": 2,
   "id": null
 }
