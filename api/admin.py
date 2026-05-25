@@ -14,6 +14,7 @@ from api import fail_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write
 from core.config import UnifiedConfigManager
+from core.datetime_utils import utc_isoformat
 from core.logger import get_logger
 from core.redis_client import redis_ping
 from core.redis_health import get_redis_health_snapshot
@@ -178,7 +179,7 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
         raw_body=raw_body,
         client_ip=event.client_ip or "admin-replay",
         request_id=event.request_id,
-        received_at=event.timestamp.isoformat() if event.timestamp else None,
+        received_at=utc_isoformat(event.timestamp),
         ingest_retry_count=max(0, int(event.retry_count or 0)),
     )
 
