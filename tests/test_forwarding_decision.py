@@ -5,13 +5,13 @@ tests/test_forwarding_decision.py
 这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
 """
 
-from datetime import datetime, timedelta, timezone
-from core.datetime_utils import utcnow
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 
 from core.app_context import get_default_app_context
+from core.datetime_utils import utcnow
 from services.webhooks.forwarding_stage import resolve_forward_decision
 
 

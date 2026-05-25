@@ -12,7 +12,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import httpx
@@ -20,8 +20,8 @@ import websockets
 
 from core import json
 from core.app_context import get_config_manager
-from core.datetime_utils import utcnow
 from core.circuit_breaker import CircuitBreakerOpenException
+from core.datetime_utils import utcnow
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
 from core.observability.metrics import (
@@ -201,7 +201,10 @@ async def poll_openclaw_final(
                 last_error = f"HTTP {response.status_code}"
                 logger.warning(
                     "HTTP /final 返回非 200 status=%s attempt=%s/%s elapsed=%sms",
-                    response.status_code, attempt + 1, retry_count, elapsed_ms,
+                    response.status_code,
+                    attempt + 1,
+                    retry_count,
+                    elapsed_ms,
                 )
                 continue
 
@@ -209,7 +212,9 @@ async def poll_openclaw_final(
                 raw = response.json()
             except ValueError:
                 last_error = "Invalid JSON response"
-                logger.warning("HTTP /final 返回无效 JSON (尝试 %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms)
+                logger.warning(
+                    "HTTP /final 返回无效 JSON (尝试 %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms
+                )
                 continue
             if not isinstance(raw, dict):
                 last_error = "Invalid JSON response"
@@ -237,17 +242,33 @@ async def poll_openclaw_final(
             last_error = f"ReadTimeout after {policy.http_poll_timeout:g}s"
             logger.info(
                 "HTTP /final 等待超时，按 pending 处理 attempt=%s/%s timeout=%ss error_type=%s error=%s",
-                attempt + 1, retry_count, policy.http_poll_timeout, type(e).__name__, _describe_exception(e),
+                attempt + 1,
+                retry_count,
+                policy.http_poll_timeout,
+                type(e).__name__,
+                _describe_exception(e),
             )
             return {"status": "pending", "error": last_error}
         except httpx.TimeoutException as e:
             transport_error = True
             last_error = _describe_exception(e)
-            logger.warning("HTTP 轮询超时 attempt=%s/%s error_type=%s error=%s", attempt + 1, retry_count, type(e).__name__, last_error)
+            logger.warning(
+                "HTTP 轮询超时 attempt=%s/%s error_type=%s error=%s",
+                attempt + 1,
+                retry_count,
+                type(e).__name__,
+                last_error,
+            )
         except Exception as e:
             transport_error = True
             last_error = _describe_exception(e)
-            logger.warning("HTTP 轮询异常 attempt=%s/%s error_type=%s error=%s", attempt + 1, retry_count, type(e).__name__, last_error)
+            logger.warning(
+                "HTTP 轮询异常 attempt=%s/%s error_type=%s error=%s",
+                attempt + 1,
+                retry_count,
+                type(e).__name__,
+                last_error,
+            )
 
     if last_error == "分析进行中":
         return {"status": "pending"}
@@ -338,7 +359,9 @@ def _build_device_auth(
         signed_at = int(time.time() * 1000)
         signature_gateway_token = gateway_token or policy.gateway_token
         scopes_str = "operator.read"
-        payload = f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{signature_gateway_token}|{nonce}"
+        payload = (
+            f"v2|{device_id}|gateway-client|cli|operator|{scopes_str}|{signed_at}|{signature_gateway_token}|{nonce}"
+        )
         signature = private_key.sign(payload.encode())
         sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
         return {
@@ -549,9 +572,16 @@ def _is_transient_poll_error(error: object) -> bool:
         return False
     text = str(error).lower()
     transient_markers = (
-        "all connection attempts failed", "connection refused", "connection reset",
-        "connect call failed", "network is unreachable", "no route to host",
-        "name or service not known", "temporary failure", "timed out", "timeout",
+        "all connection attempts failed",
+        "connection refused",
+        "connection reset",
+        "connect call failed",
+        "network is unreachable",
+        "no route to host",
+        "name or service not known",
+        "temporary failure",
+        "timed out",
+        "timeout",
     )
     return any(marker in text for marker in transient_markers)
 
@@ -559,18 +589,21 @@ def _is_transient_poll_error(error: object) -> bool:
 async def _get_poll_stability(record_id: int) -> WebhookData | None:
     from core.redis_client import redis_get_json_dict
     from core.redis_health import openclaw_poller_stability
+
     return await redis_get_json_dict(openclaw_poller_stability(record_id))
 
 
 async def _set_poll_stability(record_id: int, data: WebhookData) -> None:
     from core.redis_client import redis_setex_json
     from core.redis_health import openclaw_poller_stability
+
     await redis_setex_json(openclaw_poller_stability(record_id), 3600, data)
 
 
 async def _clear_poll_stability(record_id: int) -> None:
     from core.redis_client import redis_delete
     from core.redis_health import openclaw_poller_stability
+
     await redis_delete(openclaw_poller_stability(record_id))
 
 
@@ -608,7 +641,11 @@ def _elapsed_since(started_at: datetime | None, *, default: float = 0.0) -> floa
 
 
 async def _failure_update_with_notification(
-    rec: WebhookData, update: WebhookData, reason: str, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    update: WebhookData,
+    reason: str,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData:
     record_id = rec["id"]
     await _clear_poll_stability(record_id)
@@ -618,7 +655,10 @@ async def _failure_update_with_notification(
 
 
 async def _handle_poll_timeout(
-    rec: WebhookData, timeout_started_at: datetime | None, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    timeout_started_at: datetime | None,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData | None:
     if timeout_started_at is None:
         return None
@@ -634,7 +674,10 @@ async def _handle_poll_timeout(
 
 
 async def _handle_missing_session_key(
-    rec: WebhookData, timeout_started_at: datetime | None, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    timeout_started_at: datetime | None,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData | None:
     if rec["openclaw_session_key"]:
         return None
@@ -728,7 +771,11 @@ def _is_same_poll_snapshot(previous: WebhookData | None, current: WebhookData) -
 
 
 async def _handle_completed_poll_result(
-    rec: WebhookData, result: WebhookData, timeout_started_at: datetime | None, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    result: WebhookData,
+    timeout_started_at: datetime | None,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData:
     record_id = rec["id"]
     text = str(result.get("text", ""))
@@ -747,7 +794,11 @@ async def _handle_completed_poll_result(
         hit_count = int(prev_snapshot.get("hit_count", 1) if prev_snapshot else 1) + 1
         logger.info(
             "[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
-            record_id, hit_count, required_hits, msg_count, len(text),
+            record_id,
+            hit_count,
+            required_hits,
+            msg_count,
+            len(text),
         )
         if hit_count < required_hits:
             await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
@@ -762,7 +813,10 @@ async def _handle_completed_poll_result(
 
 
 async def _handle_error_poll_result(
-    rec: WebhookData, result: WebhookData, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    result: WebhookData,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData:
     record_id = rec["id"]
     prev_snapshot = await _get_poll_stability(record_id)
@@ -784,7 +838,9 @@ async def _handle_error_poll_result(
 
     error_msg = str(result.get("error", "OpenClaw 返回错误"))
     if bool(result.get("retryable")) or _is_transient_poll_error(error_msg):
-        logger.warning("[Poller] OpenClaw 轮询遇到临时错误，保留 pending 等待下轮重试: id=%s error=%s", record_id, error_msg)
+        logger.warning(
+            "[Poller] OpenClaw 轮询遇到临时错误，保留 pending 等待下轮重试: id=%s error=%s", record_id, error_msg
+        )
         return _poll_skip(record_id)
 
     DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
@@ -796,7 +852,11 @@ async def _handle_error_poll_result(
 
 
 async def _handle_poll_result(
-    rec: WebhookData, result: WebhookData, timeout_started_at: datetime | None, *, policy: OpenClawPollPolicy,
+    rec: WebhookData,
+    result: WebhookData,
+    timeout_started_at: datetime | None,
+    *,
+    policy: OpenClawPollPolicy,
 ) -> WebhookData:
     status = result.get("status")
     if status == "completed":
@@ -805,7 +865,9 @@ async def _handle_poll_result(
         return await _handle_error_poll_result(rec, result, policy=policy)
     logger.info(
         "[Poller] 分析仍在进行中: id=%s elapsed=%.0fs status=%s",
-        rec["id"], _elapsed_since(timeout_started_at), status or "unknown",
+        rec["id"],
+        _elapsed_since(timeout_started_at),
+        status or "unknown",
     )
     return _poll_skip(rec["id"])
 
@@ -830,7 +892,11 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
             "id": record_id,
             "action": "update",
             "status": DeepAnalysisStatus.FAILED,
-            "analysis_result": {"root_cause": f"分析任务崩溃: {e}", "error": str(e), "failure_reason": f"轮询异常: {e}"},
+            "analysis_result": {
+                "root_cause": f"分析任务崩溃: {e}",
+                "error": str(e),
+                "failure_reason": f"轮询异常: {e}",
+            },
         }
 
 
@@ -888,13 +954,18 @@ async def _claim_openclaw_poll(
 async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
     try:
         from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
+
         await schedule_openclaw_poll(analysis_id, delay_seconds)
     except Exception as e:
         logger.warning("[Poller] OpenClaw 下次轮询调度失败 analysis_id=%s error=%s", analysis_id, e)
 
 
 async def _schedule_next_openclaw_poll(
-    analysis_id: int, poll_attempts: int, created_at: datetime | None, *, policy: OpenClawPollPolicy | None = None,
+    analysis_id: int,
+    poll_attempts: int,
+    created_at: datetime | None,
+    *,
+    policy: OpenClawPollPolicy | None = None,
 ) -> None:
     from db.session import session_scope
     from models import DeepAnalysis
@@ -921,7 +992,9 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
         policy = policy or OpenClawPollPolicy.from_config()
         record_dict, early_reschedule_delay = await _claim_openclaw_poll(analysis_id, policy=policy)
         if early_reschedule_delay is not None:
-            logger.debug("[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss", analysis_id, early_reschedule_delay)
+            logger.debug(
+                "[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss", analysis_id, early_reschedule_delay
+            )
             await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
             return
         if record_dict is None:
@@ -930,14 +1003,19 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
 
         logger.info(
             "[Poller] 轮询 OpenClaw 分析: id=%s webhook_id=%s attempt=%s",
-            analysis_id, record_dict.get("webhook_event_id"), record_dict.get("poll_attempts"),
+            analysis_id,
+            record_dict.get("webhook_event_id"),
+            record_dict.get("poll_attempts"),
         )
 
         poll_result = await _poll_single_record(record_dict, policy=policy)
 
         if poll_result.get("action") != "update":
             await _schedule_next_openclaw_poll(
-                analysis_id, int(record_dict.get("poll_attempts") or 0), _poll_timeout_started_at(record_dict), policy=policy,
+                analysis_id,
+                int(record_dict.get("poll_attempts") or 0),
+                _poll_timeout_started_at(record_dict),
+                policy=policy,
             )
             return
 
@@ -964,6 +1042,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             if poll_result.get("_need_success_notify"):
                 try:
                     from models import WebhookEvent
+
                     evt_stmt = select(WebhookEvent).filter_by(id=record_dict["webhook_event_id"])
                     evt_result = await session.execute(evt_stmt)
                     event = evt_result.scalars().first()
@@ -1062,7 +1141,9 @@ async def analyze_with_openclaw(
     policy = policy or OpenClawTriggerPolicy.from_config()
     dependencies = dependencies or build_openclaw_forward_dependencies()
     if http_client is not None:
-        dependencies = OpenClawForwardDependencies(http_client=http_client, circuit_breaker=dependencies.circuit_breaker)
+        dependencies = OpenClawForwardDependencies(
+            http_client=http_client, circuit_breaker=dependencies.circuit_breaker
+        )
     if not policy.enabled:
         logger.warning("[OpenClaw] 未启用，跳过深度分析")
         return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
@@ -1096,7 +1177,8 @@ async def analyze_with_openclaw(
         message += f"\n\n## 用户补充问题\n{user_question}"
     logger.info(
         "[OpenClaw] 深度分析 prompt 已加载 source=%s bytes=%s",
-        get_prompt_source(DEEP_ANALYSIS_PROMPT_KIND), len(template.encode("utf-8")),
+        get_prompt_source(DEEP_ANALYSIS_PROMPT_KIND),
+        len(template.encode("utf-8")),
     )
 
     session_key = f"hook:deep-analysis:{source}:{uuid.uuid4()}"
@@ -1132,7 +1214,11 @@ async def analyze_with_openclaw(
         logger.warning("[%s] OpenClaw token 为空，将按当前配置继续发起请求", platform_name.upper())
     logger.info(
         "[%s] 正在发起分析请求: target=%s session_key=%s payload_bytes=%s trace_id=%s",
-        platform_name.upper(), mask_url(target_url), session_key, len(payload_bytes), trace_id or "-",
+        platform_name.upper(),
+        mask_url(target_url),
+        session_key,
+        len(payload_bytes),
+        trace_id or "-",
     )
 
     max_retries = policy.max_retries
@@ -1163,7 +1249,12 @@ async def analyze_with_openclaw(
             last_error = str(e)
             logger.warning(
                 "[%s] 请求异常 target=%s attempt=%d/%d error_type=%s error=%s",
-                platform_name.upper(), mask_url(target_url), attempt + 1, max_retries, type(e).__name__, e,
+                platform_name.upper(),
+                mask_url(target_url),
+                attempt + 1,
+                max_retries,
+                type(e).__name__,
+                e,
             )
             if attempt < max_retries - 1:
                 await (sleep or asyncio.sleep)(policy.retry_sleep_seconds)
@@ -1188,7 +1279,10 @@ async def analyze_with_openclaw(
             run_id = result.get("runId")
         logger.info(
             "[%s] 成功触发深度分析 run_id=%s session_key=%s status_code=%s",
-            platform_name.upper(), run_id, session_key, response.status_code,
+            platform_name.upper(),
+            run_id,
+            session_key,
+            response.status_code,
         )
         return {"_pending": True, "_openclaw_run_id": run_id, "_openclaw_session_key": session_key}
     except Exception as e:
@@ -1211,7 +1305,9 @@ async def forward_to_openclaw(
     policy = policy or OpenClawTriggerPolicy.from_config()
     dependencies = dependencies or build_openclaw_forward_dependencies()
     if http_client is not None:
-        dependencies = OpenClawForwardDependencies(http_client=http_client, circuit_breaker=dependencies.circuit_breaker)
+        dependencies = OpenClawForwardDependencies(
+            http_client=http_client, circuit_breaker=dependencies.circuit_breaker
+        )
     if not policy.enabled:
         logger.debug("[Forward] OpenClaw 未启用，跳过深度分析")
         status = "disabled"

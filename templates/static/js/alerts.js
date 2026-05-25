@@ -332,11 +332,6 @@ const AlertsModule = {
             html += '<span class="alert-meta-item">🆔 #' + escapeHtml(String(webhook.id)) + '</span>';
             html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
-            // 显示主机信息（如果有）
-            if (webhook.alert_info && webhook.alert_info.host) {
-                html += '<span class="alert-meta-item">🖥️ ' + escapeHtml(String(webhook.alert_info.host)) + '</span>';
-            }
-
             // 始终显示客户端 IP
             if (webhook.client_ip) {
                 html += '<span class="alert-meta-item">🌐 ' + escapeHtml(String(webhook.client_ip)) + '</span>';
@@ -398,17 +393,6 @@ const AlertsModule = {
             html += '<div class="tab-content" data-tab-content="data">';
             if (webhook.parsed_data) {
                 html += renderJSONBlock(webhook.parsed_data, '原始数据');
-            } else if (webhook.alert_info && Object.keys(webhook.alert_info).length > 0) {
-                html += '<div class="info-grid">';
-                Object.entries(webhook.alert_info).forEach(([key, value]) => {
-                    if (value) {
-                        html += '<div class="info-item"><div class="info-label">' + escapeHtml(String(key)) + '</div><div class="info-value">' + escapeHtml(String(value)) + '</div></div>';
-                    }
-                });
-                html += '</div>';
-                html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载脱敏后的原始数据</p>';
-                html += '</div>';
             } else {
                 html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
             }
@@ -856,12 +840,9 @@ const AlertsModule = {
         console.log('打开转发模态框, webhook ID:', id);
         this.currentForwardId = id;
 
-        // 获取配置的转发地址作为默认值
-        const configUrl = document.getElementById('configForwardUrl');
         const forwardUrlInput = document.getElementById('forwardUrl');
-
-        if (configUrl && forwardUrlInput) {
-            forwardUrlInput.value = configUrl.value || '';
+        if (forwardUrlInput) {
+            forwardUrlInput.value = '';
         }
 
         const modal = document.getElementById('forwardModal');

@@ -26,7 +26,7 @@ async def forward_to_remote(
     dependencies: RemoteForwardDependencies | None = None,
 ) -> ForwardResult:
     """转发分析结果到远程 Webhook URL — 构建 payload 后委托给 post_json_to_remote。"""
-    from services.channels.feishu import build_feishu_card, is_feishu_url
+    from services.notifications.feishu import build_feishu_card, is_feishu_url
 
     if not target_url:
         return {"status": "skipped", "reason": "no_target_url"}
@@ -84,9 +84,7 @@ async def post_json_to_remote(
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
-        final_url = (
-            await dependencies.validate_url(url) if validate_target else url
-        )
+        final_url = await dependencies.validate_url(url) if validate_target else url
         logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(final_url))
         resp = cast(
             httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)

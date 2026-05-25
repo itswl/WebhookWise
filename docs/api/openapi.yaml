@@ -391,6 +391,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/outbox:
+    get:
+      summary: List Outbox Endpoint
+      description: 查询转发队列记录。
+      operationId: list_outbox_endpoint_api_outbox_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Status
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Event Type
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                title: Response List Outbox Endpoint Api Outbox Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/config:
     get:
       summary: Get Config
@@ -402,6 +456,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfigResponse'
+      security:
+      - HTTPBearer: []
+  /api/health/deep:
+    get:
+      summary: Deep Health Check
+      operationId: deep_health_check_api_health_deep_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
       security:
       - HTTPBearer: []
   /api/config/sources:
@@ -502,6 +568,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeadLetterListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/outbox/{outbox_id}/retry:
+    post:
+      summary: Retry Outbox Endpoint
+      operationId: retry_outbox_endpoint_api_admin_outbox__outbox_id__retry_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: outbox_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Outbox Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/suppressed:
+    get:
+      summary: List Suppressed Endpoint
+      operationId: list_suppressed_endpoint_api_admin_suppressed_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: minutes
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1440
+          minimum: 1
+          default: 60
+          title: Minutes
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -609,19 +737,18 @@ paths:
           content:
             application/json:
               schema: {}
-  /webhook:
+  /webhook/{source}:
     post:
       summary: Receive Webhook
-      description: 通用 Webhook 接收入口。
-      operationId: receive_webhook_webhook_post
+      description: Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。
+      operationId: receive_webhook_webhook__source__post
       parameters:
       - name: source
-        in: query
-        required: false
+        in: path
+        required: true
         schema:
           anyOf:
           - type: string
-            maxLength: 100
           - type: 'null'
           title: Source
       responses:
@@ -637,18 +764,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /webhook/{source}:
+  /webhook:
     post:
-      summary: Receive Webhook With Source
-      description: 带来源标识的 Webhook 接收入口。
-      operationId: receive_webhook_with_source_webhook__source__post
+      summary: Receive Webhook
+      description: Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。
+      operationId: receive_webhook_webhook_post
       parameters:
       - name: source
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
-          type: string
-          maxLength: 100
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Source
       responses:
         '202':
@@ -958,11 +1086,6 @@ components:
           type: boolean
           title: Has More
           default: false
-        limit:
-          anyOf:
-          - type: integer
-          - type: 'null'
-          title: Limit
         page_size:
           anyOf:
           - type: integer
@@ -1170,10 +1293,6 @@ components:
           type: boolean
           title: Is Duplicate
           default: false
-        beyond_window:
-          type: boolean
-          title: Beyond Window
-          default: false
       type: object
       required:
       - id
@@ -1245,6 +1364,11 @@ components:
         priority:
           type: integer
           title: Priority
+        match_event_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Match Event Type
         match_importance:
           anyOf:
           - type: string
@@ -1260,6 +1384,11 @@ components:
           - type: string
           - type: 'null'
           title: Match Source
+        match_payload:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Match Payload
         target_type:
           type: string
           title: Target Type
@@ -1595,15 +1724,11 @@ components:
         duplicate_count:
           type: integer
           title: Duplicate Count
-        beyond_window:
-          type: boolean
-          title: Beyond Window
         duplicate_type:
           type: string
           enum:
           - new
           - within_window
-          - beyond_window
           title: Duplicate Type
           default: new
         forward_status:
@@ -1616,11 +1741,6 @@ components:
           - type: string
           - type: 'null'
           title: Summary
-        alert_info:
-          anyOf:
-          - type: object
-          - type: 'null'
-          title: Alert Info
         created_at:
           anyOf:
           - type: string
@@ -1637,7 +1757,6 @@ components:
       - source
       - is_duplicate
       - duplicate_count
-      - beyond_window
       title: WebhookEventSummary
       description: Webhook 事件摘要
     WebhookListResponse:

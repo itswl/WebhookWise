@@ -5,9 +5,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from core.app_context import get_config_manager
+from core.datetime_utils import utcnow
 from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
 from core.text import split_csv_lower
-from core.datetime_utils import utcnow
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
@@ -224,7 +224,9 @@ def decide_forwarding(
 
     if is_duplicate:
         last_notified_at = original_event.last_notified_at if original_event else None
-        seconds_since_notify = (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
+        seconds_since_notify = (
+            (current_time - last_notified_at).total_seconds() if last_notified_at is not None else None
+        )
         return _decide_duplicate_alert(
             base_should_forward=base_should_fwd,
             seconds_since_notify=seconds_since_notify,

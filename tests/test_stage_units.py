@@ -23,7 +23,7 @@ def test_parse_request_decodes_raw_json_without_database() -> None:
 
 @pytest.mark.asyncio
 async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.channels.feishu import build_deep_analysis_card
+    from services.notifications.feishu import build_deep_analysis_card
 
     card = build_deep_analysis_card(
         {"analysis_result": {"root_cause": "x", "impact": "y", "confidence": 0.8}, "engine": "openclaw"},
@@ -46,6 +46,7 @@ async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pyt
         return {"status": "queued", "outbox_id": len(enqueued)}
 
     import services.operations.deep_analysis_notifications as module
+
     monkeypatch.setattr(module, "forward_notification", fake_forward_notification)
 
     ok = await send_feishu_deep_analysis(
@@ -102,7 +103,15 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
         {"source": "unit", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.test/hook",
-        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
+        policy=ForwardDeliveryPolicy(
+            timeout_seconds=2,
+            max_attempts=3,
+            retry_initial_delay=1,
+            retry_max_delay=10,
+            retry_backoff_multiplier=2.0,
+            stale_processing_threshold_seconds=60,
+            max_delivery_age_seconds=1800,
+        ),
         dependencies=RemoteForwardDependencies(
             http_client=client,
             circuit_breaker=cast(Any, breaker),

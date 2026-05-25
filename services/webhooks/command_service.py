@@ -1,7 +1,7 @@
 """Webhook 命令服务：接收、保存与状态重放。"""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import cast
 
 import sqlalchemy
@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.app_context import get_config_manager
 from core.compression import compress_payload
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
-from core.datetime_utils import utcnow
 from models import WebhookEvent
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
@@ -63,7 +63,6 @@ class _RequestIdResolution:
     existing_event_id: int | None
     skip_duplicate_lookup: bool
     completed_result: SaveWebhookResult | None = None
-
 
 
 def _resolve_analysis_for_duplicate(
@@ -343,9 +342,7 @@ async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
         raise
 
 
-async def save_webhook_data_in_session(
-    session: AsyncSession, *, input: SaveWebhookInput
-) -> SaveWebhookResult:
+async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebhookInput) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
     if input.alert_hash is None:
         object.__setattr__(input, "alert_hash", generate_alert_hash(input.data, input.source))

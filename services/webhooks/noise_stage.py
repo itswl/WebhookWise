@@ -1,9 +1,9 @@
 """Noise-reduction stage for webhook processing."""
 
 import time
-from datetime import datetime, timezone
 from typing import Any
 
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import (
     WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS,
@@ -11,7 +11,6 @@ from core.observability.metrics import (
     sanitize_source,
 )
 from db.session import session_scope
-from core.datetime_utils import utcnow
 from models import SuppressedRecord
 from services.analysis.noise_reduction import AlertContext, analyze_noise_reduction
 from services.webhooks.decisioning import normalize_importance

@@ -66,8 +66,11 @@ async def test_deep_analysis_prompt_uses_shared_loader(tmp_path: Path) -> None:
     try:
         template = await reload_deep_analysis_prompt_template(
             PromptPolicy(
-                inline_prompt="", prompt_file=str(prompt_file),
-                builtin_prompt="", inline_source="", builtin_source="",
+                inline_prompt="",
+                prompt_file=str(prompt_file),
+                builtin_prompt="",
+                inline_source="",
+                builtin_source="",
             )
         )
 
@@ -172,7 +175,15 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
+        policy=ForwardDeliveryPolicy(
+            timeout_seconds=2,
+            max_attempts=3,
+            retry_initial_delay=1,
+            retry_max_delay=10,
+            retry_backoff_multiplier=2.0,
+            stale_processing_threshold_seconds=60,
+            max_delivery_age_seconds=1800,
+        ),
         dependencies=RemoteForwardDependencies(FakeHttpClient(), Breaker(), accept_url),
     )
 
@@ -210,7 +221,15 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
         {"source": "test", "parsed_data": {}},
         {"summary": "ok"},
         target_url="https://example.com/hook",
-        policy=ForwardDeliveryPolicy(timeout_seconds=2, max_attempts=3, retry_initial_delay=1, retry_max_delay=10, retry_backoff_multiplier=2.0, stale_processing_threshold_seconds=60, max_delivery_age_seconds=1800),
+        policy=ForwardDeliveryPolicy(
+            timeout_seconds=2,
+            max_attempts=3,
+            retry_initial_delay=1,
+            retry_max_delay=10,
+            retry_backoff_multiplier=2.0,
+            stale_processing_threshold_seconds=60,
+            max_delivery_age_seconds=1800,
+        ),
         dependencies=RemoteForwardDependencies(Client(), Breaker(), validate_url),
     )
 
@@ -247,7 +266,9 @@ async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.
 async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import reanalysis
 
-    event = SimpleNamespace(id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False)
+    event = SimpleNamespace(
+        id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False
+    )
 
     class FakeSession:
         committed = False
@@ -270,9 +291,11 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     fake_session = FakeSession()
     monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
     monkeypatch.setattr(reanalysis, "forward_notification", fake_forward)
+
     # URL validation rejects example.com — bypass for test
     async def _pass_through(url: str, **kw: object) -> str:
         return url
+
     monkeypatch.setattr(reanalysis, "validate_outbound_url", _pass_through)
 
     result = await reanalysis.manual_forward_webhook(
@@ -299,7 +322,7 @@ def test_dashboard_deep_analysis_fields_are_escaped() -> None:
 
 
 def test_is_feishu_url_requires_hostname_match() -> None:
-    from services.channels.feishu import is_feishu_url
+    from services.notifications.feishu import is_feishu_url
 
     assert is_feishu_url("https://open.feishu.cn/open-apis/bot/v2/hook/token")
     assert is_feishu_url("https://tenant.larksuite.com/hook")

@@ -1,9 +1,10 @@
-from datetime import datetime, timedelta, timezone
-from core.datetime_utils import utcnow
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
+
+from core.datetime_utils import utcnow
 
 pytest.importorskip("fastapi")
 
@@ -168,11 +169,9 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     by_id = {i["webhook_event_id"]: i for i in items}
     assert by_id[event.id]["source"] == "prometheus"
     assert by_id[event.id]["is_duplicate"] is True
-    assert by_id[event.id]["beyond_window"] is False
 
     assert by_id[999]["source"] is None
     assert by_id[999]["is_duplicate"] is False
-    assert by_id[999]["beyond_window"] is False
 
 
 async def test_get_deep_analyses_returns_serializable_dicts(session):

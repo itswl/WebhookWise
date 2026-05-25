@@ -77,14 +77,14 @@ def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
 @dataclass(frozen=True, slots=True)
 class RemoteForwardDependencies:
     http_client: Any
-    circuit_breaker: Any  # LazyCircuitBreaker or compatible (has call_async)
+    circuit_breaker: Any
     validate_url: ValidateURL
 
 
 @dataclass(frozen=True, slots=True)
 class OpenClawForwardDependencies:
     http_client: Any
-    circuit_breaker: Any  # LazyCircuitBreaker or compatible (has call_async)
+    circuit_breaker: Any
 
 
 def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDependencies:

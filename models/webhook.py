@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -16,8 +16,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.session import Base
 from core.datetime_utils import utcnow
+from db.session import Base
 
 
 class WebhookEvent(Base):
@@ -118,7 +118,6 @@ class ArchivedWebhookEvent(Base):
     is_duplicate: Mapped[bool | None] = mapped_column(Boolean)
     duplicate_of: Mapped[int | None] = mapped_column(Integer)
     duplicate_count: Mapped[int | None] = mapped_column(Integer)
-    beyond_window: Mapped[bool | None] = mapped_column(Boolean)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime)

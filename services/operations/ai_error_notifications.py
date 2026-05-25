@@ -7,8 +7,8 @@ from typing import Any
 from core.logger import get_logger
 from core.redis_health import ai_error_alert_lock
 from services.analysis.analysis_policies import AIErrorNotificationPolicy
-from services.channels.feishu import build_ai_error_card
 from services.forwarding.outbox import forward_notification
+from services.notifications.feishu import build_ai_error_card
 from services.webhooks.types import WebhookData
 
 logger = get_logger("ai_error_notifications")
