@@ -49,7 +49,6 @@ class DeepAnalysisRecord(BaseModel):
     last_polled_at: datetime | str | None = None
     source: str | None = None
     is_duplicate: bool = False
-    beyond_window: bool = False
 
 
 class DeepAnalysisListData(BaseModel):

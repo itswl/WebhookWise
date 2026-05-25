@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 
 from core import json
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
-from core.datetime_utils import utcnow
 from models import WebhookEvent
 from services.webhooks.types import WebhookProcessingStatus
 

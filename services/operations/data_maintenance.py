@@ -1,12 +1,12 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy import delete, or_, select
 
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
-from core.datetime_utils import utcnow
 from models import ArchivedWebhookEvent, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 
@@ -36,7 +36,6 @@ def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object
         "is_duplicate": event.is_duplicate,
         "duplicate_of": event.duplicate_of,
         "duplicate_count": event.duplicate_count,
-        "beyond_window": False,
         "last_notified_at": event.last_notified_at,
         "created_at": event.created_at,
         "updated_at": event.updated_at,

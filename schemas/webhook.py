@@ -9,7 +9,7 @@ from core.compression import decompress_payload
 
 from .base import APIResponse, CursorPaginationInfo
 
-DuplicateType = Literal["new", "within_window", "beyond_window"]
+DuplicateType = Literal["new", "within_window"]
 
 
 class WebhookEventSummary(BaseModel):
@@ -26,11 +26,9 @@ class WebhookEventSummary(BaseModel):
     is_duplicate: bool
     duplicate_of: int | None = None
     duplicate_count: int
-    beyond_window: bool
     duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
     summary: str | None = None
-    alert_info: dict[str, Any] | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
 
@@ -66,26 +64,13 @@ def _iso_or_none(value: object) -> str | None:
     return value.isoformat() if isinstance(value, datetime) else None
 
 
-def mongodb_summary_fields(parsed_data: Any | None) -> dict[str, Any]:
-    if not parsed_data or not isinstance(parsed_data, dict):
-        return {}
-    monitor = parsed_data.get("监控项")
-    return {
-        "host": monitor.get("主机", "") if isinstance(monitor, dict) else "",
-        "metric": monitor.get("监控项", "") if isinstance(monitor, dict) else "",
-        "value": parsed_data.get("当前值", ""),
-    }
-
-
 def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
     ai_analysis = getattr(event, "ai_analysis", None)
-    parsed_data = getattr(event, "parsed_data", None)
     source = str(getattr(event, "source", ""))
     is_duplicate = bool(getattr(event, "is_duplicate", False))
-    beyond_window = bool(getattr(event, "beyond_window", False))
     duplicate_type: DuplicateType = "new"
     if is_duplicate:
-        duplicate_type = "beyond_window" if beyond_window else "within_window"
+        duplicate_type = "within_window"
     return {
         "id": event.id,
         "request_id": getattr(event, "request_id", None),
@@ -96,11 +81,9 @@ def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
         "is_duplicate": is_duplicate,
         "duplicate_of": getattr(event, "duplicate_of", None),
         "duplicate_count": int(getattr(event, "duplicate_count", 0) or 0),
-        "beyond_window": beyond_window,
         "duplicate_type": duplicate_type,
         "forward_status": getattr(event, "forward_status", None),
         "summary": ai_analysis.get("summary", "") if isinstance(ai_analysis, dict) else None,
-        "alert_info": mongodb_summary_fields(parsed_data) if source == "mongodb" else {},
         "created_at": _iso_or_none(getattr(event, "created_at", None)),
         "prev_alert_id": getattr(event, "prev_alert_id", None),
     }

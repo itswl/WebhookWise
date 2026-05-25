@@ -258,10 +258,6 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">转发地址</label>
-                    <input type="text" class="form-input" id="configForwardUrl" placeholder="https://example.com/webhook">
-                </div>
-                <div class="form-group">
                     <label class="form-label">OpenAI API Key</label>
                     <input type="password" class="form-input" id="configOpenaiApiKey" placeholder="sk-...">
                 </div>
@@ -287,12 +283,8 @@
                     <textarea class="form-input" id="configAiSystemPrompt" rows="3" placeholder="自定义 AI 系统提示词..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">重复告警时间窗口（小时）</label>
-                    <input type="number" class="form-input" id="configDuplicateWindow" placeholder="24" min="1" max="168">
-                </div>
-                <div class="form-checkbox">
-                    <input type="checkbox" id="configEnableForward">
-                    <label for="configEnableForward">启用自动转发</label>
+                    <label class="form-label">去重窗口（秒）</label>
+                    <input type="number" class="form-input" id="configDedupWindowSeconds" placeholder="14400" min="1">
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="configEnableAi">

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import func, select
@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import json
 from core.compression import decompress_payload_async
-from db.session import count_with_timeout, session_scope
 from core.datetime_utils import utcnow
+from db.session import count_with_timeout, session_scope
 from models import ForwardRule, SuppressedRecord, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
 from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance

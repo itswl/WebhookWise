@@ -7,11 +7,11 @@ final persistence and forwarding intent creation.
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, cast
 
 from core import json
 from core.alert_concurrency import alert_processing_gate
+from core.datetime_utils import utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.attributes import (
@@ -35,7 +35,6 @@ from core.observability.metrics import (
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
-from core.datetime_utils import utcnow
 from core.observability.tracing import (
     generate_trace_id,
     get_current_trace_id,
@@ -91,6 +90,7 @@ def parse_request(
         headers=headers,
     )
 
+
 logger = get_logger("webhooks.pipeline")
 
 # ── 主入口 ───────────────────────────────────────────────────────────────────
@@ -136,7 +136,6 @@ async def _pipeline_step(
             raise
         finally:
             _record_step_metrics(step_name, metric_source, outcome["value"], started)
-
 
 
 async def _resolve_noise_context(
@@ -266,28 +265,36 @@ async def _run_processing_pipeline(
             if getattr(gate_res, "suppressed", False):
                 logger.info(
                     "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
-                    ctx.event_id, ctx.request_id,
+                    ctx.event_id,
+                    ctx.request_id,
                     getattr(gate_res, "queue_size", 0),
                     getattr(gate_res, "reason", "") or "alert_storm_backpressure",
                 )
                 WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
                 WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
-                emit_event("webhook.storm.suppressed", {
-                    "event_id": ctx.event_id or 0,
-                    "source": ctx.req_ctx.source,
-                    "alert_hash": ctx.alert_hash[:12],
-                    "webhook.status": "suppressed",
-                    "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
-                    "queue.depth": getattr(gate_res, "queue_size", 0),
-                })
-                record_signal("webhook.ingest", "suppressed", {
-                    "event_id": ctx.event_id or 0,
-                    "source": ctx.req_ctx.source,
-                    "alert_hash": ctx.alert_hash[:12],
-                    "webhook.status": "suppressed",
-                    "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
-                    "queue.depth": getattr(gate_res, "queue_size", 0),
-                })
+                emit_event(
+                    "webhook.storm.suppressed",
+                    {
+                        "event_id": ctx.event_id or 0,
+                        "source": ctx.req_ctx.source,
+                        "alert_hash": ctx.alert_hash[:12],
+                        "webhook.status": "suppressed",
+                        "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
+                        "queue.depth": getattr(gate_res, "queue_size", 0),
+                    },
+                )
+                record_signal(
+                    "webhook.ingest",
+                    "suppressed",
+                    {
+                        "event_id": ctx.event_id or 0,
+                        "source": ctx.req_ctx.source,
+                        "alert_hash": ctx.alert_hash[:12],
+                        "webhook.status": "suppressed",
+                        "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
+                        "queue.depth": getattr(gate_res, "queue_size", 0),
+                    },
+                )
                 outcome["value"] = "suppressed"
                 return PipelineProcessingResult(suppressed=True)
 
@@ -396,7 +403,10 @@ def _log_completed_processing(
         set_log_context(event_id=save_res.webhook_id)
     logger.info(
         "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s",
-        save_res.webhook_id, request_id, save_res.is_duplicate, save_res.original_id,
+        save_res.webhook_id,
+        request_id,
+        save_res.is_duplicate,
+        save_res.original_id,
     )
 
     event_type = "duplicate" if save_res.is_duplicate else "new"
@@ -419,7 +429,14 @@ def _log_completed_processing(
 
     logger.info(
         "[Pipeline] 处理完成 event_id=%s request_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
-        save_res.webhook_id, request_id, event_type, importance, route_label, noise_relation, fwd_info, duration_ms,
+        save_res.webhook_id,
+        request_id,
+        event_type,
+        importance,
+        route_label,
+        noise_relation,
+        fwd_info,
+        duration_ms,
     )
 
     if span:

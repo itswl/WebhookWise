@@ -4,9 +4,7 @@ Reuses the SQLite session-factory pattern from test_forward_outbox.py.
 """
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
-from core.datetime_utils import utcnow
-
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -15,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
+from core.datetime_utils import utcnow
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
 

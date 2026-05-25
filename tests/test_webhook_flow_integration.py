@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
-from core.datetime_utils import utcnow
+from datetime import timedelta
 from typing import Any, cast
 
 import httpx
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
+from core.datetime_utils import utcnow
 from services.dedup import generate_alert_hash
 
 
@@ -99,6 +99,7 @@ async def test_webhook_receive_to_feishu_card_flow(
             )
         )
         from services.webhooks.repository import invalidate_forward_rules_cache
+
         invalidate_forward_rules_cache()
 
     async def fake_analyze_webhook_with_ai(webhook_data: dict[str, Any], **_: object) -> dict[str, Any]:
@@ -476,6 +477,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
             )
         )
         from services.webhooks.repository import invalidate_forward_rules_cache
+
         invalidate_forward_rules_cache()
 
     async with integration_session_factory.begin() as session:

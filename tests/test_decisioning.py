@@ -5,9 +5,9 @@ unit tests because the functions have no side effects and encode all
 forwarding / rule-matching logic.
 """
 
-from datetime import datetime, timedelta, timezone
-from core.datetime_utils import utcnow
+from datetime import datetime, timedelta
 
+from core.datetime_utils import utcnow
 from core.text import split_csv_lower
 from services.webhooks.decisioning import (
     ForwardDecision,
@@ -159,9 +159,7 @@ class TestRuleMatches:
     def test_combined_filters(self) -> None:
         rule = _make_rule(match_importance="high", match_source="prometheus", match_duplicate="new")
         assert _rule_matches(rule, importance="high", source="prometheus", is_duplicate=False)
-        assert not _rule_matches(
-            rule, importance="medium", source="prometheus", is_duplicate=False
-        )
+        assert not _rule_matches(rule, importance="medium", source="prometheus", is_duplicate=False)
         assert not _rule_matches(rule, importance="high", source="grafana", is_duplicate=False)
 
 

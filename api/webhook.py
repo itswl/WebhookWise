@@ -5,7 +5,6 @@ Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
 """
 
 import time
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -15,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core.auth import verify_api_key
+from core.datetime_utils import utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.metrics import (
@@ -31,7 +31,6 @@ from core.sensitive_data import redact_event_dict
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.engine import test_db_connection
 from db.session import get_db_session
-from core.datetime_utils import utcnow
 from models import WebhookEvent
 from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
 from schemas.webhook import webhook_event_to_full_dict

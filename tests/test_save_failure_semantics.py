@@ -1,8 +1,6 @@
-from datetime import datetime, timezone
-from core.datetime_utils import utcnow
-
 import pytest
 
+from core.datetime_utils import utcnow
 from models.webhook import WebhookEvent
 from services.webhooks.command_service import SaveWebhookResult, _resolve_request_id, save_webhook_data
 

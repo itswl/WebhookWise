@@ -1,9 +1,9 @@
 """Analysis policies (AI + noise reduction) built from static configuration or explicit injection."""
 
 from dataclasses import dataclass
-from typing import Any
 
 from core.app_context import get_config_manager
+from core.config.defaults import NoiseConfig
 
 DEFAULT_USER_PROMPT_TEMPLATE = """请分析以下 webhook 事件：
 **来源**: {source}
@@ -125,8 +125,7 @@ class NoiseScoringConfig:
     related_min_confidence: float
 
     @classmethod
-    def from_config(cls, config: Any) -> "NoiseScoringConfig":
-        noise = getattr(config, "noise", config)  # accept both NoiseConfig and UnifiedConfigManager
+    def from_config(cls, noise: NoiseConfig) -> "NoiseScoringConfig":
         return cls(
             source_weight=float(noise.NOISE_SOURCE_WEIGHT),
             resource_weight=float(noise.NOISE_RESOURCE_WEIGHT),

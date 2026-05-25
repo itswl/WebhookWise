@@ -71,8 +71,8 @@ overrides from database tables or Redis Pub/Sub.
 
 Feature modules should use `core.logger.get_logger("component")` for child
 loggers under the `webhook_service.*` namespace. Importing the root
-`core.logger.logger` is reserved for application lifecycle glue and legacy code
-that does not need a distinct component name.
+`core.logger.logger` is reserved for application lifecycle glue that does not
+need a distinct component name.
 
 Raw `logging.getLogger(...)` is allowed only in logging infrastructure,
 observability bootstrap code, tests, and modules that must avoid importing

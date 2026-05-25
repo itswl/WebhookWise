@@ -233,12 +233,10 @@ async function openConfigModal() {
 
         if (result.success) {
             const c = result.data;
-            document.getElementById('configForwardUrl').value = c.default_target_url || '';
             document.getElementById('configOpenaiApiKey').value = c.openai_api_key === '已配置' ? '' : c.openai_api_key || '';
             document.getElementById('configOpenaiApiUrl').value = c.openai_api_url || '';
             document.getElementById('configOpenaiModel').value = c.openai_model || '';
-            document.getElementById('configDuplicateWindow').value = c.duplicate_alert_time_window || 24;
-            document.getElementById('configEnableForward').checked = c.enable_forward;
+            document.getElementById('configDedupWindowSeconds').value = c.dedup_window_seconds || 14400;
             document.getElementById('configEnableAi').checked = c.enable_ai_analysis;
             document.getElementById('configForwardDuplicate').checked = c.forward_duplicate_alerts;
             document.getElementById('configEnableNoiseReduction').checked = c.enable_alert_noise_reduction;

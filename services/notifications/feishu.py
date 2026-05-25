@@ -223,7 +223,10 @@ def build_delivery_exhausted_card(outbox: Any) -> WebhookData:
                     ],
                 },
                 {"tag": "hr"},
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**Target**\n{mask_url(target_url) if target_url else '—'}"}},
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": f"**Target**\n{mask_url(target_url) if target_url else '—'}"},
+                },
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**Last Error**\n{last_error or '—'}"}},
             ],
         },
