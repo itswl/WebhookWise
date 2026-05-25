@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.datetime_utils import utc_isoformat
+
 
 class Importance(str, Enum):
     HIGH = "high"
@@ -84,4 +86,8 @@ class ReanalysisResponse(BaseModel):
 
 
 def deep_analysis_to_dict(record: Any) -> dict[str, Any]:
-    return DeepAnalysisRecord.model_validate(record).model_dump(mode="json")
+    data = DeepAnalysisRecord.model_validate(record).model_dump()
+    for field in ("created_at", "next_poll_at", "last_polled_at"):
+        if isinstance(data.get(field), datetime):
+            data[field] = utc_isoformat(data[field])
+    return data

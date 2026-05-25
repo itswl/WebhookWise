@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from core.compression import decompress_payload
+from core.datetime_utils import utc_isoformat
 
 from .base import APIResponse, CursorPaginationInfo
 
@@ -61,7 +62,7 @@ class HealthResponse(APIResponse[HealthData]):
 
 
 def _iso_or_none(value: object) -> str | None:
-    return value.isoformat() if isinstance(value, datetime) else None
+    return utc_isoformat(value) if isinstance(value, datetime) else None
 
 
 def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:

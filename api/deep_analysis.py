@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
@@ -304,7 +304,7 @@ async def forward_deep_analysis(
         "webhook_event_id": analysis.webhook_event_id,
         "analysis_result": analysis.analysis_result,
         "duration_seconds": analysis.duration_seconds,
-        "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
+        "created_at": utc_isoformat(analysis.created_at),
     }
 
     formatted_payload = (

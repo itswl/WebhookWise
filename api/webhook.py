@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core.auth import verify_api_key
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
 from core.observability.attributes import REQUEST_ID, WEBHOOK_SOURCE
@@ -361,6 +361,6 @@ async def build_webhook_context(event: WebhookEvent) -> JSONDict:
     return {
         "source": source,
         "parsed_data": parsed_data,
-        "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+        "timestamp": utc_isoformat(event.timestamp),
         "client_ip": event.client_ip,
     }
