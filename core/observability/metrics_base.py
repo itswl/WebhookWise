@@ -7,9 +7,9 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
-from core.observability.attributes import normalize_attribute_key, normalize_attribute_value
+from core.observability.attributes import INSTRUMENTATION_SCOPE_NAME, normalize_attribute_key, normalize_attribute_value
 from core.observability.exporters import build_metric_exporter, env_int, otel_enabled
-from core.observability.resource import build_resource
+from core.observability.resource import build_resource, get_otel_schema_url, get_service_version
 
 _provider_initialized = False
 _meter_provider: Any | None = None
@@ -46,8 +46,10 @@ def _histogram_views() -> list[Any]:
 
     buckets_by_instrument: dict[str, Sequence[float]] = {
         "http.server.request.duration": request_seconds,
+        "webhook.ingress.request.duration": request_seconds,
         "webhook.processing.duration": request_seconds,
         "webhook.pipeline.step.duration": request_seconds,
+        "webhook.dedup.duration": fast_seconds,
         "webhook.noise.evaluation.duration": fast_seconds,
         "webhook.ingress.payload.size": bytes_buckets,
         "ai.request.duration": ai_seconds,
@@ -84,7 +86,11 @@ def setup_meter_provider(*, service_name: str | None = None) -> None:
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         except ImportError:
             return
-        reader = PeriodicExportingMetricReader(exporter)
+        reader = PeriodicExportingMetricReader(
+            exporter,
+            export_interval_millis=max(1000, env_int("OTEL_METRIC_EXPORT_INTERVAL", 60000)),
+            export_timeout_millis=max(1000, env_int("OTEL_METRIC_EXPORT_TIMEOUT", 30000)),
+        )
         provider = MeterProvider(
             resource=build_resource(service_name),
             metric_readers=[reader],
@@ -120,7 +126,11 @@ def _get_meter() -> Any | None:
         from opentelemetry import metrics
     except ImportError:
         return None
-    return metrics.get_meter("webhookwise")
+    return metrics.get_meter(
+        INSTRUMENTATION_SCOPE_NAME,
+        version=get_service_version(),
+        schema_url=get_otel_schema_url(),
+    )
 
 
 def _attrs_key(attributes: Mapping[str, str | bool | int | float]) -> tuple[tuple[str, str | bool | int | float], ...]:
@@ -237,7 +247,12 @@ class Histogram(_MetricBase):
             lambda meter: meter.create_histogram(self.name, description=self.description, unit=self.unit)
         )
         if instrument is not None:
-            instrument.record(value, attributes=dict(attributes or {}))
+            try:
+                from opentelemetry import context
+            except ImportError:
+                instrument.record(value, attributes=dict(attributes or {}))
+            else:
+                instrument.record(value, attributes=dict(attributes or {}), context=context.get_current())
 
     def inc(self, amount: int | float = 1, attributes: Mapping[str, str | bool | int | float] | None = None) -> None:
         self.observe(amount, attributes)
@@ -349,4 +364,3 @@ class Gauge(_MetricBase):
 
     def observe(self, value: int | float, attributes: Mapping[str, str | bool | int | float] | None = None) -> None:
         self.set(value, attributes)
-

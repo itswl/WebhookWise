@@ -85,9 +85,9 @@ Use Prometheus names, not the Python OTel instrument names, in dashboard panels.
 | Worker/pipeline | `worker_task_runs_total`, `worker_task_duration_seconds_bucket`, `webhook_pipeline_steps_total`, `webhook_processing_duration_seconds_bucket` | `worker_task_name`, `worker_task_status`, `pipeline_step`, `webhook_outcome` |
 | DB/Redis | `db_sessions_total`, `db_session_duration_seconds_bucket`, `redis_operations_total`, `redis_operation_duration_seconds_bucket` | `db_operation`, `db_status`, `redis_operation`, `redis_status` |
 | Scheduler | `scheduler_task_runs_total`, `scheduler_task_duration_seconds_bucket`, `scheduler_task_lag_seconds`, `scheduler_task_last_success_unixtime_seconds` | `scheduler_task_name`, `scheduler_task_status` |
-| AIOps/AI | `webhook_suppressed_total`, `webhook_noise_evaluations_total`, `ai_request_duration_seconds_bucket`, `ai_tokens_total`, `ai_cost_USD_total`, `ai_cache_requests_total`, `ai_deep_analysis_total` | `webhook_relation`, `webhook_suppressed`, `ai_engine`, `ai_model`, `ai_token_type`, `ai_cache_result` |
+| AIOps/AI | `webhook_noise_evaluations_total`, `webhook_noise_evaluation_duration_seconds_bucket`, `ai_request_duration_seconds_bucket`, `ai_tokens_total`, `ai_cost_USD_total`, `ai_cache_requests_total`, `ai_deep_analysis_total` | `webhook_relation`, `webhook_suppressed`, `ai_engine`, `ai_model`, `ai_token_type`, `ai_cache_result` |
 | Forwarding | `forward_delivery_total`, `forward_delivery_duration_seconds_bucket`, `forward_outbox_records_total` | `forward_target_type`, `forward_status` |
-| Events/signals | `observability_events_total`, `observability_signals_total` | `event_name`, `signal_name`, `signal_state` |
+| Events/signals | `observability_events_total`, `observability_signals_total` | OTel attributes `event.name`, `signal.name`, `signal.state` exposed as Prometheus-safe labels `event_name`, `signal_name`, `signal_state` |
 | Faro | `faro_receiver_events_total`, `faro_receiver_measurements_total`, `faro_receiver_exceptions_total`, `faro_receiver_logs_total` | Alloy component labels |
 | Beyla / service graph | `traces_span_metrics_calls_total`, `traces_span_metrics_duration_seconds_bucket`, `traces_service_graph_request_total`, `traces_service_graph_request_failed_total`, `process_cpu_utilization_ratio`, `process_memory_usage_bytes` | `source`, `service_name`, `span_name`, `span_kind`, `client`, `server`, `connection_type` |
 | k6 | `k6_http_reqs_total`, `k6_http_req_failed_rate`, `k6_http_req_duration_p95`, `k6_checks_rate` | k6 remote write labels |
@@ -100,13 +100,26 @@ aliases such as `queue_pending`, `queue_lag`, `queue_depth`,
 `db_pool_connections_checked_out`. Dashboard queries use those recording rule
 names directly, so Grafana panels match the project metric vocabulary.
 
+SLO / RED / USE panels should prefer the recording rules in
+`deploy/observability/alerts.yml`:
+
+| Layer | Recording rules |
+| --- | --- |
+| API RED | `webhookwise:http_request_rate_5m`, `webhookwise:http_request_success_ratio_5m`, `webhookwise:http_request_duration_p95_5m` |
+| Webhook SLO | `webhookwise:webhook_ingress_success_ratio_5m`, `webhookwise:webhook_processing_success_ratio_5m`, `webhookwise:webhook_processing_duration_p95_5m` |
+| Forwarding / AI | `webhookwise:forward_delivery_success_ratio_5m`, `webhookwise:forward_delivery_duration_p95_5m`, `webhookwise:ai_degradation_ratio_5m` |
+| USE / dependencies | `webhookwise:db_pool_utilization_ratio`, `webhookwise:queue_backlog`, `webhookwise:redis_unavailable_rate_5m` |
+
+Prometheus and Alloy are configured to retain exemplars, and the Prometheus
+datasource points exemplar `trace_id` values at Tempo.
+
 ## Quick PromQL Sanity Checks
 
 Use these when a panel looks suspicious:
 
 ```promql
 count by (__name__) ({
-  __name__=~"http_server_request_duration_seconds_count|webhook_received_total|webhook_suppressed_total|ai_request_duration_seconds_bucket"
+  __name__=~"http_server_request_duration_seconds_count|webhook_received_total|webhook_noise_evaluations_total|ai_request_duration_seconds_bucket"
 })
 ```
 
@@ -118,7 +131,7 @@ sum by (http_route, http_response_status_code) (
 
 ```promql
 sum by (webhook_relation, webhook_suppressed) (
-  rate(webhook_suppressed_total[5m])
+  rate(webhook_noise_evaluations_total{webhook_suppressed="true"}[5m])
 )
 ```
 

@@ -11,6 +11,9 @@ def test_grafana_trace_log_correlation_is_bidirectional() -> None:
     datasources = yaml.safe_load((ROOT / "deploy/observability/grafana-datasources.yml").read_text())["datasources"]
     by_uid = {item["uid"]: item for item in datasources}
 
+    prometheus = by_uid["prometheus"]["jsonData"]["exemplarTraceIdDestinations"]
+    assert {"name": "trace_id", "datasourceUid": "tempo", "urlDisplayLabel": "View Trace"} in prometheus
+
     tempo = by_uid["tempo"]["jsonData"]["tracesToLogsV2"]
     assert tempo["datasourceUid"] == "loki"
     assert tempo["filterByTraceID"] is True
@@ -25,17 +28,20 @@ def test_grafana_trace_log_correlation_is_bidirectional() -> None:
     assert trace_link["url"] == "$${__value.raw}"
 
 
-def test_alloy_extracts_trace_fields_without_labeling_trace_id() -> None:
+def test_alloy_routes_otlp_logs_without_file_tailing() -> None:
     config = (ROOT / "deploy/observability/alloy.alloy").read_text()
-    assert 'trace_id       = "trace_id"' in config
-    assert 'span_id        = "span_id"' in config
-    assert 'webhook_source = "source"' in config
-    assert 'webhook_status = "processing_status"' in config
-    assert 'event_name             = "event_name"' in config
+    assert 'loki.source.file "webhook_logs"' not in config
+    assert 'loki.process "webhook_logs"' not in config
+    assert "logs    = [otelcol.processor.memory_limiter.default.input]" in config
+    assert "logs    = [otelcol.processor.attributes.loki_labels.input]" in config
+    assert (
+        'value  = "severity,severity_text,event.name,signal.name,signal.state,webhook.source,webhook.status"' in config
+    )
 
-    labels_block = config.split("stage.labels {", 1)[1].split("forward_to", 1)[0]
+    labels_block = config.split('otelcol.processor.attributes "loki_labels"', 1)[1].split("output", 1)[0]
     assert "trace_id" not in labels_block
     assert "span_id" not in labels_block
+    assert "send_exemplars = true" in config
 
 
 def test_prometheus_loads_webhookwise_rules() -> None:
@@ -58,11 +64,44 @@ def test_prometheus_loads_webhookwise_rules() -> None:
         "db_pool_connections_checked_out",
         "forward_outbox_oldest_age_seconds",
         "circuit_breaker_active_state",
+        "webhookwise:http_request_success_ratio_5m",
+        "webhookwise:http_request_error_budget_burn_5m",
+        "webhookwise:http_request_error_budget_burn_1h",
+        "webhookwise:http_request_error_budget_burn_30m",
+        "webhookwise:http_request_error_budget_burn_6h",
+        "webhookwise:webhook_ingress_success_ratio_5m",
+        "webhookwise:webhook_ingress_error_budget_burn_5m",
+        "webhookwise:webhook_ingress_error_budget_burn_1h",
+        "webhookwise:webhook_processing_success_ratio_5m",
+        "webhookwise:webhook_processing_error_budget_burn_5m",
+        "webhookwise:webhook_processing_error_budget_burn_1h",
+        "webhookwise:forward_delivery_success_ratio_5m",
+        "webhookwise:forward_delivery_error_budget_burn_5m",
+        "webhookwise:forward_delivery_error_budget_burn_1h",
+        "webhookwise:ai_degradation_ratio_5m",
+        "webhookwise:db_pool_utilization_ratio",
+        "webhookwise:queue_backlog",
+        "webhookwise:redis_unavailable_rate_5m",
     } <= records
     assert {
         "WebhookWiseApiHigh5xxRate",
+        "WebhookWiseApiAvailabilitySloBurn",
+        "WebhookWiseApiAvailabilityFastBurn",
+        "WebhookWiseApiAvailabilitySlowBurn",
+        "WebhookWiseIngressSuccessSloBurn",
+        "WebhookWiseIngressSuccessFastBurn",
+        "WebhookWiseIngressSuccessSlowBurn",
+        "WebhookWiseProcessingSuccessSloBurn",
+        "WebhookWiseProcessingSuccessFastBurn",
+        "WebhookWiseProcessingSuccessSlowBurn",
+        "WebhookWiseForwardDeliverySuccessSloBurn",
+        "WebhookWiseForwardDeliverySuccessFastBurn",
+        "WebhookWiseForwardDeliverySuccessSlowBurn",
+        "WebhookWiseAiDegradationHigh",
         "WebhookWiseWebhookDeadLetters",
         "WebhookWiseQueueBacklogHigh",
+        "WebhookWiseDbUnhealthy",
+        "WebhookWiseRedisUnavailable",
         "WebhookWiseForwardOutboxBacklogOld",
         "WebhookWiseCircuitBreakerOpen",
         "WebhookWiseLokiDrops",
@@ -89,7 +128,8 @@ def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     assert diagnostics["title"] == "WebhookWise AIOps 深度诊断大盘"
     titles = {panel["title"] for panel in dashboard["panels"]}
     assert "SLO、告警与链路闭环 (SLO / Alerts / Correlation)" in titles
-    assert "API 可用性 SLO 1h" in titles
+    assert "API 可用性 SLO 5m" in titles
+    assert "SLO Burn Rate (Error Budget)" in titles
     assert "告警触发状态 (Prometheus Alerts)" in titles
     assert "Webhook 与 Pipeline 深度诊断 (Webhook / Pipeline Deep Dive)" not in titles
     assert "Webhook 与 Pipeline 深度诊断 (Webhook / Pipeline Deep Dive)" in {
@@ -107,6 +147,14 @@ def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     assert "db_pool_connections_checked_out_ratio" not in expressions
     assert "forward_outbox_oldest_age_seconds" in expressions
     assert "circuit_breaker_active_state" in expressions
+    assert "webhook_suppressed_total" not in expressions
+    assert "webhook_noise_evaluations_total" in expressions
+    assert "webhookwise:http_request_success_ratio_5m" in expressions
+    assert "webhookwise:webhook_processing_success_ratio_5m" in expressions
+    assert "webhookwise:forward_delivery_success_ratio_5m" in expressions
+    assert "webhookwise:ai_degradation_ratio_5m" in expressions
+    assert "webhookwise:http_request_error_budget_burn_5m" in expressions
+    assert "webhookwise:webhook_processing_error_budget_burn_1h" in expressions
 
 
 def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
@@ -175,15 +223,20 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert "services.operations.tasks" not in app
     assert "services.operations.tasks" not in broker
     assert "import services.operations.tasks" in taskiq_wiring
-    assert '"traceparent": headers.get("traceparent") or build_traceparent(request_id)' in webhook
+    assert "inject_trace_headers" in webhook
+    assert '"traceparent": trace_headers.get("traceparent") or headers.get("traceparent")' in webhook
     assert "trace_context_from_headers(ctx.trace_headers)" in tasks
+    assert "inject_trace_headers" in tasks
     assert '"worker.webhook_process_task"' in tasks
     assert '"worker.task.name": "webhook_process_task"' in tasks
     assert "worker.task.status" in tasks
     assert '"pipeline.step": "validate"' in pipeline
+    assert '"pipeline.step": "dedup"' in pipeline
     assert '"pipeline.step": "noise"' in pipeline
+    assert '"webhook.dedup"' in pipeline
+    assert "webhook.pipeline.step.completed" in pipeline
     assert '"forward.target_type": first_target_type' in forwarding_stage
-    assert '"forward.target_type": target_type' in forward_outbox
+    assert "FORWARD_TARGET_TYPE" in forward_outbox
     assert '"redis.operation": operation' in redis_metrics
 
 
@@ -206,22 +259,26 @@ def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeyp
     from core.observability.metrics_base import _alias_for_key
 
     base = (ROOT / "core/observability/metrics_base.py").read_text()
-    attributes = (ROOT / "core/observability/attributes.py").read_text()
     assert "alias_map" not in base
-    assert "_ALIASES" in attributes
+    assert "_ALIASES" not in (ROOT / "core/observability/attributes.py").read_text()
     assert _alias_for_key("source", ("webhook.source",)) == "webhook.source"
     assert _alias_for_key("token_type", ("ai.token_type",)) == "ai.token_type"
 
     for instrument in (
         "http.server.request.duration",
+        "webhook.ingress.request.duration",
         "webhook.processing.duration",
         "webhook.ingress.payload.size",
+        "webhook.dedup.duration",
         "ai.request.duration",
         "db.session.duration",
         "queue.operation.duration",
         "forward.outbox.process.duration",
     ):
         assert instrument in base
+    assert 'export_interval_millis=max(1000, env_int("OTEL_METRIC_EXPORT_INTERVAL", 60000))' in base
+    assert 'export_timeout_millis=max(1000, env_int("OTEL_METRIC_EXPORT_TIMEOUT", 30000))' in base
+    assert "context=context.get_current()" in base
 
     monkeypatch.setattr(source_module, "_SOURCE_LABEL_LIMIT", 2)
     source_module._reset_source_label_cache_for_tests()
@@ -246,17 +303,47 @@ def test_resilience_and_outbox_operational_metrics_exist() -> None:
     assert "_record_state_metric" in breaker
 
 
-def test_otlp_logs_are_opt_in_and_otel_enabled_is_explicit() -> None:
+def test_otlp_signals_are_explicit_and_logs_use_otlp_by_default() -> None:
     exporters = (ROOT / "core/observability/exporters.py").read_text()
     logging_py = (ROOT / "core/observability/logging.py").read_text()
     env_example = (ROOT / ".env.example.all").read_text()
+    compose = (ROOT / "docker-compose.observability.yml").read_text()
 
     assert 'return env_flag("OTEL_ENABLED", default=False)' in exporters
     assert (
         "OTEL_EXPORTER_OTLP_ENDPOINT" not in exporters.split("def otel_enabled", 1)[1].split("def parse_headers", 1)[0]
     )
     assert 'env_flag("OTEL_LOGS_ENABLED", default=False)' in logging_py
-    assert "OTEL_LOGS_ENABLED=false" in env_example
+    assert "OTEL_LOGS_ENABLED=true" in env_example
+    assert 'OTEL_LOGS_ENABLED: "true"' in compose
+    assert "OTEL_SERVICE_NAMESPACE=webhookwise" in env_example
+    assert "OTEL_SEMCONV_VERSION=1.41.0" in env_example
+    assert "OTEL_SCHEMA_URL=https://opentelemetry.io/schemas/1.41.0" in env_example
+    assert "OTEL_METRICS_EXEMPLAR_FILTER=trace_based" in env_example
+    assert "OTEL_METRICS_EXEMPLAR_FILTER: trace_based" in compose
+    assert "--enable-feature=native-histograms,exemplar-storage" in compose
+
+
+def test_otel_schema_scope_and_structured_log_helpers_are_wired() -> None:
+    attributes = (ROOT / "core/observability/attributes.py").read_text()
+    resource = (ROOT / "core/observability/resource.py").read_text()
+    tracing = (ROOT / "core/observability/tracing.py").read_text()
+    metrics_base = (ROOT / "core/observability/metrics_base.py").read_text()
+    logger = (ROOT / "core/logger.py").read_text()
+    middleware = (ROOT / "core/web/middleware.py").read_text()
+    events = (ROOT / "core/observability/events.py").read_text()
+
+    assert 'OTEL_SEMCONV_VERSION_DEFAULT = "1.41.0"' in attributes
+    assert "schema_url=get_otel_schema_url()" in resource
+    assert "INSTRUMENTATION_SCOPE_NAME" in tracing
+    assert "schema_url=get_otel_schema_url()" in tracing
+    assert "schema_url=get_otel_schema_url()" in metrics_base
+    assert "sampler=_build_sampler()" in tracing
+    assert "parentbased_traceidratio" in tracing
+    assert '"schema_url": get_otel_schema_url()' in logger
+    assert "from core.observability.log_attrs import log_extra" in middleware
+    assert "extra=log_extra(" in middleware
+    assert "extra=log_extra(normalized)" in events
 
 
 def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
@@ -266,10 +353,23 @@ def test_observability_cli_exposes_smoke_and_tempo_commands() -> None:
     assert 'sub.add_parser("smoke"' in cli
     assert 'sub.add_parser("tempo"' in cli
     assert 'sub.add_parser("profiles"' in cli
+    assert 'sub.add_parser("acceptance"' in cli
+    assert 'sub.add_parser("contract"' in cli
+    assert 'sub.add_parser("runbook"' in cli
     assert '"name": "webhookwise_smoke"' in mcp
     assert '"name": "webhookwise_tempo_search"' in mcp
     assert '"name": "webhookwise_profiles"' in mcp
+    assert '"name": "webhookwise_acceptance"' in mcp
+    assert '"name": "webhookwise_contract"' in mcp
+    assert '"name": "webhookwise_runbook"' in mcp
     assert "PROFILE_TYPE_ID" in dashboard_links
+
+
+def test_offline_telemetry_contract_passes() -> None:
+    from scripts.observability.query_lib import telemetry_contract
+
+    rows = telemetry_contract(ROOT)
+    assert all(row["status"] == "ok" for row in rows), rows
 
 
 def test_docs_and_e2e_cover_project_operability_contracts() -> None:

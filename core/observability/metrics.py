@@ -68,6 +68,11 @@ AI_DEGRADATIONS_TOTAL = Counter(
     "AI analysis degradation count",
     ("ai.degradation.reason",),
 )
+AI_REQUESTS_TOTAL = Counter(
+    "ai.requests",
+    "AI analysis request outcomes",
+    ("webhook.source", "ai.engine", "ai.status"),
+)
 AI_ANALYSIS_DURATION_SECONDS = Histogram(
     "ai.request.duration",
     "Time spent on AI analysis",
@@ -79,6 +84,11 @@ DEEP_ANALYSIS_TOTAL = Counter("ai.deep_analysis", "Deep analysis task result cou
 
 
 DATABASE_EVENTS_COUNT = Gauge("webhook.events.count", "Current number of webhook events in active table")
+DB_HEALTH_STATE = Gauge(
+    "db.health.state",
+    "Current database health state as 1 for active and 0 for inactive states",
+    ("db.state",),
+)
 DB_POOL_CHECKED_OUT = Gauge("db.pool.connections.checked_out", "Checked-out database connections")
 DB_POOL_SIZE = Gauge("db.pool.connections.max", "Database connection pool capacity")
 DB_SESSION_TOTAL = Counter(
@@ -253,6 +263,17 @@ WEBHOOK_RECEIVED_TOTAL = Counter(
     "Total number of webhooks received",
     ("webhook.source", "webhook.status"),
 )
+WEBHOOK_INGRESS_REQUESTS_TOTAL = Counter(
+    "webhook.ingress.requests",
+    "Webhook ingress request outcomes before worker processing",
+    ("webhook.source", "webhook.outcome"),
+)
+WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS = Histogram(
+    "webhook.ingress.request.duration",
+    "Time spent receiving and enqueueing a webhook request",
+    ("webhook.source", "webhook.outcome"),
+    unit="s",
+)
 WEBHOOK_INGRESS_PAYLOAD_BYTES = Histogram(
     "webhook.ingress.payload.size",
     "Webhook ingress payload size",
@@ -286,6 +307,27 @@ WEBHOOK_ANALYSIS_ROUTE_TOTAL = Counter(
     "Webhook analysis route decisions",
     ("webhook.source", "webhook.route"),
 )
+WEBHOOK_ANALYSIS_RESULTS_TOTAL = Counter(
+    "webhook.analysis.results",
+    "Webhook analysis results by route, importance, and degradation state",
+    ("webhook.source", "webhook.route", "webhook.importance", "ai.degraded"),
+)
+WEBHOOK_DEDUP_DECISIONS_TOTAL = Counter(
+    "webhook.dedup.decisions",
+    "Webhook deduplication decisions",
+    ("webhook.source", "dedup.action"),
+)
+WEBHOOK_DEDUP_DURATION_SECONDS = Histogram(
+    "webhook.dedup.duration",
+    "Time spent resolving webhook deduplication",
+    ("webhook.source", "dedup.action"),
+    unit="s",
+)
+WEBHOOK_FORWARD_DECISIONS_TOTAL = Counter(
+    "webhook.forward.decisions",
+    "Webhook forwarding decisions after analysis",
+    ("webhook.source", "forward.decision", "forward.reason", "forward.target_type"),
+)
 WEBHOOK_NOISE_EVALUATIONS_TOTAL = Counter(
     "webhook.noise.evaluations",
     "Noise-reduction evaluation count",
@@ -308,6 +350,10 @@ WEBHOOK_STORM_SUPPRESSED_TOTAL = Counter(
     ("webhook.source",),
 )
 WEBHOOK_RUNNING_TASKS = Gauge("webhook.running_tasks", "Currently running webhook processing tasks")
+WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL = Counter(
+    "webhook.semaphore.timeouts",
+    "Webhook processing concurrency gate timeout count",
+)
 WEBHOOK_DEAD_LETTER_TOTAL = Counter("webhook.dead_letter", "Non-retryable dead letter event count")
 WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
     "webhook.processing.status_count",
@@ -321,8 +367,8 @@ WEBHOOK_IDENTITY_DEGRADED_TOTAL = Counter(
 )
 
 
-def setup_metrics(app: object | None = None) -> None:
-    setup_meter_provider()
+def setup_metrics(app: object | None = None, *, service_name: str | None = None) -> None:
+    setup_meter_provider(service_name=service_name)
     update_db_pool_metrics()
 
 
@@ -345,6 +391,7 @@ __all__ = [
     "AI_CACHE_REQUESTS_TOTAL",
     "AI_COST_USD_TOTAL",
     "AI_DEGRADATIONS_TOTAL",
+    "AI_REQUESTS_TOTAL",
     "AI_TOKENS_TOTAL",
     "ALERT_NUMERIC_PARSE_FAILURE_TOTAL",
     "Counter",
@@ -352,6 +399,7 @@ __all__ = [
     "CIRCUIT_BREAKER_STATE",
     "CIRCUIT_BREAKER_TRANSITIONS_TOTAL",
     "DATABASE_EVENTS_COUNT",
+    "DB_HEALTH_STATE",
     "DB_POOL_CHECKED_OUT",
     "DB_POOL_SIZE",
     "DB_SESSION_DURATION_SECONDS",
@@ -381,7 +429,13 @@ __all__ = [
     "SECURITY_CHECKS_TOTAL",
     "WEBHOOK_DEAD_LETTER_TOTAL",
     "WEBHOOK_INGRESS_PAYLOAD_BYTES",
+    "WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS",
+    "WEBHOOK_INGRESS_REQUESTS_TOTAL",
     "WEBHOOK_ANALYSIS_ROUTE_TOTAL",
+    "WEBHOOK_ANALYSIS_RESULTS_TOTAL",
+    "WEBHOOK_DEDUP_DECISIONS_TOTAL",
+    "WEBHOOK_DEDUP_DURATION_SECONDS",
+    "WEBHOOK_FORWARD_DECISIONS_TOTAL",
     "WEBHOOK_IDENTITY_DEGRADED_TOTAL",
     "WEBHOOK_MQ_GROUP_LAG",
     "WEBHOOK_MQ_GROUP_PENDING",
@@ -395,6 +449,7 @@ __all__ = [
     "WEBHOOK_PROCESSING_STATUS_TOTAL",
     "WEBHOOK_RECEIVED_TOTAL",
     "WEBHOOK_RUNNING_TASKS",
+    "WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL",
     "WEBHOOK_STORM_SUPPRESSED_TOTAL",
     "WORKER_TASK_DURATION_SECONDS",
     "WORKER_TASKS_TOTAL",

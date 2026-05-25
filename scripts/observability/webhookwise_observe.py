@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,10 @@ from scripts.observability.query_lib import (  # noqa: E402
     prometheus_query,
     prometheus_series,
     result_rows,
+    runbook_summary,
+    runtime_acceptance,
     smoke,
+    telemetry_contract,
     tempo_search,
     validate_dashboard_queries,
 )
@@ -212,6 +216,58 @@ def cmd_smoke(args: argparse.Namespace) -> int:
     return 0 if all(row["status"] in {"ok", "warn"} for row in rows) else 1
 
 
+def cmd_acceptance(args: argparse.Namespace) -> int:
+    rows: list[dict[str, str]] = []
+    if args.run_k6:
+        command = [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.yml",
+            "-f",
+            "docker-compose.observability.yml",
+            "--profile",
+            "load",
+            "run",
+            "--rm",
+            "k6",
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+        output = (result.stdout or result.stderr).strip().splitlines()
+        rows.append(
+            {
+                "check": "k6-load-profile",
+                "status": "ok" if result.returncode == 0 else "error",
+                "detail": output[-1][:200] if output else f"exit={result.returncode}",
+            }
+        )
+    rows.extend(runtime_acceptance(Endpoints.from_env(), send_webhook=not args.skip_webhook, wait_seconds=args.wait))
+    if args.json:
+        print_json(rows)
+    else:
+        print_table(rows, ["check", "status", "detail"])
+    failing = {"error", "warn"} if args.strict else {"error"}
+    return 1 if any(row["status"] in failing for row in rows) else 0
+
+
+def cmd_contract(args: argparse.Namespace) -> int:
+    rows = telemetry_contract(args.root)
+    if args.json:
+        print_json(rows)
+    else:
+        print_table(rows, ["check", "status", "detail"])
+    return 0 if all(row["status"] == "ok" for row in rows) else 1
+
+
+def cmd_runbook(args: argparse.Namespace) -> int:
+    rows = runbook_summary(args.alert_name, Endpoints.from_env(), since_seconds=args.since, limit=args.limit)
+    if args.json:
+        print_json(rows)
+    else:
+        print_table(rows, ["check", "status", "detail"])
+    return 0 if all(row["status"] in {"ok", "warn"} for row in rows) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -281,6 +337,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     smoke_parser.add_argument("--json", action="store_true")
     smoke_parser.set_defaults(func=cmd_smoke)
+
+    acceptance_parser = sub.add_parser("acceptance", help="Run runtime observability acceptance checks")
+    acceptance_parser.add_argument(
+        "--skip-webhook", action="store_true", help="Only query telemetry; do not post a test webhook"
+    )
+    acceptance_parser.add_argument(
+        "--wait", type=int, default=None, help="Seconds to wait after posting the synthetic webhook"
+    )
+    acceptance_parser.add_argument("--run-k6", action="store_true", help="Run the local k6 profile before checking")
+    acceptance_parser.add_argument("--strict", action="store_true", help="Treat warnings as failures")
+    acceptance_parser.add_argument("--json", action="store_true")
+    acceptance_parser.set_defaults(func=cmd_acceptance)
+
+    contract_parser = sub.add_parser("contract", help="Run offline telemetry contract checks")
+    contract_parser.add_argument("--root", default=str(ROOT))
+    contract_parser.add_argument("--json", action="store_true")
+    contract_parser.set_defaults(func=cmd_contract)
+
+    runbook_parser = sub.add_parser("runbook", help="Collect a compact runbook summary for an alert")
+    runbook_parser.add_argument("alert_name")
+    runbook_parser.add_argument("--since", type=int, default=3600, help="Lookback in seconds")
+    runbook_parser.add_argument("--limit", type=int, default=5)
+    runbook_parser.add_argument("--json", action="store_true")
+    runbook_parser.set_defaults(func=cmd_runbook)
 
     return parser
 

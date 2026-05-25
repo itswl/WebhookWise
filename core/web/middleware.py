@@ -6,11 +6,11 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
+from core.observability.log_attrs import log_extra
 from core.observability.tracing import (
-    build_traceparent,
+    extract_request_id_from_headers,
     extract_trace_id_from_headers,
     generate_trace_id,
-    get_current_trace_id,
     get_otel_trace_id,
     reset_fallback_trace_id,
     set_current_span_error,
@@ -133,15 +133,16 @@ class TraceContextMiddleware:
         client_ip = client[0] if isinstance(client, tuple) and client else ""
         content_length = headers.get("content-length", "")
         incoming = extract_trace_id_from_headers(headers)
-        if incoming and "traceparent" not in headers:
-            raw_headers = list(scope.get("headers") or [])
-            raw_headers.append((b"traceparent", build_traceparent(incoming).encode("latin1")))
-            scope["headers"] = raw_headers
-
         otel_tid = get_otel_trace_id()
-        token = set_fallback_trace_id(otel_tid or incoming or generate_trace_id())
+        fallback_trace_id = otel_tid or incoming or generate_trace_id()
+        request_id = extract_request_id_from_headers(headers) or generate_trace_id()
+        state = scope.setdefault("state", {})
+        if isinstance(state, dict):
+            state["request_id"] = request_id
+            state["trace_id"] = fallback_trace_id
+        token = set_fallback_trace_id(fallback_trace_id)
         clear_log_context()
-        set_log_context(request_id=get_current_trace_id())
+        set_log_context(request_id=request_id)
         started_at = time.perf_counter()
         status_code = 500
 
@@ -164,6 +165,15 @@ class TraceContextMiddleware:
                 duration_ms,
                 client_ip,
                 content_length,
+                extra=log_extra(
+                    {
+                        "http.request.method": method,
+                        "url.path": path,
+                        "http.response.status_code": status_code,
+                        "client.address": client_ip,
+                        "http.server.request.duration_ms": duration_ms,
+                    }
+                ),
             )
             raise
         finally:
@@ -177,6 +187,15 @@ class TraceContextMiddleware:
                     duration_ms,
                     client_ip,
                     content_length,
+                    extra=log_extra(
+                        {
+                            "http.request.method": method,
+                            "url.path": path,
+                            "http.response.status_code": status_code,
+                            "client.address": client_ip,
+                            "http.server.request.duration_ms": duration_ms,
+                        }
+                    ),
                 )
             clear_log_context()
             reset_fallback_trace_id(token)
