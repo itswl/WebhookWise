@@ -68,7 +68,6 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
         policy=OpenClawTriggerPolicy(
             enabled=True,
-            data_dir="webhooks_data",
             timeout_seconds=900,
             platform=platform,
             gateway_url="http://openclaw.test",

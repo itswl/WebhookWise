@@ -19,7 +19,7 @@ class StaticSettings(BaseSettings):
 
 
 class ServerConfig(StaticSettings):
-    """服务器 / 运行模式 / 日志 / 数据目录"""
+    """服务器 / 运行模式 / 日志"""
 
     APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
@@ -29,7 +29,6 @@ class ServerConfig(StaticSettings):
     RUN_MODE: str = Field(default="api")
     LOG_LEVEL: str = Field(default="INFO")
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
-    DATA_DIR: str = Field(default="webhooks_data")
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
     PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096)
     PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES: int = Field(default=4096)

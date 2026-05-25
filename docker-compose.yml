@@ -75,7 +75,6 @@ services:
 
     volumes:
       - ./.env:/app/.env # 挂载 .env 文件
-      - ./webhooks_data:/app/webhooks_data
 
     depends_on:
       migrate:
