@@ -2864,7 +2864,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(webhook_suppressed_total{webhook_relation=\"derived\"}[$__rate_interval])) or vector(0)",
+          "expr": "sum(rate(webhook_noise_evaluations_total{webhook_relation=\"derived\"}[$__rate_interval])) or vector(0)",
           "legendFormat": "衍生告警 (被折叠)",
           "range": true,
           "refId": "A"
@@ -2875,7 +2875,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(webhook_suppressed_total{webhook_relation=\"root_cause\"}[$__rate_interval])) or vector(0)",
+          "expr": "sum(rate(webhook_noise_evaluations_total{webhook_relation=\"root_cause\"}[$__rate_interval])) or vector(0)",
           "legendFormat": "根因告警 (核心问题)",
           "range": true,
           "refId": "B"
@@ -2886,7 +2886,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(webhook_suppressed_total{webhook_relation=\"standalone\"}[$__rate_interval])) or vector(0)",
+          "expr": "sum(rate(webhook_noise_evaluations_total{webhook_relation=\"standalone\"}[$__rate_interval])) or vector(0)",
           "legendFormat": "独立告警",
           "range": true,
           "refId": "C"
@@ -2970,7 +2970,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * ((sum(rate(webhook_suppressed_total{webhook_suppressed=\"true\"}[$__rate_interval])) or vector(0)) / clamp_min((sum(rate(webhook_suppressed_total[$__rate_interval])) or vector(0)), 0.000001))",
+          "expr": "100 * ((sum(rate(webhook_noise_evaluations_total{webhook_suppressed=\"true\"}[$__rate_interval])) or vector(0)) / clamp_min((sum(rate(webhook_noise_evaluations_total[$__rate_interval])) or vector(0)), 0.000001))",
           "legendFormat": "suppression %",
           "range": true,
           "refId": "A"
@@ -3823,13 +3823,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - ((sum(increase(http_server_request_duration_seconds_count{service_name=\"webhookwise-api\", http_response_status_code=~\"5..\"}[1h])) or vector(0)) / clamp_min((sum(increase(http_server_request_duration_seconds_count{service_name=\"webhookwise-api\"}[1h])) or vector(0)), 1)))",
+          "expr": "100 * webhookwise:http_request_success_ratio_5m",
           "legendFormat": "availability %",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "API 可用性 SLO 1h",
+      "title": "API 可用性 SLO 5m",
       "type": "stat"
     },
     {
@@ -3907,13 +3907,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * ((sum(increase(webhook_processed_total{webhook_status=\"completed\"}[1h])) or vector(0)) / clamp_min((sum(increase(webhook_processed_total[1h])) or vector(0)), 1))",
+          "expr": "100 * webhookwise:webhook_processing_success_ratio_5m",
           "legendFormat": "completed %",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Webhook 完成率 SLO 1h",
+      "title": "Webhook 完成率 SLO 5m",
       "type": "stat"
     },
     {
@@ -3991,13 +3991,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * ((sum(increase(ai_degradations_total[1h])) or vector(0)) / clamp_min((sum(increase(ai_request_duration_seconds_count[1h])) or vector(0)), 1))",
+          "expr": "100 * webhookwise:ai_degradation_ratio_5m",
           "legendFormat": "degraded %",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "AI 降级率 1h",
+      "title": "AI 降级率 5m",
       "type": "stat"
     },
     {
@@ -4075,13 +4075,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * ((sum(increase(forward_delivery_total{forward_status=\"success\"}[1h])) or vector(0)) / clamp_min((sum(increase(forward_delivery_total[1h])) or vector(0)), 1))",
+          "expr": "100 * webhookwise:forward_delivery_success_ratio_5m",
           "legendFormat": "success %",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "转发成功率 1h",
+      "title": "转发成功率 5m",
       "type": "stat"
     },
     {
@@ -4312,6 +4312,219 @@
         }
       ],
       "title": "链路关联验证 (Logs / Traces)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "API / ingress / processing / forward 的多窗口 SLO error budget burn rate。快速告警使用 5m+1h，慢速告警使用 30m+6h。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 6
+              },
+              {
+                "color": "red",
+                "value": 14.4
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2,
+          "links": [
+            {
+              "title": "查看相关日志",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\",severity=~\\\"error|fatal|ERROR|FATAL\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "查看相关 Trace",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 201
+      },
+      "id": 237,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "10.0.3",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:http_request_error_budget_burn_5m",
+          "legendFormat": "api 5m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:http_request_error_budget_burn_1h",
+          "legendFormat": "api 1h",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:http_request_error_budget_burn_30m",
+          "legendFormat": "api 30m",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:http_request_error_budget_burn_6h",
+          "legendFormat": "api 6h",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:webhook_processing_error_budget_burn_5m",
+          "legendFormat": "processing 5m",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:webhook_processing_error_budget_burn_1h",
+          "legendFormat": "processing 1h",
+          "range": true,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:forward_delivery_error_budget_burn_5m",
+          "legendFormat": "forward 5m",
+          "range": true,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:forward_delivery_error_budget_burn_1h",
+          "legendFormat": "forward 1h",
+          "range": true,
+          "refId": "H"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:webhook_ingress_error_budget_burn_5m",
+          "legendFormat": "ingress 5m",
+          "range": true,
+          "refId": "I"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "webhookwise:webhook_ingress_error_budget_burn_1h",
+          "legendFormat": "ingress 1h",
+          "range": true,
+          "refId": "J"
+        }
+      ],
+      "title": "SLO Burn Rate (Error Budget)",
       "type": "timeseries"
     }
   ],

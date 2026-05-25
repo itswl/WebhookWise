@@ -11,6 +11,7 @@ from core.logger import get_logger
 from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_DEGRADATIONS_TOTAL,
+    AI_REQUESTS_TOTAL,
     ALERT_NUMERIC_PARSE_FAILURE_TOTAL,
     sanitize_source,
 )
@@ -197,7 +198,9 @@ def analyze_with_rules(
         res["actions"] = ["确认是否为预期事件", "必要时补充告警规则"]
         res["risks"] = ["告警可能噪声偏多"]
 
-    AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="rule").observe(time.time() - start_time)
+    metric_source = sanitize_source(source)
+    AI_REQUESTS_TOTAL.labels(metric_source, "rule", "success").inc()
+    AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="rule").observe(time.time() - start_time)
     return res
 
 
@@ -251,6 +254,7 @@ async def analyze_webhook_with_ai(
             await log_ai_usage("cache", alert_hash, source, cache_hit=True, policy=provider_policy)
             cached_result = cached.copy()
             cached_result["_route_type"] = "cache"
+            AI_REQUESTS_TOTAL.labels(sanitize_source(source), "cache", "hit").inc()
             return cached_result
 
     if not provider_policy.available:

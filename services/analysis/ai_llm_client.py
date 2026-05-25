@@ -15,9 +15,11 @@ from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_att
 
 from core.http_client import get_http_client
 from core.logger import get_logger, mask_url
+from core.observability.attributes import AI_ENGINE, AI_MODEL, AI_PROVIDER, WEBHOOK_SOURCE
 from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_COST_USD_TOTAL,
+    AI_REQUESTS_TOTAL,
     AI_TOKENS_TOTAL,
     OPENAI_ERRORS_TOTAL,
     sanitize_source,
@@ -152,11 +154,10 @@ async def _analyze_with_openai_tracked(
     with otel_span(
         "ai.request",
         {
-            "source": source,
-            "model": policy.model,
-            "provider": "openai",
-            "ai.engine": "openai",
-            "ai.model": policy.model,
+            WEBHOOK_SOURCE: source,
+            AI_MODEL: policy.model,
+            AI_PROVIDER: "openai",
+            AI_ENGINE: "openai",
             "gen_ai.system": "openai",
             "gen_ai.operation.name": "chat",
             "gen_ai.request.model": policy.model,
@@ -211,13 +212,14 @@ async def _call_ai_with_retry(
     parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
 ) -> tuple[AnalysisResult, int, int]:
     start = time.time()
+    metric_source = sanitize_source(source)
     try:
         res, t_in, t_out = await _analyze_with_openai_tracked(parsed_data, source, http_client=http_client)
-        AI_ANALYSIS_DURATION_SECONDS.labels(source=sanitize_source(source), engine="openai").observe(
-            time.time() - start
-        )
+        AI_REQUESTS_TOTAL.labels(metric_source, "openai", "success").inc()
+        AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="openai").observe(time.time() - start)
         return res, t_in, t_out
     except Exception as e:
+        AI_REQUESTS_TOTAL.labels(metric_source, "openai", "error").inc()
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
         logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)
         raise

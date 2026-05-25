@@ -20,7 +20,7 @@ async def test_http_client_injects_trace_headers(monkeypatch):
     transport = httpx.MockTransport(handler)
     client = build_http_client(transport=transport)
     try:
-        token = set_fallback_trace_id("evt-123")
+        token = set_fallback_trace_id("4bf92f3577b34da6a3ce929d0e0e4736")
         r = await client.get("https://example.com/test")
         assert r.status_code == 200
     finally:
@@ -45,11 +45,12 @@ async def test_http_client_ignores_proxy_environment(monkeypatch):
         await client.aclose()
 
 
-def test_extract_trace_id_from_headers_prefers_x_request_id():
-    from core.observability.tracing import extract_trace_id_from_headers
+def test_trace_context_keeps_request_id_separate_from_trace_id():
+    from core.observability.tracing import extract_request_id_from_headers, extract_trace_id_from_headers
 
-    tid = extract_trace_id_from_headers({"x-request-id": "evt-999"})
-    assert tid and len(tid) == 32
+    headers = {"x-request-id": "evt-999"}
+    assert extract_trace_id_from_headers(headers) == ""
+    assert extract_request_id_from_headers(headers) == "evt-999"
 
 
 def test_extract_trace_id_from_headers_parses_traceparent():

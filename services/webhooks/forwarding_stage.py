@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import get_logger
+from core.observability.attributes import WEBHOOK_ALERT_HASH, WEBHOOK_EVENT_ID, WEBHOOK_SOURCE
 from core.observability.events import add_span_event, emit_event
 from core.observability.tracing import otel_span
 from core.sensitive_data import redact_headers
@@ -116,9 +117,9 @@ async def finalize_analysis_transaction(
 
     outbox_ids: list[int] = []
     persist_attrs = {
-        "event_id": ctx.event_id or 0,
-        "source": ctx.req_ctx.source,
-        "alert_hash": ctx.alert_hash[:12],
+        WEBHOOK_EVENT_ID: ctx.event_id or 0,
+        WEBHOOK_SOURCE: ctx.req_ctx.source,
+        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
         "pipeline.step": "persist",
     }
     with otel_span("webhook.persist", persist_attrs):
@@ -187,9 +188,9 @@ async def finalize_analysis_transaction(
                 emit_event(
                     "forward.outbox.queued",
                     {
-                        "event_id": save_res.webhook_id,
-                        "source": ctx.req_ctx.source,
-                        "alert_hash": ctx.alert_hash[:12],
+                        WEBHOOK_EVENT_ID: save_res.webhook_id,
+                        WEBHOOK_SOURCE: ctx.req_ctx.source,
+                        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
                         "forward.target_count": len(outbox_ids),
                         "forward.periodic_reminder": fwd_dec.is_periodic_reminder,
                     },
@@ -198,9 +199,9 @@ async def finalize_analysis_transaction(
                 add_span_event(
                     "forward.decision.skipped",
                     {
-                        "event_id": save_res.webhook_id,
-                        "source": ctx.req_ctx.source,
-                        "alert_hash": ctx.alert_hash[:12],
+                        WEBHOOK_EVENT_ID: save_res.webhook_id,
+                        WEBHOOK_SOURCE: ctx.req_ctx.source,
+                        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
                         "forward.skip_reason": fwd_dec.skip_reason or "unknown",
                     },
                 )

@@ -170,6 +170,10 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
     try:
         lock = await _acquire_distributed_lock(alert_hash)
         if lock is not None and lock[0] == "":
+            if not lock[1]:
+                from core.observability.metrics import WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL
+
+                WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL.inc()
             yield AlertProcessingGateResult(
                 suppressed=True,
                 queue_size=slot.queue_size,

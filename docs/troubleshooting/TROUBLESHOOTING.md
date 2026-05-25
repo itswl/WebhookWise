@@ -22,11 +22,10 @@ curl http://localhost:8000/ready
 docker logs webhook-receiver -f
 docker compose logs worker -f
 
-# 本地模式
-tail -f logs/webhook.log
+# 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
 ```
 
-日志为 JSON 结构化格式，每条日志含 `trace_id`、`event_id`（若有上下文）。
+日志输出到 stdout；启用观测栈时通过 OTLP logs 进入 Loki。每条日志含 `trace_id`、`span_id`、`request.id`、`webhook.event_id`（若有上下文）。
 
 ---
 

@@ -10,9 +10,14 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_LOGS_ENABLED: "true"
       OTEL_SEMCONV_STABILITY_OPT_IN: http
       OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-api
+      OTEL_SERVICE_NAMESPACE: webhookwise
+      OTEL_SEMCONV_VERSION: "1.41.0"
+      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
+      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       PYROSCOPE_APPLICATION_NAME: webhookwise-api
@@ -31,9 +36,14 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_LOGS_ENABLED: "true"
       OTEL_SEMCONV_STABILITY_OPT_IN: http
       OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-worker
+      OTEL_SERVICE_NAMESPACE: webhookwise
+      OTEL_SEMCONV_VERSION: "1.41.0"
+      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
+      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       PYROSCOPE_APPLICATION_NAME: webhookwise-worker
@@ -51,9 +61,14 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+      OTEL_LOGS_ENABLED: "true"
       OTEL_SEMCONV_STABILITY_OPT_IN: http
       OTEL_TRACES_SAMPLER: always_on
       OTEL_SERVICE_NAME: webhookwise-scheduler
+      OTEL_SERVICE_NAMESPACE: webhookwise
+      OTEL_SEMCONV_VERSION: "1.41.0"
+      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
+      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
       PYROSCOPE_APPLICATION_NAME: webhookwise-scheduler
@@ -79,7 +94,6 @@ services:
       - /etc/alloy/config.alloy
     volumes:
       - ./deploy/observability/alloy.alloy:/etc/alloy/config.alloy:ro
-      - ./logs:/var/log/webhookwise:ro
       - alloy_data:/var/lib/alloy/data
     ports:
       - "4317:4317"
@@ -102,7 +116,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
-      - --enable-feature=native-histograms
+      - --enable-feature=native-histograms,exemplar-storage
     volumes:
       - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro

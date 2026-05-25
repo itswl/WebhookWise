@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
+from core.observability.attributes import FORWARD_STATUS, FORWARD_TARGET_TYPE, WEBHOOK_EVENT_ID
 from core.observability.metrics import (
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
@@ -431,10 +432,10 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
     with otel_span(
         "forward.outbox.process",
         {
-            "event_id": record.webhook_event_id,
+            WEBHOOK_EVENT_ID: record.webhook_event_id,
             "forward.outbox.id": record.id,
-            "forward.target_type": target_type,
-            "forward.status": str(record.status or "unknown"),
+            FORWARD_TARGET_TYPE: target_type,
+            FORWARD_STATUS: str(record.status or "unknown"),
         },
     ) as outbox_span:
         try:

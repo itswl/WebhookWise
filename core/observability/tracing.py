@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import contextvars
-import hashlib
 import logging
 import os
 import secrets
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager, suppress
 from typing import Any, Protocol, cast
 
-from core.observability.attributes import normalize_attributes
+from core.observability.attributes import INSTRUMENTATION_SCOPE_NAME, normalize_attributes
 from core.observability.exporters import build_span_exporter, env_flag, otel_enabled
-from core.observability.resource import build_resource
+from core.observability.resource import build_resource, get_otel_schema_url, get_service_version
 
 _httpx_instrumented = False
 _redis_instrumented = False
@@ -80,7 +79,7 @@ def setup_tracing(app: Any | None = None, *, service_name: str | None = None) ->
         except ImportError:
             return
 
-        provider = TracerProvider(resource=build_resource(service_name))
+        provider = TracerProvider(resource=build_resource(service_name), sampler=_build_sampler())
         set_tracer_provider(provider)
         _trace_provider = provider
 
@@ -126,6 +125,41 @@ def shutdown_tracing() -> None:
     _provider_initialized = False
 
 
+def _build_sampler() -> Any:
+    try:
+        from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBased, TraceIdRatioBased
+    except ImportError:
+        return None
+
+    sampler_name = os.getenv("OTEL_TRACES_SAMPLER", "parentbased_always_on").strip().lower()
+    if sampler_name in {"always_on", "alwayson"}:
+        return ALWAYS_ON
+    if sampler_name in {"always_off", "alwaysoff"}:
+        return ALWAYS_OFF
+    if sampler_name == "traceidratio":
+        return TraceIdRatioBased(_trace_sample_ratio(default=1.0))
+    if sampler_name == "parentbased_traceidratio":
+        return ParentBased(TraceIdRatioBased(_trace_sample_ratio(default=1.0)))
+    if sampler_name == "parentbased_always_off":
+        return ParentBased(ALWAYS_OFF)
+    if sampler_name == "parentbased_always_on":
+        return ParentBased(ALWAYS_ON)
+
+    logging.getLogger("webhook_service").warning(
+        "[OTEL] unknown trace sampler %s; using parentbased_always_on", sampler_name
+    )
+    return ParentBased(ALWAYS_ON)
+
+
+def _trace_sample_ratio(*, default: float) -> float:
+    raw = os.getenv("OTEL_TRACES_SAMPLER_ARG", str(default)).strip()
+    try:
+        ratio = float(raw)
+    except ValueError:
+        return default
+    return max(0.0, min(1.0, ratio))
+
+
 @contextmanager
 def span(name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[SpanLike | None]:
     if not otel_enabled():
@@ -136,7 +170,11 @@ def span(name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[Spa
     except ImportError:
         yield None
         return
-    tracer = trace.get_tracer("webhookwise")
+    tracer = trace.get_tracer(
+        INSTRUMENTATION_SCOPE_NAME,
+        instrumenting_library_version=get_service_version(),
+        schema_url=get_otel_schema_url(),
+    )
     with tracer.start_as_current_span(name) as current:
         span_obj = cast(SpanLike, current) if current is not None else None
         if span_obj is not None:
@@ -162,6 +200,18 @@ def get_otel_trace_id() -> str:
     return ""
 
 
+def get_otel_trace_flags() -> str:
+    if not otel_enabled():
+        return "00"
+    with suppress(Exception):
+        from opentelemetry import trace
+
+        ctx = trace.get_current_span().get_span_context()
+        if ctx and ctx.is_valid:
+            return format(int(ctx.trace_flags), "02x")
+    return "00"
+
+
 def _normalize_trace_id(raw: str) -> str:
     raw = (raw or "").strip()
     if not raw:
@@ -169,17 +219,15 @@ def _normalize_trace_id(raw: str) -> str:
     lowered = raw.lower()
     if len(lowered) == 32 and all(c in "0123456789abcdef" for c in lowered):
         return lowered
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    return ""
 
 
-def generate_trace_id(event_id: int | None = None) -> str:
-    if event_id:
-        return _normalize_trace_id(f"evt-{event_id}")
+def generate_trace_id() -> str:
     return uuid.uuid4().hex
 
 
 def set_fallback_trace_id(trace_id: str) -> contextvars.Token[str]:
-    return _fallback_trace_id_var.set(_normalize_trace_id(trace_id))
+    return _fallback_trace_id_var.set(_normalize_trace_id(trace_id) or generate_trace_id())
 
 
 def reset_fallback_trace_id(token: contextvars.Token[str]) -> None:
@@ -194,21 +242,27 @@ def get_current_trace_id() -> str:
     return get_otel_trace_id() or get_fallback_trace_id()
 
 
-def get_or_generate_trace_id(event_id: int | None = None) -> str:
-    return get_current_trace_id() or generate_trace_id(event_id=event_id)
-
-
 def build_traceparent(trace_id: str) -> str:
-    trace_id_hex = _normalize_trace_id(trace_id)
+    trace_id_hex = _normalize_trace_id(trace_id) or uuid.uuid4().hex
     span_id = secrets.token_hex(8)
     return f"00-{trace_id_hex}-{span_id}-01"
 
 
+def _header_value(headers: Mapping[str, Any], name: str) -> str:
+    wanted = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == wanted:
+            return str(value or "").strip()
+    return ""
+
+
+def _has_header(headers: Mapping[str, Any], name: str) -> bool:
+    wanted = name.lower()
+    return any(str(key).lower() == wanted for key in headers)
+
+
 def extract_trace_id_from_headers(headers: Mapping[str, Any]) -> str:
-    request_id = (headers.get("x-request-id") or headers.get("X-Request-Id") or "").strip()
-    if request_id:
-        return _normalize_trace_id(request_id)
-    traceparent = (headers.get("traceparent") or headers.get("Traceparent") or "").strip()
+    traceparent = _header_value(headers, "traceparent")
     if not traceparent:
         return ""
     parts = traceparent.split("-")
@@ -218,6 +272,37 @@ def extract_trace_id_from_headers(headers: Mapping[str, Any]) -> str:
     if len(trace_id) != 32 or any(c not in "0123456789abcdef" for c in trace_id.lower()):
         return ""
     return trace_id.lower()
+
+
+def extract_request_id_from_headers(headers: Mapping[str, Any]) -> str:
+    return _header_value(headers, "x-request-id")
+
+
+def inject_trace_headers(
+    carrier: MutableMapping[str, str],
+    *,
+    request_id: str | None = None,
+    fallback_trace_id: str | None = None,
+) -> MutableMapping[str, str]:
+    """Inject W3C trace context and a separate business request id."""
+    if otel_enabled():
+        with suppress(Exception):
+            from opentelemetry import propagate
+
+            propagate.inject(carrier)
+
+    current_trace_id = get_current_trace_id()
+    if not _has_header(carrier, "traceparent"):
+        trace_id = current_trace_id or (fallback_trace_id or "")
+        if trace_id:
+            carrier["traceparent"] = build_traceparent(trace_id)
+
+    if not _has_header(carrier, "X-Request-Id"):
+        request_value = (request_id or "").strip() or current_trace_id or (fallback_trace_id or "")
+        if request_value:
+            carrier["X-Request-Id"] = request_value
+
+    return carrier
 
 
 @contextmanager
@@ -266,6 +351,23 @@ def set_span_error(span_obj: Any | None, error: BaseException | str) -> None:
         span_obj.set_status(StatusCode.ERROR, description)
         if isinstance(error, BaseException) and hasattr(span_obj, "record_exception"):
             span_obj.record_exception(error)
+
+
+def set_span_ok(span_obj: Any | None) -> None:
+    """Mark a span as successfully completed when the SDK supports it."""
+    if span_obj is None:
+        return
+    with suppress(Exception):
+        from opentelemetry.trace import StatusCode
+
+        span_obj.set_status(StatusCode.OK)
+
+
+def add_span_event_to(span_obj: Any | None, name: str, attributes: Mapping[str, Any] | None = None) -> None:
+    if span_obj is None or not hasattr(span_obj, "add_event"):
+        return
+    with suppress(Exception):
+        span_obj.add_event(name, normalize_attributes(attributes))
 
 
 def set_current_span_error(error: BaseException | str) -> None:

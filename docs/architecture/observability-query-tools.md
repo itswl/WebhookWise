@@ -39,6 +39,15 @@ python scripts/observability/webhookwise_observe.py dashboard --validate
 
 # Run an end-to-end telemetry smoke check
 python scripts/observability/webhookwise_observe.py smoke
+
+# Run offline contract checks used by CI
+python scripts/observability/webhookwise_observe.py contract
+
+# Run a full runtime acceptance check
+python scripts/observability/webhookwise_observe.py acceptance --run-k6
+
+# Gather a compact alert runbook summary
+python scripts/observability/webhookwise_observe.py runbook WebhookWiseApiAvailabilityFastBurn
 ```
 
 Use `--json` on commands when another program or agent should consume the output.
@@ -89,6 +98,7 @@ python scripts/observability/webhookwise_observe.py profiles --service-name webh
 python scripts/observability/webhookwise_observe.py dashboard --remote --uid webhook-wise-aiops
 python scripts/observability/webhookwise_observe.py dashboard --validate
 python scripts/observability/webhookwise_observe.py smoke --skip-webhook
+python scripts/observability/webhookwise_observe.py runbook WebhookWiseProcessingSuccessFastBurn --since 7200
 ```
 
 Do not commit tokens or passwords. Keep them in your shell, password manager, or
@@ -115,6 +125,9 @@ It exposes these tools:
 | `webhookwise_profiles` | Build Pyroscope profile selectors and Grafana/Pyroscope links |
 | `webhookwise_dashboard_validate` | Validate `grafana/dashboard.json` against Prometheus |
 | `webhookwise_smoke` | Run the API -> Prometheus -> Loki -> Tempo smoke check |
+| `webhookwise_acceptance` | Run the full runtime acceptance checklist |
+| `webhookwise_contract` | Run offline telemetry contract checks |
+| `webhookwise_runbook` | Collect alert state, related PromQL, Loki errors, Tempo traces, and profile links |
 
 Example JSON-RPC call:
 
@@ -180,6 +193,19 @@ when you only want to query online telemetry and do not want to create traffic.
 If webhook auth is enabled, export `WEBHOOK_SECRET` before running the command so
 the synthetic request can be signed.
 
+`contract` is offline and safe for CI. It checks dashboard/rule metric coverage,
+basic PromQL balance, stale metric names, Loki label cardinality, schema URL
+consistency, structured logging helpers, and sensitive log labels.
+
+`acceptance` is runtime-oriented. It extends `smoke` with Grafana datasource
+checks, dashboard query validation, SLO recording-rule queries, and histogram
+presence. Add `--run-k6` when you want fresh synthetic load before checking, and
+`--strict` when warnings should fail the command.
+
+`runbook <alert_name>` is for active incidents. It pulls the alert state, related
+SLO/RED/USE PromQL, recent error logs, recent traces for the likely service, and
+a Pyroscope/Grafana profile link.
+
 ## Preset Groups
 
 | Area | Presets |
@@ -189,6 +215,7 @@ the synthetic request can be signed.
 | Queue / worker | `queue-backlog`, `queue-retained-depth`, `queue-ops`, `worker-runs`, `worker-latency-p95` |
 | DB / Redis | `db-pool`, `db-latency-p95`, `redis-latency-p95` |
 | Scheduler | `scheduler-lag`, `scheduler-last-success-age` |
+| SLO | `slo-api-success`, `slo-ingress-success`, `slo-processing-success`, `slo-forward-success`, `slo-ai-degradation`, `slo-db-utilization`, `slo-queue-backlog` |
 | AI / forwarding | `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `ai-cache-latency-p95`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-latency-p95`, `forward-outbox-backlog-age`, `circuit-breaker-state` |
 | Deep diagnostics | `webhook-status`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`, `noise-latency-p95` |
 | Frontend / eBPF / load / collector | `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `collector-queue`, `loki-write-latency-p95`, `loki-write-retries` |
@@ -206,4 +233,5 @@ When metrics change:
 ```bash
 python scripts/observability/webhookwise_observe.py dashboard --validate
 python scripts/observability/webhookwise_observe.py smoke
+python scripts/observability/webhookwise_observe.py contract
 ```

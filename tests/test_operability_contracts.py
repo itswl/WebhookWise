@@ -38,6 +38,7 @@ def test_ci_enforces_coverage_gate() -> None:
     assert "--cov=services" in ci
     assert "--cov-report=xml" in ci
     assert "--cov-fail-under=63" in ci
+    assert "python scripts/observability/webhookwise_observe.py contract" in ci
     assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 63
 
 
@@ -110,6 +111,16 @@ def test_k8s_manifests_cover_runtime_and_avoid_latest_images() -> None:
     images = [image for doc in documents for image in _walk_images(doc)]
     assert images
     assert not [image for image in images if _image_is_latest(image)]
+
+    config = by_kind_name[("ConfigMap", "webhookwise-config")]["data"]
+    assert config["OTEL_ENABLED"] == "true"
+    assert config["OTEL_LOGS_ENABLED"] == "true"
+    assert config["OTEL_SERVICE_NAMESPACE"] == "webhookwise"
+    assert config["OTEL_SCHEMA_URL"] == "https://opentelemetry.io/schemas/1.41.0"
+    assert config["OTEL_SEMCONV_VERSION"] == "1.41.0"
+    assert config["OTEL_METRICS_EXEMPLAR_FILTER"] == "trace_based"
+    assert config["OTEL_TRACES_SAMPLER"] == "parentbased_traceidratio"
+    assert config["OTEL_TRACES_SAMPLER_ARG"] == "0.1"
 
     api_container = by_kind_name[("Deployment", "webhookwise-api")]["spec"]["template"]["spec"]["containers"][0]
     assert api_container["livenessProbe"]["httpGet"]["path"] == "/live"

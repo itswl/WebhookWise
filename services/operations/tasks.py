@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from core import redis_client, redis_health
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
-from core.observability.attributes import WEBHOOK_OUTCOME
+from core.observability.attributes import WEBHOOK_EVENT_ID, WEBHOOK_OUTCOME, WEBHOOK_SOURCE
 from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
     SCHEDULED_TASK_DURATION_SECONDS,
@@ -29,8 +29,9 @@ from core.observability.metrics import (
     WORKER_TASKS_TOTAL,
 )
 from core.observability.tracing import (
-    build_traceparent,
     extract_trace_id_from_headers,
+    generate_trace_id,
+    inject_trace_headers,
     otel_span,
     reset_fallback_trace_id,
     set_fallback_trace_id,
@@ -58,7 +59,6 @@ class _WebhookTaskContext:
     ingest_retry_count: int
     traceparent: str | None
     trace_headers: dict[str, str]
-
 
 
 def _background_scan_interval_seconds() -> int:
@@ -239,9 +239,12 @@ def _build_webhook_task_context(
     ingest_retry_count: int,
     traceparent: str | None,
 ) -> _WebhookTaskContext:
-    trace_headers = {"traceparent": traceparent or ""}
-    if not trace_headers["traceparent"] and request_id:
-        trace_headers["traceparent"] = build_traceparent(request_id)
+    trace_headers = {"traceparent": traceparent or ""} if traceparent else {}
+    inject_trace_headers(
+        trace_headers,
+        request_id=request_id,
+        fallback_trace_id=extract_trace_id_from_headers(trace_headers) or generate_trace_id(),
+    )
     return _WebhookTaskContext(
         source=source_name or "unknown",
         raw_headers=raw_headers or {},
@@ -250,14 +253,14 @@ def _build_webhook_task_context(
         request_id=request_id,
         received_at=received_at,
         ingest_retry_count=ingest_retry_count,
-        traceparent=traceparent,
+        traceparent=trace_headers.get("traceparent") or traceparent,
         trace_headers=trace_headers,
     )
 
 
 def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
     clear_log_context()
-    set_log_context(request_id=ctx.request_id, source=ctx.source)
+    set_log_context(request_id=ctx.request_id, webhook_source=ctx.source)
     logger.info(
         "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
         ctx.request_id,
@@ -267,8 +270,8 @@ def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
     emit_event(
         "webhook.task.started",
         {
-            "event_id": 0,
-            "source": ctx.source,
+            WEBHOOK_EVENT_ID: 0,
+            WEBHOOK_SOURCE: ctx.source,
             "webhook.raw_ingest": True,
             "retry.count": ctx.ingest_retry_count,
         },
@@ -276,7 +279,7 @@ def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
 
 
 def _set_webhook_task_fallback_trace(ctx: _WebhookTaskContext) -> Token[str] | None:
-    fallback_trace_id = extract_trace_id_from_headers(ctx.trace_headers) or (ctx.request_id or "")
+    fallback_trace_id = extract_trace_id_from_headers(ctx.trace_headers)
     return set_fallback_trace_id(fallback_trace_id) if fallback_trace_id else None
 
 
@@ -299,10 +302,10 @@ def _finish_webhook_task(ctx: _WebhookTaskContext, outcome: str, task_start: flo
         duration_ms,
     )
     attributes = {
-        "event_id": 0,
-        "source": ctx.source,
+        WEBHOOK_EVENT_ID: 0,
+        WEBHOOK_SOURCE: ctx.source,
         WEBHOOK_OUTCOME: outcome,
-        "duration.ms": duration_ms,
+        "worker.task.duration_ms": duration_ms,
     }
     emit_event("webhook.task.finished", attributes)
     record_signal("webhook.task", outcome, attributes)
@@ -344,8 +347,8 @@ async def process_webhook_task(
             otel_span(
                 "worker.webhook_process_task",
                 {
-                    "event_id": 0,
-                    "source": ctx.source,
+                    WEBHOOK_EVENT_ID: 0,
+                    WEBHOOK_SOURCE: ctx.source,
                     "retry.count": ctx.ingest_retry_count,
                     "webhook.raw_ingest": True,
                     "worker.task.name": "webhook_process_task",

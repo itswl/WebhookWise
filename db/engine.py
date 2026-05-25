@@ -137,7 +137,9 @@ async def test_db_connection() -> bool:
         _logger.error("数据库连接失败: %s", e)
         return False
     finally:
-        from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
+        from core.observability.metrics import DB_HEALTH_STATE, DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 
+        DB_HEALTH_STATE.labels("healthy").set(1 if status == "success" else 0)
+        DB_HEALTH_STATE.labels("unhealthy").set(1 if status == "error" else 0)
         DB_SESSION_TOTAL.labels("healthcheck", status).inc()
         DB_SESSION_DURATION_SECONDS.labels("healthcheck", status).observe(time.perf_counter() - start)

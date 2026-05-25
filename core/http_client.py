@@ -4,19 +4,13 @@ import httpx
 
 from core.config import UnifiedConfigManager
 from core.logger import get_logger
-from core.observability.tracing import build_traceparent, get_current_trace_id
+from core.observability.tracing import inject_trace_headers
 
 logger = get_logger("http_client")
 
 
 async def _inject_trace_headers(request: httpx.Request) -> None:
-    tid = get_current_trace_id()
-    if not tid:
-        return
-    if "X-Request-Id" not in request.headers:
-        request.headers["X-Request-Id"] = tid
-    if "traceparent" not in request.headers:
-        request.headers["traceparent"] = build_traceparent(tid)
+    inject_trace_headers(request.headers)
 
 
 def build_http_client(

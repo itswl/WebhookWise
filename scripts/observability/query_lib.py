@@ -6,10 +6,12 @@ the app container, on a developer laptop, or from a lightweight MCP wrapper.
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import hmac
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -95,11 +97,18 @@ PROMQL_PRESETS: dict[str, str] = {
     ),
     "scheduler-lag": "max by (scheduler_task_name) (scheduler_task_lag_seconds) or vector(0)",
     "scheduler-last-success-age": "time() - max by (scheduler_task_name) (scheduler_task_last_success_unixtime_seconds)",
-    "noise-rate": "sum by (webhook_relation, webhook_suppressed) (rate(webhook_suppressed_total[5m]))",
+    "noise-rate": "sum by (webhook_relation, webhook_suppressed) (rate(webhook_noise_evaluations_total[5m]))",
     "suppression-rate": (
-        '100 * ((sum(rate(webhook_suppressed_total{webhook_suppressed="true"}[5m])) or vector(0)) / '
-        "clamp_min((sum(rate(webhook_suppressed_total[5m])) or vector(0)), 0.000001))"
+        '100 * ((sum(rate(webhook_noise_evaluations_total{webhook_suppressed="true"}[5m])) or vector(0)) / '
+        "clamp_min((sum(rate(webhook_noise_evaluations_total[5m])) or vector(0)), 0.000001))"
     ),
+    "slo-api-success": "webhookwise:http_request_success_ratio_5m",
+    "slo-ingress-success": "webhookwise:webhook_ingress_success_ratio_5m",
+    "slo-processing-success": "webhookwise:webhook_processing_success_ratio_5m",
+    "slo-forward-success": "webhookwise:forward_delivery_success_ratio_5m",
+    "slo-ai-degradation": "webhookwise:ai_degradation_ratio_5m",
+    "slo-db-utilization": "webhookwise:db_pool_utilization_ratio",
+    "slo-queue-backlog": "webhookwise:queue_backlog",
     "ai-latency-p95": (
         "histogram_quantile(0.95, sum by (le, ai_engine) (rate(ai_request_duration_seconds_bucket[5m])))"
     ),
@@ -177,6 +186,73 @@ PROMQL_PRESETS: dict[str, str] = {
         "sum(rate(loki_write_batch_retries_total[5m])) or vector(0) or "
         "sum(rate(loki_write_dropped_entries_total[5m])) or sum(rate(loki_write_dropped_bytes_total[5m]))"
     ),
+}
+
+_PROMQL_METRIC_TOKEN_RE = re.compile(
+    r"\b(?:webhookwise:[a-zA-Z0-9_:]+|[a-zA-Z_:][a-zA-Z0-9_:]*(?::[a-zA-Z0-9_:]+)?"
+    r"(?:_total|_count|_sum|_bucket|_ratio|_seconds|_bytes|_age|_pending|_lag|_depth|_state|"
+    r"_active|_max|_out|_unixtime|_checks_rate|_duration_p95|_duration_p99|_failed_rate|"
+    r"_http_reqs_total|_vus|_sent_total|_received_total|_load_successful|_backlog))\b"
+)
+_OTEL_METRIC_RE = re.compile(r"=\s*(Counter|Gauge|Histogram)\(\s*\n?\s*\"([a-zA-Z0-9_.]+)\"", re.MULTILINE)
+_RECORDING_RULE_RE = re.compile(r"^\s*-\s*record:\s*([^\s]+)\s*$", re.MULTILINE)
+_QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+_EXTERNAL_METRIC_PREFIXES = (
+    "http_",
+    "process_",
+    "traces_",
+    "faro_",
+    "k6_",
+    "alloy_",
+    "loki_",
+    "otelcol_",
+    "prometheus_",
+)
+_EXTERNAL_METRICS = {"ALERTS", "up"}
+_PROMQL_FUNCTIONS = {
+    "abs",
+    "avg",
+    "avg_over_time",
+    "ceil",
+    "clamp_max",
+    "clamp_min",
+    "count",
+    "count_over_time",
+    "delta",
+    "histogram_quantile",
+    "increase",
+    "label_replace",
+    "last_over_time",
+    "max",
+    "max_over_time",
+    "min",
+    "or",
+    "quantile",
+    "rate",
+    "round",
+    "scalar",
+    "sort",
+    "sum",
+    "time",
+    "topk",
+    "vector",
+}
+_HIGH_CARDINALITY_LOKI_LABELS = {
+    "trace_id",
+    "span_id",
+    "request.id",
+    "request_id",
+    "webhook.event_id",
+    "webhook.alert_hash",
+    "forward.target",
+    "forward.target_url",
+    "url",
+    "http.url",
+}
+_OLD_TELEMETRY_NAMES = {
+    "webhook_suppressed_total",
+    "request_id",
+    "route_type",
 }
 
 
@@ -520,6 +596,130 @@ def smoke(
     return rows
 
 
+def runtime_acceptance(
+    endpoints: Endpoints | None = None,
+    *,
+    send_webhook: bool = True,
+    wait_seconds: int | None = None,
+    dashboard_paths: tuple[str | Path, ...] = ("grafana/dashboard.json", "grafana/dashboard-diagnostics.json"),
+) -> list[dict[str, str]]:
+    endpoints = endpoints or Endpoints.from_env()
+    rows = smoke(endpoints, send_webhook=send_webhook, wait_seconds=wait_seconds)
+
+    try:
+        datasources = grafana_datasources(endpoints)
+        uids = {str(item.get("uid", "")) for item in datasources}
+        expected = {
+            endpoints.prometheus_datasource_uid,
+            endpoints.loki_datasource_uid,
+            endpoints.tempo_datasource_uid,
+            endpoints.pyroscope_datasource_uid,
+        }
+        missing = sorted(expected - uids)
+        rows.append(
+            {
+                "check": "grafana-datasources",
+                "status": "ok" if not missing else "error",
+                "detail": "all expected datasources present" if not missing else f"missing={','.join(missing)}",
+            }
+        )
+    except RuntimeError as exc:
+        rows.append({"check": "grafana-datasources", "status": "error", "detail": str(exc)[:200]})
+
+    for path in dashboard_paths:
+        rows.append(_dashboard_acceptance_row(path, endpoints))
+
+    slo_queries = {
+        "slo-api-success": "webhookwise:http_request_success_ratio_5m",
+        "slo-ingress-success": "webhookwise:webhook_ingress_success_ratio_5m",
+        "slo-processing-success": "webhookwise:webhook_processing_success_ratio_5m",
+        "slo-forward-success": "webhookwise:forward_delivery_success_ratio_5m",
+        "slo-ai-degradation": "webhookwise:ai_degradation_ratio_5m",
+        "slo-db-utilization": "webhookwise:db_pool_utilization_ratio",
+        "slo-queue-backlog": "webhookwise:queue_backlog",
+        "slo-redis-unavailable": "webhookwise:redis_unavailable_rate_5m",
+    }
+    for name, query in slo_queries.items():
+        rows.append(_prometheus_smoke_row(name, query, endpoints))
+
+    try:
+        result = prometheus_query(
+            'count({__name__=~".*_bucket", service_name=~"webhookwise.*"})',
+            endpoints,
+        )
+        rows.append(
+            {
+                "check": "prometheus-histograms",
+                "status": "ok" if result_rows(result) else "warn",
+                "detail": f"{len(result_rows(result))} result rows",
+            }
+        )
+    except RuntimeError as exc:
+        rows.append({"check": "prometheus-histograms", "status": "error", "detail": str(exc)[:200]})
+
+    return rows
+
+
+def runbook_summary(
+    alert_name: str,
+    endpoints: Endpoints | None = None,
+    *,
+    since_seconds: int = 3600,
+    limit: int = 5,
+) -> list[dict[str, str]]:
+    endpoints = endpoints or Endpoints.from_env()
+    clean_alert = alert_name.strip()
+    rows: list[dict[str, str]] = []
+
+    alert_query = f'ALERTS{{alertname="{_promql_label_value(clean_alert)}"}}'
+    rows.append(_prometheus_smoke_row("alert-state", alert_query, endpoints))
+
+    for name, query in _runbook_promql_queries(clean_alert).items():
+        rows.append(_prometheus_smoke_row(f"promql:{name}", query, endpoints))
+
+    try:
+        result = loki_query_range(
+            '{service_name=~"webhookwise.*|webhookwise",severity=~"error|fatal|ERROR|FATAL"} | json',
+            endpoints,
+            limit=limit,
+            since_seconds=since_seconds,
+        )
+        streams = len(result.get("data", {}).get("result", []))
+        entries = sum(len(stream.get("values", [])) for stream in result.get("data", {}).get("result", []))
+        rows.append(
+            {
+                "check": "loki:error-logs",
+                "status": "ok" if entries else "warn",
+                "detail": f"{entries} entries across {streams} streams",
+            }
+        )
+    except RuntimeError as exc:
+        rows.append({"check": "loki:error-logs", "status": "error", "detail": str(exc)[:200]})
+
+    service_name = _service_for_alert(clean_alert)
+    try:
+        result = tempo_search(endpoints, service_name=service_name, limit=limit)
+        traces = len(result.get("traces") or result.get("data", {}).get("traces") or [])
+        rows.append(
+            {
+                "check": "tempo:recent-traces",
+                "status": "ok" if traces else "warn",
+                "detail": f"{traces} traces for {service_name}",
+            }
+        )
+    except RuntimeError as exc:
+        rows.append({"check": "tempo:recent-traces", "status": "error", "detail": str(exc)[:200]})
+
+    rows.append(
+        {
+            "check": "profiles:links",
+            "status": "ok",
+            "detail": profile_links(service_name, endpoints)[0]["grafana_url"],
+        }
+    )
+    return rows
+
+
 def _prometheus_smoke_row(name: str, query: str, endpoints: Endpoints) -> dict[str, str]:
     try:
         result = prometheus_query(query, endpoints)
@@ -527,6 +727,317 @@ def _prometheus_smoke_row(name: str, query: str, endpoints: Endpoints) -> dict[s
         return {"check": name, "status": "error", "detail": str(exc)[:200]}
     series = len(result.get("data", {}).get("result", []))
     return {"check": name, "status": "ok" if series else "warn", "detail": f"{series} series"}
+
+
+def _dashboard_acceptance_row(path: str | Path, endpoints: Endpoints) -> dict[str, str]:
+    try:
+        dashboard_rows = validate_dashboard_queries(path, endpoints)
+    except RuntimeError as exc:
+        return {"check": f"dashboard-promql:{Path(path).name}", "status": "error", "detail": str(exc)[:200]}
+    errors = [row for row in dashboard_rows if row.get("status") != "success"]
+    return {
+        "check": f"dashboard-promql:{Path(path).name}",
+        "status": "ok" if not errors else "error",
+        "detail": f"{len(dashboard_rows) - len(errors)}/{len(dashboard_rows)} queries valid",
+    }
+
+
+def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
+    root_path = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    rows: list[dict[str, str]] = []
+    dashboard_paths = [root_path / "grafana/dashboard.json", root_path / "grafana/dashboard-diagnostics.json"]
+    rules_text = (root_path / "deploy/observability/alerts.yml").read_text()
+    metrics_text = (root_path / "core/observability/metrics.py").read_text()
+    alloy_text = (root_path / "deploy/observability/alloy.alloy").read_text()
+    env_text = (root_path / ".env.example.all").read_text()
+    compose_text = (root_path / "docker-compose.observability.yml").read_text()
+    docs_text = "\n".join(
+        [
+            (root_path / "docs/architecture/observability.md").read_text(),
+            (root_path / "docs/architecture/observability-dashboard.md").read_text(),
+            (root_path / "docs/architecture/observability-local-lab.md").read_text(),
+        ]
+    )
+
+    defined_metrics = _defined_prometheus_metrics(metrics_text) | set(_RECORDING_RULE_RE.findall(rules_text))
+    expressions = _dashboard_expressions(dashboard_paths) + _rule_expressions(rules_text)
+    expanded_expressions = [expand_grafana_macros(expr) for expr in expressions]
+    referenced_metrics = _referenced_prometheus_metrics(expanded_expressions)
+    unknown = sorted(
+        metric for metric in referenced_metrics if metric not in defined_metrics and not _is_external_metric(metric)
+    )
+    rows.append(_contract_row("dashboard-and-rules-metric-coverage", not unknown, _detail_list(unknown)))
+
+    parse_errors = [expr for expr in expanded_expressions if not _promql_is_balanced(expr)]
+    rows.append(_contract_row("promql-basic-parse", not parse_errors, f"{len(expressions)} expressions checked"))
+
+    expressions_text = "\n".join(expressions)
+    stale_names = sorted(
+        name for name in _OLD_TELEMETRY_NAMES if re.search(rf"\b{re.escape(name)}\b", expressions_text)
+    )
+    rows.append(_contract_row("no-stale-telemetry-names", not stale_names, _detail_list(stale_names)))
+
+    labels = _loki_label_names(alloy_text)
+    high_cardinality = sorted(label for label in labels if label in _HIGH_CARDINALITY_LOKI_LABELS)
+    rows.append(_contract_row("loki-label-cardinality", not high_cardinality, _detail_list(high_cardinality)))
+
+    schema_checks = {
+        "env": "OTEL_SCHEMA_URL=https://opentelemetry.io/schemas/1.41.0" in env_text,
+        "compose": "OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0" in compose_text,
+        "docs": "https://opentelemetry.io/schemas/1.41.0" in docs_text,
+    }
+    rows.append(
+        _contract_row(
+            "otel-schema-version-consistency",
+            all(schema_checks.values()),
+            ",".join(name for name, ok in schema_checks.items() if not ok) or "schema 1.41.0 consistent",
+        )
+    )
+
+    direct_extra = _find_direct_logging_extra(root_path)
+    rows.append(_contract_row("structured-log-helper-required", not direct_extra, _detail_list(direct_extra)))
+
+    sensitive_label_hits = sorted(label for label in labels if _looks_sensitive_label(label))
+    rows.append(_contract_row("no-sensitive-loki-labels", not sensitive_label_hits, _detail_list(sensitive_label_hits)))
+
+    return rows
+
+
+def _contract_row(check: str, ok: bool, detail: str) -> dict[str, str]:
+    return {"check": check, "status": "ok" if ok else "error", "detail": detail or "ok"}
+
+
+def _detail_list(items: list[str]) -> str:
+    if not items:
+        return "ok"
+    preview = ", ".join(items[:10])
+    return preview if len(items) <= 10 else f"{preview}, ... (+{len(items) - 10})"
+
+
+def _defined_prometheus_metrics(metrics_text: str) -> set[str]:
+    names: set[str] = set()
+    for kind, dotted_name, unit in _metric_definitions(metrics_text):
+        bases = _prometheus_metric_bases(dotted_name, unit)
+        if kind == "Counter":
+            for base in bases:
+                names.update({base, f"{base}_total"})
+        elif kind == "Histogram":
+            for base in bases:
+                names.update({f"{base}_bucket", f"{base}_count", f"{base}_sum"})
+        elif kind == "Gauge":
+            for base in bases:
+                names.update({base, f"{base}_ratio"})
+    return names
+
+
+def _metric_definitions(metrics_text: str) -> list[tuple[str, str, str]]:
+    definitions: list[tuple[str, str, str]] = []
+    try:
+        tree = ast.parse(metrics_text)
+    except SyntaxError:
+        for kind, dotted_name in _OTEL_METRIC_RE.findall(metrics_text):
+            definitions.append((kind, dotted_name, "1"))
+        return definitions
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        kind = node.func.id
+        if kind not in {"Counter", "Gauge", "Histogram"} or not node.args:
+            continue
+        first_arg = node.args[0]
+        if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+            continue
+        unit = "1"
+        for keyword in node.keywords:
+            if (
+                keyword.arg == "unit"
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
+            ):
+                unit = keyword.value.value
+        definitions.append((kind, first_arg.value, unit))
+    return definitions
+
+
+def _prometheus_metric_bases(dotted_name: str, unit: str) -> set[str]:
+    base = dotted_name.replace(".", "_")
+    if unit == "s":
+        return {base, f"{base}_seconds"}
+    if unit == "By":
+        return {base, f"{base}_bytes"}
+    if unit and unit != "1":
+        return {base, f"{base}_{unit}"}
+    return {base}
+
+
+def _dashboard_expressions(paths: list[Path]) -> list[str]:
+    expressions: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        expressions.extend(query["expr"] for query in dashboard_queries(path))
+    return expressions
+
+
+def _rule_expressions(rules_text: str) -> list[str]:
+    expressions: list[str] = []
+    block: list[str] = []
+    pending = False
+
+    def flush_block() -> None:
+        nonlocal block, pending
+        if block:
+            expressions.append("\n".join(block))
+        block = []
+        pending = False
+
+    for raw_line in rules_text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("expr:"):
+            flush_block()
+            value = line.removeprefix("expr:").strip()
+            if value and value != "|":
+                expressions.append(value)
+            else:
+                pending = True
+            continue
+        if pending:
+            if line.startswith(("- ", "labels:", "annotations:")):
+                flush_block()
+            elif line:
+                block.append(line)
+    flush_block()
+    return expressions
+
+
+def _referenced_prometheus_metrics(expressions: list[str]) -> set[str]:
+    metrics: set[str] = set()
+    for expr in expressions:
+        without_strings = _QUOTED_RE.sub('""', expr)
+        without_label_matchers = re.sub(r"\{[^{}]*\}", "{}", without_strings)
+        without_grouping = re.sub(r"\b(?:by|without)\s*\([^)]*\)", "", without_label_matchers)
+        metrics.update(_PROMQL_METRIC_TOKEN_RE.findall(without_grouping))
+    return {metric for metric in metrics if metric not in _PROMQL_FUNCTIONS}
+
+
+def _is_external_metric(metric: str) -> bool:
+    return metric in _EXTERNAL_METRICS or metric.startswith(_EXTERNAL_METRIC_PREFIXES)
+
+
+def _promql_is_balanced(expr: str) -> bool:
+    stack: list[str] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    for char in _QUOTED_RE.sub('""', expr):
+        if char in "([{":
+            stack.append(char)
+        elif char in pairs and (not stack or stack.pop() != pairs[char]):
+            return False
+    return not stack
+
+
+def _loki_label_names(alloy_text: str) -> set[str]:
+    labels: set[str] = set()
+    for block in re.findall(r"action\s*\{(.*?)\}", alloy_text, flags=re.DOTALL):
+        if "loki.resource.labels" not in block and "loki.attribute.labels" not in block:
+            continue
+        match = re.search(r'value\s*=\s*"([^"]+)"', block)
+        if match:
+            labels.update(label.strip() for label in match.group(1).split(",") if label.strip())
+    return labels
+
+
+def _find_direct_logging_extra(root: Path) -> list[str]:
+    hits: list[str] = []
+    for base in ("core", "api", "services", "db"):
+        for path in (root / base).rglob("*.py"):
+            if path.name == "log_attrs.py":
+                continue
+            text = path.read_text()
+            if "extra={" in text:
+                hits.append(str(path.relative_to(root)))
+    return hits
+
+
+def _looks_sensitive_label(label: str) -> bool:
+    lowered = label.lower()
+    return any(word in lowered for word in ("token", "secret", "password", "authorization", "cookie", "prompt"))
+
+
+def _promql_label_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _service_for_alert(alert_name: str) -> str:
+    lowered = alert_name.lower()
+    if "worker" in lowered or "processing" in lowered or "forward" in lowered or "queue" in lowered:
+        return "webhookwise-worker"
+    if "scheduler" in lowered:
+        return "webhookwise-scheduler"
+    return "webhookwise-api"
+
+
+def _runbook_promql_queries(alert_name: str) -> dict[str, str]:
+    lowered = alert_name.lower()
+    common = {
+        "api-5xx-rate": PROMQL_PRESETS["api-5xx-rate"],
+        "api-latency-p95": PROMQL_PRESETS["api-latency-p95"],
+    }
+    if "ingress" in lowered:
+        return {
+            "ingress-success": "webhookwise:webhook_ingress_success_ratio_5m",
+            "payload-p95": PROMQL_PRESETS["webhook-payload-p95"],
+            **common,
+        }
+    if "processing" in lowered or "deadletter" in lowered or "deadletters" in lowered:
+        return {
+            "processing-success": "webhookwise:webhook_processing_success_ratio_5m",
+            "processing-latency-p95": "webhookwise:webhook_processing_duration_p95_5m",
+            "pipeline-step-latency-p95": PROMQL_PRESETS["pipeline-step-latency-p95"],
+            "worker-runs": PROMQL_PRESETS["worker-runs"],
+        }
+    if "forward" in lowered or "circuitbreaker" in lowered or "circuit" in lowered:
+        return {
+            "forward-success": "webhookwise:forward_delivery_success_ratio_5m",
+            "forward-latency-p95": "webhookwise:forward_delivery_duration_p95_5m",
+            "outbox-backlog-age": PROMQL_PRESETS["forward-outbox-backlog-age"],
+            "circuit-breaker-state": PROMQL_PRESETS["circuit-breaker-state"],
+        }
+    if "ai" in lowered:
+        return {
+            "ai-degradation": "webhookwise:ai_degradation_ratio_5m",
+            "ai-latency-p95": PROMQL_PRESETS["ai-latency-p95"],
+            "ai-cache-rate": PROMQL_PRESETS["ai-cache-rate"],
+            "ai-cost": PROMQL_PRESETS["ai-cost"],
+        }
+    if "db" in lowered:
+        return {
+            "db-health": 'max(db_health_state{db_state="unhealthy"}) or vector(0)',
+            "db-pool-utilization": "webhookwise:db_pool_utilization_ratio",
+            "db-latency-p95": PROMQL_PRESETS["db-latency-p95"],
+        }
+    if "redis" in lowered:
+        return {
+            "redis-unavailable": "webhookwise:redis_unavailable_rate_5m",
+            "redis-latency-p95": PROMQL_PRESETS["redis-latency-p95"],
+            "queue-ops": PROMQL_PRESETS["queue-ops"],
+        }
+    if "queue" in lowered:
+        return {
+            "queue-backlog": "webhookwise:queue_backlog",
+            "queue-ops": PROMQL_PRESETS["queue-ops"],
+            "worker-latency-p95": PROMQL_PRESETS["worker-latency-p95"],
+        }
+    if "loki" in lowered or "collector" in lowered or "alloy" in lowered:
+        return {
+            "collector-health": PROMQL_PRESETS["collector-health"],
+            "collector-queue": PROMQL_PRESETS["collector-queue"],
+            "loki-write-retries": PROMQL_PRESETS["loki-write-retries"],
+        }
+    return {
+        "api-success": "webhookwise:http_request_success_ratio_5m",
+        **common,
+    }
 
 
 def grafana_dashboard(uid: str = "webhook-wise-aiops", endpoints: Endpoints | None = None) -> dict[str, Any]:

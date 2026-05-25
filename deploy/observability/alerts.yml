@@ -22,6 +22,161 @@ groups:
         expr: forward_outbox_backlog_age_seconds
       - record: circuit_breaker_active_state
         expr: circuit_breaker_state_ratio
+      - record: webhookwise:http_request_rate_5m
+        expr: sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m])) or vector(0)
+      - record: webhookwise:http_request_success_ratio_5m
+        expr: |
+          1 -
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[5m])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[5m])) or vector(0)), 0.000001)
+          )
+      - record: webhookwise:http_request_success_ratio_30m
+        expr: |
+          1 -
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[30m])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[30m])) or vector(0)), 0.000001)
+          )
+      - record: webhookwise:http_request_success_ratio_1h
+        expr: |
+          1 -
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[1h])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[1h])) or vector(0)), 0.000001)
+          )
+      - record: webhookwise:http_request_success_ratio_6h
+        expr: |
+          1 -
+          (
+            (sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api",http_response_status_code=~"5.."}[6h])) or vector(0))
+            /
+            clamp_min((sum(rate(http_server_request_duration_seconds_count{service_name="webhookwise-api"}[6h])) or vector(0)), 0.000001)
+          )
+      - record: webhookwise:http_request_error_budget_burn_5m
+        expr: (1 - webhookwise:http_request_success_ratio_5m) / 0.01
+      - record: webhookwise:http_request_error_budget_burn_30m
+        expr: (1 - webhookwise:http_request_success_ratio_30m) / 0.01
+      - record: webhookwise:http_request_error_budget_burn_1h
+        expr: (1 - webhookwise:http_request_success_ratio_1h) / 0.01
+      - record: webhookwise:http_request_error_budget_burn_6h
+        expr: (1 - webhookwise:http_request_success_ratio_6h) / 0.01
+      - record: webhookwise:http_request_duration_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="webhookwise-api"}[5m]))
+          )
+      - record: webhookwise:webhook_ingress_success_ratio_5m
+        expr: |
+          (sum(rate(webhook_ingress_requests_total{webhook_outcome="queued"}[5m])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_ingress_requests_total[5m])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_ingress_success_ratio_30m
+        expr: |
+          (sum(rate(webhook_ingress_requests_total{webhook_outcome="queued"}[30m])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_ingress_requests_total[30m])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_ingress_success_ratio_1h
+        expr: |
+          (sum(rate(webhook_ingress_requests_total{webhook_outcome="queued"}[1h])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_ingress_requests_total[1h])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_ingress_success_ratio_6h
+        expr: |
+          (sum(rate(webhook_ingress_requests_total{webhook_outcome="queued"}[6h])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_ingress_requests_total[6h])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_ingress_error_budget_burn_5m
+        expr: (1 - webhookwise:webhook_ingress_success_ratio_5m) / 0.01
+      - record: webhookwise:webhook_ingress_error_budget_burn_30m
+        expr: (1 - webhookwise:webhook_ingress_success_ratio_30m) / 0.01
+      - record: webhookwise:webhook_ingress_error_budget_burn_1h
+        expr: (1 - webhookwise:webhook_ingress_success_ratio_1h) / 0.01
+      - record: webhookwise:webhook_ingress_error_budget_burn_6h
+        expr: (1 - webhookwise:webhook_ingress_success_ratio_6h) / 0.01
+      - record: webhookwise:webhook_processing_success_ratio_5m
+        expr: |
+          (sum(rate(webhook_processed_total{webhook_status="completed"}[5m])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_processing_success_ratio_30m
+        expr: |
+          (sum(rate(webhook_processed_total{webhook_status="completed"}[30m])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[30m])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_processing_success_ratio_1h
+        expr: |
+          (sum(rate(webhook_processed_total{webhook_status="completed"}[1h])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[1h])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_processing_success_ratio_6h
+        expr: |
+          (sum(rate(webhook_processed_total{webhook_status="completed"}[6h])) or vector(0))
+          /
+          clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[6h])) or vector(0)), 0.000001)
+      - record: webhookwise:webhook_processing_error_budget_burn_5m
+        expr: (1 - webhookwise:webhook_processing_success_ratio_5m) / 0.02
+      - record: webhookwise:webhook_processing_error_budget_burn_30m
+        expr: (1 - webhookwise:webhook_processing_success_ratio_30m) / 0.02
+      - record: webhookwise:webhook_processing_error_budget_burn_1h
+        expr: (1 - webhookwise:webhook_processing_success_ratio_1h) / 0.02
+      - record: webhookwise:webhook_processing_error_budget_burn_6h
+        expr: (1 - webhookwise:webhook_processing_success_ratio_6h) / 0.02
+      - record: webhookwise:webhook_processing_duration_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(webhook_processing_duration_seconds_bucket[5m]))
+          )
+      - record: webhookwise:forward_delivery_success_ratio_5m
+        expr: |
+          (sum(rate(forward_delivery_total{forward_status="success"}[5m])) or vector(0))
+          /
+          clamp_min((sum(rate(forward_delivery_total[5m])) or vector(0)), 0.000001)
+      - record: webhookwise:forward_delivery_success_ratio_30m
+        expr: |
+          (sum(rate(forward_delivery_total{forward_status="success"}[30m])) or vector(0))
+          /
+          clamp_min((sum(rate(forward_delivery_total[30m])) or vector(0)), 0.000001)
+      - record: webhookwise:forward_delivery_success_ratio_1h
+        expr: |
+          (sum(rate(forward_delivery_total{forward_status="success"}[1h])) or vector(0))
+          /
+          clamp_min((sum(rate(forward_delivery_total[1h])) or vector(0)), 0.000001)
+      - record: webhookwise:forward_delivery_success_ratio_6h
+        expr: |
+          (sum(rate(forward_delivery_total{forward_status="success"}[6h])) or vector(0))
+          /
+          clamp_min((sum(rate(forward_delivery_total[6h])) or vector(0)), 0.000001)
+      - record: webhookwise:forward_delivery_error_budget_burn_5m
+        expr: (1 - webhookwise:forward_delivery_success_ratio_5m) / 0.05
+      - record: webhookwise:forward_delivery_error_budget_burn_30m
+        expr: (1 - webhookwise:forward_delivery_success_ratio_30m) / 0.05
+      - record: webhookwise:forward_delivery_error_budget_burn_1h
+        expr: (1 - webhookwise:forward_delivery_success_ratio_1h) / 0.05
+      - record: webhookwise:forward_delivery_error_budget_burn_6h
+        expr: (1 - webhookwise:forward_delivery_success_ratio_6h) / 0.05
+      - record: webhookwise:forward_delivery_duration_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(forward_delivery_duration_seconds_bucket[5m]))
+          )
+      - record: webhookwise:ai_degradation_ratio_5m
+        expr: |
+          (sum(rate(ai_degradations_total[5m])) or vector(0))
+          /
+          clamp_min((sum(rate(ai_requests_total[5m])) or vector(0)), 0.000001)
+      - record: webhookwise:db_pool_utilization_ratio
+        expr: max(db_pool_connections_checked_out) / clamp_min(max(db_pool_connections_max), 1)
+      - record: webhookwise:queue_backlog
+        expr: max(queue_pending or queue_lag or vector(0))
+      - record: webhookwise:redis_unavailable_rate_5m
+        expr: sum(rate(redis_unavailable_total[5m])) or vector(0)
 
   - name: webhookwise-alerts
     interval: 30s
@@ -56,17 +211,199 @@ groups:
           service: webhookwise-api
         annotations:
           summary: WebhookWise API 5xx rate is above 5%.
-          runbook: Start with api-5xx-rate, Loki {level="error"}, and Tempo traces for webhookwise-api.
+          runbook: Start with api-5xx-rate, Loki {severity="error"}, and Tempo traces for webhookwise-api.
+
+      - alert: WebhookWiseApiAvailabilitySloBurn
+        expr: |
+          webhookwise:http_request_rate_5m > 0
+          and
+          webhookwise:http_request_success_ratio_5m < 0.99
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: WebhookWise API request success ratio is below 99%.
+          runbook: Check webhookwise:http_request_success_ratio_5m, API p95, Loki errors, and Tempo traces.
+
+      - alert: WebhookWiseApiAvailabilityFastBurn
+        expr: |
+          webhookwise:http_request_rate_5m > 0
+          and
+          webhookwise:http_request_error_budget_burn_5m > 14.4
+          and
+          webhookwise:http_request_error_budget_burn_1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          service: webhookwise-api
+        annotations:
+          summary: WebhookWise API is burning the 99% availability budget quickly.
+          runbook: Run `python scripts/observability/webhookwise_observe.py runbook WebhookWiseApiAvailabilityFastBurn`, then inspect API 5xx, p95 latency, traces, and error logs.
+
+      - alert: WebhookWiseApiAvailabilitySlowBurn
+        expr: |
+          webhookwise:http_request_rate_5m > 0
+          and
+          webhookwise:http_request_error_budget_burn_30m > 6
+          and
+          webhookwise:http_request_error_budget_burn_6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: WebhookWise API is steadily burning the 99% availability budget.
+          runbook: Compare 30m/6h burn-rate records with deploy windows, dependency errors, and slow traces.
+
+      - alert: WebhookWiseIngressSuccessSloBurn
+        expr: |
+          sum(rate(webhook_ingress_requests_total[5m])) > 0
+          and
+          webhookwise:webhook_ingress_success_ratio_5m < 0.99
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: Webhook ingress queueing success ratio is below 99%.
+          runbook: Check ingress rejected/suppressed/error outcomes, rate limits, payload size, and TaskIQ enqueue traces.
+
+      - alert: WebhookWiseIngressSuccessFastBurn
+        expr: |
+          sum(rate(webhook_ingress_requests_total[5m])) > 0
+          and
+          webhookwise:webhook_ingress_error_budget_burn_5m > 14.4
+          and
+          webhookwise:webhook_ingress_error_budget_burn_1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          service: webhookwise-api
+        annotations:
+          summary: Webhook ingress is burning the 99% queueing budget quickly.
+          runbook: Check rejected/error outcomes, request payload sizes, rate limits, and enqueue traces.
+
+      - alert: WebhookWiseIngressSuccessSlowBurn
+        expr: |
+          sum(rate(webhook_ingress_requests_total[5m])) > 0
+          and
+          webhookwise:webhook_ingress_error_budget_burn_30m > 6
+          and
+          webhookwise:webhook_ingress_error_budget_burn_6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: Webhook ingress is steadily burning the 99% queueing budget.
+          runbook: Compare 30m/6h ingress burn rates with queue latency, rate limiting, and incoming source mix.
+
+      - alert: WebhookWiseProcessingSuccessSloBurn
+        expr: |
+          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          and
+          webhookwise:webhook_processing_success_ratio_5m < 0.98
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Webhook processing completion ratio is below 98%.
+          runbook: Check pipeline step errors, worker task failures, DB/Redis health, and dead-letter records.
+
+      - alert: WebhookWiseProcessingSuccessFastBurn
+        expr: |
+          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          and
+          webhookwise:webhook_processing_error_budget_burn_5m > 14.4
+          and
+          webhookwise:webhook_processing_error_budget_burn_1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          service: webhookwise-worker
+        annotations:
+          summary: Webhook processing is burning the 98% completion budget quickly.
+          runbook: Run the processing runbook, then inspect worker failures, pipeline step latency, DB/Redis health, and dead letters.
+
+      - alert: WebhookWiseProcessingSuccessSlowBurn
+        expr: |
+          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          and
+          webhookwise:webhook_processing_error_budget_burn_30m > 6
+          and
+          webhookwise:webhook_processing_error_budget_burn_6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Webhook processing is steadily burning the 98% completion budget.
+          runbook: Compare burn rate with worker throughput, queue backlog, slow pipeline spans, and dependency saturation.
+
+      - alert: WebhookWiseForwardDeliverySuccessSloBurn
+        expr: |
+          sum(rate(forward_delivery_total[5m])) > 0
+          and
+          webhookwise:forward_delivery_success_ratio_5m < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Forward delivery success ratio is below 95%.
+          runbook: Check target type, circuit breakers, outbox retry age, and downstream service status.
+
+      - alert: WebhookWiseForwardDeliverySuccessFastBurn
+        expr: |
+          sum(rate(forward_delivery_total[5m])) > 0
+          and
+          webhookwise:forward_delivery_error_budget_burn_5m > 14.4
+          and
+          webhookwise:forward_delivery_error_budget_burn_1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          service: webhookwise-worker
+        annotations:
+          summary: Forward delivery is burning the 95% success budget quickly.
+          runbook: Check downstream status, circuit breakers, outbox retry age, and target-specific errors.
+
+      - alert: WebhookWiseForwardDeliverySuccessSlowBurn
+        expr: |
+          sum(rate(forward_delivery_total[5m])) > 0
+          and
+          webhookwise:forward_delivery_error_budget_burn_30m > 6
+          and
+          webhookwise:forward_delivery_error_budget_burn_6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Forward delivery is steadily burning the 95% success budget.
+          runbook: Compare 30m/6h burn with outbox age, retry rate, circuit breaker state, and downstream deploys.
+
+      - alert: WebhookWiseAiDegradationHigh
+        expr: webhookwise:ai_degradation_ratio_5m > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: webhookwise-api
+        annotations:
+          summary: AI degradation ratio is above 10%.
+          runbook: Check ai_requests_total by engine/status, provider errors, prompt size, cache hit rate, and model latency.
 
       - alert: WebhookWiseWebhookDeadLetters
-        expr: increase(webhook_dead_letters_total[10m]) > 0
+        expr: increase(webhook_dead_letter_total[10m]) > 0
         for: 0m
         labels:
           severity: critical
           service: webhookwise-worker
         annotations:
           summary: Webhook processing produced dead letters.
-          runbook: Query webhook-status and Loki by request_id or trace_id.
+          runbook: Query webhook-status and Loki by request.id or trace_id.
 
       - alert: WebhookWiseQueueBacklogHigh
         expr: (max(queue_pending) or max(queue_lag) or vector(0)) > 100
@@ -102,6 +439,26 @@ groups:
         annotations:
           summary: Database pool usage is above 80%.
           runbook: Check db-pool, db-latency-p95, slow requests, and worker concurrency.
+
+      - alert: WebhookWiseDbUnhealthy
+        expr: (max(db_health_state{db_state="unhealthy"}) or vector(0)) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: webhookwise-api
+        annotations:
+          summary: Database health check is unhealthy.
+          runbook: Check DB connectivity, migrations, pool saturation, and recent app errors.
+
+      - alert: WebhookWiseRedisUnavailable
+        expr: webhookwise:redis_unavailable_rate_5m > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: webhookwise-worker
+        annotations:
+          summary: Redis unavailable degradations are occurring.
+          runbook: Check Redis readiness, queue operations, concurrency gate suppression, and Redis operation latency.
 
       - alert: WebhookWiseAiErrors
         expr: (sum(rate(ai_request_errors_total[10m])) or vector(0)) > 0

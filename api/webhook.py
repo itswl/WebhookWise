@@ -17,14 +17,26 @@ from core.auth import verify_api_key
 from core.datetime_utils import utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
+from core.observability.attributes import REQUEST_ID, WEBHOOK_SOURCE
 from core.observability.metrics import (
     QUEUE_OPERATION_DURATION_SECONDS,
     QUEUE_OPERATIONS_TOTAL,
     WEBHOOK_INGRESS_PAYLOAD_BYTES,
+    WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS,
+    WEBHOOK_INGRESS_REQUESTS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     sanitize_source,
 )
-from core.observability.tracing import build_traceparent, get_or_generate_trace_id, set_fallback_trace_id
+from core.observability.tracing import (
+    add_span_event_to,
+    generate_trace_id,
+    get_current_trace_id,
+    inject_trace_headers,
+    otel_span,
+    reset_fallback_trace_id,
+    set_fallback_trace_id,
+    set_span_ok,
+)
 from core.redis_client import redis_ping
 from core.request_ip import get_client_ip
 from core.sensitive_data import redact_event_dict
@@ -129,6 +141,11 @@ async def _receive_and_enqueue_webhook(
     raw_body_str = raw_body.decode("utf-8", errors="replace")
     received_at = utcnow().isoformat(timespec="seconds")
 
+    trace_headers = inject_trace_headers(
+        {},
+        request_id=request_id,
+        fallback_trace_id=get_current_trace_id() or getattr(state, "trace_id", "") or generate_trace_id(),
+    )
     task_kwargs: dict[str, Any] = {
         "source_name": source_hint,
         "raw_headers": headers,
@@ -136,7 +153,7 @@ async def _receive_and_enqueue_webhook(
         "client_ip": client_ip or "",
         "request_id": request_id,
         "received_at": received_at,
-        "traceparent": headers.get("traceparent") or build_traceparent(request_id),
+        "traceparent": trace_headers.get("traceparent") or headers.get("traceparent"),
     }
     enqueue_started = time.perf_counter()
     enqueue_status = "success"
@@ -232,13 +249,52 @@ async def receive_webhook(
     source: str | None = None,
 ) -> JSONDict | JSONResponse:
     """Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。"""
-    request_id = get_or_generate_trace_id()
-    set_fallback_trace_id(request_id)
+    ingress_started = time.perf_counter()
+    ingress_outcome = "accepted"
+    request_id = request.headers.get("x-request-id") or getattr(request.state, "request_id", "") or generate_trace_id()
+    token = set_fallback_trace_id(
+        get_current_trace_id() or getattr(request.state, "trace_id", "") or generate_trace_id()
+    )
     path_source = request.path_params.get("source")
     source_hint = _normalize_source_hint(path_source or source or request.headers.get("x-webhook-source"))
+    metric_source = sanitize_source(source_hint)
     clear_log_context()
-    set_log_context(request_id=request_id, source=source_hint)
-    return await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
+    set_log_context(request_id=request_id, webhook_source=source_hint)
+    try:
+        with otel_span(
+            "webhook.ingress",
+            {
+                REQUEST_ID: request_id,
+                WEBHOOK_SOURCE: source_hint,
+                "http.request.method": str(request.method),
+                "url.path": str(request.url.path),
+            },
+        ) as ingress_span:
+            result = await _receive_and_enqueue_webhook(request=request, source_hint=source_hint, request_id=request_id)
+            if isinstance(result, JSONResponse):
+                ingress_outcome = "rejected"
+            elif result.get("event_id") is None and "suppressed" in str(result.get("message", "")).lower():
+                ingress_outcome = "suppressed"
+            else:
+                ingress_outcome = "queued"
+            if ingress_span is not None:
+                ingress_span.set_attribute("webhook.outcome", ingress_outcome)
+                add_span_event_to(
+                    ingress_span,
+                    "webhook.ingress.completed",
+                    {"webhook.outcome": ingress_outcome},
+                )
+                set_span_ok(ingress_span)
+            return result
+    except Exception:
+        ingress_outcome = "error"
+        raise
+    finally:
+        WEBHOOK_INGRESS_REQUESTS_TOTAL.labels(metric_source, ingress_outcome).inc()
+        WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS.labels(metric_source, ingress_outcome).observe(
+            time.perf_counter() - ingress_started
+        )
+        reset_fallback_trace_id(token)
 
 
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
