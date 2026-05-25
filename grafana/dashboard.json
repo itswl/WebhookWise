@@ -4561,7 +4561,7 @@
     "to": "now"
   },
   "timepicker": {},
-  "timezone": "",
+  "timezone": "browser",
   "title": "WebhookWise AIOps 基础大盘",
   "uid": "webhook-wise-aiops",
   "version": 4
