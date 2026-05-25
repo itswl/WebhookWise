@@ -11,15 +11,20 @@ let currentTab = 'alerts';
  * 初始化 Dashboard
  */
 document.addEventListener('DOMContentLoaded', () => {
-    initDashboard();
+    initDashboard().catch((error) => {
+        console.error('Dashboard 初始化失败', error);
+    });
 });
 
 /**
  * Dashboard 初始化函数
  */
-function initDashboard() {
+async function initDashboard() {
     console.log('🚀 初始化 Dashboard...');
 
+    if (typeof API !== 'undefined') {
+        await API.initAuthStorage();
+    }
     updateAuthButtonState();
 
     // 初始化各模块
@@ -231,23 +236,29 @@ function closeAuthModal() {
     document.getElementById('authModal').classList.remove('active');
 }
 
-function saveAuthKeys() {
+async function saveAuthKeys() {
     const apiKey = document.getElementById('authApiKey')?.value.trim() || '';
     const adminWriteKey = document.getElementById('authAdminWriteKey')?.value.trim() || '';
 
-    if (apiKey) {
-        API.setReadToken(apiKey);
-    }
-    if (adminWriteKey) {
-        API.setWriteToken(adminWriteKey);
+    try {
+        if (apiKey) {
+            await API.setReadToken(apiKey);
+        }
+        if (adminWriteKey) {
+            await API.setWriteToken(adminWriteKey);
+        }
+    } catch (error) {
+        console.error('凭证加密保存失败', error);
+        alert(error.message || '凭证加密保存失败，请确认当前浏览器支持 Web Crypto。');
+        return;
     }
 
     updateAuthButtonState();
     closeAuthModal();
 }
 
-function clearAuthKeys() {
-    API.clearTokens();
+async function clearAuthKeys() {
+    await API.clearTokens();
     const apiKeyInput = document.getElementById('authApiKey');
     const adminWriteKeyInput = document.getElementById('authAdminWriteKey');
     if (apiKeyInput) apiKeyInput.value = '';

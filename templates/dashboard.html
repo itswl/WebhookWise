@@ -272,7 +272,7 @@
                     <span id="authWriteStatus">ADMIN_WRITE_KEY：未保存</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
-                    凭证仅保存在当前浏览器 localStorage，不会写入服务端配置。
+                    凭证会使用浏览器 Web Crypto 加密后保存在本机 localStorage，加密 key 保存在 IndexedDB，不会写入服务端配置。
                 </p>
             </div>
             <div class="modal-footer">

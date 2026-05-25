@@ -379,10 +379,15 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
     assert "this.getWriteToken()" in api_js
     assert "Admin write permission required" in api_js
+    assert "window.crypto.subtle" in api_js
+    assert "AES-GCM" in api_js
+    assert "window.indexedDB" in api_js
+    assert "localStorage.setItem(storageKey, JSON.stringify(record))" in api_js
 
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
+    assert "Web Crypto 加密后保存在本机 localStorage" in dashboard_html
 
 
 @pytest.mark.asyncio

@@ -5,8 +5,19 @@
 
 const READ_TOKEN_KEY = 'webhook_api_key';
 const WRITE_TOKEN_KEY = 'webhook_admin_write_key';
+const AUTH_CRYPTO_DB = 'webhookwise_auth_crypto';
+const AUTH_CRYPTO_STORE = 'keys';
+const AUTH_CRYPTO_KEY_ID = 'dashboard-token-key';
+const AUTH_TOKEN_RECORD_VERSION = 1;
 
 const API = {
+    _tokenCache: {
+        read: '',
+        write: ''
+    },
+    _authStorageReady: null,
+    _cryptoKeyPromise: null,
+
     /**
      * 获取只读 API Token
      */
@@ -15,35 +26,220 @@ const API = {
     },
 
     getReadToken() {
-        return localStorage.getItem(READ_TOKEN_KEY) || '';
+        return this._tokenCache.read || '';
     },
 
     getWriteToken() {
-        return localStorage.getItem(WRITE_TOKEN_KEY) || '';
+        return this._tokenCache.write || '';
     },
 
-    setReadToken(token) {
+    async setReadToken(token) {
         if (token) {
-            localStorage.setItem(READ_TOKEN_KEY, token);
+            await this.setEncryptedToken(READ_TOKEN_KEY, 'read', token);
         }
     },
 
-    setWriteToken(token) {
+    async setWriteToken(token) {
         if (token) {
-            localStorage.setItem(WRITE_TOKEN_KEY, token);
+            await this.setEncryptedToken(WRITE_TOKEN_KEY, 'write', token);
         }
     },
 
-    clearTokens() {
+    async clearTokens() {
         localStorage.removeItem(READ_TOKEN_KEY);
         localStorage.removeItem(WRITE_TOKEN_KEY);
+        this._tokenCache.read = '';
+        this._tokenCache.write = '';
+        this._authStorageReady = null;
+        this._cryptoKeyPromise = null;
+        try {
+            await this.deleteStoredCryptoKey();
+        } catch (error) {
+            console.warn('清理本机凭证加密 key 失败', error);
+        }
     },
 
     getTokenStatus() {
         return {
-            read: Boolean(this.getReadToken()),
-            write: Boolean(this.getWriteToken())
+            read: Boolean(this.getReadToken() || this.hasEncryptedToken(READ_TOKEN_KEY)),
+            write: Boolean(this.getWriteToken() || this.hasEncryptedToken(WRITE_TOKEN_KEY))
         };
+    },
+
+    async initAuthStorage() {
+        if (!this._authStorageReady) {
+            this._authStorageReady = (async () => {
+                this._tokenCache.read = await this.loadEncryptedToken(READ_TOKEN_KEY);
+                this._tokenCache.write = await this.loadEncryptedToken(WRITE_TOKEN_KEY);
+            })();
+        }
+        return this._authStorageReady;
+    },
+
+    hasEncryptedToken(storageKey) {
+        return this.isEncryptedTokenRecord(localStorage.getItem(storageKey));
+    },
+
+    async loadEncryptedToken(storageKey) {
+        const storedValue = localStorage.getItem(storageKey);
+        if (!storedValue) return '';
+
+        if (!this.isEncryptedTokenRecord(storedValue)) {
+            localStorage.removeItem(storageKey);
+            return '';
+        }
+
+        try {
+            const record = JSON.parse(storedValue);
+            return await this.decryptToken(record);
+        } catch (error) {
+            console.warn('读取本机加密凭证失败，已清除失效凭证', error);
+            localStorage.removeItem(storageKey);
+            return '';
+        }
+    },
+
+    async setEncryptedToken(storageKey, cacheName, token) {
+        const record = await this.encryptToken(token);
+        localStorage.setItem(storageKey, JSON.stringify(record));
+        this._tokenCache[cacheName] = token;
+    },
+
+    isEncryptedTokenRecord(value) {
+        if (!value) return false;
+        try {
+            const record = JSON.parse(value);
+            return record?.v === AUTH_TOKEN_RECORD_VERSION
+                && record?.alg === 'AES-GCM'
+                && typeof record?.iv === 'string'
+                && typeof record?.data === 'string';
+        } catch (_error) {
+            return false;
+        }
+    },
+
+    async encryptToken(token) {
+        const key = await this.getOrCreateCryptoKey();
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const encodedToken = new TextEncoder().encode(token);
+        const encrypted = await window.crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            encodedToken
+        );
+
+        return {
+            v: AUTH_TOKEN_RECORD_VERSION,
+            alg: 'AES-GCM',
+            iv: this.arrayBufferToBase64(iv),
+            data: this.arrayBufferToBase64(encrypted)
+        };
+    },
+
+    async decryptToken(record) {
+        const key = await this.getOrCreateCryptoKey();
+        const iv = new Uint8Array(this.base64ToArrayBuffer(record.iv));
+        const encrypted = this.base64ToArrayBuffer(record.data);
+        const decrypted = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            encrypted
+        );
+        return new TextDecoder().decode(decrypted);
+    },
+
+    async getOrCreateCryptoKey() {
+        this.assertCryptoStorageAvailable();
+        if (!this._cryptoKeyPromise) {
+            this._cryptoKeyPromise = (async () => {
+                const storedKey = await this.readStoredCryptoKey();
+                if (storedKey) return storedKey;
+
+                const newKey = await window.crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['encrypt', 'decrypt']
+                );
+                await this.writeStoredCryptoKey(newKey);
+                return newKey;
+            })();
+        }
+        return this._cryptoKeyPromise;
+    },
+
+    assertCryptoStorageAvailable() {
+        if (!window.crypto?.subtle || !window.indexedDB) {
+            throw new Error('当前浏览器不支持 Web Crypto / IndexedDB，无法加密保存凭证');
+        }
+    },
+
+    async readStoredCryptoKey() {
+        return await this.withCryptoStore('readonly', (store) => store.get(AUTH_CRYPTO_KEY_ID));
+    },
+
+    async writeStoredCryptoKey(key) {
+        await this.withCryptoStore('readwrite', (store) => store.put(key, AUTH_CRYPTO_KEY_ID));
+    },
+
+    async deleteStoredCryptoKey() {
+        if (!window.indexedDB) return;
+        await this.withCryptoStore('readwrite', (store) => store.delete(AUTH_CRYPTO_KEY_ID));
+    },
+
+    async withCryptoStore(mode, action) {
+        const db = await this.openCryptoDb();
+        return await new Promise((resolve, reject) => {
+            const transaction = db.transaction(AUTH_CRYPTO_STORE, mode);
+            const store = transaction.objectStore(AUTH_CRYPTO_STORE);
+            const request = action(store);
+            let result;
+
+            request.onsuccess = () => {
+                result = request.result;
+            };
+            request.onerror = () => reject(request.error);
+            transaction.oncomplete = () => {
+                db.close();
+                resolve(result);
+            };
+            transaction.onerror = () => {
+                db.close();
+                reject(transaction.error);
+            };
+        });
+    },
+
+    async openCryptoDb() {
+        return await new Promise((resolve, reject) => {
+            const request = window.indexedDB.open(AUTH_CRYPTO_DB, 1);
+
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(AUTH_CRYPTO_STORE)) {
+                    db.createObjectStore(AUTH_CRYPTO_STORE);
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        bytes.forEach((byte) => {
+            binary += String.fromCharCode(byte);
+        });
+        return window.btoa(binary);
+    },
+
+    base64ToArrayBuffer(value) {
+        const binary = window.atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
     },
 
     getAuthMode(options = {}) {
@@ -67,6 +263,7 @@ const API = {
      */
     async authenticatedFetch(url, options = {}, retryState = {}) {
         const authMode = this.getAuthMode(options);
+        await this.initAuthStorage();
 
         // 如果有正在进行的鉴权弹窗，则等待它完成
         if (this._authPromises[authMode]) {
@@ -101,16 +298,23 @@ const API = {
                 // 创建一个 Promise 锁，并阻塞其他并发请求
                 this._authPromises[authMode] = new Promise((resolve) => {
                     // 使用 setTimeout 确保 UI 线程不被死锁，并给浏览器渲染机会
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         const key = prompt(this.authPromptText(authMode));
                         if (key) {
-                            if (authMode === 'write') {
-                                this.setWriteToken(key);
-                            } else {
-                                this.setReadToken(key);
-                            }
-                            if (typeof updateAuthButtonState === 'function') {
-                                updateAuthButtonState();
+                            try {
+                                if (authMode === 'write') {
+                                    await this.setWriteToken(key);
+                                } else {
+                                    await this.setReadToken(key);
+                                }
+                                if (typeof updateAuthButtonState === 'function') {
+                                    updateAuthButtonState();
+                                }
+                            } catch (error) {
+                                console.error('凭证加密保存失败', error);
+                                resolve(null);
+                                this._authPromises[authMode] = null;
+                                return;
                             }
                         }
                         resolve(key);
