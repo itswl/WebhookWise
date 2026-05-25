@@ -3,7 +3,7 @@ import os
 import queue
 import sys
 from datetime import datetime, timezone
-from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
+from logging.handlers import QueueHandler, QueueListener
 from typing import Any
 from urllib.parse import urlparse
 
@@ -11,7 +11,16 @@ from core import json
 from core.config import UnifiedConfigManager
 from core.log_context import get_log_context
 from core.logging_levels import apply_log_levels
-from core.observability.tracing import get_current_trace_id, get_otel_span_id
+from core.observability.attributes import normalize_attribute_key
+from core.observability.resource import (
+    get_deployment_environment,
+    get_otel_schema_url,
+    get_service_instance_id,
+    get_service_name,
+    get_service_namespace,
+    get_service_version,
+)
+from core.observability.tracing import get_current_trace_id, get_otel_span_id, get_otel_trace_flags
 
 _LEVEL_VALUE_BY_NAME = {
     "CRITICAL": "fatal",
@@ -58,33 +67,34 @@ def mask_url(url: str) -> str:
 
 
 class TraceIdFilter(logging.Filter):
-    """为每条日志记录注入当前协程的 trace_id。"""
+    """Inject OTel correlation and canonical context attributes into log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         otel_trace_id = ""
         otel_span_id = ""
+        otel_trace_flags = "00"
         try:
             otel_trace_id = get_current_trace_id()
             otel_span_id = get_otel_span_id()
+            otel_trace_flags = get_otel_trace_flags()
         except Exception:
             otel_trace_id = ""
             otel_span_id = ""
+            otel_trace_flags = "00"
 
         record.trace_id = otel_trace_id or "-"
         record.span_id = otel_span_id or "-"
+        record.trace_flags = otel_trace_flags
+        record.severity = normalize_log_level(record.levelname)
+        record.severity_text = display_log_level(record.levelname)
+        setattr(record, "logger.name", record.name)
 
         ctx = get_log_context()
         if ctx:
             for k, v in ctx.items():
-                setattr(record, k, v)
-            if "event_id" in ctx:
-                setattr(record, "webhook.event_id", ctx["event_id"])
-            if "source" in ctx:
-                setattr(record, "webhook.source", ctx["source"])
-            if "alert_hash" in ctx:
-                setattr(record, "webhook.alert_hash", ctx["alert_hash"])
-            if "processing_status" in ctx:
-                setattr(record, "webhook.status", ctx["processing_status"])
+                attr_key = normalize_attribute_key(k)
+                if attr_key:
+                    setattr(record, attr_key, v)
 
         return True
 
@@ -92,15 +102,24 @@ class TraceIdFilter(logging.Filter):
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         level = normalize_log_level(record.levelname)
+        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
         payload: dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": level,
+            "timestamp": timestamp,
+            "observed_timestamp": timestamp,
             "severity_text": display_log_level(record.levelname),
             "severity_number": record.levelno,
-            "name": record.name,
-            "message": record.getMessage(),
+            "severity": level,
+            "body": record.getMessage(),
+            "logger.name": record.name,
+            "schema_url": get_otel_schema_url(),
             "trace_id": getattr(record, "trace_id", "-"),
             "span_id": getattr(record, "span_id", "-"),
+            "trace_flags": getattr(record, "trace_flags", "00"),
+            "service.name": get_service_name(),
+            "service.namespace": get_service_namespace(),
+            "service.version": get_service_version(),
+            "deployment.environment": get_deployment_environment(),
+            "service.instance.id": get_service_instance_id(),
         }
 
         reserved = {
@@ -126,11 +145,18 @@ class JsonFormatter(logging.Formatter):
             "process",
         }
 
+        if record.exc_info:
+            exc_type, exc, _tb = record.exc_info
+            payload["exception.type"] = getattr(exc_type, "__name__", str(exc_type))
+            payload["exception.message"] = str(exc)
+            payload["exception.stacktrace"] = self.formatException(record.exc_info)
+
         for k, v in record.__dict__.items():
             if k in reserved or k.startswith("_"):
                 continue
-            if k not in payload:
-                payload[k] = v
+            attr_key = normalize_attribute_key(k)
+            if attr_key and attr_key not in payload:
+                payload[attr_key] = v
 
         return json.dumps(payload)
 
@@ -162,21 +188,12 @@ def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:
     # 强制包含基础字段，其他字段通过 extra 传入
     formatter: logging.Formatter = JsonFormatter()
 
-    # 2. 处理器：控制台 + 滚动文件
+    # 2. 处理器：stdout。OTLP logs are installed by core.observability.logging.
     handlers: list[logging.Handler] = []
 
-    # 控制台
     stdout_h = logging.StreamHandler(sys.stdout)
     stdout_h.setFormatter(formatter)
     handlers.append(stdout_h)
-
-    # 文件
-    log_file = config.server.LOG_FILE
-    if log_file:
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        file_h = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
-        file_h.setFormatter(formatter)
-        handlers.append(file_h)
 
     # 3. 异步处理：使用 QueueListener 避免日志 I/O 阻塞主线程
     log_queue: queue.Queue[logging.LogRecord] = queue.Queue(-1)

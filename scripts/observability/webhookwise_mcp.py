@@ -25,7 +25,10 @@ from scripts.observability.query_lib import (  # noqa: E402
     profile_links,
     prometheus_query,
     result_rows,
+    runbook_summary,
+    runtime_acceptance,
     smoke,
+    telemetry_contract,
     tempo_search,
     validate_dashboard_queries,
 )
@@ -120,6 +123,37 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "webhookwise_acceptance",
+        "description": "Run runtime observability acceptance checks across health, data sources, dashboard queries, SLOs, logs, and traces.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "send_webhook": {"type": "boolean", "default": True},
+                "wait_seconds": {"type": "integer", "default": 8},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "webhookwise_contract",
+        "description": "Run offline telemetry contract checks for metrics, PromQL, Loki labels, schema URLs, and structured logging.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "webhookwise_runbook",
+        "description": "Collect a compact runbook summary for a WebhookWise alert.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "alert_name": {"type": "string"},
+                "since_seconds": {"type": "integer", "default": 3600},
+                "limit": {"type": "integer", "default": 5},
+            },
+            "required": ["alert_name"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -189,6 +223,25 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 endpoints,
                 send_webhook=bool(arguments.get("send_webhook", True)),
                 wait_seconds=int(arguments.get("wait_seconds", 8)),
+            )
+        )
+    if name == "webhookwise_acceptance":
+        return _text_result(
+            runtime_acceptance(
+                endpoints,
+                send_webhook=bool(arguments.get("send_webhook", True)),
+                wait_seconds=int(arguments.get("wait_seconds", 8)),
+            )
+        )
+    if name == "webhookwise_contract":
+        return _text_result(telemetry_contract())
+    if name == "webhookwise_runbook":
+        return _text_result(
+            runbook_summary(
+                str(arguments["alert_name"]),
+                endpoints,
+                since_seconds=int(arguments.get("since_seconds", 3600)),
+                limit=int(arguments.get("limit", 5)),
             )
         )
     raise ValueError(f"unknown tool: {name}")

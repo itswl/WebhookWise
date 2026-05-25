@@ -21,6 +21,9 @@ python scripts/observability/webhookwise_observe.py tempo --service-name webhook
 python scripts/observability/webhookwise_observe.py profiles --service-name webhookwise-api
 python scripts/observability/webhookwise_observe.py dashboard --validate
 python scripts/observability/webhookwise_observe.py smoke
+python scripts/observability/webhookwise_observe.py contract
+python scripts/observability/webhookwise_observe.py acceptance
+python scripts/observability/webhookwise_observe.py runbook WebhookWiseApiAvailabilityFastBurn
 ```
 
 For MCP-style stdio clients, start:
@@ -40,6 +43,9 @@ It exposes tools:
 - `webhookwise_profiles`
 - `webhookwise_dashboard_validate`
 - `webhookwise_smoke`
+- `webhookwise_acceptance`
+- `webhookwise_contract`
+- `webhookwise_runbook`
 
 ## Endpoints
 
@@ -105,8 +111,9 @@ Never commit Grafana tokens or passwords.
 5. Use `logs` for concrete events, errors, trace IDs, or frontend Faro records.
 6. Use `tempo --service-name <service>` when the user asks whether trace data exists or needs trace examples.
 7. Use `profiles --service-name <service>` when CPU, latency, or worker backlog needs Pyroscope investigation.
-8. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
-9. Use `smoke` after observability config changes to verify API -> Prometheus -> Loki -> Tempo -> alert-rule wiring.
+8. Use `runbook <alert_name>` when an alert is firing or the user asks for incident context.
+9. Explain whether absence means zero traffic, cold business path, stale k6 data, or a wrong metric name.
+10. Use `contract` after telemetry edits and `smoke`/`acceptance` after runtime config changes.
 
 ## Useful Presets
 
@@ -115,6 +122,7 @@ Never commit Grafana tokens or passwords.
 - Queue/worker: `queue-backlog`, `queue-retained-depth`, `queue-ops`, `worker-runs`, `worker-latency-p95`
 - DB/Redis: `db-pool`, `db-latency-p95`, `redis-latency-p95`
 - Scheduler: `scheduler-lag`, `scheduler-last-success-age`
+- SLO: `slo-api-success`, `slo-ingress-success`, `slo-processing-success`, `slo-forward-success`, `slo-ai-degradation`, `slo-db-utilization`, `slo-queue-backlog`
 - AI/forwarding: `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-backlog-age`, `circuit-breaker-state`
 - Deep diagnostics: `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`
 - Frontend/eBPF/load/collector: `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `loki-write-latency-p95`, `loki-write-retries`

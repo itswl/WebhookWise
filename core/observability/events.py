@@ -9,6 +9,7 @@ from typing import Any
 
 from core.observability.attributes import normalize_attributes
 from core.observability.exporters import otel_enabled
+from core.observability.log_attrs import log_extra
 from core.observability.metrics import OBSERVABILITY_EVENTS_TOTAL, OBSERVABILITY_SIGNAL_TOTAL
 
 
@@ -37,10 +38,9 @@ def emit_event(
     """Emit a point-in-time event as both a span event and structured log."""
     normalized = normalize_attributes(attributes)
     normalized["event.name"] = name
-    normalized["event_name"] = name
     OBSERVABILITY_EVENTS_TOTAL.labels(name).inc()
     add_span_event(name, normalized)
-    logging.getLogger("webhook_service.events").log(severity, body or name, extra=normalized)
+    logging.getLogger("webhook_service.events").log(severity, body or name, extra=log_extra(normalized))
 
 
 def record_signal(name: str, state: str, attributes: Mapping[str, Any] | None = None) -> None:

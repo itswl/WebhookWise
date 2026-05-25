@@ -93,7 +93,7 @@ otelcol.processor.attributes "loki_labels" {
 
 	action {
 		key    = "loki.attribute.labels"
-		value  = "level,severity_text,event.name,event_name,webhook.source,webhook.status"
+		value  = "severity,severity_text,event.name,signal.name,signal.state,webhook.source,webhook.status"
 		action = "insert"
 	}
 
@@ -119,7 +119,8 @@ otelcol.exporter.prometheus "default" {
 
 prometheus.remote_write "prometheus" {
 	endpoint {
-		url = "http://prometheus:9090/api/v1/write"
+		url            = "http://prometheus:9090/api/v1/write"
+		send_exemplars = true
 	}
 }
 
@@ -141,47 +142,6 @@ loki.write "local" {
 	endpoint {
 		url = "http://loki:3100/loki/api/v1/push"
 	}
-}
-
-loki.source.file "webhook_logs" {
-	targets = [
-		{
-			__path__     = "/var/log/webhookwise/*.log",
-			job          = "webhookwise-file",
-			service_name = "webhookwise",
-		},
-	]
-	forward_to = [loki.process.webhook_logs.receiver]
-}
-
-loki.process "webhook_logs" {
-	stage.json {
-		expressions = {
-			level          = "level",
-			severity_text  = "severity_text",
-			logger         = "name",
-			trace_id       = "trace_id",
-			span_id        = "span_id",
-			event_name     = "event_name",
-			webhook_source = "source",
-			webhook_status = "processing_status",
-			deployment_env = "deployment_environment",
-		}
-	}
-
-	stage.labels {
-		values = {
-			level                  = "level",
-			logger                 = "logger",
-			severity_text          = "severity_text",
-			event_name             = "event_name",
-			webhook_source         = "webhook_source",
-			webhook_status         = "webhook_status",
-			deployment_environment = "deployment_env",
-		}
-	}
-
-	forward_to = [loki.write.local.receiver]
 }
 
 loki.process "faro" {

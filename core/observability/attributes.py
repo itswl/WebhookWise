@@ -5,10 +5,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+OTEL_SEMCONV_VERSION_DEFAULT = "1.41.0"
+OTEL_SCHEMA_URL_DEFAULT = f"https://opentelemetry.io/schemas/{OTEL_SEMCONV_VERSION_DEFAULT}"
+INSTRUMENTATION_SCOPE_NAME = "webhookwise"
+
 SERVICE_NAME = "service.name"
+SERVICE_NAMESPACE = "service.namespace"
 SERVICE_VERSION = "service.version"
 DEPLOYMENT_ENVIRONMENT = "deployment.environment"
 SERVICE_INSTANCE_ID = "service.instance.id"
+
+REQUEST_ID = "request.id"
 
 WEBHOOK_SOURCE = "webhook.source"
 WEBHOOK_EVENT_ID = "webhook.event_id"
@@ -25,6 +32,7 @@ WEBHOOK_ROUTE = "webhook.route"
 
 FORWARD_TARGET = "forward.target"
 FORWARD_STATUS = "forward.status"
+FORWARD_TARGET_TYPE = "forward.target_type"
 
 AI_MODEL = "ai.model"
 AI_PROVIDER = "ai.provider"
@@ -36,43 +44,13 @@ RETRY_COUNT = "retry.count"
 ERROR_TYPE = "error.type"
 ERROR_REASON = "error.reason"
 
-_ALIASES = {
-    "source": WEBHOOK_SOURCE,
-    "event_id": WEBHOOK_EVENT_ID,
-    "event_type": WEBHOOK_EVENT_TYPE,
-    "alert_hash": WEBHOOK_ALERT_HASH,
-    "importance": WEBHOOK_IMPORTANCE,
-    "relation": WEBHOOK_RELATION,
-    "suppressed": WEBHOOK_SUPPRESSED,
-    "outcome": WEBHOOK_OUTCOME,
-    "processing_status": WEBHOOK_STATUS,
-    "status": WEBHOOK_STATUS,
-    "field": WEBHOOK_FIELD,
-    "duration_ms": WEBHOOK_PROCESSING_DURATION_MS,
-    "route": WEBHOOK_ROUTE,
-    "target": FORWARD_TARGET,
-    "target_url": FORWARD_TARGET,
-    "model": AI_MODEL,
-    "provider": AI_PROVIDER,
-    "engine": AI_ENGINE,
-    "token_type": AI_TOKEN_TYPE,
-    "retry_count": RETRY_COUNT,
-    "error_type": ERROR_TYPE,
-    "type": ERROR_TYPE,
-    "reason": ERROR_REASON,
-    "name": "scheduler.task.name",
-    "stream": "queue.stream",
-    "group": "queue.group",
-    "operation": "queue.operation",
-}
-
 
 def normalize_attribute_key(key: str) -> str:
-    """Return the canonical OTel key for a local shorthand."""
+    """Return a cleaned canonical OTel attribute key."""
     cleaned = str(key or "").strip()
     if not cleaned:
         return cleaned
-    return _ALIASES.get(cleaned, cleaned)
+    return cleaned
 
 
 def normalize_attribute_value(value: object) -> str | bool | int | float:

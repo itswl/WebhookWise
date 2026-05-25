@@ -29,7 +29,6 @@ class ServerConfig(StaticSettings):
     RUN_MODE: str = Field(default="api")
     LOG_LEVEL: str = Field(default="INFO")
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
-    LOG_FILE: str = Field(default="logs/webhook.log")
     DATA_DIR: str = Field(default="webhooks_data")
     PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
     PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096)

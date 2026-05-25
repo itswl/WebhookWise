@@ -32,9 +32,11 @@ def test_json_formatter_uses_lowercase_level_and_uppercase_display_severity():
 
     payload = json.loads(formatter.format(record))
 
-    assert payload["level"] == "warn"
+    assert payload["severity"] == "warn"
     assert payload["severity_text"] == "WARN"
     assert payload["severity_number"] == logging.WARNING
+    assert payload["body"] == "Redis latency high"
+    assert payload["logger.name"] == "webhook_service.test"
 
 
 def test_setup_logger_reinitializes_in_new_process():
