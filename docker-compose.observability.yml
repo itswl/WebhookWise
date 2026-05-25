@@ -18,7 +18,6 @@ services:
       PYROSCOPE_APPLICATION_NAME: webhookwise-api
       PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
       REQUIRE_WEBHOOK_AUTH: "false"
-      ALLOW_UNAUTHENTICATED_WEBHOOK: "true"
     depends_on:
       alloy:
         condition: service_started

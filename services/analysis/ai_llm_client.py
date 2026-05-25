@@ -23,7 +23,7 @@ from core.observability.metrics import (
     sanitize_source,
 )
 from core.observability.tracing import otel_span, set_span_error
-from schemas import WebhookAnalysisResult
+from schemas.analysis import WebhookAnalysisResult
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.analysis.analysis_policies import AIProviderPolicy
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async

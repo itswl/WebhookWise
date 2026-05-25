@@ -80,10 +80,9 @@ tail -f logs/webhook.log
 
 **排查步骤：**
 
-1. 检查 `ENABLE_AI_ANALYSIS` 和 `OPENAI_API_KEY` 是否已配置：
+1. 检查进程环境中的 `ENABLE_AI_ANALYSIS` 和 `OPENAI_API_KEY` 是否已配置。
    ```bash
-   curl http://localhost:8000/api/config \
-     -H "Authorization: Bearer $API_KEY" | jq '.data.OPENAI_API_KEY'
+   docker compose exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
    ```
 
 2. 检查 AI API 连通性（Worker 日志会有 HTTP 错误详情）。
@@ -100,13 +99,12 @@ tail -f logs/webhook.log
 
 **说明：**
 - 所有应用配置都只在服务启动时读取，修改后必须重启本地进程或滚动发布容器。
-- 应用不再从数据库读取配置，也不提供 `POST /api/config` 在线写配置入口。
+- 应用不再从数据库读取配置，也不提供在线配置读写入口。
 
 **排查：**
 ```bash
-# 查看某个 key 当前来源（file_or_environment/default）
-curl http://localhost:8000/api/config/sources \
-  -H "Authorization: Bearer $API_KEY" | jq '.data[] | select(.key == "OPENAI_MODEL")'
+docker compose config
+docker compose exec webhook-service env | sort
 ```
 
 ---
@@ -151,8 +149,7 @@ curl http://localhost:8000/api/config/sources \
 
 1. 确认 `DEEP_ANALYSIS_FEISHU_WEBHOOK` 已配置：
    ```bash
-   curl http://localhost:8000/api/config \
-     -H "Authorization: Bearer $API_KEY" | jq '.data.DEEP_ANALYSIS_FEISHU_WEBHOOK'
+   docker compose exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
    ```
 
 2. 手动测试飞书 Webhook 连通性：
@@ -186,7 +183,7 @@ curl http://localhost:8000/api/config/sources \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-3. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误；all-in-one 部署可查看 `webhook-service` 容器内 supervisor 管理的 worker 输出。
+3. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误。
 
 4. 如果 outbox 记录进入 `expired`，表示已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免过期告警误发而停止自动投递。确认仍需发送后，使用手动转发接口重新发送当前事件。
 
@@ -265,4 +262,4 @@ LOG_LEVEL=DEBUG
 1. 相关的 `trace_id`（从日志中获取）
 2. 对应事件的 `event_id`
 3. Worker 和 API 日志中的完整错误堆栈
-4. `GET /api/config/sources` 的返回结果（确认配置是否来自配置文件/环境变量）
+4. 相关容器的环境变量和最近一次滚动/重启时间

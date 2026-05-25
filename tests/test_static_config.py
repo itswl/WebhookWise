@@ -1,4 +1,3 @@
-import os
 import re
 from pathlib import Path
 
@@ -89,19 +88,6 @@ def test_removed_dynamic_config_switches_are_not_config_fields() -> None:
     keys = get_config_keys()
     assert "ENABLE_RUNTIME_CONFIG" not in keys
     assert "ALLOW_RUNTIME_CONNECTION_CONFIG" not in keys
-
-
-def test_config_sources_are_static_and_restart_required(monkeypatch) -> None:
-    from services.configuration.config_service import get_config_sources
-
-    monkeypatch.setenv("OPENAI_MODEL", "test-model")
-    by_key = {item["key"]: item for item in get_config_sources()}
-
-    assert by_key["OPENAI_MODEL"]["source"] == "file_or_environment"
-    assert by_key["OPENAI_MODEL"]["requires_restart"] is True
-
-    if os.getenv("NOISE_SEMANTIC_WEIGHT") is None:
-        assert by_key["NOISE_SEMANTIC_WEIGHT"]["source"] == "default"
 
 
 def test_database_sync_commit_defaults_to_durable() -> None:

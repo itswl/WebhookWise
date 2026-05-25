@@ -43,11 +43,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /opt/venv /opt/venv
 
 # 复制项目文件
-COPY main.py .
-COPY worker.py .
 COPY entrypoint.sh .
 COPY gunicorn_config.py .
-COPY supervisord.conf .
 COPY core/ ./core/
 COPY api/ ./api/
 COPY models/ ./models/
@@ -66,7 +63,7 @@ COPY alembic/ ./alembic/
 
 # 创建必要的目录并设置权限
 RUN mkdir -p logs webhooks_data && \
-    chmod +x entrypoint.sh scripts/run_api.sh && \
+    chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
 # 切换到非 root 用户
@@ -91,4 +88,4 @@ ENTRYPOINT ["./entrypoint.sh"]
 #   - 如果只需单 Worker 且不需要进程管理，可直接使用：
 #     CMD ["uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["scripts/run_api.sh"]
+CMD ["gunicorn", "-c", "gunicorn_config.py", "core.app:app"]

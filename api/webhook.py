@@ -32,8 +32,7 @@ from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
 from db.engine import test_db_connection
 from db.session import get_db_session
 from models import WebhookEvent
-from schemas import HealthResponse, WebhookListResponse, WebhookReceiveResponse
-from schemas.webhook import webhook_event_to_full_dict
+from schemas.webhook import HealthResponse, WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import IngressPolicy

@@ -14,7 +14,7 @@ from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
-from schemas import DeepAnalysisListResponse, deep_analysis_to_dict
+from schemas.analysis import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.forwarding.policies import OpenClawTriggerPolicy

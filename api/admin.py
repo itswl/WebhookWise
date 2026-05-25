@@ -21,9 +21,7 @@ from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending
 from db.engine import test_db_connection
 from db.session import get_db_session
 from models import WebhookEvent
-from schemas import (
-    ConfigResponse,
-    ConfigSourcesResponse,
+from schemas.admin import (
     DeadLetterListResponse,
     PromptGetResponse,
     PromptReloadResponse,
@@ -37,7 +35,6 @@ from services.analysis.ai_analyzer import (
     reload_deep_analysis_prompt_template,
     reload_user_prompt_template,
 )
-from services.configuration.config_service import get_config_sources, get_current_config
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, list_dead_letters
@@ -68,15 +65,6 @@ async def _reload_prompt_by_kind(kind: PromptKind) -> str:
     if kind == "deep_analysis":
         return await reload_deep_analysis_prompt_template()
     return await reload_user_prompt_template()
-
-
-@admin_router.get("/api/config", response_model=ConfigResponse)
-async def get_config() -> JSONResponse:
-    try:
-        return ok_response(get_current_config(), 200)
-    except Exception as e:
-        logger.error("获取配置失败: %s", e)
-        return fail_response(str(e), 500)
 
 
 @admin_router.get("/api/health/deep")
@@ -131,19 +119,12 @@ async def deep_health_check(request: Request) -> JSONResponse:
             },
             "adapters": adapter_status,
             "ai": {"enabled": bool(config.ai.ENABLE_AI_ANALYSIS), "configured": ai_configured},
-            "openclaw": {"enabled": bool(config.openclaw.OPENCLAW_ENABLED), "configured": bool(config.openclaw.OPENCLAW_GATEWAY_TOKEN)},
+            "openclaw": {
+                "enabled": bool(config.openclaw.OPENCLAW_ENABLED),
+                "configured": bool(config.openclaw.OPENCLAW_GATEWAY_TOKEN),
+            },
         },
     )
-
-
-@admin_router.get("/api/config/sources", response_model=ConfigSourcesResponse)
-async def get_config_sources_endpoint() -> JSONResponse:
-    try:
-        items_data = get_config_sources()
-        return ok_response(items_data, 200)
-    except Exception as e:
-        logger.error("获取配置来源失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
 
 
 @admin_router.post(
