@@ -388,5 +388,8 @@ def test_docs_and_e2e_cover_project_operability_contracts() -> None:
     assert 'ENABLE_AI_ANALYSIS: "true"' in e2e_compose
     assert 'CACHE_ENABLED: "true"' in e2e_compose
     assert 'ENABLE_ALERT_NOISE_REDUCTION: "true"' in e2e_compose
+    assert "/api/forward-rules" in e2e_runner
+    assert "e2e-admin-write-key" in e2e_runner
+    assert "http://open.feishu.cn:9000/open-apis/bot/v2/hook/e2e-token" in e2e_runner
     assert "AI E2E 摘要" in e2e_runner
     assert "/v1/chat/completions" in e2e_runner
