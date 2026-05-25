@@ -42,7 +42,6 @@ exclude = [
   "^templates/",
   "^alembic/",
   "^postgres_data/",
-  "^webhooks_data/",
   "^\\.venv/",
   "^\\.tox/",
 ]
