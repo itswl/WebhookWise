@@ -112,10 +112,11 @@ async def get_deep_analysis_list(
     )
     for condition in filters:
         query = query.where(condition)
-    if cursor is not None:
-        query = query.where(DeepAnalysis.id < cursor)
-    else:
-        query = query.offset((page - 1) * per_page)
+    query = (
+        query.where(DeepAnalysis.id < cursor)
+        if cursor is not None
+        else query.offset((page - 1) * per_page)
+    )
     query = query.limit(per_page + 1)
 
     res = await session.execute(query)

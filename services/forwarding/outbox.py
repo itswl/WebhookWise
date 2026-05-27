@@ -628,10 +628,11 @@ async def list_outbox_records(
         query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
         for f in filters:
             query = query.where(f)
-        if cursor is not None:
-            query = query.where(ForwardOutbox.id < cursor)
-        else:
-            query = query.offset((page - 1) * page_size)
+        query = (
+            query.where(ForwardOutbox.id < cursor)
+            if cursor is not None
+            else query.offset((page - 1) * page_size)
+        )
         query = query.limit(page_size + 1)
         rows = (await session.execute(query)).scalars().all()
         has_more = len(rows) > page_size
