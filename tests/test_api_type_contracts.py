@@ -207,6 +207,44 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     assert by_id[999]["is_duplicate"] is False
 
 
+async def test_list_deep_analyses_uses_cursor_pagination(session):
+    from api.deep_analysis import list_all_deep_analyses
+    from models import DeepAnalysis
+
+    records = [
+        DeepAnalysis(
+            webhook_event_id=idx,
+            engine="local",
+            user_question="",
+            analysis_result={"root_cause": str(idx)},
+            status="completed",
+            created_at=datetime(2026, 1, 1, 0, 0, idx),
+        )
+        for idx in range(1, 4)
+    ]
+    session.add_all(records)
+    await session.commit()
+
+    first = await list_all_deep_analyses(page=1, per_page=2, cursor=None, status="", engine="", session=session)
+    first_data = first["data"]
+    assert [item["webhook_event_id"] for item in first_data["items"]] == [3, 2]
+    assert first_data["has_more"] is True
+    assert first_data["next_cursor"] == first_data["items"][-1]["id"]
+
+    second = await list_all_deep_analyses(
+        page=1,
+        per_page=2,
+        cursor=first_data["next_cursor"],
+        status="",
+        engine="",
+        session=session,
+    )
+    second_data = second["data"]
+    assert [item["webhook_event_id"] for item in second_data["items"]] == [1]
+    assert second_data["has_more"] is False
+    assert second_data["next_cursor"] is None
+
+
 async def test_get_deep_analyses_returns_serializable_dicts(session):
     from api.deep_analysis import get_deep_analyses
     from models import DeepAnalysis, WebhookEvent
