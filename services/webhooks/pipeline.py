@@ -4,10 +4,13 @@ Coordinates raw webhook envelopes through parsing, analysis, noise reduction,
 final persistence and forwarding intent creation.
 """
 
+import sys
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, cast
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from core import json
 from core.alert_concurrency import alert_processing_gate
@@ -105,6 +108,8 @@ def parse_request(
 
 
 logger = get_logger("webhooks.pipeline")
+_PIPELINE_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
+_PARSE_ERRORS = (TypeError, ValueError, json.JSONDecodeError)
 
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 
@@ -159,10 +164,9 @@ async def _pipeline_step(
     with otel_span(span_name, span_attrs) as span:
         try:
             yield span, outcome
-        except Exception:
-            outcome["value"] = "error"
-            raise
         finally:
+            if sys.exception() is not None:
+                outcome["value"] = "error"
             duration = time.perf_counter() - started
             if span is not None:
                 span.set_attribute(WEBHOOK_OUTCOME, outcome["value"])
@@ -580,7 +584,7 @@ async def _handle_raw_ingest(
                         envelope.source,
                         envelope.event_ts,
                     )
-                except Exception as exc:
+                except _PARSE_ERRORS as exc:
                     set_span_error(parse_span, exc)
                     raise
 
@@ -620,7 +624,7 @@ async def _handle_raw_ingest(
             outcome = "completed"
             set_log_context(webhook_status=WebhookProcessingStatus.COMPLETED.value)
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="completed").inc()
-        except Exception as e:
+        except _PIPELINE_RUNTIME_ERRORS as e:
             set_span_error(_span, e)
             outcome = "failed"
             logger.error(
@@ -632,6 +636,8 @@ async def _handle_raw_ingest(
             )
             raise
         finally:
+            if sys.exception() is not None:
+                outcome = "failed"
             duration = time.perf_counter() - start_perf
             if _span:
                 _span.set_attribute(WEBHOOK_OUTCOME, outcome)
