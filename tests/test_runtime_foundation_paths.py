@@ -9,6 +9,8 @@ import pytest
 from fastapi import HTTPException, Response
 from redis.exceptions import RedisError
 
+from tests.metric_helpers import MetricCall, StubMetric
+
 
 @pytest.mark.asyncio
 async def test_redis_stream_helpers_coerce_pending_and_lag_shapes(
@@ -61,24 +63,12 @@ async def test_metrics_poller_refreshes_db_and_mq_metrics(
 ) -> None:
     from services.operations import metrics_poller
 
-    metric_sets: list[tuple[str, tuple[object, ...], int]] = []
-
-    class Metric:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def labels(self, *values: object, **labels: object) -> object:
-            label_values = values or tuple(labels.values())
-            return SimpleNamespace(set=lambda value: metric_sets.append((self.name, tuple(label_values), int(value))))
-
-        def set(self, value: object) -> None:
-            metric_sets.append((self.name, (), int(value)))
-
-    monkeypatch.setattr(metrics_poller, "WEBHOOK_PROCESSING_STATUS_COUNT", Metric("status"))
-    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_STREAM_LENGTH", Metric("stream_length"))
-    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_GROUP_PENDING", Metric("pending"))
-    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_GROUP_LAG", Metric("lag"))
-    monkeypatch.setattr(metrics_poller, "DATABASE_EVENTS_COUNT", Metric("events"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(metrics_poller, "WEBHOOK_PROCESSING_STATUS_COUNT", StubMetric(metric_calls, "status"))
+    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_STREAM_LENGTH", StubMetric(metric_calls, "stream_length"))
+    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_GROUP_PENDING", StubMetric(metric_calls, "pending"))
+    monkeypatch.setattr(metrics_poller, "WEBHOOK_MQ_GROUP_LAG", StubMetric(metric_calls, "lag"))
+    monkeypatch.setattr(metrics_poller, "DATABASE_EVENTS_COUNT", StubMetric(metric_calls, "events"))
 
     class StatusResult:
         def all(self) -> list[tuple[str | None, int]]:
@@ -121,12 +111,12 @@ async def test_metrics_poller_refreshes_db_and_mq_metrics(
 
     await metrics_poller.refresh_all_metrics(mq_queue="queue:test", mq_consumer_group="group:test")
 
-    assert ("status", ("completed",), 3) in metric_sets
-    assert ("status", ("dead_letter",), 2) in metric_sets
-    assert any(name == "stream_length" and value == 8 for name, _labels, value in metric_sets)
-    assert any(name == "pending" and value == 4 for name, _labels, value in metric_sets)
-    assert any(name == "lag" and value == 6 for name, _labels, value in metric_sets)
-    assert ("events", (), 11) in metric_sets
+    assert ("status", (), {"status": "completed"}, "set", 3) in metric_calls
+    assert ("status", (), {"status": "dead_letter"}, "set", 2) in metric_calls
+    assert ("stream_length", (), {"stream": "webhook:queue"}, "set", 8) in metric_calls
+    assert ("pending", (), {"stream": "webhook:queue", "group": "webhook-processors"}, "set", 4) in metric_calls
+    assert ("lag", (), {"stream": "webhook:queue", "group": "webhook-processors"}, "set", 6) in metric_calls
+    assert ("events", (), {}, "set", 11) in metric_calls
 
 
 @pytest.mark.asyncio
