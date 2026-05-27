@@ -245,4 +245,6 @@ services:
 
 volumes:
   webhookwise_postgres_data:
+    name: webhookwise_postgres_data
   webhookwise_redis_data:
+    name: webhookwise_redis_data
