@@ -61,6 +61,7 @@ class DeepAnalysisListData(BaseModel):
     page: int | None = None
     per_page: int
     next_cursor: int | None = None
+    has_more: bool = False
     items: list[DeepAnalysisRecord]
 
 

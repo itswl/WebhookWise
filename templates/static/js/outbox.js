@@ -4,9 +4,15 @@
  */
 
 var OutboxModule = (function() {
-    var currentPage = 1;
-    var pageSize = 20;
+    var currentPage = 0;
+    var pageSize = 200;
     var currentStatus = '';
+    var loadedRecords = [];
+    var totalRecords = 0;
+    var totalPages = 1;
+    var nextCursor = null;
+    var hasMoreRecords = false;
+    var isLoadingMore = false;
 
     var statusMap = {
         'pending': { label: '待投递', cls: 'badge-medium' },
@@ -34,33 +40,73 @@ var OutboxModule = (function() {
         'deep_analysis_manual': '深研转发'
     };
 
-    function load(page) {
-        if (page !== undefined) currentPage = page;
+    function hasMore() {
+        return hasMoreRecords;
+    }
+
+    function load() {
+        currentPage = 1;
+        loadedRecords = [];
+        totalRecords = 0;
+        totalPages = 1;
+        nextCursor = null;
+        hasMoreRecords = false;
         var container = document.getElementById('outboxList');
         if (!container) return;
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>加载中...</p></div>';
+        fetchPage(null, false);
+    }
 
-        API.getOutbox({ page: currentPage, page_size: pageSize, status: currentStatus })
+    function fetchPage(cursor, append) {
+        var container = document.getElementById('outboxList');
+        API.getOutbox({ page_size: pageSize, cursor: cursor, status: currentStatus })
             .then(function(res) {
                 if (res.success) {
-                    render(res.data);
+                    var data = res.data || {};
+                    currentPage = append ? currentPage + 1 : 1;
+                    totalRecords = data.total || 0;
+                    totalPages = data.total_pages || Math.max(1, Math.ceil(totalRecords / pageSize));
+                    nextCursor = data.next_cursor || null;
+                    hasMoreRecords = !!data.has_more;
+                    loadedRecords = append ? loadedRecords.concat(data.items || []) : (data.items || []);
+                    if (append) isLoadingMore = false;
+                    render();
                 } else {
-                    container.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' + escapeHtml(res.error || '未知错误') + '</div></div>';
+                    isLoadingMore = false;
+                    if (append && typeof showToast === 'function') {
+                        showToast('加载更多失败: ' + (res.error || '未知错误'), 'error');
+                    } else if (container) {
+                        container.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' + escapeHtml(res.error || '未知错误') + '</div></div>';
+                    }
+                    renderPagination();
                 }
             })
             .catch(function(e) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载异常</div><div class="empty-text">' + escapeHtml(e.message) + '</div></div>';
+                isLoadingMore = false;
+                if (append && typeof showToast === 'function') {
+                    showToast('加载更多失败: ' + e.message, 'error');
+                } else if (container) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载异常</div><div class="empty-text">' + escapeHtml(e.message) + '</div></div>';
+                }
+                renderPagination();
             });
     }
 
-    function render(data) {
+    function loadMore() {
+        if (!hasMore() || isLoadingMore) return;
+        isLoadingMore = true;
+        renderPagination();
+        fetchPage(nextCursor, true);
+    }
+
+    function render() {
         var container = document.getElementById('outboxList');
         if (!container) return;
 
-        var records = data.items || [];
+        var records = loadedRecords;
         if (records.length === 0) {
             container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">暂无记录</div><div class="empty-text">没有符合条件的转发记录</div></div>';
-            renderPagination(data);
+            renderPagination();
             return;
         }
 
@@ -99,34 +145,20 @@ var OutboxModule = (function() {
 
         html += '</tbody></table></div>';
         container.innerHTML = html;
-        renderPagination(data);
+        renderPagination();
     }
 
-    function renderPagination(data) {
+    function renderPagination() {
         var container = document.getElementById('outboxPagination');
         if (!container) return;
-        var total = data.total || 0;
-        var totalPages = data.total_pages || 1;
-        var page = data.page || 1;
-
-        if (totalPages <= 1) {
-            container.innerHTML = '<span class="text-muted text-sm">共 ' + total + ' 条</span>';
-            return;
-        }
-
-        var html = '<div class="da-pagination">';
-        if (page > 1) html += '<button class="da-page-btn" onclick="OutboxModule.load(' + (page - 1) + ')">上一页</button>';
-        else html += '<button class="da-page-btn da-page-btn-disabled" disabled>上一页</button>';
-
-        for (var p = 1; p <= totalPages; p++) {
-            html += '<button class="da-page-btn' + (p === page ? ' da-page-btn-active' : '') + '" onclick="OutboxModule.load(' + p + ')">' + p + '</button>';
-        }
-
-        if (page < totalPages) html += '<button class="da-page-btn" onclick="OutboxModule.load(' + (page + 1) + ')">下一页</button>';
-        else html += '<button class="da-page-btn da-page-btn-disabled" disabled>下一页</button>';
-
-        html += '</div><span class="da-total">共 ' + total + ' 条</span>';
-        container.innerHTML = html;
+        renderLoadMorePagination(container, {
+            loaded: loadedRecords.length,
+            total: totalRecords,
+            batchSize: pageSize,
+            hasMore: hasMore(),
+            isLoading: isLoadingMore,
+            onLoadMore: loadMore
+        });
     }
 
     function toggleDetail(id) {
@@ -136,7 +168,6 @@ var OutboxModule = (function() {
 
     function filterStatus(status) {
         currentStatus = status;
-        currentPage = 1;
         load();
     }
 
@@ -176,6 +207,7 @@ var OutboxModule = (function() {
 
     return {
         load: load,
+        loadMore: loadMore,
         toggleDetail: toggleDetail,
         filterStatus: filterStatus,
         retry: retry,

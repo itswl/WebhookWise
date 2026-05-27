@@ -2,8 +2,14 @@
  * 深度分析页面模块 (Modernized)
  */
 var DeepAnalysesModule = (function() {
-    var currentPage = 1;
-    var perPage = 20;
+    var currentPage = 0;
+    var perPage = 200;
+    var loadedRecords = [];
+    var totalRecords = 0;
+    var totalPages = 1;
+    var nextCursor = null;
+    var hasMoreRecords = false;
+    var isLoadingMore = false;
     var autoRefreshTimer = null;
     var expandedIds = new Set();
 
@@ -248,85 +254,91 @@ var DeepAnalysesModule = (function() {
         }
     }
 
-    function renderPagination(totalPages, currentPage, total) {
-        var container = document.getElementById('deepAnalysesPagination');
-        if (!container) return;
-
-        if (totalPages <= 1) {
-            container.innerHTML = '<span class="da-total">共 ' + total + ' 条</span>';
-            return;
-        }
-
-        var html = '<div class="da-pagination">';
-
-        if (currentPage > 1) {
-            html += '<button class="da-page-btn" onclick="DeepAnalysesModule.load(' + (currentPage - 1) + ')">‹ 上一页</button>';
-        } else {
-            html += '<button class="da-page-btn da-page-btn-disabled" disabled>‹ 上一页</button>';
-        }
-
-        var maxVisible = 7;
-        var startPage = Math.max(1, currentPage - 3);
-        var endPage = Math.min(totalPages, startPage + maxVisible - 1);
-        if (endPage - startPage < maxVisible - 1) {
-            startPage = Math.max(1, endPage - maxVisible + 1);
-        }
-
-        if (startPage > 1) {
-            html += '<button class="da-page-btn' + (currentPage === 1 ? ' da-page-btn-active' : '') + '" onclick="DeepAnalysesModule.load(1)">1</button>';
-            if (startPage > 2) html += '<span class="da-page-ellipsis">...</span>';
-        }
-
-        for (var p = startPage; p <= endPage; p++) {
-            html += '<button class="da-page-btn' + (p === currentPage ? ' da-page-btn-active' : '') + '" onclick="DeepAnalysesModule.load(' + p + ')">' + p + '</button>';
-        }
-
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) html += '<span class="da-page-ellipsis">...</span>';
-            html += '<button class="da-page-btn' + (currentPage === totalPages ? ' da-page-btn-active' : '') + '" onclick="DeepAnalysesModule.load(' + totalPages + ')">' + totalPages + '</button>';
-        }
-
-        if (currentPage < totalPages) {
-            html += '<button class="da-page-btn" onclick="DeepAnalysesModule.load(' + (currentPage + 1) + ')">下一页 ›</button>';
-        } else {
-            html += '<button class="da-page-btn da-page-btn-disabled" disabled>下一页 ›</button>';
-        }
-
-        html += '</div>';
-        html += '<span class="da-total">共 ' + total + ' 条</span>';
-        container.innerHTML = html;
+    function hasMore() {
+        return hasMoreRecords;
     }
 
-    function load(page) {
-        if (page !== undefined) currentPage = page;
+    function renderPagination() {
+        var container = document.getElementById('deepAnalysesPagination');
+        if (!container) return;
+        renderLoadMorePagination(container, {
+            loaded: loadedRecords.length,
+            total: totalRecords,
+            batchSize: perPage,
+            hasMore: hasMore(),
+            isLoading: isLoadingMore,
+            onLoadMore: loadMore
+        });
+    }
 
+    function getFilters() {
         var statusFilter = document.getElementById('daStatusFilter');
         var engineFilter = document.getElementById('daEngineFilter');
-        var perPageSelect = document.getElementById('daPerPage');
+        return {
+            status: statusFilter ? statusFilter.value : '',
+            engine: engineFilter ? engineFilter.value : ''
+        };
+    }
 
-        var status = statusFilter ? statusFilter.value : '';
-        var engine = engineFilter ? engineFilter.value : '';
-        perPage = perPageSelect ? parseInt(perPageSelect.value, 10) : 20;
+    function load() {
+        currentPage = 1;
+        loadedRecords = [];
+        totalRecords = 0;
+        totalPages = 1;
+        nextCursor = null;
+        hasMoreRecords = false;
 
         var container = document.getElementById('deepAnalysesList');
-        if (container && currentPage === 1 && !expandedIds.size) {
+        if (container && !expandedIds.size) {
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">正在加载深度分析记录...</div>';
         }
+        fetchPage(null, false);
+    }
 
-        API.getAllDeepAnalyses(currentPage, perPage, status, engine)
+    function fetchPage(cursor, append) {
+        var filters = getFilters();
+        var container = document.getElementById('deepAnalysesList');
+        API.getAllDeepAnalyses(1, perPage, filters.status, filters.engine, cursor)
             .then(function(res) {
                 if (res.success) {
-                    renderDeepAnalyses(res.data.items || []);
-                    renderPagination(res.data.total_pages || 1, res.data.page || 1, res.data.total || 0);
+                    var data = res.data || {};
+                    currentPage = append ? currentPage + 1 : 1;
+                    totalRecords = data.total || 0;
+                    totalPages = data.total_pages || Math.max(1, Math.ceil(totalRecords / perPage));
+                    nextCursor = data.next_cursor || null;
+                    hasMoreRecords = !!data.has_more;
+                    loadedRecords = append ? loadedRecords.concat(data.items || []) : (data.items || []);
+                    if (append) isLoadingMore = false;
+                    renderDeepAnalyses(loadedRecords);
+                    renderPagination();
                 } else {
-                    if (container) container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">加载失败: ' + escapeHtml(res.error) + '</div>';
+                    isLoadingMore = false;
+                    if (append && typeof showToast === 'function') {
+                        showToast('加载更多失败: ' + (res.error || '未知错误'), 'error');
+                    } else if (container) {
+                        container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">加载失败: ' + escapeHtml(res.error) + '</div>';
+                    }
+                    renderPagination();
                     stopAutoRefresh();
                 }
             })
             .catch(function(error) {
-                if (container) container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">加载异常: ' + escapeHtml(error.message) + '</div>';
+                isLoadingMore = false;
+                if (append && typeof showToast === 'function') {
+                    showToast('加载更多失败: ' + error.message, 'error');
+                } else if (container) {
+                    container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">加载异常: ' + escapeHtml(error.message) + '</div>';
+                }
+                renderPagination();
                 stopAutoRefresh();
             });
+    }
+
+    function loadMore() {
+        if (!hasMore() || isLoadingMore) return;
+        isLoadingMore = true;
+        renderPagination();
+        fetchPage(nextCursor, true);
     }
 
     function startAutoRefresh() {
@@ -403,14 +415,13 @@ var DeepAnalysesModule = (function() {
     document.addEventListener('DOMContentLoaded', function() {
         var statusFilter = document.getElementById('daStatusFilter');
         var engineFilter = document.getElementById('daEngineFilter');
-        var perPageSelect = document.getElementById('daPerPage');
-        if (statusFilter) statusFilter.addEventListener('change', function() { load(1); });
-        if (engineFilter) engineFilter.addEventListener('change', function() { load(1); });
-        if (perPageSelect) perPageSelect.addEventListener('change', function() { load(1); });
+        if (statusFilter) statusFilter.addEventListener('change', function() { load(); });
+        if (engineFilter) engineFilter.addEventListener('change', function() { load(); });
     });
 
     return {
         load: load,
+        loadMore: loadMore,
         stopAutoRefresh: stopAutoRefresh,
         forwardResult: forwardResult,
         retryAnalysis: retryAnalysis,

@@ -603,6 +603,7 @@ async def list_outbox_records(
     *,
     page: int = 1,
     page_size: int = 20,
+    cursor: int | None = None,
     status: str = "",
     event_type: str = "",
 ) -> dict[str, Any]:
@@ -627,8 +628,15 @@ async def list_outbox_records(
         query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
         for f in filters:
             query = query.where(f)
-        query = query.offset((page - 1) * page_size).limit(page_size)
+        if cursor is not None:
+            query = query.where(ForwardOutbox.id < cursor)
+        else:
+            query = query.offset((page - 1) * page_size)
+        query = query.limit(page_size + 1)
         rows = (await session.execute(query)).scalars().all()
+        has_more = len(rows) > page_size
+        if has_more:
+            rows = rows[:page_size]
 
         items = [
             {
@@ -659,6 +667,8 @@ async def list_outbox_records(
         "page_size": page_size,
         "total": total,
         "total_pages": max(1, (total + page_size - 1) // page_size) if total else 1,
+        "next_cursor": items[-1]["id"] if has_more and items else None,
+        "has_more": has_more,
     }
 
 

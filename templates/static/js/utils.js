@@ -181,3 +181,44 @@ function showToast(message, type) {
         setTimeout(function() { toast.remove(); }, 300);
     }, 3000);
 }
+
+/**
+ * 渲染与告警管理一致的“加载更多”分页控件。
+ */
+function renderLoadMorePagination(container, options) {
+    if (!container) return;
+
+    options = options || {};
+    var loaded = Math.max(0, parseInt(options.loaded, 10) || 0);
+    var total = Math.max(0, parseInt(options.total, 10) || 0);
+    var batchSize = Math.max(1, parseInt(options.batchSize, 10) || 200);
+    var hasMore = !!options.hasMore;
+    var isLoading = !!options.isLoading;
+    var onLoadMore = options.onLoadMore;
+
+    if (loaded <= 0 && total <= 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    var totalText = total || (hasMore ? (loaded + '+') : loaded);
+    var buttonHtml = hasMore
+        ? '<button data-action="load-more"' + (isLoading ? ' disabled' : '') + '>' + (isLoading ? '加载中...' : ('加载更多 ' + batchSize + ' 条')) + '</button>'
+        : '';
+
+    container.innerHTML =
+        '<div class="pagination compact-pagination">' +
+            '<div class="pagination-info">' +
+                '已加载 <strong>' + loaded + '</strong> / <strong>' + totalText + '</strong> 条' +
+            '</div>' +
+            '<div class="pagination-buttons">' + buttonHtml + '</div>' +
+        '</div>';
+
+    var button = container.querySelector('button[data-action="load-more"]');
+    if (button) {
+        button.addEventListener('click', function() {
+            if (button.disabled || typeof onLoadMore !== 'function') return;
+            onLoadMore();
+        });
+    }
+}

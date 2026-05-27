@@ -453,8 +453,9 @@ const API = {
     /**
      * 获取所有深度分析记录（分页+筛选）
      */
-    async getAllDeepAnalyses(page = 1, perPage = 20, status = '', engine = '') {
+    async getAllDeepAnalyses(page = 1, perPage = 20, status = '', engine = '', cursor = null) {
         const params = new URLSearchParams({ page: page, per_page: perPage });
+        if (cursor !== null && cursor !== undefined) params.set('cursor', cursor);
         if (status) params.set('status', status);
         if (engine) params.set('engine', engine);
         const response = await this.authenticatedFetch('/api/deep-analyses?' + params.toString());
@@ -599,6 +600,7 @@ const API = {
         const q = new URLSearchParams();
         if (params.page) q.append('page', params.page);
         if (params.page_size) q.append('page_size', params.page_size);
+        if (params.cursor !== null && params.cursor !== undefined) q.append('cursor', params.cursor);
         if (params.status) q.append('status', params.status);
         if (params.event_type) q.append('event_type', params.event_type);
         const response = await this.authenticatedFetch('/api/outbox?' + q.toString());

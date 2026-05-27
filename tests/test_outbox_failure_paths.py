@@ -406,6 +406,27 @@ async def test_list_outbox_records_includes_original_event_id(
     assert row["original_event_id"] == 42672
 
 
+async def test_list_outbox_records_uses_cursor_pagination(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from services.forwarding.outbox import list_outbox_records
+
+    ids = [
+        await _insert_outbox(session_factory, webhook_event_id=idx)
+        for idx in range(1, 4)
+    ]
+
+    first = await list_outbox_records(page_size=2)
+    assert [item["id"] for item in first["items"]] == list(reversed(ids))[0:2]
+    assert first["has_more"] is True
+    assert first["next_cursor"] == first["items"][-1]["id"]
+
+    second = await list_outbox_records(page_size=2, cursor=first["next_cursor"])
+    assert [item["id"] for item in second["items"]] == [ids[0]]
+    assert second["has_more"] is False
+    assert second["next_cursor"] is None
+
+
 # ── run_forward_outbox_scan ──────────────────────────────────────────
 
 

@@ -147,10 +147,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
+          cpus: '0.5'
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: '0.2'
           memory: 64M
     env_file:
       - .env
@@ -161,6 +161,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
+      TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS: ${TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS:-30}
+      TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS: ${TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS:-1}
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
       OTEL_SERVICE_NAME: webhookwise-scheduler
@@ -197,7 +199,7 @@ services:
         reservations:
           memory: 64M
     volumes:
-      - ./redis_data:/data
+      - webhook_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -230,7 +232,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - webhook_postgres_data:/var/lib/postgresql/data
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webhook_user} -d ${POSTGRES_DB:-webhooks}"]
@@ -242,4 +244,5 @@ services:
       - webhook_net
 
 volumes:
-  postgres_data:
+  webhook_postgres_data:
+  webhook_redis_data:
