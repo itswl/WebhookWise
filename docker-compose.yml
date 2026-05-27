@@ -199,7 +199,7 @@ services:
         reservations:
           memory: 64M
     volumes:
-      - webhook_redis_data:/data
+      - webhookwise_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -232,7 +232,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
     volumes:
-      - webhook_postgres_data:/var/lib/postgresql/data
+      - webhookwise_postgres_data:/var/lib/postgresql/data
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webhook_user} -d ${POSTGRES_DB:-webhooks}"]
@@ -244,5 +244,5 @@ services:
       - webhook_net
 
 volumes:
-  webhook_postgres_data:
-  webhook_redis_data:
+  webhookwise_postgres_data:
+  webhookwise_redis_data:
