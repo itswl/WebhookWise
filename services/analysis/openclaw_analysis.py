@@ -238,7 +238,7 @@ async def analyze_with_openclaw(
             response.status_code,
         )
         return pending_forward_result(str(run_id or ""), session_key)
-    except ValueError as e:
+    except (TypeError, ValueError) as e:
         logger.error("[OpenClaw] 响应解析失败 status_code=%s error=%s", response.status_code, e)
         if policy.enable_degradation:
             return degraded_forward_result(f"响应解析失败: {e!s}")

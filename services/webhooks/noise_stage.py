@@ -3,6 +3,8 @@
 import time
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import (
@@ -19,6 +21,8 @@ from services.webhooks.repository import list_recent_alert_contexts
 from services.webhooks.types import AnalysisResult, NoiseReductionContext
 
 logger = get_logger("webhooks.noise_stage")
+_NOISE_CONTEXT_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
+_SUPPRESSED_RECORD_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 
 async def compute_noise(
@@ -40,7 +44,7 @@ async def compute_noise(
         now = utcnow()
         try:
             recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)
-        except Exception as e:
+        except _NOISE_CONTEXT_ERRORS as e:
             logger.warning("[Pipeline] 加载近期告警上下文失败，降噪将跳过: %s", e)
             recent = []
         curr = AlertContext(
@@ -83,7 +87,7 @@ async def compute_noise(
                             created_at=now,
                         )
                     )
-            except Exception as e:
+            except _SUPPRESSED_RECORD_ERRORS as e:
                 logger.warning("[Noise] 写入 suppressed_records 失败: %s", e)
         elif dec.relation != "standalone":
             logger.debug(
