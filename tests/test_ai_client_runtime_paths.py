@@ -7,28 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-
-class _BoundMetric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self._sink = sink
-        self._name = name
-        self._args = args
-        self._kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, amount))
-
-    def observe(self, value: object) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, value))
-
-
-class _Metric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], object]], name: str) -> None:
-        self._sink = sink
-        self._name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self._sink, self._name, args, kwargs)
+from tests.metric_helpers import MetricValueCall, StubMetric
 
 
 class _Policy:
@@ -45,10 +24,10 @@ class _Policy:
 
 
 @pytest.fixture
-def ai_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], object]]]:
+def ai_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[MetricValueCall]]:
     from services.analysis import ai_llm_client
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], object]] = []
+    metric_calls: list[MetricValueCall] = []
     for attr in (
         "AI_ANALYSIS_DURATION_SECONDS",
         "AI_COST_USD_TOTAL",
@@ -56,7 +35,7 @@ def ai_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tu
         "AI_TOKENS_TOTAL",
         "OPENAI_ERRORS_TOTAL",
     ):
-        monkeypatch.setattr(ai_llm_client, attr, _Metric(metric_calls, attr))
+        monkeypatch.setattr(ai_llm_client, attr, StubMetric(metric_calls, attr, record_action=False))
     monkeypatch.setattr(ai_llm_client.AIProviderPolicy, "from_config", staticmethod(lambda: _Policy()))
     monkeypatch.setattr(ai_llm_client, "sanitize_source", lambda source: f"safe:{source}")
     return ai_llm_client, metric_calls

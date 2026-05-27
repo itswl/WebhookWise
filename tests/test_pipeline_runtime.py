@@ -16,29 +16,7 @@ from services.webhooks.types import (
     WebhookRequestContext,
     webhook_data_from_mapping,
 )
-
-
-class _BoundMetric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self.calls = calls
-        self.name = name
-        self.args = args
-        self.kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "inc", amount))
-
-    def observe(self, value: object) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "observe", value))
-
-
-class _Metric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str) -> None:
-        self.calls = calls
-        self.name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self.calls, self.name, args, kwargs)
+from tests.metric_helpers import MetricCall, StubMetric
 
 
 class _Span:
@@ -90,7 +68,7 @@ def _ctx() -> WebhookProcessContext:
 def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
     from services.webhooks import pipeline
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
+    metric_calls: list[MetricCall] = []
     for name in (
         "WEBHOOK_ANALYSIS_RESULTS_TOTAL",
         "WEBHOOK_ANALYSIS_ROUTE_TOTAL",
@@ -105,7 +83,7 @@ def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[s
         "WEBHOOK_RECEIVED_TOTAL",
         "WEBHOOK_STORM_SUPPRESSED_TOTAL",
     ):
-        monkeypatch.setattr(pipeline, name, _Metric(metric_calls, name))
+        monkeypatch.setattr(pipeline, name, StubMetric(metric_calls, name))
     monkeypatch.setattr(pipeline, "otel_span", _span_context)
     monkeypatch.setattr(pipeline, "set_span_ok", lambda _span: None)
     monkeypatch.setattr(pipeline, "set_span_error", lambda _span, _exc: None)
