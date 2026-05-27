@@ -325,6 +325,7 @@ _BOOL_WEBHOOK_FIELDS: Final = frozenset({OPENCLAW_NEED_SUCCESS_NOTIFY})
 _LIST_FLOAT_WEBHOOK_FIELDS: Final = frozenset({ANALYSIS_EMBEDDING})
 _OPTIONAL_STRING_WEBHOOK_FIELDS: Final = frozenset({"client_ip"})
 _DATETIME_WEBHOOK_FIELDS: Final = frozenset({"created_at", "next_poll_at", "last_polled_at"})
+_JSON_WEBHOOK_FIELDS: Final = frozenset({"body", "event", "id", "raw"})
 
 
 def _copy_json_compatible(value: Any, *, path: str) -> Any:
@@ -359,7 +360,14 @@ def _copy_list_of_mappings(value: Any, *, field_name: str) -> list[JsonObject]:
     return copied
 
 
-def webhook_data_from_mapping(data: Mapping[str, Any]) -> WebhookData:
+def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True) -> WebhookData:
+    """Validate and copy data into the declared WebhookData boundary.
+
+    Adapter ingress can opt into ``strict=False`` when preserving source-native
+    fields for downstream analysis. All other call sites reject undeclared keys
+    by default so internal contracts fail fast instead of drifting silently.
+    """
+
     if not isinstance(data, Mapping):
         raise TypeError("WebhookData input must be a mapping")
 
@@ -395,8 +403,14 @@ def webhook_data_from_mapping(data: Mapping[str, Any]) -> WebhookData:
             if not isinstance(value, list) or any(not isinstance(item, (int, float)) for item in value):
                 raise ValueError(f"WebhookData.{key} must be a numeric list")
             normalized[key] = [float(item) for item in value]
-        elif key in _DATETIME_WEBHOOK_FIELDS and isinstance(value, (datetime, date)):
-            normalized[key] = value
+        elif key in _DATETIME_WEBHOOK_FIELDS:
+            normalized[key] = value if isinstance(value, (datetime, date)) else _copy_json_compatible(
+                value, path=f"WebhookData.{key}"
+            )
+        elif key in _JSON_WEBHOOK_FIELDS:
+            normalized[key] = _copy_json_compatible(value, path=f"WebhookData.{key}")
         else:
+            if strict:
+                raise ValueError(f"WebhookData.{key} is not declared")
             normalized[key] = _copy_json_compatible(value, path=f"WebhookData.{key}")
     return cast(WebhookData, normalized)

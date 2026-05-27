@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import DELIVERY_ERROR_MESSAGE, internal_error_response
+from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
@@ -289,7 +289,8 @@ async def forward_deep_analysis(
     try:
         target_url = await validate_outbound_url(target_url)
     except UnsafeTargetUrlError as e:
-        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+        logger.warning("[DeepAnalysis] 手动转发目标 URL 被拒绝 analysis_id=%s error=%s", analysis_id, e)
+        return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
 
     analysis = await session.get(DeepAnalysis, analysis_id)
     if not analysis:

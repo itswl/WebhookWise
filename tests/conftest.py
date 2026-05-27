@@ -16,6 +16,8 @@ _ps = str(_ROOT)
 if _ps not in sys.path:
     sys.path.insert(0, _ps)
 
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://webhook_user:test-password@localhost:5432/webhooks_test")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def disable_otel_for_tests():

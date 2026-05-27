@@ -74,7 +74,7 @@ class AdapterRegistry:
         normalizer = self.get_normalizer(adapter_name)
         if normalizer is None:
             logger.warning("[Adapter Registry] No normalizer found for: %s", adapter_name)
-            return webhook_data_from_mapping(data)
+            return webhook_data_from_mapping(data, strict=False)
         return normalizer(data)
 
     def status(self) -> dict[str, int]:

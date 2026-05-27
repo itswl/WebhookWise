@@ -3,11 +3,11 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_forward_deep_analysis_validates_outbound_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import deep_analysis
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE, deep_analysis
     from core.url_security import UnsafeTargetUrlError
 
     async def reject_url(url: str) -> str:
-        raise UnsafeTargetUrlError("blocked target")
+        raise UnsafeTargetUrlError("target host cannot be resolved: internal.example")
 
     monkeypatch.setattr(deep_analysis, "validate_outbound_url", reject_url)
 
@@ -18,4 +18,5 @@ async def test_forward_deep_analysis_validates_outbound_url(monkeypatch: pytest.
     )
 
     assert response.status_code == 400
-    assert b"blocked target" in response.body
+    assert TARGET_URL_UNAVAILABLE_MESSAGE.encode("utf-8") in response.body
+    assert b"internal.example" not in response.body

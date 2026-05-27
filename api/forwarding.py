@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import DELIVERY_ERROR_MESSAGE, internal_error_response
+from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -71,7 +71,7 @@ async def create_forward_rule_endpoint(
         target_url = await _validated_target_url(target_type, payload.get("target_url", ""))
     except UnsafeTargetUrlError as e:
         logger.warning("[ForwardAPI] 创建转发规则被拒绝 name=%s target_type=%s error=%s", name, target_type, e)
-        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+        return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
 
     rule = await create_forward_rule(
         session=session,
@@ -128,7 +128,7 @@ async def update_forward_rule_endpoint(
             logger.warning(
                 "[ForwardAPI] 更新转发规则被拒绝 rule_id=%s target_type=%s error=%s", rule_id, target_type, e
             )
-            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})

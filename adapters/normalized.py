@@ -42,7 +42,7 @@ class AlertIdentity:
 def with_alert_identity(data: Mapping[str, Any], identity: AlertIdentity) -> WebhookData:
     normalized = dict(data)
     normalized[IDENTITY_FIELD] = identity.to_payload()
-    return webhook_data_from_mapping(normalized)
+    return webhook_data_from_mapping(normalized, strict=False)
 
 
 def extract_alert_identity(data: Mapping[str, Any]) -> dict[str, str] | None:

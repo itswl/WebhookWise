@@ -1,3 +1,6 @@
+import json as pyjson
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -352,6 +355,36 @@ async def test_manual_forward_failure_does_not_leak_downstream_exception(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_manual_forward_invalid_target_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE, reanalysis
+    from core.url_security import UnsafeTargetUrlError
+
+    event = SimpleNamespace(
+        id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False
+    )
+
+    class FakeSession:
+        async def get(self, _model: object, _item_id: int) -> object:
+            return event
+
+    async def reject_url(_url: str) -> str:
+        raise UnsafeTargetUrlError("target host resolves to a non-public IP")
+
+    monkeypatch.setattr(reanalysis, "validate_outbound_url", reject_url)
+
+    response = await reanalysis.manual_forward_webhook(
+        1,
+        {"target_url": "https://example.com/hook"},
+        session=FakeSession(),  # type: ignore[arg-type]
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == 400
+    assert body["error"] == TARGET_URL_UNAVAILABLE_MESSAGE
+    assert "non-public IP" not in response.body.decode()
+
+
+@pytest.mark.asyncio
 async def test_reanalysis_unhandled_exception_is_sanitized() -> None:
     from api import INTERNAL_ERROR_MESSAGE, reanalysis
 
@@ -424,6 +457,27 @@ async def test_forward_rule_test_exception_is_sanitized(monkeypatch: pytest.Monk
     assert "postgresql://" not in response.body.decode()
 
 
+@pytest.mark.asyncio
+async def test_forward_rule_invalid_target_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE, forwarding
+    from core.url_security import UnsafeTargetUrlError
+
+    async def reject_target(_target_type: str, _target_url: object) -> str:
+        raise UnsafeTargetUrlError("target host is not in FORWARD_TARGET_ALLOWLIST")
+
+    monkeypatch.setattr(forwarding, "_validated_target_url", reject_target)
+
+    response = await forwarding.create_forward_rule_endpoint(
+        {"name": "blocked", "target_type": "webhook", "target_url": "https://example.com/hook"},
+        session=object(),  # type: ignore[arg-type]
+    )
+    body = json.loads(response.body)
+
+    assert response.status_code == 400
+    assert body["error"] == TARGET_URL_UNAVAILABLE_MESSAGE
+    assert "FORWARD_TARGET_ALLOWLIST" not in response.body.decode()
+
+
 def test_dashboard_deep_analysis_fields_are_escaped() -> None:
     root = Path(__file__).resolve().parents[1]
     alerts_js = (root / "templates/static/js/alerts.js").read_text()
@@ -492,8 +546,6 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
     assert "this.getWriteToken()" in api_js
     assert "Admin write permission required" in api_js
-    assert "window.crypto.subtle" in api_js
-    assert "AES-GCM" in api_js
     assert "window.indexedDB" in api_js
     assert "localStorage.setItem(storageKey, JSON.stringify(record))" in api_js
 
@@ -501,6 +553,79 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
     assert "Web Crypto 加密后保存在本机 localStorage" in dashboard_html
+
+
+def test_dashboard_token_storage_encrypts_and_decrypts_with_webcrypto() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for dashboard crypto behavior test")
+
+    root = Path(__file__).resolve().parents[1]
+    api_js = root / "templates/static/js/api.js"
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({pyjson.dumps(str(api_js))}, 'utf8');
+const storage = new Map();
+const calls = [];
+
+const context = {{
+  console: {{ warn() {{}}, error() {{}}, log() {{}} }},
+  TextEncoder,
+  TextDecoder,
+  Uint8Array,
+  ArrayBuffer,
+  URLSearchParams
+}};
+context.window = context;
+context.localStorage = {{
+  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
+  setItem(key, value) {{ storage.set(key, value); }},
+  removeItem(key) {{ storage.delete(key); }}
+}};
+context.window.btoa = (binary) => Buffer.from(binary, 'binary').toString('base64');
+context.window.atob = (value) => Buffer.from(value, 'base64').toString('binary');
+context.window.indexedDB = {{}};
+context.window.crypto = {{
+  getRandomValues(array) {{
+    for (let i = 0; i < array.length; i += 1) array[i] = i + 1;
+    return array;
+  }},
+  subtle: {{
+    async encrypt(algorithm, _key, data) {{
+      if (algorithm.name !== 'AES-GCM') throw new Error('unexpected encrypt algorithm: ' + algorithm.name);
+      if (!(algorithm.iv instanceof Uint8Array) || algorithm.iv.length !== 12) throw new Error('bad encrypt iv');
+      calls.push(['encrypt', algorithm.name, algorithm.iv.length]);
+      return data;
+    }},
+    async decrypt(algorithm, _key, data) {{
+      if (algorithm.name !== 'AES-GCM') throw new Error('unexpected decrypt algorithm: ' + algorithm.name);
+      if (!(algorithm.iv instanceof Uint8Array) || algorithm.iv.length !== 12) throw new Error('bad decrypt iv');
+      calls.push(['decrypt', algorithm.name, algorithm.iv.length]);
+      return data;
+    }}
+  }}
+}};
+
+vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.js' }});
+
+(async () => {{
+  const api = context.__API;
+  api._cryptoKeyPromise = Promise.resolve({{ stub: true }});
+  await api.setEncryptedToken('unit-token-key', 'read', 'secret-token');
+  const stored = JSON.parse(context.localStorage.getItem('unit-token-key'));
+  const restored = await api.loadEncryptedToken('unit-token-key');
+  if (stored.alg !== 'AES-GCM') throw new Error('record algorithm was not persisted');
+  if (restored !== 'secret-token') throw new Error('decrypted token mismatch');
+  if (api.getReadToken() !== 'secret-token') throw new Error('read token cache mismatch');
+  if (calls.length !== 2) throw new Error('expected encrypt and decrypt calls');
+  console.log(JSON.stringify({{ restored, calls }}));
+}})().catch((error) => {{
+  console.error(error.stack || error.message);
+  process.exit(1);
+}});
+"""
+    subprocess.run([node, "-e", script], text=True, capture_output=True, check=True)
 
 
 @pytest.mark.asyncio

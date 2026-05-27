@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -94,3 +96,27 @@ def test_database_sync_commit_defaults_to_durable() -> None:
     from core.config.defaults import DBConfig
 
     assert DBConfig.model_fields["DB_SYNC_COMMIT"].default == "on"
+
+
+def test_database_url_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import ValidationError
+
+    from core.config.defaults import DBConfig
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(ValidationError):
+        DBConfig(_env_file=None)
+
+
+def test_production_rejects_local_default_database_url(temp_config) -> None:
+    from core.web.startup_checks import validate_startup_security
+
+    temp_config.server.APP_ENV = "production"
+    temp_config.security.API_KEY = "real-api-key"
+    temp_config.security.ADMIN_WRITE_KEY = "real-admin-write-key"
+    temp_config.security.REQUIRE_WEBHOOK_AUTH = True
+    temp_config.security.WEBHOOK_SECRET = "real-webhook-secret"
+    temp_config.db.DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks"
+
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        validate_startup_security(temp_config)
