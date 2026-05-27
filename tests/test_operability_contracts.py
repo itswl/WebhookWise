@@ -37,9 +37,9 @@ def test_ci_enforces_coverage_gate() -> None:
     assert "--cov=api" in ci
     assert "--cov=services" in ci
     assert "--cov-report=xml" in ci
-    assert "--cov-fail-under=80" in ci
+    assert "--cov-fail-under=83" in ci
     assert "python scripts/observability/webhookwise_observe.py contract" in ci
-    assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 80
+    assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 83
 
 
 def test_dockerfile_uses_directory_copy_contract() -> None:
