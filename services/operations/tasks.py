@@ -14,6 +14,9 @@ from contextlib import asynccontextmanager
 from contextvars import Token
 from dataclasses import dataclass
 
+from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
+
 from core import redis_client, redis_health
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -46,6 +49,8 @@ logger = get_logger("tasks")
 
 _last_success_by_name: dict[str, float] = {}
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
+_SCHEDULING_ERRORS = (OSError, RedisError, RuntimeError, TimeoutError)
+_TASK_PROCESSING_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 
 @dataclass(slots=True)
@@ -126,7 +131,7 @@ async def _handle_raw_webhook_failure(
                 exc_info=True,
             )
             return
-        except Exception as schedule_err:
+        except _SCHEDULING_ERRORS as schedule_err:
             err = RuntimeError(f"raw ingest retry schedule failed: {schedule_err}; process_error={err}")
             logger.critical(
                 "[Tasks] raw webhook 重试调度失败，将写入 dead-letter request_id=%s source=%s error=%s",
@@ -175,7 +180,7 @@ async def _scheduled_task_leader(
 
     try:
         acquired = await redis_client.redis_set_nx_ex(key, token, ttl)
-    except Exception as e:
+    except _SCHEDULING_ERRORS as e:
         redis_health.mark_redis_failure(f"scheduled_task:{name}:leader", e)
         logger.warning("[ScheduledTask] 单实例锁异常，跳过调度 name=%s error=%s", name, e)
         yield False
@@ -185,7 +190,7 @@ async def _scheduled_task_leader(
         yield acquired
     finally:
         if acquired:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(*_SCHEDULING_ERRORS):
                 await redis_client.redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
 
 
@@ -214,7 +219,7 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
                 SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(0.0)
             _last_success_by_name[name] = now
             SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
-        except Exception:
+        except BaseException:
             status = "error"
             last = _last_success_by_name.get(name)
             if last is not None:
@@ -365,7 +370,7 @@ async def process_webhook_task(
                     request_id=ctx.request_id,
                     received_at=ctx.received_at,
                 )
-            except Exception as e:
+            except _TASK_PROCESSING_ERRORS as e:
                 await _handle_raw_webhook_failure(
                     source=ctx.source,
                     raw_headers=ctx.raw_headers,
@@ -383,7 +388,7 @@ async def process_webhook_task(
                 if worker_span is not None:
                     worker_span.set_attribute("worker.task.status", outcome)
                     worker_span.set_attribute(WEBHOOK_OUTCOME, outcome)
-    except Exception:
+    except BaseException:
         outcome = "error"
         logger.exception(
             "[Tasks] Webhook 任务异常退出 request_id=%s source=%s",
@@ -404,7 +409,7 @@ async def run_forward_outbox_task(outbox_id: int) -> None:
     status = "success"
     try:
         await process_forward_outbox_by_id(outbox_id)
-    except Exception:
+    except BaseException:
         status = "error"
         raise
     finally:

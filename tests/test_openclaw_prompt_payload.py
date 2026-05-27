@@ -45,7 +45,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     response_payload: dict[str, str],
     expected_url: str,
 ) -> None:
-    from services.analysis.openclaw import analyze_with_openclaw
+    from services.analysis.openclaw_analysis import analyze_with_openclaw
     from services.forwarding.circuit_breakers import OpenClawForwardDependencies
     from services.forwarding.policies import OpenClawTriggerPolicy
 
@@ -62,7 +62,7 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
         async def call_async(self, fn, *args, **kwargs):
             return await fn(*args, **kwargs)
 
-    monkeypatch.setattr("services.analysis.openclaw.load_deep_analysis_prompt_template", fake_load_prompt)
+    monkeypatch.setattr("services.analysis.openclaw_analysis.load_deep_analysis_prompt_template", fake_load_prompt)
 
     result = await analyze_with_openclaw(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
