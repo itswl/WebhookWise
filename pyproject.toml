@@ -28,7 +28,7 @@ omit = ["tests/*", "alembic/*", "scripts/*"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-fail_under = 70
+fail_under = 75
 
 [tool.mypy]
 python_version = "3.12"
