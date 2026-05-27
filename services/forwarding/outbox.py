@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
@@ -40,6 +41,9 @@ from services.webhooks.types import (
 )
 
 logger = get_logger("forward_outbox")
+_DELIVERY_RUNTIME_ERRORS = (OSError, RuntimeError, ValueError)
+_SCHEDULING_ERRORS = (OSError, RuntimeError, TimeoutError)
+_OUTBOX_NOTIFICATION_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 
 async def _create_outbox_records(
@@ -251,7 +255,7 @@ async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> Forw
         return {"status": "not_claimed", "outbox_id": outbox_id}
     try:
         result = await deliver_outbox_record(record)
-    except Exception as e:
+    except _DELIVERY_RUNTIME_ERRORS as e:
         await _finalize_outbox_failure(outbox_id, str(e), policy=policy)
         return {"status": "failed", "message": str(e), "outbox_id": outbox_id}
 
@@ -329,7 +333,7 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
         try:
             await process_forward_outbox_task.kiq(outbox_id=outbox_id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
-        except Exception as e:  # noqa: PERF203
+        except _SCHEDULING_ERRORS as e:  # noqa: PERF203
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
             logger.warning("[ForwardOutbox] 即时调度失败 id=%s error=%s，将由扫描任务补扫", outbox_id, e)
 
@@ -340,7 +344,7 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
     try:
         await schedule_forward_outbox(outbox_id, delay_seconds)
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
-    except Exception as e:
+    except _SCHEDULING_ERRORS as e:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
         logger.warning("[ForwardOutbox] 延迟调度失败 id=%s error=%s，将由扫描任务补扫", outbox_id, e)
 
@@ -442,7 +446,7 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
     ) as outbox_span:
         try:
             result = await deliver_outbox_record(record)
-        except Exception as e:
+        except _DELIVERY_RUNTIME_ERRORS as e:
             status = "failed"
             set_span_error(outbox_span, e)
             await _finalize_outbox_failure(record.id, str(e))
@@ -592,7 +596,7 @@ async def _finalize_outbox_failure(
                     formatted_payload=build_delivery_exhausted_card(exhausted_record),
                     webhook_id=exhausted_record.webhook_event_id,
                 )
-        except Exception as e:
+        except _OUTBOX_NOTIFICATION_ERRORS as e:
             logger.warning("[ForwardOutbox] EXHAUSTED 通知入队失败 id=%s error=%s", outbox_id, e)
     if retry_outbox_id is not None and retry_delay is not None:
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)

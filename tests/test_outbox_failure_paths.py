@@ -526,7 +526,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         seen_timeouts: list[tuple[float, float]] = []
 
@@ -562,7 +562,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
@@ -583,7 +583,7 @@ class TestOpenClawPoller:
     ) -> None:
         import httpx
 
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
@@ -602,7 +602,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         class _Response:
             status_code = 200
@@ -624,7 +624,7 @@ class TestOpenClawPoller:
         assert result["error"] == "Invalid JSON response"
 
     def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from services.analysis.openclaw import _poll_claim_lease_seconds
+        from services.analysis.openclaw_poll import _poll_claim_lease_seconds
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 120)
 
@@ -635,7 +635,7 @@ class TestOpenClawPoller:
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         from models import DeepAnalysis
-        from services.analysis.openclaw import _claim_openclaw_poll
+        from services.analysis.openclaw_poll import _claim_openclaw_poll
 
         async with session_factory.begin() as session:
             record = DeepAnalysis(
@@ -671,7 +671,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
@@ -704,7 +704,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
@@ -740,7 +740,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
@@ -775,7 +775,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
@@ -809,7 +809,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "")
@@ -846,7 +846,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw
+        from services.analysis import openclaw_poll as openclaw
 
         stability_state: dict[str, object] = {
             "msg_count": 2,
