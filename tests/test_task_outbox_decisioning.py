@@ -5,31 +5,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-
-class _BoundMetric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self.calls = calls
-        self.name = name
-        self.args = args
-        self.kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "inc", amount))
-
-    def observe(self, value: object) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "observe", value))
-
-    def set(self, value: object) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "set", value))
-
-
-class _Metric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str) -> None:
-        self.calls = calls
-        self.name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self.calls, self.name, args, kwargs)
+from tests.metric_helpers import MetricCall, StubMetric
 
 
 @pytest.mark.asyncio
@@ -100,9 +76,9 @@ async def test_outbox_worker_scheduling_deliver_and_process_branches(monkeypatch
     from models import ForwardOutbox
     from services.forwarding import outbox
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(outbox, "FORWARD_OUTBOX_RECORDS_TOTAL", _Metric(metric_calls, "RECORDS"))
-    monkeypatch.setattr(outbox, "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS", _Metric(metric_calls, "DURATION"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(outbox, "FORWARD_OUTBOX_RECORDS_TOTAL", StubMetric(metric_calls, "RECORDS"))
+    monkeypatch.setattr(outbox, "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS", StubMetric(metric_calls, "DURATION"))
 
     class Task:
         def __init__(self, fail_on: int | None = None) -> None:
@@ -254,8 +230,8 @@ def test_forward_rule_matching_payload_paths(monkeypatch: pytest.MonkeyPatch) ->
     from services.webhooks import decisioning
     from services.webhooks.decisioning import ForwardRuleSnapshot
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(decisioning, "FORWARD_RULE_MATCH_TOTAL", _Metric(metric_calls, "RULES"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(decisioning, "FORWARD_RULE_MATCH_TOTAL", StubMetric(metric_calls, "RULES"))
 
     def rule(**overrides: object) -> ForwardRuleSnapshot:
         values: dict[str, object] = {

@@ -379,7 +379,7 @@ async def _run_processing_pipeline(
         analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
         final_analysis = build_final_analysis(analysis, noise)
         persist_started = time.perf_counter()
-        persist_outcome = "success"
+        persist_outcome = "error"
         try:
             finalize_res = await finalize_analysis_transaction(
                 ctx,
@@ -388,9 +388,7 @@ async def _run_processing_pipeline(
                 noise,
                 forwarding_policy=dependencies.forwarding_policy,
             )
-        except Exception:
-            persist_outcome = "error"
-            raise
+            persist_outcome = "success"
         finally:
             _record_step_metrics("persist", ctx.metric_source, persist_outcome, persist_started)
 
@@ -460,7 +458,7 @@ async def handle_webhook_ingest(
             try:
                 loaded = json.loads(raw_body)
                 payload = loaded if isinstance(loaded, dict) else None
-            except Exception:
+            except json.JSONDecodeError:
                 payload = None
 
         env = EventEnvelope(

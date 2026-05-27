@@ -89,7 +89,7 @@ def _stored_raw_payload(raw_payload: bytes | None) -> bytes | None:
         return None
     try:
         return compress_payload(raw_payload.decode("utf-8"))
-    except Exception:
+    except UnicodeDecodeError:
         return raw_payload
 
 
@@ -339,7 +339,7 @@ async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
     try:
         async with session_scope() as session:
             return await save_webhook_data_in_session(session, input=input)
-    except Exception:
+    except sqlalchemy.exc.SQLAlchemyError:
         logger.exception("保存 webhook 事件失败")
         raise
 
