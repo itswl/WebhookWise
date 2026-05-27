@@ -93,3 +93,4 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     assert b"\\u4e2d\\u6587" not in body
     assert b"[REDACTED]" in body
     assert timeout.connect == 13.0
+    assert timeout.read == 900

@@ -256,7 +256,7 @@ def analyze_noise_reduction(
 
     if not scored:
         logger.info("[Noise] 降噪决策: relation=standalone")
-        return NoiseReductionContext("standalone", None, 0.0, False, "未发现可关联的告警关系", 0, [])
+        return NoiseReductionContext("standalone", None, 0.0, False, "未发现可关联的告警关系", 0, ())
 
     related = [(alert, score) for alert, score in scored if score >= scoring_config.related_min_confidence]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
@@ -275,7 +275,7 @@ def analyze_noise_reduction(
             suppress_forward=suppress_derived,
             reason=reason,
             related_alert_count=len(related_ids),
-            related_alert_ids=related_ids,
+            related_alert_ids=tuple(related_ids),
         )
 
     # 告警风暴检测
@@ -290,7 +290,7 @@ def analyze_noise_reduction(
             suppress_forward=False,
             reason=reason,
             related_alert_count=len(related_ids),
-            related_alert_ids=related_ids,
+            related_alert_ids=tuple(related_ids),
         )
 
     return NoiseReductionContext(
@@ -300,5 +300,5 @@ def analyze_noise_reduction(
         suppress_forward=False,
         reason="存在弱关联告警，但未达到根因判定阈值",
         related_alert_count=len(related_ids),
-        related_alert_ids=related_ids,
+        related_alert_ids=tuple(related_ids),
     )

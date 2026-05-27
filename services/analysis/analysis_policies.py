@@ -59,10 +59,13 @@ class AIProviderPolicy:
     input_cost_per_1k_tokens: float
     output_cost_per_1k_tokens: float
     degradation_enabled: bool
+    http_timeout_seconds: float
+    http_connect_timeout_seconds: float
 
     @classmethod
     def from_config(cls) -> "AIProviderPolicy":
         cfg = get_config_manager().ai
+        timeout_seconds = max(1.0, float(cfg.AI_HTTP_TIMEOUT_SECONDS))
         return cls(
             enabled=bool(cfg.ENABLE_AI_ANALYSIS),
             api_key=str(cfg.OPENAI_API_KEY),
@@ -73,6 +76,8 @@ class AIProviderPolicy:
             input_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_INPUT_TOKENS),
             output_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_OUTPUT_TOKENS),
             degradation_enabled=bool(cfg.ENABLE_AI_DEGRADATION),
+            http_timeout_seconds=timeout_seconds,
+            http_connect_timeout_seconds=max(1.0, min(float(cfg.AI_HTTP_CONNECT_TIMEOUT_SECONDS), timeout_seconds)),
         )
 
     @property

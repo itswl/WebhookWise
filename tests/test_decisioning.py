@@ -63,7 +63,7 @@ def _make_noise(
         suppress_forward=suppress,
         reason="" if not suppress else "test suppression",
         related_alert_count=0,
-        related_alert_ids=[],
+        related_alert_ids=(),
     )
 
 
