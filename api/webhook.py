@@ -357,7 +357,7 @@ async def build_webhook_context(event: WebhookEvent) -> JSONDict:
     source = event.source
     if (not source or source == "unknown") and isinstance(parsed_data, dict):
         normalized = normalize_webhook_event(parsed_data, None)
-        source, parsed_data = normalized.source or source, normalized.data
+        source, parsed_data = normalized.source or source, dict(normalized.data)
     return {
         "source": source,
         "parsed_data": parsed_data,

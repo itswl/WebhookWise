@@ -9,7 +9,7 @@ from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
+from services.webhooks.types import AnalysisResult, ForwardResult, JsonObject, WebhookData
 
 _FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
 _FEISHU_HOSTS = ("feishu.cn", "larksuite.com")
@@ -66,7 +66,7 @@ def build_feishu_card(
     analysis_result: AnalysisResult,
     *,
     is_periodic_reminder: bool = False,
-) -> WebhookData:
+) -> JsonObject:
     importance = str(analysis_result.get("importance", "medium")).strip().lower()
     if "." in importance:
         importance = importance.rsplit(".", 1)[-1]
@@ -92,7 +92,7 @@ def build_feishu_card(
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 Webhook 事件通知"
 
-    elements: list[WebhookData] = []
+    elements: list[JsonObject] = []
 
     fields = [
         {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source or '—'}"}},
@@ -126,7 +126,7 @@ def build_feishu_card(
     }
 
 
-def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degraded: bool = False) -> WebhookData:
+def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degraded: bool = False) -> JsonObject:
     title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
     template = "orange" if is_degraded else "red"
     return {
@@ -148,7 +148,7 @@ def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degr
 
 def build_deep_analysis_card(
     analysis_record: dict[str, Any], source: str = "", webhook_event_id: int = 0
-) -> WebhookData:
+) -> JsonObject:
     result = analysis_record.get("analysis_result", {})
     result = result if isinstance(result, dict) else {}
     engine = analysis_record.get("engine", "uk")
@@ -200,7 +200,7 @@ def build_deep_analysis_card(
     }
 
 
-def build_delivery_exhausted_card(outbox: Any) -> WebhookData:
+def build_delivery_exhausted_card(outbox: Any) -> JsonObject:
     outbox_id = getattr(outbox, "id", None)
     event_id = getattr(outbox, "webhook_event_id", None)
     target_type = getattr(outbox, "target_type", "") or getattr(outbox, "channel_name", "")

@@ -11,7 +11,7 @@ from typing import Any, TypeVar
 
 from adapters.normalized import AlertIdentity, with_alert_identity
 from core.logger import get_logger
-from services.webhooks.types import WebhookData
+from services.webhooks.types import JsonObject, WebhookData, webhook_data_from_mapping
 
 logger = get_logger("ecosystem_adapters")
 
@@ -143,11 +143,11 @@ def register_simple_adapters() -> None:
 
     # 1. 火山引擎 (Volcengine CloudMonitor)
     @registry.register_detector("volcengine")
-    def _detect_volc(data: WebhookData) -> bool:
+    def _detect_volc(data: JsonObject) -> bool:
         return str(data.get("Namespace", "")).startswith("VCM_") and bool(data.get("Resources"))
 
     @registry.register("volcengine", aliases={"volc", "vcm", "cloudmonitor", "volcengine_cloudmonitor"})
-    def _norm_volc(data: WebhookData) -> WebhookData:
+    def _norm_volc(data: JsonObject) -> WebhookData:
         resources = _safe_resource_list(data.get("Resources"))
         resource = _pick_first_resource(resources)
         name = _pick_first(data.get("RuleName"), data.get("AlertName"), data.get("MetricName"), data.get("Type"))
@@ -157,18 +157,18 @@ def register_simple_adapters() -> None:
                 source="volcengine",
                 name=str(name) if name else None,
                 resource=resource,
-                fingerprint=_pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID")),
+                fingerprint=str(fingerprint) if (fingerprint := _pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID"))) else None,
                 severity=normalize_level(data.get("Level") or data.get("Severity")),
             ),
         )
 
     # 2. Grafana
     @registry.register_detector("grafana")
-    def _detect_grafana(data: WebhookData) -> bool:
+    def _detect_grafana(data: JsonObject) -> bool:
         return any(k in data for k in ("ruleName", "dashboardId")) and any(k in data for k in ("state", "status"))
 
     @registry.register("grafana", aliases={"grafana"})
-    def _norm_grafana(data: WebhookData) -> WebhookData:
+    def _norm_grafana(data: JsonObject) -> WebhookData:
         rule = _pick_first(data.get("ruleName"), data.get("title"), "grafana_alert")
         state = _pick_first(data.get("state"), data.get("status"))
         res = dict(data)
@@ -189,11 +189,11 @@ def register_simple_adapters() -> None:
 
     # 3. Prometheus / Alertmanager
     @registry.register_detector("prometheus")
-    def _detect_prom(data: WebhookData) -> bool:
+    def _detect_prom(data: JsonObject) -> bool:
         return isinstance(data.get("alerts"), list) and len(data["alerts"]) > 0
 
     @registry.register("prometheus", aliases={"prometheus", "alertmanager"})
-    def _norm_prom(data: WebhookData) -> WebhookData:
+    def _norm_prom(data: JsonObject) -> WebhookData:
         first = data.get("alerts", [{}])[0]
         labels = first.get("labels", {})
         labels = labels if isinstance(labels, Mapping) else {}
@@ -252,11 +252,11 @@ def register_simple_adapters() -> None:
 
     # 4. Datadog
     @registry.register_detector("datadog")
-    def _detect_datadog(data: WebhookData) -> bool:
+    def _detect_datadog(data: JsonObject) -> bool:
         return sum(1 for k in ("alert_type", "event_type", "query") if k in data) >= 2
 
     @registry.register("datadog", aliases={"datadog"})
-    def _norm_datadog(data: WebhookData) -> WebhookData:
+    def _norm_datadog(data: JsonObject) -> WebhookData:
         tags = data.get("tags", [])
         title = _pick_first(data.get("alert_name"), data.get("title"), "datadog_alert")
         level = _pick_first(data.get("alert_type"), data.get("priority"))
@@ -274,18 +274,18 @@ def register_simple_adapters() -> None:
                 name=str(title) if title else None,
                 resource=str(host) if host else None,
                 service=_extract_tag(tags, "service"),
-                fingerprint=_pick_first(data.get("id"), data.get("event_id")),
+                fingerprint=str(fingerprint) if (fingerprint := _pick_first(data.get("id"), data.get("event_id"))) else None,
                 severity=normalize_level(level),
             ),
         )
 
     # 5. PagerDuty
     @registry.register_detector("pagerduty")
-    def _detect_pagerduty(data: WebhookData) -> bool:
+    def _detect_pagerduty(data: JsonObject) -> bool:
         return "incident" in data or (isinstance(data.get("event"), dict) and "event_type" in data["event"])
 
     @registry.register("pagerduty", aliases={"pagerduty"})
-    def _norm_pagerduty(data: WebhookData) -> WebhookData:
+    def _norm_pagerduty(data: JsonObject) -> WebhookData:
         inc = data.get("incident", {})
         evt = data.get("event", {})
         alert_id = inc.get("id") or evt.get("data", {}).get("id")
@@ -317,11 +317,11 @@ def register_simple_adapters() -> None:
 
     # 6. 飞书卡片（火山引擎日志服务等）
     @registry.register_detector("feishu_card")
-    def _detect_feishu_card(data: WebhookData) -> bool:
+    def _detect_feishu_card(data: JsonObject) -> bool:
         return data.get("msg_type") == "interactive" and isinstance(data.get("card"), dict)
 
     @registry.register("feishu_card", aliases={"feishu_card", "volcengine_log"})
-    def _norm_feishu_card(data: WebhookData) -> WebhookData:
+    def _norm_feishu_card(data: JsonObject) -> WebhookData:
         card = data.get("card", {})
         card = card if isinstance(card, Mapping) else {}
         header = card.get("header", {})
@@ -389,7 +389,7 @@ def register_simple_adapters() -> None:
         if content_text:
             normalized["summary"] = content_text
 
-        return normalized
+        return webhook_data_from_mapping(normalized)
 
 
 def initialize_adapters() -> None:
@@ -413,7 +413,7 @@ def normalize_webhook_event(
 
     if not isinstance(data, dict):
         resolved_source = str(source or _header_get(headers, "X-Webhook-Source") or "unknown").strip().lower()
-        return NormalizedWebhook(resolved_source, {"raw": data}, "passthrough")
+        return NormalizedWebhook(resolved_source, webhook_data_from_mapping({"raw": data}), "passthrough")
 
     h_src = str(_header_get(headers, "X-Webhook-Source") or "").strip().lower()
     s_hint = str(source or "").strip().lower() or h_src
@@ -425,7 +425,7 @@ def normalize_webhook_event(
 
     # 2. 透传逻辑
     if adapter_name is None:
-        return NormalizedWebhook(s_hint or "unknown", dict(data), "passthrough")
+        return NormalizedWebhook(s_hint or "unknown", webhook_data_from_mapping(data), "passthrough")
 
     # 3. 归一化
     normalized = registry.normalize(adapter_name, dict(data))

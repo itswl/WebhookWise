@@ -7,7 +7,7 @@ from core import json
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
-from services.webhooks.types import AnalysisResult
+from services.webhooks.types import AnalysisResult, mark_cache_hit
 
 logger = get_logger("analysis.ai_cache")
 
@@ -46,7 +46,7 @@ async def get_cached_analysis(
         res = cast(AnalysisResult, dict(parsed))
         counter_key = f"{ck}:hits"
         hits = await redis_incr_with_expire(counter_key, ttl_resolved)
-        res.update({"_cache_hit": True, "_cache_hit_count": hits})
+        mark_cache_hit(res, hits)
         result = "hit"
         return res
     except Exception as e:

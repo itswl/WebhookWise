@@ -115,12 +115,13 @@ def test_resolve_analysis_falls_back_to_original_if_no_new_analysis():
     assert importance == "medium"
 
 
-def test_resolve_analysis_returns_empty_if_both_missing():
+def test_resolve_analysis_returns_unknown_contract_if_both_missing():
     from services.webhooks.command_service import _resolve_analysis_for_duplicate
+    from services.webhooks.types import unknown_analysis_result
 
     original = _make_original(ai_analysis=None, importance=None)
     result, importance = _resolve_analysis_for_duplicate(None, original, reanalyzed=False)
-    assert result == {}
+    assert result == unknown_analysis_result()
     assert importance is None
 
 

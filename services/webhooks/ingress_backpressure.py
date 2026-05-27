@@ -45,7 +45,7 @@ def _ingress_identity(source_hint: str, raw_body: bytes) -> str:
         if not payload:
             return _fallback_body_hash(source_hint, raw_body)
         normalized = normalize_webhook_event(payload, source_hint)
-        return f"alert:{generate_alert_hash(normalized.data, normalized.source)}"
+        return f"alert:{generate_alert_hash(dict(normalized.data), normalized.source)}"
     except Exception as e:
         logger.debug("[IngressBackpressure] 无法解析 ingress identity，使用 body hash: %s", e)
         return _fallback_body_hash(source_hint, raw_body)

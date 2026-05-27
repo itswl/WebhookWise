@@ -152,7 +152,7 @@ async def finalize_analysis_transaction(
                 noise,
                 decision_original,
                 ctx.req_ctx.source,
-                parsed_data=ctx.req_ctx.parsed_data,
+                parsed_data=dict(ctx.req_ctx.parsed_data),
                 session=session,
                 policy=forwarding_policy,
             )
@@ -164,8 +164,9 @@ async def finalize_analysis_transaction(
 
             if fwd_dec.should_forward:
                 forward_data = dict(ctx.req_ctx.webhook_full_data)
-                if isinstance(forward_data.get("headers"), dict):
-                    forward_data["headers"] = redact_headers(forward_data["headers"])
+                headers = forward_data.get("headers")
+                if isinstance(headers, dict):
+                    forward_data["headers"] = redact_headers(headers)
                 first_target_type = fwd_dec.matched_rules[0].target_type if fwd_dec.matched_rules else "default"
 
                 with otel_span(

@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
+INTERNAL_ERROR_MESSAGE = "内部服务错误"
+
 # ── 异常类 ──────────────────────────────────────────────────────────────────
 
 
@@ -30,3 +32,8 @@ def fail_response(error: str, http_status: int = 400, **extra: Any) -> JSONRespo
     """Build error JSON response."""
     payload: dict[str, Any] = {"success": False, "error": error, **extra}
     return JSONResponse(content=payload, status_code=http_status)
+
+
+def internal_error_response(**extra: Any) -> JSONResponse:
+    """Build a sanitized 500 response; route handlers log the original exception."""
+    return fail_response(INTERNAL_ERROR_MESSAGE, 500, **extra)

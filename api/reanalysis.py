@@ -15,7 +15,7 @@ from schemas.analysis import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
-from services.webhooks.types import AnalysisResult
+from services.webhooks.types import AnalysisResult, webhook_data_from_mapping
 
 logger = get_logger("api.reanalysis")
 
@@ -35,7 +35,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
         raise HTTPException(404, "Webhook not found")
 
     ctx = await build_webhook_context(event)
-    res = await analyze_webhook_with_ai(ctx, skip_cache=True)
+    res = await analyze_webhook_with_ai(webhook_data_from_mapping(ctx), skip_cache=True)
 
     old_imp, new_imp = event.importance, res.get("importance")
     event.ai_analysis, event.importance = dict(res), new_imp

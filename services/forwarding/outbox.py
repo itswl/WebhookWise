@@ -32,7 +32,11 @@ from services.webhooks.types import (
     DeepAnalysisStatus,
     ForwardOutboxStatus,
     ForwardResult,
+    JsonObject,
     WebhookData,
+    is_pending_result,
+    openclaw_run_id,
+    openclaw_session_key,
 )
 
 logger = get_logger("forward_outbox")
@@ -272,9 +276,7 @@ async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
     target_url = str(record.target_url or "")
     from services.notifications.feishu import build_feishu_card, is_feishu_url
 
-    payload = record.formatted_payload
-    if not isinstance(payload, dict):
-        payload = None
+    payload: JsonObject | None = record.formatted_payload if isinstance(record.formatted_payload, dict) else None
     if payload is None and isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
         wd = cast(WebhookData, dict(record.forward_data))
         ar = cast(AnalysisResult, dict(record.analysis_result))
@@ -415,7 +417,7 @@ def _related_webhook_event_ids(record: ForwardOutbox) -> list[int]:
 
 
 def _is_forward_success(result: ForwardResult) -> bool:
-    return result.get("status") == "success" or bool(result.get("_pending"))
+    return result.get("status") == "success" or is_pending_result(result)
 
 
 async def process_forward_outbox_by_id(outbox_id: int) -> None:
@@ -500,7 +502,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         current.last_error = None
         current.response_data = dict(result)
 
-        if current.target_type == "openclaw" and result.get("_pending"):
+        if current.target_type == "openclaw" and is_pending_result(result):
             from models import DeepAnalysis
             from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
@@ -509,8 +511,8 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
                 engine="openclaw",
-                openclaw_run_id=str(result.get("_openclaw_run_id", "")),
-                openclaw_session_key=str(result.get("_openclaw_session_key", "")),
+                openclaw_run_id=openclaw_run_id(result),
+                openclaw_session_key=openclaw_session_key(result),
                 status=DeepAnalysisStatus.PENDING,
                 poll_attempts=0,
                 next_poll_at=now + timedelta(seconds=initial_poll_delay),

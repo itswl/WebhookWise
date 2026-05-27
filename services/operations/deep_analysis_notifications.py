@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from core.logger import get_logger, mask_url
 from services.forwarding.outbox import forward_notification
 from services.notifications.feishu import build_deep_analysis_card
-from services.webhooks.types import WebhookData
+from services.webhooks.types import JsonObject
 
 if TYPE_CHECKING:
     from services.analysis.openclaw import OpenClawPollPolicy
@@ -36,7 +36,7 @@ async def send_feishu_deep_analysis(
 
 
 async def send_deep_analysis_success_notification(
-    record_dict: WebhookData,
+    record_dict: JsonObject,
     source: str = "",
     *,
     policy: "OpenClawPollPolicy | None" = None,
@@ -94,7 +94,7 @@ async def send_deep_analysis_success_notification(
 
 
 async def send_deep_analysis_failure_notification(
-    record_dict: WebhookData,
+    record_dict: JsonObject,
     reason: str = "",
     *,
     policy: "OpenClawPollPolicy | None" = None,

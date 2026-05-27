@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from services.webhooks.types import WebhookData, webhook_data_from_mapping
 
 IDENTITY_FIELD = "_alert_identity"
 
@@ -36,13 +39,13 @@ class AlertIdentity:
         return {key: normalized for key, value in values.items() if (normalized := _normalize_identity_value(value))}
 
 
-def with_alert_identity(data: dict[str, Any], identity: AlertIdentity) -> dict[str, Any]:
+def with_alert_identity(data: Mapping[str, Any], identity: AlertIdentity) -> WebhookData:
     normalized = dict(data)
     normalized[IDENTITY_FIELD] = identity.to_payload()
-    return normalized
+    return webhook_data_from_mapping(normalized)
 
 
-def extract_alert_identity(data: dict[str, Any]) -> dict[str, str] | None:
+def extract_alert_identity(data: Mapping[str, Any]) -> dict[str, str] | None:
     value = data.get(IDENTITY_FIELD)
     if not isinstance(value, dict):
         return None

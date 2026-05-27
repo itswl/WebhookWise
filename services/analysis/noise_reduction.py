@@ -9,7 +9,7 @@ from typing import Any
 
 from core.logger import get_logger
 from services.analysis.analysis_policies import NoiseScoringConfig
-from services.webhooks.types import AnalysisResult, NoiseReductionContext
+from services.webhooks.types import ANALYSIS_EMBEDDING, AnalysisResult, NoiseReductionContext
 
 logger = get_logger("analysis.noise_reduction")
 
@@ -150,7 +150,7 @@ def _semantic_similarity(
 ) -> float:
     def _get_embedding(ctx: AlertContext) -> list[float] | None:
         for container in (_safe_dict(ctx.analysis), _safe_dict(ctx.parsed_data)):
-            value = container.get("_embedding") or container.get("embedding")
+            value = container.get(ANALYSIS_EMBEDDING) or container.get("embedding")
             if not isinstance(value, list) or not value:
                 continue
             vector: list[float] = []

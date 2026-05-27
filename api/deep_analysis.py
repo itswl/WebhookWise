@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api import internal_error_response
 from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
@@ -20,14 +21,26 @@ from services.analysis.analysis_queries import get_deep_analyses_for_webhook, ge
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.notifications.feishu import is_feishu_url
 from services.operations import taskiq_retry_scheduler
-from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
+from services.webhooks.types import (
+    MANUAL_RETRY_STARTED_AT,
+    AnalysisResult,
+    DeepAnalysisStatus,
+    ForwardResult,
+    JsonObject,
+    WebhookData,
+    analysis_degraded_reason,
+    is_analysis_degraded,
+    is_pending_result,
+    openclaw_run_id,
+    openclaw_session_key,
+)
 
 logger = get_logger("api.deep_analysis")
 
 deep_analysis_router = APIRouter()
 
 MAX_PAGE = 500
-MANUAL_RETRY_STARTED_AT_KEY = "_manual_retry_started_at"
+MANUAL_RETRY_STARTED_AT_KEY = MANUAL_RETRY_STARTED_AT
 
 
 def _is_supported_deep_analysis_engine(requested: str) -> bool:
@@ -45,8 +58,8 @@ async def _run_openclaw_deep_analysis(
         "parsed_data": ctx["parsed_data"],
     }
     result = await analyze_with_openclaw(webhook_data, user_question)
-    if result.get("_degraded"):
-        logger.warning("[DeepAnalysis] OpenClaw 降级，回退本地 AI: %s", result.get("_degraded_reason"))
+    if is_analysis_degraded(result):
+        logger.warning("[DeepAnalysis] OpenClaw 降级，回退本地 AI: %s", analysis_degraded_reason(result))
         return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
     return result, "openclaw"
 
@@ -117,16 +130,16 @@ async def deep_analyze_webhook(
         )
     except Exception as e:
         logger.error("[DeepAnalysis] 手动分析触发失败 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        return internal_error_response()
 
     record = DeepAnalysis(
         webhook_event_id=webhook_id,
         engine=engine_name,
         user_question=payload.get("user_question", ""),
         analysis_result=dict(res),
-        status=DeepAnalysisStatus.PENDING if res.get("_pending") else DeepAnalysisStatus.COMPLETED,
-        openclaw_run_id=res.get("_openclaw_run_id", ""),
-        openclaw_session_key=res.get("_openclaw_session_key", ""),
+        status=DeepAnalysisStatus.PENDING if is_pending_result(res) else DeepAnalysisStatus.COMPLETED,
+        openclaw_run_id=openclaw_run_id(res),
+        openclaw_session_key=openclaw_session_key(res),
     )
     session.add(record)
     await session.flush()
@@ -213,12 +226,12 @@ async def retry_deep_analysis(
         new_result, engine_name = await _run_openclaw_deep_analysis(
             ctx, event.headers or {}, record.user_question or ""
         )
-        if new_result.get("_pending"):
+        if is_pending_result(new_result):
             now = utcnow()
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
-            record.openclaw_run_id = str(new_result.get("_openclaw_run_id", ""))
-            record.openclaw_session_key = str(new_result.get("_openclaw_session_key", ""))
+            record.openclaw_run_id = openclaw_run_id(new_result)
+            record.openclaw_session_key = openclaw_session_key(new_result)
             record.duration_seconds = 0
             record.poll_attempts = 0
             record.last_polled_at = None
@@ -307,7 +320,7 @@ async def forward_deep_analysis(
         "created_at": utc_isoformat(analysis.created_at),
     }
 
-    formatted_payload = (
+    formatted_payload: JsonObject = (
         build_deep_analysis_card(
             {
                 "analysis_result": analysis.analysis_result,
@@ -354,4 +367,4 @@ async def forward_deep_analysis(
             mask_url(target_url),
             e,
         )
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        return internal_error_response()
