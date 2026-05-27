@@ -225,6 +225,7 @@ async def test_forward_rule_endpoint(
 async def list_outbox_endpoint(
     page: int = Query(1, ge=1, le=100),
     page_size: int = Query(20, ge=1, le=200),
+    cursor: int | None = Query(None),
     status: str = Query(""),
     event_type: str = Query(""),
 ) -> JSONDict | JSONResponse:
@@ -232,7 +233,9 @@ async def list_outbox_endpoint(
     from services.forwarding.outbox import list_outbox_records
 
     try:
-        data = await list_outbox_records(page=page, page_size=page_size, status=status, event_type=event_type)
+        data = await list_outbox_records(
+            page=page, page_size=page_size, cursor=cursor, status=status, event_type=event_type
+        )
         return {"success": True, "data": data}
     except Exception as e:
         logger.error("查询 outbox 列表失败: %s", e)

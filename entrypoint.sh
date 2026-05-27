@@ -28,7 +28,11 @@ case "${RUN_MODE:-api}" in
         ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."
-        exec taskiq scheduler --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" services.operations.taskiq_wiring:scheduler --update-interval 5 --loop-interval 1
+        exec taskiq scheduler \
+            --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" \
+            services.operations.taskiq_wiring:scheduler \
+            --update-interval "${TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS:-30}" \
+            --loop-interval "${TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS:-1}"
         ;;
     api|"")
         echo "Starting in API mode..."

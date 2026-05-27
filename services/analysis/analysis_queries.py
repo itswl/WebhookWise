@@ -92,8 +92,6 @@ async def get_deep_analysis_list(
     per_page = max(1, min(per_page, max_page))
 
     filters = []
-    if cursor:
-        filters.append(DeepAnalysis.id < cursor)
     if status_filter:
         filters.append(DeepAnalysis.status == status_filter)
     if engine_filter:
@@ -114,19 +112,25 @@ async def get_deep_analysis_list(
     )
     for condition in filters:
         query = query.where(condition)
-    if not cursor:
+    if cursor is not None:
+        query = query.where(DeepAnalysis.id < cursor)
+    else:
         query = query.offset((page - 1) * per_page)
-    query = query.limit(per_page)
+    query = query.limit(per_page + 1)
 
     res = await session.execute(query)
     rows = res.all()
+    has_more = len(rows) > per_page
+    if has_more:
+        rows = rows[:per_page]
+
     items = []
     for rec, evt in rows:
         item = deep_analysis_to_dict(rec)
         item["source"] = evt.source if evt else None
         item["is_duplicate"] = evt.is_duplicate if evt else False
         items.append(item)
-    next_cursor = items[-1]["id"] if items else None
+    next_cursor = items[-1]["id"] if has_more and items else None
     return {
         "items": items,
         "per_page": per_page,
@@ -134,6 +138,7 @@ async def get_deep_analysis_list(
         "total": total,
         "total_pages": total_pages,
         "next_cursor": next_cursor,
+        "has_more": has_more,
     }
 
 
