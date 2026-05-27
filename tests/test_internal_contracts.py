@@ -6,6 +6,7 @@ from typing import Any
 
 from api import INTERNAL_ERROR_MESSAGE, internal_error_response
 from services.webhooks import types as webhook_types
+from tests.metric_helpers import MetricCall, StubMetric
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,32 +101,18 @@ def test_noise_reduction_context_stores_related_ids_as_tuple() -> None:
     assert isinstance(ctx.related_alert_ids, tuple)
 
 
-class _MetricCall:
-    def __init__(self) -> None:
-        self.labels_seen: list[tuple[str, str]] = []
-        self.inc_count = 0
-
-    def labels(self, component: str, action: str) -> _MetricCall:
-        self.labels_seen.append((component, action))
-        return self
-
-    def inc(self) -> None:
-        self.inc_count += 1
-
-
 async def test_dedup_read_failure_is_observable(monkeypatch: Any) -> None:
     from services import dedup
 
     async def fail_read(_: str) -> dict[str, Any]:
         raise RuntimeError("redis down")
 
-    metric = _MetricCall()
+    metric_calls: list[MetricCall] = []
     monkeypatch.setattr(dedup, "redis_get_json_dict", fail_read)
-    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", metric)
+    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", StubMetric(metric_calls, "redis_unavailable"))
 
     assert await dedup.get_dedup_state("alert-key") is None
-    assert metric.labels_seen == [("dedup", "read_allowed")]
-    assert metric.inc_count == 1
+    assert metric_calls == [("redis_unavailable", ("dedup", "read_allowed"), {}, "inc", 1)]
 
 
 async def test_dedup_write_failure_is_observable(monkeypatch: Any) -> None:
@@ -137,11 +124,10 @@ async def test_dedup_write_failure_is_observable(monkeypatch: Any) -> None:
     async def fail_write(*_: Any) -> None:
         raise RuntimeError("redis down")
 
-    metric = _MetricCall()
+    metric_calls: list[MetricCall] = []
     monkeypatch.setattr(dedup, "get_dedup_state", no_existing_state)
     monkeypatch.setattr(dedup, "redis_setex_json", fail_write)
-    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", metric)
+    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", StubMetric(metric_calls, "redis_unavailable"))
 
     await dedup.remember_dedup_state("alert-key", 42, {"summary": "x"}, 60)
-    assert metric.labels_seen == [("dedup", "write_failed")]
-    assert metric.inc_count == 1
+    assert metric_calls == [("redis_unavailable", ("dedup", "write_failed"), {}, "inc", 1)]
