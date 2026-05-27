@@ -36,12 +36,28 @@ from services.operations.deep_analysis_notifications import (
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
 )
-from services.webhooks.types import AnalysisResult, DeepAnalysisStatus, ForwardResult, WebhookData
+from services.webhooks.types import (
+    MANUAL_RETRY_STARTED_AT,
+    OPENCLAW_NEED_SUCCESS_NOTIFY,
+    OPENCLAW_RUN_ID,
+    OPENCLAW_TEXT,
+    AnalysisResult,
+    DeepAnalysisStatus,
+    ForwardResult,
+    JsonObject,
+    WebhookData,
+    analysis_degraded_reason,
+    degraded_forward_result,
+    is_analysis_degraded,
+    is_pending_result,
+    pending_forward_result,
+    webhook_data_from_mapping,
+)
 
 logger = get_logger("openclaw")
 
 _JSON_UTF8_CONTENT_TYPE = "application/json; charset=utf-8"
-MANUAL_RETRY_STARTED_AT_KEY = "_manual_retry_started_at"
+MANUAL_RETRY_STARTED_AT_KEY = MANUAL_RETRY_STARTED_AT
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Poll 策略配置
@@ -168,7 +184,7 @@ async def poll_openclaw_final(
     http_client: Any,
     trace_id: str | None = None,
     retry_count: int = 3,
-) -> WebhookData:
+) -> JsonObject:
     base_url = policy.http_api_url.rstrip("/")
     headers = {**policy.http_auth_headers(trace_id), "Connection": "close"}
     timeout = httpx.Timeout(
@@ -219,7 +235,7 @@ async def poll_openclaw_final(
                 last_error = "Invalid JSON response"
                 continue
 
-            data: WebhookData = raw
+            data: JsonObject = raw
             is_final = data.get("isFinal")
             is_processing = data.get("isProcessing", False)
             text = data.get("text", "")
@@ -229,7 +245,7 @@ async def poll_openclaw_final(
                 last_error = "分析进行中"
                 continue
             if text and is_final is not False:
-                result: WebhookData = {"status": "completed", "text": text, "msg_count": msg_count}
+                result: JsonObject = {"status": "completed", "text": text, "msg_count": msg_count}
                 if is_final is True:
                     result["is_final"] = True
                 return result
@@ -555,7 +571,7 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _poll_timeout_started_at(rec: WebhookData) -> datetime | None:
+def _poll_timeout_started_at(rec: JsonObject) -> datetime | None:
     analysis_result = rec.get("analysis_result")
     if isinstance(analysis_result, dict):
         manual_retry_started_at = analysis_result.get(MANUAL_RETRY_STARTED_AT_KEY)
@@ -586,14 +602,14 @@ def _is_transient_poll_error(error: object) -> bool:
     return any(marker in text for marker in transient_markers)
 
 
-async def _get_poll_stability(record_id: int) -> WebhookData | None:
+async def _get_poll_stability(record_id: int) -> JsonObject | None:
     from core.redis_client import redis_get_json_dict
     from core.redis_health import openclaw_poller_stability
 
     return await redis_get_json_dict(openclaw_poller_stability(record_id))
 
 
-async def _set_poll_stability(record_id: int, data: WebhookData) -> None:
+async def _set_poll_stability(record_id: int, data: JsonObject) -> None:
     from core.redis_client import redis_setex_json
     from core.redis_health import openclaw_poller_stability
 
@@ -617,7 +633,7 @@ async def poll_openclaw_result_via_http(
     *,
     policy: OpenClawPollPolicy | None = None,
     http_client: Any | None = None,
-) -> WebhookData:
+) -> JsonObject:
     policy = policy or OpenClawPollPolicy.from_config()
     return await poll_openclaw_final(
         session_key,
@@ -628,11 +644,11 @@ async def poll_openclaw_result_via_http(
     )
 
 
-def _poll_update(record_id: int, **fields: Any) -> WebhookData:
+def _poll_update(record_id: int, **fields: Any) -> JsonObject:
     return {"id": record_id, "action": "update", **fields}
 
 
-def _poll_skip(record_id: int) -> WebhookData:
+def _poll_skip(record_id: int) -> JsonObject:
     return {"id": record_id, "action": "skip"}
 
 
@@ -641,12 +657,12 @@ def _elapsed_since(started_at: datetime | None, *, default: float = 0.0) -> floa
 
 
 async def _failure_update_with_notification(
-    rec: WebhookData,
-    update: WebhookData,
+    rec: JsonObject,
+    update: JsonObject,
     reason: str,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData:
+) -> JsonObject:
     record_id = rec["id"]
     await _clear_poll_stability(record_id)
     notify_dict = {**rec, **update}
@@ -655,11 +671,11 @@ async def _failure_update_with_notification(
 
 
 async def _handle_poll_timeout(
-    rec: WebhookData,
+    rec: JsonObject,
     timeout_started_at: datetime | None,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData | None:
+) -> JsonObject | None:
     if timeout_started_at is None:
         return None
     record_id = rec["id"]
@@ -669,16 +685,16 @@ async def _handle_poll_timeout(
         return None
     logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds)
     DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
-    update: WebhookData = {"status": DeepAnalysisStatus.FAILED, "analysis_result": {"root_cause": "OpenClaw 分析超时"}}
+    update: JsonObject = {"status": DeepAnalysisStatus.FAILED, "analysis_result": {"root_cause": "OpenClaw 分析超时"}}
     return await _failure_update_with_notification(rec, update, "超时失败", policy=policy)
 
 
 async def _handle_missing_session_key(
-    rec: WebhookData,
+    rec: JsonObject,
     timeout_started_at: datetime | None,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData | None:
+) -> JsonObject | None:
     if rec["openclaw_session_key"]:
         return None
     from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
@@ -689,7 +705,7 @@ async def _handle_missing_session_key(
         return _poll_skip(record_id)
     logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
     DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
-    update: WebhookData = {
+    update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
         "analysis_result": {
             "root_cause": "无法获取分析会话，OpenClaw 触发失败",
@@ -700,7 +716,7 @@ async def _handle_missing_session_key(
     return await _failure_update_with_notification(rec, update, "无 session_key - OpenClaw 触发失败", policy=policy)
 
 
-async def _fetch_poll_result(rec: WebhookData, *, policy: OpenClawPollPolicy) -> WebhookData:
+async def _fetch_poll_result(rec: JsonObject, *, policy: OpenClawPollPolicy) -> JsonObject:
     if policy.has_http_api:
         return await poll_openclaw_result_via_http(rec["openclaw_session_key"], policy=policy)
     return await poll_session_result(
@@ -728,7 +744,7 @@ def extract_robust_json(text: str) -> str | None:
     return None
 
 
-def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> WebhookData:
+def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> JsonObject:
     parsed_result = None
     json_text = extract_robust_json(text)
     if json_text:
@@ -737,31 +753,31 @@ def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> Web
         except json.JSONDecodeError:
             parsed_result = None
     if parsed_result and isinstance(parsed_result, dict):
-        parsed_result["_openclaw_run_id"] = run_id
-        parsed_result["_openclaw_text"] = text
+        parsed_result[OPENCLAW_RUN_ID] = run_id
+        parsed_result[OPENCLAW_TEXT] = text
         return dict(parsed_result)
-    return {"root_cause": text, "_openclaw_text": text}
+    return {"root_cause": text, OPENCLAW_TEXT: text}
 
 
-def _completed_update(rec: WebhookData, text: str, timeout_started_at: datetime | None) -> WebhookData:
+def _completed_update(rec: JsonObject, text: str, timeout_started_at: datetime | None) -> JsonObject:
     record_id = rec["id"]
     analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
     duration = _elapsed_since(timeout_started_at)
     DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
     return _poll_update(
         record_id,
-        _need_success_notify=True,
+        **{OPENCLAW_NEED_SUCCESS_NOTIFY: True},
         status=DeepAnalysisStatus.COMPLETED,
         analysis_result=analysis_result,
         duration_seconds=duration,
     )
 
 
-def _poll_snapshot(text: str, msg_count: int) -> WebhookData:
+def _poll_snapshot(text: str, msg_count: int) -> JsonObject:
     return {"msg_count": msg_count, "text_len": len(text), "text_hash": _text_hash(text)}
 
 
-def _is_same_poll_snapshot(previous: WebhookData | None, current: WebhookData) -> bool:
+def _is_same_poll_snapshot(previous: JsonObject | None, current: JsonObject) -> bool:
     return bool(
         previous
         and previous.get("msg_count") == current["msg_count"]
@@ -771,12 +787,12 @@ def _is_same_poll_snapshot(previous: WebhookData | None, current: WebhookData) -
 
 
 async def _handle_completed_poll_result(
-    rec: WebhookData,
-    result: WebhookData,
+    rec: JsonObject,
+    result: JsonObject,
     timeout_started_at: datetime | None,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData:
+) -> JsonObject:
     record_id = rec["id"]
     text = str(result.get("text", ""))
     msg_count = int(result.get("msg_count", 0) or 0)
@@ -813,11 +829,11 @@ async def _handle_completed_poll_result(
 
 
 async def _handle_error_poll_result(
-    rec: WebhookData,
-    result: WebhookData,
+    rec: JsonObject,
+    result: JsonObject,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData:
+) -> JsonObject:
     record_id = rec["id"]
     prev_snapshot = await _get_poll_stability(record_id)
     if prev_snapshot and "first_result" in prev_snapshot:
@@ -844,7 +860,7 @@ async def _handle_error_poll_result(
         return _poll_skip(record_id)
 
     DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
-    update: WebhookData = {
+    update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
         "analysis_result": {"root_cause": error_msg, "error": error_msg, "failure_reason": error_msg},
     }
@@ -852,12 +868,12 @@ async def _handle_error_poll_result(
 
 
 async def _handle_poll_result(
-    rec: WebhookData,
-    result: WebhookData,
+    rec: JsonObject,
+    result: JsonObject,
     timeout_started_at: datetime | None,
     *,
     policy: OpenClawPollPolicy,
-) -> WebhookData:
+) -> JsonObject:
     status = result.get("status")
     if status == "completed":
         return await _handle_completed_poll_result(rec, result, timeout_started_at, policy=policy)
@@ -872,7 +888,7 @@ async def _handle_poll_result(
     return _poll_skip(rec["id"])
 
 
-async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | None = None) -> WebhookData:
+async def _poll_single_record(rec: JsonObject, *, policy: OpenClawPollPolicy | None = None) -> JsonObject:
     policy = policy or OpenClawPollPolicy.from_config()
     record_id = rec["id"]
 
@@ -900,7 +916,7 @@ async def _poll_single_record(rec: WebhookData, *, policy: OpenClawPollPolicy | 
         }
 
 
-def _record_to_poll_dict(record: Any) -> WebhookData:
+def _record_to_poll_dict(record: Any) -> JsonObject:
     return {
         "id": record.id,
         "webhook_event_id": record.webhook_event_id,
@@ -918,7 +934,7 @@ def _record_to_poll_dict(record: Any) -> WebhookData:
 
 async def _claim_openclaw_poll(
     analysis_id: int, *, policy: OpenClawPollPolicy | None = None
-) -> tuple[WebhookData | None, int | None]:
+) -> tuple[JsonObject | None, int | None]:
     from sqlalchemy import select, update
 
     from db.session import session_scope
@@ -1039,7 +1055,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             record.next_poll_at = None
             await session.flush()
 
-            if poll_result.get("_need_success_notify"):
+            if poll_result.get(OPENCLAW_NEED_SUCCESS_NOTIFY):
                 try:
                     from models import WebhookEvent
 
@@ -1146,7 +1162,7 @@ async def analyze_with_openclaw(
         )
     if not policy.enabled:
         logger.warning("[OpenClaw] 未启用，跳过深度分析")
-        return {"_degraded": True, "_degraded_reason": "OpenClaw 未启用"}
+        return degraded_forward_result("OpenClaw 未启用")
 
     alert_data = webhook_data.get("parsed_data", {})
     source = webhook_data.get("source", "unknown")
@@ -1243,7 +1259,7 @@ async def analyze_with_openclaw(
             last_error = str(e)
             logger.warning("[%s] 请求被熔断器拦截 target=%s error=%s", platform_name.upper(), mask_url(target_url), e)
             if policy.enable_degradation:
-                return {"_degraded": True, "_degraded_reason": f"{platform_name.capitalize()} 请求失败: {last_error}"}
+                return degraded_forward_result(f"{platform_name.capitalize()} 请求失败: {last_error}")
             raise
         except Exception as e:
             last_error = str(e)
@@ -1261,7 +1277,7 @@ async def analyze_with_openclaw(
     else:
         logger.error("[%s] 请求失败，已重试 %d 次: %s", platform_name.upper(), max_retries, last_error)
         if policy.enable_degradation:
-            return {"_degraded": True, "_degraded_reason": f"{platform_name.capitalize()} 请求失败: {last_error}"}
+            return degraded_forward_result(f"{platform_name.capitalize()} 请求失败: {last_error}")
         raise Exception(f"{platform_name.capitalize()} 请求失败: {last_error}")
 
     if response is None:
@@ -1284,11 +1300,11 @@ async def analyze_with_openclaw(
             session_key,
             response.status_code,
         )
-        return {"_pending": True, "_openclaw_run_id": run_id, "_openclaw_session_key": session_key}
+        return pending_forward_result(str(run_id or ""), session_key)
     except Exception as e:
         logger.error("[OpenClaw] 响应解析失败 status_code=%s error=%s", response.status_code, e)
         if policy.enable_degradation:
-            return {"_degraded": True, "_degraded_reason": f"响应解析失败: {e!s}"}
+            return degraded_forward_result(f"响应解析失败: {e!s}")
         raise
 
 
@@ -1319,19 +1335,21 @@ async def forward_to_openclaw(
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
         result = await analyze_with_openclaw(webhook_data, policy=policy, dependencies=dependencies)
-        if result.get("_degraded"):
-            logger.warning("[Forward] OpenClaw 降级，回退本地 AI: %s", result.get("_degraded_reason"))
-            local_data = {
-                "source": webhook_data.get("source", "unknown"),
-                "headers": webhook_data.get("headers", {}),
-                "parsed_data": webhook_data.get("parsed_data", {}),
-            }
+        if is_analysis_degraded(result):
+            logger.warning("[Forward] OpenClaw 降级，回退本地 AI: %s", analysis_degraded_reason(result))
+            local_data = webhook_data_from_mapping(
+                {
+                    "source": webhook_data.get("source", "unknown"),
+                    "headers": webhook_data.get("headers", {}),
+                    "parsed_data": webhook_data.get("parsed_data", {}),
+                }
+            )
             return cast(ForwardResult, await analyze_webhook_with_ai(local_data))
         return result
 
     try:
         res = cast(ForwardResult, await dependencies.circuit_breaker.call_async(_do_request))
-        status = str(res.get("status") or ("pending" if res.get("_pending") else "success"))
+        status = str(res.get("status") or ("pending" if is_pending_result(res) else "success"))
         return res
     except CircuitBreakerOpenException:
         status = "circuit_broken"

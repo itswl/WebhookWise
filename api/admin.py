@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import registry as adapter_registry
-from api import fail_response, ok_response
+from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write
 from core.config import UnifiedConfigManager
@@ -151,7 +151,7 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
         return fail_response(str(e), 400)
     except Exception as e:
         logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 @admin_router.get("/api/prompt", response_model=PromptGetResponse)
@@ -164,7 +164,7 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
         return fail_response(str(e), 400)
     except Exception as e:
         logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 # ── Dead Letter ───────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ async def get_dead_letters_endpoint(
         )
     except Exception as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 @admin_router.post(
@@ -214,7 +214,7 @@ async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
         return fail_response("outbox 不存在或状态不可重试", 400)
     except Exception as e:
         logger.error("[Admin] outbox 重新入队失败 id=%s error=%s", outbox_id, e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 @admin_router.get("/api/admin/suppressed")
@@ -229,7 +229,7 @@ async def list_suppressed_endpoint(
         return ok_response(http_status=200, data={"total": total, "items": items})
     except Exception as e:
         logger.error("查询 suppressed_records 失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 @admin_router.post(
@@ -248,7 +248,7 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
         return ok_response(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
     except Exception as e:
         logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()
 
 
 @admin_router.post(
@@ -278,4 +278,4 @@ async def replay_all_dead_letters(
         )
     except Exception as e:
         logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
-        return fail_response(str(e), 500)
+        return internal_error_response()

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api import internal_error_response
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -24,7 +25,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
-from services.webhooks.types import AnalysisResult, WebhookData
+from services.webhooks.types import AnalysisResult, JsonObject, WebhookData
 
 logger = get_logger("api.forwarding")
 
@@ -196,6 +197,7 @@ async def test_forward_rule_endpoint(
     from services.notifications.feishu import build_feishu_card, is_feishu_url, send_to_feishu
 
     try:
+        payload: JsonObject
         if is_feishu_url(target_url):
             payload = build_feishu_card(test_webhook, test_analysis)
             result = await send_to_feishu(target_url, payload)
@@ -238,5 +240,5 @@ async def list_outbox_endpoint(
         )
         return {"success": True, "data": data}
     except Exception as e:
-        logger.error("查询 outbox 列表失败: %s", e)
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        logger.error("查询 outbox 列表失败: %s", e, exc_info=True)
+        return internal_error_response()

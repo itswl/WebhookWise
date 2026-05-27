@@ -2,20 +2,20 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from core.logger import get_logger
-from services.webhooks.types import WebhookData
+from services.webhooks.types import JsonObject, WebhookData, webhook_data_from_mapping
 
 logger = get_logger("adapters.registry")
 
-_Normalizer = Callable[[WebhookData], WebhookData]
-_Detector = Callable[[WebhookData], bool]
+_Normalizer = Callable[[JsonObject], WebhookData]
+_Detector = Callable[[JsonObject], bool]
 _FNorm = TypeVar("_FNorm", bound=_Normalizer)
 _FDet = TypeVar("_FDet", bound=_Detector)
 
 
 class AdapterRegistry:
     def __init__(self) -> None:
-        self._detectors: list[tuple[str, Callable[[WebhookData], bool]]] = []
-        self._normalizers: dict[str, Callable[[WebhookData], WebhookData]] = {}
+        self._detectors: list[tuple[str, Callable[[JsonObject], bool]]] = []
+        self._normalizers: dict[str, Callable[[JsonObject], WebhookData]] = {}
         self._aliases: dict[str, str] = {}
 
     def register(self, source_name: str, *, aliases: set[str] | None = None) -> Callable[[_FNorm], _FNorm]:
@@ -44,7 +44,7 @@ class AdapterRegistry:
 
         return wrapper
 
-    def find_adapter_by_payload(self, data: WebhookData) -> str | None:
+    def find_adapter_by_payload(self, data: JsonObject) -> str | None:
         """根据 Payload 特征匹配适配器。"""
         for source_name, detector in self._detectors:
             try:
@@ -62,11 +62,11 @@ class AdapterRegistry:
         key = source.lower().replace(" ", "")
         return self._aliases.get(key)
 
-    def get_normalizer(self, source_name: str) -> Callable[[WebhookData], WebhookData] | None:
+    def get_normalizer(self, source_name: str) -> Callable[[JsonObject], WebhookData] | None:
         """获取特定适配器的归一化函数。"""
         return self._normalizers.get(source_name)
 
-    def normalize(self, adapter_name: str, data: WebhookData) -> WebhookData:
+    def normalize(self, adapter_name: str, data: JsonObject) -> WebhookData:
         """便捷方法：获取 normalizer 并对数据执行归一化。
 
         若适配器不存在则原样返回数据。
@@ -74,7 +74,7 @@ class AdapterRegistry:
         normalizer = self.get_normalizer(adapter_name)
         if normalizer is None:
             logger.warning("[Adapter Registry] No normalizer found for: %s", adapter_name)
-            return data
+            return webhook_data_from_mapping(data)
         return normalizer(data)
 
     def status(self) -> dict[str, int]:

@@ -11,7 +11,7 @@ from core.observability.metrics import FORWARD_DELIVERY_DURATION_SECONDS, FORWAR
 from core.url_security import UnsafeTargetUrlError
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.types import AnalysisResult, ForwardResult, WebhookData
+from services.webhooks.types import AnalysisResult, ForwardResult, JsonObject, WebhookData
 
 logger = get_logger("forwarding.remote")
 
@@ -31,7 +31,7 @@ async def forward_to_remote(
     if not target_url:
         return {"status": "skipped", "reason": "no_target_url"}
     target_type = "feishu" if is_feishu_url(target_url) else "webhook"
-    payload: dict[str, Any]
+    payload: JsonObject
     if target_type == "feishu":
         payload = build_feishu_card(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
     else:

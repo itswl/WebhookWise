@@ -17,7 +17,7 @@ from db.session import session_scope
 from models import WebhookEvent
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
-from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus
+from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus, unknown_analysis_result
 
 logger = get_logger("webhooks.command_service")
 
@@ -68,12 +68,13 @@ class _RequestIdResolution:
 def _resolve_analysis_for_duplicate(
     ai_analysis: AnalysisResult | None, original: WebhookEvent, reanalyzed: bool
 ) -> tuple[AnalysisResult, str | None]:
+    final_importance: str | None
     if ai_analysis:
         final_analysis, final_importance = ai_analysis, ai_analysis.get("importance")
     elif original.ai_analysis:
         final_analysis, final_importance = cast(AnalysisResult, original.ai_analysis), original.importance
     else:
-        final_analysis, final_importance = {}, None
+        final_analysis, final_importance = unknown_analysis_result(), None
 
     if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
         logger.info("更新原始告警 ID=%d 的AI分析结果（之前缺失）", original.id)
@@ -179,7 +180,7 @@ async def _save_duplicate_event(
         if res.scalar_one_or_none() is None:
             return None
         duplicate_count = 1
-        final_ai_analysis = payload.ai_analysis or {}
+        final_ai_analysis = payload.ai_analysis or unknown_analysis_result()
         final_importance = final_ai_analysis.get("importance") if final_ai_analysis else None
 
     if existing_event_id is not None:
@@ -259,7 +260,7 @@ async def _update_existing_event(
                     payload=payload,
                     original_id=original.id,
                     duplicate_count=original.duplicate_count or 1,
-                    ai_analysis=payload.ai_analysis or {},
+                    ai_analysis=payload.ai_analysis or unknown_analysis_result(),
                     importance=payload.ai_analysis.get("importance") if payload.ai_analysis else None,
                 )
                 await session.flush()
@@ -319,7 +320,7 @@ async def _resolve_duplicate_status(
     if is_duplicate is not None or skip_duplicate_lookup:
         return _DuplicateStatus(bool(is_duplicate), original_event, original_event_id)
 
-    alert_hash = payload.alert_hash or generate_alert_hash(payload.data, payload.source)
+    alert_hash = payload.alert_hash or generate_alert_hash(dict(payload.data), payload.source)
     check = await check_duplicate_event(
         alert_hash,
         session=session,
@@ -334,7 +335,7 @@ async def _resolve_duplicate_status(
 
 async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
     if input.alert_hash is None:
-        object.__setattr__(input, "alert_hash", generate_alert_hash(input.data, input.source))
+        object.__setattr__(input, "alert_hash", generate_alert_hash(dict(input.data), input.source))
     try:
         async with session_scope() as session:
             return await save_webhook_data_in_session(session, input=input)
@@ -346,7 +347,7 @@ async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
 async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebhookInput) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
     if input.alert_hash is None:
-        object.__setattr__(input, "alert_hash", generate_alert_hash(input.data, input.source))
+        object.__setattr__(input, "alert_hash", generate_alert_hash(dict(input.data), input.source))
     payload = SaveWebhookInput(
         data=input.data,
         source=input.source,
@@ -356,7 +357,7 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
         request_id=input.request_id,
         ai_analysis=input.ai_analysis,
         forward_status=input.forward_status,
-        alert_hash=input.alert_hash or generate_alert_hash(input.data, input.source),
+        alert_hash=input.alert_hash or generate_alert_hash(dict(input.data), input.source),
         dedup_key=input.dedup_key,
         prev_alert_id=input.prev_alert_id,
     )
