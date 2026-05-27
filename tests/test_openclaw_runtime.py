@@ -388,7 +388,7 @@ async def test_poll_openclaw_final_status_matrix() -> None:
 
 @pytest.mark.asyncio
 async def test_openclaw_challenge_and_handshake_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_client as openclaw
 
     class WsPolicy:
         nonce_timeout = 1
@@ -460,7 +460,7 @@ async def test_openclaw_challenge_and_handshake_branches(monkeypatch: pytest.Mon
 async def test_poll_session_result_handles_success_failures_and_missing_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_client as openclaw
 
     class WsPolicy:
         nonce_timeout = 1
@@ -522,7 +522,7 @@ async def test_poll_session_result_handles_success_failures_and_missing_response
 async def test_poll_result_stability_degrades_and_terminal_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_poll as openclaw
 
     metric_calls: list[MetricCall] = []
     monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", StubMetric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
@@ -613,7 +613,7 @@ async def test_poll_result_stability_degrades_and_terminal_errors(
 async def test_poll_timeout_missing_session_exception_and_dispatch_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_poll as openclaw
 
     metric_calls: list[MetricCall] = []
     monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", StubMetric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
@@ -677,7 +677,7 @@ async def test_poll_timeout_missing_session_exception_and_dispatch_paths(
 async def test_forward_to_openclaw_disabled_fallback_circuit_and_error_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_analysis as openclaw
 
     metric_calls: list[MetricCall] = []
     monkeypatch.setattr(openclaw, "FORWARD_DELIVERY_TOTAL", StubMetric(metric_calls, "FORWARD_DELIVERY_TOTAL"))
@@ -754,7 +754,7 @@ async def test_forward_to_openclaw_disabled_fallback_circuit_and_error_paths(
 async def test_analyze_with_openclaw_disabled_nondict_trace_and_empty_token_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_analysis as openclaw
 
     async def fake_prompt() -> str:
         return "prompt-template"
@@ -796,7 +796,7 @@ async def test_analyze_with_openclaw_disabled_nondict_trace_and_empty_token_path
 async def test_analyze_with_openclaw_retry_degrade_raise_and_parse_error_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_analysis as openclaw
 
     async def fake_prompt() -> str:
         return "prompt-template"
