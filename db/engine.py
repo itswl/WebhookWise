@@ -130,7 +130,6 @@ async def test_db_connection() -> bool:
         assert engine is not None
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        _logger.debug("数据库连接测试成功")
         return True
     except Exception as e:
         status = "error"
