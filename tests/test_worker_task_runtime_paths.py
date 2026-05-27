@@ -8,40 +8,7 @@ from typing import Any
 
 import pytest
 
-
-class _BoundMetric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self._sink = sink
-        self._name = name
-        self._args = args
-        self._kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "inc", amount))
-
-    def dec(self, amount: object = 1) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "dec", amount))
-
-    def set(self, value: object) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "set", value))
-
-    def observe(self, value: object) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "observe", value))
-
-
-class _Metric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str) -> None:
-        self._sink = sink
-        self._name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self._sink, self._name, args, kwargs)
-
-    def inc(self, amount: object = 1) -> None:
-        self._sink.append((self._name, (), {}, "inc", amount))
-
-    def dec(self, amount: object = 1) -> None:
-        self._sink.append((self._name, (), {}, "dec", amount))
+from tests.metric_helpers import MetricCall, StubMetric
 
 
 @dataclass
@@ -53,10 +20,10 @@ class _Policy:
 
 
 @pytest.fixture
-def task_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
+def task_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[MetricCall]]:
     from services.operations import tasks
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
+    metric_calls: list[MetricCall] = []
     for attr in (
         "SCHEDULED_TASK_DURATION_SECONDS",
         "SCHEDULED_TASK_LAG_SECONDS",
@@ -66,7 +33,7 @@ def task_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, 
         "WORKER_TASK_DURATION_SECONDS",
         "WORKER_TASKS_TOTAL",
     ):
-        monkeypatch.setattr(tasks, attr, _Metric(metric_calls, attr))
+        monkeypatch.setattr(tasks, attr, StubMetric(metric_calls, attr))
     monkeypatch.setattr(tasks.TaskRuntimePolicy, "from_config", staticmethod(lambda: _Policy()))
     return tasks, metric_calls
 

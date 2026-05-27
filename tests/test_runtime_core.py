@@ -13,30 +13,7 @@ import pytest
 from fastapi import HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
-
-class _BoundMetric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], str, object]], name: str, args: tuple[object, ...]) -> None:
-        self._sink = sink
-        self._name = name
-        self._args = args
-
-    def inc(self, amount: object = 1) -> None:
-        self._sink.append((self._name, self._args, "inc", amount))
-
-    def set(self, value: object) -> None:
-        self._sink.append((self._name, self._args, "set", value))
-
-    def observe(self, value: object) -> None:
-        self._sink.append((self._name, self._args, "observe", value))
-
-
-class _Metric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], str, object]], name: str) -> None:
-        self._sink = sink
-        self._name = name
-
-    def labels(self, *args: object, **_kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self._sink, self._name, args)
+from tests.metric_helpers import MetricActionCall, StubMetric
 
 
 @pytest.mark.asyncio
@@ -154,7 +131,7 @@ async def test_redis_record_operation_error_and_ping_failure_update_metrics(
 ) -> None:
     from core import redis_client
 
-    metric_calls: list[tuple[str, tuple[object, ...], str, object]] = []
+    metric_calls: list[MetricActionCall] = []
     failures: list[tuple[str, str]] = []
     successes: list[str] = []
 
@@ -162,8 +139,14 @@ async def test_redis_record_operation_error_and_ping_failure_update_metrics(
     def span(_name: str, _attrs: dict[str, object]) -> Any:
         yield None
 
-    monkeypatch.setattr("core.observability.metrics.REDIS_OPERATIONS_TOTAL", _Metric(metric_calls, "total"))
-    monkeypatch.setattr("core.observability.metrics.REDIS_OPERATION_DURATION_SECONDS", _Metric(metric_calls, "duration"))
+    monkeypatch.setattr(
+        "core.observability.metrics.REDIS_OPERATIONS_TOTAL",
+        StubMetric(metric_calls, "total", record_kwargs=False),
+    )
+    monkeypatch.setattr(
+        "core.observability.metrics.REDIS_OPERATION_DURATION_SECONDS",
+        StubMetric(metric_calls, "duration", record_kwargs=False),
+    )
     monkeypatch.setattr("core.redis_health.mark_redis_failure", lambda op, err: failures.append((op, str(err))))
     monkeypatch.setattr("core.redis_health.mark_redis_success", lambda op: successes.append(op))
     monkeypatch.setattr("core.observability.tracing.otel_span", span)
@@ -485,9 +468,15 @@ async def test_db_session_context_selection_scope_metrics_and_count_timeout(
     from core.app_context import AppContext, set_default_app_context
     from db import session as db_session
 
-    metric_calls: list[tuple[str, tuple[object, ...], str, object]] = []
-    monkeypatch.setattr("core.observability.metrics.DB_SESSION_TOTAL", _Metric(metric_calls, "total"))
-    monkeypatch.setattr("core.observability.metrics.DB_SESSION_DURATION_SECONDS", _Metric(metric_calls, "duration"))
+    metric_calls: list[MetricActionCall] = []
+    monkeypatch.setattr(
+        "core.observability.metrics.DB_SESSION_TOTAL",
+        StubMetric(metric_calls, "total", record_kwargs=False),
+    )
+    monkeypatch.setattr(
+        "core.observability.metrics.DB_SESSION_DURATION_SECONDS",
+        StubMetric(metric_calls, "duration", record_kwargs=False),
+    )
 
     @contextmanager
     def span(_name: str, _attrs: dict[str, object]) -> Any:
@@ -564,9 +553,17 @@ async def test_webhook_auth_dep_exception_branches_and_rate_limit_dep(
 ) -> None:
     from core import webhook_security
 
-    metric_calls: list[tuple[str, tuple[object, ...], str, object]] = []
-    monkeypatch.setattr(webhook_security, "SECURITY_CHECKS_TOTAL", _Metric(metric_calls, "security"))
-    monkeypatch.setattr(webhook_security, "REDIS_UNAVAILABLE_TOTAL", _Metric(metric_calls, "redis_unavailable"))
+    metric_calls: list[MetricActionCall] = []
+    monkeypatch.setattr(
+        webhook_security,
+        "SECURITY_CHECKS_TOTAL",
+        StubMetric(metric_calls, "security", record_kwargs=False),
+    )
+    monkeypatch.setattr(
+        webhook_security,
+        "REDIS_UNAVAILABLE_TOTAL",
+        StubMetric(metric_calls, "redis_unavailable", record_kwargs=False),
+    )
 
     class Request:
         def __init__(self) -> None:
@@ -632,7 +629,10 @@ async def test_webhook_auth_dep_exception_branches_and_rate_limit_dep(
         return "1.2.3.4", limited_tier
 
     monkeypatch.setattr(webhook_security, "enforce_webhook_rate_limit", rate_limit_rejected)
-    monkeypatch.setattr("core.observability.metrics.WEBHOOK_RECEIVED_TOTAL", _Metric(metric_calls, "received"))
+    monkeypatch.setattr(
+        "core.observability.metrics.WEBHOOK_RECEIVED_TOTAL",
+        StubMetric(metric_calls, "received", record_kwargs=False),
+    )
     monkeypatch.setattr("core.observability.metrics.sanitize_source", lambda source: f"safe:{source}")
     response = Response()
     with pytest.raises(HTTPException) as rate_limited:
@@ -695,8 +695,11 @@ async def test_redis_health_probe_recovery_failure_and_key_builders(monkeypatch:
 
     redis_health.reset_redis_health()
 
-    metric_calls: list[tuple[str, tuple[object, ...], str, object]] = []
-    monkeypatch.setattr("core.observability.metrics.REDIS_HEALTH_STATE", _Metric(metric_calls, "redis_health"))
+    metric_calls: list[MetricActionCall] = []
+    monkeypatch.setattr(
+        "core.observability.metrics.REDIS_HEALTH_STATE",
+        StubMetric(metric_calls, "redis_health", record_kwargs=False),
+    )
     redis_health.mark_redis_failure("get", RuntimeError("down"))
 
     class SyncRedis:

@@ -6,28 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
-
-class _BoundMetric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self.calls = calls
-        self.name = name
-        self.args = args
-        self.kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "inc", amount))
-
-    def observe(self, value: object) -> None:
-        self.calls.append((self.name, self.args, self.kwargs, "observe", value))
-
-
-class _Metric:
-    def __init__(self, calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str) -> None:
-        self.calls = calls
-        self.name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self.calls, self.name, args, kwargs)
+from tests.metric_helpers import MetricCall, StubMetric
 
 
 def test_retry_policy_classifies_wrapped_status_codes_and_openai_like_errors() -> None:
@@ -92,8 +71,8 @@ def test_retry_policy_handles_response_status_attrs_error_codes_and_cycles() -> 
 async def test_dedup_state_read_write_errors_and_payload_coercion(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import dedup
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", _Metric(metric_calls, "REDIS_UNAVAILABLE_TOTAL"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", StubMetric(metric_calls, "REDIS_UNAVAILABLE_TOTAL"))
 
     async def read_error(_key: str) -> dict[str, object]:
         raise RuntimeError("redis down")
@@ -194,8 +173,8 @@ async def test_resolve_dedup_reuse_rechain_db_fallback_and_new(
 def test_generate_event_keys_fallback_records_identity_degradation(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import dedup
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(dedup, "WEBHOOK_IDENTITY_DEGRADED_TOTAL", _Metric(metric_calls, "IDENTITY"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(dedup, "WEBHOOK_IDENTITY_DEGRADED_TOTAL", StubMetric(metric_calls, "IDENTITY"))
 
     alert_hash, dedup_key = dedup.generate_event_keys({"unstructured": "value"}, " CustomSource ")
 

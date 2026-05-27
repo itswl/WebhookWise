@@ -68,11 +68,7 @@ class WebhookEvent(Base):
 
     def fill_fields(self, **kwargs: object) -> None:
         """统一填充字段"""
-        valid_fields = getattr(type(self), "_VALID_FIELDS", None)
-        if valid_fields is None:
-            valid_fields = frozenset(type(self).__mapper__.column_attrs.keys())
-            type(self)._VALID_FIELDS = valid_fields
-        unknown_fields = sorted(k for k in kwargs if k not in valid_fields)
+        unknown_fields = sorted(k for k in kwargs if k not in WEBHOOK_EVENT_VALID_FIELDS)
         if unknown_fields:
             raise ValueError(f"未知 WebhookEvent 字段: {','.join(unknown_fields)}")
         for k, v in kwargs.items():
@@ -125,3 +121,6 @@ class ArchivedWebhookEvent(Base):
     archived_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)
+
+
+WEBHOOK_EVENT_VALID_FIELDS: frozenset[str] = frozenset(WebhookEvent.__mapper__.column_attrs.keys())

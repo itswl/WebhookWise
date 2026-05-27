@@ -14,29 +14,7 @@ from core.datetime_utils import utcnow
 from services.forwarding.circuit_breakers import OpenClawForwardDependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import DeepAnalysisStatus, degraded_forward_result, webhook_data_from_mapping
-
-
-class _BoundMetric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str, args: tuple[object, ...], kwargs: dict[str, object]) -> None:
-        self._sink = sink
-        self._name = name
-        self._args = args
-        self._kwargs = kwargs
-
-    def inc(self, amount: object = 1) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "inc", amount))
-
-    def observe(self, value: object) -> None:
-        self._sink.append((self._name, self._args, self._kwargs, "observe", value))
-
-
-class _Metric:
-    def __init__(self, sink: list[tuple[str, tuple[object, ...], dict[str, object], str, object]], name: str) -> None:
-        self._sink = sink
-        self._name = name
-
-    def labels(self, *args: object, **kwargs: object) -> _BoundMetric:
-        return _BoundMetric(self._sink, self._name, args, kwargs)
+from tests.metric_helpers import MetricCall, StubMetric
 
 
 class _FakeWebSocket:
@@ -546,8 +524,8 @@ async def test_poll_result_stability_degrades_and_terminal_errors(
 ) -> None:
     from services.analysis import openclaw
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", _Metric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", StubMetric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
 
     storage: dict[int, dict[str, object] | None] = {7: None}
     notifications: list[tuple[int, str]] = []
@@ -637,8 +615,8 @@ async def test_poll_timeout_missing_session_exception_and_dispatch_paths(
 ) -> None:
     from services.analysis import openclaw
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", _Metric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(openclaw, "DEEP_ANALYSIS_TOTAL", StubMetric(metric_calls, "DEEP_ANALYSIS_TOTAL"))
 
     notified: list[str] = []
 
@@ -701,12 +679,12 @@ async def test_forward_to_openclaw_disabled_fallback_circuit_and_error_paths(
 ) -> None:
     from services.analysis import openclaw
 
-    metric_calls: list[tuple[str, tuple[object, ...], dict[str, object], str, object]] = []
-    monkeypatch.setattr(openclaw, "FORWARD_DELIVERY_TOTAL", _Metric(metric_calls, "FORWARD_DELIVERY_TOTAL"))
+    metric_calls: list[MetricCall] = []
+    monkeypatch.setattr(openclaw, "FORWARD_DELIVERY_TOTAL", StubMetric(metric_calls, "FORWARD_DELIVERY_TOTAL"))
     monkeypatch.setattr(
         openclaw,
         "FORWARD_DELIVERY_DURATION_SECONDS",
-        _Metric(metric_calls, "FORWARD_DELIVERY_DURATION_SECONDS"),
+        StubMetric(metric_calls, "FORWARD_DELIVERY_DURATION_SECONDS"),
     )
 
     class PassBreaker:
