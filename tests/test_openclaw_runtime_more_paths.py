@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from datetime import timedelta
 from typing import Any
 
+import httpx
 import pytest
 
 from core import json
@@ -140,6 +142,59 @@ def _record(**overrides: object) -> dict[str, object]:
     return values
 
 
+class _PollResponse:
+    def __init__(self, status_code: int, payload: object = None, *, json_error: Exception | None = None) -> None:
+        self.status_code = status_code
+        self.payload = payload if payload is not None else {}
+        self.json_error = json_error
+
+    def json(self) -> object:
+        if self.json_error is not None:
+            raise self.json_error
+        return self.payload
+
+
+class _PollingClient:
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = responses
+        self.calls: list[dict[str, object]] = []
+
+    async def get(self, url: str, **kwargs: object) -> object:
+        self.calls.append({"url": url, **kwargs})
+        item = self.responses.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+class _PostClient:
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = responses
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def post(self, url: str, **kwargs: object) -> object:
+        self.calls.append((url, kwargs))
+        item = self.responses.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+class _PostResponse:
+    status_code = 200
+
+    def __init__(self, payload: object = None, *, raise_error: Exception | None = None) -> None:
+        self.payload = payload if payload is not None else {"runId": "run-1"}
+        self.raise_error = raise_error
+
+    def raise_for_status(self) -> None:
+        if self.raise_error is not None:
+            raise self.raise_error
+
+    def json(self) -> object:
+        return self.payload
+
+
 def test_openclaw_json_url_and_history_parsing_helpers() -> None:
     from services.analysis import openclaw
 
@@ -180,6 +235,177 @@ def test_openclaw_json_url_and_history_parsing_helpers() -> None:
     )
     assert completed["status"] == "completed"
     assert completed["text"] == "root cause"
+
+
+def test_openclaw_policy_helpers_device_auth_and_overview(
+    monkeypatch: pytest.MonkeyPatch,
+    temp_config: Any,
+) -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from services.analysis import openclaw
+
+    monkey_cfg = temp_config.openclaw
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_DEVICE_ID", "device-id")
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_DEVICE_TOKEN", "device-token")
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_GATEWAY_TOKEN", "gateway-token")
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_NONCE_TIMEOUT", 4.0)
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_WS_MAX_HISTORY_FRAMES", 0)
+    private_key = Ed25519PrivateKey.generate()
+    pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    monkeypatch.setattr(
+        monkey_cfg,
+        "OPENCLAW_DEVICE_PRIVATE_KEY_PEM",
+        "".join(line for line in pem.splitlines() if not line.startswith("-----")),
+    )
+
+    ws_policy = openclaw.OpenClawWsPolicy.from_config()
+    assert ws_policy.max_history_frames == 1
+
+    auth = openclaw._build_device_auth("nonce-1", gateway_token="gateway-token", policy=ws_policy)
+    assert auth is not None
+    assert auth["device_token"] == "device-token"
+    assert auth["device"]["id"] == "device-id"
+    assert auth["device"]["nonce"] == "nonce-1"
+    base64.urlsafe_b64decode(auth["device"]["signature"] + "==")
+
+    no_auth = openclaw._build_device_auth(
+        "nonce",
+        policy=openclaw.OpenClawWsPolicy("", "", "", "gateway", 1.0, 1),
+    )
+    assert no_auth is None
+    invalid_auth = openclaw._build_device_auth(
+        "nonce",
+        policy=openclaw.OpenClawWsPolicy("device", "not-base64", "", "gateway", 1.0, 1),
+    )
+    assert invalid_auth is None
+
+    overview = openclaw._extract_openclaw_overview(
+        "prometheus",
+        {
+            "alerts": [
+                {
+                    "status": "firing",
+                    "labels": {
+                        "alertname": "HighCPU",
+                        "severity": "critical",
+                        "internal_label_alert_id": "fp-1",
+                    },
+                    "annotations": {"description": "cpu high"},
+                    "startsAt": "2026-05-27T00:00:00Z",
+                }
+            ]
+        },
+    )
+    assert overview["rule_name"] == "HighCPU"
+    assert overview["prometheus_alert"]["fingerprint"] == "fp-1"
+    assert openclaw._dict_or_empty([("not", "dict")]) == {}
+
+
+@pytest.mark.asyncio
+async def test_poll_openclaw_final_status_matrix() -> None:
+    from services.analysis import openclaw
+
+    policy = _poll_policy(http_api_url="http://openclaw.test", poll_timeout_seconds=7, connect_timeout_seconds=3)
+
+    client = _PollingClient(
+        [
+            _PollResponse(404),
+            _PollResponse(202),
+            _PollResponse(500),
+        ]
+    )
+    error = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=client,
+        retry_count=3,
+        trace_id="trace-id",
+    )
+    assert error == {"status": "error", "error": "HTTP 500"}
+    first_call = client.calls[0]
+    assert first_call["url"] == "http://openclaw.test/sessions/session-1/final"
+    assert first_call["headers"]["X-Trace-Id"] == "trace-id"
+
+    invalid_json = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, json_error=ValueError("bad json"))]),
+        retry_count=1,
+    )
+    assert invalid_json == {"status": "error", "error": "Invalid JSON response"}
+
+    invalid_object = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, ["not", "dict"])]),
+        retry_count=1,
+    )
+    assert invalid_object == {"status": "error", "error": "Invalid JSON response"}
+
+    pending_processing = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, {"isProcessing": True})]),
+        retry_count=1,
+    )
+    assert pending_processing == {"status": "pending"}
+
+    pending_not_final = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, {"isFinal": False, "text": "partial"})]),
+        retry_count=1,
+    )
+    assert pending_not_final == {"status": "pending"}
+
+    completed = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, {"isFinal": True, "text": "done", "messageCount": 4})]),
+        retry_count=1,
+    )
+    assert completed == {"status": "completed", "text": "done", "msg_count": 4, "is_final": True}
+
+    no_text = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([_PollResponse(200, {"isFinal": True})]),
+        retry_count=1,
+    )
+    assert no_text == {"status": "error", "error": "No text content"}
+
+    read_timeout = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([httpx.ReadTimeout("read")]),
+        retry_count=1,
+    )
+    assert read_timeout == {"status": "pending", "error": "ReadTimeout after 7s"}
+
+    transport = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([httpx.ConnectTimeout("connect")]),
+        retry_count=1,
+    )
+    assert transport["status"] == "error"
+    assert transport["retryable"] is True
+
+    generic = await openclaw.poll_openclaw_final(
+        "session-1",
+        policy=policy,
+        http_client=_PollingClient([RuntimeError()]),
+        retry_count=1,
+    )
+    assert generic["status"] == "error"
+    assert generic["retryable"] is True
+    assert "RuntimeError" in str(generic["error"])
 
 
 @pytest.mark.asyncio
@@ -544,3 +770,142 @@ async def test_forward_to_openclaw_disabled_fallback_circuit_and_error_paths(
 
     statuses = [args[1] for name, args, _kwargs, action, _value in metric_calls if name == "FORWARD_DELIVERY_TOTAL" and action == "inc"]
     assert {"disabled", "local-ai", "circuit_broken", "error"} <= set(statuses)
+
+
+@pytest.mark.asyncio
+async def test_analyze_with_openclaw_disabled_nondict_trace_and_empty_token_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.analysis import openclaw
+
+    async def fake_prompt() -> str:
+        return "prompt-template"
+
+    class PassBreaker:
+        async def call_async(self, fn: Any, *args: object, **kwargs: object) -> object:
+            return await fn(*args, **kwargs)
+
+    monkeypatch.setattr(openclaw, "load_deep_analysis_prompt_template", fake_prompt)
+    monkeypatch.setattr(openclaw, "get_prompt_source", lambda _kind: "test-source")
+    monkeypatch.setattr(openclaw, "get_current_trace_id", lambda: "trace-123")
+
+    disabled = await openclaw.analyze_with_openclaw(
+        webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "A"}}),
+        policy=_trigger_policy(enabled=False),
+        dependencies=OpenClawForwardDependencies(http_client=object(), circuit_breaker=PassBreaker()),
+    )
+    assert disabled["status"] == "degraded"
+
+    client = _PostClient([_PostResponse({"runId": "run-ok"})])
+    result = await openclaw.analyze_with_openclaw(
+        {"source": "raw", "parsed_data": "plain text"},
+        user_question="why?",
+        policy=_trigger_policy(hooks_token=""),
+        dependencies=OpenClawForwardDependencies(http_client=client, circuit_breaker=PassBreaker()),
+    )
+    assert result["_openclaw_run_id"] == "run-ok"
+    posted_url, posted_kwargs = client.calls[0]
+    assert posted_url == "http://openclaw.test/hooks/agent"
+    assert posted_kwargs["headers"]["Authorization"] == "Bearer "
+    assert posted_kwargs["headers"]["X-Trace-Id"] == "trace-123"
+    body = json.loads(posted_kwargs["content"])
+    assert body["timeoutSeconds"] == 60
+    assert "why?" in body["message"]
+    assert '"raw":"plain text"' in body["message"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_with_openclaw_retry_degrade_raise_and_parse_error_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.analysis import openclaw
+
+    async def fake_prompt() -> str:
+        return "prompt-template"
+
+    class PassBreaker:
+        async def call_async(self, fn: Any, *args: object, **kwargs: object) -> object:
+            return await fn(*args, **kwargs)
+
+    class OpenBreaker:
+        async def call_async(self, _fn: Any, *_args: object, **_kwargs: object) -> object:
+            raise CircuitBreakerOpenException("openclaw")
+
+    monkeypatch.setattr(openclaw, "load_deep_analysis_prompt_template", fake_prompt)
+    monkeypatch.setattr(openclaw, "get_prompt_source", lambda _kind: "test-source")
+    async def sanitize(data: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        return data
+
+    monkeypatch.setattr(openclaw, "sanitize_for_ai_async", sanitize)
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    retry_client = _PostClient([RuntimeError("first failed"), _PostResponse({"runId": "run-after-retry"})])
+    retry_result = await openclaw.analyze_with_openclaw(
+        webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Retry"}}),
+        policy=_trigger_policy(max_retries=2, retry_sleep_seconds=0.25),
+        dependencies=OpenClawForwardDependencies(http_client=retry_client, circuit_breaker=PassBreaker()),
+        sleep=fake_sleep,
+    )
+    assert retry_result["_openclaw_run_id"] == "run-after-retry"
+    assert sleeps == [0.25]
+
+    degraded = await openclaw.analyze_with_openclaw(
+        webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Circuit"}}),
+        policy=_trigger_policy(enable_degradation=True),
+        dependencies=OpenClawForwardDependencies(http_client=_PostClient([]), circuit_breaker=OpenBreaker()),
+    )
+    assert degraded["status"] == "degraded"
+    assert "CircuitBreaker" in degraded["_degraded_reason"]
+
+    with pytest.raises(CircuitBreakerOpenException):
+        await openclaw.analyze_with_openclaw(
+            webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Circuit"}}),
+            policy=_trigger_policy(enable_degradation=False),
+            dependencies=OpenClawForwardDependencies(http_client=_PostClient([]), circuit_breaker=OpenBreaker()),
+        )
+
+    all_fail = await openclaw.analyze_with_openclaw(
+        webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Fail"}}),
+        policy=_trigger_policy(max_retries=1, enable_degradation=True),
+        dependencies=OpenClawForwardDependencies(
+            http_client=_PostClient([RuntimeError("permanent")]),
+            circuit_breaker=PassBreaker(),
+        ),
+    )
+    assert all_fail["status"] == "degraded"
+    assert "permanent" in all_fail["_degraded_reason"]
+
+    with pytest.raises(Exception, match="Openclaw 请求失败: permanent"):
+        await openclaw.analyze_with_openclaw(
+            webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Fail"}}),
+            policy=_trigger_policy(max_retries=1, enable_degradation=False),
+            dependencies=OpenClawForwardDependencies(
+                http_client=_PostClient([RuntimeError("permanent")]),
+                circuit_breaker=PassBreaker(),
+            ),
+        )
+
+    parse_degraded = await openclaw.analyze_with_openclaw(
+        webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Parse"}}),
+        policy=_trigger_policy(enable_degradation=True),
+        dependencies=OpenClawForwardDependencies(
+            http_client=_PostClient([_PostResponse(["not", "dict"])]),
+            circuit_breaker=PassBreaker(),
+        ),
+    )
+    assert parse_degraded["status"] == "degraded"
+    assert "JSON object" in parse_degraded["_degraded_reason"]
+
+    with pytest.raises(ValueError, match="JSON object"):
+        await openclaw.analyze_with_openclaw(
+            webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Parse"}}),
+            policy=_trigger_policy(enable_degradation=False),
+            dependencies=OpenClawForwardDependencies(
+                http_client=_PostClient([_PostResponse(["not", "dict"])]),
+                circuit_breaker=PassBreaker(),
+            ),
+        )
