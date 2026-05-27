@@ -60,11 +60,16 @@ from services.webhooks.noise_stage import compute_noise
 from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import EventEnvelope
 from services.webhooks.types import (
+    WEBHOOK_ADAPTER,
     AnalysisResult,
     NoiseReductionContext,
     WebhookProcessContext,
     WebhookProcessingStatus,
     WebhookRequestContext,
+    analysis_route,
+    is_analysis_degraded,
+    pending_dedup_placeholder,
+    set_analysis_route,
 )
 
 
@@ -91,9 +96,9 @@ def parse_request(
         webhook_full_data={
             "body": payload,
             "headers": headers,
-            "parsed_data": norm.data,
+            "parsed_data": dict(norm.data),
             "source": norm.source,
-            "timestamp": ts,
+            "timestamp": ts or "",
         },
         headers=headers,
     )
@@ -207,7 +212,7 @@ async def _resolve_noise_context(
     if dedup_result.action in ("reuse", "rechain"):
         analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
         route_type = dedup_result.route_type or "redis_reuse"
-        analysis["_route_type"] = route_type  # type: ignore[typeddict-item]
+        set_analysis_route(analysis, route_type)
         importance = normalize_importance(analysis.get("importance", "unknown"))
         set_log_context(webhook_route=route_type)
         WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
@@ -215,7 +220,7 @@ async def _resolve_noise_context(
             ctx.metric_source,
             route_type,
             importance,
-            str(bool(analysis.get("_degraded", False))).lower(),
+            str(is_analysis_degraded(analysis)).lower(),
         ).inc()
         await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
         logger.debug(
@@ -258,7 +263,7 @@ async def _resolve_noise_context(
         await remember_dedup_state(
             ctx.dedup_key,
             original_event_id=0,
-            analysis={"_degraded": True, "_pending": True},
+            analysis=pending_dedup_placeholder(),
             ttl_seconds=dedup_ttl,
         )
 
@@ -267,7 +272,7 @@ async def _resolve_noise_context(
             http_client=dependencies.http_client,
         )
 
-    route_type = analysis_result.get("_route_type", "ai")
+    route_type = analysis_route(analysis_result)
     importance = normalize_importance(analysis_result.get("importance", "unknown"))
     set_log_context(webhook_route=route_type)
     WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
@@ -275,7 +280,7 @@ async def _resolve_noise_context(
         ctx.metric_source,
         route_type,
         importance,
-        str(bool(analysis_result.get("_degraded", False))).lower(),
+        str(is_analysis_degraded(analysis_result)).lower(),
     ).inc()
 
     logger.info(
@@ -284,7 +289,7 @@ async def _resolve_noise_context(
         ctx.request_id,
         route_type,
         importance,
-        analysis_result.get("_degraded", False),
+        is_analysis_degraded(analysis_result),
     )
     emit_event(
         "webhook.analysis.completed",
@@ -294,7 +299,7 @@ async def _resolve_noise_context(
             WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
             WEBHOOK_IMPORTANCE: importance,
             WEBHOOK_ROUTE: route_type,
-            "ai.degraded": bool(analysis_result.get("_degraded", False)),
+            "ai.degraded": is_analysis_degraded(analysis_result),
         },
     )
 
@@ -312,7 +317,7 @@ async def _resolve_noise_context(
         noise = await compute_noise(
             ctx.alert_hash,
             ctx.req_ctx.source,
-            ctx.req_ctx.parsed_data,
+            dict(ctx.req_ctx.parsed_data),
             analysis_result,
             policy=dependencies.noise_policy,
         )
@@ -501,7 +506,7 @@ def _log_completed_processing(
 
     event_type = "duplicate" if save_res.is_duplicate else "new"
     importance = normalize_importance(final_analysis.get("importance", "unknown"))
-    route_label = final_analysis.get("_route_type", "ai")
+    route_label = analysis_route(final_analysis)
     noise_relation = noise.relation
     duration_ms = int((time.perf_counter() - start_perf) * 1000)
 
@@ -595,7 +600,7 @@ async def _handle_raw_ingest(
                 "[Pipeline] 开始处理 request_id=%s source=%s adapter=%s body_size=%d",
                 request_id,
                 req_ctx.source,
-                req_ctx.parsed_data.get("_adapter", req_ctx.source),
+                req_ctx.parsed_data.get(WEBHOOK_ADAPTER, req_ctx.source),
                 len(envelope.raw_body),
             )
             if _span:

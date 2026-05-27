@@ -1,8 +1,8 @@
 """Webhook deduplication — Redis-first sliding window with DB fallback."""
 
-import contextlib
 import hashlib
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -11,10 +11,11 @@ from core import json
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from core.observability.metrics import WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
+from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
 from db.session import session_scope
+from services.webhooks.types import is_analysis_degraded, is_pending_result
 
 logger = get_logger("dedup")
 
@@ -36,7 +37,15 @@ class DedupState:
 async def get_dedup_state(dedup_key: str) -> DedupState | None:
     try:
         payload = await redis_get_json_dict(webhook_dedupe(dedup_key))
-    except Exception:
+    except Exception as e:
+        REDIS_UNAVAILABLE_TOTAL.labels("dedup", "read_allowed").inc()
+        logger.warning(
+            "[Dedup] Redis 读取失败，继续走 DB fallback dedup_key=%s error_type=%s error=%s",
+            dedup_key[:32] if dedup_key else "-",
+            type(e).__name__,
+            e,
+            exc_info=True,
+        )
         return None
     if not payload:
         return None
@@ -81,8 +90,18 @@ async def remember_dedup_state(
     }
     if analysis:
         payload["analysis"] = analysis
-    with contextlib.suppress(Exception):
+    try:
         await redis_setex_json(webhook_dedupe(dedup_key), max(60, ttl_seconds), payload)
+    except Exception as e:
+        REDIS_UNAVAILABLE_TOTAL.labels("dedup", "write_failed").inc()
+        logger.warning(
+            "[Dedup] Redis 写入失败，事件已继续处理但滑动窗口可能缺失 dedup_key=%s event_id=%s error_type=%s error=%s",
+            dedup_key[:32] if dedup_key else "-",
+            original_event_id,
+            type(e).__name__,
+            e,
+            exc_info=True,
+        )
 
 
 # ── Dedup resolver ───────────────────────────────────────────────────────────
@@ -110,7 +129,7 @@ class DedupResult:
         return self.action == DedupAction.RECHAIN
 
 
-def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
+def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]:
     """一次提取 identity 同时生成 alert_hash 和 dedup_key。"""
     from adapters.normalized import extract_alert_identity
 
@@ -148,7 +167,7 @@ def generate_event_keys(data: dict[str, Any], source: str) -> tuple[str, str]:
     return fallback_hash, fallback_hash
 
 
-def generate_alert_hash(data: dict[str, Any], source: str) -> str:
+def generate_alert_hash(data: Mapping[str, Any], source: str) -> str:
     """Convenience wrapper — returns only the alert_hash portion of generate_event_keys."""
     return generate_event_keys(data, source)[0]
 
@@ -164,7 +183,7 @@ def _analysis_reuse_window_seconds() -> int:
 def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
     if not analysis:
         return False
-    return not analysis.get("_degraded") and not analysis.get("_pending")
+    return not is_analysis_degraded(analysis) and not is_pending_result(analysis)
 
 
 async def _find_original_by_dedup_key(dedup_key: str, window_seconds: int) -> dict[str, Any] | None:
