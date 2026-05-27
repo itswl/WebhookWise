@@ -374,7 +374,7 @@ async def _try_recv_challenge(
                 return nonce_val
     except asyncio.TimeoutError:
         return None
-    except (RuntimeError, websockets.WebSocketException) as e:
+    except (OSError, RuntimeError, websockets.WebSocketException) as e:
         logger.debug("Error receiving challenge: %s", e)
         return None
     return None
@@ -408,7 +408,7 @@ async def _handshake(
         return False, "handshake_timeout"
     except json.JSONDecodeError:
         return False, "invalid_response"
-    except (OSError, RuntimeError, websockets.WebSocketException):
+    except (EOFError, OSError, RuntimeError, websockets.WebSocketException):
         logger.debug("OpenClaw WebSocket handshake failed", exc_info=True)
         return False, "handshake_error"
 
@@ -498,6 +498,5 @@ async def poll_session_result(
         return {"status": "error", "error": f"Timeout ({timeout}s)"}
     except json.JSONDecodeError as e:
         return {"status": "error", "error": f"Invalid JSON response: {e}"}
-    except (OSError, RuntimeError, websockets.WebSocketException) as e:
+    except (EOFError, OSError, RuntimeError, websockets.WebSocketException) as e:
         return {"status": "error", "error": str(e)}
-
