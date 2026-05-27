@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import internal_error_response
+from api import DELIVERY_ERROR_MESSAGE, internal_error_response
 from api.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
@@ -351,7 +351,7 @@ async def forward_deep_analysis(
                 mask_url(target_url),
                 reason,
             )
-            return JSONResponse(status_code=400, content={"success": False, "error": f"转发失败: {reason}"})
+            return JSONResponse(status_code=400, content={"success": False, "error": DELIVERY_ERROR_MESSAGE})
         logger.info(
             "[DeepAnalysis] 手动转发已入队 analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
             analysis_id,

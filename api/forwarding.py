@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import internal_error_response
+from api import DELIVERY_ERROR_MESSAGE, internal_error_response
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -210,13 +210,20 @@ async def test_forward_rule_endpoint(
             )
     except Exception as e:
         logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
-        return JSONResponse(status_code=502, content={"success": False, "error": f"发送失败: {e}"})
+        return JSONResponse(status_code=502, content={"success": False, "error": DELIVERY_ERROR_MESSAGE})
 
     if result.get("status") == "success":
         return {"success": True, "message": "测试消息已送达", "detail": result}
+    logger.warning(
+        "[ForwardAPI] 测试转发未送达 rule_id=%s status=%s message=%s reason=%s",
+        rule_id,
+        result.get("status"),
+        result.get("message"),
+        result.get("reason"),
+    )
     return JSONResponse(
         status_code=502,
-        content={"success": False, "error": result.get("message") or f"发送失败: {result.get('status')}"},
+        content={"success": False, "error": DELIVERY_ERROR_MESSAGE},
     )
 
 

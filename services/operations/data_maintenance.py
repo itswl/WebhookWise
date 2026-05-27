@@ -1,8 +1,9 @@
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, not_, or_, select, true
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
@@ -43,6 +44,84 @@ def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object
     }
 
 
+def _days_threshold(now: datetime, days: int) -> datetime:
+    return now - timedelta(days=max(0, int(days)))
+
+
+def _keyword_cleanup_filter(policy: DataMaintenancePolicy) -> sa.ColumnElement[bool] | None:
+    conditions: list[sa.ColumnElement[bool]] = []
+    for field, keywords in policy.cleanup_keywords.items():
+        for keyword in keywords:
+            if not keyword:
+                continue
+            if field == "summary":
+                conditions.append(WebhookEvent.ai_analysis["summary"].astext.like(f"%{keyword}%"))
+            elif field == "parsed_data":
+                conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{keyword}%"))
+            else:
+                logger.warning("[Maintenance] 忽略未知清理关键字字段: %s", field)
+    if not conditions:
+        return None
+    return or_(*conditions)
+
+
+def _does_not_match_policy(column: Any, policy_names: tuple[str, ...]) -> sa.ColumnElement[bool]:
+    if not policy_names:
+        return true()
+    return or_(column.is_(None), not_(column.in_(policy_names)))
+
+
+def _cleanup_filter(policy: DataMaintenancePolicy, now: datetime) -> sa.ColumnElement[bool]:
+    """
+    Build the retention predicate with explicit precedence:
+    1. cleanup keywords shorten retention to the default retention window;
+    2. configured importance retention owns known importance values;
+    3. source retention applies only when no importance policy matches;
+    4. default retention applies only when neither importance nor source policy matches.
+    """
+    conditions: list[sa.ColumnElement[bool]] = []
+
+    importance_names = tuple(policy.retention_policies)
+    source_names = tuple(policy.source_retention_policies)
+    no_importance_policy = _does_not_match_policy(WebhookEvent.importance, importance_names)
+    no_source_policy = _does_not_match_policy(WebhookEvent.source, source_names)
+
+    keyword_filter = _keyword_cleanup_filter(policy)
+    if keyword_filter is not None:
+        conditions.append(
+            and_(
+                keyword_filter,
+                WebhookEvent.timestamp < _days_threshold(now, policy.retention_days_default),
+            )
+        )
+
+    for importance, days in policy.retention_policies.items():
+        conditions.append(
+            and_(
+                WebhookEvent.importance == importance,
+                WebhookEvent.timestamp < _days_threshold(now, days),
+            )
+        )
+
+    for source, days in policy.source_retention_policies.items():
+        conditions.append(
+            and_(
+                no_importance_policy,
+                WebhookEvent.source == source,
+                WebhookEvent.timestamp < _days_threshold(now, days),
+            )
+        )
+
+    conditions.append(
+        and_(
+            no_importance_policy,
+            no_source_policy,
+            WebhookEvent.timestamp < _days_threshold(now, policy.retention_days_default),
+        )
+    )
+    return or_(*conditions)
+
+
 async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
     根据数据保留策略归档并清理过期 webhook 记录。
@@ -56,41 +135,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
     try:
         now = utcnow()
 
-        # 1. 构建复合查询条件
-        # 我们寻找符合以下任一条件的记录：
-        # - 重要性匹配且超过保留天数
-        # - 来源匹配且超过保留天数
-        # - 超过默认全局保留天数
-
-        conditions: list[sa.ColumnElement[bool]] = []
-
-        # 按重要性策略
-        for importance, days in policy.retention_policies.items():
-            threshold = now - timedelta(days=days)
-            conditions.append((WebhookEvent.importance == importance) & (WebhookEvent.timestamp < threshold))
-
-        # 按来源策略
-        for source, days in policy.source_retention_policies.items():
-            threshold = now - timedelta(days=days)
-            conditions.append((WebhookEvent.source == source) & (WebhookEvent.timestamp < threshold))
-
-        # 按关键字匹配策略
-        for field, keywords in policy.cleanup_keywords.items():
-            for kw in keywords:
-                if field == "summary":
-                    conditions.append(WebhookEvent.ai_analysis["summary"].astext.like(f"%{kw}%"))
-                elif field == "parsed_data":
-                    conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{kw}%"))
-
-        # 默认保留策略
-        default_threshold = now - timedelta(days=policy.retention_days_default)
-        # 如果既不在重要性策略里，也不在来源策略里，且超过默认天数，也清理
-        # 但为了简单，我们直接加一个全局阈值作为主要判断逻辑之一
-        conditions.append(WebhookEvent.timestamp < default_threshold)
-
-        # 转换为 SQLAlchemy or_ 条件
-        # 注意：这里可能产生重叠，但 or_ 会处理
-        combined_filter = or_(*conditions)
+        combined_filter = _cleanup_filter(policy, now)
 
         batch_limit = 5000
         while True:
