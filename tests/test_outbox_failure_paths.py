@@ -863,7 +863,7 @@ class TestOpenClawPoller:
         async def _get_stability(_: int) -> dict[str, object]:
             return stability_state
 
-        async def _set_stability(_: int, data: dict[str, object]) -> None:
+        async def _set_stability(_: int, data: dict[str, object], **__: object) -> None:
             saved_states.append(data)
 
         async def _clear(_: int) -> None:

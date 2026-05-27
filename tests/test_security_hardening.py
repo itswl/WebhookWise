@@ -293,7 +293,7 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     monkeypatch.setattr(reanalysis, "forward_notification", fake_forward)
 
     # URL validation rejects example.com — bypass for test
-    async def _pass_through(url: str, **kw: object) -> str:
+    async def _pass_through(url: str, **_kw: object) -> str:
         return url
 
     monkeypatch.setattr(reanalysis, "validate_outbound_url", _pass_through)
@@ -309,6 +309,119 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
     assert captured.get("webhook_id") == 1
     assert event.forward_status == "success"
     assert fake_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_manual_forward_failure_does_not_leak_downstream_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import DELIVERY_ERROR_MESSAGE, reanalysis
+
+    event = SimpleNamespace(
+        id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False
+    )
+
+    class FakeSession:
+        async def get(self, _model: object, _item_id: int) -> object:
+            return event
+
+        async def commit(self) -> None:
+            return None
+
+    async def fake_context(_item: object) -> dict[str, object]:
+        return {"source": "test", "parsed_data": {}}
+
+    async def fake_forward(**_kwargs: object) -> dict[str, object]:
+        return {"status": "failed", "message": "postgresql://user:pass@db.internal/webhooks"}
+
+    async def _pass_through(url: str, **kw: object) -> str:
+        return url
+
+    monkeypatch.setattr(reanalysis, "build_webhook_context", fake_context)
+    monkeypatch.setattr(reanalysis, "forward_notification", fake_forward)
+    monkeypatch.setattr(reanalysis, "validate_outbound_url", _pass_through)
+
+    response = await reanalysis.manual_forward_webhook(
+        1,
+        {"target_url": "https://example.com/hook"},
+        session=FakeSession(),  # type: ignore[arg-type]
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == 502
+    assert body["error"] == DELIVERY_ERROR_MESSAGE
+    assert "postgresql://" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_reanalysis_unhandled_exception_is_sanitized() -> None:
+    from api import INTERNAL_ERROR_MESSAGE, reanalysis
+
+    class FakeSession:
+        async def get(self, _model: object, _item_id: int) -> object:
+            raise RuntimeError("postgresql://user:pass@db.internal/webhooks")
+
+    response = await reanalysis.reanalyze_webhook(1, session=FakeSession())  # type: ignore[arg-type]
+
+    assert response.status_code == 500
+    assert INTERNAL_ERROR_MESSAGE in response.body.decode()
+    assert "postgresql://" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_global_exception_handler_is_sanitized() -> None:
+    from api import INTERNAL_ERROR_MESSAGE
+    from core.app import unhandled_exception_handler
+
+    request = SimpleNamespace(url=SimpleNamespace(path="/api/leaky"))
+    response = await unhandled_exception_handler(  # type: ignore[arg-type]
+        request,
+        RuntimeError("postgresql://user:pass@db.internal/webhooks"),
+    )
+
+    assert response.status_code == 500
+    assert INTERNAL_ERROR_MESSAGE in response.body.decode()
+    assert "postgresql://" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_global_unhandled_exception_handler_is_sanitized() -> None:
+    from api import INTERNAL_ERROR_MESSAGE
+    from core.app import app, unhandled_exception_handler
+
+    assert app.debug is False
+    request = SimpleNamespace(url=SimpleNamespace(path="/api/leaky"))
+    response = await unhandled_exception_handler(
+        request,  # type: ignore[arg-type]
+        RuntimeError("Traceback postgresql://user:pass@db.internal/webhooks"),
+    )
+
+    body = response.body.decode()
+    assert response.status_code == 500
+    assert INTERNAL_ERROR_MESSAGE in body
+    assert "Traceback" not in body
+    assert "postgresql://" not in body
+
+
+@pytest.mark.asyncio
+async def test_forward_rule_test_exception_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api import DELIVERY_ERROR_MESSAGE, forwarding
+
+    rule = SimpleNamespace(id=1, name="leaky", target_type="webhook", target_url="https://example.com/hook")
+
+    async def fake_get_rule(_session: object, _rule_id: int) -> object:
+        return rule
+
+    async def fake_post(*_: object, **__: object) -> dict[str, object]:
+        raise RuntimeError("postgresql://user:pass@db.internal/webhooks")
+
+    monkeypatch.setattr(forwarding, "get_forward_rule", fake_get_rule)
+    monkeypatch.setattr("services.forwarding.remote.post_json_to_remote", fake_post)
+
+    response = await forwarding.test_forward_rule_endpoint(1, session=object())  # type: ignore[arg-type]
+    body = json.loads(response.body)
+
+    assert response.status_code == 502
+    assert body["error"] == DELIVERY_ERROR_MESSAGE
+    assert "postgresql://" not in response.body.decode()
 
 
 def test_dashboard_deep_analysis_fields_are_escaped() -> None:

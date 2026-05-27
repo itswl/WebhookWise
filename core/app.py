@@ -3,9 +3,11 @@ import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from api import internal_error_response
 from api.admin import admin_router
 from api.ai_usage import ai_usage_router
 from api.deep_analysis import deep_analysis_router
@@ -76,8 +78,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_log_listener()
 
 
-app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan)
+app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan, debug=False)
 app.state.app_context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("[App] 未处理异常 path=%s error=%s", request.url.path, exc, exc_info=True)
+    return internal_error_response()
 
 
 setup_observability(app)

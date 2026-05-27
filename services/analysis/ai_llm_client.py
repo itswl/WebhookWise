@@ -99,7 +99,7 @@ async def initialize_openai_client(
                     api_key=policy.api_key,
                     base_url=policy.api_url,
                     http_client=http_client or get_http_client(),
-                    timeout=httpx.Timeout(60.0, connect=10.0),
+                    timeout=httpx.Timeout(policy.http_timeout_seconds, connect=policy.http_connect_timeout_seconds),
                 )
             _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
             logger.info("[AI] OpenAI 客户端初始化完成 model=%s", policy.model)

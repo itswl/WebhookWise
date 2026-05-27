@@ -36,7 +36,7 @@ async def compute_noise(
     policy = policy or NoiseReductionPolicy.from_config()
     try:
         if not policy.enabled:
-            return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, [])
+            return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, ())
         now = utcnow()
         try:
             recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)

@@ -51,6 +51,42 @@ def test_internal_error_response_does_not_leak_exception_text() -> None:
     assert INTERNAL_ERROR_MESSAGE.encode("utf-8") in response.body
 
 
+def test_webhook_data_from_mapping_validates_runtime_boundary() -> None:
+    data = webhook_types.webhook_data_from_mapping(
+        {
+            "source": "prometheus",
+            "parsed_data": {"alert": "disk"},
+            "body": "source-specific body text is allowed",
+            "event": {"source_specific": True},
+        }
+    )
+
+    assert data["source"] == "prometheus"
+    assert data["parsed_data"] == {"alert": "disk"}
+    assert data["body"] == "source-specific body text is allowed"
+
+    try:
+        webhook_types.webhook_data_from_mapping({"parsed_data": "not-an-object"})
+    except ValueError as exc:
+        assert "parsed_data" in str(exc)
+    else:
+        raise AssertionError("invalid parsed_data should be rejected")
+
+    try:
+        webhook_types.webhook_data_from_mapping({1: "bad"})  # type: ignore[dict-item]
+    except ValueError as exc:
+        assert "non-string key" in str(exc)
+    else:
+        raise AssertionError("non-string keys should be rejected")
+
+
+def test_noise_reduction_context_stores_related_ids_as_tuple() -> None:
+    ctx = webhook_types.NoiseReductionContext("derived", 1, 0.9, True, "test", 2, [1, 2])
+
+    assert ctx.related_alert_ids == (1, 2)
+    assert isinstance(ctx.related_alert_ids, tuple)
+
+
 class _MetricCall:
     def __init__(self) -> None:
         self.labels_seen: list[tuple[str, str]] = []

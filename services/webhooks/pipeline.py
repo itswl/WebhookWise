@@ -241,7 +241,7 @@ async def _resolve_noise_context(
         )
         return (
             analysis,
-            NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, []),
+            NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, ()),
             dedup_result,
         )
 

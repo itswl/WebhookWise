@@ -16,6 +16,7 @@ from typing import Any, cast
 
 import httpx
 import websockets
+from sqlalchemy import select, update
 
 from core import json
 from core.app_context import get_config_manager
@@ -29,6 +30,11 @@ from core.observability.metrics import (
     FORWARD_DELIVERY_TOTAL,
 )
 from core.observability.tracing import get_current_trace_id
+from core.redis_client import redis_delete, redis_get_json_dict, redis_setex_json
+from core.redis_health import openclaw_poller_stability
+from db.session import session_scope
+from models import DeepAnalysis, WebhookEvent
+from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_source, load_deep_analysis_prompt_template
 from services.forwarding.circuit_breakers import OpenClawForwardDependencies, build_openclaw_forward_dependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
@@ -36,6 +42,8 @@ from services.operations.deep_analysis_notifications import (
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
 )
+from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay, schedule_openclaw_poll
+from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import (
     MANUAL_RETRY_STARTED_AT,
     OPENCLAW_NEED_SUCCESS_NOTIFY,
@@ -77,6 +85,7 @@ class OpenClawPollPolicy:
     hooks_token: str
     connect_timeout_seconds: float
     stability_required_hits: int
+    stability_ttl_seconds: int
     max_consecutive_errors: int
     enable_degradation: bool
     notification_webhook_url: str
@@ -99,6 +108,7 @@ class OpenClawPollPolicy:
             hooks_token=str(cfg.openclaw.OPENCLAW_HOOKS_TOKEN or cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
             connect_timeout_seconds=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT)),
             stability_required_hits=max(1, int(cfg.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS)),
+            stability_ttl_seconds=max(60, int(cfg.openclaw.OPENCLAW_POLL_STABILITY_TTL_SECONDS)),
             max_consecutive_errors=int(cfg.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS),
             enable_degradation=bool(cfg.openclaw.OPENCLAW_ENABLE_DEGRADATION),
             notification_webhook_url=str(cfg.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK),
@@ -152,6 +162,7 @@ class OpenClawWsPolicy:
     device_token: str
     gateway_token: str
     nonce_timeout: float
+    max_history_frames: int
 
     @classmethod
     def from_config(cls) -> OpenClawWsPolicy:
@@ -162,6 +173,7 @@ class OpenClawWsPolicy:
             device_token=str(cfg.openclaw.OPENCLAW_DEVICE_TOKEN),
             gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
             nonce_timeout=float(cfg.openclaw.OPENCLAW_NONCE_TIMEOUT),
+            max_history_frames=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_HISTORY_FRAMES)),
         )
 
 
@@ -512,8 +524,7 @@ async def poll_session_result(
             }
             await ws.send(json.dumps(history_request))
 
-            max_frames = 50
-            for _ in range(max_frames):
+            for _ in range(policy.max_history_frames):
                 elapsed = time.monotonic() - start
                 remaining = timeout - elapsed
                 if remaining <= 0:
@@ -603,23 +614,14 @@ def _is_transient_poll_error(error: object) -> bool:
 
 
 async def _get_poll_stability(record_id: int) -> JsonObject | None:
-    from core.redis_client import redis_get_json_dict
-    from core.redis_health import openclaw_poller_stability
-
     return await redis_get_json_dict(openclaw_poller_stability(record_id))
 
 
-async def _set_poll_stability(record_id: int, data: JsonObject) -> None:
-    from core.redis_client import redis_setex_json
-    from core.redis_health import openclaw_poller_stability
-
-    await redis_setex_json(openclaw_poller_stability(record_id), 3600, data)
+async def _set_poll_stability(record_id: int, data: JsonObject, *, policy: OpenClawPollPolicy) -> None:
+    await redis_setex_json(openclaw_poller_stability(record_id), policy.stability_ttl_seconds, data)
 
 
 async def _clear_poll_stability(record_id: int) -> None:
-    from core.redis_client import redis_delete
-    from core.redis_health import openclaw_poller_stability
-
     await redis_delete(openclaw_poller_stability(record_id))
 
 
@@ -697,10 +699,9 @@ async def _handle_missing_session_key(
 ) -> JsonObject | None:
     if rec["openclaw_session_key"]:
         return None
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
     record_id = rec["id"]
-    elapsed = _elapsed_since(timeout_started_at, default=999.0)
+    elapsed = _elapsed_since(timeout_started_at, default=float(policy.timeout_seconds))
     if elapsed < compute_openclaw_poll_delay(0, policy=policy):
         return _poll_skip(record_id)
     logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
@@ -817,14 +818,14 @@ async def _handle_completed_poll_result(
             len(text),
         )
         if hit_count < required_hits:
-            await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count})
+            await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count}, policy=policy)
             return _poll_skip(record_id)
         logger.info("[Poller] 分析稳定确认，准备写库: id=%s", record_id)
         await _clear_poll_stability(record_id)
         return _completed_update(rec, text, timeout_started_at)
 
     logger.info("[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s", record_id, msg_count, len(text))
-    await _set_poll_stability(record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}})
+    await _set_poll_stability(record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}, policy=policy)
     return _poll_skip(record_id)
 
 
@@ -849,7 +850,7 @@ async def _handle_error_poll_result(
                 status=DeepAnalysisStatus.COMPLETED,
                 analysis_result=build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or "")),
             )
-        await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count})
+        await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count}, policy=policy)
         return _poll_skip(record_id)
 
     error_msg = str(result.get("error", "OpenClaw 返回错误"))
@@ -935,11 +936,6 @@ def _record_to_poll_dict(record: Any) -> JsonObject:
 async def _claim_openclaw_poll(
     analysis_id: int, *, policy: OpenClawPollPolicy | None = None
 ) -> tuple[JsonObject | None, int | None]:
-    from sqlalchemy import select, update
-
-    from db.session import session_scope
-    from models import DeepAnalysis
-
     policy = policy or OpenClawPollPolicy.from_config()
     now = utcnow()
     lease_until = now + timedelta(seconds=_poll_claim_lease_seconds(policy))
@@ -969,8 +965,6 @@ async def _claim_openclaw_poll(
 
 async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
     try:
-        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll
-
         await schedule_openclaw_poll(analysis_id, delay_seconds)
     except Exception as e:
         logger.warning("[Poller] OpenClaw 下次轮询调度失败 analysis_id=%s error=%s", analysis_id, e)
@@ -983,10 +977,6 @@ async def _schedule_next_openclaw_poll(
     *,
     policy: OpenClawPollPolicy | None = None,
 ) -> None:
-    from db.session import session_scope
-    from models import DeepAnalysis
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
-
     delay = _clamp_poll_delay_to_timeout(
         compute_openclaw_poll_delay(poll_attempts, policy=policy), created_at, policy=policy
     )
@@ -1001,9 +991,6 @@ async def _schedule_next_openclaw_poll(
 
 
 async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolicy | None = None) -> None:
-    from db.session import session_scope
-    from models import DeepAnalysis
-
     try:
         policy = policy or OpenClawPollPolicy.from_config()
         record_dict, early_reschedule_delay = await _claim_openclaw_poll(analysis_id, policy=policy)
@@ -1036,8 +1023,6 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             return
 
         async with session_scope() as session:
-            from sqlalchemy import select
-
             result = await session.execute(
                 select(DeepAnalysis)
                 .where(DeepAnalysis.id == analysis_id)
@@ -1057,8 +1042,6 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
 
             if poll_result.get(OPENCLAW_NEED_SUCCESS_NOTIFY):
                 try:
-                    from models import WebhookEvent
-
                     evt_stmt = select(WebhookEvent).filter_by(id=record_dict["webhook_event_id"])
                     evt_result = await session.execute(evt_stmt)
                     event = evt_result.scalars().first()
@@ -1074,11 +1057,6 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
 
 
 async def run_openclaw_poll_scan(limit: int = 100) -> int:
-    from sqlalchemy import select
-
-    from db.session import session_scope
-    from models import DeepAnalysis
-
     now = utcnow()
     async with session_scope() as session:
         stmt = (
@@ -1152,8 +1130,6 @@ async def analyze_with_openclaw(
     dependencies: OpenClawForwardDependencies | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
 ) -> ForwardResult:
-    from core.observability.tracing import get_current_trace_id
-
     policy = policy or OpenClawTriggerPolicy.from_config()
     dependencies = dependencies or build_openclaw_forward_dependencies()
     if http_client is not None:
@@ -1168,7 +1144,6 @@ async def analyze_with_openclaw(
     source = webhook_data.get("source", "unknown")
     if not isinstance(alert_data, dict):
         alert_data = {"raw": alert_data}
-    from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 
     alert_data = await sanitize_for_ai_async(alert_data, strip_configured_keys=False, truncate=False)
     prompt_payload = _build_openclaw_prompt_payload(str(source), alert_data)
@@ -1249,7 +1224,7 @@ async def analyze_with_openclaw(
                     dependencies.http_client.post,
                     target_url,
                     headers=headers,
-                    timeout=httpx.Timeout(60.0, connect=connect_timeout),
+                    timeout=httpx.Timeout(float(policy.timeout_seconds), connect=connect_timeout),
                     **kwargs,
                 ),
             )
@@ -1332,8 +1307,6 @@ async def forward_to_openclaw(
         return {"status": "disabled"}
 
     async def _do_request() -> ForwardResult:
-        from services.analysis.ai_analyzer import analyze_webhook_with_ai
-
         result = await analyze_with_openclaw(webhook_data, policy=policy, dependencies=dependencies)
         if is_analysis_degraded(result):
             logger.warning("[Forward] OpenClaw 降级，回退本地 AI: %s", analysis_degraded_reason(result))

@@ -255,7 +255,7 @@ async def test_finalization_skips_outbox_without_target(
         analysis={"importance": "high", "summary": "should rollback", "event_type": "test"},
         original_event_id=None,
     )
-    noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, [])
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "test", 0, ())
 
     finalize_res = await finalize_analysis_transaction(
         ctx,
@@ -392,6 +392,80 @@ async def test_data_maintenance_archives_old_events_before_delete(
     assert archived.archived_at is not None
 
 
+async def test_data_maintenance_uses_importance_before_source_and_default_retention(
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from models import ArchivedWebhookEvent, WebhookEvent
+    from services.operations.data_maintenance import cleanup_old_data_by_policy
+    from services.operations.policies import DataMaintenancePolicy
+
+    old_timestamp = utcnow() - timedelta(days=40)
+    async with integration_session_factory.begin() as session:
+        high_prometheus = WebhookEvent(
+            request_id="req-high-prometheus-retained",
+            source="prometheus",
+            timestamp=old_timestamp,
+            parsed_data={"alert_name": "important"},
+            ai_analysis={"importance": "high", "summary": "important production alert"},
+            importance="high",
+            processing_status="completed",
+        )
+        source_only = WebhookEvent(
+            request_id="req-source-policy-archived",
+            source="prometheus",
+            timestamp=old_timestamp,
+            parsed_data={"alert_name": "source-only"},
+            ai_analysis={"importance": "custom", "summary": "source policy applies"},
+            importance="custom",
+            processing_status="completed",
+        )
+        source_without_importance = WebhookEvent(
+            request_id="req-source-null-importance-archived",
+            source="prometheus",
+            timestamp=old_timestamp,
+            parsed_data={"alert_name": "source-null-importance"},
+            ai_analysis={"summary": "source policy applies without importance"},
+            importance=None,
+            processing_status="completed",
+        )
+        default_only = WebhookEvent(
+            request_id="req-default-policy-archived",
+            source="custom",
+            timestamp=old_timestamp,
+            parsed_data={"alert_name": "default-only"},
+            ai_analysis={"importance": "custom", "summary": "default policy applies"},
+            importance="custom",
+            processing_status="completed",
+        )
+        session.add_all([high_prometheus, source_only, source_without_importance, default_only])
+
+    archived_count = await cleanup_old_data_by_policy(
+        policy=DataMaintenancePolicy(
+            enabled=True,
+            retention_days_default=30,
+            retention_policies={"high": 90, "medium": 30, "low": 7, "unknown": 3},
+            source_retention_policies={"prometheus": 30},
+            cleanup_keywords={},
+        )
+    )
+
+    async with integration_session_factory() as session:
+        remaining_request_ids = (
+            await session.scalars(select(WebhookEvent.request_id).order_by(WebhookEvent.request_id.asc()))
+        ).all()
+        archived_request_ids = (
+            await session.scalars(select(ArchivedWebhookEvent.request_id).order_by(ArchivedWebhookEvent.request_id.asc()))
+        ).all()
+
+    assert archived_count == 3
+    assert remaining_request_ids == ["req-high-prometheus-retained"]
+    assert archived_request_ids == [
+        "req-default-policy-archived",
+        "req-source-null-importance-archived",
+        "req-source-policy-archived",
+    ]
+
+
 async def test_original_id_only_duplicate_save_uses_incremented_duplicate_count(
     integration_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -512,7 +586,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
         original_event_id=original_id,
         route_type="db_reuse",
     )
-    noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, [])
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "reuse", 0, ())
 
     finalize_res = await finalize_analysis_transaction(
         ctx,
