@@ -179,8 +179,8 @@ async def forward_notification(
 
     当 target_url 非空时跳过规则匹配，直接投递到该 URL。
     """
+    from services.forwarding.rules import list_enabled_forward_rules
     from services.webhooks.decisioning import ForwardRuleSnapshot, select_forward_rules
-    from services.webhooks.repository import list_enabled_forward_rules
 
     policy = policy or ForwardDeliveryPolicy.from_config()
 

@@ -14,6 +14,7 @@ from db.session import session_scope
 from models import WebhookEvent
 from services.dedup import DedupResult
 from services.forwarding.outbox import resolve_and_forward
+from services.forwarding.rules import get_cached_forward_rules
 from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardDecision,
@@ -23,7 +24,6 @@ from services.webhooks.decisioning import (
     forwarding_policy_from_config,
     normalize_importance,
 )
-from services.webhooks.repository import get_cached_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,

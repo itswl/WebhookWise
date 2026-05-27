@@ -461,6 +461,7 @@ async def test_forward_rule_test_exception_is_sanitized(monkeypatch: pytest.Monk
 async def test_forward_rule_invalid_target_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
     from api import TARGET_URL_UNAVAILABLE_MESSAGE, forwarding
     from core.url_security import UnsafeTargetUrlError
+    from schemas.forwarding import ForwardRuleCreateRequest
 
     async def reject_target(_target_type: str, _target_url: object) -> str:
         raise UnsafeTargetUrlError("target host is not in FORWARD_TARGET_ALLOWLIST")
@@ -468,7 +469,7 @@ async def test_forward_rule_invalid_target_error_is_sanitized(monkeypatch: pytes
     monkeypatch.setattr(forwarding, "_validated_target_url", reject_target)
 
     response = await forwarding.create_forward_rule_endpoint(
-        {"name": "blocked", "target_type": "webhook", "target_url": "https://example.com/hook"},
+        ForwardRuleCreateRequest(name="blocked", target_type="webhook", target_url="https://example.com/hook"),
         session=object(),  # type: ignore[arg-type]
     )
     body = json.loads(response.body)
