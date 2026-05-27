@@ -98,7 +98,7 @@ async def test_webhook_receive_to_feishu_card_flow(
                 stop_on_match=False,
             )
         )
-        from services.webhooks.repository import invalidate_forward_rules_cache
+        from services.forwarding.rules import invalidate_forward_rules_cache
 
         invalidate_forward_rules_cache()
 
@@ -550,7 +550,7 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
                 stop_on_match=False,
             )
         )
-        from services.webhooks.repository import invalidate_forward_rules_cache
+        from services.forwarding.rules import invalidate_forward_rules_cache
 
         invalidate_forward_rules_cache()
 

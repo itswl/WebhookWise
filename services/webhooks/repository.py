@@ -11,9 +11,9 @@ from core import json
 from core.compression import decompress_payload_async
 from core.datetime_utils import utc_isoformat, utcnow
 from db.session import count_with_timeout, session_scope
-from models import ForwardRule, SuppressedRecord, WebhookEvent
+from models import SuppressedRecord, WebhookEvent
 from services.analysis.noise_reduction import AlertContext
-from services.webhooks.decisioning import ForwardRuleSnapshot, normalize_importance
+from services.webhooks.decisioning import normalize_importance
 from services.webhooks.types import AnalysisResult
 
 
@@ -107,57 +107,6 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
             )
             for e in res.scalars().all()
         ]
-
-
-def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
-    return ForwardRuleSnapshot(
-        id=rule.id,
-        name=rule.name,
-        match_event_type=getattr(rule, "match_event_type", "") or "",
-        match_importance=rule.match_importance,
-        match_source=rule.match_source,
-        match_duplicate=rule.match_duplicate,
-        match_payload=getattr(rule, "match_payload", "") or "",
-        target_type=rule.target_type,
-        target_url=rule.target_url,
-        stop_on_match=rule.stop_on_match,
-        target_name=rule.target_name or "",
-    )
-
-
-async def list_enabled_forward_rules(session: Any | None = None) -> list[ForwardRuleSnapshot]:
-    async def _list(sess: Any) -> list[ForwardRuleSnapshot]:
-        stmt = select(ForwardRule).filter_by(enabled=True).order_by(ForwardRule.priority.desc())
-        return [_snapshot_forward_rule(rule) for rule in (await sess.execute(stmt)).scalars().all()]
-
-    if session is not None:
-        return await _list(session)
-    async with session_scope() as sess:
-        return await _list(sess)
-
-
-_rules_cache: list[ForwardRuleSnapshot] | None = None
-_rules_cache_at: float = 0.0
-_RULES_CACHE_TTL: float = 30.0
-
-
-def invalidate_forward_rules_cache() -> None:
-    global _rules_cache, _rules_cache_at
-    _rules_cache = None
-    _rules_cache_at = 0.0
-
-
-async def get_cached_forward_rules(session: Any | None = None) -> list[ForwardRuleSnapshot]:
-    import time
-
-    global _rules_cache, _rules_cache_at
-    now = time.monotonic()
-    if _rules_cache is not None and (now - _rules_cache_at) < _RULES_CACHE_TTL:
-        return _rules_cache
-    rules = await list_enabled_forward_rules(session=session)
-    _rules_cache = rules
-    _rules_cache_at = now
-    return rules
 
 
 async def list_suppressed_records(

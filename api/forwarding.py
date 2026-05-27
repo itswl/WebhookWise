@@ -2,8 +2,6 @@
 Forwarding API Routes.
 """
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +12,10 @@ from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from schemas.forwarding import (
+    ForwardRuleCreateRequest,
     ForwardRuleDetailResponse,
     ForwardRuleListResponse,
+    ForwardRuleUpdateRequest,
     forward_rule_to_dict,
 )
 from services.forwarding.rules import (
@@ -31,7 +31,7 @@ logger = get_logger("api.forwarding")
 
 forwarding_router = APIRouter()
 
-JSONDict = dict[str, Any]
+JSONDict = dict[str, object]
 
 
 async def _validated_target_url(target_type: str, target_url: object) -> str:
@@ -57,18 +57,14 @@ async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_sess
     dependencies=[Depends(verify_admin_write)],
 )
 async def create_forward_rule_endpoint(
-    payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+    payload: ForwardRuleCreateRequest, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
-    payload = payload or {}
-    name = payload.get("name", "").strip() if isinstance(payload.get("name"), str) else ""
-    target_type = payload.get("target_type", "").strip() if isinstance(payload.get("target_type"), str) else ""
+    data = payload.to_service_kwargs()
+    name = data["name"]
+    target_type = data["target_type"]
 
-    if not name:
-        return JSONResponse(status_code=400, content={"success": False, "error": "规则名称不能为空"})
-    if target_type not in ("feishu", "openclaw", "webhook"):
-        return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
     try:
-        target_url = await _validated_target_url(target_type, payload.get("target_url", ""))
+        target_url = await _validated_target_url(target_type, data["target_url"])
     except UnsafeTargetUrlError as e:
         logger.warning("[ForwardAPI] 创建转发规则被拒绝 name=%s target_type=%s error=%s", name, target_type, e)
         return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
@@ -77,21 +73,18 @@ async def create_forward_rule_endpoint(
         session=session,
         name=name,
         target_type=target_type,
-        enabled=payload.get("enabled", True),
-        priority=payload.get("priority", 0),
-        match_event_type=payload.get("match_event_type", ""),
-        match_importance=payload.get("match_importance", ""),
-        match_duplicate=payload.get("match_duplicate", "all"),
-        match_source=payload.get("match_source", ""),
-        match_payload=payload.get("match_payload", ""),
+        enabled=data["enabled"],
+        priority=data["priority"],
+        match_event_type=data["match_event_type"],
+        match_importance=data["match_importance"],
+        match_duplicate=data["match_duplicate"],
+        match_source=data["match_source"],
+        match_payload=data["match_payload"],
         target_url=target_url,
-        target_name=payload.get("target_name", ""),
-        stop_on_match=payload.get("stop_on_match", False),
+        target_name=data["target_name"],
+        stop_on_match=data["stop_on_match"],
     )
     await session.commit()
-    from services.webhooks.repository import invalidate_forward_rules_cache
-
-    invalidate_forward_rules_cache()
     logger.info(
         "[ForwardAPI] 转发规则已创建 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
@@ -109,33 +102,25 @@ async def create_forward_rule_endpoint(
     dependencies=[Depends(verify_admin_write)],
 )
 async def update_forward_rule_endpoint(
-    rule_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
+    rule_id: int, payload: ForwardRuleUpdateRequest, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
-    payload = payload or {}
+    data = payload.to_update_payload()
     existing = await get_forward_rule(session=session, rule_id=rule_id)
     if not existing:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
-    target_type = payload.get("target_type", existing.target_type)
-    if not isinstance(target_type, str) or target_type not in ("feishu", "openclaw", "webhook"):
-        return JSONResponse(status_code=400, content={"success": False, "error": "目标类型无效"})
-    if "target_url" in payload or "target_type" in payload:
+    target_type = data.get("target_type", existing.target_type)
+    if "target_url" in data or "target_type" in data:
         try:
-            payload = dict(payload)
-            payload["target_url"] = await _validated_target_url(
-                target_type, payload.get("target_url", existing.target_url)
-            )
+            data["target_url"] = await _validated_target_url(target_type, data.get("target_url", existing.target_url))
         except UnsafeTargetUrlError as e:
             logger.warning(
                 "[ForwardAPI] 更新转发规则被拒绝 rule_id=%s target_type=%s error=%s", rule_id, target_type, e
             )
             return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
-    rule = await update_forward_rule(session=session, rule_id=rule_id, payload=payload)
+    rule = await update_forward_rule(session=session, rule_id=rule_id, payload=data)
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
-    from services.webhooks.repository import invalidate_forward_rules_cache
-
-    invalidate_forward_rules_cache()
     logger.info(
         "[ForwardAPI] 转发规则已更新 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
@@ -158,9 +143,6 @@ async def delete_forward_rule_endpoint(
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
     await session.commit()
-    from services.webhooks.repository import invalidate_forward_rules_cache
-
-    invalidate_forward_rules_cache()
     logger.info("[ForwardAPI] 转发规则已删除 rule_id=%s", rule_id)
     return {"success": True, "message": "规则已删除"}
 

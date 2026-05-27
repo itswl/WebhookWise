@@ -45,7 +45,7 @@ def reset_default_app_context():
     from core.app_context import AppContext, set_default_app_context
     from core.config import UnifiedConfigManager, get_settings
     from core.redis_health import reset_redis_health
-    from services.webhooks.repository import invalidate_forward_rules_cache
+    from services.forwarding.rules import invalidate_forward_rules_cache
 
     settings = get_settings().model_copy(deep=True)
     context = AppContext(config=UnifiedConfigManager(settings))
