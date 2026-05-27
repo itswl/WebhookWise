@@ -66,6 +66,19 @@ def test_webhook_data_from_mapping_validates_runtime_boundary() -> None:
     assert data["body"] == "source-specific body text is allowed"
 
     try:
+        webhook_types.webhook_data_from_mapping({"source": "custom", "source_native_field": "surprise"})
+    except ValueError as exc:
+        assert "source_native_field" in str(exc)
+    else:
+        raise AssertionError("strict WebhookData should reject undeclared fields")
+
+    passthrough = webhook_types.webhook_data_from_mapping(
+        {"source": "custom", "source_native_field": {"still": "json"}},
+        strict=False,
+    )
+    assert dict(passthrough)["source_native_field"] == {"still": "json"}
+
+    try:
         webhook_types.webhook_data_from_mapping({"parsed_data": "not-an-object"})
     except ValueError as exc:
         assert "parsed_data" in str(exc)

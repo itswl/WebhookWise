@@ -82,13 +82,17 @@ class SecurityConfig(StaticSettings):
 class DBConfig(StaticSettings):
     """PostgreSQL 连接池"""
 
-    DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/webhooks")
+    DATABASE_URL: str
     DB_POOL_SIZE: int = Field(default=5)
     DB_MAX_OVERFLOW: int = Field(default=5)
     DB_POOL_RECYCLE: int = Field(default=3600)
     DB_POOL_TIMEOUT: int = Field(default=30)
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
     DB_SYNC_COMMIT: str = Field(default="on")
+
+
+def _db_config_factory() -> DBConfig:
+    return DBConfig()  # type: ignore[call-arg]
 
 
 class RedisConfig(StaticSettings):
@@ -240,7 +244,7 @@ class AppConfig(StaticSettings):
     tasks: TaskConfig = Field(default_factory=TaskConfig)
     mq: MQConfig = Field(default_factory=MQConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
-    db: DBConfig = Field(default_factory=DBConfig)
+    db: DBConfig = Field(default_factory=_db_config_factory)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     ai: AIConfig = Field(default_factory=AIConfig)

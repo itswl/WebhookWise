@@ -389,7 +389,7 @@ def register_simple_adapters() -> None:
         if content_text:
             normalized["summary"] = content_text
 
-        return webhook_data_from_mapping(normalized)
+        return webhook_data_from_mapping(normalized, strict=False)
 
 
 def initialize_adapters() -> None:
@@ -425,7 +425,7 @@ def normalize_webhook_event(
 
     # 2. 透传逻辑
     if adapter_name is None:
-        return NormalizedWebhook(s_hint or "unknown", webhook_data_from_mapping(data), "passthrough")
+        return NormalizedWebhook(s_hint or "unknown", webhook_data_from_mapping(data, strict=False), "passthrough")
 
     # 3. 归一化
     normalized = registry.normalize(adapter_name, dict(data))

@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api import DELIVERY_ERROR_MESSAGE, internal_error_response
+from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.webhook import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.logger import get_logger
@@ -132,7 +132,8 @@ async def manual_forward_webhook(
             try:
                 target_url = await validate_outbound_url(target_url)
             except UnsafeTargetUrlError as e:
-                return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+                logger.warning("[Reanalysis] 手动转发目标 URL 被拒绝 webhook_id=%s error=%s", webhook_id, e)
+                return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
 
         ctx = await build_webhook_context(event)
         fwd_res = await forward_notification(
