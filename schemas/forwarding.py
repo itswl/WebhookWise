@@ -22,6 +22,9 @@ class ForwardRuleCreateData(TypedDict):
     match_importance: str
     match_duplicate: ForwardDuplicateMode
     match_source: str
+    match_project: str
+    match_region: str
+    match_environment: str
     match_payload: str
     target_url: str
     target_name: str
@@ -36,6 +39,9 @@ class ForwardRuleUpdateData(TypedDict, total=False):
     match_importance: str
     match_duplicate: ForwardDuplicateMode
     match_source: str
+    match_project: str
+    match_region: str
+    match_environment: str
     match_payload: str
     target_type: ForwardTargetType
     target_url: str
@@ -52,6 +58,9 @@ class _ForwardRuleRequestBase(BaseModel):
     match_importance: str = Field(default="", max_length=50)
     match_duplicate: ForwardDuplicateMode = "all"
     match_source: str = Field(default="", max_length=200)
+    match_project: str = Field(default="", max_length=200)
+    match_region: str = Field(default="", max_length=200)
+    match_environment: str = Field(default="", max_length=200)
     match_payload: str = Field(default="", max_length=512)
     target_url: str = Field(default="", max_length=500)
     target_name: str = Field(default="", max_length=100)
@@ -74,6 +83,9 @@ class ForwardRuleCreateRequest(_ForwardRuleRequestBase):
             "match_importance": self.match_importance,
             "match_duplicate": self.match_duplicate,
             "match_source": self.match_source,
+            "match_project": self.match_project,
+            "match_region": self.match_region,
+            "match_environment": self.match_environment,
             "match_payload": self.match_payload,
             "target_url": self.target_url,
             "target_name": self.target_name,
@@ -97,6 +109,9 @@ class ForwardRuleUpdateRequest(BaseModel):
     match_importance: str | None = Field(default=None, max_length=50)
     match_duplicate: ForwardDuplicateMode | None = None
     match_source: str | None = Field(default=None, max_length=200)
+    match_project: str | None = Field(default=None, max_length=200)
+    match_region: str | None = Field(default=None, max_length=200)
+    match_environment: str | None = Field(default=None, max_length=200)
     match_payload: str | None = Field(default=None, max_length=512)
     target_type: ForwardTargetType | None = None
     target_url: str | None = Field(default=None, max_length=500)
@@ -129,6 +144,9 @@ class ForwardRuleSchema(BaseModel):
     match_importance: str | None = None
     match_duplicate: str | None = None
     match_source: str | None = None
+    match_project: str | None = None
+    match_region: str | None = None
+    match_environment: str | None = None
     match_payload: str | None = None
     target_type: str
     target_url: str
