@@ -20,7 +20,7 @@ async def test_ai_usage_stats_periods_and_cache_math(
 
     class RouteResult:
         def all(self) -> list[tuple[str, int]]:
-            return [("ai", 2), ("redis_reuse", 3), ("db_reuse", 1), ("cache", 4)]
+            return [("ai", 2), ("redis_reuse", 3), ("db_reuse", 1), ("rechain", 1), ("reuse", 1), ("cache", 4)]
 
     class StatsResult:
         def first(self) -> tuple[int, int, float]:
@@ -39,20 +39,20 @@ async def test_ai_usage_stats_periods_and_cache_math(
             return [RouteResult(), StatsResult(), CacheResult()][self.calls - 1]
 
     async def count_with_timeout(_session: object, _stmt: object) -> int:
-        return 10
+        return 12
 
     monkeypatch.setattr(analysis_queries, "utcnow", lambda: datetime(2026, 5, 27, tzinfo=timezone.utc))
     monkeypatch.setattr(analysis_queries, "count_with_timeout", count_with_timeout)
 
     stats = await analysis_queries.get_ai_usage_stats(Session(), period=period)  # type: ignore[arg-type]
 
-    assert stats["total_calls"] == 10
+    assert stats["total_calls"] == 12
     assert stats["route_breakdown"]["redis_reuse"] == 3
-    assert stats["percentages"]["cache"] == 40.0
+    assert stats["percentages"]["cache"] == 33.33
     assert stats["tokens"] == {"input": 11, "output": 7, "total": 18}
-    assert stats["cost"]["saved_estimate"] == 0.48
-    assert stats["cache_statistics"]["avg_hits_per_entry"] == 2.0
-    assert stats["cache_statistics"]["cache_hit_rate"] == 80.0
+    assert stats["cost"]["saved_estimate"] == 0.6
+    assert stats["cache_statistics"]["avg_hits_per_entry"] == 2.5
+    assert stats["cache_statistics"]["cache_hit_rate"] == 83.33
 
 
 @pytest.mark.asyncio

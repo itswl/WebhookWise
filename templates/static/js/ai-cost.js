@@ -88,6 +88,14 @@ const AICostModule = {
         return num.toFixed(1) + '%';
     },
 
+    routeCount(data, keys) {
+        return keys.reduce((total, key) => total + Number(this.safeGet(data, `route_breakdown.${key}`, 0) || 0), 0);
+    },
+
+    routePercent(count, totalCalls) {
+        return totalCalls > 0 ? (count / totalCalls) * 100 : 0;
+    },
+
     /**
      * 渲染统计数据
      * @param {object} data - 统计数据（API 返回的 result.data）
@@ -103,15 +111,15 @@ const AICostModule = {
         const costTotal = this.safeGet(data, 'cost.total', 0);
         const costSaved = this.safeGet(data, 'cost.saved_estimate', 0);
 
-        const percentAi = this.safeGet(data, 'percentages.ai', 0);
-        const percentRule = this.safeGet(data, 'percentages.rule', 0);
-        const percentCache = this.safeGet(data, 'percentages.cache', 0);
-        const percentReuse = this.safeGet(data, 'percentages.reuse', 0);
+        const routeAi = this.routeCount(data, ['ai']);
+        const routeRule = this.routeCount(data, ['rule']);
+        const routeCache = this.routeCount(data, ['cache']);
+        const routeReuse = this.routeCount(data, ['reuse', 'redis_reuse', 'db_reuse', 'rechain']);
 
-        const routeAi = this.safeGet(data, 'route_breakdown.ai', 0);
-        const routeRule = this.safeGet(data, 'route_breakdown.rule', 0);
-        const routeCache = this.safeGet(data, 'route_breakdown.cache', 0);
-        const routeReuse = this.safeGet(data, 'route_breakdown.reuse', 0);
+        const percentAi = this.routePercent(routeAi, totalCalls);
+        const percentRule = this.routePercent(routeRule, totalCalls);
+        const percentCache = this.routePercent(routeCache, totalCalls);
+        const percentReuse = this.routePercent(routeReuse, totalCalls);
 
         const cacheStats = data.cache_statistics || {};
         const cacheEntries = this.safeGet(cacheStats, 'total_cache_entries', 0);
