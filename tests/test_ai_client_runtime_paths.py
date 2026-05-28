@@ -104,7 +104,7 @@ async def test_analyze_with_openai_tracks_prompt_usage_cost_and_span_attrs(
         return {"safe": data["message"]}
 
     async def load_user_prompt_template() -> str:
-        return "source={source}\ndata={data_json}"
+        return "source={source}\nidentity={identity_json}\ndata={data_json}"
 
     async def create_with_completion(_client: object, *, model: str, user_prompt: str, policy: object) -> tuple[object, object]:
         prompts.append(user_prompt)
@@ -131,6 +131,7 @@ async def test_analyze_with_openai_tracks_prompt_usage_cost_and_span_attrs(
     assert result == {"summary": "ok", "severity": "info"}
     assert (tokens_in, tokens_out) == (12, 5)
     assert "source=prometheus" in prompts[0]
+    assert "identity:" in prompts[0]
     assert "safe: hello" in prompts[0]
     assert span_attrs["ai.tokens.input"] == 12
     assert span_attrs["ai.cost.usd"] == 0.017

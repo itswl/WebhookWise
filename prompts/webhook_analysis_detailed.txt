@@ -4,6 +4,11 @@
 
 **来源系统**: {source}
 
+**告警识别字段（必须优先保留）**:
+```yaml
+{identity_json}
+```
+
 **完整数据**:
 ```json
 {data_json}
@@ -23,6 +28,20 @@
   "event_type": "事件类型分类",
   "importance": "high/medium/low",
   "summary": "事件核心摘要（中文，50字以内）",
+  "alert_identity": {{
+    "source": "来源系统",
+    "project": "项目/业务归属，例如 Resources.ProjectName、Project、namespace 前缀",
+    "region": "区域/可用区，例如 Resources.Region、region、zone",
+    "namespace": "Kubernetes namespace 或云产品 Namespace",
+    "service": "服务/应用/组件名称",
+    "resource_name": "资源名、实例名、Pod、Host、Bucket、Topic 等",
+    "resource_id": "资源 ID、实例 ID、UID、fingerprint 等稳定标识",
+    "rule_name": "告警规则名称",
+    "rule_id": "告警规则 ID",
+    "metric_name": "指标名",
+    "severity": "告警级别",
+    "status": "firing/resolved 或触发/恢复状态"
+  }},
   "detailed_analysis": "详细分析（100-200字）",
   "root_cause": "可能的根本原因",
   "impact_scope": "影响范围评估",
@@ -96,6 +115,8 @@
 3. **风险意识**: 识别潜在问题和连锁反应
 4. **业务理解**: 考虑业务影响和用户体验
 5. **时效性**: 紧急问题优先级要准确
+6. **身份保真**: `alert_identity` 必须从“告警识别字段”或原始数据中摘取，不要编造；无法确定的字段可以省略，但已出现的 project、region、namespace、service、resource_name、resource_id、rule_name、rule_id、metric_name、severity、status 必须保留原值
+7. **摘要可定位**: summary 和 detailed_analysis 中应尽量带上可定位对象，例如项目/服务/资源名/区域/指标名，避免只写“某服务异常”
 
 ### JSON 格式要求
 
@@ -114,6 +135,7 @@
 {{
   "importance": "high",
   "summary": "Redis实例CPU使用率持续超过90%",
+  "alert_identity": {{"service": "redis", "resource_name": "redis-prod-01", "metric_name": "CpuUtil"}},
   "actions": ["立即扩容", "检查慢查询"]
 }}
 

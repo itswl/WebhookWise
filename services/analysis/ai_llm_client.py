@@ -27,6 +27,7 @@ from core.observability.metrics import (
 from core.observability.tracing import otel_span, set_span_error
 from schemas.analysis import WebhookAnalysisResult
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
+from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult
@@ -140,13 +141,20 @@ async def _analyze_with_openai_tracked(
     policy = policy or AIProviderPolicy.from_config()
     client = await _get_instructor_client_async(http_client=http_client)
     cleaned_data = await sanitize_for_ai_async(data)
+    identity_context = build_alert_identity_context(source, cleaned_data)
+    identity_yaml = yaml.dump(identity_context, allow_unicode=True, default_flow_style=False, sort_keys=False)
     data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    user_prompt = (await load_user_prompt_template()).format(source=source, data_json=data_yaml)
+    user_prompt = (await load_user_prompt_template()).format(
+        source=source,
+        identity_json=identity_yaml,
+        data_json=data_yaml,
+    )
     logger.info(
-        "[AI] 开始 LLM 分析 source=%s model=%s sanitized_fields=%s prompt_bytes=%s prompt_source=%s",
+        "[AI] 开始 LLM 分析 source=%s model=%s sanitized_fields=%s identity_fields=%s prompt_bytes=%s prompt_source=%s",
         source,
         policy.model,
         len(cleaned_data),
+        len(identity_context.get("identity", {})),
         len(user_prompt.encode("utf-8")),
         get_prompt_source(),
     )

@@ -26,6 +26,9 @@ def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> N
     result = _build_openclaw_prompt_payload("prometheus", payload)
 
     assert result["overview"]["labels"]["internal_label_service"] == "ai-router"
+    assert result["overview"]["identity"]["service"] == "ai-router"
+    assert result["overview"]["identity"]["namespace"] == "eve-cn-prod"
+    assert result["overview"]["identity"]["rule_id"] == "6a0142e48f78951ec14b1fa4"
     assert result["overview"]["annotations"]["summary"] == "OpenRouter success rate is 0%"
     assert result["payload"]["raw_debug_blob"] == "x" * 100_000
     assert "payload_note" not in result
