@@ -25,7 +25,6 @@ _IMPORTANCE_LABEL = {
 _IDENTITY_LABELS = (
     ("project", "项目"),
     ("region", "区域"),
-    ("namespace", "命名空间"),
     ("product_namespace", "云产品"),
     ("service", "服务"),
     ("resource_name", "资源"),
@@ -34,6 +33,11 @@ _IDENTITY_LABELS = (
     ("metric_name", "指标"),
     ("severity", "级别"),
     ("status", "状态"),
+)
+_IDENTITY_GROUPS = (
+    ("project", "region", "product_namespace", "service"),
+    ("resource_name", "resource_id"),
+    ("rule_name", "metric_name", "severity", "status"),
 )
 
 
@@ -78,8 +82,6 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
         resources = parsed.get("Resources")
         if isinstance(resources, list) and resources and isinstance(resources[0], dict):
             return resources[0].get("Region")
-    if key == "namespace":
-        return parsed.get("Namespace")
     if key == "resource_name":
         resources = parsed.get("Resources")
         if isinstance(resources, list) and resources and isinstance(resources[0], dict):
@@ -110,10 +112,11 @@ def _identity_text(value: object) -> str:
     return " ".join(str(value).splitlines()).strip()
 
 
-def _build_identity_line(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> str:
+def _build_identity_content(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> str:
     identity_raw = analysis_result.get("alert_identity")
     identity = dict(identity_raw) if isinstance(identity_raw, dict) else {}
-    parts: list[str] = []
+    labels = dict(_IDENTITY_LABELS)
+    values: dict[str, str] = {}
     seen_values: set[tuple[str, str]] = set()
     for key, label in _IDENTITY_LABELS:
         raw = _identity_value(identity, parsed, key)
@@ -124,8 +127,14 @@ def _build_identity_line(analysis_result: AnalysisResult, parsed: dict[str, Any]
         if dedupe_key in seen_values:
             continue
         seen_values.add(dedupe_key)
-        parts.append(f"{label}: {value}")
-    return " ｜ ".join(parts)
+        values[key] = value
+
+    lines: list[str] = []
+    for group in _IDENTITY_GROUPS:
+        parts = [f"{labels[key]}: {values[key]}" for key in group if key in values]
+        if parts:
+            lines.append(" ｜ ".join(parts))
+    return "\n".join(lines)
 
 
 def is_feishu_url(url: str) -> bool:
@@ -159,12 +168,6 @@ def build_feishu_card(
 
     summary = analysis_result.get("summary", "")
     impact = analysis_result.get("impact_scope", "")
-    actions = analysis_result.get("actions") or []
-    if isinstance(actions, list):
-        suggestion = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(actions) if a) if actions else ""
-    else:
-        suggestion = str(actions)
-
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 Webhook 事件通知"
 
@@ -179,9 +182,9 @@ def build_feishu_card(
     elements.append({"tag": "div", "fields": fields})
     elements.append({"tag": "hr"})
 
-    identity_line = _build_identity_line(analysis_result, parsed)
-    if identity_line:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**  {identity_line}"}})
+    identity_content = _build_identity_content(analysis_result, parsed)
+    if identity_content:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
         elements.append({"tag": "hr"})
 
     if summary:
@@ -191,9 +194,6 @@ def build_feishu_card(
     if impact:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
         elements.append({"tag": "hr"})
-
-    if suggestion:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 建议操作**\n{suggestion[:800]}"}})
 
     if not elements:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "（暂无详情）"}})
