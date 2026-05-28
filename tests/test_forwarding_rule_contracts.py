@@ -40,8 +40,11 @@ def test_forward_rule_request_models_validate_api_boundary() -> None:
     with pytest.raises(ValidationError):
         ForwardRuleUpdateRequest.model_validate({"name": None})
 
-    update = ForwardRuleUpdateRequest.model_validate({"priority": 20, "target_type": "openclaw"})
-    assert update.to_update_payload() == {"priority": 20, "target_type": "openclaw"}
+    update = ForwardRuleUpdateRequest.model_validate({"priority": 100003, "target_type": "openclaw"})
+    assert update.to_update_payload() == {"priority": 100003, "target_type": "openclaw"}
+
+    with pytest.raises(ValidationError):
+        ForwardRuleUpdateRequest.model_validate({"priority": 1000001})
 
 
 @pytest.mark.asyncio

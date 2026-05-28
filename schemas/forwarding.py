@@ -11,6 +11,8 @@ from .base import APIResponse
 
 ForwardTargetType = Literal["feishu", "openclaw", "webhook"]
 ForwardDuplicateMode = Literal["all", "new", "duplicate"]
+FORWARD_RULE_PRIORITY_MIN = -1_000_000
+FORWARD_RULE_PRIORITY_MAX = 1_000_000
 
 
 class ForwardRuleCreateData(TypedDict):
@@ -53,7 +55,7 @@ class _ForwardRuleRequestBase(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     enabled: bool = True
-    priority: int = Field(default=0, ge=-100000, le=100000)
+    priority: int = Field(default=0, ge=FORWARD_RULE_PRIORITY_MIN, le=FORWARD_RULE_PRIORITY_MAX)
     match_event_type: str = Field(default="", max_length=200)
     match_importance: str = Field(default="", max_length=50)
     match_duplicate: ForwardDuplicateMode = "all"
@@ -104,7 +106,7 @@ class ForwardRuleUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     enabled: bool | None = None
-    priority: int | None = Field(default=None, ge=-100000, le=100000)
+    priority: int | None = Field(default=None, ge=FORWARD_RULE_PRIORITY_MIN, le=FORWARD_RULE_PRIORITY_MAX)
     match_event_type: str | None = Field(default=None, max_length=200)
     match_importance: str | None = Field(default=None, max_length=50)
     match_duplicate: ForwardDuplicateMode | None = None
