@@ -104,22 +104,28 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
     return None
 
 
-def _build_identity_fields(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> list[JsonObject]:
+def _identity_text(value: object) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).splitlines()).strip()
+
+
+def _build_identity_line(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> str:
     identity_raw = analysis_result.get("alert_identity")
     identity = dict(identity_raw) if isinstance(identity_raw, dict) else {}
-    fields: list[JsonObject] = []
+    parts: list[str] = []
     seen_values: set[tuple[str, str]] = set()
     for key, label in _IDENTITY_LABELS:
         raw = _identity_value(identity, parsed, key)
-        value = _truncate_text(raw, 120)
+        value = _identity_text(raw)
         if not value:
             continue
         dedupe_key = (label, value)
         if dedupe_key in seen_values:
             continue
         seen_values.add(dedupe_key)
-        fields.append({"is_short": True, "text": {"tag": "lark_md", "content": f"**{label}**\n{value}"}})
-    return fields
+        parts.append(f"{label}: {value}")
+    return " ｜ ".join(parts)
 
 
 def is_feishu_url(url: str) -> bool:
@@ -173,10 +179,9 @@ def build_feishu_card(
     elements.append({"tag": "div", "fields": fields})
     elements.append({"tag": "hr"})
 
-    identity_fields = _build_identity_fields(analysis_result, parsed)
-    if identity_fields:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "**🏷️ 告警定位**"}})
-        elements.append({"tag": "div", "fields": identity_fields[:10]})
+    identity_line = _build_identity_line(analysis_result, parsed)
+    if identity_line:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**  {identity_line}"}})
         elements.append({"tag": "hr"})
 
     if summary:
