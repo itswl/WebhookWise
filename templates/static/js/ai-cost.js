@@ -22,9 +22,18 @@ const AICostModule = {
         const periodButtons = document.querySelectorAll('[data-ai-period]');
         periodButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const period = e.target.getAttribute('data-ai-period');
-                this.loadStats(period);
+                const button = e.target.closest('[data-ai-period]');
+                const period = button ? button.getAttribute('data-ai-period') : null;
+                if (period) {
+                    this.loadStats(period);
+                }
             });
+        });
+    },
+
+    updatePeriodButtons(period) {
+        document.querySelectorAll('[data-ai-period]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-ai-period') === period);
         });
     },
 
@@ -34,6 +43,7 @@ const AICostModule = {
      */
     async loadStats(period = 'day') {
         this.currentPeriod = period;
+        this.updatePeriodButtons(period);
 
         try {
             const result = await API.getAIUsage(period);

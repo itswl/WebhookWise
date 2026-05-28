@@ -191,6 +191,13 @@ body {
   border-color: var(--text-muted);
 }
 
+.btn.active {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.12);
+}
+
 .btn-primary {
   background: var(--primary);
   color: white;
@@ -610,13 +617,24 @@ body {
 
   .nav-actions .btn {
     flex: 1;
+    justify-content: center;
+    min-width: 0;
     padding: 0.5rem;
     font-size: 0.8rem;
   }
 
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
+  }
+
+  .stat-card {
+    padding: 1rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .stat-value {
+    font-size: 1.45rem;
   }
 
   .filter-section { padding: 1rem; }
@@ -644,4 +662,10 @@ body {
   }
 
   .ai-period-selector .btn { flex: 1; }
+}
+
+@media (max-width: 420px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -66,7 +66,8 @@ function bindGlobalEvents() {
     // Tab 切换
     document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
-            const tabId = e.target.getAttribute('data-tab');
+            const navTab = e.target.closest('.nav-tab');
+            const tabId = navTab ? navTab.getAttribute('data-tab') : null;
             if (tabId) {
                 switchMainTab(tabId);
             }
@@ -82,11 +83,7 @@ function bindGlobalEvents() {
     // 刷新按钮
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => {
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.loadAlerts();
-            }
-        });
+        refreshBtn.addEventListener('click', refreshCurrentTab);
     }
 
     // 模态框外部点击关闭
@@ -150,6 +147,8 @@ function switchMainTab(tabId) {
         }
     });
 
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     // 触发 Tab 特定的初始化
     switch (tabId) {
         case 'alerts':
@@ -163,7 +162,7 @@ function switchMainTab(tabId) {
                 DeepAnalysesModule.stopAutoRefresh();
             }
             if (typeof AICostModule !== 'undefined') {
-                AICostModule.loadStats('day');
+                AICostModule.loadStats(AICostModule.currentPeriod || 'day');
             }
             break;
         case 'deep-analyses':
@@ -185,6 +184,37 @@ function switchMainTab(tabId) {
             }
             if (typeof loadForwardRules === 'function') {
                 loadForwardRules();
+            }
+            break;
+    }
+}
+
+function refreshCurrentTab() {
+    switch (currentTab) {
+        case 'ai-cost':
+            if (typeof AICostModule !== 'undefined') {
+                AICostModule.loadStats(AICostModule.currentPeriod || 'day');
+            }
+            break;
+        case 'deep-analyses':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.load();
+            }
+            break;
+        case 'outbox':
+            if (typeof OutboxModule !== 'undefined') {
+                OutboxModule.load();
+            }
+            break;
+        case 'forward-rules':
+            if (typeof loadForwardRules === 'function') {
+                loadForwardRules();
+            }
+            break;
+        case 'alerts':
+        default:
+            if (typeof AlertsModule !== 'undefined') {
+                AlertsModule.loadAlerts();
             }
             break;
     }
@@ -213,9 +243,7 @@ function toggleAutoRefresh() {
         console.log('⏸️ 自动刷新已停止');
     } else {
         autoRefreshInterval = setInterval(() => {
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.loadAlerts();
-            }
+            refreshCurrentTab();
         }, 10000);
         if (icon) icon.textContent = '⏵️';
         if (text) text.textContent = '刷新中...';
