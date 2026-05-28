@@ -907,7 +907,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? '\ud83d\udc19 OpenClaw' : '\ud83e\udd16 \u672c\u5730 AI';
+                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 \u672c\u5730 AI';
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
