@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -38,6 +39,9 @@ class ForwardRuleSnapshot:
     target_url: str
     stop_on_match: bool
     target_name: str = ""
+    match_project: str = ""
+    match_region: str = ""
+    match_environment: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,149 @@ def build_final_analysis(analysis_result: AnalysisResult, noise: NoiseReductionC
     return final_analysis
 
 
+_PROJECT_KEYS = ("ProjectName", "project_name", "projectName", "project")
+_REGION_KEYS = ("Region", "region", "region_id", "regionId")
+_ENVIRONMENT_KEYS = (
+    "environment",
+    "env",
+    "stage",
+    "deployment_environment",
+    "deploymentEnvironment",
+    "runtime_environment",
+    "runtimeEnvironment",
+)
+_ENVIRONMENT_ALIASES = {
+    "prod": "prod",
+    "production": "prod",
+    "prd": "prod",
+    "live": "prod",
+    "dev": "dev",
+    "development": "dev",
+    "test": "test",
+    "testing": "test",
+    "staging": "staging",
+    "stage": "staging",
+    "pre": "pre",
+    "preprod": "pre",
+    "preproduction": "pre",
+    "uat": "uat",
+    "qa": "qa",
+    "gray": "gray",
+    "grey": "gray",
+}
+
+
+def _find_in_payload_ci(payload: Any, keys: tuple[str, ...]) -> Any:
+    if not keys:
+        return None
+    lowered = {key.lower() for key in keys}
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if str(key).lower() in lowered:
+                return value
+        for value in payload.values():
+            found = _find_in_payload_ci(value, keys)
+            if found is not None:
+                return found
+        return None
+    if isinstance(payload, list):
+        for item in payload:
+            found = _find_in_payload_ci(item, keys)
+            if found is not None:
+                return found
+    return None
+
+
+def _identity_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return ""
+    return " ".join(str(value).splitlines()).strip()
+
+
+def _canonical_environment(value: Any, *, allow_unknown: bool = True) -> str:
+    text = _identity_text(value).lower()
+    if not text:
+        return ""
+    if text in _ENVIRONMENT_ALIASES:
+        return _ENVIRONMENT_ALIASES[text]
+    for token in re.split(r"[^a-z0-9]+", text):
+        if token in _ENVIRONMENT_ALIASES:
+            return _ENVIRONMENT_ALIASES[token]
+    return text if allow_unknown else ""
+
+
+def _iter_payload_text(payload: Any) -> list[str]:
+    if isinstance(payload, dict):
+        values: list[str] = []
+        for key, value in payload.items():
+            key_text = _identity_text(key)
+            if key_text:
+                values.append(key_text)
+            values.extend(_iter_payload_text(value))
+        return values
+    if isinstance(payload, list):
+        list_values: list[str] = []
+        for item in payload:
+            list_values.extend(_iter_payload_text(item))
+        return list_values
+    text = _identity_text(payload)
+    return [text] if text else []
+
+
+def extract_forward_match_fields(parsed_data: dict[str, Any] | None) -> dict[str, str]:
+    payload = parsed_data or {}
+    project = _identity_text(_find_in_payload_ci(payload, _PROJECT_KEYS))
+    region = _identity_text(_find_in_payload_ci(payload, _REGION_KEYS))
+    environment = _canonical_environment(_find_in_payload_ci(payload, _ENVIRONMENT_KEYS))
+    if not environment:
+        for text in _iter_payload_text(payload):
+            environment = _canonical_environment(text, allow_unknown=False)
+            if environment:
+                break
+    return {"project": project, "region": region, "environment": environment}
+
+
+def _csv_value_matches(expected_csv: str, actual: str) -> bool:
+    if not expected_csv:
+        return True
+    actual_normalized = actual.lower()
+    positives: set[str] = set()
+    negatives: set[str] = set()
+    for item in split_csv_lower(expected_csv):
+        if item.startswith("!") and len(item) > 1:
+            negatives.add(item[1:])
+        else:
+            positives.add(item)
+    if actual_normalized in negatives:
+        return False
+    if positives:
+        return actual_normalized in positives
+    return True
+
+
+def _csv_environment_matches(expected_csv: str, actual: str) -> bool:
+    if not expected_csv:
+        return True
+    actual_env = _canonical_environment(actual)
+    positives: set[str] = set()
+    negatives: set[str] = set()
+    for item in split_csv_lower(expected_csv):
+        is_negative = item.startswith("!") and len(item) > 1
+        value = item[1:] if is_negative else item
+        normalized = _canonical_environment(value) or value.lower()
+        if is_negative:
+            negatives.add(normalized)
+        else:
+            positives.add(normalized)
+    if actual_env in negatives:
+        return False
+    if positives:
+        return actual_env in positives
+    return True
+
+
 def _rule_matches(
     rule: ForwardRuleSnapshot,
     *,
@@ -74,6 +221,13 @@ def _rule_matches(
     if rule.match_importance and importance not in split_csv_lower(rule.match_importance):
         return False
     if rule.match_source and source.lower() not in split_csv_lower(rule.match_source):
+        return False
+    identity = extract_forward_match_fields(parsed_data)
+    if not _csv_value_matches(getattr(rule, "match_project", ""), identity["project"]):
+        return False
+    if not _csv_value_matches(getattr(rule, "match_region", ""), identity["region"]):
+        return False
+    if not _csv_environment_matches(getattr(rule, "match_environment", ""), identity["environment"]):
         return False
     if rule.match_duplicate and rule.match_duplicate != "all":
         if rule.match_duplicate == "new" and is_duplicate:

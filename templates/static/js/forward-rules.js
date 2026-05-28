@@ -85,6 +85,9 @@ function renderRuleCard(rule) {
     const importanceText = escapeHtml(formatImportance(rule.match_importance));
     const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
     const sourceText = escapeHtml(rule.match_source || '全部');
+    const projectText = escapeHtml(rule.match_project || '全部');
+    const regionText = escapeHtml(rule.match_region || '全部');
+    const environmentText = escapeHtml(rule.match_environment || '全部');
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
 
     const isEnabled = rule.enabled;
@@ -153,6 +156,9 @@ function renderRuleCard(rule) {
                     <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>来源:</strong> ${sourceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>项目:</strong> ${projectText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>区域:</strong> ${regionText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>环境:</strong> ${environmentText}</div>
                     ${rule.match_payload ? '<div><strong>Payload:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
                 </div>
 
@@ -248,6 +254,9 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormImportanceLow').checked = false;
     document.getElementById('ruleFormDuplicate').value = 'all';
     document.getElementById('ruleFormSource').value = '';
+    document.getElementById('ruleFormProject').value = '';
+    document.getElementById('ruleFormRegion').value = '';
+    document.getElementById('ruleFormEnvironment').value = '';
     document.getElementById('ruleFormPayload').value = '';
     document.getElementById('ruleFormTargetType').value = 'feishu';
     document.getElementById('ruleFormTargetUrl').value = '';
@@ -292,6 +301,9 @@ function showRuleForm(ruleId) {
 
             document.getElementById('ruleFormDuplicate').value = rule.match_duplicate || 'all';
             document.getElementById('ruleFormSource').value = rule.match_source || '';
+            document.getElementById('ruleFormProject').value = rule.match_project || '';
+            document.getElementById('ruleFormRegion').value = rule.match_region || '';
+            document.getElementById('ruleFormEnvironment').value = rule.match_environment || '';
             document.getElementById('ruleFormPayload').value = rule.match_payload || '';
             document.getElementById('ruleFormTargetType').value = rule.target_type || 'feishu';
             document.getElementById('ruleFormTargetUrl').value = rule.target_url || '';
@@ -374,6 +386,9 @@ async function saveRule() {
         match_importance: importances.join(','),
         match_duplicate: document.getElementById('ruleFormDuplicate').value,
         match_source: document.getElementById('ruleFormSource').value.trim(),
+        match_project: document.getElementById('ruleFormProject').value.trim(),
+        match_region: document.getElementById('ruleFormRegion').value.trim(),
+        match_environment: document.getElementById('ruleFormEnvironment').value.trim(),
         match_payload: document.getElementById('ruleFormPayload').value.trim(),
         target_type: targetType,
         target_url: targetType === 'openclaw' ? '' : targetUrl,
