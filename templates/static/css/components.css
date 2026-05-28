@@ -70,6 +70,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .alert-icon {
@@ -81,6 +82,7 @@
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-main);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -839,6 +841,7 @@
 
 .outbox-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
@@ -896,6 +899,43 @@
   font-size: 0.82rem;
   color: var(--text-secondary);
   line-height: 1.7;
+}
+
+@media (max-width: 768px) {
+  .alert-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .alert-title-row {
+    align-items: flex-start;
+  }
+
+  .alert-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .alert-meta {
+    gap: 0.4rem 0.75rem;
+  }
+
+  .alert-meta-item {
+    white-space: normal;
+  }
+
+  .alert-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .alert-actions {
+    flex-wrap: wrap;
+  }
 }
 
 .outbox-detail-content code {
