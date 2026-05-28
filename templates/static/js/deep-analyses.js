@@ -50,7 +50,7 @@ var DeepAnalysesModule = (function() {
         var source = record.source || analysis.source || '未知来源';
 
         const engineMap = {
-            'openclaw': { label: 'OpenClaw', class: 'badge-high', icon: '🧠', bg: '#dbeafe', color: '#4338ca' },
+            'openclaw': { label: 'OpenClaw', class: 'badge-high', icon: '🦞', bg: '#dbeafe', color: '#4338ca' },
             'hermes': { label: 'Hermes', class: 'badge-medium', icon: '⚡', bg: '#fae8ff', color: '#4c1d95' },
             'local': { label: 'Local AI', class: 'badge-low', icon: '💻', bg: '#f3f4f6', color: '#4b5563' },
             'auto': { label: 'Auto', class: 'badge-outline', icon: '🤖', bg: '#fef3c7', color: '#b45309' }
