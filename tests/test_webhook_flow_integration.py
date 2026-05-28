@@ -215,7 +215,8 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert "**时间**\\n—" not in elements_text
     assert "checkout-5xx" in elements_text
     assert "订单服务错误率升高" in elements_text
-    assert "回滚最近发布" in elements_text
+    assert "建议操作" not in elements_text
+    assert "回滚最近发布" not in elements_text
 
 
 async def test_finalization_skips_outbox_without_target(
