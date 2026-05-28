@@ -12,12 +12,19 @@ if TYPE_CHECKING:
 
 logger = get_logger("deep_analysis_notifications")
 
+EVENT_IMPORTANCE_KEY = "_event_importance"
+EVENT_IS_DUPLICATE_KEY = "_event_is_duplicate"
+EVENT_PARSED_DATA_KEY = "_event_parsed_data"
+
 
 async def send_feishu_deep_analysis(
     webhook_url: str,
     analysis_record: dict[str, Any],
     source: str = "",
     webhook_event_id: int = 0,
+    importance: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
 ) -> bool:
     if not webhook_url:
         return False
@@ -28,6 +35,9 @@ async def send_feishu_deep_analysis(
             source=source,
             formatted_payload=payload,
             webhook_id=webhook_event_id or None,
+            importance=importance,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
         )
         return True
     except Exception as e:
@@ -67,6 +77,11 @@ async def send_deep_analysis_success_notification(
             analysis_record=analysis_data,
             source=source,
             webhook_event_id=event_id,
+            importance=str(record_dict.get(EVENT_IMPORTANCE_KEY) or ""),
+            is_duplicate=bool(record_dict.get(EVENT_IS_DUPLICATE_KEY)),
+            parsed_data=record_dict.get(EVENT_PARSED_DATA_KEY)
+            if isinstance(record_dict.get(EVENT_PARSED_DATA_KEY), dict)
+            else None,
         )
         if success:
             logger.info(
@@ -129,6 +144,11 @@ async def send_deep_analysis_failure_notification(
             },
             source="",
             webhook_event_id=event_id,
+            importance=str(record_dict.get(EVENT_IMPORTANCE_KEY) or ""),
+            is_duplicate=bool(record_dict.get(EVENT_IS_DUPLICATE_KEY)),
+            parsed_data=record_dict.get(EVENT_PARSED_DATA_KEY)
+            if isinstance(record_dict.get(EVENT_PARSED_DATA_KEY), dict)
+            else None,
         )
         if success:
             logger.info("[DeepAnalysisNotify] 失败通知已发送: id=%s reason=%s", record_dict["id"], reason)

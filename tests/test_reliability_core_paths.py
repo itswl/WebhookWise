@@ -169,6 +169,9 @@ async def test_deep_analysis_success_notification_records_enqueue_failure(
             "analysis_result": {"root_cause": "disk full"},
             "engine": "openclaw",
             "duration_seconds": 6.5,
+            notifications.EVENT_IMPORTANCE_KEY: "high",
+            notifications.EVENT_IS_DUPLICATE_KEY: False,
+            notifications.EVENT_PARSED_DATA_KEY: {"project": "eve-cn", "env": "prod"},
         },
         source="volcengine",
         policy=SimpleNamespace(notification_webhook_url="https://example.com/hook"),
@@ -184,6 +187,9 @@ async def test_deep_analysis_success_notification_records_enqueue_failure(
             },
             "source": "volcengine",
             "webhook_event_id": 42,
+            "importance": "high",
+            "is_duplicate": False,
+            "parsed_data": {"project": "eve-cn", "env": "prod"},
         }
     ]
     assert failures == [

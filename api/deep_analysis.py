@@ -65,20 +65,28 @@ async def _run_openclaw_deep_analysis(
 
 
 async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
-    from services.operations.deep_analysis_notifications import send_deep_analysis_success_notification
+    from services.operations.deep_analysis_notifications import (
+        EVENT_IMPORTANCE_KEY,
+        EVENT_IS_DUPLICATE_KEY,
+        EVENT_PARSED_DATA_KEY,
+        send_deep_analysis_success_notification,
+    )
 
     event = await session.get(WebhookEvent, record.webhook_event_id)
     source = event.source if event else ""
-    await send_deep_analysis_success_notification(
-        {
-            "id": record.id,
-            "webhook_event_id": record.webhook_event_id,
-            "engine": record.engine,
-            "analysis_result": record.analysis_result,
-            "duration_seconds": record.duration_seconds,
-        },
-        source,
-    )
+    record_dict: JSONDict = {
+        "id": record.id,
+        "webhook_event_id": record.webhook_event_id,
+        "engine": record.engine,
+        "analysis_result": record.analysis_result,
+        "duration_seconds": record.duration_seconds,
+    }
+    if event:
+        record_dict[EVENT_IMPORTANCE_KEY] = str(getattr(event, "importance", "") or "")
+        record_dict[EVENT_IS_DUPLICATE_KEY] = bool(getattr(event, "is_duplicate", False))
+        parsed_data = getattr(event, "parsed_data", None)
+        record_dict[EVENT_PARSED_DATA_KEY] = dict(parsed_data or {}) if isinstance(parsed_data, dict) else {}
+    await send_deep_analysis_success_notification(record_dict, source)
 
 
 def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
