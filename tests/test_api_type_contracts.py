@@ -47,6 +47,53 @@ def test_feishu_card_formats_utc_timestamp_as_china_time():
     assert "2026-05-25 15:54:06 UTC+8" in str(card)
 
 
+def test_feishu_card_shows_ai_event_type_and_alert_identity():
+    from services.notifications.feishu import build_feishu_card
+
+    card = build_feishu_card(
+        {
+            "source": "volcengine",
+            "timestamp": "2026-05-28T04:13:00Z",
+            "parsed_data": {
+                "Type": "Metric",
+                "RuleName": "云服务器GPU卡告警",
+                "Resources": [
+                    {
+                        "ProjectName": "cyberclone-cn",
+                        "Region": "cn-shanghai",
+                        "Name": "cyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01",
+                        "Id": "i-yeb4gf629svr6ooeiadm",
+                    }
+                ],
+            },
+        },
+        {
+            "importance": "medium",
+            "event_type": "云监控GPU资源告警",
+            "summary": "GPU显存使用率90.57%超阈值90%",
+            "alert_identity": {
+                "project": "cyberclone-cn",
+                "region": "cn-shanghai",
+                "namespace": "VCM_ECS",
+                "service": "GPU计算服务",
+                "resource_name": "cyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01",
+                "resource_id": "i-yeb4gf629svr6ooeiadm",
+                "rule_name": "云服务器GPU卡告警",
+                "metric_name": "GpuMemoryUsedUtilization",
+            },
+        },
+    )
+
+    rendered = str(card)
+    assert "云监控GPU资源告警" in rendered
+    assert "**🏷️ 告警定位**" in rendered
+    assert "**项目**\\ncyberclone-cn" in rendered
+    assert "**区域**\\ncn-shanghai" in rendered
+    assert "**服务**\\nGPU计算服务" in rendered
+    assert "**资源**\\ncyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01" in rendered
+    assert "**指标**\\nGpuMemoryUsedUtilization" in rendered
+
+
 @pytest.fixture()
 async def session(monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
