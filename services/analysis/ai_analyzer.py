@@ -25,6 +25,7 @@ from services.analysis.ai_prompt import (
     reload_user_prompt_template,
 )
 from services.analysis.ai_usage import log_ai_usage
+from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPolicy
 from services.dedup import generate_alert_hash
 from services.webhooks.types import (
@@ -113,6 +114,7 @@ def analyze_with_rules(
         "event_type": "unknown",
         "importance": "medium",
         "summary": "规则分析（AI 降级）",
+        "alert_identity": build_alert_identity_context(source, data).get("identity", {}),
         "actions": ["查看告警详情"],
         "risks": ["分析可能不准"],
     }
