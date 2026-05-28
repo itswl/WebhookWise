@@ -16,6 +16,7 @@ from services.webhooks.decisioning import (
     _rule_matches,
     build_final_analysis,
     decide_forwarding,
+    extract_forward_match_fields,
     normalize_importance,
     select_forward_rules,
 )
@@ -30,6 +31,9 @@ def _make_rule(
     match_event_type: str = "",
     match_importance: str = "",
     match_source: str = "",
+    match_project: str = "",
+    match_region: str = "",
+    match_environment: str = "",
     match_duplicate: str = "all",
     match_payload: str = "",
     target_type: str = "webhook",
@@ -43,6 +47,9 @@ def _make_rule(
         match_event_type=match_event_type,
         match_importance=match_importance,
         match_source=match_source,
+        match_project=match_project,
+        match_region=match_region,
+        match_environment=match_environment,
         match_duplicate=match_duplicate,
         match_payload=match_payload,
         target_type=target_type,
@@ -161,6 +168,39 @@ class TestRuleMatches:
         assert _rule_matches(rule, importance="high", source="prometheus", is_duplicate=False)
         assert not _rule_matches(rule, importance="medium", source="prometheus", is_duplicate=False)
         assert not _rule_matches(rule, importance="high", source="grafana", is_duplicate=False)
+
+    def test_project_region_environment_filters(self) -> None:
+        rule = _make_rule(match_project="eve-cn", match_region="cn-shanghai", match_environment="prod,production")
+        payload = {
+            "Resources": [
+                {
+                    "ProjectName": "eve-cn",
+                    "Region": "cn-shanghai",
+                    "Name": "eve-cn-prod-mongo",
+                }
+            ]
+        }
+        assert _rule_matches(rule, parsed_data=payload)
+        assert not _rule_matches(_make_rule(match_project="other"), parsed_data=payload)
+        assert not _rule_matches(_make_rule(match_region="cn-beijing"), parsed_data=payload)
+        assert not _rule_matches(_make_rule(match_environment="dev"), parsed_data=payload)
+
+    def test_project_environment_exclusion_filters(self) -> None:
+        prod_payload = {"Resources": [{"ProjectName": "eve-cn", "Name": "eve-cn-prod-api"}]}
+        dev_payload = {"Resources": [{"ProjectName": "elys-web-cn", "Name": "elys-web-cn-dev-api"}]}
+        assert not _rule_matches(_make_rule(match_environment="!prod"), parsed_data=prod_payload)
+        assert _rule_matches(_make_rule(match_environment="!prod"), parsed_data=dev_payload)
+        assert not _rule_matches(_make_rule(match_project="!eve-cn,!cyberclone-cn"), parsed_data=prod_payload)
+        assert _rule_matches(_make_rule(match_project="!eve-cn,!cyberclone-cn"), parsed_data=dev_payload)
+
+    def test_extract_forward_match_fields_prefers_explicit_environment(self) -> None:
+        fields = extract_forward_match_fields(
+            {
+                "Resources": [{"ProjectName": "cyberclone-cn", "Region": "cn-shanghai", "Name": "resource-dev"}],
+                "labels": {"environment": "production"},
+            }
+        )
+        assert fields == {"project": "cyberclone-cn", "region": "cn-shanghai", "environment": "prod"}
 
 
 # ── select_forward_rules ─────────────────────────────────────────────

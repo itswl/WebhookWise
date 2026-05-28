@@ -48,10 +48,10 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
-def test_alembic_history_is_a_current_schema_baseline() -> None:
+def test_alembic_history_keeps_current_schema_baseline() -> None:
     revision_paths = sorted((migrations.PROJECT_ROOT / "alembic/versions").glob("*.py"))
 
-    assert [path.name for path in revision_paths] == ["0001_current_schema.py"]
+    assert "0001_current_schema.py" in [path.name for path in revision_paths]
     by_name = {path.name: path for path in revision_paths}
     source = by_name["0001_current_schema.py"].read_text()
     assert "Base.metadata.create_all" in source

@@ -16,11 +16,17 @@ def test_forward_rule_request_models_validate_api_boundary() -> None:
             "target_type": "webhook",
             "target_url": " https://example.com/hook ",
             "match_duplicate": "new",
+            "match_project": " eve-cn ",
+            "match_region": " cn-shanghai ",
+            "match_environment": " prod,dev ",
         }
     )
     assert create.name == "pager"
     assert create.target_url == "https://example.com/hook"
     assert create.to_service_kwargs()["match_duplicate"] == "new"
+    assert create.to_service_kwargs()["match_project"] == "eve-cn"
+    assert create.to_service_kwargs()["match_region"] == "cn-shanghai"
+    assert create.to_service_kwargs()["match_environment"] == "prod,dev"
 
     with pytest.raises(ValidationError):
         ForwardRuleCreateRequest.model_validate({"name": "bad", "target_type": "smtp"})
@@ -71,6 +77,9 @@ async def test_forward_rule_mutations_invalidate_cache(monkeypatch: pytest.Monke
         match_importance="",
         match_duplicate="all",
         match_source="",
+        match_project="",
+        match_region="",
+        match_environment="",
         match_payload="",
         target_type="webhook",
         target_url="https://example.com/hook",
