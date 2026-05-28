@@ -198,6 +198,9 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
                 "engine": "openclaw",
                 "analysis_result": {"summary": "done"},
                 "duration_seconds": 1.2,
+                "_event_importance": "",
+                "_event_is_duplicate": False,
+                "_event_parsed_data": {},
             },
             "source": "grafana",
         }
