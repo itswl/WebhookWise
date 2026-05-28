@@ -71,6 +71,7 @@ def test_feishu_card_shows_ai_event_type_and_alert_identity():
             "importance": "medium",
             "event_type": "云监控GPU资源告警",
             "summary": "GPU显存使用率90.57%超阈值90%",
+            "actions": ["这条建议不展示在 Feishu 主通知里"],
             "alert_identity": {
                 "project": "cyberclone-cn",
                 "region": "cn-shanghai",
@@ -86,11 +87,14 @@ def test_feishu_card_shows_ai_event_type_and_alert_identity():
 
     rendered = str(card)
     assert "云监控GPU资源告警" in rendered
-    assert "**🏷️ 告警定位**  项目: cyberclone-cn ｜ 区域: cn-shanghai" in rendered
+    assert "**🏷️ 告警定位**\\n项目: cyberclone-cn ｜ 区域: cn-shanghai" in rendered
     assert "服务: GPU计算服务" in rendered
     assert "资源: cyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01" in rendered
     assert "指标: GpuMemoryUsedUtilization" in rendered
     assert "**项目**\\ncyberclone-cn" not in rendered
+    assert "命名空间" not in rendered
+    assert "建议操作" not in rendered
+    assert "这条建议不展示在 Feishu 主通知里" not in rendered
 
 
 @pytest.fixture()
