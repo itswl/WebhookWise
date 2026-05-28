@@ -86,12 +86,11 @@ def test_feishu_card_shows_ai_event_type_and_alert_identity():
 
     rendered = str(card)
     assert "云监控GPU资源告警" in rendered
-    assert "**🏷️ 告警定位**" in rendered
-    assert "**项目**\\nsample-cn" in rendered
-    assert "**区域**\\ncn-shanghai" in rendered
-    assert "**服务**\\nGPU计算服务" in rendered
-    assert "**资源**\\nsample-cn-dev-gpu-node-01" in rendered
-    assert "**指标**\\nGpuMemoryUsedUtilization" in rendered
+    assert "**🏷️ 告警定位**  项目: sample-cn ｜ 区域: cn-shanghai" in rendered
+    assert "服务: GPU计算服务" in rendered
+    assert "资源: sample-cn-dev-gpu-node-01" in rendered
+    assert "指标: GpuMemoryUsedUtilization" in rendered
+    assert "**项目**\\nsample-cn" not in rendered
 
 
 @pytest.fixture()
