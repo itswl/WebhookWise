@@ -51,8 +51,13 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
     )
     cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
 
-    # 汇总所有复用/缓存命中（redis_reuse, db_reuse, cache, reuse）
-    reuses = route_breakdown.get("redis_reuse", 0) + route_breakdown.get("db_reuse", 0)
+    # 汇总所有能避免再次调用大模型的路径；保留旧 route 名兼容历史数据。
+    reuses = (
+        route_breakdown.get("reuse", 0)
+        + route_breakdown.get("redis_reuse", 0)
+        + route_breakdown.get("db_reuse", 0)
+        + route_breakdown.get("rechain", 0)
+    )
     cache_hits = route_breakdown.get("cache", 0)
     total_hits = reuses + cache_hits
     avg_hits = round(total_hits / cache_entries, 2) if cache_entries > 0 else 0.0
