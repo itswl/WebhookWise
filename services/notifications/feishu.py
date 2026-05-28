@@ -22,6 +22,19 @@ _IMPORTANCE_LABEL = {
     "medium": "🟡 中",
     "low": "🟢 低",
 }
+_IDENTITY_LABELS = (
+    ("project", "项目"),
+    ("region", "区域"),
+    ("namespace", "命名空间"),
+    ("product_namespace", "云产品"),
+    ("service", "服务"),
+    ("resource_name", "资源"),
+    ("resource_id", "资源ID"),
+    ("rule_name", "规则"),
+    ("metric_name", "指标"),
+    ("severity", "级别"),
+    ("status", "状态"),
+)
 
 
 def _truncate_text(text: object, max_len: int) -> str:
@@ -53,6 +66,62 @@ def _format_card_time(value: object) -> str:
     return parsed.replace(tzinfo=UTC).astimezone(_CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S UTC+8")
 
 
+def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) -> object:
+    if key in identity and identity[key]:
+        return identity[key]
+    if key == "project":
+        resources = parsed.get("Resources")
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+            return resources[0].get("ProjectName") or parsed.get("Project")
+        return parsed.get("Project")
+    if key == "region":
+        resources = parsed.get("Resources")
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+            return resources[0].get("Region")
+    if key == "namespace":
+        return parsed.get("Namespace")
+    if key == "resource_name":
+        resources = parsed.get("Resources")
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+            return resources[0].get("Name") or resources[0].get("InstanceId")
+    if key == "resource_id":
+        resources = parsed.get("Resources")
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+            return resources[0].get("Id") or resources[0].get("InstanceId")
+    if key == "rule_name":
+        return parsed.get("RuleName") or parsed.get("alert_name")
+    if key == "metric_name":
+        resources = parsed.get("Resources")
+        if isinstance(resources, list) and resources and isinstance(resources[0], dict):
+            metrics = resources[0].get("Metrics")
+            if isinstance(metrics, list) and metrics and isinstance(metrics[0], dict):
+                return metrics[0].get("Name")
+        return parsed.get("MetricName")
+    if key == "severity":
+        return parsed.get("Level") or parsed.get("Severity")
+    if key == "status":
+        return parsed.get("status")
+    return None
+
+
+def _build_identity_fields(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> list[JsonObject]:
+    identity_raw = analysis_result.get("alert_identity")
+    identity = dict(identity_raw) if isinstance(identity_raw, dict) else {}
+    fields: list[JsonObject] = []
+    seen_values: set[tuple[str, str]] = set()
+    for key, label in _IDENTITY_LABELS:
+        raw = _identity_value(identity, parsed, key)
+        value = _truncate_text(raw, 120)
+        if not value:
+            continue
+        dedupe_key = (label, value)
+        if dedupe_key in seen_values:
+            continue
+        seen_values.add(dedupe_key)
+        fields.append({"is_short": True, "text": {"tag": "lark_md", "content": f"**{label}**\n{value}"}})
+    return fields
+
+
 def is_feishu_url(url: str) -> bool:
     try:
         host = (urlsplit(str(url)).hostname or "").lower().rstrip(".")
@@ -73,9 +142,10 @@ def build_feishu_card(
     template = _IMPORTANCE_TEMPLATE.get(importance, "orange")
     importance_label = _IMPORTANCE_LABEL.get(importance, "🟡 中")
 
-    parsed = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
+    parsed_obj = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
+    parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
     source = webhook_data.get("source", "") or parsed.get("source", "")
-    event_type = parsed.get("event_type", "") or parsed.get("Type", "") or ""
+    event_type = analysis_result.get("event_type") or parsed.get("event_type", "") or parsed.get("Type", "") or ""
     rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
     event_type_display = f"{event_type}" if event_type and rule_name else event_type or rule_name or "—"
 
@@ -102,6 +172,12 @@ def build_feishu_card(
     ]
     elements.append({"tag": "div", "fields": fields})
     elements.append({"tag": "hr"})
+
+    identity_fields = _build_identity_fields(analysis_result, parsed)
+    if identity_fields:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "**🏷️ 告警定位**"}})
+        elements.append({"tag": "div", "fields": identity_fields[:10]})
+        elements.append({"tag": "hr"})
 
     if summary:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 事件摘要**\n{summary[:800]}"}})
