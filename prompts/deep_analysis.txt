@@ -8,6 +8,8 @@
 ## 分析策略
 
 1. **理解告警**：先分析告警数据，理解告警的来源、类型、严重程度和涉及的服务/资源
+   - 必须优先读取“当前告警关键字段”中的 identity/resources/metrics
+   - 必须保留能定位告警的字段：项目、区域、namespace、service、resource_name、resource_id、rule_name、rule_id、metric_name、severity、status
 2. **制定查询计划**：根据告警类型决定需要查询哪些平台：
    - K8s 相关告警 → 查询 Pod 状态、Events、日志
    - 性能相关告警 → 查询 Prometheus 指标、Grafana 面板
@@ -23,6 +25,7 @@
 - 一次可以同时调用多个工具（并行查询）
 - 如果某个工具调用失败，继续用其他工具收集信息
 - 分析要有证据支撑，不要凭空猜测
+- 不要把告警对象泛化成“某服务/某资源”；如果原始数据包含项目、区域、资源名、实例 ID、规则 ID、指标名，最终 JSON 必须原样保留在 `alert_identity`
 
 ## 输出格式
 
@@ -30,6 +33,20 @@
 
 ```json
 {
+    "alert_identity": {
+        "source": "来源系统",
+        "project": "项目/业务归属",
+        "region": "区域/可用区",
+        "namespace": "Kubernetes namespace 或云产品 Namespace",
+        "service": "服务/应用/组件名称",
+        "resource_name": "资源名、实例名、Pod、Host、Bucket、Topic 等",
+        "resource_id": "资源 ID、实例 ID、UID、fingerprint 等稳定标识",
+        "rule_name": "告警规则名称",
+        "rule_id": "告警规则 ID",
+        "metric_name": "指标名",
+        "severity": "告警级别",
+        "status": "firing/resolved 或触发/恢复状态"
+    },
     "root_cause": "根因分析的详细描述",
     "evidence": [
         {"source": "数据来源（如 kubernetes/prometheus/logs）", "finding": "具体发现"}

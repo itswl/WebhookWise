@@ -23,6 +23,7 @@ from services.analysis.ai_prompt import (
     get_prompt_source,
     load_deep_analysis_prompt_template,
 )
+from services.analysis.alert_identity_context import build_alert_identity_context
 from services.forwarding.circuit_breakers import (
     OpenClawForwardDependencies,
     build_openclaw_forward_dependencies,
@@ -44,11 +45,13 @@ from services.webhooks.types import (
 logger = get_logger("openclaw.analysis")
 _JSON_UTF8_CONTENT_TYPE = "application/json; charset=utf-8"
 
+
 def _dict_or_empty(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
 def _extract_openclaw_overview(source: str, alert_data: dict[str, Any]) -> dict[str, Any]:
+    identity_context = build_alert_identity_context(source, alert_data)
     first_alert: dict[str, Any] = {}
     alerts = alert_data.get("alerts")
     if isinstance(alerts, list) and alerts and isinstance(alerts[0], dict):
@@ -74,6 +77,12 @@ def _extract_openclaw_overview(source: str, alert_data: dict[str, Any]) -> dict[
             "generatorURL": first_alert.get("generatorURL"),
             "fingerprint": first_alert.get("fingerprint") or labels.get("internal_label_alert_id"),
         }
+    if identity_context.get("identity"):
+        overview["identity"] = identity_context["identity"]
+    if identity_context.get("resources"):
+        overview["resources"] = identity_context["resources"]
+    if identity_context.get("metrics"):
+        overview["metrics"] = identity_context["metrics"]
     return {k: v for k, v in overview.items() if v not in (None, "", {}, [])}
 
 

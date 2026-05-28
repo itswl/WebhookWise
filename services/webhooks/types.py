@@ -65,6 +65,7 @@ class AnalysisResult(TypedDict):
     summary: Required[str]
     source: NotRequired[str]
     event_type: NotRequired[str]
+    alert_identity: NotRequired[JsonObject]
     impact_scope: NotRequired[str | None]
     actions: NotRequired[list[str]]
     risks: NotRequired[list[str]]
