@@ -54,10 +54,16 @@ async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pyt
         {"analysis_result": {}, "engine": "openclaw"},
         source="grafana",
         webhook_event_id=7,
+        importance="high",
+        is_duplicate=False,
+        parsed_data={"project": "eve-cn", "env": "prod"},
     )
 
     assert ok is True
     assert len(enqueued) == 1
+    assert enqueued[0]["event_type"] == "deep_analysis"
+    assert enqueued[0]["importance"] == "high"
+    assert enqueued[0]["parsed_data"] == {"project": "eve-cn", "env": "prod"}
 
 
 @pytest.mark.asyncio

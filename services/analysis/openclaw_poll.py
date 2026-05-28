@@ -27,6 +27,9 @@ from services.analysis.openclaw_client import (
     poll_session_result,
 )
 from services.operations.deep_analysis_notifications import (
+    EVENT_IMPORTANCE_KEY,
+    EVENT_IS_DUPLICATE_KEY,
+    EVENT_PARSED_DATA_KEY,
     send_deep_analysis_failure_notification,
     send_deep_analysis_success_notification,
 )
@@ -536,6 +539,10 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
                     event = evt_result.scalars().first()
                     source = event.source if event else ""
                     notify_dict = {**record_dict, **poll_result}
+                    if event:
+                        notify_dict[EVENT_IMPORTANCE_KEY] = str(event.importance or "")
+                        notify_dict[EVENT_IS_DUPLICATE_KEY] = bool(event.is_duplicate)
+                        notify_dict[EVENT_PARSED_DATA_KEY] = dict(event.parsed_data or {})
                     asyncio.create_task(
                         _safe_notify(send_deep_analysis_success_notification(notify_dict, source, policy=policy))
                     )
@@ -564,4 +571,3 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     else:
         logger.debug("[Poller] 扫描未发现待调度 OpenClaw 分析")
     return len(ids)
-
