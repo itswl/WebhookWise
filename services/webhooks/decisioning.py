@@ -64,7 +64,8 @@ def build_final_analysis(analysis_result: AnalysisResult, noise: NoiseReductionC
     return final_analysis
 
 
-_PROJECT_KEYS = ("ProjectName", "project_name", "projectName", "project")
+_PROJECT_KEY_GROUPS = (("ProjectName", "project_name", "projectName"), ("Project", "project"))
+_PROJECT_PLACEHOLDERS = {"", "default", "unknown", "none", "null", "-"}
 _REGION_KEYS = ("Region", "region", "region_id", "regionId")
 _ENVIRONMENT_KEYS = (
     "environment",
@@ -94,6 +95,11 @@ _ENVIRONMENT_ALIASES = {
     "gray": "gray",
     "grey": "gray",
 }
+_ENVIRONMENT_TOKEN_RE = "|".join(sorted((re.escape(k) for k in _ENVIRONMENT_ALIASES), key=len, reverse=True))
+_PROJECT_FROM_ENV_RE = re.compile(
+    rf"\b(?P<project>[a-z0-9]+(?:-[a-z0-9]+)*)-(?:{_ENVIRONMENT_TOKEN_RE})(?:-|$)",
+    re.IGNORECASE,
+)
 
 
 def _find_in_payload_ci(payload: Any, keys: tuple[str, ...]) -> Any:
@@ -115,6 +121,23 @@ def _find_in_payload_ci(payload: Any, keys: tuple[str, ...]) -> Any:
             if found is not None:
                 return found
     return None
+
+
+def _find_all_in_payload_ci(payload: Any, keys: tuple[str, ...]) -> list[Any]:
+    if not keys:
+        return []
+    lowered = {key.lower() for key in keys}
+    found: list[Any] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if str(key).lower() in lowered:
+                found.append(value)
+        for value in payload.values():
+            found.extend(_find_all_in_payload_ci(value, keys))
+    elif isinstance(payload, list):
+        for item in payload:
+            found.extend(_find_all_in_payload_ci(item, keys))
+    return found
 
 
 def _identity_text(value: Any) -> str:
@@ -155,9 +178,33 @@ def _iter_payload_text(payload: Any) -> list[str]:
     return [text] if text else []
 
 
+def _infer_project_from_payload_text(payload: Any) -> str:
+    for text in _iter_payload_text(payload):
+        match = _PROJECT_FROM_ENV_RE.search(text.lower())
+        if match:
+            return match.group("project").strip("-")
+    return ""
+
+
+def _extract_project(payload: Any) -> str:
+    placeholder = ""
+    for keys in _PROJECT_KEY_GROUPS:
+        for value in _find_all_in_payload_ci(payload, keys):
+            text = _identity_text(value)
+            lowered = text.lower()
+            if lowered in _PROJECT_PLACEHOLDERS:
+                placeholder = placeholder or text
+                continue
+            return text
+    inferred = _infer_project_from_payload_text(payload)
+    if inferred:
+        return inferred
+    return placeholder
+
+
 def extract_forward_match_fields(parsed_data: dict[str, Any] | None) -> dict[str, str]:
     payload = parsed_data or {}
-    project = _identity_text(_find_in_payload_ci(payload, _PROJECT_KEYS))
+    project = _extract_project(payload)
     region = _identity_text(_find_in_payload_ci(payload, _REGION_KEYS))
     environment = _canonical_environment(_find_in_payload_ci(payload, _ENVIRONMENT_KEYS))
     if not environment:

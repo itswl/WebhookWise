@@ -202,6 +202,34 @@ class TestRuleMatches:
         )
         assert fields == {"project": "cyberclone-cn", "region": "cn-shanghai", "environment": "prod"}
 
+    def test_extract_forward_match_fields_prefers_resource_project_over_default(self) -> None:
+        payload = {
+            "Project": "default",
+            "Resources": [
+                {
+                    "ProjectName": "eve-cn",
+                    "Region": "cn-shanghai",
+                    "Name": "eve-cn-dev-mongo",
+                }
+            ],
+        }
+        fields = extract_forward_match_fields(payload)
+        assert fields == {"project": "eve-cn", "region": "cn-shanghai", "environment": "dev"}
+        assert _rule_matches(_make_rule(match_project="eve-cn", match_environment="!prod"), parsed_data=payload)
+        assert not _rule_matches(
+            _make_rule(match_project="!eve-cn,!cyberclone-cn,!elys-web-cn,!elys-us"),
+            parsed_data=payload,
+        )
+
+    def test_extract_forward_match_fields_infers_project_from_resource_name(self) -> None:
+        fields = extract_forward_match_fields(
+            {
+                "Project": "default",
+                "Resources": [{"Region": "cn-shanghai", "Name": "elys-web-cn-prod-api"}],
+            }
+        )
+        assert fields == {"project": "elys-web-cn", "region": "cn-shanghai", "environment": "prod"}
+
 
 # ── select_forward_rules ─────────────────────────────────────────────
 
