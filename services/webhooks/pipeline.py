@@ -269,6 +269,7 @@ async def _resolve_noise_context(
             original_event_id=0,
             analysis=pending_dedup_placeholder(),
             ttl_seconds=dedup_ttl,
+            reset_chain=dedup_result.reset_chain,
         )
 
         analysis_result = await analyze_webhook_with_ai(
@@ -405,7 +406,7 @@ async def _run_processing_pipeline(
             original_event_id=finalize_res.save_result.webhook_id,
             analysis=dict(final_analysis),
             ttl_seconds=dedup_ttl,
-            reset_chain=analysis_res.is_rechain,
+            reset_chain=analysis_res.reset_chain or analysis_res.is_rechain,
         )
         await schedule_forward_outbox_many(finalize_res.outbox_ids)
         decision = finalize_res.forward_decision
