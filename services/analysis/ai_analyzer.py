@@ -27,6 +27,7 @@ from services.analysis.ai_prompt import (
 from services.analysis.ai_usage import log_ai_usage
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPolicy
+from services.analysis.resource_risk import apply_resource_importance_override
 from services.dedup import generate_alert_hash
 from services.webhooks.types import (
     AnalysisResult,
@@ -207,6 +208,8 @@ def analyze_with_rules(
         res["actions"] = ["确认是否为预期事件", "必要时补充告警规则"]
         res["risks"] = ["告警可能噪声偏多"]
 
+    res = apply_resource_importance_override(res, data)
+
     metric_source = sanitize_source(source)
     AI_REQUESTS_TOTAL.labels(metric_source, "rule", "success").inc()
     AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="rule").observe(time.time() - start_time)
@@ -258,7 +261,7 @@ async def analyze_webhook_with_ai(
             hits = cache_hit_count(cached)
             logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
             await log_ai_usage("cache", alert_hash, source, cache_hit=True, policy=provider_policy)
-            cached_result = cached.copy()
+            cached_result = apply_resource_importance_override(cached.copy(), parsed)
             set_analysis_route(cached_result, "cache")
             AI_REQUESTS_TOTAL.labels(sanitize_source(source), "cache", "hit").inc()
             return cached_result
@@ -290,8 +293,14 @@ async def analyze_webhook_with_ai(
             t_out,
             str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
-        if not is_analysis_degraded(analysis):
-            await save_to_cache(alert_hash, analysis, enabled=cache_enabled, ttl_seconds=cache_ttl_seconds)
+        analysis_result = apply_resource_importance_override(analysis.copy(), parsed)
+        if not is_analysis_degraded(analysis_result):
+            await save_to_cache(
+                alert_hash,
+                analysis_result.copy(),
+                enabled=cache_enabled,
+                ttl_seconds=cache_ttl_seconds,
+            )
         await log_ai_usage(
             "ai",
             alert_hash,
@@ -301,7 +310,6 @@ async def analyze_webhook_with_ai(
             tokens_out=t_out,
             policy=provider_policy,
         )
-        analysis_result = analysis.copy()
         set_analysis_route(analysis_result, "ai")
         return analysis_result
     except Exception as e:

@@ -81,6 +81,8 @@ class AnalysisResult(TypedDict):
     _cache_hit_count: NotRequired[int]
     _pending: NotRequired[bool]
     _embedding: NotRequired[list[float]]
+    _importance_override: NotRequired[str]
+    _importance_override_reason: NotRequired[str]
 
 
 class ForwardResult(TypedDict):

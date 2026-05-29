@@ -321,3 +321,47 @@ async def test_analyze_webhook_ai_cache_hit_disabled_and_success_paths(
     )
     assert success["_route_type"] == "ai"
     assert saved == [{"importance": "medium", "summary": "ok"}]
+
+
+@pytest.mark.asyncio
+async def test_analyze_webhook_ai_cache_hit_promotes_gpu_high(
+    monkeypatch: pytest.MonkeyPatch,
+    temp_config: Any,
+) -> None:
+    from services.analysis import ai_analyzer
+
+    monkeypatch.setattr(temp_config.ai, "CACHE_ENABLED", True)
+    monkeypatch.setattr(temp_config.ai, "ENABLE_AI_ANALYSIS", True)
+    monkeypatch.setattr(temp_config.ai, "OPENAI_API_KEY", "sk-test")
+
+    async def cached(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"importance": "medium", "summary": "GPU使用率100%达上限"}
+
+    async def log_usage(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ai_analyzer, "get_cached_analysis", cached)
+    monkeypatch.setattr(ai_analyzer, "log_ai_usage", log_usage)
+
+    result = await ai_analyzer.analyze_webhook_with_ai(
+        {
+            "source": "volcengine",
+            "parsed_data": {
+                "RuleName": "云服务器GPU卡告警",
+                "SubNamespace": "GPU",
+                "Resources": [
+                    {
+                        "Metrics": [
+                            {"Name": "GpuUsedUtilization", "CurrentValue": 100, "Threshold": 80},
+                            {"Name": "GpuMemoryUsedUtilization", "CurrentValue": 87.2, "Threshold": 90},
+                        ]
+                    }
+                ],
+            },
+        },
+        alert_hash="hash-gpu-cache",
+    )
+
+    assert result["importance"] == "high"
+    assert result["_route_type"] == "cache"
+    assert result["_importance_override"] == "gpu_high"
