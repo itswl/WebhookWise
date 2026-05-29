@@ -258,6 +258,29 @@ def test_analyze_with_rules_metric_threshold_promotes_to_high():
     assert res["importance"] == "high"
 
 
+def test_analyze_with_rules_gpu_utilization_promotes_to_high():
+    from services.analysis.ai_analyzer import analyze_with_rules
+
+    res = analyze_with_rules(
+        {
+            "RuleName": "云服务器GPU卡告警",
+            "SubNamespace": "GPU",
+            "Resources": [
+                {
+                    "Metrics": [
+                        {"Name": "GpuUsedUtilization", "CurrentValue": 100, "Threshold": 80},
+                        {"Name": "GpuMemoryUsedUtilization", "CurrentValue": 87.2, "Threshold": 90},
+                    ]
+                }
+            ],
+        },
+        "volcengine",
+    )
+
+    assert res["importance"] == "high"
+    assert res["_importance_override"] == "gpu_high"
+
+
 def test_analyze_with_rules_accepts_explicit_policy():
     from services.analysis.ai_analyzer import analyze_with_rules
     from services.analysis.analysis_policies import RuleAnalysisPolicy
