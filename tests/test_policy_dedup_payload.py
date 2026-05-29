@@ -147,6 +147,19 @@ async def test_resolve_dedup_reuse_rechain_db_fallback_and_new(
     rechain = await dedup.resolve_dedup("key")
     assert rechain.action == dedup.DedupAction.RECHAIN
     assert rechain.route_type == "rechain"
+    assert rechain.reset_chain is True
+
+    async def db_miss(_key: str, _window: int) -> None:
+        return None
+
+    async def stale_reusable_state(_key: str) -> dedup.DedupState:
+        return dedup.DedupState(7, 100.0, 500.0, 9, {"importance": "high"})
+
+    monkeypatch.setattr(dedup, "get_dedup_state", stale_reusable_state)
+    monkeypatch.setattr(dedup, "_find_original_by_dedup_key", db_miss)
+    new_from_stale = await dedup.resolve_dedup("key")
+    assert new_from_stale.action == dedup.DedupAction.NEW
+    assert new_from_stale.reset_chain is True
 
     async def stale_or_pending_state(_key: str) -> dedup.DedupState:
         return dedup.DedupState(7, 100.0, 500.0, 9, {"_pending": True})
@@ -162,12 +175,18 @@ async def test_resolve_dedup_reuse_rechain_db_fallback_and_new(
     assert fallback.route_type == "db_reuse"
     assert fallback.original_event_id == 99
 
-    async def db_miss(_key: str, _window: int) -> None:
-        return None
-
     monkeypatch.setattr(dedup, "_find_original_by_dedup_key", db_miss)
     new = await dedup.resolve_dedup("key")
     assert new.action == dedup.DedupAction.NEW
+    assert new.reset_chain is True
+
+    async def no_state(_key: str) -> None:
+        return None
+
+    monkeypatch.setattr(dedup, "get_dedup_state", no_state)
+    brand_new = await dedup.resolve_dedup("key")
+    assert brand_new.action == dedup.DedupAction.NEW
+    assert brand_new.reset_chain is False
 
 
 def test_generate_event_keys_fallback_records_identity_degradation(monkeypatch: pytest.MonkeyPatch) -> None:

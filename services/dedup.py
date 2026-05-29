@@ -119,6 +119,7 @@ class DedupResult:
     analysis: dict[str, Any] | None
     original_event_id: int | None
     route_type: str = ""
+    reset_chain: bool = False
 
     @property
     def is_duplicate(self) -> bool:
@@ -217,8 +218,11 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
     dedup_window = _dedup_window_seconds()
     analysis_reuse_window = _analysis_reuse_window_seconds()
     now = time.time()
+    reset_chain_on_new = False
 
     state = await get_dedup_state(dedup_key)
+    if state:
+        reset_chain_on_new = (now - state.last_seen_at) > dedup_window
     if state and _has_reusable_analysis(state.analysis):
         first_seen_elapsed = now - state.first_seen_at
         last_seen_elapsed = now - state.last_seen_at
@@ -243,6 +247,7 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
                 analysis=state.analysis,
                 original_event_id=state.original_event_id,
                 route_type="rechain",
+                reset_chain=True,
             )
 
         # REUSE: 常规去重窗口命中
@@ -274,10 +279,18 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
             route_type="db_reuse",
         )
 
+    if reset_chain_on_new:
+        logger.info(
+            "[Dedup] 过期链未命中 DB fallback，创建新链 dedup_key=%s previous_orig_id=%s",
+            dedup_key[:32] if dedup_key else "-",
+            state.original_event_id if state else "-",
+        )
+
     return DedupResult(
         action=DedupAction.NEW,
         analysis=None,
         original_event_id=None,
+        reset_chain=reset_chain_on_new,
     )
 
 

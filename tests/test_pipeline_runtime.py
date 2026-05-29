@@ -153,10 +153,10 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     async def fresh(_key: str) -> DedupResult:
         return DedupResult(DedupAction.NEW, None, None)
 
-    remembered: list[tuple[str, int]] = []
+    remembered: list[tuple[str, int, bool]] = []
 
     async def remember(key: str, *, original_event_id: int, **_kwargs: object) -> None:
-        remembered.append((key, original_event_id))
+        remembered.append((key, original_event_id, bool(_kwargs.get("reset_chain"))))
 
     async def analyze(_webhook_data: dict[str, object], **_kwargs: object) -> dict[str, object]:
         return {"importance": "medium", "summary": "fresh"}
@@ -172,7 +172,17 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     assert analysis["summary"] == "fresh"
     assert noise.relation == "standalone"
     assert dedup.action == DedupAction.NEW
-    assert remembered == [(ctx.dedup_key, 0)]
+    assert remembered == [(ctx.dedup_key, 0, False)]
+
+    async def stale_new(_key: str) -> DedupResult:
+        return DedupResult(DedupAction.NEW, None, None, reset_chain=True)
+
+    remembered.clear()
+    monkeypatch.setattr(pipeline, "resolve_dedup", stale_new)
+    analysis, noise, dedup = await pipeline._resolve_noise_context(ctx, pipeline.WebhookPipelineDependencies())
+    assert analysis["summary"] == "fresh"
+    assert dedup.reset_chain is True
+    assert remembered == [(ctx.dedup_key, 0, True)]
 
 
 @pytest.mark.asyncio
@@ -183,7 +193,11 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     pipeline, metric_calls = patched_pipeline
     ctx = _ctx()
     noise = NoiseReductionContext("standalone", None, 0.0, False, "none", 0, ())
-    dedup = DedupResult(DedupAction.NEW, None, None)
+    dedup_results = [
+        DedupResult(DedupAction.NEW, None, None),
+        DedupResult(DedupAction.NEW, None, None, reset_chain=True),
+        DedupResult(DedupAction.RECHAIN, {"importance": "medium"}, 1, "rechain"),
+    ]
 
     @asynccontextmanager
     async def suppressed_gate(_key: str):
@@ -198,7 +212,7 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
         yield _GateResult(False)
 
     async def resolved(*_args: object, **_kwargs: object) -> tuple[dict[str, object], NoiseReductionContext, DedupResult]:
-        return {"importance": "medium", "summary": "ok"}, noise, dedup
+        return {"importance": "medium", "summary": "ok"}, noise, dedup_results.pop(0)
 
     remembered: list[bool] = []
     scheduled: list[list[int]] = []
@@ -240,7 +254,7 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     assert skipped.forward_decision.should_forward is False
     assert queued.outbox_count == 2
     assert scheduled[-1] == [10, 11]
-    assert remembered == [False, False, False]
+    assert remembered == [False, True, True]
     decision_actions = [
         args[1]
         for name, args, _kwargs, action, _value in metric_calls
