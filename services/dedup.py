@@ -15,6 +15,7 @@ from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, WEBHOOK_IDENTITY
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
 from db.session import session_scope
+from services.analysis.resource_risk import resource_dedup_bucket
 from services.webhooks.types import is_analysis_degraded, is_pending_result
 
 logger = get_logger("dedup")
@@ -153,6 +154,9 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
         fingerprint = str(identity.get("fingerprint", "") or "").strip()
         if fingerprint:
             dedup_key_fields["fingerprint"] = fingerprint
+        resource_bucket = resource_dedup_bucket(data)
+        if resource_bucket:
+            dedup_key_fields["resource_risk_bucket"] = resource_bucket
 
         dedup_key = (
             hashlib.sha256(json.dumps_bytes(dedup_key_fields, sort_keys=True)).hexdigest()
