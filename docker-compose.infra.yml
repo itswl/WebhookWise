@@ -1,0 +1,67 @@
+# 本地基础设施：PostgreSQL + Redis
+# 用法：
+#   仅启动基础设施：docker compose -f docker-compose.infra.yml up -d
+#   配合应用一起启动：docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d
+#   使用云服务时：不启动此文件，在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例
+
+networks:
+  webhook_net:
+    external: true
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: webhook-postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-webhooks}
+      POSTGRES_USER: ${POSTGRES_USER:-webhook_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - webhookwise_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webhook_user} -d ${POSTGRES_DB:-webhooks}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webhook_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: webhook-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - webhookwise_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webhook_net
+
+volumes:
+  webhookwise_postgres_data:
+    name: webhookwise_postgres_data
+  webhookwise_redis_data:
+    name: webhookwise_redis_data
