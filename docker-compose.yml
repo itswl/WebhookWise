@@ -1,3 +1,12 @@
+# WebhookWise 应用服务
+#
+# 本地开发（自带基础设施）：
+#   docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d
+#
+# 使用云服务（RDS / ElastiCache 等）：
+#   在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例，然后：
+#   docker compose up -d
+
 networks:
   webhook_net:
 
@@ -12,13 +21,10 @@ services:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
-      DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
+      DATABASE_URL: ${DATABASE_URL}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
     volumes:
       - ./.env:/app/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - webhook_net
 
@@ -62,8 +68,8 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_KEY: ${API_KEY}
       REQUIRE_WEBHOOK_AUTH: ${REQUIRE_WEBHOOK_AUTH:-true}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
+      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
@@ -79,10 +85,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
 
     healthcheck:
       test: ["CMD", "python3", "-m", "scripts.healthcheck"]
@@ -113,8 +115,8 @@ services:
       RUN_MODE: worker
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
+      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
       HOST: 0.0.0.0
@@ -130,10 +132,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
       webhook-service:
         condition: service_healthy
     networks:
@@ -158,8 +156,8 @@ services:
       RUN_MODE: scheduler
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-webhook_user}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-webhooks}
+      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL}
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
       TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS: ${TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS:-30}
       TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS: ${TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS:-1}
@@ -180,71 +178,5 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
     networks:
       - webhook_net
-
-  redis:
-    image: redis:7-alpine
-    container_name: webhook-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 64M
-    volumes:
-      - webhookwise_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - webhook_net
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: webhook-postgres
-    restart: unless-stopped
-
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-
-    # ⚠️ 不暴露 ports，宿主机无法访问
-    # ports: []
-
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-webhooks}
-      POSTGRES_USER: ${POSTGRES_USER:-webhook_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-
-    volumes:
-      - webhookwise_postgres_data:/var/lib/postgresql/data
-
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webhook_user} -d ${POSTGRES_DB:-webhooks}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-    networks:
-      - webhook_net
-
-volumes:
-  webhookwise_postgres_data:
-    name: webhookwise_postgres_data
-  webhookwise_redis_data:
-    name: webhookwise_redis_data
