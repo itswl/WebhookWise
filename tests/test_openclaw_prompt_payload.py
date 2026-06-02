@@ -3,6 +3,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
+def test_deep_analysis_prompt_is_webhook_autonomous() -> None:
+    from pathlib import Path
+
+    from services.analysis.analysis_policies import DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE
+
+    prompt = Path("prompts/deep_analysis.txt").read_text(encoding="utf-8")
+
+    for text in (prompt, DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE):
+        assert "webhook" in text.lower()
+        assert "禁止向用户索要补充信息" in text
+        assert "禁止等待用户响应" in text
+        assert "用户未在 10 分钟内响应" in text
+    assert "unknowns" in prompt
+    assert "assumptions" in prompt
+    assert "next_checks" in prompt
+    assert "最终只能输出一个 JSON 对象" in prompt
+
+
 def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
     from services.analysis.openclaw import _build_openclaw_prompt_payload
 
