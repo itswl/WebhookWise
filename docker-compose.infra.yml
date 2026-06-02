@@ -6,7 +6,6 @@
 
 networks:
   webhook_net:
-    external: true
 
 services:
   postgres:
