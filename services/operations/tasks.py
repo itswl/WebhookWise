@@ -197,7 +197,7 @@ async def _scheduled_task_leader(
 async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     async with _scheduled_task_leader(name, interval_seconds) as is_leader:
         if not is_leader:
-            logger.info("[ScheduledTask] 跳过重复执行 name=%s interval=%ss", name, interval_seconds)
+            logger.debug("[ScheduledTask] 跳过重复执行 name=%s interval=%ss", name, interval_seconds)
             if inspect.iscoroutine(fn):
                 fn.close()
             return
@@ -208,16 +208,13 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
     start = time.time()
     status = "success"
     lag = 0.0
-    logger.info("[ScheduledTask] 周期任务开始 name=%s interval=%ss", name, interval_seconds)
+    logger.debug("[ScheduledTask] 周期任务开始 name=%s interval=%ss", name, interval_seconds)
     with otel_span("scheduler.run", {"scheduler.task.name": name}) as scheduler_span:
         try:
             await fn
             now = time.time()
             prev = _last_success_by_name.get(name)
-            if prev is not None:
-                lag = max(0.0, now - prev - float(interval_seconds))
-            else:
-                lag = 0.0
+            lag = max(0.0, now - prev - float(interval_seconds)) if prev is not None else 0.0
             SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
             _last_success_by_name[name] = now
             SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
@@ -241,7 +238,7 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
             SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status=status).inc()
             SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(duration)
             if status == "success":
-                logger.info(
+                logger.debug(
                     "[ScheduledTask] 周期任务成功 name=%s interval=%ss duration=%.3fs lag=%.3fs",
                     name,
                     interval_seconds,
@@ -283,7 +280,7 @@ def _build_webhook_task_context(
 def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
     clear_log_context()
     set_log_context(request_id=ctx.request_id, webhook_source=ctx.source)
-    logger.info(
+    logger.debug(
         "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
         ctx.request_id,
         ctx.source,
