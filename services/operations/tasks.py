@@ -197,7 +197,7 @@ async def _scheduled_task_leader(
 async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     async with _scheduled_task_leader(name, interval_seconds) as is_leader:
         if not is_leader:
-            logger.debug("[ScheduledTask] 跳过重复调度 name=%s", name)
+            logger.info("[ScheduledTask] 跳过重复执行 name=%s interval=%ss", name, interval_seconds)
             if inspect.iscoroutine(fn):
                 fn.close()
             return
@@ -207,6 +207,8 @@ async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]
 async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     start = time.time()
     status = "success"
+    lag = 0.0
+    logger.info("[ScheduledTask] 周期任务开始 name=%s interval=%ss", name, interval_seconds)
     with otel_span("scheduler.run", {"scheduler.task.name": name}) as scheduler_span:
         try:
             await fn
@@ -214,9 +216,9 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
             prev = _last_success_by_name.get(name)
             if prev is not None:
                 lag = max(0.0, now - prev - float(interval_seconds))
-                SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
             else:
-                SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(0.0)
+                lag = 0.0
+            SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
             _last_success_by_name[name] = now
             SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
         except BaseException:
@@ -225,12 +227,27 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
             if last is not None:
                 lag = max(0.0, time.time() - last - float(interval_seconds))
                 SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
+            logger.exception(
+                "[ScheduledTask] 周期任务失败 name=%s interval=%ss lag=%.3fs",
+                name,
+                interval_seconds,
+                lag,
+            )
             raise
         finally:
+            duration = time.time() - start
             if scheduler_span is not None:
                 scheduler_span.set_attribute("scheduler.task.status", status)
             SCHEDULED_TASK_RUNS_TOTAL.labels(name=name, status=status).inc()
-            SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(time.time() - start)
+            SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(duration)
+            if status == "success":
+                logger.info(
+                    "[ScheduledTask] 周期任务成功 name=%s interval=%ss duration=%.3fs lag=%.3fs",
+                    name,
+                    interval_seconds,
+                    duration,
+                    lag,
+                )
 
 
 def _build_webhook_task_context(

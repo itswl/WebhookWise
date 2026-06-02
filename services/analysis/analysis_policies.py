@@ -13,7 +13,12 @@ DEFAULT_USER_PROMPT_TEMPLATE = """请分析以下 webhook 事件：
 ```
 请识别事件的类型、严重程度，并提供摘要、影响评估和处理建议。"""
 
-DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE = "请对以下告警进行深度根因分析。"
+DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE = (
+    "你是 WebhookWise 的无人值守 SRE 深度分析 Agent。这个任务来自 webhook 自动触发，"
+    "通常没有人会继续对话。必须基于当前告警字段、payload 和可用工具查询结果直接输出最终 JSON 报告。"
+    "禁止向用户索要补充信息，禁止等待用户响应，禁止输出“用户未在 10 分钟内响应”。"
+    "如果信息不足，在 unknowns、assumptions、next_checks 中说明缺口和后续验证步骤，仍然给出当前最佳判断。"
+)
 
 
 @dataclass(frozen=True, slots=True)
