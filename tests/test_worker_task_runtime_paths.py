@@ -163,6 +163,7 @@ async def test_run_scheduled_locked_records_success_lag_and_error_metrics(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(tasks, "otel_span", fake_span)
+    monkeypatch.setattr(tasks.logger, "debug", lambda message, *args: logs.append(("debug", message, args)))
     monkeypatch.setattr(tasks.logger, "info", lambda message, *args: logs.append(("info", message, args)))
     monkeypatch.setattr(tasks.logger, "exception", lambda message, *args: logs.append(("exception", message, args)))
     tasks._last_success_by_name.clear()
@@ -176,8 +177,8 @@ async def test_run_scheduled_locked_records_success_lag_and_error_metrics(
     assert any(call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "success"} for call in metric_calls)
     assert any(call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "error"} for call in metric_calls)
     assert any(call[0] == "SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME" and call[3] == "set" for call in metric_calls)
-    assert any(level == "info" and "周期任务开始" in message for level, message, _args in logs)
-    assert any(level == "info" and "周期任务成功" in message for level, message, _args in logs)
+    assert any(level == "debug" and "周期任务开始" in message for level, message, _args in logs)
+    assert any(level == "debug" and "周期任务成功" in message for level, message, _args in logs)
     assert any(level == "exception" and "周期任务失败" in message for level, message, _args in logs)
 
 
