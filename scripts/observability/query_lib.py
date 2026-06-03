@@ -753,9 +753,9 @@ def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
     compose_text = (root_path / "docker-compose.observability.yml").read_text()
     docs_text = "\n".join(
         [
-            (root_path / "docs/architecture/observability.md").read_text(),
-            (root_path / "docs/architecture/observability-dashboard.md").read_text(),
-            (root_path / "docs/architecture/observability-local-lab.md").read_text(),
+            (root_path / "docs/operations/observability/overview.md").read_text(),
+            (root_path / "docs/operations/observability/dashboards.md").read_text(),
+            (root_path / "docs/operations/observability/local-lab/README.md").read_text(),
         ]
     )
 

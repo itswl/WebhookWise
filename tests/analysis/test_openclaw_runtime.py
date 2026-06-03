@@ -14,7 +14,7 @@ from core.datetime_utils import utcnow
 from services.forwarding.circuit_breakers import OpenClawForwardDependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.webhooks.types import DeepAnalysisStatus, degraded_forward_result, webhook_data_from_mapping
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
 class _FakeWebSocket:

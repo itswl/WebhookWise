@@ -1,10 +1,9 @@
-from pathlib import Path
-
 import yaml
 
 from core import json
+from tests.helpers.paths import PROJECT_ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = PROJECT_ROOT
 
 
 def test_grafana_trace_log_correlation_is_bidirectional() -> None:

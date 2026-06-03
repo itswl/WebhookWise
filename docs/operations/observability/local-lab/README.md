@@ -40,13 +40,13 @@ k6
 在仓库根目录运行：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml up -d --build
 ```
 
 确认服务状态：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml ps
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml ps
 curl -fsS http://localhost:8000/ready
 curl -fsS http://localhost:9090/-/ready
 curl -fsS http://localhost:3100/ready
@@ -72,28 +72,31 @@ curl -fsS http://localhost:12345/-/ready
 当前本地栈的服务清单来自：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml config --services
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml config --services
 ```
+
+下表中的 `docker compose ... logs <service>` 指：
+`docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs <service>`。
 
 | 服务 | 作用 | 健康入口 | 指标入口 | 日志入口 | Trace / Profile |
 | --- | --- | --- | --- | --- | --- |
 | `webhook-service` / `webhook-receiver` | HTTP API、Dashboard、webhook 入队 | `http://localhost:8000/ready` | Prometheus: `service_name="webhookwise-api"` | Loki: `{service_name="webhookwise-api"}` | Tempo: `service.name=webhookwise-api`; Pyroscope: `webhookwise-api` |
 | `worker` | 异步处理 webhook、AI、转发、重试 | Docker healthcheck | Prometheus: `service_name="webhookwise-worker"`、`worker_*`、`queue_*` | Loki: `{service_name="webhookwise-worker"}` | Tempo: `service.name=webhookwise-worker`; Pyroscope: `webhookwise-worker` |
 | `scheduler` | 周期任务、恢复扫描、轮询 | Docker healthcheck | Prometheus: `service_name="webhookwise-scheduler"`、`scheduler_*` | Loki: `{service_name="webhookwise-scheduler"}` | Tempo: `service.name=webhookwise-scheduler`; Pyroscope: `webhookwise-scheduler` |
-| `migrate` | Alembic 迁移一次性任务 | container exit code | 无，`OTEL_ENABLED=false` | `docker logs webhook-migrate` | 无 |
-| `postgres` | 本地数据库 | Docker healthcheck / `pg_isready` | 目前只有应用侧 DB client/pool 指标 | `docker logs webhook-postgres` | 应用 DB spans 和 Beyla SQL spans |
-| `redis` | taskiq broker / stream / cache | Docker healthcheck / `redis-cli ping` | 目前只有应用侧 Redis client 指标 | `docker logs webhook-redis` | 应用 Redis spans 和 Beyla Redis spans |
-| `grafana` | 查询与 Dashboard UI | `http://localhost:3000/api/health` | Grafana 自身未被 Prometheus scrape | `docker logs webhooks-grafana-1` | 无 |
-| `prometheus` | 指标存储和查询 | `http://localhost:9090/-/ready` | `http://localhost:9090/metrics`，本地主要 scrape Alloy | `docker logs webhooks-prometheus-1` | 无 |
-| `loki` | 日志存储和查询 | `http://localhost:3100/ready` | Loki 自身未被 Prometheus scrape | `docker logs webhooks-loki-1` | 无 |
-| `tempo` | Trace 存储和查询 | `http://localhost:3200/ready` | Tempo 自身未被 Prometheus scrape | `docker logs webhooks-tempo-1` | Grafana Tempo Explore |
-| `pyroscope` | Profile 存储和查询 | `http://localhost:4040` | Pyroscope 自身未被 Prometheus scrape | `docker logs webhooks-pyroscope-1` | Grafana Profiles / Pyroscope UI |
-| `alloy` | OTLP/Faro 接收、信号转发 | `http://localhost:12345/-/ready` | Prometheus scrape `alloy:12345` | `docker logs webhooks-alloy-1` | Alloy graph |
-| `beyla` | eBPF 自动采集 API 容器 | container running | Prometheus: `source="beyla"`、`traces_*`、`process_*` | `docker logs webhooks-beyla-1` | Tempo: auto traces |
+| `migrate` | Alembic 迁移一次性任务 | container exit code | 无，`OTEL_ENABLED=false` | `docker compose ... logs migrate` | 无 |
+| `postgres` | 本地数据库 | Docker healthcheck / `pg_isready` | 目前只有应用侧 DB client/pool 指标 | `docker compose ... logs postgres` | 应用 DB spans 和 Beyla SQL spans |
+| `redis` | taskiq broker / stream / cache | Docker healthcheck / `redis-cli ping` | 目前只有应用侧 Redis client 指标 | `docker compose ... logs redis` | 应用 Redis spans 和 Beyla Redis spans |
+| `grafana` | 查询与 Dashboard UI | `http://localhost:3000/api/health` | Grafana 自身未被 Prometheus scrape | `docker compose ... logs grafana` | 无 |
+| `prometheus` | 指标存储和查询 | `http://localhost:9090/-/ready` | `http://localhost:9090/metrics`，本地主要 scrape Alloy | `docker compose ... logs prometheus` | 无 |
+| `loki` | 日志存储和查询 | `http://localhost:3100/ready` | Loki 自身未被 Prometheus scrape | `docker compose ... logs loki` | 无 |
+| `tempo` | Trace 存储和查询 | `http://localhost:3200/ready` | Tempo 自身未被 Prometheus scrape | `docker compose ... logs tempo` | Grafana Tempo Explore |
+| `pyroscope` | Profile 存储和查询 | `http://localhost:4040` | Pyroscope 自身未被 Prometheus scrape | `docker compose ... logs pyroscope` | Grafana Profiles / Pyroscope UI |
+| `alloy` | OTLP/Faro 接收、信号转发 | `http://localhost:12345/-/ready` | Prometheus scrape `alloy:12345` | `docker compose ... logs alloy` | Alloy graph |
+| `beyla` | eBPF 自动采集 API 容器 | container running | Prometheus: `source="beyla"`、`traces_*`、`process_*` | `docker compose ... logs beyla` | Tempo: auto traces |
 | `k6` | 一次性压测任务 | run exit code | Prometheus: `k6_*` remote write | run output | 无 |
 | Dashboard browser / Faro | 前端 RUM | 打开 `http://localhost:8000` | Prometheus: `faro_receiver_*` | Loki: `{app="webhookwise-dashboard"}` | 可转成 frontend traces，取决于 Faro SDK 上报内容 |
 
-注意：Postgres、Redis、Grafana、Loki、Tempo、Pyroscope 当前没有各自的 Prometheus exporter/scrape job。它们在本地手册里通过健康检查、Docker logs、应用侧 client metrics、Beyla 自动 spans 和后端 API 验证。若要生产级实例指标，可补 `postgres_exporter`、`redis_exporter` 以及 Grafana/Loki/Tempo/Pyroscope 自身 metrics scrape。
+注意：Postgres、Redis、Grafana、Loki、Tempo、Pyroscope 当前没有各自的 Prometheus exporter/scrape job。它们在本地手册里通过健康检查、Compose service logs、应用侧 client metrics、Beyla 自动 spans 和后端 API 验证。若要生产级实例指标，可补 `postgres_exporter`、`redis_exporter` 以及 Grafana/Loki/Tempo/Pyroscope 自身 metrics scrape。
 
 `scheduler_*` 指标描述的是周期任务执行结果。当前 taskiq 执行侧可能把这些指标打在 `service_name="webhookwise-worker"` 下；排查 scheduler 时同时看 scheduler 容器健康、scheduler 日志、worker 侧 `scheduler_*` 指标。
 

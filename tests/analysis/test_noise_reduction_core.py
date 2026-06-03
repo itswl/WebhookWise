@@ -1,6 +1,6 @@
 """
-tests/test_noise_reduction_core.py
-====================================
+tests/analysis/test_noise_reduction_core.py
+=============================================
 测试告警降噪核心算法：特征提取、Jaccard 相似度、评分逻辑、根因判定。
 这些是纯函数，不依赖数据库或外部服务。
 """

@@ -1,6 +1,6 @@
 """
-tests/test_orchestrator.py
-==========================
+tests/analysis/test_orchestrator.py
+===================================
 测试 webhook command/query services 的纯函数逻辑：
 - get_client_ip()：IP 提取
 - _resolve_analysis_for_duplicate()：重复告警的分析结果解析
@@ -10,7 +10,7 @@ tests/test_orchestrator.py
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 # ── get_client_ip ─────────────────────────────────────────────────────────────
 

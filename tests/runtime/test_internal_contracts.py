@@ -6,9 +6,10 @@ from typing import Any
 
 from api import INTERNAL_ERROR_MESSAGE, internal_error_response
 from services.webhooks import types as webhook_types
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
+from tests.helpers.paths import PROJECT_ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = PROJECT_ROOT
 
 
 def test_internal_protocol_keys_are_declared_in_one_place() -> None:

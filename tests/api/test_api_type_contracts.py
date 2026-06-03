@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 
 from core.datetime_utils import parse_utc_datetime, utcnow
+from tests.helpers.paths import PROJECT_ROOT
 
 pytest.importorskip("fastapi")
 
@@ -29,7 +29,7 @@ def test_parse_utc_datetime_normalizes_explicit_offsets_to_naive_utc():
 
 def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
     offenders = []
-    for path in (Path(__file__).resolve().parents[1] / "models").glob("*.py"):
+    for path in (PROJECT_ROOT / "models").glob("*.py"):
         text = path.read_text()
         offenders.extend(
             f"{path.name}: {needle}" for needle in ("default=datetime.now", "default=func.now()") if needle in text
