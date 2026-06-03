@@ -22,7 +22,7 @@ def test_deep_analysis_prompt_is_webhook_autonomous() -> None:
 
 
 def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
-    from services.analysis.openclaw import _build_openclaw_prompt_payload
+    from services.analysis.openclaw_analysis import _build_openclaw_prompt_payload
 
     payload = {
         "alerts": [

@@ -63,7 +63,7 @@ class _ConnectContext:
 
 
 def _poll_policy(**overrides: object) -> Any:
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
     values: dict[str, object] = {
         "timeout_seconds": 60,
@@ -172,7 +172,7 @@ class _PostResponse:
 
 
 def test_openclaw_json_url_and_history_parsing_helpers() -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_client as openclaw
 
     assert openclaw._loads_dict(b'{"ok": true}') == {"ok": True}
     assert openclaw._loads_dict(b"\xff") is None
@@ -218,7 +218,7 @@ def test_openclaw_policy_helpers_device_auth_and_overview(
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-    from services.analysis import openclaw
+    from services.analysis import openclaw_analysis, openclaw_client
 
     monkey_cfg = temp_config.openclaw
     monkeypatch.setattr(monkey_cfg, "OPENCLAW_DEVICE_ID", "device-id")
@@ -238,28 +238,28 @@ def test_openclaw_policy_helpers_device_auth_and_overview(
         "".join(line for line in pem.splitlines() if not line.startswith("-----")),
     )
 
-    ws_policy = openclaw.OpenClawWsPolicy.from_config()
+    ws_policy = openclaw_client.OpenClawWsPolicy.from_config()
     assert ws_policy.max_history_frames == 1
 
-    auth = openclaw._build_device_auth("nonce-1", gateway_token="gateway-token", policy=ws_policy)
+    auth = openclaw_client._build_device_auth("nonce-1", gateway_token="gateway-token", policy=ws_policy)
     assert auth is not None
     assert auth["device_token"] == "device-token"
     assert auth["device"]["id"] == "device-id"
     assert auth["device"]["nonce"] == "nonce-1"
     base64.urlsafe_b64decode(auth["device"]["signature"] + "==")
 
-    no_auth = openclaw._build_device_auth(
+    no_auth = openclaw_client._build_device_auth(
         "nonce",
-        policy=openclaw.OpenClawWsPolicy("", "", "", "gateway", 1.0, 1),
+        policy=openclaw_client.OpenClawWsPolicy("", "", "", "gateway", 1.0, 1),
     )
     assert no_auth is None
-    invalid_auth = openclaw._build_device_auth(
+    invalid_auth = openclaw_client._build_device_auth(
         "nonce",
-        policy=openclaw.OpenClawWsPolicy("device", "not-base64", "", "gateway", 1.0, 1),
+        policy=openclaw_client.OpenClawWsPolicy("device", "not-base64", "", "gateway", 1.0, 1),
     )
     assert invalid_auth is None
 
-    overview = openclaw._extract_openclaw_overview(
+    overview = openclaw_analysis._extract_openclaw_overview(
         "prometheus",
         {
             "alerts": [
@@ -278,12 +278,12 @@ def test_openclaw_policy_helpers_device_auth_and_overview(
     )
     assert overview["rule_name"] == "HighCPU"
     assert overview["prometheus_alert"]["fingerprint"] == "fp-1"
-    assert openclaw._dict_or_empty([("not", "dict")]) == {}
+    assert openclaw_analysis._dict_or_empty([("not", "dict")]) == {}
 
 
 @pytest.mark.asyncio
 async def test_poll_openclaw_final_status_matrix() -> None:
-    from services.analysis import openclaw
+    from services.analysis import openclaw_client as openclaw
 
     policy = _poll_policy(http_api_url="http://openclaw.test", poll_timeout_seconds=7, connect_timeout_seconds=3)
 

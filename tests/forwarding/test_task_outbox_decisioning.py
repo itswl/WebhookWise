@@ -211,7 +211,7 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
         assert kwargs["target_type_label"] == "webhook"
         return {"status": "success", "channel": "remote"}
 
-    monkeypatch.setattr("services.analysis.openclaw.forward_to_openclaw", openclaw_forward)
+    monkeypatch.setattr("services.analysis.openclaw_analysis.forward_to_openclaw", openclaw_forward)
     monkeypatch.setattr("services.notifications.feishu.is_feishu_url", lambda url: "feishu" in url)
     monkeypatch.setattr("services.notifications.feishu.build_feishu_card", lambda *_args, **_kwargs: {"card": True})
     monkeypatch.setattr("services.notifications.feishu.send_to_feishu", send_feishu)
