@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from typing import Any
+
 from redis.exceptions import RedisError
 
 from adapters.ecosystem_adapters import normalize_webhook_event

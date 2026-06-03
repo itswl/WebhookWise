@@ -8,7 +8,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from contracts.webhook_payload import JsonObject
-
 from core.collections_utils import scalar_text_or_empty
 from core.json import extract_balanced_json_text
 from services.webhooks.types import OPENCLAW_TEXT
@@ -193,20 +192,18 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
 
 
 def _build_identity_content(analysis_result: dict[str, Any], parsed: dict[str, Any]) -> str:
-    labels = dict(
-        (
-            ("project", "项目"),
-            ("region", "区域"),
-            ("product_namespace", "云产品"),
-            ("service", "服务"),
-            ("resource_name", "资源"),
-            ("resource_id", "资源ID"),
-            ("rule_name", "规则"),
-            ("metric_name", "指标"),
-            ("severity", "级别"),
-            ("status", "状态"),
-        )
-    )
+    labels = {
+        "project": "项目",
+        "region": "区域",
+        "product_namespace": "云产品",
+        "service": "服务",
+        "resource_name": "资源",
+        "resource_id": "资源ID",
+        "rule_name": "规则",
+        "metric_name": "指标",
+        "severity": "级别",
+        "status": "状态",
+    }
     values: dict[str, str] = {}
     seen_values: set[tuple[str, str]] = set()
     for key, label in labels.items():

@@ -6,9 +6,9 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from redis.exceptions import RedisError
 
 from fastapi import Depends, HTTPException, Request, Response
+from redis.exceptions import RedisError
 
 from core.app_context import get_config_manager
 from core.config import AppConfig, SecurityConfig

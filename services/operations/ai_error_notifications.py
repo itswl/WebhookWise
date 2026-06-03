@@ -3,6 +3,7 @@
 import hashlib
 import re
 from typing import Any
+
 from redis.exceptions import RedisError
 
 from contracts.webhook_payload import WebhookData
