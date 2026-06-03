@@ -127,7 +127,8 @@ async def test_db_connection() -> bool:
     try:
         await init_engine()
         engine = get_engine()
-        assert engine is not None
+        if engine is None:
+            raise RuntimeError("database engine is not initialized")
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         _logger.debug("数据库连接测试成功")

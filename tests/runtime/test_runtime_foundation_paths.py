@@ -104,7 +104,11 @@ async def test_metrics_poller_refreshes_db_and_mq_metrics(
         assert queue and group
         return 6
 
+    async def count_with_timeout(_session: object, _stmt: object) -> int:
+        return 11
+
     monkeypatch.setattr(metrics_poller, "session_scope", session_scope)
+    monkeypatch.setattr(metrics_poller, "count_with_timeout", count_with_timeout)
     monkeypatch.setattr(metrics_poller, "redis_xlen", redis_xlen)
     monkeypatch.setattr(metrics_poller, "redis_xpending_pending", redis_xpending_pending)
     monkeypatch.setattr(metrics_poller, "redis_xinfo_group_lag", redis_xinfo_group_lag)

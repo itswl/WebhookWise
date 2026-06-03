@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.webhook import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
-from core.logger import get_logger
+from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import WebhookEvent
@@ -119,7 +119,7 @@ async def manual_forward_webhook(
         logger.info(
             "[Reanalysis] 手动转发请求 webhook_id=%s target=%s",
             webhook_id,
-            target_url[:80] if target_url else "(rule-based)",
+            mask_url(target_url) if target_url else "(rule-based)",
         )
         event = await session.get(WebhookEvent, webhook_id)
         if not event:

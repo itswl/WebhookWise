@@ -256,6 +256,12 @@ _OLD_TELEMETRY_NAMES = {
 }
 
 
+def _ensure_http_url(url: str) -> None:
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError(f"unsupported URL scheme: {scheme or '<empty>'}")
+
+
 def _request_json(
     url: str,
     *,
@@ -265,6 +271,7 @@ def _request_json(
     bearer_token: str | None = None,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
+    _ensure_http_url(url)
     if params:
         encoded = urllib.parse.urlencode(params)
         if method == "GET":
@@ -287,7 +294,7 @@ def _request_json(
         request.add_header("Authorization", f"Bearer {bearer_token}")
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             body = response.read().decode()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")
@@ -308,6 +315,7 @@ def _request_text(
     basic_auth: tuple[str, str] | None = None,
     bearer_token: str | None = None,
 ) -> str:
+    _ensure_http_url(url)
     request = urllib.request.Request(url)
     request.add_header("User-Agent", os.getenv("WEBHOOKWISE_HTTP_USER_AGENT", DEFAULT_USER_AGENT))
     if basic_auth:
@@ -316,7 +324,7 @@ def _request_text(
     if bearer_token:
         request.add_header("Authorization", f"Bearer {bearer_token}")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             return str(response.read().decode(errors="replace"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")
@@ -332,6 +340,7 @@ def _post_json(
     headers: dict[str, str] | None = None,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
+    _ensure_http_url(url)
     body = json.dumps_bytes(payload)
     request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("User-Agent", os.getenv("WEBHOOKWISE_HTTP_USER_AGENT", DEFAULT_USER_AGENT))
@@ -339,7 +348,7 @@ def _post_json(
     for key, value in (headers or {}).items():
         request.add_header(key, value)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
             response_body = response.read().decode(errors="replace")
     except urllib.error.HTTPError as exc:
         response_body = exc.read().decode(errors="replace")

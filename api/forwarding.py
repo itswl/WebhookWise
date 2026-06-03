@@ -48,6 +48,16 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
 @forwarding_router.get("/api/forward-rules", response_model=ForwardRuleListResponse)
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
+    return {"success": True, "data": [forward_rule_to_dict(rule, mask_target_url=True) for rule in rules]}
+
+
+@forwarding_router.get(
+    "/api/forward-rules/sensitive",
+    response_model=ForwardRuleListResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
+    rules = await get_forward_rules(session)
     return {"success": True, "data": [forward_rule_to_dict(rule) for rule in rules]}
 
 

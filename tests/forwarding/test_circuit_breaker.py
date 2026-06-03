@@ -9,6 +9,7 @@ end-to-end without tautological method-level monkeypatching.
 import time
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenException, CircuitState
@@ -130,6 +131,12 @@ async def _fail() -> str:
     raise ConnectionError("boom")
 
 
+async def _fail_http_status() -> str:
+    request = httpx.Request("POST", "https://example.com/hook")
+    response = httpx.Response(500, request=request)
+    raise httpx.HTTPStatusError("server error", request=request, response=response)
+
+
 class TestClosedState:
     async def test_successful_call_returns_value(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
         assert await breaker.call_async(_succeed) == "ok"
@@ -144,6 +151,15 @@ class TestOpeningCircuit:
         for _ in range(breaker.failure_threshold):
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)
+
+        assert await breaker._check_state_async() == CircuitState.OPEN
+
+    async def test_default_breaker_counts_http_status_errors(self, fake_state: _FakeRedisState) -> None:
+        breaker = CircuitBreaker(name="http_status", failure_threshold=2, recovery_timeout=0.3)
+
+        for _ in range(breaker.failure_threshold):
+            with pytest.raises(httpx.HTTPStatusError):
+                await breaker.call_async(_fail_http_status)
 
         assert await breaker._check_state_async() == CircuitState.OPEN
 

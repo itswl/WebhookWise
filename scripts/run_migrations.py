@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
+import subprocess  # nosec B404
+import sys
 import time
 from pathlib import Path
 
@@ -34,7 +35,7 @@ async def _wait_for_database(max_retries: int, interval_seconds: float) -> None:
 
 def _run_alembic_upgrade() -> None:
     print("运行 Alembic 迁移...")
-    subprocess.run(["alembic", "upgrade", "head"], cwd=PROJECT_ROOT, check=True)
+    subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=PROJECT_ROOT, check=True)  # nosec B603
 
 
 def main() -> int:

@@ -149,6 +149,15 @@ def test_k8s_manifests_cover_runtime_and_avoid_latest_images() -> None:
     assert config["OTEL_METRICS_EXEMPLAR_FILTER"] == "trace_based"
     assert config["OTEL_TRACES_SAMPLER"] == "parentbased_traceidratio"
     assert config["OTEL_TRACES_SAMPLER_ARG"] == "0.1"
+    assert "LOG_FORMAT" not in config
+    assert "MAX_CONCURRENT_WEBHOOK_TASKS" not in config
+    assert "WEBHOOK_TASK_SLOT_LEASE_SECONDS" not in config
+    assert config["PROCESSING_LOCK_DISTRIBUTED_ENABLED"] == "true"
+    assert config["PROCESSING_LOCK_TTL_SECONDS"] == "180"
+    assert config["PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS"] == "15"
+    assert config["PROCESSING_LOCK_POLL_INTERVAL_MS"] == "100"
+    assert config["PROCESSING_LOCK_FAILFAST_THRESHOLD"] == "20"
+    assert config["PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS"] == "10"
 
     api_container = by_kind_name[("Deployment", "webhookwise-api")]["spec"]["template"]["spec"]["containers"][0]
     assert api_container["livenessProbe"]["httpGet"]["path"] == "/live"

@@ -47,6 +47,40 @@ def test_forward_rule_request_models_validate_api_boundary() -> None:
         ForwardRuleUpdateRequest.model_validate({"priority": 1000001})
 
 
+def test_forward_rule_public_projection_masks_target_url() -> None:
+    from schemas.forwarding import forward_rule_to_dict
+
+    rule = SimpleNamespace(
+        id=1,
+        name="pager",
+        enabled=True,
+        priority=10,
+        match_event_type="webhook_forward",
+        match_importance="high",
+        match_duplicate="all",
+        match_source="",
+        match_project="",
+        match_region="",
+        match_environment="",
+        match_payload="",
+        target_type="webhook",
+        target_url="https://open.feishu.cn/open-apis/bot/v2/hook/secret-token?x=y",
+        target_name="ops",
+        stop_on_match=False,
+        created_at=None,
+        updated_at=None,
+    )
+
+    public = forward_rule_to_dict(rule, mask_target_url=True)
+    sensitive = forward_rule_to_dict(rule)
+
+    assert public["target_url_sensitive"] is False
+    assert "secret-token" not in public["target_url"]
+    assert "?x=y" not in public["target_url"]
+    assert sensitive["target_url_sensitive"] is True
+    assert sensitive["target_url"].endswith("secret-token?x=y")
+
+
 @pytest.mark.asyncio
 async def test_forward_rule_mutations_invalidate_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.forwarding import rules
