@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
 def test_retry_policy_classifies_wrapped_status_codes_and_openai_like_errors() -> None:

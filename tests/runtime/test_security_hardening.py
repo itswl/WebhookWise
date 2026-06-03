@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from core import json
+from tests.helpers.paths import PROJECT_ROOT
 
 
 def test_redacts_headers_and_nested_payload_fields() -> None:
@@ -47,10 +48,9 @@ def test_non_json_raw_payload_is_not_echoed() -> None:
 def test_default_prompt_path_resolves_from_project_root() -> None:
     from services.analysis.ai_prompt import resolve_prompt_path
 
-    root = Path(__file__).resolve().parents[1]
     path = resolve_prompt_path("prompts/webhook_analysis_detailed.txt")
 
-    assert path == root / "prompts/webhook_analysis_detailed.txt"
+    assert path == PROJECT_ROOT / "prompts/webhook_analysis_detailed.txt"
     assert path.exists()
 
 
@@ -242,9 +242,8 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
 
 
 def test_deep_analysis_view_does_not_render_unsanitized_marked_html() -> None:
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "templates/static/js/deep-analyses.js").read_text()
-    html = (root / "templates/dashboard.html").read_text()
+    js = (PROJECT_ROOT / "templates/static/js/deep-analyses.js").read_text()
+    html = (PROJECT_ROOT / "templates/dashboard.html").read_text()
 
     assert "marked.parse" not in js
     assert "marked.min.js" not in html
@@ -480,8 +479,7 @@ async def test_forward_rule_invalid_target_error_is_sanitized(monkeypatch: pytes
 
 
 def test_dashboard_deep_analysis_fields_are_escaped() -> None:
-    root = Path(__file__).resolve().parents[1]
-    alerts_js = (root / "templates/static/js/alerts.js").read_text()
+    alerts_js = (PROJECT_ROOT / "templates/static/js/alerts.js").read_text()
 
     assert "record.user_question;" not in alerts_js
     assert "' + record.openclaw_run_id + '" not in alerts_js
@@ -538,9 +536,8 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 
 
 def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
-    root = Path(__file__).resolve().parents[1]
-    api_js = (root / "templates/static/js/api.js").read_text()
-    dashboard_html = (root / "templates/dashboard.html").read_text()
+    api_js = (PROJECT_ROOT / "templates/static/js/api.js").read_text()
+    dashboard_html = (PROJECT_ROOT / "templates/dashboard.html").read_text()
 
     assert "const READ_TOKEN_KEY = 'webhook_api_key';" in api_js
     assert "const WRITE_TOKEN_KEY = 'webhook_admin_write_key';" in api_js
@@ -561,8 +558,7 @@ def test_dashboard_token_storage_encrypts_and_decrypts_with_webcrypto() -> None:
     if node is None:
         pytest.skip("node is required for dashboard crypto behavior test")
 
-    root = Path(__file__).resolve().parents[1]
-    api_js = root / "templates/static/js/api.js"
+    api_js = PROJECT_ROOT / "templates/static/js/api.js"
     script = f"""
 const fs = require('fs');
 const vm = require('vm');

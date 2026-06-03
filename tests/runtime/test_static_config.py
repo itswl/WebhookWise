@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests.helpers.paths import PROJECT_ROOT
+
+ROOT = PROJECT_ROOT
 
 
 def _env_keys(path: Path) -> set[str]:

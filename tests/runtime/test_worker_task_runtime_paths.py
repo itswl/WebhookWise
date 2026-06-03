@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
 @dataclass

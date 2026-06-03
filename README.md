@@ -75,14 +75,14 @@ cp .env.example .env
 
 完整配置参考 [.env.example.all](.env.example.all)。配置只在进程启动时读取，修改后需要重启进程或滚动发布。
 
-### 2. 启动默认栈
+### 2. 启动本地完整栈
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 curl http://localhost:8000/ready
 ```
 
-Compose 会先运行 `migrate`，迁移成功后再启动 API、Worker 和 Scheduler。
+Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
 
 ### 3. 发送测试事件
 
@@ -104,6 +104,8 @@ curl -X POST http://localhost:8000/webhook \
 | Health | `http://localhost:8000/live` / `http://localhost:8000/ready` |
 
 ## 本地开发
+
+如果 API/Worker 直接跑在宿主机，而 PostgreSQL/Redis 仍由 `docker-compose.infra.yml` 提供，请在本机环境或 `.env` 中把 `DATABASE_URL` 的 host 改为 `localhost`，并把 `REDIS_URL` 改为 `redis://localhost:6379/0`。
 
 ```bash
 pip install -r requirements.lock
@@ -152,8 +154,8 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 ### Docker Compose
 
 ```bash
-docker compose up -d --build
-docker compose ps
+docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
+docker compose -f docker-compose.infra.yml -f docker-compose.yml ps
 ```
 
 ### Kubernetes
@@ -191,7 +193,18 @@ kubectl apply -k deploy/k8s
 │   ├── operations/       # TaskIQ 任务、调度、恢复、维护
 │   └── webhooks/         # Webhook ingest、pipeline、查询与命令
 ├── templates/            # Dashboard HTML 和静态资源
-└── tests/                # pytest、Docker E2E、k6
+└── tests/
+    ├── adapters/         # 外部 payload 适配器测试
+    ├── analysis/         # AI、OpenClaw、降噪和分析策略测试
+    ├── api/              # FastAPI 路由和 API contract 测试
+    ├── forwarding/       # 转发规则、Outbox、重试和 URL 安全测试
+    ├── integration/      # 进程内业务链路集成测试
+    ├── observability/    # 可观测性、文档和运维契约测试
+    ├── runtime/          # 配置、日志、Redis、迁移和运行时基础设施测试
+    ├── webhooks/         # Webhook 解析、pipeline、去重和抑制测试
+    ├── e2e/              # Docker E2E
+    ├── helpers/          # pytest helper
+    └── k6/               # 压测脚本
 ```
 
 更严格的 ownership 规则见 [docs/architecture/boundaries.md](docs/architecture/boundaries.md)。

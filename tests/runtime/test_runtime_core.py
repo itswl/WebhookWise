@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
-from tests.metric_helpers import MetricActionCall, StubMetric
+from tests.helpers.metric_helpers import MetricActionCall, StubMetric
 
 
 @pytest.mark.asyncio

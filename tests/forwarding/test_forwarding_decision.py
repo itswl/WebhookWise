@@ -1,6 +1,6 @@
 """
-tests/test_forwarding_decision.py
-==================================
+tests/forwarding/test_forwarding_decision.py
+=============================================
 测试 forwarding_stage.resolve_forward_decision() 转发决策逻辑。
 这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
 """

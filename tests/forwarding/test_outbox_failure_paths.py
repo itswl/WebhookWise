@@ -1,6 +1,6 @@
 """Tests for outbox failure, retry exhaustion, stale claim handling, and claim semantics.
 
-Reuses the SQLite session-factory pattern from test_forward_outbox.py.
+Reuses the SQLite session-factory pattern from tests/forwarding/test_forward_outbox.py.
 """
 
 from collections.abc import AsyncIterator

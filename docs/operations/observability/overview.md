@@ -97,7 +97,7 @@ For a step-by-step local learning flow with screenshots, see [local-lab/README.m
 Start the default app stack plus local observability backends:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml up -d --build
 ```
 
 Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. The provisioned AIOps dashboards are described in [dashboards.md](dashboards.md). Alertmanager is available at `http://localhost:9093`. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
@@ -107,7 +107,7 @@ Pyroscope is available directly at `http://localhost:4040`. For practical readin
 Run the k6 smoke load check:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
 ```
 
 Beyla runs as a privileged sidecar sharing the API container PID namespace. It is useful for learning eBPF-based auto-instrumentation, but it requires Linux kernel/eBPF support from the Docker host.

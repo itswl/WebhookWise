@@ -40,17 +40,17 @@ Grafana -> Explore -> datasource 选择 `Loki`。
 
 ![Service logs in Loki](../../../assets/observability-local-lab/service-logs-loki.jpg)
 
-基础设施容器日志目前没有统一采进 Loki，用 Docker logs 看：
+基础设施容器日志目前没有统一采进 Loki，用 Compose service logs 看：
 
 ```bash
-docker logs --tail=100 webhooks-alloy-1
-docker logs --tail=100 webhooks-prometheus-1
-docker logs --tail=100 webhooks-loki-1
-docker logs --tail=100 webhooks-tempo-1
-docker logs --tail=100 webhooks-pyroscope-1
-docker logs --tail=100 webhooks-grafana-1
-docker logs --tail=100 webhook-postgres
-docker logs --tail=100 webhook-redis
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 alloy
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 prometheus
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 loki
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 tempo
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 pyroscope
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 grafana
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 postgres
+docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 redis
 ```
 
 ## 看 Trace
@@ -113,4 +113,3 @@ python scripts/observability/webhookwise_observe.py smoke --skip-webhook
 `webhook_events_active`、`db_pool_connections_checked_out`。
 排障时可以用 `python scripts/observability/webhookwise_observe.py runbook <alert_name>`
 自动收集告警状态、相关 SLO/RED/USE 查询、错误日志、Trace 和 Profile 链接。
-

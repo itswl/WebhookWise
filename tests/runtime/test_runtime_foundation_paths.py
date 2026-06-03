@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException, Response
 from redis.exceptions import RedisError
 
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
 @pytest.mark.asyncio
