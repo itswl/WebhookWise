@@ -66,6 +66,39 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
             assert "verify_api_key" in dependency_names, path
 
 
+def test_sensitive_read_routes_declare_local_auth_dependency() -> None:
+    from api.v1.admin import admin_router
+    from api.v1.deep_analysis import deep_analysis_router
+
+    sensitive_routes = (
+        (
+            admin_router,
+            {
+                "/health/deep",
+                "/prompt",
+                "/admin/dead-letters",
+                "/admin/suppressed",
+            },
+        ),
+        (
+            deep_analysis_router,
+            {
+                "/deep-analyses",
+                "/deep-analyses/{webhook_id}",
+            },
+        ),
+    )
+
+    for router, paths in sensitive_routes:
+        for path in paths:
+            route = next(route for route in router.routes if str(getattr(route, "path", "")) == path)
+            dependency_names = {
+                getattr(dependency.call, "__name__", str(dependency.call))
+                for dependency in getattr(route, "dependant", object()).dependencies
+            }
+            assert "verify_api_key" in dependency_names, path
+
+
 def test_business_api_modules_live_under_v1_package() -> None:
     root_api = PROJECT_ROOT / "api"
     v1_api = root_api / "v1"

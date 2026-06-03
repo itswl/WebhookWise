@@ -10,7 +10,7 @@ async def test_forward_deep_analysis_validates_outbound_url(monkeypatch: pytest.
     async def reject_url(url: str) -> str:
         raise UnsafeTargetUrlError("target host cannot be resolved: internal.example")
 
-    monkeypatch.setattr(deep_analysis, "validate_outbound_url", reject_url)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.validate_outbound_url", reject_url)
 
     response = await deep_analysis.forward_deep_analysis(
         1,

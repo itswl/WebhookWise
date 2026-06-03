@@ -15,6 +15,7 @@ from contracts.webhook_payload import JsonObject
 from core import json
 from core.datetime_utils import parse_utc_datetime, utcnow
 from core.http_client import get_http_client
+from core.json import extract_balanced_json_text
 from core.logger import get_logger
 from core.observability.metrics import DEEP_ANALYSIS_TOTAL
 from core.observability.tracing import get_current_trace_id
@@ -222,20 +223,7 @@ async def _fetch_poll_result(rec: JsonObject, *, policy: OpenClawPollPolicy) -> 
 
 
 def extract_robust_json(text: str) -> str | None:
-    if not isinstance(text, str):
-        return None
-    start_idx = text.find("{")
-    if start_idx == -1:
-        return None
-    stack = 0
-    for i in range(start_idx, len(text)):
-        if text[i] == "{":
-            stack += 1
-        elif text[i] == "}":
-            stack -= 1
-            if stack == 0:
-                return text[start_idx : i + 1]
-    return None
+    return extract_balanced_json_text(text, allow_arrays=False)
 
 
 def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> JsonObject:

@@ -10,7 +10,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.ecosystem_adapters import normalize_webhook_event
 from core.auth import verify_api_key
 from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
@@ -305,19 +304,3 @@ async def get_webhook_detail_endpoint(
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
-
-
-async def build_webhook_context(event: WebhookEvent) -> JSONDict:
-    from services.webhooks.repository import load_event_payload
-
-    parsed_data, _ = await load_event_payload(event)
-    source = event.source
-    if (not source or source == "unknown") and isinstance(parsed_data, dict):
-        normalized = normalize_webhook_event(parsed_data, None)
-        source, parsed_data = normalized.source or source, dict(normalized.data)
-    return {
-        "source": source,
-        "parsed_data": parsed_data,
-        "timestamp": utc_isoformat(event.timestamp),
-        "client_ip": event.client_ip,
-    }

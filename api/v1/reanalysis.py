@@ -3,10 +3,11 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
-from api.v1.webhook import JSONDict, build_webhook_context
+from api.v1.webhook import JSONDict
 from contracts.webhook_payload import webhook_data_from_mapping
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
@@ -16,12 +17,14 @@ from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
+from services.webhooks.event_context import build_webhook_context
 from services.webhooks.forwarding_stage import resolve_forward_decision
 from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.v1.reanalysis")
 
 reanalysis_router = APIRouter()
+_REANALYSIS_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
 
 
 @reanalysis_router.post(
@@ -103,7 +106,7 @@ async def reanalyze_webhook(
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except _REANALYSIS_RUNTIME_ERRORS as e:
         logger.error("[Reanalysis] 重新分析异常 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
         return internal_error_response()
 
@@ -175,6 +178,6 @@ async def manual_forward_webhook(
         return {"success": True, "data": fwd_res, "message": "转发完成"}
     except HTTPException:
         raise
-    except Exception as e:
+    except _REANALYSIS_RUNTIME_ERRORS as e:
         logger.error("[Reanalysis] 手动转发异常 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
         return internal_error_response()
