@@ -124,6 +124,7 @@ async def verify_admin_write(
 ) -> bool:
     """验证 Admin 写操作 Bearer Token。"""
     admin_write_key = config.security.ADMIN_WRITE_KEY
+    api_key = config.security.API_KEY
     if not admin_write_key:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -133,7 +134,35 @@ async def verify_admin_write(
     credential = _first_token(
         request, auth, "x-admin-write-key", "x-admin-key", "x-api-key"
     )
-    if not credential or not _matches_any_configured_token(credential, admin_write_key):
+
+    if not credential:
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning(
+            "[Auth] Admin write operation requires permission: missing token, IP=%s, URL=%s",
+            client_ip,
+            request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin write permission required. Missing ADMIN_WRITE_KEY.",
+        )
+
+    if _matches_any_configured_token(credential, admin_write_key) is False and _matches_any_configured_token(
+        credential,
+        api_key,
+    ):
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning(
+            "[Auth] Admin write operation rejected with API key: IP=%s, URL=%s",
+            client_ip,
+            request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin write token required. API key is insufficient for this endpoint.",
+        )
+
+    if not _matches_any_configured_token(credential, admin_write_key):
         client_ip = request.client.host if request.client else "unknown"
         logger.warning(
             "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
