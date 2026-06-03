@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Request, Response
 
-from api import InvalidSignatureError
 from core.app_context import get_config_manager
 from core.config import AppConfig, SecurityConfig
 from core.logger import get_logger
@@ -24,6 +23,10 @@ logger = get_logger("webhook_security")
 _BURST_WINDOW_SECONDS = 10
 _SUSTAINED_WINDOW_SECONDS = 60
 _CONFIG_DEPENDENCY = Depends(get_config_manager)
+
+
+class InvalidSignatureError(Exception):
+    """签名校验失败。"""
 
 
 def verify_signature(payload: bytes, signature: str, secret: str | None = None) -> bool:

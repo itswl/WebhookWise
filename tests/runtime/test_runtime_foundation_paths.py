@@ -152,8 +152,8 @@ async def test_metrics_poller_tolerates_redis_and_event_count_errors(
 
 
 def test_webhook_signature_and_token_auth_contracts() -> None:
-    from api import InvalidSignatureError
     from core import webhook_security
+    from core.webhook_security import InvalidSignatureError
 
     payload = b'{"alertname":"HighCPU"}'
     signature = webhook_security.hmac.new(b"secret", payload, webhook_security.hashlib.sha256).hexdigest()

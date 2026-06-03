@@ -210,7 +210,7 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
 
 def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     db_engine = (ROOT / "db/engine.py").read_text()
-    app = (ROOT / "core/app.py").read_text()
+    app = (ROOT / "api/app.py").read_text()
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     webhook = (ROOT / "api/v1/webhook.py").read_text()
     tasks = (ROOT / "services/operations/tasks.py").read_text()
@@ -222,7 +222,8 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
 
     assert "instrument_sqlalchemy(engine.sync_engine)" in db_engine
     assert "shutdown_observability()" in app
-    assert "shutdown_observability()" in broker
+    assert "shutdown_observability()" not in broker
+    assert "shutdown_observability()" in taskiq_wiring
     assert "services.operations.tasks" not in app
     assert "services.operations.tasks" not in broker
     assert "import services.operations.tasks" in taskiq_wiring
@@ -245,12 +246,14 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
 
 
 def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
-    app = (ROOT / "core/app.py").read_text()
+    app = (ROOT / "api/app.py").read_text()
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     forwarding_breakers = (ROOT / "services/forwarding/circuit_breakers.py").read_text()
     entrypoint = (ROOT / "entrypoint.sh").read_text()
 
     assert "import services." not in broker
+    assert "from adapters." not in broker
+    assert "from api" not in broker
     assert "services.operations.tasks" not in app
     assert "LazyCircuitBreaker" in forwarding_breakers
     assert "get_default_config" not in forwarding_breakers

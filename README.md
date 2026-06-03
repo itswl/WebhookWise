@@ -113,7 +113,7 @@ curl -X POST http://localhost:8000/v1/webhook \
 pip install -r requirements.lock
 pip install -r requirements-dev.lock
 
-uvicorn core.app:app --reload --port 8000
+uvicorn api.app:app --reload --port 8000
 ```
 
 另开一个终端启动 Worker：

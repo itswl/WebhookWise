@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from contracts.webhook_payload import WEBHOOK_ADAPTER
 from core import json
 from core.alert_concurrency import alert_processing_gate
 from core.datetime_utils import utc_isoformat, utcnow
@@ -57,7 +58,6 @@ from services.webhooks.noise_stage import compute_noise
 from services.webhooks.policies import NoiseReductionPolicy
 from services.webhooks.repository import EventEnvelope
 from services.webhooks.types import (
-    WEBHOOK_ADAPTER,
     AnalysisResult,
     NoiseReductionContext,
     WebhookProcessContext,
