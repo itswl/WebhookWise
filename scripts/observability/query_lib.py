@@ -540,7 +540,7 @@ def post_smoke_webhook(endpoints: Endpoints | None = None) -> dict[str, Any]:
     if secret:
         signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         headers["X-Webhook-Signature"] = signature
-    return _post_json(f"{endpoints.api}/webhook/observability-smoke", payload, headers=headers)
+    return _post_json(f"{endpoints.api}/v1/webhook/observability-smoke", payload, headers=headers)
 
 
 def smoke(

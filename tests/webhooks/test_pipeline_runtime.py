@@ -64,6 +64,14 @@ def _ctx() -> WebhookProcessContext:
     )
 
 
+def test_forward_reason_label_uses_machine_code_not_localized_text() -> None:
+    from services.webhooks import pipeline
+
+    assert pipeline._forward_reason_label("刚已通知，冷却中", "cooldown") == "cooldown"
+    assert pipeline._forward_reason_label("刚已通知，冷却中") == "other"
+    assert pipeline._forward_reason_label(None, None) == "none"
+
+
 @pytest.fixture
 def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
     from services.webhooks import pipeline
@@ -75,7 +83,6 @@ def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[s
         "WEBHOOK_DEDUP_DECISIONS_TOTAL",
         "WEBHOOK_DEDUP_DURATION_SECONDS",
         "WEBHOOK_FORWARD_DECISIONS_TOTAL",
-        "WEBHOOK_NOISE_EVALUATIONS_TOTAL",
         "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS",
         "WEBHOOK_PIPELINE_STEP_TOTAL",
         "WEBHOOK_PROCESSING_DURATION_SECONDS",
@@ -98,23 +105,14 @@ async def test_pipeline_step_metrics_success_and_error(
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]
 ) -> None:
     pipeline, metric_calls = patched_pipeline
+    ctx = _ctx()
 
-    async with pipeline._pipeline_step(
-        step_name="unit",
-        metric_source="prometheus",
-        span_name="webhook.unit",
-        span_attrs={"x": "y"},
-    ) as (span, outcome):
+    async with pipeline._pipeline_step(ctx, "dedup") as (span, outcome):
         outcome["value"] = "custom"
         span.set_attribute("inside", True)
 
     with pytest.raises(RuntimeError):
-        async with pipeline._pipeline_step(
-            step_name="unit",
-            metric_source="prometheus",
-            span_name="webhook.unit",
-            span_attrs={"x": "y"},
-        ):
+        async with pipeline._pipeline_step(ctx, "dedup"):
             raise RuntimeError("boom")
 
     outcomes = [

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Generic, Literal, TypedDict, TypeVar, cast, get_args, get_origin, overload
+from typing import Literal, TypedDict, get_args, get_origin
 
 from pydantic_settings import BaseSettings
 
@@ -26,7 +26,6 @@ from core.config.defaults import (
 )
 
 ConfigValueType = Literal["str", "int", "float", "bool"]
-_ConfigSectionT = TypeVar("_ConfigSectionT", bound=BaseSettings)
 
 
 class ConfigKeyMeta(TypedDict):
@@ -52,25 +51,6 @@ def _config_type_for_annotation(annotation: object) -> ConfigValueType | None:
     return None
 
 
-class _ConfigSection(Generic[_ConfigSectionT]):
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    @overload
-    def __get__(self, instance: None, owner: type[Any]) -> _ConfigSection[_ConfigSectionT]: ...
-
-    @overload
-    def __get__(self, instance: object, owner: type[Any]) -> _ConfigSectionT: ...
-
-    def __get__(
-        self, instance: object | None, owner: type[Any]
-    ) -> _ConfigSection[_ConfigSectionT] | _ConfigSectionT:
-        if instance is None:
-            return self
-        manager = cast(UnifiedConfigManager, instance)
-        return cast(_ConfigSectionT, getattr(manager.app, self._name))
-
-
 @lru_cache
 def get_config_keys() -> dict[str, ConfigKeyMeta]:
     settings = get_settings()
@@ -88,23 +68,61 @@ def get_config_keys() -> dict[str, ConfigKeyMeta]:
 class UnifiedConfigManager:
     """Read-only access to process configuration loaded at startup."""
 
-    server = _ConfigSection[ServerConfig]("server")
-    tasks = _ConfigSection[TaskConfig]("tasks")
-    mq = _ConfigSection[MQConfig]("mq")
-    security = _ConfigSection[SecurityConfig]("security")
-    db = _ConfigSection[DBConfig]("db")
-    redis = _ConfigSection[RedisConfig]("redis")
-    noise = _ConfigSection[NoiseConfig]("noise")
-    ai = _ConfigSection[AIConfig]("ai")
-    notifications = _ConfigSection[NotificationConfig]("notifications")
-    openclaw = _ConfigSection[OpenClawConfig]("openclaw")
-    circuit_breaker = _ConfigSection[CircuitBreakerConfig]("circuit_breaker")
-    retry = _ConfigSection[RetryConfig]("retry")
-    maintenance = _ConfigSection[MaintenanceConfig]("maintenance")
-
     def __init__(self, settings: AppConfig | None = None) -> None:
         self._settings = settings
 
     @property
     def app(self) -> AppConfig:
         return self._settings or get_settings()
+
+    @property
+    def server(self) -> ServerConfig:
+        return self.app.server
+
+    @property
+    def tasks(self) -> TaskConfig:
+        return self.app.tasks
+
+    @property
+    def mq(self) -> MQConfig:
+        return self.app.mq
+
+    @property
+    def security(self) -> SecurityConfig:
+        return self.app.security
+
+    @property
+    def db(self) -> DBConfig:
+        return self.app.db
+
+    @property
+    def redis(self) -> RedisConfig:
+        return self.app.redis
+
+    @property
+    def noise(self) -> NoiseConfig:
+        return self.app.noise
+
+    @property
+    def ai(self) -> AIConfig:
+        return self.app.ai
+
+    @property
+    def notifications(self) -> NotificationConfig:
+        return self.app.notifications
+
+    @property
+    def openclaw(self) -> OpenClawConfig:
+        return self.app.openclaw
+
+    @property
+    def circuit_breaker(self) -> CircuitBreakerConfig:
+        return self.app.circuit_breaker
+
+    @property
+    def retry(self) -> RetryConfig:
+        return self.app.retry
+
+    @property
+    def maintenance(self) -> MaintenanceConfig:
+        return self.app.maintenance

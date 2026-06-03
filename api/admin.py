@@ -68,7 +68,7 @@ async def _reload_prompt_by_kind(kind: PromptKind) -> str:
     return await reload_user_prompt_template()
 
 
-@admin_router.get("/api/health/deep")
+@admin_router.get("/v1/health/deep")
 async def deep_health_check(request: Request) -> JSONResponse:
     context = getattr(request.app.state, "app_context", None)
     config = context.config if isinstance(context, AppContext) else UnifiedConfigManager()
@@ -129,7 +129,7 @@ async def deep_health_check(request: Request) -> JSONResponse:
 
 
 @admin_router.post(
-    "/api/prompt/reload",
+    "/v1/prompt/reload",
     response_model=PromptReloadResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -154,7 +154,7 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
         return internal_error_response()
 
 
-@admin_router.get("/api/prompt", response_model=PromptGetResponse)
+@admin_router.get("/v1/prompt", response_model=PromptGetResponse)
 async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
         prompt_kind = _normalize_prompt_kind(kind)
@@ -184,7 +184,7 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
     )
 
 
-@admin_router.get("/api/admin/dead-letters", response_model=DeadLetterListResponse)
+@admin_router.get("/v1/admin/dead-letters", response_model=DeadLetterListResponse)
 async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -202,7 +202,7 @@ async def get_dead_letters_endpoint(
 
 
 @admin_router.post(
-    "/api/admin/outbox/{outbox_id}/retry",
+    "/v1/admin/outbox/{outbox_id}/retry",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -217,7 +217,7 @@ async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
         return internal_error_response()
 
 
-@admin_router.get("/api/admin/suppressed")
+@admin_router.get("/v1/admin/suppressed")
 async def list_suppressed_endpoint(
     session: AsyncSession = Depends(get_db_session),
     minutes: int = Query(60, ge=1, le=24 * 60),
@@ -233,7 +233,7 @@ async def list_suppressed_endpoint(
 
 
 @admin_router.post(
-    "/api/admin/dead-letters/{event_id}/replay",
+    "/v1/admin/dead-letters/{event_id}/replay",
     response_model=ReplayResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -252,7 +252,9 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
 
 
 @admin_router.post(
-    "/api/admin/dead-letters/replay-all", response_model=ReplayAllResponse, dependencies=[Depends(verify_admin_write)]
+    "/v1/admin/dead-letters/replay-all",
+    response_model=ReplayAllResponse,
+    dependencies=[Depends(verify_admin_write)],
 )
 async def replay_all_dead_letters(
     batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)

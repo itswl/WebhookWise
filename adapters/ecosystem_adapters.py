@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 from adapters.normalized import AlertIdentity, with_alert_identity
 from core.logger import get_logger
@@ -16,7 +16,6 @@ from services.webhooks.types import JsonObject, WebhookData, webhook_data_from_m
 logger = get_logger("ecosystem_adapters")
 
 HeadersLike = Mapping[str, Any]
-_initialized = False
 
 
 @dataclass(frozen=True)
@@ -78,10 +77,7 @@ def normalize_level(value: Any) -> str:
     return "warning"
 
 
-_T = TypeVar("_T")
-
-
-def _pick_first(*values: _T | None) -> _T | None:
+def _pick_first[PickValue](*values: PickValue | None) -> PickValue | None:
     for v in values:
         if v is not None and str(v).strip():
             return v
@@ -151,13 +147,14 @@ def register_simple_adapters() -> None:
         resources = _safe_resource_list(data.get("Resources"))
         resource = _pick_first_resource(resources)
         name = _pick_first(data.get("RuleName"), data.get("AlertName"), data.get("MetricName"), data.get("Type"))
+        fingerprint = _pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID"))
         return with_alert_identity(
             dict(data),
             AlertIdentity(
                 source="volcengine",
                 name=str(name) if name else None,
                 resource=resource,
-                fingerprint=str(fingerprint) if (fingerprint := _pick_first(data.get("alert_id"), data.get("AlertId"), data.get("ID"))) else None,
+                fingerprint=str(fingerprint) if fingerprint else None,
                 severity=normalize_level(data.get("Level") or data.get("Severity")),
             ),
         )
@@ -267,6 +264,7 @@ def register_simple_adapters() -> None:
             res["Resources"] = [{"InstanceId": host}]
         if "text" in data or "body" in data:
             res["summary"] = _pick_first(data.get("text"), data.get("body"))
+        fingerprint = _pick_first(data.get("id"), data.get("event_id"))
         return with_alert_identity(
             res,
             AlertIdentity(
@@ -274,7 +272,7 @@ def register_simple_adapters() -> None:
                 name=str(title) if title else None,
                 resource=str(host) if host else None,
                 service=_extract_tag(tags, "service"),
-                fingerprint=str(fingerprint) if (fingerprint := _pick_first(data.get("id"), data.get("event_id"))) else None,
+                fingerprint=str(fingerprint) if fingerprint else None,
                 severity=normalize_level(level),
             ),
         )
@@ -394,13 +392,12 @@ def register_simple_adapters() -> None:
 
 def initialize_adapters() -> None:
     """Initialize built-in adapters during process startup."""
-    global _initialized
-    if _initialized:
-        return
+    from adapters.registry import registry
 
+    before = registry.status()["normalizers"]
     register_simple_adapters()
-    _initialized = True
-    logger.info("[Adapter] 适配器注册完成")
+    if registry.status()["normalizers"] != before:
+        logger.info("[Adapter] 适配器注册完成")
 
 
 def normalize_webhook_event(

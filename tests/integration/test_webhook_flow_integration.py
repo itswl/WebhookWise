@@ -172,7 +172,7 @@ async def test_webhook_receive_to_feishu_card_flow(
     }
     transport = httpx.ASGITransport(app=cast(Any, app))
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/webhook/prometheus", json=payload)
+        response = await client.post("/v1/webhook/prometheus", json=payload)
 
     assert response.status_code == 202
     body = response.json()
@@ -197,7 +197,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         detail = await client.get(
-            f"/api/webhooks/by-request/{body['request_id']}",
+            f"/v1/webhooks/by-request/{body['request_id']}",
             headers={"Authorization": "Bearer integration-read-token"},
         )
     assert detail.status_code == 200

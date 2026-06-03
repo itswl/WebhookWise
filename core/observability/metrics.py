@@ -13,22 +13,36 @@ SOURCE_LABEL_MAX_LENGTH = 50
 _SOURCE_LABEL_INVALID_CHARS = re.compile(r"[^a-z0-9_.-]+")
 _SOURCE_LABEL_LIMIT = env_int("WEBHOOKWISE_SOURCE_LABEL_LIMIT", 128)
 _SOURCE_LABEL_LIMIT_FALLBACK = "other"
-_seen_sources: set[str] = set()
-_seen_sources_lock = threading.Lock()
+
+
+class _SourceLabelLimiter:
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+        self._lock = threading.Lock()
+
+    def enforce(self, source: str, *, limit: int, fallback: str) -> str:
+        if source in {"unknown", fallback}:
+            return source
+        if limit <= 0:
+            return fallback
+        with self._lock:
+            if source in self._seen:
+                return source
+            if len(self._seen) >= limit:
+                return fallback
+            self._seen.add(source)
+        return source
+
+    def reset(self) -> None:
+        with self._lock:
+            self._seen.clear()
+
+
+_source_label_limiter = _SourceLabelLimiter()
 
 
 def _enforce_source_limit(source: str) -> str:
-    if source in {"unknown", _SOURCE_LABEL_LIMIT_FALLBACK}:
-        return source
-    if _SOURCE_LABEL_LIMIT <= 0:
-        return _SOURCE_LABEL_LIMIT_FALLBACK
-    with _seen_sources_lock:
-        if source in _seen_sources:
-            return source
-        if len(_seen_sources) >= _SOURCE_LABEL_LIMIT:
-            return _SOURCE_LABEL_LIMIT_FALLBACK
-        _seen_sources.add(source)
-    return source
+    return _source_label_limiter.enforce(source, limit=_SOURCE_LABEL_LIMIT, fallback=_SOURCE_LABEL_LIMIT_FALLBACK)
 
 
 def sanitize_source(source: str) -> str:
@@ -42,8 +56,7 @@ def sanitize_source(source: str) -> str:
 
 
 def _reset_source_label_cache_for_tests() -> None:
-    with _seen_sources_lock:
-        _seen_sources.clear()
+    _source_label_limiter.reset()
 
 
 AI_TOKENS_TOTAL = Counter(
@@ -339,21 +352,12 @@ WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS = Histogram(
     ("webhook.source", "webhook.relation", "webhook.suppressed"),
     unit="s",
 )
-ALERT_NUMERIC_PARSE_FAILURE_TOTAL = Counter(
-    "webhook.parse.failures",
-    "Alert numeric field parse failures during rule analysis",
-    ("webhook.source", "webhook.field", "error.reason"),
-)
 WEBHOOK_STORM_SUPPRESSED_TOTAL = Counter(
     "webhook.storm.suppressed",
     "Webhook storm fail-fast suppression count",
     ("webhook.source",),
 )
 WEBHOOK_RUNNING_TASKS = Gauge("webhook.running_tasks", "Currently running webhook processing tasks")
-WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL = Counter(
-    "webhook.semaphore.timeouts",
-    "Webhook processing concurrency gate timeout count",
-)
 WEBHOOK_DEAD_LETTER_TOTAL = Counter("webhook.dead_letter", "Non-retryable dead letter event count")
 WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
     "webhook.processing.status_count",
@@ -393,7 +397,6 @@ __all__ = [
     "AI_DEGRADATIONS_TOTAL",
     "AI_REQUESTS_TOTAL",
     "AI_TOKENS_TOTAL",
-    "ALERT_NUMERIC_PARSE_FAILURE_TOTAL",
     "Counter",
     "CIRCUIT_BREAKER_REQUESTS_TOTAL",
     "CIRCUIT_BREAKER_STATE",
@@ -449,7 +452,6 @@ __all__ = [
     "WEBHOOK_PROCESSING_STATUS_TOTAL",
     "WEBHOOK_RECEIVED_TOTAL",
     "WEBHOOK_RUNNING_TASKS",
-    "WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL",
     "WEBHOOK_STORM_SUPPRESSED_TOTAL",
     "WORKER_TASK_DURATION_SECONDS",
     "WORKER_TASKS_TOTAL",

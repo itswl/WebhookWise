@@ -6,6 +6,10 @@ FastAPI exposes interactive OpenAPI docs automatically when the API service is r
 - ReDoc: `http://localhost:8000/redoc`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
 
+WebhookWise business endpoints are versioned under `/v1`. Health checks
+(`/live`, `/ready`) and dashboard assets are operational endpoints and are not
+part of the business API version.
+
 Offline exports are generated on demand and are not checked in:
 
 ```bash

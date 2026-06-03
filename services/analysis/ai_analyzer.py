@@ -12,7 +12,6 @@ from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
     AI_DEGRADATIONS_TOTAL,
     AI_REQUESTS_TOTAL,
-    ALERT_NUMERIC_PARSE_FAILURE_TOTAL,
     sanitize_source,
 )
 from services.analysis import ai_llm_client as _llm_client
@@ -148,11 +147,6 @@ def analyze_with_rules(
     multiplier = policy.threshold_multiplier
 
     def _record_numeric_parse_failure(field: str, value: Any, reason: str) -> None:
-        ALERT_NUMERIC_PARSE_FAILURE_TOTAL.labels(
-            source=sanitize_source(source),
-            field=field,
-            reason=reason,
-        ).inc()
         logger.debug(
             "[AI] 规则分析数值字段解析失败 source=%s field=%s reason=%s value=%r",
             source,
