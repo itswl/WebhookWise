@@ -123,7 +123,7 @@ It exposes these tools:
 | `webhookwise_logs` | Run a Loki `query_range` |
 | `webhookwise_tempo_search` | Search recent Tempo traces for a service |
 | `webhookwise_profiles` | Build Pyroscope profile selectors and Grafana/Pyroscope links |
-| `webhookwise_dashboard_validate` | Validate `grafana/dashboard.json` against Prometheus |
+| `webhookwise_dashboard_validate` | Validate `deploy/observability/grafana/dashboards/dashboard.json` against Prometheus |
 | `webhookwise_smoke` | Run the API -> Prometheus -> Loki -> Tempo smoke check |
 | `webhookwise_acceptance` | Run the full runtime acceptance checklist |
 | `webhookwise_contract` | Run offline telemetry contract checks |
@@ -226,7 +226,7 @@ When metrics change:
 
 1. Update `scripts/observability/query_lib.py` presets.
 2. Update `.codex/skills/webhookwise-observability/SKILL.md` if the workflow changes.
-3. Update `grafana/dashboard.json` if the dashboard should reflect the change.
+3. Update `deploy/observability/grafana/dashboards/dashboard.json` if the dashboard should reflect the change.
 4. Update `deploy/observability/alerts.yml` if the new metric affects SLOs or alerting.
 5. Run:
 

@@ -601,7 +601,10 @@ def runtime_acceptance(
     *,
     send_webhook: bool = True,
     wait_seconds: int | None = None,
-    dashboard_paths: tuple[str | Path, ...] = ("grafana/dashboard.json", "grafana/dashboard-diagnostics.json"),
+    dashboard_paths: tuple[str | Path, ...] = (
+        "deploy/observability/grafana/dashboards/dashboard.json",
+        "deploy/observability/grafana/dashboards/dashboard-diagnostics.json",
+    ),
 ) -> list[dict[str, str]]:
     endpoints = endpoints or Endpoints.from_env()
     rows = smoke(endpoints, send_webhook=send_webhook, wait_seconds=wait_seconds)
@@ -745,7 +748,10 @@ def _dashboard_acceptance_row(path: str | Path, endpoints: Endpoints) -> dict[st
 def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
     root_path = Path(root) if root is not None else Path(__file__).resolve().parents[2]
     rows: list[dict[str, str]] = []
-    dashboard_paths = [root_path / "grafana/dashboard.json", root_path / "grafana/dashboard-diagnostics.json"]
+    dashboard_paths = [
+        root_path / "deploy/observability/grafana/dashboards/dashboard.json",
+        root_path / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json",
+    ]
     rules_text = (root_path / "deploy/observability/alerts.yml").read_text()
     metrics_text = (root_path / "core/observability/metrics.py").read_text()
     alloy_text = (root_path / "deploy/observability/alloy.alloy").read_text()
@@ -1111,7 +1117,7 @@ def _health_loki_proxy(endpoints: Endpoints) -> dict[str, str]:
         return {"service": "loki-proxy", "status": "error", "detail": str(exc)[:200]}
 
 
-def dashboard_queries(path: str | Path = "grafana/dashboard.json") -> list[dict[str, str]]:
+def dashboard_queries(path: str | Path = "deploy/observability/grafana/dashboards/dashboard.json") -> list[dict[str, str]]:
     raw = json.loads(Path(path).read_text())
     queries: list[dict[str, str]] = []
     for panel in raw.get("panels", []):
@@ -1133,7 +1139,7 @@ def expand_grafana_macros(expr: str, *, rate_interval: str = "5m", dashboard_ran
 
 
 def validate_dashboard_queries(
-    path: str | Path = "grafana/dashboard.json",
+    path: str | Path = "deploy/observability/grafana/dashboards/dashboard.json",
     endpoints: Endpoints | None = None,
 ) -> list[dict[str, Any]]:
     endpoints = endpoints or Endpoints.from_env()

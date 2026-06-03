@@ -104,10 +104,10 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "webhookwise_dashboard_validate",
-        "description": "Validate grafana/dashboard.json PromQL against Prometheus.",
+        "description": "Validate deploy/observability/grafana/dashboards/dashboard.json PromQL against Prometheus.",
         "inputSchema": {
             "type": "object",
-            "properties": {"path": {"type": "string", "default": "grafana/dashboard.json"}},
+            "properties": {"path": {"type": "string", "default": "deploy/observability/grafana/dashboards/dashboard.json"}},
             "additionalProperties": False,
         },
     },
@@ -216,7 +216,7 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             )
         )
     if name == "webhookwise_dashboard_validate":
-        return _text_result(validate_dashboard_queries(str(arguments.get("path", "grafana/dashboard.json")), endpoints))
+        return _text_result(validate_dashboard_queries(str(arguments.get("path", "deploy/observability/grafana/dashboards/dashboard.json")), endpoints))
     if name == "webhookwise_smoke":
         return _text_result(
             smoke(
