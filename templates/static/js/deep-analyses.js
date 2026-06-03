@@ -12,6 +12,7 @@ var DeepAnalysesModule = (function() {
     var isLoadingMore = false;
     var autoRefreshTimer = null;
     var expandedIds = new Set();
+    const DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000;
 
     const TEXT_FIELD_CANDIDATES = [
         'summary',
@@ -649,7 +650,7 @@ var DeepAnalysesModule = (function() {
 
     function startAutoRefresh() {
         if (autoRefreshTimer) return;
-        autoRefreshTimer = setInterval(function() { load(); }, 15000);
+        autoRefreshTimer = setInterval(function() { load(); }, DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS);
     }
 
     function stopAutoRefresh() {

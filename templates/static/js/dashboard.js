@@ -6,6 +6,7 @@
 // 全局变量
 let autoRefreshInterval = null;
 let currentTab = 'alerts';
+const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
 
 /**
  * 初始化 Dashboard
@@ -244,10 +245,10 @@ function toggleAutoRefresh() {
     } else {
         autoRefreshInterval = setInterval(() => {
             refreshCurrentTab();
-        }, 10000);
+        }, DASHBOARD_AUTO_REFRESH_INTERVAL_MS);
         if (icon) icon.textContent = '⏵️';
         if (text) text.textContent = '刷新中...';
-        console.log('⏵️ 自动刷新已启动（每10秒）');
+        console.log('⏵️ 自动刷新已启动（每1分钟）');
     }
 }
 
