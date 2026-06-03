@@ -84,7 +84,7 @@ curl http://localhost:8000/ready
 
 Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.yml up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
 
-根目录的 `compose.yaml` 是日常入口，只 include PostgreSQL、Redis、API、Worker、Scheduler 等业务栈；`docker compose ps/logs/exec` 默认也只看这组容器。完整 Compose 片段仍放在 `deploy/compose/`，观测栈按观测文档显式追加。
+根目录的 `compose.yaml` 是日常入口，只 include PostgreSQL、Redis、API、Worker、Scheduler 等业务栈；`docker compose ps/logs/exec` 默认也只看这组容器。完整 Compose 片段仍放在 `deploy/compose/`，观测栈使用独立 Compose project 启动。
 
 ### 3. 发送测试事件
 
@@ -160,14 +160,10 @@ docker compose up -d --build
 docker compose ps
 ```
 
-带观测栈的线上完整命令：
+观测栈单独使用 `webhookwise-observability` project：
 
 ```bash
-docker compose -p webhookwise --env-file .env \
-  -f deploy/compose/docker-compose.infra.yml \
-  -f deploy/compose/docker-compose.yml \
-  -f deploy/compose/docker-compose.observability.yml \
-  up -d --build
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
 ```
 
 ### Kubernetes

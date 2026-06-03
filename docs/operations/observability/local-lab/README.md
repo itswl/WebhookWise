@@ -37,16 +37,20 @@ k6
 
 ## 启动本地栈
 
-在仓库根目录运行：
+在仓库根目录先启动业务栈，再启动观测栈：
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
+docker compose up -d --build
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
+
+如果要让 API、Worker、Scheduler 上报到本地观测栈，`.env` 中至少需要开启 `OTEL_ENABLED=true`、`OTEL_LOGS_ENABLED=true`，并设置 `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318`。启用 Pyroscope 时同时设置 `PYROSCOPE_ENABLED=true`、`PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`，修改后重启业务容器。
 
 确认服务状态：
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml ps
+docker compose ps
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml ps
 curl -fsS http://localhost:8000/ready
 curl -fsS http://localhost:9090/-/ready
 curl -fsS http://localhost:3100/ready
@@ -72,11 +76,10 @@ curl -fsS http://localhost:12345/-/ready
 当前本地栈的服务清单来自：
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml config --services
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml config --services
 ```
 
-下表中的 `docker compose ... logs <service>` 指：
-`docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs <service>`。
+下表中的业务服务日志使用 `docker compose logs <service>`；观测服务日志使用 `docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml logs <service>`。
 
 | 服务 | 作用 | 健康入口 | 指标入口 | 日志入口 | Trace / Profile |
 | --- | --- | --- | --- | --- | --- |
