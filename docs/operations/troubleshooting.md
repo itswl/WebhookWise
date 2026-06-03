@@ -19,7 +19,7 @@ curl http://localhost:8000/ready
 
 ```bash
 # Docker 模式
-docker logs webhook-receiver -f
+docker compose logs webhook-service -f
 docker compose logs worker -f
 
 # 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
@@ -54,12 +54,12 @@ docker compose logs worker -f
 
 4. 检查 Redis 连接：
    ```bash
-   redis-cli -u $REDIS_URL ping  # 应返回 PONG
+   docker compose -f docker-compose.infra.yml exec redis redis-cli ping  # 应返回 PONG
    ```
 
 5. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
    ```bash
-   redis-cli xinfo stream webhook:queue
+   docker compose -f docker-compose.infra.yml exec redis redis-cli xinfo stream webhook:queue
    ```
 
 6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
@@ -119,24 +119,18 @@ docker compose exec webhook-service env | sort
 2. 通过手动重拉确认 OpenClaw 是否已有结果：
    ```bash
    curl -X POST http://localhost:8000/api/deep-analyses/{id}/retry \
-     -H "Authorization: Bearer $API_KEY"
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
 3. 如果返回超时错误（已超过 `OPENCLAW_TIMEOUT_SECONDS`），说明分析超时，需重新发起：
    ```bash
    curl -X POST http://localhost:8000/api/deep-analyze/{webhook_id} \
-     -H "Authorization: Bearer $API_KEY" \
+     -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
      -H "Content-Type: application/json" \
      -d '{"engine": "openclaw"}'
    ```
 
-4. 如果 OpenClaw 服务不可用，可改用本地引擎：
-   ```bash
-   curl -X POST http://localhost:8000/api/deep-analyze/{webhook_id} \
-     -H "Authorization: Bearer $API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"engine": "local"}'
-   ```
+4. 当前手动深度分析入口只接受 `auto` / `openclaw`。OpenClaw 不可用时，接口会按配置降级到本地 AI 或返回 `No engine available`；不要传 `engine: "local"`。
 
 ---
 
@@ -160,7 +154,7 @@ docker compose exec webhook-service env | sort
 
 3. 检查 Worker 日志中是否有 `飞书深度分析通知` 相关日志（INFO 或 WARNING 级别）。
 
-4. 飞书 Webhook 熔断器（Circuit Breaker）在连续 5 次失败后会打开 30 秒，期间通知被静默丢弃。等待自动恢复或重启服务。
+4. 飞书 Webhook 熔断器（Circuit Breaker）在连续失败后会打开一段时间。当前通知会先进入 outbox，投递失败会记录失败原因并按策略重试；检查 outbox 状态和 Worker 日志能看到是否是熔断、URL 安全校验、HTTP 错误或飞书业务错误码。
 
 ---
 
@@ -233,7 +227,7 @@ docker compose exec webhook-service env | sort
 
 2. 检查 Redis 内存：
    ```bash
-   redis-cli info memory | grep used_memory_human
+   docker compose -f docker-compose.infra.yml exec redis redis-cli info memory | grep used_memory_human
    ```
 
 3. 检查主表 `webhook_events` 行数：如果很大，说明过期数据清理未正常执行。清理由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。

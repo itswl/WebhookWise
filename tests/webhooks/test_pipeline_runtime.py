@@ -16,7 +16,7 @@ from services.webhooks.types import (
     WebhookRequestContext,
     webhook_data_from_mapping,
 )
-from tests.metric_helpers import MetricCall, StubMetric
+from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
 class _Span:

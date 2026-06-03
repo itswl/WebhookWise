@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.metric_helpers import MetricValueCall, StubMetric
+from tests.helpers.metric_helpers import MetricValueCall, StubMetric
 
 
 class _Policy:

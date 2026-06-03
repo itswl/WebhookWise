@@ -1,6 +1,6 @@
 """
-tests/test_ecosystem_adapters.py
-================================
+tests/adapters/test_ecosystem_adapters.py
+=========================================
 测试 normalize_webhook_event() 对各平台 Webhook 的格式归一化。
 确保适配器正确识别来源、提取关键字段。
 """

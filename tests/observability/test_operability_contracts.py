@@ -1,12 +1,13 @@
 import re
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import tomllib
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests.helpers.paths import PROJECT_ROOT
+
+ROOT = PROJECT_ROOT
 
 
 def _yaml_documents(path: str) -> list[dict[str, Any]]:
@@ -52,6 +53,18 @@ def test_dockerfile_uses_directory_copy_contract() -> None:
     assert "COPY services/ ./services/" in copy_lines
     assert "COPY adapters/ ./adapters/" in copy_lines
     assert "COPY scripts/ ./scripts/" in copy_lines
+
+
+def test_local_compose_quickstart_uses_infra_service_dns() -> None:
+    readme = (ROOT / "README.md").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    env_example_all = (ROOT / ".env.example.all").read_text()
+
+    assert "docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build" in readme
+    assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example
+    assert "REDIS_URL=redis://redis:6379/0" in env_example
+    assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example_all
+    assert "POSTGRES_PASSWORD=please-change-postgres-password" in env_example_all
 
 
 def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> None:

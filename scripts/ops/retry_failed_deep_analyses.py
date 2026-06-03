@@ -90,19 +90,16 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if json_match:
             try:
                 parsed = json.loads(json_match.group())
-                record.result = parsed
-                record.error_message = None
+                record.analysis_result = parsed
                 record.status = "completed"
                 logger.info("深度分析 #%d 重试成功", record_id)
                 return True, "成功"
             except json.JSONDecodeError:
-                record.result = {"text": text}
-                record.error_message = None
+                record.analysis_result = {"text": text}
                 record.status = "completed"
                 return True, "成功（JSON解析失败，已存原文）"
         else:
-            record.result = {"text": text}
-            record.error_message = None
+            record.analysis_result = {"text": text}
             record.status = "completed"
             return True, "成功（无 JSON）"
 
