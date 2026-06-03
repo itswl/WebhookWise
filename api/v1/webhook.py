@@ -254,7 +254,7 @@ async def receive_webhook(
                 )
                 set_span_ok(ingress_span)
             return result
-    except (HTTPException, _WEBHOOK_RUNTIME_ERRORS) as exc:
+    except (HTTPException, OSError, RuntimeError, TypeError, ValueError) as exc:
         ingress_outcome = "error"
         logger.warning("[Webhook] 入库请求异常 request_id=%s source=%s error=%s", request_id, source_hint, exc, exc_info=True)
         raise

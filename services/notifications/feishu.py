@@ -9,6 +9,7 @@ from services.notifications.feishu_cards import (
 )
 from services.notifications.feishu_parser import is_feishu_url
 from services.notifications.feishu_transport import send_to_feishu as _send_to_feishu
+from services.webhooks.types import ForwardResult
 
 __all__ = [
     "is_feishu_url",
@@ -22,7 +23,7 @@ __all__ = [
 ]
 
 
-async def send_to_feishu(url: str, payload: dict[str, object]) -> dict[str, object]:
+async def send_to_feishu(url: str, payload: dict[str, object]) -> ForwardResult:
     return await _send_to_feishu(
         url,
         payload,

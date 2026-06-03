@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -191,7 +192,7 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
     return None
 
 
-def _build_identity_content(analysis_result: dict[str, Any], parsed: dict[str, Any]) -> str:
+def _build_identity_content(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
     labels = {
         "project": "项目",
         "region": "区域",
