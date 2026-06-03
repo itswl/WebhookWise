@@ -94,10 +94,11 @@ Operational dashboards should be built from these component metrics, then linked
 
 For a step-by-step local learning flow with screenshots, see [local-lab/README.md](local-lab/README.md).
 
-Start the default app stack plus local observability backends:
+Start the default app stack, then the local observability backends:
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
+docker compose up -d --build
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
 
 Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. The provisioned AIOps dashboards are described in [dashboards.md](dashboards.md). Alertmanager is available at `http://localhost:9093`. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
@@ -107,7 +108,7 @@ Pyroscope is available directly at `http://localhost:4040`. For practical readin
 Run the k6 smoke load check:
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
 ```
 
 Beyla runs as a privileged sidecar sharing the API container PID namespace. It is useful for learning eBPF-based auto-instrumentation, but it requires Linux kernel/eBPF support from the Docker host.
@@ -128,7 +129,7 @@ Useful environment variables:
 - The application honors `always_on`, `always_off`, `traceidratio`, `parentbased_traceidratio`, `parentbased_always_on`, and `parentbased_always_off`. Error-only or slow-only tail sampling belongs in the collector/backend because those decisions require span outcomes.
 - `WEBHOOKWISE_SOURCE_LABEL_LIMIT=128` to cap custom `webhook.source` label cardinality; overflow is reported as `other`
 - Local observability images are pinned in `.env.example.all` and `deploy/compose/docker-compose.observability.yml`; avoid `latest` so learning screenshots and contract tests stay reproducible.
-- Alertmanager posts local alerts back to `http://webhook-service:8000/webhook/alertmanager`; the observability compose override disables webhook auth only for this local feedback loop.
+- Alertmanager posts local alerts back to `http://webhook-service:8000/webhook/alertmanager`; keep its receiver compatible with the current webhook auth settings.
 - `PYROSCOPE_ENABLED=true`
 - `PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`
 - `PYROSCOPE_APPLICATION_NAME=webhookwise-api`

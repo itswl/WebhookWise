@@ -1,89 +1,13 @@
-# Optional local observability stack:
-#   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
-#   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
+# Optional local observability stack. Start the business stack first with:
+#   docker compose up -d
+#
+# Then start observability in a separate Compose project:
+#   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
+#   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
+
+name: webhookwise-observability
 
 services:
-  webhook-service:
-    environment:
-      OTEL_ENABLED: "true"
-      OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_METRIC_EXPORT_INTERVAL: "10000"
-      OTEL_LOGS_ENABLED: "true"
-      OTEL_SEMCONV_STABILITY_OPT_IN: http
-      OTEL_TRACES_SAMPLER: always_on
-      OTEL_SERVICE_NAME: webhookwise-api
-      OTEL_SERVICE_NAMESPACE: webhookwise
-      OTEL_SEMCONV_VERSION: "1.41.0"
-      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
-      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
-      PYROSCOPE_ENABLED: "true"
-      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
-      PYROSCOPE_APPLICATION_NAME: webhookwise-api
-      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
-      REQUIRE_WEBHOOK_AUTH: ${REQUIRE_WEBHOOK_AUTH:-true}
-    depends_on:
-      alloy:
-        condition: service_started
-      pyroscope:
-        condition: service_started
-
-  worker:
-    environment:
-      OTEL_ENABLED: "true"
-      OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_METRIC_EXPORT_INTERVAL: "10000"
-      OTEL_LOGS_ENABLED: "true"
-      OTEL_SEMCONV_STABILITY_OPT_IN: http
-      OTEL_TRACES_SAMPLER: always_on
-      OTEL_SERVICE_NAME: webhookwise-worker
-      OTEL_SERVICE_NAMESPACE: webhookwise
-      OTEL_SEMCONV_VERSION: "1.41.0"
-      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
-      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
-      PYROSCOPE_ENABLED: "true"
-      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
-      PYROSCOPE_APPLICATION_NAME: webhookwise-worker
-      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
-    depends_on:
-      alloy:
-        condition: service_started
-      pyroscope:
-        condition: service_started
-
-  scheduler:
-    environment:
-      OTEL_ENABLED: "true"
-      OTEL_CONSOLE_EXPORTER: "false"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_METRIC_EXPORT_INTERVAL: "10000"
-      OTEL_LOGS_ENABLED: "true"
-      OTEL_SEMCONV_STABILITY_OPT_IN: http
-      OTEL_TRACES_SAMPLER: always_on
-      OTEL_SERVICE_NAME: webhookwise-scheduler
-      OTEL_SERVICE_NAMESPACE: webhookwise
-      OTEL_SEMCONV_VERSION: "1.41.0"
-      OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
-      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
-      PYROSCOPE_ENABLED: "true"
-      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
-      PYROSCOPE_APPLICATION_NAME: webhookwise-scheduler
-      PYROSCOPE_SPAN_PROFILES_ENABLED: "true"
-    depends_on:
-      alloy:
-        condition: service_started
-      pyroscope:
-        condition: service_started
-
-  migrate:
-    environment:
-      OTEL_ENABLED: "false"
-      OTEL_CONSOLE_EXPORTER: "false"
-
   alloy:
     image: ${ALLOY_IMAGE:-grafana/alloy:v1.16.1}
     user: "0:0"
@@ -142,15 +66,13 @@ services:
   beyla:
     image: ${BEYLA_IMAGE:-grafana/beyla:3.15.0}
     command: ["-config", "/etc/beyla/config.yml"]
-    pid: "service:webhook-service"
+    pid: "container:webhook-receiver"
     privileged: true
     environment:
       BEYLA_CONFIG_PATH: /etc/beyla/config.yml
     volumes:
       - ../../deploy/observability/beyla.yml:/etc/beyla/config.yml:ro
     depends_on:
-      webhook-service:
-        condition: service_healthy
       alloy:
         condition: service_started
     networks:
@@ -171,8 +93,6 @@ services:
       - ../../tests/k6:/scripts:ro
     command: ["run", "-o", "experimental-prometheus-rw", "/scripts/webhook_smoke.js"]
     depends_on:
-      webhook-service:
-        condition: service_healthy
       prometheus:
         condition: service_started
     networks:
@@ -239,9 +159,21 @@ services:
 
 volumes:
   alertmanager_data:
+    name: webhookwise_alertmanager_data
   alloy_data:
+    name: webhookwise_alloy_data
   grafana_data:
+    name: webhookwise_grafana_data
   loki_data:
+    name: webhookwise_loki_data
   prometheus_data:
+    name: webhookwise_prometheus_data
   pyroscope_data:
+    name: webhookwise_pyroscope_data
   tempo_data:
+    name: webhookwise_tempo_data
+
+networks:
+  webhook_net:
+    name: webhookwise_webhook_net
+    external: true

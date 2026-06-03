@@ -25,7 +25,7 @@ docker compose logs worker -f
 # 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
 ```
 
-日常排障从仓库根目录执行 `docker compose ...` 即可；根目录 `compose.yaml` 只管理 PostgreSQL、Redis、API、Worker、Scheduler 等业务容器。只有直接指定 `deploy/compose/*.yml` 或追加观测栈时，才需要显式带 `-p webhookwise --env-file .env`。
+日常排障从仓库根目录执行 `docker compose ...` 即可；根目录 `compose.yaml` 只管理 PostgreSQL、Redis、API、Worker、Scheduler 等业务容器。观测栈使用独立 project `webhookwise-observability`，需要查看 Grafana、Prometheus、Loki、Tempo、Alloy 等容器时再显式指定它。
 
 日志输出到 stdout；启用观测栈时通过 OTLP logs 进入 Loki。每条日志含 `trace_id`、`span_id`、`request.id`、`webhook.event_id`（若有上下文）。
 

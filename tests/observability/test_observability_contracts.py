@@ -308,7 +308,8 @@ def test_otlp_signals_are_explicit_and_logs_use_otlp_by_default() -> None:
     exporters = (ROOT / "core/observability/exporters.py").read_text()
     logging_py = (ROOT / "core/observability/logging.py").read_text()
     env_example = (ROOT / ".env.example.all").read_text()
-    compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
+    app_compose = (ROOT / "deploy/compose/docker-compose.yml").read_text()
+    observability_compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
 
     assert 'return env_flag("OTEL_ENABLED", default=False)' in exporters
     assert (
@@ -316,13 +317,13 @@ def test_otlp_signals_are_explicit_and_logs_use_otlp_by_default() -> None:
     )
     assert 'env_flag("OTEL_LOGS_ENABLED", default=False)' in logging_py
     assert "OTEL_LOGS_ENABLED=true" in env_example
-    assert 'OTEL_LOGS_ENABLED: "true"' in compose
+    assert "OTEL_LOGS_ENABLED: ${OTEL_LOGS_ENABLED:-false}" in app_compose
     assert "OTEL_SERVICE_NAMESPACE=webhookwise" in env_example
     assert "OTEL_SEMCONV_VERSION=1.41.0" in env_example
     assert "OTEL_SCHEMA_URL=https://opentelemetry.io/schemas/1.41.0" in env_example
     assert "OTEL_METRICS_EXEMPLAR_FILTER=trace_based" in env_example
-    assert "OTEL_METRICS_EXEMPLAR_FILTER: trace_based" in compose
-    assert "--enable-feature=native-histograms,exemplar-storage" in compose
+    assert "OTEL_METRICS_EXEMPLAR_FILTER: ${OTEL_METRICS_EXEMPLAR_FILTER:-trace_based}" in app_compose
+    assert "--enable-feature=native-histograms,exemplar-storage" in observability_compose
 
 
 def test_otel_schema_scope_and_structured_log_helpers_are_wired() -> None:

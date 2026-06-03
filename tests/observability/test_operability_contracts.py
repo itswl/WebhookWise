@@ -87,9 +87,13 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
     assert ":latest" not in (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
     assert not [_image for _image in _walk_images(compose) if _image_is_latest(_image)]
 
-    webhook_env = compose["services"]["webhook-service"]["environment"]
-    assert webhook_env["REQUIRE_WEBHOOK_AUTH"] == "${REQUIRE_WEBHOOK_AUTH:-true}"
-    assert "ALLOW_UNAUTHENTICATED_WEBHOOK" not in webhook_env
+    assert compose["name"] == "webhookwise-observability"
+    assert not {"webhook-service", "worker", "scheduler", "migrate"} & set(compose["services"])
+    assert compose["services"]["beyla"]["pid"] == "container:webhook-receiver"
+    assert compose["networks"]["webhook_net"] == {
+        "name": "webhookwise_webhook_net",
+        "external": True,
+    }
 
     receiver = next(item for item in alertmanager["receivers"] if item["name"] == "webhookwise-local")
     webhook_config = receiver["webhook_configs"][0]

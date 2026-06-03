@@ -750,7 +750,7 @@ def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
     metrics_text = (root_path / "core/observability/metrics.py").read_text()
     alloy_text = (root_path / "deploy/observability/alloy.alloy").read_text()
     env_text = (root_path / ".env.example.all").read_text()
-    compose_text = (root_path / "deploy/compose/docker-compose.observability.yml").read_text()
+    app_compose_text = (root_path / "deploy/compose/docker-compose.yml").read_text()
     docs_text = "\n".join(
         [
             (root_path / "docs/operations/observability/overview.md").read_text(),
@@ -783,7 +783,7 @@ def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
 
     schema_checks = {
         "env": "OTEL_SCHEMA_URL=https://opentelemetry.io/schemas/1.41.0" in env_text,
-        "compose": "OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0" in compose_text,
+        "compose": "OTEL_SCHEMA_URL: ${OTEL_SCHEMA_URL:-https://opentelemetry.io/schemas/1.41.0}" in app_compose_text,
         "docs": "https://opentelemetry.io/schemas/1.41.0" in docs_text,
     }
     rows.append(
