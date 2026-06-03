@@ -21,8 +21,8 @@ if str(ROOT) not in sys.path:
 from core import json  # noqa: E402
 
 DEFAULT_DASHBOARDS = (
-    ROOT / "grafana/dashboard.json",
-    ROOT / "grafana/dashboard-diagnostics.json",
+    ROOT / "deploy/observability/grafana/dashboards/dashboard.json",
+    ROOT / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json",
 )
 PROFILE_TYPE_ID = "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
 TIME_RANGE = {"from": "${__from}", "to": "${__to}"}

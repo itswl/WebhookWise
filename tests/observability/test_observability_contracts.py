@@ -121,8 +121,8 @@ def test_tempo_enables_traceql_metrics_generator() -> None:
 
 
 def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
-    dashboard = json.loads((ROOT / "grafana/dashboard.json").read_text())
-    diagnostics = json.loads((ROOT / "grafana/dashboard-diagnostics.json").read_text())
+    dashboard = json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard.json").read_text())
+    diagnostics = json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json").read_text())
     assert dashboard["title"] == "WebhookWise AIOps 基础大盘"
     assert diagnostics["title"] == "WebhookWise AIOps 深度诊断大盘"
     assert dashboard["timezone"] == "browser"
@@ -160,8 +160,8 @@ def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
 
 def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
     dashboards = [
-        json.loads((ROOT / "grafana/dashboard.json").read_text()),
-        json.loads((ROOT / "grafana/dashboard-diagnostics.json").read_text()),
+        json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard.json").read_text()),
+        json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json").read_text()),
     ]
     metric_panels = [
         panel
