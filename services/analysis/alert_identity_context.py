@@ -5,20 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from core.collections_utils import list_or_empty, mapping_or_empty
+
 JsonMap = Mapping[str, Any]
 
 _EMPTY_VALUES: tuple[object, ...] = (None, "", {}, [])
 _MAX_RESOURCES = 5
 _MAX_METRICS = 8
 _MAX_DIMENSIONS = 16
-
-
-def _mapping(value: Any) -> JsonMap:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _first_non_empty(*values: Any) -> Any:
@@ -29,21 +23,21 @@ def _first_non_empty(*values: Any) -> Any:
 
 
 def _first_alert(data: JsonMap) -> JsonMap:
-    alerts = _list(data.get("alerts"))
+    alerts = list_or_empty(data.get("alerts"))
     if alerts and isinstance(alerts[0], Mapping):
         return alerts[0]
     return {}
 
 
 def _first_resource(data: JsonMap) -> JsonMap:
-    resources = _list(data.get("Resources"))
+    resources = list_or_empty(data.get("Resources"))
     if resources and isinstance(resources[0], Mapping):
         return resources[0]
     return {}
 
 
 def _first_metric(resource: JsonMap) -> JsonMap:
-    metrics = _list(resource.get("Metrics"))
+    metrics = list_or_empty(resource.get("Metrics"))
     if metrics and isinstance(metrics[0], Mapping):
         return metrics[0]
     return {}
@@ -63,7 +57,7 @@ def _put(out: dict[str, Any], key: str, value: Any) -> None:
 
 def _dimension_map(resource: JsonMap) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for dim in _list(resource.get("Dimensions"))[:_MAX_DIMENSIONS]:
+    for dim in list_or_empty(resource.get("Dimensions"))[:_MAX_DIMENSIONS]:
         if not isinstance(dim, Mapping):
             continue
         name = _first_non_empty(dim.get("Name"), dim.get("NameCN"), dim.get("Description"))
@@ -100,7 +94,7 @@ def _metric_context(metric: JsonMap) -> dict[str, Any]:
 
 def _resources_context(data: JsonMap) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for resource in _list(data.get("Resources"))[:_MAX_RESOURCES]:
+    for resource in list_or_empty(data.get("Resources"))[:_MAX_RESOURCES]:
         if isinstance(resource, Mapping):
             ctx = _resource_context(resource)
             if ctx:
@@ -110,10 +104,10 @@ def _resources_context(data: JsonMap) -> list[dict[str, Any]]:
 
 def _metrics_context(data: JsonMap) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for resource in _list(data.get("Resources")):
+    for resource in list_or_empty(data.get("Resources")):
         if not isinstance(resource, Mapping):
             continue
-        for metric in _list(resource.get("Metrics")):
+        for metric in list_or_empty(resource.get("Metrics")):
             if not isinstance(metric, Mapping):
                 continue
             ctx = _metric_context(metric)
@@ -127,15 +121,15 @@ def _metrics_context(data: JsonMap) -> list[dict[str, Any]]:
 def build_alert_identity_context(source: str, data: JsonMap) -> dict[str, Any]:
     """Extract non-secret identifiers that distinguish one alert from another."""
     first_alert = _first_alert(data)
-    labels = _mapping(first_alert.get("labels"))
-    common_labels = _mapping(data.get("commonLabels"))
-    group_labels = _mapping(data.get("groupLabels"))
-    annotations = _mapping(first_alert.get("annotations"))
-    common_annotations = _mapping(data.get("commonAnnotations"))
+    labels = mapping_or_empty(first_alert.get("labels"))
+    common_labels = mapping_or_empty(data.get("commonLabels"))
+    group_labels = mapping_or_empty(data.get("groupLabels"))
+    annotations = mapping_or_empty(first_alert.get("annotations"))
+    common_annotations = mapping_or_empty(data.get("commonAnnotations"))
     resource = _first_resource(data)
     first_metric = _first_metric(resource)
     dimensions = _dimension_map(resource)
-    stored_identity = _mapping(data.get("_alert_identity"))
+    stored_identity = mapping_or_empty(data.get("_alert_identity"))
 
     identity: dict[str, Any] = {}
     _put(identity, "source", _first_non_empty(stored_identity.get("source"), source))

@@ -16,6 +16,12 @@ def list_or_empty(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def scalar_text_or_empty(value: Any) -> str:
+    if value is None or isinstance(value, dict | list):
+        return ""
+    return " ".join(str(value).splitlines()).strip()
+
+
 def pick_case_insensitive(mapping: Mapping[str, Any], *keys: str) -> Any | None:
     lowered = {str(key).lower(): value for key, value in mapping.items()}
     for key in keys:

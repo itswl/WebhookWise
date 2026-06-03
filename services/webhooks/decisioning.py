@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from core.app_context import get_config_manager
+from core.collections_utils import scalar_text_or_empty
 from core.datetime_utils import utcnow
 from core.text import split_csv_lower
 from services.webhooks.types import (
@@ -140,16 +141,8 @@ def _find_all_in_payload_ci(payload: Any, keys: tuple[str, ...]) -> list[Any]:
     return found
 
 
-def _identity_text(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (dict, list)):
-        return ""
-    return " ".join(str(value).splitlines()).strip()
-
-
 def _canonical_environment(value: Any, *, allow_unknown: bool = True) -> str:
-    text = _identity_text(value).lower()
+    text = scalar_text_or_empty(value).lower()
     if not text:
         return ""
     if text in _ENVIRONMENT_ALIASES:
@@ -164,7 +157,7 @@ def _iter_payload_text(payload: Any) -> list[str]:
     if isinstance(payload, dict):
         values: list[str] = []
         for key, value in payload.items():
-            key_text = _identity_text(key)
+            key_text = scalar_text_or_empty(key)
             if key_text:
                 values.append(key_text)
             values.extend(_iter_payload_text(value))
@@ -174,7 +167,7 @@ def _iter_payload_text(payload: Any) -> list[str]:
         for item in payload:
             list_values.extend(_iter_payload_text(item))
         return list_values
-    text = _identity_text(payload)
+    text = scalar_text_or_empty(payload)
     return [text] if text else []
 
 
@@ -190,7 +183,7 @@ def _extract_project(payload: Any) -> str:
     placeholder = ""
     for keys in _PROJECT_KEY_GROUPS:
         for value in _find_all_in_payload_ci(payload, keys):
-            text = _identity_text(value)
+            text = scalar_text_or_empty(value)
             lowered = text.lower()
             if lowered in _PROJECT_PLACEHOLDERS:
                 placeholder = placeholder or text
@@ -205,7 +198,7 @@ def _extract_project(payload: Any) -> str:
 def extract_forward_match_fields(parsed_data: dict[str, Any] | None) -> dict[str, str]:
     payload = parsed_data or {}
     project = _extract_project(payload)
-    region = _identity_text(_find_in_payload_ci(payload, _REGION_KEYS))
+    region = scalar_text_or_empty(_find_in_payload_ci(payload, _REGION_KEYS))
     environment = _canonical_environment(_find_in_payload_ci(payload, _ENVIRONMENT_KEYS))
     if not environment:
         for text in _iter_payload_text(payload):

@@ -4,6 +4,7 @@ Forwarding API Routes.
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
@@ -33,6 +34,7 @@ logger = get_logger("api.v1.forwarding")
 forwarding_router = APIRouter()
 
 JSONDict = dict[str, object]
+_FORWARDING_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
 
 
 async def _validated_target_url(target_type: str, target_url: object) -> str:
@@ -204,7 +206,7 @@ async def test_forward_rule_endpoint(
                 payload,
                 target_type_label=rule.target_type or "webhook",
             )
-    except Exception as e:
+    except _FORWARDING_RUNTIME_ERRORS as e:
         logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
         return JSONResponse(status_code=502, content={"success": False, "error": DELIVERY_ERROR_MESSAGE})
 
@@ -242,6 +244,6 @@ async def list_outbox_endpoint(
             page=page, page_size=page_size, cursor=cursor, status=status, event_type=event_type
         )
         return {"success": True, "data": data}
-    except Exception as e:
+    except _FORWARDING_RUNTIME_ERRORS as e:
         logger.error("查询 outbox 列表失败: %s", e, exc_info=True)
         return internal_error_response()

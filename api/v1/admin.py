@@ -7,12 +7,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.registry import registry as adapter_registry
 from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
-from core.auth import verify_admin_write
+from core.auth import verify_admin_write, verify_api_key
 from core.config import get_settings
 from core.datetime_utils import utc_isoformat
 from core.logger import get_logger
@@ -45,6 +46,7 @@ logger = get_logger("api.v1.admin")
 
 admin_router = APIRouter()
 PromptKind = Literal["user", "deep_analysis"]
+_ADMIN_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError)
 
 
 def _normalize_prompt_kind(kind: str) -> PromptKind:
@@ -68,7 +70,7 @@ async def _reload_prompt_by_kind(kind: PromptKind) -> str:
     return await reload_user_prompt_template()
 
 
-@admin_router.get("/health/deep")
+@admin_router.get("/health/deep", dependencies=[Depends(verify_api_key)])
 async def deep_health_check(request: Request) -> JSONResponse:
     context = getattr(request.app.state, "app_context", None)
     config = context.config if isinstance(context, AppContext) else get_settings()
@@ -87,7 +89,7 @@ async def deep_health_check(request: Request) -> JSONResponse:
         queue_pending = await redis_xpending_pending(queue_stream, queue_group)
         queue_lag = await redis_xinfo_group_lag(queue_stream, queue_group)
         queue_ok = True
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.warning("[HealthDeep] 读取队列状态失败: %s", e)
 
     adapter_status = adapter_registry.status()
@@ -149,12 +151,12 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
         )
     except ValueError as e:
         return fail_response(str(e), 400)
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
         return internal_error_response()
 
 
-@admin_router.get("/prompt", response_model=PromptGetResponse)
+@admin_router.get("/prompt", response_model=PromptGetResponse, dependencies=[Depends(verify_api_key)])
 async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
         prompt_kind = _normalize_prompt_kind(kind)
@@ -162,7 +164,7 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
         return ok_response(status=200, kind=prompt_kind, template=template, source=get_prompt_source(prompt_kind))
     except ValueError as e:
         return fail_response(str(e), 400)
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
         return internal_error_response()
 
@@ -184,7 +186,7 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
     )
 
 
-@admin_router.get("/admin/dead-letters", response_model=DeadLetterListResponse)
+@admin_router.get("/admin/dead-letters", response_model=DeadLetterListResponse, dependencies=[Depends(verify_api_key)])
 async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -196,7 +198,7 @@ async def get_dead_letters_endpoint(
         return ok_response(
             data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total}
         )
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
         return internal_error_response()
 
@@ -212,12 +214,12 @@ async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
             logger.info("[Admin] outbox 已重新入队 id=%s", outbox_id)
             return ok_response(http_status=200, message="outbox 已重新入队", data={"outbox_id": outbox_id})
         return fail_response("outbox 不存在或状态不可重试", 400)
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("[Admin] outbox 重新入队失败 id=%s error=%s", outbox_id, e, exc_info=True)
         return internal_error_response()
 
 
-@admin_router.get("/admin/suppressed")
+@admin_router.get("/admin/suppressed", dependencies=[Depends(verify_api_key)])
 async def list_suppressed_endpoint(
     session: AsyncSession = Depends(get_db_session),
     minutes: int = Query(60, ge=1, le=24 * 60),
@@ -227,7 +229,7 @@ async def list_suppressed_endpoint(
         items = await list_suppressed_records(session, since_minutes=minutes, limit=limit)
         total = await count_suppressed_records(session, since_minutes=minutes)
         return ok_response(http_status=200, data={"total": total, "items": items})
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("查询 suppressed_records 失败: %s", e, exc_info=True)
         return internal_error_response()
 
@@ -246,7 +248,7 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
         await _enqueue_dead_letter_event(event)
         logger.info("[Admin] dead_letter 已重放 event_id=%s", event_id)
         return ok_response(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
         return internal_error_response()
 
@@ -278,6 +280,6 @@ async def replay_all_dead_letters(
             replayed=len(replayed_ids),
             event_ids=replayed_ids,
         )
-    except Exception as e:
+    except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
         return internal_error_response()

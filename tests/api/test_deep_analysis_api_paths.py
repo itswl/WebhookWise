@@ -62,10 +62,10 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
         async def commit(self) -> None:
             self.commits += 1
 
-    async def build_webhook_context(_event: object) -> dict[str, object]:
+    async def build_deep_analysis_context(_event: object) -> dict[str, object]:
         return {"source": "prometheus", "parsed_data": {}}
 
-    monkeypatch.setattr(deep_analysis, "build_webhook_context", build_webhook_context)
+    monkeypatch.setattr(deep_analysis, "_build_deep_analysis_context", build_deep_analysis_context)
     monkeypatch.setattr(
         deep_analysis.OpenClawTriggerPolicy,
         "from_config",
@@ -97,7 +97,9 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     )
 
     async def fail_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        raise RuntimeError("postgresql://user:pass@db.internal/webhooks")
+        raise deep_analysis.deep_analysis_workflow.DeepAnalysisExecutionError(
+            "postgresql://user:pass@db.internal/webhooks"
+        )
 
     monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_run)
     failed = await deep_analysis.deep_analyze_webhook(10, payload={}, session=Session(event))  # type: ignore[arg-type]
@@ -277,7 +279,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         async def commit(self) -> None:
             self.commits += 1
 
-    async def build_webhook_context(_event: object) -> dict[str, object]:
+    async def build_deep_analysis_context(_event: object) -> dict[str, object]:
         return {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}}
 
     async def pending_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
@@ -297,9 +299,10 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     async def clear_openclaw_poll_state(analysis_id: int) -> None:
         cleared.append(analysis_id)
 
-    monkeypatch.setattr(deep_analysis, "build_webhook_context", build_webhook_context)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.build_deep_analysis_context", build_deep_analysis_context)
     monkeypatch.setattr(
-        deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort
+        "services.analysis.deep_analysis_workflow.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort",
+        schedule_openclaw_poll_best_effort,
     )
     monkeypatch.setattr("services.analysis.openclaw.clear_openclaw_poll_state", clear_openclaw_poll_state)
 
@@ -318,7 +321,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert no_event.status_code == 404
 
-    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", pending_run)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_openclaw_deep_analysis", pending_run)
     pending_record = _record(id=3, status=DeepAnalysisStatus.FAILED, openclaw_session_key="")
     pending_response = await deep_analysis.retry_deep_analysis(
         3,
@@ -329,12 +332,14 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     assert pending_record.openclaw_run_id == "run-2"
     assert scheduled[-1][0] == 3
 
-    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", completed_run)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_openclaw_deep_analysis", completed_run)
 
     async def skip_notification(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(deep_analysis, "_notify_completed_deep_analysis_best_effort", skip_notification)
+    monkeypatch.setattr(
+        "services.analysis.deep_analysis_workflow.notify_completed_deep_analysis_best_effort", skip_notification
+    )
     completed_record = _record(id=4, status=DeepAnalysisStatus.FAILED, openclaw_session_key="")
     completed_response = await deep_analysis.retry_deep_analysis(
         4,
@@ -394,7 +399,7 @@ async def test_forward_deep_analysis_validation_success_and_delivery_errors(
         idempotency_extras.append(extra)
         return forward_results.pop(0)
 
-    monkeypatch.setattr(deep_analysis, "validate_outbound_url", validate_outbound_url)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.validate_outbound_url", validate_outbound_url)
     monkeypatch.setattr("services.forwarding.outbox.forward_notification", forward_notification)
 
     empty = await deep_analysis.forward_deep_analysis(8, payload={}, session=Session())  # type: ignore[arg-type]
