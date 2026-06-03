@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any, cast
+from typing import Any
 
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
@@ -199,7 +199,7 @@ def build_deep_analysis_card(
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 关键证据**\n{evidence_md}"}})
         elements.append({"tag": "hr"})
 
-    identity_content = _build_identity_content(cast(AnalysisResult, view), {})
+    identity_content = _build_identity_content(view, {})
     if identity_content:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
         elements.append({"tag": "hr"})
