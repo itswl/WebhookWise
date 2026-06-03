@@ -76,7 +76,7 @@ def test_full_env_example_covers_direct_environment_reads() -> None:
 
 def test_full_env_example_covers_compose_variable_references() -> None:
     env_keys = _env_keys(ROOT / ".env.example.all")
-    compose_text = "\n".join(path.read_text() for path in ROOT.glob("docker-compose*.yml"))
+    compose_text = "\n".join(path.read_text() for path in (ROOT / "deploy/compose").glob("docker-compose*.yml"))
     compose_vars = set(re.findall(r"\$\{([A-Z][A-Z0-9_]+)(?::[-?][^}]*)?\}", compose_text))
 
     assert sorted(compose_vars - env_keys) == []

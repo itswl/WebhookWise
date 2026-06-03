@@ -49,9 +49,9 @@ def test_prometheus_loads_webhookwise_rules() -> None:
     alerting_targets = prometheus["alerting"]["alertmanagers"][0]["static_configs"][0]["targets"]
     assert "alertmanager:9093" in alerting_targets
 
-    compose = (ROOT / "docker-compose.observability.yml").read_text()
-    assert "./deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro" in compose
-    assert "./deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" in compose
+    compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
+    assert "../../deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro" in compose
+    assert "../../deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" in compose
     assert "alertmanager:" in compose
 
     rules = yaml.safe_load((ROOT / "deploy/observability/alerts.yml").read_text())["groups"]
@@ -308,7 +308,7 @@ def test_otlp_signals_are_explicit_and_logs_use_otlp_by_default() -> None:
     exporters = (ROOT / "core/observability/exporters.py").read_text()
     logging_py = (ROOT / "core/observability/logging.py").read_text()
     env_example = (ROOT / ".env.example.all").read_text()
-    compose = (ROOT / "docker-compose.observability.yml").read_text()
+    compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
 
     assert 'return env_flag("OTEL_ENABLED", default=False)' in exporters
     assert (

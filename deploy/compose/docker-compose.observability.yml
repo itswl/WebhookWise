@@ -1,6 +1,6 @@
 # Optional local observability stack:
-#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
-#   docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
+#   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
+#   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
 
 services:
   webhook-service:
@@ -93,7 +93,7 @@ services:
       - --storage.path=/var/lib/alloy/data
       - /etc/alloy/config.alloy
     volumes:
-      - ./deploy/observability/alloy.alloy:/etc/alloy/config.alloy:ro
+      - ../../deploy/observability/alloy.alloy:/etc/alloy/config.alloy:ro
       - alloy_data:/var/lib/alloy/data
     ports:
       - "4317:4317"
@@ -118,8 +118,8 @@ services:
       - --web.enable-remote-write-receiver
       - --enable-feature=native-histograms,exemplar-storage
     volumes:
-      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro
+      - ../../deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -132,7 +132,7 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
     volumes:
-      - ./deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../../deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     ports:
       - "9093:9093"
@@ -147,7 +147,7 @@ services:
     environment:
       BEYLA_CONFIG_PATH: /etc/beyla/config.yml
     volumes:
-      - ./deploy/observability/beyla.yml:/etc/beyla/config.yml:ro
+      - ../../deploy/observability/beyla.yml:/etc/beyla/config.yml:ro
     depends_on:
       webhook-service:
         condition: service_healthy
@@ -168,7 +168,7 @@ services:
       K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,min,max
       K6_PROMETHEUS_RW_STALE_MARKERS: "true"
     volumes:
-      - ./tests/k6:/scripts:ro
+      - ../../tests/k6:/scripts:ro
     command: ["run", "-o", "experimental-prometheus-rw", "/scripts/webhook_smoke.js"]
     depends_on:
       webhook-service:
@@ -193,7 +193,7 @@ services:
     user: "0:0"
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
-      - ./deploy/observability/tempo.yml:/etc/tempo.yml:ro
+      - ../../deploy/observability/tempo.yml:/etc/tempo.yml:ro
       - tempo_data:/tmp/tempo
     ports:
       - "3200:3200"
@@ -204,7 +204,7 @@ services:
     image: ${LOKI_IMAGE:-grafana/loki:3.7.2}
     command: ["-config.file=/etc/loki/local-config.yml"]
     volumes:
-      - ./deploy/observability/loki.yml:/etc/loki/local-config.yml:ro
+      - ../../deploy/observability/loki.yml:/etc/loki/local-config.yml:ro
       - loki_data:/loki
     ports:
       - "3100:3100"
@@ -217,9 +217,9 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
-      - ./deploy/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
-      - ./deploy/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
-      - ./grafana:/var/lib/grafana/dashboards:ro
+      - ../../deploy/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ../../deploy/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ../../grafana:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
