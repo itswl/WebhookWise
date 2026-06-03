@@ -3,8 +3,9 @@
 import time
 from typing import cast
 
-from core import json
 from redis.exceptions import RedisError
+
+from core import json
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL

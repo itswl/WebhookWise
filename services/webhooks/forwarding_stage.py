@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 from typing import Any
-from sqlalchemy.exc import SQLAlchemyError
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logger import get_logger

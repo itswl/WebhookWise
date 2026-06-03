@@ -27,11 +27,11 @@ from core.observability.tracing import otel_span, set_span_error
 from db.session import session_scope
 from models import DeepAnalysis, ForwardOutbox, WebhookEvent
 from services.forwarding import outbox_queries
+from services.forwarding import rules as forwarding_rules
 from services.forwarding.outbox_delivery import _is_forward_success, deliver_outbox_record
 from services.forwarding.outbox_queries import (
     _mask_url_for_display as _mask_url_for_display,
 )
-from services.forwarding import rules as forwarding_rules
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu import build_delivery_exhausted_card
 from services.operations import taskiq_retry_scheduler
