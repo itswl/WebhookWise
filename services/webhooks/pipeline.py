@@ -34,7 +34,6 @@ from core.observability.metrics import (
     WEBHOOK_DEDUP_DECISIONS_TOTAL,
     WEBHOOK_DEDUP_DURATION_SECONDS,
     WEBHOOK_FORWARD_DECISIONS_TOTAL,
-    WEBHOOK_NOISE_EVALUATIONS_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
@@ -136,32 +135,50 @@ def _record_step_metrics(step: str, metric_source: str, outcome: str, started: f
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
 
 
-def _forward_reason_label(reason: str | None) -> str:
-    text = str(reason or "none")
-    if "智能降噪" in text:
-        return "noise_suppressed"
-    if "冷却" in text:
-        return "cooldown"
-    if "重复告警" in text:
-        return "duplicate_no_rule"
-    if "定期提醒" in text:
-        return "periodic_no_rule"
-    if "未匹配" in text:
-        return "no_match"
-    return "other"
+_FORWARD_SKIP_LABELS = {
+    "cooldown",
+    "duplicate_no_rule",
+    "no_match",
+    "noise_suppressed",
+    "periodic_no_rule",
+}
+
+
+def _forward_reason_label(reason: str | None, skip_code: str | None = None) -> str:
+    code = str(skip_code or "").strip()
+    if code in _FORWARD_SKIP_LABELS:
+        return code
+    return "none" if not reason else "other"
+
+
+_PIPELINE_SPAN_NAMES = {
+    "parse": "webhook.parse",
+    "validate": "webhook.validate",
+    "dedup": "webhook.dedup",
+    "analysis": "webhook.analyze",
+    "noise": "webhook.noise",
+}
+
+
+def _step_attrs(ctx: WebhookProcessContext, step: str) -> dict[str, Any]:
+    return {
+        WEBHOOK_EVENT_ID: ctx.event_id or 0,
+        WEBHOOK_SOURCE: ctx.req_ctx.source,
+        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
+        "pipeline.step": step,
+    }
 
 
 @asynccontextmanager
-async def _pipeline_step(
+async def _instrument_step(
     *,
     step_name: str,
     metric_source: str,
-    span_name: str,
     span_attrs: dict[str, Any],
 ) -> Any:
     started = time.perf_counter()
     outcome: dict[str, str] = {"value": "success"}
-    with otel_span(span_name, span_attrs) as span:
+    with otel_span(_PIPELINE_SPAN_NAMES[step_name], span_attrs) as span:
         try:
             yield span, outcome
         finally:
@@ -186,22 +203,36 @@ async def _pipeline_step(
             _record_step_metrics(step_name, metric_source, outcome["value"], started)
 
 
+@asynccontextmanager
+async def _pipeline_step(ctx: WebhookProcessContext, step_name: str) -> Any:
+    async with _instrument_step(
+        step_name=step_name,
+        metric_source=ctx.metric_source,
+        span_attrs=_step_attrs(ctx, step_name),
+    ) as state:
+        yield state
+
+
+@asynccontextmanager
+async def _ingest_step(*, step_name: str, metric_source: str, source: str | None) -> Any:
+    async with _instrument_step(
+        step_name=step_name,
+        metric_source=metric_source,
+        span_attrs={
+            WEBHOOK_SOURCE: source or "unknown",
+            WEBHOOK_EVENT_ID: 0,
+            "pipeline.step": step_name,
+        },
+    ) as state:
+        yield state
+
+
 async def _resolve_noise_context(
     ctx: WebhookProcessContext, dependencies: WebhookPipelineDependencies
 ) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
     dedup_started = time.perf_counter()
     dedup_action = "error"
-    async with _pipeline_step(
-        step_name="dedup",
-        metric_source=ctx.metric_source,
-        span_name="webhook.dedup",
-        span_attrs={
-            WEBHOOK_EVENT_ID: ctx.event_id or 0,
-            WEBHOOK_SOURCE: ctx.req_ctx.source,
-            WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-            "pipeline.step": "dedup",
-        },
-    ) as (dedup_span, _outcome):
+    async with _pipeline_step(ctx, "dedup") as (dedup_span, _outcome):
         try:
             dedup_result = await resolve_dedup(ctx.dedup_key)
             dedup_action = str(dedup_result.action)
@@ -249,17 +280,7 @@ async def _resolve_noise_context(
             dedup_result,
         )
 
-    async with _pipeline_step(
-        step_name="analysis",
-        metric_source=ctx.metric_source,
-        span_name="webhook.analyze",
-        span_attrs={
-            WEBHOOK_EVENT_ID: ctx.event_id or 0,
-            WEBHOOK_SOURCE: ctx.req_ctx.source,
-            WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-            "pipeline.step": "analysis",
-        },
-    ) as (_span, _outcome):
+    async with _pipeline_step(ctx, "analysis") as (_span, _outcome):
         from core.app_context import get_config_manager
         from services.analysis.ai_analyzer import analyze_webhook_with_ai
 
@@ -308,17 +329,7 @@ async def _resolve_noise_context(
         },
     )
 
-    async with _pipeline_step(
-        step_name="noise",
-        metric_source=ctx.metric_source,
-        span_name="webhook.noise",
-        span_attrs={
-            WEBHOOK_EVENT_ID: ctx.event_id or 0,
-            WEBHOOK_SOURCE: ctx.req_ctx.source,
-            WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-            "pipeline.step": "noise",
-        },
-    ) as (_span, _outcome):
+    async with _pipeline_step(ctx, "noise") as (_span, _outcome):
         noise = await compute_noise(
             ctx.alert_hash,
             ctx.req_ctx.source,
@@ -334,17 +345,7 @@ async def _run_processing_pipeline(
     ctx: WebhookProcessContext, dependencies: WebhookPipelineDependencies
 ) -> PipelineProcessingResult:
     async with alert_processing_gate(ctx.alert_hash) as gate_res:
-        async with _pipeline_step(
-            step_name="validate",
-            metric_source=ctx.metric_source,
-            span_name="webhook.validate",
-            span_attrs={
-                WEBHOOK_EVENT_ID: ctx.event_id or 0,
-                WEBHOOK_SOURCE: ctx.req_ctx.source,
-                WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-                "pipeline.step": "validate",
-            },
-        ) as (_span, outcome):
+        async with _pipeline_step(ctx, "validate") as (_span, outcome):
             if getattr(gate_res, "suppressed", False):
                 logger.info(
                     "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
@@ -419,7 +420,7 @@ async def _run_processing_pipeline(
             WEBHOOK_FORWARD_DECISIONS_TOTAL.labels(
                 ctx.metric_source,
                 "skipped",
-                _forward_reason_label(decision.skip_reason),
+                _forward_reason_label(decision.skip_reason, decision.skip_code),
                 "none",
             ).inc()
 
@@ -543,12 +544,6 @@ def _log_completed_processing(
         span.set_attribute(WEBHOOK_EVENT_TYPE, event_type)
         span.set_attribute(WEBHOOK_PROCESSING_DURATION_MS, duration_ms)
 
-    WEBHOOK_NOISE_EVALUATIONS_TOTAL.labels(
-        source=ctx.metric_source,
-        relation=noise_relation,
-        suppressed=str(noise.suppress_forward).lower(),
-    ).inc()
-
 
 async def _handle_raw_ingest(
     envelope: EventEnvelope,
@@ -566,15 +561,10 @@ async def _handle_raw_ingest(
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-            async with _pipeline_step(
+            async with _ingest_step(
                 step_name="parse",
                 metric_source=metric_source,
-                span_name="webhook.parse",
-                span_attrs={
-                    WEBHOOK_SOURCE: envelope.source or "unknown",
-                    WEBHOOK_EVENT_ID: 0,
-                    "pipeline.step": "parse",
-                },
+                source=envelope.source,
             ) as (parse_span, _outcome):
                 try:
                     req_ctx = parse_request(

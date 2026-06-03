@@ -40,7 +40,7 @@ WebhookWise 是一个面向生产运维的智能 Webhook 接收、分析和转�
 
 ```mermaid
 flowchart LR
-    source["Webhook sources"] --> api["FastAPI /webhook"]
+    source["Webhook sources"] --> api["FastAPI /v1/webhook"]
     api --> accepted["202 Accepted"]
     api --> queue["TaskIQ / Redis Stream"]
     queue --> worker["Worker pipeline"]
@@ -89,12 +89,12 @@ Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功�
 ### 3. 发送测试事件
 
 ```bash
-curl -X POST http://localhost:8000/webhook \
+curl -X POST http://localhost:8000/v1/webhook \
   -H "Content-Type: application/json" \
   -d '{"alertname":"TestAlert","severity":"critical","host":"prod-01"}'
 ```
 
-如果启用了 Webhook 鉴权，需要按当前配置补充签名或 Token。
+业务 API 只在 `/v1` 下暴露；如果启用了 Webhook 鉴权，需要按当前配置补充签名或 Token。
 
 ### 4. 打开入口
 

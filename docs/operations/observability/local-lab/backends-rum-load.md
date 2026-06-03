@@ -162,7 +162,7 @@ docker compose -p webhookwise-observability --env-file .env -f deploy/compose/do
 - 10s ramp to 2 VUs
 - 30s ramp to 6 VUs
 - 10s ramp down to 0
-- 请求 `POST /webhook/k6`
+- 请求 `POST /v1/webhook/k6`
 - 输出到 Prometheus remote write
 
 一次健康结果示例：
@@ -202,7 +202,7 @@ max_over_time(k6_checks_rate[30m])
 sum by (http_route, http_response_status_code) (
   increase(http_server_request_duration_seconds_count{
     service_name="webhookwise-api",
-    http_route="/webhook/{source}"
+    http_route="/v1/webhook/{source}"
   }[30m])
 )
 ```

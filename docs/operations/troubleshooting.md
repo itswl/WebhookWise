@@ -35,7 +35,7 @@ docker compose logs worker -f
 
 ### 1. Webhook 接收后无分析结果
 
-**症状：** POST `/webhook` 返回 202，但按 `request_id` 查不到最终事件。
+**症状：** POST `/v1/webhook` 返回 202，但按 `request_id` 查不到最终事件。
 
 **排查步骤：**
 
@@ -66,10 +66,10 @@ docker compose logs worker -f
 
 6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
    ```bash
-   curl http://localhost:8000/api/admin/dead-letters \
+   curl http://localhost:8000/v1/admin/dead-letters \
      -H "Authorization: Bearer $API_KEY"
 
-   curl -X POST http://localhost:8000/api/admin/dead-letters/{event_id}/replay \
+   curl -X POST http://localhost:8000/v1/admin/dead-letters/{event_id}/replay \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
@@ -120,13 +120,13 @@ docker compose exec webhook-service env | sort
 
 2. 通过手动重拉确认 OpenClaw 是否已有结果：
    ```bash
-   curl -X POST http://localhost:8000/api/deep-analyses/{id}/retry \
+   curl -X POST http://localhost:8000/v1/deep-analyses/{id}/retry \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
 3. 如果返回超时错误（已超过 `OPENCLAW_TIMEOUT_SECONDS`），说明分析超时，需重新发起：
    ```bash
-   curl -X POST http://localhost:8000/api/deep-analyze/{webhook_id} \
+   curl -X POST http://localhost:8000/v1/deep-analyze/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
      -H "Content-Type: application/json" \
      -d '{"engine": "openclaw"}'
@@ -168,13 +168,13 @@ docker compose exec webhook-service env | sort
 
 1. 检查转发规则是否正确配置（重要性匹配、目标 URL 非空）：
    ```bash
-   curl http://localhost:8000/api/forward-rules \
+   curl http://localhost:8000/v1/forward-rules \
      -H "Authorization: Bearer $API_KEY"
    ```
 
 2. 手动触发转发（写操作需要 `ADMIN_WRITE_KEY`）：
    ```bash
-   curl -X POST http://localhost:8000/api/forward/{webhook_id} \
+   curl -X POST http://localhost:8000/v1/forward/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
@@ -199,7 +199,7 @@ docker compose exec webhook-service env | sort
 
 3. 对于已被错误标记的事件，可强制重新分析：
    ```bash
-   curl -X POST http://localhost:8000/api/reanalyze/{webhook_id} \
+   curl -X POST http://localhost:8000/v1/reanalyze/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 

@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+
+def test_feishu_url_accepts_only_trusted_hosts() -> None:
+    from services.notifications.feishu import is_feishu_url
+
+    assert is_feishu_url("https://open.feishu.cn/open-apis/bot/v2/hook/token")
+    assert is_feishu_url("https://tenant.larksuite.com/open-apis/bot/v2/hook/token")
+    assert is_feishu_url("https://feishu.cn/open-apis/bot/v2/hook/token")
+
+    assert not is_feishu_url("https://feishu.cn.evil.example/open-apis/bot/v2/hook/token")
+    assert not is_feishu_url("https://example.com/open-apis/bot/v2/hook/token")
+    assert not is_feishu_url("not a url")
+
+
+def test_build_feishu_card_formats_identity_and_periodic_reminder() -> None:
+    from services.notifications.feishu import build_feishu_card
+
+    card = build_feishu_card(
+        {
+            "source": "volcengine",
+            "timestamp": "2026-06-03T01:02:03Z",
+            "parsed_data": {
+                "RuleName": "HighCPU",
+                "Type": "MetricAlert",
+                "Resources": [
+                    {
+                        "ProjectName": "eve-cn",
+                        "Region": "cn-shanghai",
+                        "Name": "api-0",
+                        "Id": "i-001",
+                        "Metrics": [{"Name": "cpu_usage"}],
+                    }
+                ],
+                "Level": "critical",
+            },
+        },
+        {
+            "importance": "critical",
+            "summary": "CPU 持续超过阈值",
+            "impact_scope": "api-0 请求延迟升高",
+            "alert_identity": {"service": "webhook-api", "status": "firing"},
+        },
+        is_periodic_reminder=True,
+    )
+
+    rendered = str(card)
+    assert card["msg_type"] == "interactive"
+    assert card["card"]["header"]["title"]["content"] == "🔁 [周期提醒] 📡 Webhook 事件通知"
+    assert card["card"]["header"]["template"] == "red"
+    assert "项目: eve-cn" in rendered
+    assert "区域: cn-shanghai" in rendered
+    assert "服务: webhook-api" in rendered
+    assert "资源: api-0" in rendered
+    assert "指标: cpu_usage" in rendered
+    assert "2026-06-03 09:02:03 UTC+8" in rendered
+
+
+def test_build_deep_analysis_card_extracts_openclaw_json_text() -> None:
+    from services.notifications.feishu import build_deep_analysis_card
+    from services.webhooks.types import OPENCLAW_TEXT
+
+    openclaw_text = """```json
+{
+  "summary": "在线用户数处于早高峰爬坡，无实际风险。",
+  "root_cause": {"description": "短窗口基线偏低导致波动率误报。"},
+  "impact": {"description": "服务正常，无业务影响。"},
+  "recommendations": [{"action": "改用日周期基线", "reason": "降低误报"}],
+  "confidence": 0.87
+}
+```"""
+
+    card = build_deep_analysis_card(
+        {"analysis_result": {OPENCLAW_TEXT: openclaw_text}, "engine": "openclaw", "duration_seconds": 12.3},
+        source="prometheus",
+        webhook_event_id=46708,
+    )
+
+    rendered = str(card)
+    assert "```json" not in rendered
+    assert "在线用户数处于早高峰爬坡" in rendered
+    assert "短窗口基线偏低" in rendered
+    assert "改用日周期基线" in rendered
+    assert "置信度: 87%" in rendered
+    assert "ID: 46708" in rendered
+
+
+@pytest.mark.asyncio
+async def test_send_to_feishu_uses_feishu_timeout_and_circuit_breaker(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    from services.forwarding import remote
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
+    from services.notifications import feishu
+
+    client = object()
+
+    async def validate_url(url: str) -> str:
+        return url
+
+    captured: dict[str, Any] = {}
+    temp_config.notifications.FEISHU_WEBHOOK_TIMEOUT = 23
+
+    monkeypatch.setattr(
+        feishu,
+        "build_remote_forward_dependencies",
+        lambda: RemoteForwardDependencies(
+            http_client=client,
+            circuit_breaker=object(),
+            validate_url=validate_url,
+        ),
+    )
+
+    async def fake_post_json_to_remote(
+        target_url: str,
+        payload: dict[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        captured.update({"target_url": target_url, "payload": payload, **kwargs})
+        return {"status": "success", "status_code": 200}
+
+    monkeypatch.setattr(remote, "post_json_to_remote", fake_post_json_to_remote)
+
+    result = await feishu.send_to_feishu("https://open.feishu.cn/open-apis/bot/v2/hook/unit", {"msg": "ok"})
+
+    assert result == {"status": "success", "status_code": 200}
+    assert captured["target_url"] == "https://open.feishu.cn/open-apis/bot/v2/hook/unit"
+    assert captured["payload"] == {"msg": "ok"}
+    assert captured["validate_target"] is True
+    assert captured["target_type_label"] == "feishu"
+    assert captured["policy"].timeout_seconds == 23
+    assert captured["dependencies"].http_client is client
+    assert captured["dependencies"].circuit_breaker is feishu.feishu_cb
+    assert captured["dependencies"].validate_url is validate_url

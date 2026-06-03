@@ -43,7 +43,7 @@ when available, such as `webhook_source`, `service_name`, `worker_task_name`,
 | Row | Panels | Primary question |
 | --- | --- | --- |
 | 系统入口与 HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
-| 队列、Worker 与 Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, semaphore timeouts, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
+| 队列、Worker 与 Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
 | 数据库与 Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
 | Scheduler 与后台任务 | Scheduler runs, duration, lag, time since last success | Are periodic poll/outbox/maintenance jobs running on time? |
 | AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, circuit breaker state, outbox oldest backlog age, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |

@@ -2,7 +2,7 @@ import logging
 import os
 import queue
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import QueueHandler, QueueListener
 from typing import Any
 from urllib.parse import urlparse
@@ -102,7 +102,7 @@ class TraceIdFilter(logging.Filter):
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         level = normalize_log_level(record.levelname)
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
         payload: dict[str, Any] = {
             "timestamp": timestamp,
             "observed_timestamp": timestamp,

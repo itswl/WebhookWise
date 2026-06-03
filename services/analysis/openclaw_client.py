@@ -372,7 +372,7 @@ async def _try_recv_challenge(
             if isinstance(nonce_val, str) and nonce_val:
                 logger.info("Received connect.challenge, nonce=%s...", nonce_val[:16])
                 return nonce_val
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return None
     except (OSError, RuntimeError, websockets.WebSocketException) as e:
         logger.debug("Error receiving challenge: %s", e)
@@ -404,7 +404,7 @@ async def _handshake(
         if payload.get("type") != "hello-ok":
             return False, "auth_protocol_error"
         return True, None
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False, "handshake_timeout"
     except json.JSONDecodeError:
         return False, "invalid_response"
@@ -494,7 +494,7 @@ async def poll_session_result(
                 return parsed
 
             return {"status": "error", "error": "No response received for chat.history request"}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {"status": "error", "error": f"Timeout ({timeout}s)"}
     except json.JSONDecodeError as e:
         return {"status": "error", "error": f"Invalid JSON response: {e}"}

@@ -14,6 +14,7 @@ from core.observability.attributes import (
     SERVICE_NAMESPACE,
     SERVICE_VERSION,
 )
+from core.version import __version__
 
 
 def get_service_name(default: str = "webhookwise") -> str:
@@ -29,7 +30,7 @@ def get_service_version() -> str:
         os.getenv("OTEL_SERVICE_VERSION", "").strip()
         or os.getenv("SERVICE_VERSION", "").strip()
         or os.getenv("APP_VERSION", "").strip()
-        or "unknown"
+        or __version__
     )
 
 

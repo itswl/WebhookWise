@@ -77,7 +77,7 @@ rule_payload = {
     "target_name": "fake-feishu",
 }
 rule_request = urllib.request.Request(
-    "http://localhost:18080/api/forward-rules",
+    "http://localhost:18080/v1/forward-rules",
     data=json.dumps(rule_payload).encode("utf-8"),
     headers={
         "authorization": "Bearer e2e-admin-write-key",
@@ -101,7 +101,7 @@ payload = {
     "Threshold": 5,
 }
 request = urllib.request.Request(
-    "http://localhost:18080/webhook/prometheus",
+    "http://localhost:18080/v1/webhook/prometheus",
     data=json.dumps(payload).encode("utf-8"),
     headers={"content-type": "application/json"},
     method="POST",

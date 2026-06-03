@@ -166,12 +166,12 @@ async def test_run_scheduled_locked_records_success_lag_and_error_metrics(
     monkeypatch.setattr(tasks.logger, "debug", lambda message, *args: logs.append(("debug", message, args)))
     monkeypatch.setattr(tasks.logger, "info", lambda message, *args: logs.append(("info", message, args)))
     monkeypatch.setattr(tasks.logger, "exception", lambda message, *args: logs.append(("exception", message, args)))
-    tasks._last_success_by_name.clear()
+    runtime = tasks._ScheduledTaskRuntime()
 
-    await tasks._run_scheduled_locked("metrics", 10, ok())
-    await tasks._run_scheduled_locked("metrics", 10, ok())
+    await tasks._run_scheduled_locked("metrics", 10, ok(), runtime=runtime)
+    await tasks._run_scheduled_locked("metrics", 10, ok(), runtime=runtime)
     with pytest.raises(RuntimeError, match="boom"):
-        await tasks._run_scheduled_locked("metrics", 10, fail())
+        await tasks._run_scheduled_locked("metrics", 10, fail(), runtime=runtime)
 
     assert [span.attributes["scheduler.task.status"] for span in spans] == ["success", "success", "error"]
     assert any(call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "success"} for call in metric_calls)

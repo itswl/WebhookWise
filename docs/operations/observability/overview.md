@@ -77,7 +77,7 @@ Metrics are emitted through `core.observability.metrics`, exported over OTLP, co
 | Webhook ingress | `webhook.received`, `webhook.ingress.requests`, `webhook.ingress.request.duration`, `webhook.ingress.payload.size` | `webhook.source`, `webhook.status`, `webhook.outcome` |
 | Security | `security.checks` | `security.check`, `security.result` |
 | Queue | `queue.operations`, `queue.operation.duration`, `queue.depth`, `queue.pending`, `queue.lag` | `queue.name`, `queue.operation`, `queue.status`, `queue.stream`, `queue.group`; `queue.depth` is retained Redis Stream length, while backlog is `queue.pending` / `queue.lag` |
-| Worker/runtime | `worker.task.runs`, `worker.task.duration`, `webhook.running_tasks`, `webhook.semaphore.timeouts` | `worker.task.name`, `worker.task.status` |
+| Worker/runtime | `worker.task.runs`, `worker.task.duration`, `webhook.running_tasks` | `worker.task.name`, `worker.task.status` |
 | Webhook pipeline | `webhook.pipeline.steps`, `webhook.pipeline.step.duration`, `webhook.processing.duration`, `webhook.processed`, `webhook.dedup.decisions`, `webhook.dedup.duration`, `webhook.analysis.results` | `pipeline.step`, `webhook.source`, `webhook.outcome`, `webhook.status`, `dedup.action`, `webhook.route`, `webhook.importance`, `ai.degraded` |
 | Noise reduction | `webhook.noise.evaluations`, `webhook.noise.evaluation.duration` | `webhook.source`, `webhook.relation`, `webhook.suppressed` |
 | AI analysis | `ai.requests`, `ai.request.duration`, `ai.request.errors`, `ai.tokens`, `ai.cost`, `ai.cache.requests`, `ai.cache.operation.duration`, `ai.degradations` | `webhook.source`, `ai.engine`, `ai.status`, `ai.model`, `ai.token_type`, `ai.cache.operation`, `ai.cache.result` |
@@ -129,7 +129,7 @@ Useful environment variables:
 - The application honors `always_on`, `always_off`, `traceidratio`, `parentbased_traceidratio`, `parentbased_always_on`, and `parentbased_always_off`. Error-only or slow-only tail sampling belongs in the collector/backend because those decisions require span outcomes.
 - `WEBHOOKWISE_SOURCE_LABEL_LIMIT=128` to cap custom `webhook.source` label cardinality; overflow is reported as `other`
 - Local observability images are pinned in `.env.example.all` and `deploy/compose/docker-compose.observability.yml`; avoid `latest` so learning screenshots and contract tests stay reproducible.
-- Alertmanager posts local alerts back to `http://webhook-service:8000/webhook/alertmanager`; keep its receiver compatible with the current webhook auth settings.
+- Alertmanager posts local alerts back to `http://webhook-service:8000/v1/webhook/alertmanager`; keep its receiver compatible with the current webhook auth settings.
 - `PYROSCOPE_ENABLED=true`
 - `PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`
 - `PYROSCOPE_APPLICATION_NAME=webhookwise-api`

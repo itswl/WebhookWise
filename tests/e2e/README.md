@@ -3,7 +3,7 @@
 这一层测试验证核心业务链路，而不是单个函数：
 
 ```text
-HTTP /webhook/prometheus
+HTTP /v1/webhook/prometheus
   -> migrate job applies Alembic
   -> PostgreSQL quick receive
   -> Redis / TaskIQ

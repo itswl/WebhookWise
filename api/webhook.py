@@ -233,13 +233,13 @@ async def dashboard() -> FileResponse:
 
 
 @webhook_router.post(
-    "/webhook",
+    "/v1/webhook",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
     status_code=202,
 )
 @webhook_router.post(
-    "/webhook/{source}",
+    "/v1/webhook/{source}",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
     status_code=202,
@@ -248,7 +248,7 @@ async def receive_webhook(
     request: Request,
     source: str | None = None,
 ) -> JSONDict | JSONResponse:
-    """Webhook 接收入口（支持 /webhook 和 /webhook/{source}）。"""
+    """Webhook 接收入口（支持 /v1/webhook 和 /v1/webhook/{source}）。"""
     ingress_started = time.perf_counter()
     ingress_outcome = "accepted"
     request_id = request.headers.get("x-request-id") or getattr(request.state, "request_id", "") or generate_trace_id()
@@ -300,7 +300,7 @@ async def receive_webhook(
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
 
 
-@webhook_router.get("/api/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
+@webhook_router.get("/v1/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
 async def get_webhooks_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -321,7 +321,7 @@ async def get_webhooks_endpoint(
 
 
 @webhook_router.get(
-    "/api/webhooks/by-request/{request_id}",
+    "/v1/webhooks/by-request/{request_id}",
     dependencies=[Depends(verify_api_key)],
     response_model=None,
 )
@@ -338,7 +338,7 @@ async def get_webhook_by_request_id_endpoint(
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
 
 
-@webhook_router.get("/api/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
+@webhook_router.get("/v1/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
 async def get_webhook_detail_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:

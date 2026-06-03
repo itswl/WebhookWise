@@ -372,7 +372,7 @@ const API = {
         if (params.importance) queryParams.append('importance', params.importance);
         if (params.source) queryParams.append('source', params.source);
 
-        const response = await this.authenticatedFetch('/api/webhooks?' + queryParams.toString());
+        const response = await this.authenticatedFetch('/v1/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -383,7 +383,7 @@ const API = {
      * @returns {Promise<object>} 告警详情数据
      */
     async getWebhook(id) {
-        const response = await this.authenticatedFetch('/api/webhooks/' + id);
+        const response = await this.authenticatedFetch('/v1/webhooks/' + id);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -394,7 +394,7 @@ const API = {
      * @returns {Promise<object>} 分析结果
      */
     async reanalyze(id) {
-        const response = await this.authenticatedFetch('/api/reanalyze/' + id, { method: 'POST' });
+        const response = await this.authenticatedFetch('/v1/reanalyze/' + id, { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -406,7 +406,7 @@ const API = {
      * @returns {Promise<object>} 转发结果
      */
     async forward(id, url) {
-        const response = await this.authenticatedFetch('/api/forward/' + id, {
+        const response = await this.authenticatedFetch('/v1/forward/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_url: url })
@@ -423,7 +423,7 @@ const API = {
      * @returns {Promise<object>} AI 使用统计数据
      */
     async getAIUsage(period = 'day') {
-        const response = await this.authenticatedFetch('/api/ai-usage?period=' + period);
+        const response = await this.authenticatedFetch('/v1/ai-usage?period=' + period);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -433,7 +433,7 @@ const API = {
      * @returns {Promise<object>} Prompt 配置
      */
     async getPrompt() {
-        const response = await this.authenticatedFetch('/api/prompt');
+        const response = await this.authenticatedFetch('/v1/prompt');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -443,7 +443,7 @@ const API = {
      * @returns {Promise<object>} 重载结果
      */
     async reloadPrompt() {
-        const response = await this.authenticatedFetch('/api/prompt/reload', { method: 'POST' });
+        const response = await this.authenticatedFetch('/v1/prompt/reload', { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -458,7 +458,7 @@ const API = {
         if (cursor !== null && cursor !== undefined) params.set('cursor', cursor);
         if (status) params.set('status', status);
         if (engine) params.set('engine', engine);
-        const response = await this.authenticatedFetch('/api/deep-analyses?' + params.toString());
+        const response = await this.authenticatedFetch('/v1/deep-analyses?' + params.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -469,7 +469,7 @@ const API = {
      * @returns {Promise<object>} 深度分析历史记录列表
      */
     async getDeepAnalyses(webhookId) {
-        const response = await this.authenticatedFetch('/api/deep-analyses/' + webhookId);
+        const response = await this.authenticatedFetch('/v1/deep-analyses/' + webhookId);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -482,7 +482,7 @@ const API = {
      * @returns {Promise<object>} 分析结果
      */
     async deepAnalyze(id, question, engine = 'auto') {
-        const response = await this.authenticatedFetch('/api/deep-analyze/' + id, {
+        const response = await this.authenticatedFetch('/v1/deep-analyze/' + id, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -501,7 +501,7 @@ const API = {
      * @returns {Promise<object>} 转发结果
      */
     async forwardDeepAnalysis(analysisId, targetUrl) {
-        const response = await this.authenticatedFetch('/api/deep-analyses/' + analysisId + '/forward', {
+        const response = await this.authenticatedFetch('/v1/deep-analyses/' + analysisId + '/forward', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_url: targetUrl })
@@ -515,7 +515,7 @@ const API = {
      * @returns {Promise<object>} 重试结果
      */
     async retryDeepAnalysis(analysisId) {
-        const response = await this.authenticatedFetch('/api/deep-analyses/' + analysisId + '/retry', {
+        const response = await this.authenticatedFetch('/v1/deep-analyses/' + analysisId + '/retry', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -531,7 +531,7 @@ const API = {
     async getForwardRules(options = {}) {
         const includeSensitive = !!options.includeSensitive;
         const response = await this.authenticatedFetch(
-            includeSensitive ? '/api/forward-rules/sensitive' : '/api/forward-rules',
+            includeSensitive ? '/v1/forward-rules/sensitive' : '/v1/forward-rules',
             includeSensitive ? { authMode: 'write' } : {}
         );
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -544,7 +544,7 @@ const API = {
      * @returns {Promise<object>} 创建结果
      */
     async createForwardRule(ruleData) {
-        const response = await this.authenticatedFetch('/api/forward-rules', {
+        const response = await this.authenticatedFetch('/v1/forward-rules', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ruleData)
@@ -560,7 +560,7 @@ const API = {
      * @returns {Promise<object>} 更新结果
      */
     async updateForwardRule(id, ruleData) {
-        const response = await this.authenticatedFetch('/api/forward-rules/' + id, {
+        const response = await this.authenticatedFetch('/v1/forward-rules/' + id, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ruleData)
@@ -575,7 +575,7 @@ const API = {
      * @returns {Promise<object>} 删除结果
      */
     async deleteForwardRule(id) {
-        const response = await this.authenticatedFetch('/api/forward-rules/' + id, {
+        const response = await this.authenticatedFetch('/v1/forward-rules/' + id, {
             method: 'DELETE'
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -588,7 +588,7 @@ const API = {
      * @returns {Promise<object>} 测试结果
      */
     async testForwardRule(id) {
-        const response = await this.authenticatedFetch('/api/forward-rules/' + id + '/test', {
+        const response = await this.authenticatedFetch('/v1/forward-rules/' + id + '/test', {
             method: 'POST'
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -607,7 +607,7 @@ const API = {
         if (params.cursor !== null && params.cursor !== undefined) q.append('cursor', params.cursor);
         if (params.status) q.append('status', params.status);
         if (params.event_type) q.append('event_type', params.event_type);
-        const response = await this.authenticatedFetch('/api/outbox?' + q.toString());
+        const response = await this.authenticatedFetch('/v1/outbox?' + q.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
@@ -616,7 +616,7 @@ const API = {
      * 重试失败的转发记录
      */
     async retryOutbox(id) {
-        const response = await this.authenticatedFetch('/api/admin/outbox/' + id + '/retry', { method: 'POST' });
+        const response = await this.authenticatedFetch('/v1/admin/outbox/' + id + '/retry', { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     }
