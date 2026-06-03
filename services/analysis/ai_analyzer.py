@@ -307,9 +307,8 @@ async def analyze_webhook_with_ai(
         set_analysis_route(analysis_result, "ai")
         return analysis_result
     except Exception as e:
-        error_reason = _extract_ai_error_message(e)
-        logger.error("[AI] 分析失败 source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)
         if _is_ai_policy_refusal(e):
+            error_reason = _extract_ai_error_message(e)
             return await _degrade_to_rules(
                 webhook_data,
                 parsed,
@@ -319,6 +318,11 @@ async def analyze_webhook_with_ai(
                 notify=True,
             )
 
+        if not isinstance(e, (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError)):
+            raise
+
+        error_reason = _extract_ai_error_message(e)
+        logger.error("[AI] 分析失败 source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)
         if provider_policy.degradation_enabled:
             return await _degrade_to_rules(
                 webhook_data,

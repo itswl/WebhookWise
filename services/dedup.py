@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+from redis.exceptions import RedisError
 
 from core import json
 from core.app_context import get_config_manager
@@ -38,7 +39,7 @@ class DedupState:
 async def get_dedup_state(dedup_key: str) -> DedupState | None:
     try:
         payload = await redis_get_json_dict(webhook_dedupe(dedup_key))
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as e:
         REDIS_UNAVAILABLE_TOTAL.labels("dedup", "read_allowed").inc()
         logger.warning(
             "[Dedup] Redis 读取失败，继续走 DB fallback dedup_key=%s error_type=%s error=%s",
@@ -93,7 +94,7 @@ async def remember_dedup_state(
         payload["analysis"] = analysis
     try:
         await redis_setex_json(webhook_dedupe(dedup_key), max(60, ttl_seconds), payload)
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         REDIS_UNAVAILABLE_TOTAL.labels("dedup", "write_failed").inc()
         logger.warning(
             "[Dedup] Redis 写入失败，事件已继续处理但滑动窗口可能缺失 dedup_key=%s event_id=%s error_type=%s error=%s",

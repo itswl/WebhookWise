@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any
+from sqlalchemy.exc import SQLAlchemyError
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +56,7 @@ async def resolve_forward_decision(
     rules: list[ForwardRuleSnapshot] = []
     try:
         rules = await get_cached_forward_rules(session=session)
-    except Exception as e:
+    except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
         logger.warning("[Forward] 匹配转发规则失败: %s", e)
 
     decision = decide_forwarding(

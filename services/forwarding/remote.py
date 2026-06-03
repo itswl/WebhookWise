@@ -131,7 +131,7 @@ async def post_json_to_remote(
         logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
         status = "circuit_broken"
         return {"status": "circuit_broken", "message": "熔断器已开启"}
-    except Exception as e:
+    except (httpx.RequestError, OSError, TimeoutError, ValueError) as e:
         logger.error("[Forward] raw-json 转发失败 target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
         status = "failed"
         return {"status": "failed", "message": str(e)}

@@ -6,6 +6,7 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from redis.exceptions import RedisError
 
 from fastapi import Depends, HTTPException, Request, Response
 
@@ -164,12 +165,12 @@ async def verify_webhook_auth_dep(
     except InvalidSignatureError:
         SECURITY_CHECKS_TOTAL.labels("webhook_auth", "rejected").inc()
         raise HTTPException(status_code=401, detail="Unauthorized") from None
-    except ValueError as e:
+    except (AttributeError, TypeError, ValueError) as e:
         logger.warning("Webhook 签名验证参数异常: %s", e)
         SECURITY_CHECKS_TOTAL.labels("webhook_auth", "invalid").inc()
         raise HTTPException(status_code=401, detail="Unauthorized") from None
-    except Exception as e:
-        logger.error("Webhook 认证内部错误: %s", e, exc_info=True)
+    except RuntimeError:
+        logger.exception("Webhook 认证内部错误")
         SECURITY_CHECKS_TOTAL.labels("webhook_auth", "error").inc()
         raise HTTPException(status_code=500, detail="Internal server error") from None
     SECURITY_CHECKS_TOTAL.labels("webhook_auth", "allowed").inc()
@@ -210,7 +211,7 @@ async def check_rate_limit_dep(
         SECURITY_CHECKS_TOTAL.labels("rate_limit", "allowed" if tier else "disabled").inc()
     except HTTPException:
         raise
-    except Exception as e:
+    except (RuntimeError, TypeError, ValueError, RedisError) as e:
         from core.redis_health import mark_redis_failure
 
         mark_redis_failure("webhook_security:rate_limit", e)

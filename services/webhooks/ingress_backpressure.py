@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from typing import Any
+from redis.exceptions import RedisError
 
 from adapters.ecosystem_adapters import normalize_webhook_event
 from core import json
@@ -46,7 +47,7 @@ def _ingress_identity(source_hint: str, raw_body: bytes) -> str:
             return _fallback_body_hash(source_hint, raw_body)
         normalized = normalize_webhook_event(payload, source_hint)
         return f"alert:{generate_alert_hash(dict(normalized.data), normalized.source)}"
-    except Exception as e:
+    except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
         logger.debug("[IngressBackpressure] 无法解析 ingress identity，使用 body hash: %s", e)
         return _fallback_body_hash(source_hint, raw_body)
 
@@ -85,7 +86,7 @@ async def check_ingress_backpressure(
         if raw_count is None:
             raise RuntimeError("ingress counter script returned no integer")
         count = int(raw_count)
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         from core.redis_health import mark_redis_failure
 
         mark_redis_failure("ingress_backpressure:counter", e)

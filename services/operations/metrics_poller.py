@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from core.app_context import get_config_manager
 from core.logger import get_logger
@@ -40,7 +41,7 @@ async def _refresh_db_event_count() -> None:
             if count is None:
                 return
         DATABASE_EVENTS_COUNT.set(count)
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)
 
 

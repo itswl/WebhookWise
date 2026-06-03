@@ -3,6 +3,7 @@
 import hashlib
 import re
 from typing import Any
+from redis.exceptions import RedisError
 
 from contracts.webhook_payload import WebhookData
 from core.logger import get_logger
@@ -76,5 +77,5 @@ async def send_ai_error_alert(
             formatted_payload=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
         )
         logger.info("[AIErrorNotify] AI 错误通知已入队 outbox_ids=%s", result.get("outbox_ids"))
-    except Exception as e:
+    except (RedisError, RuntimeError, OSError, ValueError) as e:
         logger.error("[AIErrorNotify] 发送 AI 错误通知失败: %s", e)

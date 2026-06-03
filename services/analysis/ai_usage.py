@@ -4,6 +4,7 @@ from core.logger import get_logger
 from db.session import session_scope
 from models import AIUsageLog
 from services.analysis.analysis_policies import AIProviderPolicy
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = get_logger("analysis.ai_usage")
 
@@ -36,5 +37,5 @@ async def log_ai_usage(
                     source=source,
                 )
             )
-    except Exception as e:
+    except (SQLAlchemyError, RuntimeError) as e:
         logger.warning("记录 AI 使用日志失败: %s", e)

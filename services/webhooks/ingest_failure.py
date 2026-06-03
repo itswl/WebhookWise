@@ -25,7 +25,7 @@ def _safe_error_message(err: Exception) -> str:
 def _parse_raw_body(raw_body: str) -> dict[str, object] | None:
     try:
         loaded = json.loads(raw_body)
-    except Exception:
+    except (TypeError, ValueError):
         return None
     return loaded if isinstance(loaded, dict) else None
 

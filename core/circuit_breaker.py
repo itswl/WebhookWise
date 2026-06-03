@@ -6,6 +6,7 @@ from enum import Enum
 from typing import ParamSpec, TypeVar
 
 import httpx
+from redis.exceptions import RedisError
 
 from core.logger import get_logger
 from core.observability.events import add_span_event, record_signal
@@ -80,7 +81,7 @@ class CircuitBreaker:
                 _CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time())
             )
             state = CircuitState(state_str) if state_str else CircuitState.CLOSED
-        except Exception as e:
+        except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:check_state", e)
             logger.warning("CircuitBreaker [%s] Redis 检查状态失败，降级放行: %s", self.name, e)
             state = CircuitState.CLOSED
@@ -110,7 +111,7 @@ class CircuitBreaker:
                 str(state_expire),
             )
             return tripped == 1
-        except Exception as e:
+        except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:record_failure", e)
             logger.warning("CircuitBreaker [%s] Redis 记录失败异常: %s", self.name, e)
             return True
@@ -125,7 +126,7 @@ class CircuitBreaker:
             from core.redis_client import redis_eval_int
 
             await redis_eval_int(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
-        except Exception as e:
+        except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:record_success", e)
             logger.warning("CircuitBreaker [%s] Redis 记录成功异常: %s", self.name, e)
 

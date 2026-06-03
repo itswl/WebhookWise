@@ -52,7 +52,7 @@ async def verify_api_key(
         if logger.isEnabledFor(logging.WARNING):
             try:
                 body_bytes = await request.body()
-            except Exception:
+            except RuntimeError:
                 body_bytes = b""
 
             logger.warning(

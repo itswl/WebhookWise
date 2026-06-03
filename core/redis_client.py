@@ -7,6 +7,7 @@ from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
 
 import redis.asyncio as redis
+from redis.exceptions import RedisError
 
 from core import json
 from core.config import AppConfig
@@ -68,7 +69,7 @@ async def close_redis_client(client: RedisClient) -> None:
             result = close_fn()
             if inspect.isawaitable(result):
                 await cast(Awaitable[object], result)
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(AttributeError):
         pool = getattr(client, "connection_pool", None)
         disconnect_fn = getattr(pool, "disconnect", None)
         if callable(disconnect_fn):
@@ -95,7 +96,7 @@ def coerce_str(raw: object) -> str | None:
     if raw is None:
         return None
     if isinstance(raw, bytes):
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(UnicodeDecodeError):
             return raw.decode("utf-8")
     if isinstance(raw, str):
         return raw
@@ -115,7 +116,7 @@ async def record_redis_operation[T](operation: str, awaitable: Awaitable[T]) -> 
             {"db.system": "redis", "db.operation": operation, "redis.operation": operation},
         ):
             result = await awaitable
-    except Exception as e:
+    except (RedisError, RuntimeError, TimeoutError, OSError, TypeError, ValueError) as e:
         status = "error"
         mark_redis_failure(operation, e)
         raise
@@ -181,7 +182,7 @@ async def redis_ping() -> bool:
     try:
         raw = await record_redis_operation("ping", cast(Awaitable[object], get_redis().ping()))
         return bool(raw)
-    except Exception as e:
+    except (RedisError, OSError, TimeoutError, RuntimeError) as e:
         logger.warning("[Redis] ping 失败: %s", e)
         return False
 
