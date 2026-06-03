@@ -1,14 +1,12 @@
 """
-api/webhook.py
-=====================
-Webhook 接收 + 健康检查 + Dashboard + Webhooks API 路由。
+Versioned webhook ingress and query API routes.
 """
 
 import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,20 +35,18 @@ from core.observability.tracing import (
     set_fallback_trace_id,
     set_span_ok,
 )
-from core.redis_client import redis_ping
 from core.request_ip import get_client_ip
 from core.sensitive_data import redact_event_dict
 from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
-from db.engine import test_db_connection
 from db.session import get_db_session
 from models import WebhookEvent
-from schemas.webhook import HealthResponse, WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
+from schemas.webhook import WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import IngressPolicy
 from services.webhooks.query_service import list_webhook_summaries
 
-logger = get_logger("api.webhook")
+logger = get_logger("api.v1.webhook")
 
 webhook_router = APIRouter()
 
@@ -195,51 +191,17 @@ async def _receive_and_enqueue_webhook(
     }
 
 
-# ── 基础路由 ───────────────────────────────────────────────────────────────────
-
-
-@webhook_router.get("/live", response_model=HealthResponse)
-async def liveness_check() -> JSONResponse:
-    """进程存活检查，不触碰外部依赖。"""
-    return JSONResponse(content={"success": True, "data": {"status": "alive"}}, status_code=200)
-
-
-@webhook_router.get("/ready", response_model=HealthResponse)
-async def readiness_check() -> JSONResponse:
-    """就绪检查：API 依赖 DB 与 Redis 队列。"""
-    db_ok = await test_db_connection()
-    redis_ok = await redis_ping()
-    ready = db_ok and redis_ok
-    content = {
-        "success": True,
-        "data": {
-            "status": "ready" if ready else "unready",
-            "database": "ok" if db_ok else "failed",
-            "redis": "ok" if redis_ok else "failed",
-            "queue": "redis_stream",
-        },
-    }
-    return JSONResponse(content=content, status_code=200 if ready else 503)
-
-
-@webhook_router.get("/")
-@webhook_router.get("/dashboard")
-async def dashboard() -> FileResponse:
-    """返回 Dashboard 页面。"""
-    return FileResponse("templates/dashboard.html")
-
-
 # ── Webhook 接收 ───────────────────────────────────────────────────────────────
 
 
 @webhook_router.post(
-    "/v1/webhook",
+    "/webhook",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
     status_code=200,
 )
 @webhook_router.post(
-    "/v1/webhook/{source}",
+    "/webhook/{source}",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
     status_code=200,
@@ -300,7 +262,7 @@ async def receive_webhook(
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
 
 
-@webhook_router.get("/v1/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
+@webhook_router.get("/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
 async def get_webhooks_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -321,7 +283,7 @@ async def get_webhooks_endpoint(
 
 
 @webhook_router.get(
-    "/v1/webhooks/by-request/{request_id}",
+    "/webhooks/by-request/{request_id}",
     dependencies=[Depends(verify_api_key)],
     response_model=None,
 )
@@ -338,7 +300,7 @@ async def get_webhook_by_request_id_endpoint(
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
 
 
-@webhook_router.get("/v1/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
+@webhook_router.get("/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
 async def get_webhook_detail_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
