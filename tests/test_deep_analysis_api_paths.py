@@ -352,6 +352,7 @@ async def test_forward_deep_analysis_validation_success_and_delivery_errors(
     )
     event = SimpleNamespace(id=10, source="volcengine")
     forward_results = [{"status": "queued", "outbox_id": 77}]
+    idempotency_extras: list[str] = []
 
     class Session:
         async def get(self, model: object, _id: int) -> object | None:
@@ -367,6 +368,10 @@ async def test_forward_deep_analysis_validation_success_and_delivery_errors(
     async def forward_notification(**kwargs: object) -> dict[str, object]:
         assert kwargs["event_type"] == "deep_analysis_manual"
         assert kwargs["target_url"].endswith("/validated")
+        extra = kwargs["idempotency_extra"]
+        assert isinstance(extra, str)
+        assert extra.startswith("manual-deep-analysis:8:")
+        idempotency_extras.append(extra)
         return forward_results.pop(0)
 
     monkeypatch.setattr(deep_analysis, "validate_outbound_url", validate_outbound_url)
@@ -418,6 +423,7 @@ async def test_forward_deep_analysis_validation_success_and_delivery_errors(
     )
     assert skipped.status_code == 400
     assert _body(skipped)["error"] == DELIVERY_ERROR_MESSAGE
+    assert len(set(idempotency_extras)) == 2
 
     async def fail_forward_notification(**_: object) -> dict[str, object]:
         raise RuntimeError("queue down")
