@@ -1,0 +1,5 @@
+name: webhookwise
+
+include:
+  - path: deploy/compose/docker-compose.infra.yml
+  - path: deploy/compose/docker-compose.yml
