@@ -163,8 +163,8 @@ histogram_quantile(
 
 When adding or renaming an observability metric:
 
-1. Update `docs/architecture/observability.md` component catalog.
-2. Update `docs/architecture/observability-local-lab.md` query examples and explanations.
+1. Update `docs/operations/observability/overview.md` component catalog.
+2. Update `docs/operations/observability/local-lab/metrics.md` query examples and explanations.
 3. Update `grafana/dashboard.json` if the metric should be monitored on the dashboard.
 4. Validate the PromQL against local Prometheus.
 5. Decide whether absence should mean `0` or real `No data`.

@@ -382,10 +382,10 @@ def test_docs_and_e2e_cover_project_operability_contracts() -> None:
 
     assert (ROOT / "CONTRIBUTING.md").exists()
     assert (ROOT / "CHANGELOG.md").exists()
-    assert "docs/api/README.md" in readme
+    assert "docs/reference/api.md" in readme
     assert "CONTRIBUTING.md" in readme
     assert "CHANGELOG.md" in readme
-    assert "api/README.md" in docs_readme
+    assert "reference/api.md" in docs_readme
     assert "fake-openai" in e2e_compose
     assert 'ENABLE_AI_ANALYSIS: "true"' in e2e_compose
     assert 'CACHE_ENABLED: "true"' in e2e_compose

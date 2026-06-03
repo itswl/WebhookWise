@@ -88,11 +88,11 @@ Metrics are emitted through `core.observability.metrics`, exported over OTLP, co
 | Scheduler | `scheduler.task.runs`, `scheduler.task.duration`, `scheduler.task.lag`, `scheduler.task.last_success_unixtime` | `scheduler.task.name`, `scheduler.task.status` |
 | Observability layer | `observability.events`, `observability.signals` | `event.name`, `signal.name`, `signal.state` |
 
-Operational dashboards should be built from these component metrics, then linked to traces, logs, profiles, events, and signals for detail. For example: start from `http_server_request_duration_*` or `worker_task_duration_*`, jump into Tempo traces by `trace_id`, inspect Loki logs with the same trace/span IDs, and use Pyroscope profiles when latency rises without an obvious dependency error. Histogram exemplars are enabled with trace-based filtering so Grafana can jump from selected latency samples directly to Tempo. Prometheus loads `deploy/observability/alerts.yml` and sends alerts to Alertmanager for SLO and dependency signals. For dashboard coverage, No data rules, and PromQL maintenance notes, see [observability-dashboard.md](observability-dashboard.md). For CLI, skill, MCP-style query tooling, and the end-to-end smoke check, see [observability-query-tools.md](observability-query-tools.md). For a field guide that explains what each local metric means and how to interpret abnormal values, see [observability-local-lab.md](observability-local-lab.md#指标解释速查).
+Operational dashboards should be built from these component metrics, then linked to traces, logs, profiles, events, and signals for detail. For example: start from `http_server_request_duration_*` or `worker_task_duration_*`, jump into Tempo traces by `trace_id`, inspect Loki logs with the same trace/span IDs, and use Pyroscope profiles when latency rises without an obvious dependency error. Histogram exemplars are enabled with trace-based filtering so Grafana can jump from selected latency samples directly to Tempo. Prometheus loads `deploy/observability/alerts.yml` and sends alerts to Alertmanager for SLO and dependency signals. For dashboard coverage, No data rules, and PromQL maintenance notes, see [dashboards.md](dashboards.md). For CLI, skill, MCP-style query tooling, and the end-to-end smoke check, see [query-tools.md](query-tools.md). For a field guide that explains what each local metric means and how to interpret abnormal values, see [local-lab/metrics.md](local-lab/metrics.md#指标解释速查).
 
 ## Local Stack
 
-For a step-by-step local learning flow with screenshots, see [observability-local-lab.md](observability-local-lab.md).
+For a step-by-step local learning flow with screenshots, see [local-lab/README.md](local-lab/README.md).
 
 Start the default app stack plus local observability backends:
 
@@ -100,9 +100,9 @@ Start the default app stack plus local observability backends:
 docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build
 ```
 
-Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. The provisioned AIOps dashboards are described in [observability-dashboard.md](observability-dashboard.md). Alertmanager is available at `http://localhost:9093`. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
+Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. The provisioned AIOps dashboards are described in [dashboards.md](dashboards.md). Alertmanager is available at `http://localhost:9093`. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
 
-Pyroscope is available directly at `http://localhost:4040`. For practical reading notes on CPU cores, top table, flamegraphs, and common WebhookWise API / worker patterns, see [observability-local-lab.md](observability-local-lab.md#看-profile).
+Pyroscope is available directly at `http://localhost:4040`. For practical reading notes on CPU cores, top table, flamegraphs, and common WebhookWise API / worker patterns, see [local-lab/profiling.md](local-lab/profiling.md#看-profile).
 
 Run the k6 smoke load check:
 
