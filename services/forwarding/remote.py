@@ -16,6 +16,21 @@ from services.webhooks.types import AnalysisResult, ForwardResult, JsonObject, W
 logger = get_logger("forwarding.remote")
 
 
+def _feishu_business_error(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+
+    code = body.get("StatusCode", body.get("code"))
+    if code in (None, "", 0, "0"):
+        return ""
+    message = body.get("StatusMessage") or body.get("msg") or body.get("message") or "unknown error"
+    return f"feishu business error code={code}: {message}"
+
+
 async def forward_to_remote(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
@@ -94,6 +109,16 @@ async def post_json_to_remote(
 
     try:
         response = await dependencies.circuit_breaker.call_async(_do_post)
+        if target_type_label == "feishu":
+            business_error = _feishu_business_error(response)
+            if business_error:
+                logger.warning("[Forward] 飞书业务响应失败 target=%s error=%s", mask_url(url), business_error)
+                status = "failed"
+                return {
+                    "status": "failed",
+                    "status_code": response.status_code,
+                    "message": business_error,
+                }
         logger.info("[Forward] raw-json 转发完成 target=%s status_code=%s", mask_url(url), response.status_code)
         status = "success"
         return {"status": "success", "status_code": response.status_code}
