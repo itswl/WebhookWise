@@ -1,22 +1,23 @@
 # WebhookWise 应用服务
 #
 # 本地开发（自带基础设施）：
-#   docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d
+#   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d
 #
 # 使用云服务（RDS / ElastiCache 等）：
 #   在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例，然后：
-#   docker compose up -d
+#   docker compose -f deploy/compose/docker-compose.yml up -d
 
 networks:
   webhook_net:
 
 services:
   migrate:
-    build: .
+    build:
+      context: ../..
     container_name: webhook-migrate
     restart: "no"
     env_file:
-      - .env
+      - ../../.env
     environment:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
@@ -24,12 +25,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
     volumes:
-      - ./.env:/app/.env
+      - ../../.env:/app/.env
     networks:
       - webhook_net
 
   webhook-service:
-    build: .
+    build:
+      context: ../..
     container_name: webhook-receiver
     restart: unless-stopped
 
@@ -58,7 +60,7 @@ services:
       - "8000:8000"   # 只暴露业务服务
 
     env_file:
-      - .env
+      - ../../.env
 
     environment:
       RUN_MODE: api
@@ -80,7 +82,7 @@ services:
       OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
 
     volumes:
-      - ./.env:/app/.env # 挂载 .env 文件
+      - ../../.env:/app/.env # 挂载 .env 文件
 
     depends_on:
       migrate:
@@ -97,9 +99,10 @@ services:
       - webhook_net
 
   worker:
-    build: .
+    build:
+      context: ../..
     # No fixed container_name here: this service is intended to scale horizontally.
-    # Example: docker compose up -d --scale worker=3
+    # Example: docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --scale worker=3
     restart: unless-stopped
     deploy:
       resources:
@@ -110,7 +113,7 @@ services:
           cpus: '0.25'
           memory: 128M
     env_file:
-      - .env
+      - ../../.env
     environment:
       RUN_MODE: worker
       APP_ENV: ${COMPOSE_APP_ENV:-development}
@@ -128,7 +131,7 @@ services:
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
       OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
     volumes:
-      - ./.env:/app/.env
+      - ../../.env:/app/.env
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -138,7 +141,8 @@ services:
       - webhook_net
 
   scheduler:
-    build: .
+    build:
+      context: ../..
     container_name: webhook-scheduler
     # Keep scheduler as a single instance. Scaling it would duplicate scheduled task dispatches.
     restart: unless-stopped
@@ -151,7 +155,7 @@ services:
           cpus: '0.2'
           memory: 64M
     env_file:
-      - .env
+      - ../../.env
     environment:
       RUN_MODE: scheduler
       APP_ENV: ${COMPOSE_APP_ENV:-development}
@@ -174,7 +178,7 @@ services:
       retries: 3
       start_period: 40s
     volumes:
-      - ./.env:/app/.env
+      - ../../.env:/app/.env
     depends_on:
       migrate:
         condition: service_completed_successfully

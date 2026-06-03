@@ -43,14 +43,14 @@ Grafana -> Explore -> datasource 选择 `Loki`。
 基础设施容器日志目前没有统一采进 Loki，用 Compose service logs 看：
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 alloy
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 prometheus
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 loki
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 tempo
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 pyroscope
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 grafana
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 postgres
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=100 redis
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 alloy
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 prometheus
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 loki
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 tempo
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 pyroscope
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 grafana
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 postgres
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=100 redis
 ```
 
 ## 看 Trace

@@ -102,8 +102,8 @@ Beyla 是 API 容器旁边的 eBPF sidecar。它没有单独 UI，数据进 Prom
 确认 Beyla 容器：
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml ps beyla
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml logs --tail=80 beyla
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml ps beyla
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs --tail=80 beyla
 ```
 
 Prometheus 里看 Beyla span metrics：
@@ -154,7 +154,7 @@ Docker Desktop 上可能看到类似 `bpffs` 的 warning。它表示 pinned map 
 运行仓库内置 smoke 压测：
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml --profile load run --rm k6
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
 ```
 
 默认脚本是 `tests/k6/webhook_smoke.js`：
@@ -222,7 +222,7 @@ sum by (http_route, http_response_status_code) (
 停止本地栈：
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml down
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml down
 ```
 
 如果只是重跑压测，不需要重启整套栈。

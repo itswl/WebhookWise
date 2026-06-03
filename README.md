@@ -78,11 +78,11 @@ cp .env.example .env
 ### 2. 启动本地完整栈
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build
 curl http://localhost:8000/ready
 ```
 
-Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
+Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose -f deploy/compose/docker-compose.yml up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
 
 ### 3. 发送测试事件
 
@@ -105,7 +105,7 @@ curl -X POST http://localhost:8000/webhook \
 
 ## 本地开发
 
-如果 API/Worker 直接跑在宿主机，而 PostgreSQL/Redis 仍由 `docker-compose.infra.yml` 提供，请在本机环境或 `.env` 中把 `DATABASE_URL` 的 host 改为 `localhost`，并把 `REDIS_URL` 改为 `redis://localhost:6379/0`。
+如果 API/Worker 直接跑在宿主机，而 PostgreSQL/Redis 仍由 `deploy/compose/docker-compose.infra.yml` 提供，请在本机环境或 `.env` 中把 `DATABASE_URL` 的 host 改为 `localhost`，并把 `REDIS_URL` 改为 `redis://localhost:6379/0`。
 
 ```bash
 pip install -r requirements.lock
@@ -154,8 +154,8 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 ### Docker Compose
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
-docker compose -f docker-compose.infra.yml -f docker-compose.yml ps
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml ps
 ```
 
 ### Kubernetes
@@ -180,7 +180,7 @@ kubectl apply -k deploy/k8s
 ├── alembic/              # 数据库迁移
 ├── core/                 # 配置、日志、鉴权、Redis、OTel、HTTP client 等运行时基础设施
 ├── db/                   # SQLAlchemy engine/session 生命周期
-├── deploy/               # Kubernetes 与可观测性部署资源
+├── deploy/               # Compose、Kubernetes 与可观测性部署资源
 ├── docs/                 # 架构、运维、参考文档
 ├── models/               # SQLAlchemy ORM 模型
 ├── prompts/              # AI 和深度分析 Prompt 模板

@@ -60,7 +60,11 @@ def test_local_compose_quickstart_uses_infra_service_dns() -> None:
     env_example = (ROOT / ".env.example").read_text()
     env_example_all = (ROOT / ".env.example.all").read_text()
 
-    assert "docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build" in readme
+    assert not (ROOT / "docker-compose.yml").exists()
+    assert (ROOT / "deploy/compose/docker-compose.yml").exists()
+    assert (ROOT / "deploy/compose/docker-compose.infra.yml").exists()
+    assert (ROOT / "deploy/compose/docker-compose.observability.yml").exists()
+    assert "docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build" in readme
     assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example
     assert "REDIS_URL=redis://redis:6379/0" in env_example
     assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example_all
@@ -69,11 +73,11 @@ def test_local_compose_quickstart_uses_infra_service_dns() -> None:
 
 def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> None:
     env_example = (ROOT / ".env.example.all").read_text()
-    compose = yaml.safe_load((ROOT / "docker-compose.observability.yml").read_text())
+    compose = yaml.safe_load((ROOT / "deploy/compose/docker-compose.observability.yml").read_text())
     alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager.yml").read_text())
 
     assert ":latest" not in env_example
-    assert ":latest" not in (ROOT / "docker-compose.observability.yml").read_text()
+    assert ":latest" not in (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
     assert not [_image for _image in _walk_images(compose) if _image_is_latest(_image)]
 
     webhook_env = compose["services"]["webhook-service"]["environment"]
