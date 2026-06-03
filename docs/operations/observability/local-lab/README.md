@@ -40,13 +40,13 @@ k6
 在仓库根目录运行：
 
 ```bash
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
 
 确认服务状态：
 
 ```bash
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml ps
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml ps
 curl -fsS http://localhost:8000/ready
 curl -fsS http://localhost:9090/-/ready
 curl -fsS http://localhost:3100/ready
@@ -72,11 +72,11 @@ curl -fsS http://localhost:12345/-/ready
 当前本地栈的服务清单来自：
 
 ```bash
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml config --services
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml config --services
 ```
 
 下表中的 `docker compose ... logs <service>` 指：
-`docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs <service>`。
+`docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml logs <service>`。
 
 | 服务 | 作用 | 健康入口 | 指标入口 | 日志入口 | Trace / Profile |
 | --- | --- | --- | --- | --- | --- |

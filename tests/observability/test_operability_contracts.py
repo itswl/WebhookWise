@@ -64,7 +64,7 @@ def test_local_compose_quickstart_uses_infra_service_dns() -> None:
     assert (ROOT / "deploy/compose/docker-compose.yml").exists()
     assert (ROOT / "deploy/compose/docker-compose.infra.yml").exists()
     assert (ROOT / "deploy/compose/docker-compose.observability.yml").exists()
-    assert "docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build" in readme
+    assert "docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build" in readme
     assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example
     assert "REDIS_URL=redis://redis:6379/0" in env_example
     assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example_all
