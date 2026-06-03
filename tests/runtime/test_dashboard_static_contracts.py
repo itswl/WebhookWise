@@ -24,6 +24,10 @@ def _dashboard_html() -> str:
     return (PROJECT_ROOT / "templates/dashboard.html").read_text()
 
 
+def _static_js(name: str) -> str:
+    return (PROJECT_ROOT / "templates/static/js" / name).read_text()
+
+
 def test_dashboard_references_existing_static_assets_in_order() -> None:
     parser = _AssetParser()
     parser.feed(_dashboard_html())
@@ -48,3 +52,8 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
 
     assert {"alerts", "ai-cost", "deep-analyses", "outbox", "forward-rules"} <= tabs
     assert {"alertsTab", "aiCostTab", "deepAnalysesTab", "outboxTab", "forwardRulesTab"} <= panels
+
+
+def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
+    assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
+    assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
