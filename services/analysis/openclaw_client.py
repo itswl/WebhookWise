@@ -14,11 +14,11 @@ from typing import Any
 import httpx
 import websockets
 
+from contracts.webhook_payload import JsonObject
 from core import json
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from services.webhooks.types import JsonObject
 
 logger = get_logger("openclaw.client")
 

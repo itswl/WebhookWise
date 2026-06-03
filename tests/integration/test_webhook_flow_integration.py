@@ -62,7 +62,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 ) -> None:
     monkeypatch.setenv("OTEL_ENABLED", "false")
 
-    from core.app import app
+    from api.app import app
     from core.app_context import get_default_app_context
     from models import WebhookEvent
     from services.forwarding.outbox import process_forward_outbox_by_id

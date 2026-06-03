@@ -2,10 +2,10 @@
 
 from typing import TYPE_CHECKING, Any
 
+from contracts.webhook_payload import JsonObject
 from core.logger import get_logger, mask_url
 from services.forwarding.outbox import forward_notification
 from services.notifications.feishu import build_deep_analysis_card
-from services.webhooks.types import JsonObject
 
 if TYPE_CHECKING:
     from services.analysis.openclaw import OpenClawPollPolicy

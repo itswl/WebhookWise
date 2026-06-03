@@ -8,7 +8,6 @@ from typing import Any
 
 import httpx
 
-from adapters.ecosystem_adapters import initialize_adapters
 from core.app_context import (
     AppContext,
     get_default_app_context,
@@ -24,6 +23,7 @@ logger = get_logger("service_lifecycle")
 
 AIClientInitializer = Callable[..., Awaitable[None]]
 AIClientResetter = Callable[[], Awaitable[None]]
+AdapterRegistryInitializer = Callable[[], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +48,7 @@ async def start_runtime_services(
     initialize_observability: Callable[[], None] | None = None,
     initialize_redis_client: bool = False,
     initialize_adapter_registry: bool = True,
+    initialize_adapter_registry_hook: AdapterRegistryInitializer | None = None,
     initialize_ai_client: bool = False,
     initialize_ai_client_hook: AIClientInitializer | None = None,
     context: AppContext | None = None,
@@ -61,7 +62,12 @@ async def start_runtime_services(
         initialize_observability()
 
     if initialize_adapter_registry:
-        initialize_adapters()
+        if initialize_adapter_registry_hook is None:
+            logger.warning(
+                "[Lifecycle] adapter registry initialization requested but no initializer hook is registered"
+            )
+        else:
+            initialize_adapter_registry_hook()
 
     http_client = await context.ensure_http_client()
     await context.ensure_db()

@@ -16,6 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import get_logger, mask_url
 from core.observability.attributes import FORWARD_STATUS, FORWARD_TARGET_TYPE, WEBHOOK_EVENT_ID
@@ -33,8 +34,6 @@ from services.webhooks.types import (
     DeepAnalysisStatus,
     ForwardOutboxStatus,
     ForwardResult,
-    JsonObject,
-    WebhookData,
     is_pending_result,
     openclaw_run_id,
     openclaw_session_key,
