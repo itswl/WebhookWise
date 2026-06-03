@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import AsyncContextManager, cast
 
 from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
@@ -35,10 +36,10 @@ _TERMINAL_OUTBOX_STATUSES = {
 }
 
 
-def _session_scope():
+def _session_scope() -> AsyncContextManager[AsyncSession]:
     from services.forwarding import outbox
 
-    return outbox.session_scope()
+    return outbox.session_scope()  # type: ignore[attr-defined]
 
 
 def _is_outbox_terminal(status: ForwardOutboxStatus | str | None) -> bool:
@@ -111,7 +112,7 @@ async def _claim_outbox(
             .returning(ForwardOutbox)
         )
         res = await session.execute(stmt)
-        return res.scalar_one_or_none()
+        return cast(ForwardOutbox | None, res.scalar_one_or_none())
 
 
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
