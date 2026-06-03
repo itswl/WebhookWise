@@ -64,25 +64,14 @@ def _ctx() -> WebhookProcessContext:
     )
 
 
-def test_forward_reason_label_uses_machine_code_not_localized_text() -> None:
-    from services.webhooks import pipeline
-
-    assert pipeline._forward_reason_label("刚已通知，冷却中", "cooldown") == "cooldown"
-    assert pipeline._forward_reason_label("刚已通知，冷却中") == "other"
-    assert pipeline._forward_reason_label(None, None) == "none"
-
-
 @pytest.fixture
-def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
+def patched_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
     from services.webhooks import pipeline
 
     metric_calls: list[MetricCall] = []
     for name in (
-        "WEBHOOK_ANALYSIS_RESULTS_TOTAL",
-        "WEBHOOK_ANALYSIS_ROUTE_TOTAL",
-        "WEBHOOK_DEDUP_DECISIONS_TOTAL",
-        "WEBHOOK_DEDUP_DURATION_SECONDS",
-        "WEBHOOK_FORWARD_DECISIONS_TOTAL",
         "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS",
         "WEBHOOK_PIPELINE_STEP_TOTAL",
         "WEBHOOK_PROCESSING_DURATION_SECONDS",
@@ -102,7 +91,7 @@ def patched_pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[tuple[s
 
 @pytest.mark.asyncio
 async def test_pipeline_step_metrics_success_and_error(
-    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]
+    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
     pipeline, metric_calls = patched_pipeline
     ctx = _ctx()
@@ -209,7 +198,9 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     async def open_gate(_key: str):
         yield _GateResult(False)
 
-    async def resolved(*_args: object, **_kwargs: object) -> tuple[dict[str, object], NoiseReductionContext, DedupResult]:
+    async def resolved(
+        *_args: object, **_kwargs: object
+    ) -> tuple[dict[str, object], NoiseReductionContext, DedupResult]:
         return {"importance": "medium", "summary": "ok"}, noise, dedup_results.pop(0)
 
     remembered: list[bool] = []
@@ -253,12 +244,6 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     assert queued.outbox_count == 2
     assert scheduled[-1] == [10, 11]
     assert remembered == [False, True, True]
-    decision_actions = [
-        args[1]
-        for name, args, _kwargs, action, _value in metric_calls
-        if name == "WEBHOOK_FORWARD_DECISIONS_TOTAL" and action == "inc"
-    ]
-    assert {"unknown", "skipped", "queued"} <= set(decision_actions)
 
 
 def _rule(target_type: str = "webhook") -> ForwardRuleSnapshot:
@@ -278,7 +263,7 @@ def _rule(target_type: str = "webhook") -> ForwardRuleSnapshot:
 
 
 def test_log_completed_processing_branches(
-    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]
+    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
     pipeline, _metric_calls = patched_pipeline
     ctx = _ctx()

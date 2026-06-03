@@ -74,7 +74,7 @@ Metrics are emitted through `core.observability.metrics`, exported over OTLP, co
 | Component | Metrics | Primary labels |
 | --- | --- | --- |
 | HTTP/API | OTel FastAPI auto metrics: `http.server.request.duration`, `http.server.request.body.size`, `http.server.active_requests` | `http.request.method`, `http.route`, `http.response.status_code` |
-| Webhook ingress | `webhook.received`, `webhook.ingress.requests`, `webhook.ingress.request.duration`, `webhook.ingress.payload.size` | `webhook.source`, `webhook.status`, `webhook.outcome` |
+| Webhook ingress | `webhook.received`, `webhook.ingress.requests`, `webhook.ingress.payload.size` | `webhook.source`, `webhook.status`, `webhook.outcome` |
 | Security | `security.checks` | `security.check`, `security.result` |
 | Queue | `queue.operations`, `queue.operation.duration`, `queue.depth`, `queue.pending`, `queue.lag` | `queue.name`, `queue.operation`, `queue.status`, `queue.stream`, `queue.group`; `queue.depth` is retained Redis Stream length, while backlog is `queue.pending` / `queue.lag` |
 | Worker/runtime | `worker.task.runs`, `worker.task.duration`, `webhook.running_tasks` | `worker.task.name`, `worker.task.status` |
@@ -82,7 +82,7 @@ Metrics are emitted through `core.observability.metrics`, exported over OTLP, co
 | Noise reduction | `webhook.noise.evaluations`, `webhook.noise.evaluation.duration` | `webhook.source`, `webhook.relation`, `webhook.suppressed` |
 | AI analysis | `ai.requests`, `ai.request.duration`, `ai.request.errors`, `ai.tokens`, `ai.cost`, `ai.cache.requests`, `ai.cache.operation.duration`, `ai.degradations` | `webhook.source`, `ai.engine`, `ai.status`, `ai.model`, `ai.token_type`, `ai.cache.operation`, `ai.cache.result` |
 | Forwarding | `webhook.forward.decisions`, `forward.delivery`, `forward.delivery.duration`, `forward.outbox.records`, `forward.outbox.process.duration`, `forward.outbox.backlog.age` | `webhook.source`, `forward.decision`, `forward.reason`, `forward.target_type`, `forward.status` |
-| Resilience | `circuit_breaker.requests`, `circuit_breaker.transitions`, `circuit_breaker.state` | `circuit_breaker.name`, `circuit_breaker.outcome`, `circuit_breaker.state` |
+| Resilience | `circuit_breaker.state` | `circuit_breaker.name`, `circuit_breaker.state` |
 | Database | `db.health.state`, `db.sessions`, `db.session.duration`, `db.pool.connections.checked_out`, `db.pool.connections.max`, `webhook.events.count`, `webhook.processing.status_count` | `db.state`, `db.operation`, `db.status`, `webhook.status` |
 | Redis | `redis.operations`, `redis.operation.duration` | `redis.operation`, `redis.status` |
 | Scheduler | `scheduler.task.runs`, `scheduler.task.duration`, `scheduler.task.lag`, `scheduler.task.last_success_unixtime` | `scheduler.task.name`, `scheduler.task.status` |
@@ -116,8 +116,8 @@ Beyla runs as a privileged sidecar sharing the API container PID namespace. It i
 Useful environment variables:
 
 - `OTEL_ENABLED=true`
-- `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318`
-- `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
+- `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317`
+- `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`
 - `OTEL_LOGS_ENABLED=true`; logs are exported through OTLP instead of Alloy file tailing.
 - `OTEL_METRIC_EXPORT_INTERVAL=10000`
 - `OTEL_SCHEMA_URL=https://opentelemetry.io/schemas/1.41.0`

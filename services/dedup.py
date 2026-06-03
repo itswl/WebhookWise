@@ -11,7 +11,7 @@ from core import json
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, WEBHOOK_IDENTITY_DEGRADED_TOTAL, sanitize_source
+from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL
 from core.redis_client import redis_get_json_dict, redis_setex_json
 from core.redis_health import webhook_dedupe
 from db.session import session_scope
@@ -165,7 +165,6 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
         )
         return alert_hash, dedup_key
 
-    WEBHOOK_IDENTITY_DEGRADED_TOTAL.labels(sanitize_source(source)).inc()
     logger.debug("缺少 adapter 产出的告警 identity，使用完整 payload hash 兜底 source=%s", source)
     fallback_key_fields: dict[str, object] = {"source": source.strip().lower(), "payload": data}
     fallback_hash = hashlib.sha256(json.dumps_bytes(fallback_key_fields, sort_keys=True)).hexdigest()

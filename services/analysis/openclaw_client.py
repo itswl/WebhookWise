@@ -22,6 +22,7 @@ from services.webhooks.types import JsonObject
 
 logger = get_logger("openclaw.client")
 
+
 @dataclass(frozen=True, slots=True)
 class OpenClawPollPolicy:
     timeout_seconds: int

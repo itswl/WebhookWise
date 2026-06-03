@@ -20,7 +20,6 @@ from core.observability.metrics import (
     QUEUE_OPERATION_DURATION_SECONDS,
     QUEUE_OPERATIONS_TOTAL,
     WEBHOOK_INGRESS_PAYLOAD_BYTES,
-    WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS,
     WEBHOOK_INGRESS_REQUESTS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
     sanitize_source,
@@ -211,7 +210,6 @@ async def receive_webhook(
     source: str | None = None,
 ) -> JSONDict | JSONResponse:
     """Webhook 接收入口（支持 /v1/webhook 和 /v1/webhook/{source}）。"""
-    ingress_started = time.perf_counter()
     ingress_outcome = "accepted"
     request_id = request.headers.get("x-request-id") or getattr(request.state, "request_id", "") or generate_trace_id()
     token = set_fallback_trace_id(
@@ -253,9 +251,6 @@ async def receive_webhook(
         raise
     finally:
         WEBHOOK_INGRESS_REQUESTS_TOTAL.labels(metric_source, ingress_outcome).inc()
-        WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS.labels(metric_source, ingress_outcome).observe(
-            time.perf_counter() - ingress_started
-        )
         reset_fallback_trace_id(token)
 
 

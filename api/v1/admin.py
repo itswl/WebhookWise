@@ -13,7 +13,7 @@ from adapters.registry import registry as adapter_registry
 from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write
-from core.config import UnifiedConfigManager
+from core.config import get_settings
 from core.datetime_utils import utc_isoformat
 from core.logger import get_logger
 from core.redis_client import redis_ping
@@ -71,7 +71,7 @@ async def _reload_prompt_by_kind(kind: PromptKind) -> str:
 @admin_router.get("/health/deep")
 async def deep_health_check(request: Request) -> JSONResponse:
     context = getattr(request.app.state, "app_context", None)
-    config = context.config if isinstance(context, AppContext) else UnifiedConfigManager()
+    config = context.config if isinstance(context, AppContext) else get_settings()
     db_ok = await test_db_connection()
     redis_ok = await redis_ping()
     redis_snapshot = get_redis_health_snapshot()

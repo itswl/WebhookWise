@@ -275,7 +275,9 @@ async def test_compression_threshold_fallback_and_async_thread_path(monkeypatch:
     assert calls == [compressed]
 
     monkeypatch.undo()
-    monkeypatch.setattr("core.app_context.get_config_manager", lambda: (_ for _ in ()).throw(RuntimeError("config down")))
+    monkeypatch.setattr(
+        "core.app_context.get_config_manager", lambda: (_ for _ in ()).throw(RuntimeError("config down"))
+    )
     assert compression._threshold("PAYLOAD_COMPRESS_THRESHOLD_BYTES") == 4096
 
 
@@ -342,7 +344,10 @@ def test_otel_logging_installs_handler_once_and_flushes_provider(monkeypatch: py
         provider = providers[0]
         assert provider.resource == {"service.name": "api"}
         assert processors[0].exporter == "log-exporter"
-        assert len([handler for handler in app_logger.handlers if getattr(handler, "_webhookwise_otel_handler", False)]) == 1
+        assert (
+            len([handler for handler in app_logger.handlers if getattr(handler, "_webhookwise_otel_handler", False)])
+            == 1
+        )
 
         otel_logging.shutdown_logging()
         assert provider.flushed is True
@@ -402,7 +407,9 @@ def test_profiling_disabled_missing_server_import_and_span_processor(monkeypatch
     import opentelemetry
 
     trace_module = ModuleType("opentelemetry.trace")
-    trace_module.get_tracer_provider = lambda: SimpleNamespace(add_span_processor=lambda processor: span_processors.append(processor))  # type: ignore[attr-defined]
+    trace_module.get_tracer_provider = lambda: SimpleNamespace(
+        add_span_processor=lambda processor: span_processors.append(processor)
+    )  # type: ignore[attr-defined]
     pyroscope_otel = ModuleType("pyroscope.otel")
     pyroscope_otel.PyroscopeSpanProcessor = lambda: "span-processor"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "opentelemetry.trace", trace_module)
@@ -623,7 +630,9 @@ async def test_webhook_auth_dep_exception_branches_and_rate_limit_dep(
     assert response.headers["X-RateLimit-Remaining"] == "2"
     assert response.headers["X-RateLimit-Reset"] == "1234"
 
-    limited_tier = webhook_security._TierResult(allowed=False, remaining=0, limit=5, reset_at=webhook_security.time.time() + 30)
+    limited_tier = webhook_security._TierResult(
+        allowed=False, remaining=0, limit=5, reset_at=webhook_security.time.time() + 30
+    )
 
     async def rate_limit_rejected(*_args: object, **_kwargs: object) -> tuple[str, object]:
         return "1.2.3.4", limited_tier
@@ -695,11 +704,6 @@ async def test_redis_health_probe_recovery_failure_and_key_builders(monkeypatch:
 
     redis_health.reset_redis_health()
 
-    metric_calls: list[MetricActionCall] = []
-    monkeypatch.setattr(
-        "core.observability.metrics.REDIS_HEALTH_STATE",
-        StubMetric(metric_calls, "redis_health", record_kwargs=False),
-    )
     redis_health.mark_redis_failure("get", RuntimeError("down"))
 
     class SyncRedis:
@@ -722,10 +726,6 @@ async def test_redis_health_probe_recovery_failure_and_key_builders(monkeypatch:
     assert await redis_health.ensure_redis_available("recover", probe_interval=0) is False
     assert "Redis health probe returned false" in redis_health.get_redis_health_snapshot().last_error
 
-    monkeypatch.setattr(
-        "core.observability.metrics.REDIS_HEALTH_STATE",
-        SimpleNamespace(labels=lambda _state: (_ for _ in ()).throw(RuntimeError("metrics down"))),
-    )
     redis_health.reset_redis_health()
 
     assert redis_health.webhook_dedupe("a") == "webhook:dedupe:a"

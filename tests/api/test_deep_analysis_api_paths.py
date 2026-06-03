@@ -108,13 +108,20 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     scheduled: list[tuple[int, int]] = []
 
     async def pending_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        return {"status": "pending", "_pending": True, "_openclaw_run_id": "run-1", "_openclaw_session_key": "s-1"}, "openclaw"
+        return {
+            "status": "pending",
+            "_pending": True,
+            "_openclaw_run_id": "run-1",
+            "_openclaw_session_key": "s-1",
+        }, "openclaw"
 
     async def schedule_openclaw_poll_best_effort(analysis_id: int, delay: int) -> None:
         scheduled.append((analysis_id, delay))
 
     monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", pending_run)
-    monkeypatch.setattr(deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort)
+    monkeypatch.setattr(
+        deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort
+    )
 
     session = Session(event)
     result = await deep_analysis.deep_analyze_webhook(
@@ -274,7 +281,12 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         return {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}}
 
     async def pending_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        return {"status": "pending", "_pending": True, "_openclaw_run_id": "run-2", "_openclaw_session_key": "s-2"}, "openclaw"
+        return {
+            "status": "pending",
+            "_pending": True,
+            "_openclaw_run_id": "run-2",
+            "_openclaw_session_key": "s-2",
+        }, "openclaw"
 
     async def completed_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
         return {"summary": "done", "importance": "high"}, "openclaw"
@@ -286,7 +298,9 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         cleared.append(analysis_id)
 
     monkeypatch.setattr(deep_analysis, "build_webhook_context", build_webhook_context)
-    monkeypatch.setattr(deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort)
+    monkeypatch.setattr(
+        deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort
+    )
     monkeypatch.setattr("services.analysis.openclaw.clear_openclaw_poll_state", clear_openclaw_poll_state)
 
     missing = await deep_analysis.retry_deep_analysis(1, session=Session(None))  # type: ignore[arg-type]

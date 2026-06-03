@@ -16,7 +16,7 @@ from core.app_context import (
     init_default_app_context,
     set_default_app_context,
 )
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.logger import get_logger, stop_log_listener
 from db.engine import test_db_connection
 
@@ -33,14 +33,14 @@ class RuntimeServices:
 
 
 async def check_database_ready(context: AppContext | None = None) -> bool:
-    context = context or init_default_app_context(UnifiedConfigManager())
+    context = context or init_default_app_context()
     set_default_app_context(context)
     await context.ensure_db()
     return await test_db_connection()
 
 
 async def start_runtime_services(
-    config: UnifiedConfigManager,
+    config: AppConfig,
     *,
     broker: Any | None = None,
     start_broker: bool = False,
@@ -81,7 +81,7 @@ async def start_runtime_services(
 
 
 async def stop_runtime_services(
-    config: UnifiedConfigManager,
+    config: AppConfig,
     *,
     broker: Any | None = None,
     stop_broker: bool = False,

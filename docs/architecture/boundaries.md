@@ -51,8 +51,8 @@ on `services.operations.tasks`.
 ## Configuration Boundary
 
 Application code should read business and process settings through
-`core.config.Config` or an injected `UnifiedConfigManager`. The exceptions are
-bootstrap surfaces that execute before the application context exists:
+`core.config.AppConfig`, usually via the current `AppContext`. The exceptions
+are bootstrap surfaces that execute before the application context exists:
 
 - `core.taskiq_broker` reads `core.config.defaults.get_settings()` only. TaskIQ
   imports the broker while constructing workers and schedulers, before the

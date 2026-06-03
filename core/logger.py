@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from core import json
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.log_context import get_log_context
 from core.logging_levels import apply_log_levels
 from core.observability.attributes import normalize_attribute_key
@@ -161,7 +161,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload)
 
 
-def setup_logger(config: UnifiedConfigManager | None = None) -> logging.Logger:
+def setup_logger(config: AppConfig | None = None) -> logging.Logger:
     """初始化全局日志系统"""
     global _log_listener, _logger_pid
     if config is None:

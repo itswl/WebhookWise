@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException, Request, Response
 
 from api import InvalidSignatureError
 from core.app_context import get_config_manager
-from core.config import SecurityConfig, UnifiedConfigManager
+from core.config import AppConfig, SecurityConfig
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, SECURITY_CHECKS_TOTAL
 from core.redis_client import redis_eval_int
@@ -125,7 +125,7 @@ async def enforce_webhook_rate_limit(
 
 async def verify_webhook_auth_dep(
     request: Request,
-    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+    config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> None:
     """FastAPI Depends：校验 webhook 认证（含 Content-Length 前置 DoS 防御）"""
     # 1. Content-Length 前置检查（在读取 body 之前拦截超大请求）
@@ -175,7 +175,7 @@ async def verify_webhook_auth_dep(
 async def check_rate_limit_dep(
     request: Request,
     response: Response,
-    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+    config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> None:
     """FastAPI Depends：检查速率限制（滑动窗口，三级限流）"""
     try:

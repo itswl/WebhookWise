@@ -1,35 +1,35 @@
 import pytest
 
 from core.datetime_utils import utcnow
-from models.webhook import WebhookEvent
+from models.webhook import WebhookEvent, WebhookEventInput
 from services.webhooks.command_service import SaveWebhookResult, _resolve_request_id, save_webhook_data
 
 
 def test_build_event_fill_fields_works():
     event = WebhookEvent()
     event.fill_fields(
-        source="test",
-        client_ip="127.0.0.1",
-        raw_payload=b"{}",
-        headers={},
-        parsed_data={},
-        alert_hash="abc",
-        ai_analysis={"importance": "high"},
-        importance="high",
-        forward_status="pending",
-        is_duplicate=True,
-        duplicate_of=1,
-        duplicate_count=2,
-        last_notified_at=utcnow(),
+        WebhookEventInput(
+            source="test",
+            client_ip="127.0.0.1",
+            raw_payload=b"{}",
+            headers={},
+            parsed_data={},
+            alert_hash="abc",
+            ai_analysis={"importance": "high"},
+            importance="high",
+            forward_status="pending",
+            is_duplicate=True,
+            duplicate_of=1,
+            duplicate_count=2,
+            last_notified_at=utcnow(),
+        )
     )
     assert event.is_duplicate is True
 
 
 def test_fill_fields_rejects_unknown_fields_at_call_boundary() -> None:
-    event = WebhookEvent()
-
     with pytest.raises(TypeError, match="duplicate_from"):
-        event.fill_fields(source="test", duplicate_from=1)
+        WebhookEventInput(source="test", duplicate_from=1)
 
 
 def test_save_result_uses_database_event_ids_only():
@@ -60,11 +60,13 @@ async def test_resolve_request_id_returns_completed_result_without_resave() -> N
     event = WebhookEvent()
     event.id = 42
     event.fill_fields(
-        source="test",
-        request_id="req-1",
-        processing_status="completed",
-        is_duplicate=True,
-        duplicate_of=7,
+        WebhookEventInput(
+            source="test",
+            request_id="req-1",
+            processing_status="completed",
+            is_duplicate=True,
+            duplicate_of=7,
+        )
     )
 
     class _Result:

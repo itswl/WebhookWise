@@ -115,11 +115,10 @@ async def scheduler_startup_event(state: object) -> None:
         logger.debug("[TaskIQ] 跳过 scheduler runtime 初始化 run_mode=%s", _settings.run_mode)
         return
 
-    from core.config import UnifiedConfigManager
     from core.observability import setup_observability
     from core.web.startup_checks import validate_startup_security
 
-    validate_startup_security(UnifiedConfigManager())
+    validate_startup_security(get_settings())
     setup_observability()
 
 
@@ -143,7 +142,6 @@ async def worker_startup_event(state: object) -> None:
         return
 
     from core.app_context import init_default_app_context
-    from core.config import UnifiedConfigManager
     from core.logger import setup_logger
     from core.observability import setup_observability
     from core.service_lifecycle import start_runtime_services
@@ -154,7 +152,7 @@ async def worker_startup_event(state: object) -> None:
 
     from services.analysis.ai_llm_client import initialize_openai_client
 
-    context = init_default_app_context(UnifiedConfigManager())
+    context = init_default_app_context(get_settings())
     validate_startup_security(context.config)
     await start_runtime_services(
         context.config,
@@ -175,12 +173,11 @@ async def worker_shutdown_event(state: object) -> None:
         return
 
     from core.app_context import get_default_app_context, init_default_app_context
-    from core.config import UnifiedConfigManager
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
     from services.analysis.ai_llm_client import reset_openai_client
 
-    context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
+    context = get_default_app_context() or init_default_app_context(get_settings())
     await stop_runtime_services(
         context.config,
         context=context,

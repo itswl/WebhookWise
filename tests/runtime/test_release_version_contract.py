@@ -54,5 +54,8 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     assert "ghcr.io/${{ github.repository }}" in workflow
     assert "docker/build-push-action@v6" in workflow
     assert "APP_VERSION=${{ needs.verify.outputs.version }}" in workflow
+    assert "pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db" in workflow
+    assert "tests/e2e/run_webhook_to_feishu.sh" in workflow
+    assert "      - test\n      - docker-e2e" in workflow
     assert 'tomllib.load(fh)["project"]["version"]' in workflow
     assert 'grep -Eq "^## \\\\[$version\\\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md' in workflow
