@@ -1,7 +1,7 @@
 # 本地基础设施：PostgreSQL + Redis
 # 用法：
+#   日常业务栈：docker compose up -d
 #   仅启动基础设施：docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml up -d
-#   配合应用一起启动：docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d
 #   使用云服务时：不启动此文件，在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例
 
 networks:
