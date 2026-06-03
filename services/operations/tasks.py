@@ -462,7 +462,7 @@ async def process_forward_outbox_task(outbox_id: int) -> None:
 @broker.task(task_name="openclaw_poll_task")
 async def poll_openclaw_analysis_task(analysis_id: int) -> None:
     """Poll one pending OpenClaw deep-analysis record."""
-    from services.analysis.openclaw import poll_deep_analysis_once
+    from services.analysis.openclaw_poll import poll_deep_analysis_once
 
     await poll_deep_analysis_once(analysis_id)
 
@@ -472,7 +472,7 @@ async def poll_openclaw_analysis_task(analysis_id: int) -> None:
     schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
 )
 async def scheduled_openclaw_poll_scan() -> None:
-    from services.analysis.openclaw import run_openclaw_poll_scan
+    from services.analysis.openclaw_poll import run_openclaw_poll_scan
 
     await _run_scheduled("openclaw_poll_scan", _background_scan_interval_seconds(), run_openclaw_poll_scan())
 

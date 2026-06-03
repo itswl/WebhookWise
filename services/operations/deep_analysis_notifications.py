@@ -2,19 +2,22 @@
 
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from contracts.webhook_payload import JsonObject
 from core.logger import get_logger, mask_url
 from services.forwarding.outbox import forward_notification
 from services.notifications.feishu import build_deep_analysis_card
 
 if TYPE_CHECKING:
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
 logger = get_logger("deep_analysis_notifications")
 
 EVENT_IMPORTANCE_KEY = "_event_importance"
 EVENT_IS_DUPLICATE_KEY = "_event_is_duplicate"
 EVENT_PARSED_DATA_KEY = "_event_parsed_data"
+_NOTIFICATION_ERRORS = (KeyError, OSError, RuntimeError, SQLAlchemyError, TypeError, ValueError)
 
 
 async def send_feishu_deep_analysis(
@@ -40,7 +43,7 @@ async def send_feishu_deep_analysis(
             parsed_data=parsed_data,
         )
         return True
-    except Exception as e:
+    except _NOTIFICATION_ERRORS as e:
         logger.warning("深度分析通知入队失败: %s", e)
         return False
 
@@ -52,7 +55,7 @@ async def send_deep_analysis_success_notification(
     policy: "OpenClawPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for completed deep analysis."""
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
     policy = policy or OpenClawPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
@@ -104,7 +107,7 @@ async def send_deep_analysis_success_notification(
             event_id,
             mask_url(webhook_url),
         )
-    except Exception as e:
+    except _NOTIFICATION_ERRORS as e:
         logger.warning("深度分析通知失败: %s", e)
 
 
@@ -115,7 +118,7 @@ async def send_deep_analysis_failure_notification(
     policy: "OpenClawPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for failed deep analysis."""
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
     policy = policy or OpenClawPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
@@ -167,7 +170,7 @@ async def send_deep_analysis_failure_notification(
             event_id,
             mask_url(webhook_url),
         )
-    except Exception as e:
+    except _NOTIFICATION_ERRORS as e:
         logger.warning("[DeepAnalysisNotify] 失败通知异常: %s", e)
 
 

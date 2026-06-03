@@ -9,7 +9,7 @@ import pytest
 
 def test_openclaw_poll_policy_methods_are_bounded() -> None:
     from core.datetime_utils import utcnow
-    from services.analysis.openclaw import OpenClawPollPolicy, _describe_exception
+    from services.analysis.openclaw_client import OpenClawPollPolicy, _describe_exception
 
     policy = OpenClawPollPolicy(
         timeout_seconds=120,

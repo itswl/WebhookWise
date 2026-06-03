@@ -10,9 +10,10 @@ from core.logger import get_logger
 from core.taskiq_broker import dynamic_schedule_source
 
 if TYPE_CHECKING:
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
 logger = get_logger("taskiq_scheduler")
+_SCHEDULING_ERRORS = (OSError, RuntimeError, TimeoutError, ValueError)
 
 
 def compute_backoff_delay(
@@ -30,7 +31,7 @@ def compute_backoff_delay(
 
 def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolicy | None = None) -> int:
     """Return the next OpenClaw poll delay using bounded exponential backoff."""
-    from services.analysis.openclaw import OpenClawPollPolicy
+    from services.analysis.openclaw_client import OpenClawPollPolicy
 
     return (policy or OpenClawPollPolicy.from_config()).delay_for_attempt(poll_attempts)
 
@@ -101,5 +102,5 @@ async def schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: in
         if delay_seconds is None:
             delay_seconds = compute_openclaw_poll_delay(0)
         await schedule_openclaw_poll(analysis_id, delay_seconds)
-    except Exception as e:
+    except _SCHEDULING_ERRORS as e:
         logger.warning("[OpenClaw] poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
