@@ -106,11 +106,11 @@ def shutdown_meter_provider() -> None:
         return
     try:
         provider.force_flush()
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError, ValueError):
         logging.getLogger("webhook_service").debug("[OTEL] metric force_flush failed", exc_info=True)
     try:
         provider.shutdown()
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError, ValueError):
         logging.getLogger("webhook_service").debug("[OTEL] metric shutdown failed", exc_info=True)
     _meter_provider = None
     _provider_initialized = False

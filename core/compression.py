@@ -18,7 +18,7 @@ def _threshold(attr: str) -> int:
 
         configured = int(getattr(get_config_manager().server, attr) or 0)
         return configured if configured > 0 else _DEFAULT_THRESHOLD_BYTES
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError, ValueError):
         return _DEFAULT_THRESHOLD_BYTES
 
 

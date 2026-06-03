@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from redis.exceptions import RedisError
 
 from core import redis_client, redis_health
 from core.app_context import get_config_manager
@@ -68,7 +69,7 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
             window_seconds,
             threshold,
         )
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         redis_health.mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
         logger.warning("[Concurrency] 告警风暴处理槽预占失败，按背压抑制: %s", e)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
@@ -88,7 +89,7 @@ async def _release_processing_slot(alert_hash: str) -> None:
     queue_key = webhook_processing_queue(alert_hash)
     try:
         await redis_client.redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         logger.warning("[Concurrency] 告警风暴处理槽释放失败: %s", e)
 
 
@@ -117,7 +118,7 @@ async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
         try:
             if await redis_client.redis_set_nx_ex(key, token, ttl_seconds):
                 return key, token
-        except Exception as e:
+        except (RedisError, RuntimeError, TypeError, ValueError) as e:
             redis_health.mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
             logger.warning("[Concurrency] Redis 分布式锁获取失败，按 Redis 不可用抑制: %s", e)
             return "", "redis_unavailable"
@@ -132,7 +133,7 @@ async def _release_distributed_lock(key: str, token: str) -> None:
         return
     try:
         await redis_client.redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         logger.warning("[Concurrency] Redis 分布式锁释放失败: %s", e)
 
 
@@ -142,7 +143,7 @@ async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> N
         await asyncio.sleep(interval)
         try:
             refreshed = await redis_client.redis_eval_int(_REFRESH_IF_OWNER_LUA, 1, key, token, ttl_seconds)
-        except Exception as e:
+        except (RedisError, RuntimeError, TypeError, ValueError) as e:
             logger.warning("[Concurrency] Redis 分布式锁续期失败: %s", e)
             return
         if not refreshed:

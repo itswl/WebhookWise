@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.webhook import JSONDict
+from core.auth import verify_api_key
 from db.session import get_db_session
 from schemas.ai_usage import AIUsageResponse
 from services.analysis.analysis_queries import get_ai_usage_stats
@@ -12,7 +13,14 @@ from services.analysis.analysis_queries import get_ai_usage_stats
 ai_usage_router = APIRouter()
 
 
-@ai_usage_router.get("/ai-usage", response_model=AIUsageResponse)
+_AI_USAGE_RUNTIME_ERRORS = (OSError, RuntimeError, TimeoutError, ValueError)
+
+
+@ai_usage_router.get(
+    "/ai-usage",
+    response_model=AIUsageResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def get_ai_usage_endpoint(
     period: str = Query("day"), session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict:
@@ -24,6 +32,6 @@ async def get_ai_usage_endpoint(
         return {"success": True, "data": cached_dict}
 
     data = await get_ai_usage_stats(session, period)
-    with contextlib.suppress(OSError, RuntimeError, TimeoutError, ValueError):
+    with contextlib.suppress(*_AI_USAGE_RUNTIME_ERRORS):
         await redis_setex_json(cache_key, 70, data)
     return {"success": True, "data": data}

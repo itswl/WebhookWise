@@ -179,7 +179,7 @@ async def _analyze_with_openai_tracked(
             res, completion = await _create_with_completion(
                 client, model=policy.model, user_prompt=user_prompt, policy=policy
             )
-        except Exception as exc:
+        except (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError, httpx.RequestError, httpx.TimeoutException) as exc:
             set_span_error(s, exc)
             raise
 
@@ -226,7 +226,7 @@ async def _call_ai_with_retry(
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "success").inc()
         AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="openai").observe(time.time() - start)
         return res, t_in, t_out
-    except Exception as e:
+    except (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError, httpx.RequestError, httpx.TimeoutException) as e:
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "error").inc()
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
         logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)
