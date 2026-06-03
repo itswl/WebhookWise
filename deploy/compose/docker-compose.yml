@@ -7,6 +7,24 @@
 #   在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例，然后：
 #   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.yml up -d
 
+x-app-observability-env: &app-observability-env
+  OTEL_ENABLED: ${OTEL_ENABLED:-false}
+  OTEL_CONSOLE_EXPORTER: ${OTEL_CONSOLE_EXPORTER:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-60000}
+  OTEL_LOGS_ENABLED: ${OTEL_LOGS_ENABLED:-false}
+  OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+  OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-webhookwise}
+  OTEL_SEMCONV_VERSION: ${OTEL_SEMCONV_VERSION:-1.41.0}
+  OTEL_SCHEMA_URL: ${OTEL_SCHEMA_URL:-https://opentelemetry.io/schemas/1.41.0}
+  OTEL_METRICS_EXEMPLAR_FILTER: ${OTEL_METRICS_EXEMPLAR_FILTER:-trace_based}
+  PYROSCOPE_ENABLED: ${PYROSCOPE_ENABLED:-false}
+  PYROSCOPE_SERVER_ADDRESS: ${PYROSCOPE_SERVER_ADDRESS:-}
+  PYROSCOPE_SPAN_PROFILES_ENABLED: ${PYROSCOPE_SPAN_PROFILES_ENABLED:-true}
+
 networks:
   webhook_net:
 
@@ -22,6 +40,8 @@ services:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
+      OTEL_ENABLED: "false"
+      OTEL_CONSOLE_EXPORTER: "false"
       DATABASE_URL: ${DATABASE_URL}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
     volumes:
@@ -63,6 +83,7 @@ services:
       - ../../.env
 
     environment:
+      <<: *app-observability-env
       RUN_MODE: api
       PORT: ${PORT:-8000}
       APP_ENV: ${COMPOSE_APP_ENV:-development}
@@ -77,9 +98,7 @@ services:
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       OTEL_SERVICE_NAME: webhookwise-api
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+      PYROSCOPE_APPLICATION_NAME: webhookwise-api
 
     volumes:
       - ../../.env:/app/.env # 挂载 .env 文件
@@ -115,6 +134,7 @@ services:
     env_file:
       - ../../.env
     environment:
+      <<: *app-observability-env
       RUN_MODE: worker
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
@@ -127,9 +147,7 @@ services:
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
       OTEL_SERVICE_NAME: webhookwise-worker
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+      PYROSCOPE_APPLICATION_NAME: webhookwise-worker
     volumes:
       - ../../.env:/app/.env
     depends_on:
@@ -157,6 +175,7 @@ services:
     env_file:
       - ../../.env
     environment:
+      <<: *app-observability-env
       RUN_MODE: scheduler
       APP_ENV: ${COMPOSE_APP_ENV:-development}
       PYTHONPATH: /app
@@ -168,9 +187,7 @@ services:
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
       OTEL_SERVICE_NAME: webhookwise-scheduler
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
+      PYROSCOPE_APPLICATION_NAME: webhookwise-scheduler
     healthcheck:
       test: ["CMD", "python3", "-m", "scripts.healthcheck"]
       interval: 30s
