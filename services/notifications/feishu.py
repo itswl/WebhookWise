@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from core.app_context import get_config_manager
@@ -446,7 +446,7 @@ def build_deep_analysis_card(
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 关键证据**\n{evidence_md}"}})
         elements.append({"tag": "hr"})
 
-    identity_content = _build_identity_content(view, {})
+    identity_content = _build_identity_content(cast(AnalysisResult, view), {})
     if identity_content:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
         elements.append({"tag": "hr"})
