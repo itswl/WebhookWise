@@ -107,7 +107,7 @@ request = urllib.request.Request(
     method="POST",
 )
 with urllib.request.urlopen(request, timeout=10) as resp:
-    if resp.status != 202:
+    if resp.status != 200:
         raise SystemExit(f"unexpected webhook status: {resp.status}")
     accepted = json.loads(resp.read().decode("utf-8"))
 

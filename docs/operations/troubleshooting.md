@@ -35,7 +35,7 @@ docker compose logs worker -f
 
 ### 1. Webhook 接收后无分析结果
 
-**症状：** POST `/v1/webhook` 返回 202，但按 `request_id` 查不到最终事件。
+**症状：** POST `/v1/webhook` 返回 200，但按 `request_id` 查不到最终事件。
 
 **排查步骤：**
 

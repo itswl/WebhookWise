@@ -37,7 +37,7 @@ tests/e2e/run_webhook_to_feishu.sh
 - API `/ready` 可用；
 - migrate 任务成功退出；
 - scheduler 容器保持 running；
-- webhook 请求返回 `202`;
+- webhook 请求返回 `200`;
 - worker 从 Redis 消费并完成处理；
 - fake OpenAI 收到 `/v1/chat/completions` 请求；
 - fake Feishu 收到 `msg_type=interactive` 的卡片 payload。
