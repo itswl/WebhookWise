@@ -222,6 +222,10 @@ def cmd_acceptance(args: argparse.Namespace) -> int:
         command = [
             "docker",
             "compose",
+            "-p",
+            "webhookwise",
+            "--env-file",
+            ".env",
             "-f",
             "deploy/compose/docker-compose.infra.yml",
             "-f",
