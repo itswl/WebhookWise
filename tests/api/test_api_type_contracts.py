@@ -332,6 +332,7 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
 async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatch):
     from api.v1 import deep_analysis
     from models import DeepAnalysis, WebhookEvent
+    from services.analysis import deep_analysis_workflow
     from services.webhooks.types import DeepAnalysisStatus
 
     event = WebhookEvent(
@@ -389,7 +390,7 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     await session.refresh(record)
     assert record.status == DeepAnalysisStatus.PENDING
     assert isinstance(record.analysis_result, dict)
-    retry_started_at = record.analysis_result[deep_analysis.MANUAL_RETRY_STARTED_AT_KEY]
+    retry_started_at = record.analysis_result[deep_analysis_workflow.MANUAL_RETRY_STARTED_AT_KEY]
     assert isinstance(retry_started_at, str)
     assert retry_started_at.endswith("Z")
     parsed_retry_started_at = parse_utc_datetime(retry_started_at)
