@@ -2,8 +2,8 @@
 
 WebhookWise ships two provisioned Grafana dashboards:
 
-- `grafana/dashboard.json`: 基础大盘，面向日常值班和 SLO 观察。
-- `grafana/dashboard-diagnostics.json`: 深度诊断大盘，面向链路、RUM、Beyla、k6、payload、AI cache、outbox 等细节排查。
+- `deploy/observability/grafana/dashboards/dashboard.json`: 基础大盘，面向日常值班和 SLO 观察。
+- `deploy/observability/grafana/dashboards/dashboard-diagnostics.json`: 深度诊断大盘，面向链路、RUM、Beyla、k6、payload、AI cache、outbox 等细节排查。
 
 The dashboards are intentionally aligned to the OpenTelemetry metric names emitted by
 `core.observability.metrics` and transformed by Alloy into Prometheus series.
@@ -17,7 +17,7 @@ http://localhost:3000/d/webhook-wise-aiops/webhookwise-aiops-e5a4a7-e79b98
 Provisioning path:
 
 ```text
-grafana/*.json -> docker compose volume -> /var/lib/grafana/dashboards
+deploy/observability/grafana/dashboards/*.json -> docker compose volume -> /var/lib/grafana/dashboards
 deploy/observability/grafana-dashboards.yml -> file provider
 ```
 
@@ -165,6 +165,6 @@ When adding or renaming an observability metric:
 
 1. Update `docs/operations/observability/overview.md` component catalog.
 2. Update `docs/operations/observability/local-lab/metrics.md` query examples and explanations.
-3. Update `grafana/dashboard.json` if the metric should be monitored on the dashboard.
+3. Update `deploy/observability/grafana/dashboards/dashboard.json` if the metric should be monitored on the dashboard.
 4. Validate the PromQL against local Prometheus.
 5. Decide whether absence should mean `0` or real `No data`.

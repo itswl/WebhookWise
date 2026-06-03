@@ -105,7 +105,7 @@ Never commit Grafana tokens or passwords.
 ## Workflow
 
 1. Start with `health` if the user asks why data is missing or whether the stack is alive.
-2. Use `dashboard --validate` when Grafana panels show `No data` or after editing `grafana/dashboard.json`.
+2. Use `dashboard --validate` when Grafana panels show `No data` or after editing `deploy/observability/grafana/dashboards/dashboard.json`.
 3. Use `preset --list` then `preset <name>` for common metrics. Prefer presets over rewriting PromQL.
 4. Use `promql` for custom metric questions.
 5. Use `logs` for concrete events, errors, trace IDs, or frontend Faro records.

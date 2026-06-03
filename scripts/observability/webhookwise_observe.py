@@ -317,7 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     profiles_parser.set_defaults(func=cmd_profiles)
 
     dashboard_parser = sub.add_parser("dashboard", help="Inspect or validate the Grafana dashboard")
-    dashboard_parser.add_argument("--path", default="grafana/dashboard.json")
+    dashboard_parser.add_argument("--path", default="deploy/observability/grafana/dashboards/dashboard.json")
     dashboard_parser.add_argument("--uid", default="webhook-wise-aiops")
     dashboard_parser.add_argument("--remote", action="store_true", help="Read dashboard from Grafana API")
     dashboard_parser.add_argument(
