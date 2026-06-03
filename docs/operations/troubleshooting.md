@@ -19,8 +19,8 @@ curl http://localhost:8000/ready
 
 ```bash
 # Docker 模式
-docker compose logs webhook-service -f
-docker compose logs worker -f
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs webhook-service -f
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker -f
 
 # 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
 ```
@@ -44,22 +44,22 @@ docker compose logs worker -f
 
 2. 确认 Worker 进程是否在运行：
    ```bash
-   docker compose ps worker
+   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml ps worker
    ```
 
 3. 检查 Worker 日志是否有报错：
    ```bash
-   docker compose logs worker --tail 50
+   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker --tail 50
    ```
 
 4. 检查 Redis 连接：
    ```bash
-   docker compose -f docker-compose.infra.yml exec redis redis-cli ping  # 应返回 PONG
+   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli ping  # 应返回 PONG
    ```
 
 5. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
    ```bash
-   docker compose -f docker-compose.infra.yml exec redis redis-cli xinfo stream webhook:queue
+   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli xinfo stream webhook:queue
    ```
 
 6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
@@ -81,7 +81,7 @@ docker compose logs worker -f
 
 1. 检查进程环境中的 `ENABLE_AI_ANALYSIS` 和 `OPENAI_API_KEY` 是否已配置。
    ```bash
-   docker compose exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
+   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
    ```
 
 2. 检查 AI API 连通性（Worker 日志会有 HTTP 错误详情）。
@@ -102,8 +102,8 @@ docker compose logs worker -f
 
 **排查：**
 ```bash
-docker compose config
-docker compose exec webhook-service env | sort
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml config
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service env | sort
 ```
 
 ---
@@ -142,7 +142,7 @@ docker compose exec webhook-service env | sort
 
 1. 确认 `DEEP_ANALYSIS_FEISHU_WEBHOOK` 已配置：
    ```bash
-   docker compose exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
+   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
    ```
 
 2. 手动测试飞书 Webhook 连通性：
@@ -227,12 +227,12 @@ docker compose exec webhook-service env | sort
 
 2. 检查 Redis 内存：
    ```bash
-   docker compose -f docker-compose.infra.yml exec redis redis-cli info memory | grep used_memory_human
+   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli info memory | grep used_memory_human
    ```
 
 3. 检查主表 `webhook_events` 行数：如果很大，说明过期数据清理未正常执行。清理由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
 
-4. Docker 内存问题：`docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
+4. Docker 内存问题：`deploy/compose/docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
 
 ---
 

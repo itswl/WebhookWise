@@ -24,7 +24,7 @@ deploy/observability/grafana-dashboards.yml -> file provider
 If a local Grafana page does not pick up file changes, restart only Grafana:
 
 ```bash
-docker compose -f docker-compose.infra.yml -f docker-compose.yml -f docker-compose.observability.yml restart grafana
+docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.observability.yml restart grafana
 ```
 
 Whenever panels are added or their grouping labels change, regenerate the

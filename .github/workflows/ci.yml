@@ -21,7 +21,7 @@ jobs:
             docker_e2e:
               - ".github/workflows/ci.yml"
               - "Dockerfile"
-              - "docker-compose*.yml"
+              - "deploy/compose/**"
               - "entrypoint.sh"
               - "alembic/**"
               - "scripts/run_migrations.py"
