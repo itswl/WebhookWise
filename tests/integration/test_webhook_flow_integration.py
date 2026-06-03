@@ -174,7 +174,7 @@ async def test_webhook_receive_to_feishu_card_flow(
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/v1/webhook/prometheus", json=payload)
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
     assert body["event_id"] is None

@@ -236,13 +236,13 @@ async def dashboard() -> FileResponse:
     "/v1/webhook",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
-    status_code=202,
+    status_code=200,
 )
 @webhook_router.post(
     "/v1/webhook/{source}",
     dependencies=[Depends(check_rate_limit_dep), Depends(verify_webhook_auth_dep)],
     response_model=WebhookReceiveResponse,
-    status_code=202,
+    status_code=200,
 )
 async def receive_webhook(
     request: Request,
