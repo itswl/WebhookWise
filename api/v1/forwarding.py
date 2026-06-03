@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from contracts.webhook_payload import JsonObject, WebhookData
-from core.auth import verify_admin_write
+from core.auth import verify_admin_write, verify_api_key
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
@@ -48,7 +48,11 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
 # ── Forwarding Rules ─────────────────────────────────────────────────────────
 
 
-@forwarding_router.get("/forward-rules", response_model=ForwardRuleListResponse)
+@forwarding_router.get(
+    "/forward-rules",
+    response_model=ForwardRuleListResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
     return {"success": True, "data": [forward_rule_to_dict(rule, mask_target_url=True) for rule in rules]}
@@ -228,7 +232,11 @@ async def test_forward_rule_endpoint(
 # ── Outbox Queries ─────────────────────────────────────────────────────────
 
 
-@forwarding_router.get("/outbox", response_model=None)
+@forwarding_router.get(
+    "/outbox",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
 async def list_outbox_endpoint(
     page: int = Query(1, ge=1, le=100),
     page_size: int = Query(20, ge=1, le=200),

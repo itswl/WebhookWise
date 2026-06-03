@@ -7,6 +7,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, cast
+from redis.exceptions import RedisError
 
 from core.logger import get_logger
 
@@ -115,7 +116,7 @@ async def ensure_redis_available(operation: str, *, probe_interval: float = _REC
                 logger.info("[RedisHealth] Redis health probe recovered operation=%s", operation)
                 return True
             raise RuntimeError("Redis health probe returned false")
-        except Exception as e:
+        except (RedisError, RuntimeError, TimeoutError, ValueError) as e:
             mark_redis_failure(f"{operation}:health_probe", e)
             logger.warning("[RedisHealth] Redis health probe failed operation=%s error=%s", operation, e)
             return False

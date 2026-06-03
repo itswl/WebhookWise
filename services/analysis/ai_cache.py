@@ -4,6 +4,7 @@ import time
 from typing import cast
 
 from core import json
+from redis.exceptions import RedisError
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import AI_CACHE_OPERATION_DURATION_SECONDS, AI_CACHE_REQUESTS_TOTAL
@@ -49,7 +50,7 @@ async def get_cached_analysis(
         mark_cache_hit(res, hits)
         result = "hit"
         return res
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as e:
         result = "error"
         logger.warning("读取缓存失败: %s", e)
         return None
@@ -77,7 +78,7 @@ async def save_to_cache(
         await redis_setex_bytes(ck, ttl_resolved, cached_bytes)
         await redis_setex_str(counter_key, ttl_resolved, "0")
         return True
-    except Exception as e:
+    except (RedisError, RuntimeError, TypeError, ValueError) as e:
         result = "error"
         logger.warning("保存缓存失败: %s", e)
         return False

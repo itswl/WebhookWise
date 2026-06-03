@@ -50,7 +50,7 @@ class AdapterRegistry:
             try:
                 if detector(data):
                     return source_name
-            except Exception:  # noqa: PERF203
+            except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):  # noqa: PERF203
                 logger.exception("[Adapter Registry] Detector failed for %s", source_name)
         return None
 

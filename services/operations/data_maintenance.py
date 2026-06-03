@@ -4,6 +4,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import and_, delete, not_, or_, select, true
+from sqlalchemy.exc import SQLAlchemyError
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
@@ -189,6 +190,6 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
             logger.info("[Maintenance] 没有需要清理的数据。")
         return total_archived
 
-    except Exception as e:
+    except (RuntimeError, SQLAlchemyError, ValueError, TypeError) as e:
         logger.error("[Maintenance] 清理任务失败: %s", e, exc_info=True)
         return total_archived

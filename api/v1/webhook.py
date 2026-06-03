@@ -50,6 +50,8 @@ webhook_router = APIRouter()
 
 JSONDict = dict[str, Any]
 MAX_SOURCE_LENGTH = 100
+_WEBHOOK_RUNTIME_ERRORS = (OSError, RuntimeError, ValueError, TypeError)
+_CLIENT_IP_CONTEXT_ERRORS = (OSError, RuntimeError, ValueError, TypeError, AttributeError)
 
 
 def _normalize_source_hint(value: str | None) -> str:
@@ -79,7 +81,13 @@ async def _receive_and_enqueue_webhook(
 ) -> JSONDict | JSONResponse:
     try:
         client_ip = get_client_ip(request)
-    except Exception:
+    except _CLIENT_IP_CONTEXT_ERRORS:
+        logger.warning(
+            "[Webhook] 获取来源 IP 失败 request_id=%s source=%s error fallback_to_unknown",
+            request_id,
+            source_hint,
+            exc_info=True,
+        )
         client_ip = "unknown"
     state = getattr(request, "state", None)
     raw_body = (getattr(state, "raw_body", None) if state is not None else None) or await request.body()
@@ -153,7 +161,7 @@ async def _receive_and_enqueue_webhook(
     enqueue_status = "success"
     try:
         await process_webhook_task.kiq(**task_kwargs)
-    except Exception:
+    except _WEBHOOK_RUNTIME_ERRORS as e:
         enqueue_status = "error"
         WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=sanitize_source(source_hint), outcome="enqueue_failed").observe(
             len(raw_body)
@@ -165,6 +173,7 @@ async def _receive_and_enqueue_webhook(
             client_ip,
             len(raw_body),
         )
+        logger.debug("[Webhook] 入队异常 request_id=%s source=%s error=%s", request_id, source_hint, e)
         raise
     finally:
         QUEUE_OPERATIONS_TOTAL.labels("webhook_process_task", "enqueue", enqueue_status).inc()
@@ -245,8 +254,9 @@ async def receive_webhook(
                 )
                 set_span_ok(ingress_span)
             return result
-    except Exception:
+    except (HTTPException, _WEBHOOK_RUNTIME_ERRORS) as exc:
         ingress_outcome = "error"
+        logger.warning("[Webhook] 入库请求异常 request_id=%s source=%s error=%s", request_id, source_hint, exc, exc_info=True)
         raise
     finally:
         WEBHOOK_INGRESS_REQUESTS_TOTAL.labels(metric_source, ingress_outcome).inc()

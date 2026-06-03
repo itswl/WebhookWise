@@ -31,8 +31,12 @@ from services.forwarding.outbox_delivery import _is_forward_success, deliver_out
 from services.forwarding.outbox_queries import (
     _mask_url_for_display as _mask_url_for_display,
 )
+from services.forwarding import rules as forwarding_rules
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
+from services.notifications.feishu import build_delivery_exhausted_card
+from services.operations import taskiq_retry_scheduler
+from services.operations import tasks as operation_tasks
+from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot, select_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     DeepAnalysisStatus,
@@ -189,9 +193,6 @@ async def forward_notification(
 
     当 target_url 非空时跳过规则匹配，直接投递到该 URL。
     """
-    from services.forwarding.rules import list_enabled_forward_rules
-    from services.webhooks.decisioning import ForwardRuleSnapshot, select_forward_rules
-
     policy = policy or ForwardDeliveryPolicy.from_config()
 
     if target_url:
@@ -211,7 +212,7 @@ async def forward_notification(
             )
         ]
     else:
-        rules = await list_enabled_forward_rules()
+        rules = await forwarding_rules.list_enabled_forward_rules()
         matched = select_forward_rules(
             rules,
             event_type=event_type,
@@ -294,11 +295,9 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
     if not outbox_ids:
         return
 
-    from services.operations.tasks import process_forward_outbox_task
-
     for outbox_id in outbox_ids:
         try:
-            await process_forward_outbox_task.kiq(outbox_id=outbox_id)
+            await operation_tasks.process_forward_outbox_task.kiq(outbox_id=outbox_id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
         except _SCHEDULING_ERRORS as e:  # noqa: PERF203
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
@@ -306,10 +305,8 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
 
 
 async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
-    from services.operations.taskiq_retry_scheduler import schedule_forward_outbox
-
     try:
-        await schedule_forward_outbox(outbox_id, delay_seconds)
+        await taskiq_retry_scheduler.schedule_forward_outbox(outbox_id, delay_seconds)
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
     except _SCHEDULING_ERRORS as e:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
@@ -470,10 +467,8 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         current.response_data = dict(result)
 
         if current.target_type == "openclaw" and is_pending_result(result):
-            from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
-
             target_event_id = current.webhook_event_id
-            initial_poll_delay = compute_openclaw_poll_delay(0)
+            initial_poll_delay = taskiq_retry_scheduler.compute_openclaw_poll_delay(0)
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
                 engine="openclaw",
@@ -502,9 +497,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             current.target_type,
         )
     if openclaw_analysis_id is not None:
-        from services.operations.taskiq_retry_scheduler import schedule_openclaw_poll_best_effort
-
-        await schedule_openclaw_poll_best_effort(openclaw_analysis_id)
+        await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(openclaw_analysis_id)
 
 
 async def _finalize_outbox_failure(
@@ -549,8 +542,6 @@ async def _finalize_outbox_failure(
             logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
     if exhausted_record is not None:
         try:
-            from services.notifications.feishu import build_delivery_exhausted_card
-
             exhausted_event_type = str(getattr(exhausted_record, "event_type", "") or "")
             if exhausted_event_type not in {"outbox_exhausted"}:
                 await forward_notification(

@@ -62,7 +62,7 @@ def mask_url(url: str) -> str:
                 safe_path = f"/{parts[0]}/..." if parts else ""
             return f"{parsed.scheme}://***@{parsed.hostname}{port}{safe_path}"
         return "***"
-    except Exception:
+    except (AttributeError, ValueError):
         return "***"
 
 
@@ -77,7 +77,7 @@ class TraceIdFilter(logging.Filter):
             otel_trace_id = get_current_trace_id()
             otel_span_id = get_otel_span_id()
             otel_trace_flags = get_otel_trace_flags()
-        except Exception:
+        except (RuntimeError, TypeError, ValueError):
             otel_trace_id = ""
             otel_span_id = ""
             otel_trace_flags = "00"

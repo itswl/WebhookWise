@@ -179,7 +179,7 @@ def span(name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[Spa
         span_obj = cast(SpanLike, current) if current is not None else None
         if span_obj is not None:
             for key, value in normalize_attributes(attributes).items():
-                with suppress(Exception):
+                with suppress((AttributeError, RuntimeError, TypeError, ValueError)):
                     span_obj.set_attribute(key, value)
         try:
             yield span_obj
@@ -191,7 +191,7 @@ def span(name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[Spa
 def get_otel_trace_id() -> str:
     if not otel_enabled():
         return ""
-    with suppress(Exception):
+    with suppress((AttributeError, RuntimeError, TypeError, ValueError)):
         from opentelemetry import trace
 
         ctx = trace.get_current_span().get_span_context()
@@ -203,7 +203,7 @@ def get_otel_trace_id() -> str:
 def get_otel_trace_flags() -> str:
     if not otel_enabled():
         return "00"
-    with suppress(Exception):
+    with suppress((AttributeError, RuntimeError, TypeError, ValueError)):
         from opentelemetry import trace
 
         ctx = trace.get_current_span().get_span_context()
