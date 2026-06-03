@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
-from core.observability.metrics import FORWARD_RULE_MATCH_TOTAL
 from core.text import split_csv_lower
 from services.webhooks.types import (
     AnalysisResult,
@@ -359,7 +358,6 @@ def select_forward_rules(
         ):
             continue
         matched_rules.append(rule)
-        FORWARD_RULE_MATCH_TOTAL.labels(rule.name, rule.target_type).inc()
         if rule.stop_on_match:
             break
     return matched_rules

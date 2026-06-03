@@ -29,11 +29,6 @@ from core.observability.attributes import (
 )
 from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
-    WEBHOOK_ANALYSIS_RESULTS_TOTAL,
-    WEBHOOK_ANALYSIS_ROUTE_TOTAL,
-    WEBHOOK_DEDUP_DECISIONS_TOTAL,
-    WEBHOOK_DEDUP_DURATION_SECONDS,
-    WEBHOOK_FORWARD_DECISIONS_TOTAL,
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
     WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
@@ -135,22 +130,6 @@ def _record_step_metrics(step: str, metric_source: str, outcome: str, started: f
     WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
 
 
-_FORWARD_SKIP_LABELS = {
-    "cooldown",
-    "duplicate_no_rule",
-    "no_match",
-    "noise_suppressed",
-    "periodic_no_rule",
-}
-
-
-def _forward_reason_label(reason: str | None, skip_code: str | None = None) -> str:
-    code = str(skip_code or "").strip()
-    if code in _FORWARD_SKIP_LABELS:
-        return code
-    return "none" if not reason else "other"
-
-
 _PIPELINE_SPAN_NAMES = {
     "parse": "webhook.parse",
     "validate": "webhook.validate",
@@ -230,7 +209,6 @@ async def _ingest_step(*, step_name: str, metric_source: str, source: str | None
 async def _resolve_noise_context(
     ctx: WebhookProcessContext, dependencies: WebhookPipelineDependencies
 ) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
-    dedup_started = time.perf_counter()
     dedup_action = "error"
     async with _pipeline_step(ctx, "dedup") as (dedup_span, _outcome):
         try:
@@ -239,10 +217,6 @@ async def _resolve_noise_context(
         finally:
             if dedup_span is not None:
                 dedup_span.set_attribute("dedup.action", dedup_action)
-            WEBHOOK_DEDUP_DECISIONS_TOTAL.labels(ctx.metric_source, dedup_action).inc()
-            WEBHOOK_DEDUP_DURATION_SECONDS.labels(ctx.metric_source, dedup_action).observe(
-                time.perf_counter() - dedup_started
-            )
 
     if dedup_result.action in ("reuse", "rechain"):
         analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
@@ -250,13 +224,6 @@ async def _resolve_noise_context(
         set_analysis_route(analysis, route_type)
         importance = normalize_importance(analysis.get("importance", "unknown"))
         set_log_context(webhook_route=route_type)
-        WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
-        WEBHOOK_ANALYSIS_RESULTS_TOTAL.labels(
-            ctx.metric_source,
-            route_type,
-            importance,
-            str(is_analysis_degraded(analysis)).lower(),
-        ).inc()
         await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
         logger.debug(
             "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
@@ -301,13 +268,6 @@ async def _resolve_noise_context(
     route_type = analysis_route(analysis_result)
     importance = normalize_importance(analysis_result.get("importance", "unknown"))
     set_log_context(webhook_route=route_type)
-    WEBHOOK_ANALYSIS_ROUTE_TOTAL.labels(ctx.metric_source, route_type).inc()
-    WEBHOOK_ANALYSIS_RESULTS_TOTAL.labels(
-        ctx.metric_source,
-        route_type,
-        importance,
-        str(is_analysis_degraded(analysis_result)).lower(),
-    ).inc()
 
     logger.info(
         "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
@@ -410,19 +370,6 @@ async def _run_processing_pipeline(
             reset_chain=analysis_res.reset_chain or analysis_res.is_rechain,
         )
         await schedule_forward_outbox_many(finalize_res.outbox_ids)
-        decision = finalize_res.forward_decision
-        if decision is None:
-            WEBHOOK_FORWARD_DECISIONS_TOTAL.labels(ctx.metric_source, "unknown", "unknown", "unknown").inc()
-        elif decision.should_forward:
-            target_type = decision.matched_rules[0].target_type if decision.matched_rules else "default"
-            WEBHOOK_FORWARD_DECISIONS_TOTAL.labels(ctx.metric_source, "queued", "matched", target_type).inc()
-        else:
-            WEBHOOK_FORWARD_DECISIONS_TOTAL.labels(
-                ctx.metric_source,
-                "skipped",
-                _forward_reason_label(decision.skip_reason, decision.skip_code),
-                "none",
-            ).inc()
 
         return PipelineProcessingResult(
             suppressed=False,

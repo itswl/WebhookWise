@@ -9,7 +9,7 @@ from typing import Any, ParamSpec, TypeVar
 
 from core.app_context import get_config_manager
 from core.circuit_breaker import CircuitBreaker
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -19,7 +19,7 @@ ValidateURL = Callable[[str], Awaitable[str]]
 class LazyCircuitBreaker:
     """Create the configured breaker on first use, not at module import time."""
 
-    def __init__(self, factory: Callable[[UnifiedConfigManager], CircuitBreaker]) -> None:
+    def __init__(self, factory: Callable[[AppConfig], CircuitBreaker]) -> None:
         self._factory = factory
         self._breaker: CircuitBreaker | None = None
 
@@ -32,7 +32,7 @@ class LazyCircuitBreaker:
         return await self._get().call_async(func, *args, **kwargs)
 
 
-def _build_feishu_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
+def _build_feishu_circuit_breaker(config: AppConfig) -> CircuitBreaker:
     return CircuitBreaker(
         name="feishu",
         failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
@@ -40,7 +40,7 @@ def _build_feishu_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreake
     )
 
 
-def _build_openclaw_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
+def _build_openclaw_circuit_breaker(config: AppConfig) -> CircuitBreaker:
     return CircuitBreaker(
         name="openclaw",
         failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
@@ -48,7 +48,7 @@ def _build_openclaw_circuit_breaker(config: UnifiedConfigManager) -> CircuitBrea
     )
 
 
-def _build_forward_circuit_breaker(config: UnifiedConfigManager) -> CircuitBreaker:
+def _build_forward_circuit_breaker(config: AppConfig) -> CircuitBreaker:
     return CircuitBreaker(
         name="forward",
         failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,

@@ -9,11 +9,7 @@ import httpx
 
 from core.logger import get_logger
 from core.observability.events import add_span_event, record_signal
-from core.observability.metrics import (
-    CIRCUIT_BREAKER_REQUESTS_TOTAL,
-    CIRCUIT_BREAKER_STATE,
-    CIRCUIT_BREAKER_TRANSITIONS_TOTAL,
-)
+from core.observability.metrics import CIRCUIT_BREAKER_STATE
 from core.redis_lua import (
     CIRCUIT_BREAKER_CHECK_STATE as _CB_CHECK_STATE_LUA,
 )
@@ -140,16 +136,13 @@ class CircuitBreaker:
         if self.failure_threshold == 0:
             try:
                 result = await func(*args, **kwargs)
-                CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "disabled_success").inc()
                 return result
             except self.expected_exceptions as e:
-                CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "disabled_failure").inc()
                 logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
                 raise
 
         current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
-            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "rejected").inc()
             record_signal("circuit_breaker", "open", {"circuit_breaker.name": self.name})
             add_span_event(
                 "circuit_breaker.open",
@@ -160,14 +153,11 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "success").inc()
             await self._record_success()
             return result
         except self.expected_exceptions as e:
-            CIRCUIT_BREAKER_REQUESTS_TOTAL.labels(self.name, "failure").inc()
             tripped = await self._record_failure()
             if tripped:
-                CIRCUIT_BREAKER_TRANSITIONS_TOTAL.labels(self.name, CircuitState.OPEN.value).inc()
                 self._record_state_metric(CircuitState.OPEN)
                 record_signal("circuit_breaker", "open", {"circuit_breaker.name": self.name})
                 add_span_event(

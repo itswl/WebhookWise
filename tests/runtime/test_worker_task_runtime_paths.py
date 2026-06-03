@@ -174,8 +174,14 @@ async def test_run_scheduled_locked_records_success_lag_and_error_metrics(
         await tasks._run_scheduled_locked("metrics", 10, fail(), runtime=runtime)
 
     assert [span.attributes["scheduler.task.status"] for span in spans] == ["success", "success", "error"]
-    assert any(call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "success"} for call in metric_calls)
-    assert any(call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "error"} for call in metric_calls)
+    assert any(
+        call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "success"}
+        for call in metric_calls
+    )
+    assert any(
+        call[0] == "SCHEDULED_TASK_RUNS_TOTAL" and call[2] == {"name": "metrics", "status": "error"}
+        for call in metric_calls
+    )
     assert any(call[0] == "SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME" and call[3] == "set" for call in metric_calls)
     assert any(level == "debug" and "周期任务开始" in message for level, message, _args in logs)
     assert any(level == "debug" and "周期任务成功" in message for level, message, _args in logs)
@@ -228,7 +234,9 @@ def test_webhook_task_context_start_fallback_and_finish_emit_events(
     assert fallback_tokens == ["d" * 32, "reset:token"]
     assert [event[0] for event in events] == ["webhook.task.started", "webhook.task.finished"]
     assert signals[0][0:2] == ("webhook.task", "completed")
-    assert any(call[0] == "WORKER_TASKS_TOTAL" and call[1] == ("webhook_process_task", "completed") for call in metric_calls)
+    assert any(
+        call[0] == "WORKER_TASKS_TOTAL" and call[1] == ("webhook_process_task", "completed") for call in metric_calls
+    )
 
 
 def test_reset_webhook_task_fallback_trace_tolerates_foreign_token(
@@ -265,5 +273,7 @@ async def test_run_forward_outbox_task_records_success_and_error_metrics(
     with pytest.raises(RuntimeError, match="delivery failed"):
         await tasks.run_forward_outbox_task(102)
 
-    assert any(call[0] == "WORKER_TASKS_TOTAL" and call[1] == ("forward_outbox_task", "success") for call in metric_calls)
+    assert any(
+        call[0] == "WORKER_TASKS_TOTAL" and call[1] == ("forward_outbox_task", "success") for call in metric_calls
+    )
     assert any(call[0] == "WORKER_TASKS_TOTAL" and call[1] == ("forward_outbox_task", "error") for call in metric_calls)

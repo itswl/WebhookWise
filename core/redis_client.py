@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import redis.asyncio as redis
 
 from core import json
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.logger import get_logger, mask_url
 
 logger = get_logger("redis_client")
@@ -22,7 +22,7 @@ else:
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
 
-def build_redis_client(config: UnifiedConfigManager | None = None) -> RedisClient:
+def build_redis_client(config: AppConfig | None = None) -> RedisClient:
     if config is None:
         from core.app_context import get_config_manager
 
@@ -199,6 +199,7 @@ async def redis_get_json_dict(key: str) -> dict[str, Any] | None:
 
 async def redis_setex_json(key: str, ttl_seconds: int, payload: dict[str, Any]) -> None:
     await redis_setex_str(key, ttl_seconds, json.dumps(payload))
+
 
 __all__ = [
     "RedisClient",

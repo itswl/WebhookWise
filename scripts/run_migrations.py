@@ -13,14 +13,14 @@ import sys
 import time
 from pathlib import Path
 
-from core.config import UnifiedConfigManager
+from core.config import get_settings
 from db.engine import dispose_engine, init_engine, test_db_connection
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 async def _wait_for_database(max_retries: int, interval_seconds: float) -> None:
-    config = UnifiedConfigManager()
+    config = get_settings()
     for attempt in range(1, max_retries + 1):
         await init_engine(config)
         if await test_db_connection():

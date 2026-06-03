@@ -31,7 +31,7 @@ from sqlalchemy import select
 
 from core import json
 from core.app_context import get_config_manager, init_default_app_context
-from core.config import UnifiedConfigManager
+from core.config import get_settings
 from core.logger import get_logger
 from db.engine import init_engine
 from db.session import session_scope
@@ -70,7 +70,7 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if not record.openclaw_session_key:
             return False, "缺少 session key"
 
-        config = UnifiedConfigManager()
+        config = get_settings()
         if not config.openclaw.OPENCLAW_HTTP_API_URL:
             return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
 
@@ -112,7 +112,7 @@ async def main():
     parser.add_argument("--dry-run", action="store_true", help="模拟执行（仅 --list 时有效）")
     args = parser.parse_args()
 
-    init_default_app_context(UnifiedConfigManager())
+    init_default_app_context(get_settings())
     await init_engine()
 
     records = await find_failed_records(webhook_id=args.webhook_id, limit=args.limit)

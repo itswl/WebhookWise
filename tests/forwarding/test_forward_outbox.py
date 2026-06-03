@@ -52,9 +52,16 @@ async def test_resolve_and_forward_is_idempotent(
         is_periodic_reminder=False,
         matched_rules=[
             ForwardRuleSnapshot(
-                id=7, name="ops", match_event_type="", match_importance="", match_source="",
-                match_duplicate="all", match_payload="", target_type="webhook",
-                target_url="https://example.test/hook", stop_on_match=False,
+                id=7,
+                name="ops",
+                match_event_type="",
+                match_importance="",
+                match_source="",
+                match_duplicate="all",
+                match_payload="",
+                target_type="webhook",
+                target_url="https://example.test/hook",
+                stop_on_match=False,
             )
         ],
     )

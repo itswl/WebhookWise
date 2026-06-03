@@ -230,7 +230,9 @@ class TestHalfOpenRecovery:
         await breaker.call_async(_succeed)
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
-    async def test_failure_after_timeout_reopens_after_threshold(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+    async def test_failure_after_timeout_reopens_after_threshold(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
         for _ in range(breaker.failure_threshold):
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)

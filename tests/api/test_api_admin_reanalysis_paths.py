@@ -75,6 +75,7 @@ async def test_admin_deep_health_reports_dependency_and_queue_state(
     monkeypatch.setattr(temp_config.mq, "WEBHOOK_MQ_CONSUMER_GROUP", "group:test")
     monkeypatch.setattr(temp_config.ai, "OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_GATEWAY_TOKEN", "gateway-token")
+
     async def test_db_connection() -> bool:
         return True
 

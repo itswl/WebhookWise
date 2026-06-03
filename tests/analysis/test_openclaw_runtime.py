@@ -46,9 +46,7 @@ class _HistoryWebSocket(_FakeWebSocket):
             return json.dumps({"type": "event", "event": "ignored"})
         request_id = json.loads(self.sent[-1])["id"]
         if self.error_message:
-            return json.dumps(
-                {"type": "res", "id": request_id, "ok": False, "error": {"message": self.error_message}}
-            )
+            return json.dumps({"type": "res", "id": request_id, "ok": False, "error": {"message": self.error_message}})
         return json.dumps({"type": "res", "id": request_id, "ok": True, "payload": self.response_payload})
 
 
@@ -201,9 +199,7 @@ def test_openclaw_json_url_and_history_parsing_helpers() -> None:
     assert device_frame["params"]["client"]["mode"] == "cli"
 
     assert openclaw._parse_history_messages([]) == {"status": "pending"}
-    assert openclaw._parse_history_messages([{"message": {"role": "user", "content": "wait"}}]) == {
-        "status": "pending"
-    }
+    assert openclaw._parse_history_messages([{"message": {"role": "user", "content": "wait"}}]) == {"status": "pending"}
     assert openclaw._parse_history_messages(
         [{"message": {"role": "assistant", "content": [{"type": "tool_use"}]}}]
     ) == {"status": "pending"}
@@ -479,14 +475,18 @@ async def test_poll_session_result_handles_success_failures_and_missing_response
         }
     )
     monkeypatch.setattr(openclaw.websockets, "connect", lambda *_args, **_kwargs: _ConnectContext(success_ws))
-    success = await openclaw.poll_session_result("http://gateway.test", "token", "session-1", timeout=3, policy=WsPolicy())
+    success = await openclaw.poll_session_result(
+        "http://gateway.test", "token", "session-1", timeout=3, policy=WsPolicy()
+    )
     assert success["status"] == "completed"
     assert success["text"] == "final text"
     assert success["msg_count"] == 2
 
     failed_ws = _HistoryWebSocket(error_message="bad session")
     monkeypatch.setattr(openclaw.websockets, "connect", lambda *_args, **_kwargs: _ConnectContext(failed_ws))
-    failed = await openclaw.poll_session_result("http://gateway.test", "token", "session-1", timeout=3, policy=WsPolicy())
+    failed = await openclaw.poll_session_result(
+        "http://gateway.test", "token", "session-1", timeout=3, policy=WsPolicy()
+    )
     assert failed["status"] == "error"
     assert failed["error"] == "chat.history failed: bad session"
 
@@ -745,7 +745,11 @@ async def test_forward_to_openclaw_disabled_fallback_circuit_and_error_paths(
     )
     assert errored == {"status": "error", "message": "network down"}
 
-    statuses = [args[1] for name, args, _kwargs, action, _value in metric_calls if name == "FORWARD_DELIVERY_TOTAL" and action == "inc"]
+    statuses = [
+        args[1]
+        for name, args, _kwargs, action, _value in metric_calls
+        if name == "FORWARD_DELIVERY_TOTAL" and action == "inc"
+    ]
     assert {"disabled", "local-ai", "circuit_broken", "error"} <= set(statuses)
 
 
@@ -810,6 +814,7 @@ async def test_analyze_with_openclaw_retry_degrade_raise_and_parse_error_paths(
 
     monkeypatch.setattr(openclaw, "load_deep_analysis_prompt_template", fake_prompt)
     monkeypatch.setattr(openclaw, "get_prompt_source", lambda _kind: "test-source")
+
     async def sanitize(data: dict[str, object], **_kwargs: object) -> dict[str, object]:
         return data
 

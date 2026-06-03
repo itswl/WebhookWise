@@ -43,16 +43,6 @@ _last_probe_monotonic = 0.0
 _probe_lock = asyncio.Lock()
 
 
-def _record_state_metric() -> None:
-    try:
-        from core.observability.metrics import REDIS_HEALTH_STATE
-
-        for candidate in RedisHealthState:
-            REDIS_HEALTH_STATE.labels(candidate.value).set(1 if candidate == _state else 0)
-    except Exception:
-        logger.debug("[RedisHealth] failed to record health metric", exc_info=True)
-
-
 def get_redis_health_snapshot() -> RedisHealthSnapshot:
     return RedisHealthSnapshot(
         state=_state,
@@ -75,7 +65,6 @@ def mark_redis_success(operation: str) -> None:
     _last_success_at = time.time()
     _last_error = ""
     _last_operation = operation
-    _record_state_metric()
 
 
 def mark_redis_failure(operation: str, error: BaseException) -> None:
@@ -86,7 +75,6 @@ def mark_redis_failure(operation: str, error: BaseException) -> None:
     _last_error = f"{type(error).__name__}: {error}"
     _last_operation = operation
     _last_probe_monotonic = time.monotonic()
-    _record_state_metric()
 
 
 async def _ping_redis(client: RedisClient) -> bool:
@@ -143,7 +131,6 @@ def reset_redis_health() -> None:
     _last_error = ""
     _last_operation = ""
     _last_probe_monotonic = 0.0
-    _record_state_metric()
 
 
 def webhook_dedupe(alert_hash: str) -> str:

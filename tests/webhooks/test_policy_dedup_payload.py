@@ -189,17 +189,13 @@ async def test_resolve_dedup_reuse_rechain_db_fallback_and_new(
     assert brand_new.reset_chain is False
 
 
-def test_generate_event_keys_fallback_records_identity_degradation(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_event_keys_fallback_uses_payload_hash() -> None:
     from services import dedup
-
-    metric_calls: list[MetricCall] = []
-    monkeypatch.setattr(dedup, "WEBHOOK_IDENTITY_DEGRADED_TOTAL", StubMetric(metric_calls, "IDENTITY"))
 
     alert_hash, dedup_key = dedup.generate_event_keys({"unstructured": "value"}, " CustomSource ")
 
     assert alert_hash == dedup_key
     assert len(alert_hash) == 64
-    assert metric_calls[-1][:4] == ("IDENTITY", ("customsource",), {}, "inc")
 
 
 def test_payload_sanitizer_strips_depth_limits_and_truncates_values() -> None:
