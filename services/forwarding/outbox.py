@@ -57,6 +57,7 @@ async def _create_outbox_records(
     formatted_payload: dict[str, Any] | None,
     event_type: str,
     is_periodic_reminder: bool,
+    idempotency_extra: str = "",
     policy: ForwardDeliveryPolicy,
     log_tag: str,
 ) -> list[int]:
@@ -78,6 +79,7 @@ async def _create_outbox_records(
             target_type=target_type,
             target_url=target_url,
             is_periodic_reminder=is_periodic_reminder,
+            extra=idempotency_extra,
         )
         existing = (
             await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
@@ -175,6 +177,7 @@ async def forward_notification(
     wait: bool = False,
     policy: ForwardDeliveryPolicy | None = None,
     target_url: str = "",
+    idempotency_extra: str = "",
     importance: str = "",
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
@@ -230,6 +233,7 @@ async def forward_notification(
             formatted_payload=formatted_payload,
             event_type=event_type,
             is_periodic_reminder=False,
+            idempotency_extra=idempotency_extra,
             policy=policy,
             log_tag="ForwardNotify",
         )
@@ -316,8 +320,12 @@ def _idempotency_key(
     target_type: str,
     target_url: str,
     is_periodic_reminder: bool,
+    extra: str = "",
 ) -> str:
-    raw = f"{webhook_id}|{rule_id or 'default'}|{target_type}|{target_url}|{int(is_periodic_reminder)}"
+    raw = (
+        f"{webhook_id}|{rule_id or 'default'}|{target_type}|{target_url}|"
+        f"{int(is_periodic_reminder)}|{extra}"
+    )
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"forward:{webhook_id}:{digest[:32]}"
 

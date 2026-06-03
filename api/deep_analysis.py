@@ -1,6 +1,7 @@
 import contextlib
 from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -349,6 +350,7 @@ async def forward_deep_analysis(
             formatted_payload=formatted_payload,
             webhook_id=analysis.webhook_event_id or None,
             target_url=target_url,
+            idempotency_extra=f"manual-deep-analysis:{analysis_id}:{uuid4().hex}",
         )
         outbox_id = result.get("outbox_id")
         status = result.get("status", "")

@@ -13,9 +13,338 @@ var DeepAnalysesModule = (function() {
     var autoRefreshTimer = null;
     var expandedIds = new Set();
 
+    const TEXT_FIELD_CANDIDATES = [
+        'summary',
+        'root_cause',
+        '_openclaw_text',
+        'analysis',
+        'conclusion',
+        'content',
+        'text',
+        'message',
+        'finding',
+        'observation',
+        'result',
+        'cause',
+        'error',
+        'failure_reason',
+        'description',
+        'annotations',
+        'details',
+        'detail',
+        'reason',
+        'action',
+        'recommendation',
+        'solution',
+        'value',
+        'name',
+        'title'
+    ];
+
+    function displayValue(value, options) {
+        const opts = Object.assign({ pretty: false, separator: ' · ', maxDepth: 3 }, options || {});
+        return displayValueInternal(value, opts, 0);
+    }
+
+    function displayValueInternal(value, opts, depth) {
+        if (value === null || value === undefined || value === '') return '';
+
+        if (typeof value === 'string') return value.trim();
+        if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+        if (Array.isArray(value)) {
+            const items = value
+                .map(item => displayValueInternal(item, opts, depth + 1))
+                .filter(Boolean);
+            return items.join(opts.separator);
+        }
+
+        if (typeof value === 'object') {
+            if (depth < opts.maxDepth) {
+                for (const key of TEXT_FIELD_CANDIDATES) {
+                    if (Object.prototype.hasOwnProperty.call(value, key)) {
+                        const text = displayValueInternal(value[key], opts, depth + 1);
+                        if (text) return text;
+                    }
+                }
+            }
+
+            try {
+                return JSON.stringify(value, null, opts.pretty ? 2 : 0);
+            } catch (e) {
+                return '无法展示的对象数据';
+            }
+        }
+
+        return String(value);
+    }
+
+    function extractJsonBlock(text) {
+        if (typeof text !== 'string') return '';
+        const start = text.search(/[\{\[]/);
+        if (start < 0) return '';
+
+        const opener = text[start];
+        const closer = opener === '{' ? '}' : ']';
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = start; i < text.length; i += 1) {
+            const ch = text[i];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (ch === '\\') {
+                    escaped = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+            } else if (ch === opener) {
+                depth += 1;
+            } else if (ch === closer) {
+                depth -= 1;
+                if (depth === 0) return text.slice(start, i + 1);
+            }
+        }
+
+        return '';
+    }
+
+    function stripMarkdownJsonFence(text) {
+        if (typeof text !== 'string') return '';
+        return text
+            .trim()
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+    }
+
+    function parseJsonLikeText(value) {
+        if (typeof value !== 'string') return null;
+        const stripped = stripMarkdownJsonFence(value);
+        if (!stripped) return null;
+
+        const jsonBlock = extractJsonBlock(stripped);
+        const candidates = [stripped, sanitizeLooseJson(stripped), jsonBlock, sanitizeLooseJson(jsonBlock)].filter(Boolean);
+        for (const candidate of candidates) {
+            try {
+                const parsed = JSON.parse(candidate);
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (e) {
+                // Ignore non-JSON prose and fall back to the next candidate.
+            }
+        }
+        return null;
+    }
+
+    function sanitizeLooseJson(text) {
+        if (typeof text !== 'string') return '';
+        return text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+    }
+
+    function isRawJsonLikeText(value) {
+        if (typeof value !== 'string') return false;
+        const text = value.trim();
+        return text.startsWith('```') || text.startsWith('{') || text.startsWith('[');
+    }
+
+    function buildAnalysisView(analysis) {
+        const data = normalizeAnalysisResult(analysis);
+        const parsed =
+            parseJsonLikeText(data.summary) ||
+            parseJsonLikeText(data.root_cause) ||
+            parseJsonLikeText(data._openclaw_text) ||
+            parseJsonLikeText(data.analysis) ||
+            parseJsonLikeText(data.details);
+
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return Object.assign({}, data, parsed);
+        }
+        return data;
+    }
+
+    function displayPreviewValue(value) {
+        const parsed = parseJsonLikeText(value);
+        if (parsed) return buildPreviewText(parsed);
+        if (isRawJsonLikeText(value)) return '';
+        return displayValue(value, { separator: '；' });
+    }
+
+    function buildPreviewText(analysis) {
+        const view = buildAnalysisView(analysis);
+        const candidates = [
+            view.summary,
+            view.conclusion,
+            view.root_cause,
+            view.impact,
+            view.impact_scope,
+            view.error,
+            view.failure_reason,
+            view.message
+        ];
+
+        for (const candidate of candidates) {
+            const text = displayPreviewValue(candidate);
+            if (text) return text;
+        }
+
+        return '';
+    }
+
+    function normalizeAnalysisResult(value) {
+        if (!value) return {};
+        if (typeof value === 'object' && !Array.isArray(value)) return value;
+        const text = displayValue(value);
+        return text ? { root_cause: text, _openclaw_text: text } : {};
+    }
+
+    function firstDisplayValue(values, options) {
+        for (const value of values) {
+            const text = displayValue(value, options);
+            if (text) return text;
+        }
+        return '';
+    }
+
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        const normalized = String(text).replace(/\s+/g, ' ').trim();
+        return normalized.length > maxLength ? normalized.substring(0, maxLength) + '...' : normalized;
+    }
+
+    function renderListItems(value) {
+        const items = Array.isArray(value) ? value : (value ? [value] : []);
+        return items
+            .map(item => displayValue(item))
+            .filter(Boolean)
+            .map(item => `<li style="margin-bottom: 0.5rem;">${escapeHtml(item)}</li>`)
+            .join('');
+    }
+
+    function hasDisplayValue(value) {
+        return !!displayValue(value);
+    }
+
+    function renderParagraph(value) {
+        const text = displayValue(value, { pretty: true, separator: '\n' });
+        if (!text) return '';
+        return `<p>${escapeHtml(text)}</p>`;
+    }
+
+    function renderValueBody(value) {
+        if (value === null || value === undefined || value === '') return '';
+
+        if (Array.isArray(value)) {
+            const items = renderListItems(value);
+            return items ? `<ul>${items}</ul>` : '';
+        }
+
+        if (typeof value === 'object') {
+            const text = displayValue(value, { pretty: true, separator: '\n' });
+            return text ? `<p>${escapeHtml(text)}</p>` : renderKeyValueGrid(value);
+        }
+
+        return renderParagraph(value);
+    }
+
+    function renderSection(title, value, extraClass) {
+        const body = renderValueBody(value);
+        if (!body) return '';
+        return `
+            <section class="da-analysis-section ${extraClass || ''}">
+                <h4>${escapeHtml(title)}</h4>
+                ${body}
+            </section>
+        `;
+    }
+
+    function formatFieldName(key) {
+        const labels = {
+            source: '来源',
+            project: '项目',
+            region: '区域',
+            namespace: '命名空间',
+            service: '服务',
+            resource_name: '资源名称',
+            resource_id: '资源 ID',
+            rule_name: '规则',
+            rule_id: '规则 ID',
+            metric_name: '指标',
+            severity: '级别',
+            status: '状态'
+        };
+        return labels[key] || String(key).replace(/_/g, ' ');
+    }
+
+    function renderKeyValueGrid(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+        const rows = Object.keys(value)
+            .filter(key => hasDisplayValue(value[key]))
+            .map(key => `
+                <div class="da-kv-row">
+                    <dt>${escapeHtml(formatFieldName(key))}</dt>
+                    <dd>${escapeHtml(displayValue(value[key], { pretty: true, separator: '；' }))}</dd>
+                </div>
+            `)
+            .join('');
+        return rows ? `<dl class="da-kv-grid">${rows}</dl>` : '';
+    }
+
+    function renderStructuredAnalysis(analysis) {
+        const view = buildAnalysisView(analysis);
+        const summary = displayPreviewValue(view.summary);
+        const rootCause = view.root_cause || view.reason || view.analysis;
+        const impact = view.impact || view.impact_scope;
+        const recommendationSource =
+            Array.isArray(view.recommendations) && view.recommendations.length > 0
+                ? view.recommendations
+                : (view.recommendations || view.actions || view.next_steps || view.solution);
+        const evidence = view.evidence || view.supports || view.observations;
+
+        let html = '<div class="da-analysis-report">';
+        if (summary) {
+            html += `
+                <section class="da-analysis-section da-analysis-summary">
+                    <h4>分析摘要</h4>
+                    <p>${escapeHtml(summary)}</p>
+                </section>
+            `;
+        }
+
+        html += '<div class="da-analysis-grid">';
+        html += renderSection('根因定位', rootCause);
+        html += renderSection('影响评估', impact);
+        html += renderSection('修复建议', recommendationSource, 'da-analysis-section-wide');
+        html += renderSection('关键证据', evidence, 'da-analysis-section-wide');
+        html += '</div>';
+
+        if (view.alert_identity) {
+            html += `
+                <section class="da-analysis-section da-analysis-section-wide">
+                    <h4>告警身份</h4>
+                    ${renderKeyValueGrid(view.alert_identity)}
+                </section>
+            `;
+        }
+
+        if (!summary && !hasDisplayValue(rootCause) && !hasDisplayValue(impact) && !hasDisplayValue(recommendationSource) && !hasDisplayValue(evidence)) {
+            html += renderSection('分析内容', view, 'da-analysis-section-wide');
+        }
+
+        html += '</div>';
+        return html;
+    }
+
     function escapeHtml(unsafe) {
-        if (!unsafe) return '';
-        return String(unsafe)
+        const text = displayValue(unsafe);
+        if (!text) return '';
+        return text
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -44,10 +373,10 @@ var DeepAnalysesModule = (function() {
     }
 
     function buildSummaryHtml(record) {
-        var analysis = record.analysis_result || {};
+        var analysis = normalizeAnalysisResult(record.analysis_result);
         var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
-        var duration = record.duration_seconds ? record.duration_seconds.toFixed(2) + 's' : '-';
-        var source = record.source || analysis.source || '未知来源';
+        var duration = typeof record.duration_seconds === 'number' ? record.duration_seconds.toFixed(2) + 's' : '-';
+        var source = displayValue(record.source || analysis.source) || '未知来源';
 
         const engineMap = {
             'openclaw': { label: 'OpenClaw', class: 'badge-high', icon: '🦞', bg: '#dbeafe', color: '#4338ca' },
@@ -74,21 +403,24 @@ var DeepAnalysesModule = (function() {
 
         let html = `
             <div class="da-summary" onclick="DeepAnalysesModule.toggleExpand(${record.id})">
-                <div style="display: flex; flex-direction: column; gap: 0.5rem; flex-grow: 1;">
-                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div class="da-summary-main">
+                    <div class="da-summary-meta-row">
                         <span class="badge ${status.class}" style="display: flex; align-items: center; font-size: 0.7rem;">${status.icon} ${status.label}</span>
                         ${engineLabel}
-                        <span style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">🔔 告警 #${record.webhook_event_id}</span>
-                        <span style="color: var(--text-muted); font-size: 0.85rem;">📡 ${escapeHtml(source)}</span>
+                        <span class="da-alert-title">🔔 告警 #${escapeHtml(record.webhook_event_id)}</span>
+                        <span class="da-source">📡 ${escapeHtml(source)}</span>
                         ${alertTypeTag}
                     </div>
         `;
 
         if (record.status === 'completed') {
-            let textPreview = analysis.root_cause || analysis._openclaw_text || '';
-            if (textPreview.length > 120) textPreview = textPreview.substring(0, 120) + '...';
+            let textPreview = buildPreviewText(analysis);
+            if (!textPreview && !isRawJsonLikeText(record.analysis_result)) {
+                textPreview = firstDisplayValue([record.analysis_result], { separator: '；' });
+            }
+            textPreview = truncateText(textPreview, 180);
             if (textPreview) {
-                html += `<div style="color: var(--text-main); font-size: 0.95rem; font-weight: 500; margin-top: 0.25rem;">${escapeHtml(textPreview)}</div>`;
+                html += `<div class="da-preview">${escapeHtml(textPreview)}</div>`;
             }
         } else if (record.status === 'pending') {
             const runIdText = record.openclaw_run_id ? `(Run ID: <span style="font-family: monospace;">${escapeHtml(record.openclaw_run_id.substring(0,8))}</span>)` : '';
@@ -96,18 +428,18 @@ var DeepAnalysesModule = (function() {
             if (record.poll_attempts != null) pollInfo.push('轮询 ' + record.poll_attempts + ' 次');
             if (record.last_polled_at) pollInfo.push('上次 ' + new Date(record.last_polled_at).toLocaleTimeString('zh-CN'));
             const pollText = pollInfo.length > 0 ? `<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">${pollInfo.join(' · ')}</div>` : '';
-            html += `<div style="color: var(--warning); font-size: 0.95rem; font-weight: 500; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>${pollText}`;
+            html += `<div class="da-preview da-preview-pending">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>${pollText}`;
         } else if (record.status === 'failed') {
-            let errorMsg = analysis.root_cause || analysis.error || analysis.failure_reason || '未知错误';
-            if (errorMsg.length > 100) errorMsg = errorMsg.substring(0, 100) + '...';
-            html += `<div style="color: var(--danger); font-size: 0.95rem; font-weight: 500; margin-top: 0.25rem;">❌ ${escapeHtml(errorMsg)}</div>`;
+            let errorMsg = firstDisplayValue([analysis.root_cause, analysis.error, analysis.failure_reason, analysis.message], { separator: '；' }) || '未知错误';
+            errorMsg = truncateText(errorMsg, 160);
+            html += `<div class="da-preview da-preview-error">❌ ${escapeHtml(errorMsg)}</div>`;
         }
 
         html += `
                 </div>
-                <div style="text-align: right; color: var(--text-muted); font-size: 0.85rem; font-family: 'Fira Code', monospace; min-width: 120px;">
+                <div class="da-summary-runtime">
                     <div>${time}</div>
-                    <div style="margin-top: 0.25rem; color: var(--text-main);">⏱️ ${duration}</div>
+                    <div class="da-duration-value">⏱️ ${duration}</div>
                 </div>
             </div>
         `;
@@ -115,7 +447,7 @@ var DeepAnalysesModule = (function() {
     }
 
     function buildDetailsHtml(record) {
-        var analysis = record.analysis_result || {};
+        var analysis = normalizeAnalysisResult(record.analysis_result);
         const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : (record.engine === 'hermes' ? 'Hermes' : 'Local AI');
 
         let detailsHtml = '';
@@ -146,8 +478,12 @@ var DeepAnalysesModule = (function() {
             `;
         } else {
             // Completed
-            if (analysis._openclaw_text) {
-                const mdHtml = renderPlainMarkdown(analysis._openclaw_text);
+            const openclawText = displayValue(analysis._openclaw_text, { pretty: true, separator: '\n' });
+            const parsedOpenclawText = parseJsonLikeText(openclawText);
+            if (parsedOpenclawText) {
+                detailsHtml += renderStructuredAnalysis(Object.assign({}, analysis, parsedOpenclawText));
+            } else if (openclawText && !isRawJsonLikeText(openclawText)) {
+                const mdHtml = renderPlainMarkdown(openclawText);
                 detailsHtml += `
                     <div style="background: #ffffff; padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.95rem; line-height: 1.6; color: var(--text-main);" class="markdown-body">
                         ${mdHtml}
@@ -155,37 +491,7 @@ var DeepAnalysesModule = (function() {
                 `;
             } else {
                 // Structured output (Local Engine)
-                detailsHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; background: #ffffff; padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border);">`;
-
-                if (analysis.root_cause) {
-                    detailsHtml += `
-                        <div>
-                            <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 根因定位</h4>
-                            <p style="color: var(--text-main); font-size: 0.95rem; margin: 0; line-height: 1.6;">${escapeHtml(analysis.root_cause)}</p>
-                        </div>
-                    `;
-                }
-
-                if (analysis.impact) {
-                    detailsHtml += `
-                        <div>
-                            <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 影响评估</h4>
-                            <p style="color: var(--text-main); font-size: 0.95rem; margin: 0; line-height: 1.6;">${escapeHtml(analysis.impact)}</p>
-                        </div>
-                    `;
-                }
-
-                if (analysis.recommendations && analysis.recommendations.length > 0) {
-                    detailsHtml += `
-                        <div style="grid-column: 1 / -1;">
-                            <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ 修复建议</h4>
-                            <ul style="padding-left: 1.5rem; color: var(--text-main); font-size: 0.95rem; margin: 0; line-height: 1.6;">
-                                ${analysis.recommendations.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(r)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    `;
-                }
-                detailsHtml += `</div>`;
+                detailsHtml += renderStructuredAnalysis(analysis);
             }
         }
 

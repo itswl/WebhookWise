@@ -326,10 +326,26 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             policy=_policy(),
             log_tag="test",
         )
+        manual_retry_ids = await outbox._create_outbox_records(
+            session,
+            [_rule(id=2, target_url="https://target.test/a/" + "x" * 80)],
+            webhook_id=1,
+            orig_id=None,
+            forward_data={},
+            analysis_result={},
+            formatted_payload=None,
+            event_type="alert",
+            is_periodic_reminder=False,
+            idempotency_extra="manual-click-1",
+            policy=_policy(),
+            log_tag="test",
+        )
 
     assert skipped == {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
     assert len(ids) == 2
     assert duplicate_ids == [ids[0]]
+    assert len(manual_retry_ids) == 1
+    assert manual_retry_ids != [ids[0]]
     assert outbox._outbox_result([])["status"] == "skipped"
     assert outbox._mask_url_for_display("") == ""
     assert outbox._mask_url_for_display("not a url" * 20).endswith("…")

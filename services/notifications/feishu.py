@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
@@ -39,6 +41,24 @@ _IDENTITY_GROUPS = (
     ("resource_name", "resource_id"),
     ("rule_name", "metric_name", "severity", "status"),
 )
+_DEEP_TEXT_FIELD_CANDIDATES = (
+    "summary",
+    "description",
+    "finding",
+    "observation",
+    "action",
+    "reason",
+    "message",
+    "content",
+    "text",
+    "root_cause",
+    "impact",
+    "impact_scope",
+    "error",
+    "failure_reason",
+    "name",
+    "title",
+)
 
 
 def _truncate_text(text: object, max_len: int) -> str:
@@ -46,6 +66,154 @@ def _truncate_text(text: object, max_len: int) -> str:
         return ""
     normalized = str(text)
     return normalized if len(normalized) <= max_len else normalized[: max_len - 3] + "..."
+
+
+def _single_line(text: object) -> str:
+    return " ".join(str(text or "").split()).strip()
+
+
+def _strip_json_fence(text: str) -> str:
+    stripped = text.strip()
+    stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
+    stripped = re.sub(r"\s*```$", "", stripped, flags=re.IGNORECASE)
+    return stripped.strip()
+
+
+def _sanitize_loose_json(text: str) -> str:
+    return re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", text)
+
+
+def _extract_json_block(text: str) -> str:
+    start = -1
+    for idx, char in enumerate(text):
+        if char in "{[":
+            start = idx
+            break
+    if start < 0:
+        return ""
+
+    pairs = {"{": "}", "[": "]"}
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    for idx in range(start, len(text)):
+        char = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char in pairs:
+            stack.append(pairs[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+            if not stack:
+                return text[start : idx + 1]
+    return ""
+
+
+def _parse_json_like_text(value: object) -> JsonObject | list[Any] | None:
+    if not isinstance(value, str):
+        return None
+    stripped = _strip_json_fence(value)
+    if not stripped:
+        return None
+    json_block = _extract_json_block(stripped)
+    candidates = [stripped, _sanitize_loose_json(stripped), json_block, _sanitize_loose_json(json_block)]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, (dict, list)):
+            return parsed
+    return None
+
+
+def _display_deep_value(value: object, *, separator: str = "\n", max_depth: int = 3, _depth: int = 0) -> str:
+    if value in (None, ""):
+        return ""
+    parsed = _parse_json_like_text(value)
+    if parsed is not None:
+        return _display_deep_value(parsed, separator=separator, max_depth=max_depth, _depth=_depth + 1)
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return separator.join(
+            item
+            for item in (
+                _display_deep_value(v, separator=separator, max_depth=max_depth, _depth=_depth + 1) for v in value
+            )
+            if item
+        )
+    if isinstance(value, dict):
+        if _depth < max_depth:
+            for key in _DEEP_TEXT_FIELD_CANDIDATES:
+                text = _display_deep_value(
+                    value.get(key), separator=separator, max_depth=max_depth, _depth=_depth + 1
+                )
+                if text:
+                    return text
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+    return str(value)
+
+
+def _deep_analysis_view(result: object) -> JsonObject:
+    data = dict(result) if isinstance(result, dict) else {}
+    parsed = (
+        _parse_json_like_text(data.get("summary"))
+        or _parse_json_like_text(data.get("root_cause"))
+        or _parse_json_like_text(data.get("_openclaw_text"))
+        or _parse_json_like_text(data.get("analysis"))
+        or _parse_json_like_text(data.get("details"))
+    )
+    if isinstance(parsed, dict):
+        return {**data, **parsed}
+    return data
+
+
+def _section_text(value: object, max_len: int) -> str:
+    return _truncate_text(_display_deep_value(value, separator="\n"), max_len)
+
+
+def _list_lines(value: object, *, max_items: int, max_item_len: int) -> list[str]:
+    if not value:
+        return []
+    items = value if isinstance(value, list) else [value]
+    lines: list[str] = []
+    for item in items[:max_items]:
+        text = _display_deep_value(item, separator=" ｜ ")
+        if text:
+            lines.append(_truncate_text(_single_line(text), max_item_len))
+    return lines
+
+
+def _markdown_bullets(value: object, *, max_items: int = 4, max_item_len: int = 180) -> str:
+    lines = _list_lines(value, max_items=max_items, max_item_len=max_item_len)
+    return "\n".join(f"- {line}" for line in lines)
+
+
+def _add_md_section(elements: list[JsonObject], title: str, content: object, max_len: int = 800) -> None:
+    text = _section_text(content, max_len)
+    if not text:
+        return
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{title}**\n{text}"}})
+    elements.append({"tag": "hr"})
 
 
 def _float_or_zero(value: object) -> float:
@@ -232,10 +400,76 @@ def build_deep_analysis_card(
 ) -> JsonObject:
     result = analysis_record.get("analysis_result", {})
     result = result if isinstance(result, dict) else {}
+    view = _deep_analysis_view(result)
     engine = analysis_record.get("engine", "uk")
     duration = analysis_record.get("duration_seconds") or 0
-    confidence = result.get("confidence", 0)
+    confidence = view.get("confidence", 0)
     confidence_percent = round(confidence * 100) if isinstance(confidence, (int, float)) else 0
+    analysis_failed = bool(view.get("analysis_failed"))
+
+    summary = _section_text(view.get("summary") or view.get("conclusion"), 900)
+    root_cause = view.get("root_cause") or view.get("reason") or view.get("analysis") or view.get("failure_reason")
+    impact = view.get("impact") or view.get("impact_scope")
+    recommendations = view.get("recommendations") or view.get("actions") or view.get("next_steps") or view.get("solution")
+    evidence = view.get("evidence") or view.get("supports") or view.get("observations")
+
+    elements: list[JsonObject] = [
+        {
+            "tag": "div",
+            "fields": [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**告警 ID**\n{webhook_event_id or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**引擎**\n{engine or '—'}"}},
+                {
+                    "is_short": True,
+                    "text": {"tag": "lark_md", "content": f"**耗时**\n{_float_or_zero(duration):.1f}s"},
+                },
+            ],
+        },
+        {"tag": "hr"},
+    ]
+
+    if summary:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 分析摘要**\n{summary}"}})
+        elements.append({"tag": "hr"})
+
+    _add_md_section(elements, "🔍 根因定位", root_cause, 1000)
+    _add_md_section(elements, "💥 影响评估", impact, 800)
+
+    recommendation_md = _markdown_bullets(recommendations, max_items=4, max_item_len=240)
+    if recommendation_md:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🛠️ 修复建议**\n{recommendation_md}"}})
+        elements.append({"tag": "hr"})
+
+    evidence_md = _markdown_bullets(evidence, max_items=4, max_item_len=220)
+    if evidence_md:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 关键证据**\n{evidence_md}"}})
+        elements.append({"tag": "hr"})
+
+    identity_content = _build_identity_content(view, {})
+    if identity_content:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
+        elements.append({"tag": "hr"})
+
+    if len(elements) == 2:
+        fallback = _section_text(view or result, 1200) or "无"
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 分析内容**\n{fallback}"}})
+        elements.append({"tag": "hr"})
+
+    elements.append(
+        {
+            "tag": "note",
+            "elements": [
+                {
+                    "tag": "plain_text",
+                    "content": (
+                        f"引擎: {engine} | 置信度: {confidence_percent}% | "
+                        f"耗时: {_float_or_zero(duration):.1f}s | ID: {webhook_event_id}"
+                    ),
+                }
+            ],
+        }
+    )
 
     return {
         "msg_type": "interactive",
@@ -243,40 +477,19 @@ def build_deep_analysis_card(
             "header": {
                 "title": {
                     "tag": "plain_text",
-                    "content": f"🔬 [{source}] 深度分析完成" if source else "🔬 深度分析完成",
+                    "content": (
+                        f"❌ [{source}] 深度分析失败"
+                        if source and analysis_failed
+                        else "❌ 深度分析失败"
+                        if analysis_failed
+                        else f"🔬 [{source}] 深度分析完成"
+                        if source
+                        else "🔬 深度分析完成"
+                    ),
                 },
-                "template": "blue",
+                "template": "red" if analysis_failed else "blue",
             },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**🔍 根因分析：**\n{_truncate_text(result.get('root_cause', '无'), 500)}",
-                    },
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**💥 影响范围：**\n{_truncate_text(result.get('impact', '无'), 500)}",
-                    },
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "note",
-                    "elements": [
-                        {
-                            "tag": "plain_text",
-                            "content": (
-                                f"引擎: {engine} | 置信度: {confidence_percent}% | "
-                                f"耗时: {_float_or_zero(duration):.1f}s | ID: {webhook_event_id}"
-                            ),
-                        }
-                    ],
-                },
-            ],
+            "elements": elements,
         },
     }
 

@@ -35,6 +35,52 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
     assert "ID: 42" in card["card"]["elements"][-1]["elements"][0]["content"]
 
 
+def test_deep_analysis_card_formats_openclaw_json_fence() -> None:
+    from services.notifications.feishu import build_deep_analysis_card
+
+    openclaw_text = """```json
+{
+  "alert_identity": {
+    "source": "prometheus",
+    "project": "eve",
+    "region": "cn-shanghai",
+    "service": "openim-msggateway-server",
+    "rule_name": "online_user_num 波动率"
+  },
+  "summary": "在线用户数属于正常早晨流量爬坡，无实际风险。",
+  "root_cause": {
+    "status": "confirmed",
+    "description": "1h 基线窗口在爬坡期偏低，导致波动率告警误报。"
+  },
+  "impact": {
+    "description": "服务正常，无业务影响。"
+  },
+  "recommendations": [
+    {
+      "action": "将 avg_over_time[1h] 调整为日周期基线。",
+      "reason": "降低早晨爬坡误报"
+    }
+  ],
+  "next_checks": [
+    "kubectl logs statefulset/openim-msggateway-server | grep -i 'login\\|connect\\|auth'"
+  ],
+  "confidence": 0.85
+}
+```"""
+    card = build_deep_analysis_card(
+        {"analysis_result": {"root_cause": openclaw_text, "_openclaw_text": openclaw_text}, "engine": "openclaw"},
+        source="prometheus",
+        webhook_event_id=46708,
+    )
+
+    rendered = str(card)
+    assert "```json" not in rendered
+    assert "在线用户数属于正常早晨流量爬坡" in rendered
+    assert "1h 基线窗口" in rendered
+    assert "告警定位" in rendered
+    assert "ID: 46708" in rendered
+
+
 @pytest.mark.asyncio
 async def test_feishu_facade_uses_supplied_notification_channel(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.operations.deep_analysis_notifications import send_feishu_deep_analysis
@@ -128,6 +174,57 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
     assert result["status"] == "success"
     assert breaker.called is True
     assert client.urls == ["https://example.test/hook"]
+
+
+@pytest.mark.asyncio
+async def test_feishu_forward_checks_business_status_code() -> None:
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
+    from services.forwarding.policies import ForwardDeliveryPolicy
+    from services.forwarding.remote import post_json_to_remote
+
+    async def accept_url(url: str) -> str:
+        return url
+
+    class Response:
+        status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {"StatusCode": 9499, "StatusMessage": "bad card"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class Client:
+        async def post(self, *_: Any, **__: Any) -> Response:
+            return Response()
+
+    class Breaker:
+        async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> object:
+            return await func(*args, **kwargs)
+
+    result = await post_json_to_remote(
+        "https://open.feishu.cn/open-apis/bot/v2/hook/unit",
+        {"msg_type": "interactive"},
+        policy=ForwardDeliveryPolicy(
+            timeout_seconds=2,
+            max_attempts=3,
+            retry_initial_delay=1,
+            retry_max_delay=10,
+            retry_backoff_multiplier=2.0,
+            stale_processing_threshold_seconds=60,
+            max_delivery_age_seconds=1800,
+        ),
+        dependencies=RemoteForwardDependencies(
+            http_client=Client(),
+            circuit_breaker=cast(Any, Breaker()),
+            validate_url=accept_url,
+        ),
+        target_type_label="feishu",
+    )
+
+    assert result["status"] == "failed"
+    assert result["status_code"] == 200
+    assert "9499" in str(result["message"])
 
 
 @pytest.mark.asyncio
