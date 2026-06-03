@@ -18,7 +18,7 @@ Provisioning path:
 
 ```text
 deploy/observability/grafana/dashboards/*.json -> docker compose volume -> /var/lib/grafana/dashboards
-deploy/observability/grafana-dashboards.yml -> file provider
+deploy/observability/grafana/provisioning/dashboards.yml -> file provider
 ```
 
 If a local Grafana page does not pick up file changes, restart only Grafana:
@@ -101,7 +101,7 @@ aliases such as `queue_pending`, `queue_lag`, `queue_depth`,
 names directly, so Grafana panels match the project metric vocabulary.
 
 SLO / RED / USE panels should prefer the recording rules in
-`deploy/observability/alerts.yml`:
+`deploy/observability/prometheus/alerts.yml`:
 
 | Layer | Recording rules |
 | --- | --- |

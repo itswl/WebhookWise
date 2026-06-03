@@ -33,7 +33,7 @@ Prometheus targets:
 http://localhost:9090/targets
 ```
 
-![Prometheus targets](../../../assets/observability-local-lab/prometheus-targets.jpg)
+![Prometheus targets](assets/prometheus-targets.jpg)
 
 ### Loki / Tempo / Pyroscope / Grafana
 
@@ -46,7 +46,7 @@ curl -fsS http://localhost:3000/api/health
 curl -fsS http://localhost:4040
 ```
 
-如果要把它们自身的 runtime metrics 纳入同一个 Prometheus，需要在 `deploy/observability/prometheus.yml` 增加 scrape job，并确认各组件 metrics endpoint 和网络地址。
+如果要把它们自身的 runtime metrics 纳入同一个 Prometheus，需要在 `deploy/observability/prometheus/prometheus.yml` 增加 scrape job，并确认各组件 metrics endpoint 和网络地址。
 
 ## 看 Faro 前端 RUM
 
@@ -86,7 +86,7 @@ Faro 具体事件在 Loki 里看：
 
 截图里可以看到 `session_start`、`faro.performance.navigation`、`faro.performance.resource` 以及 Web Vitals measurement。
 
-![Faro events in Loki](../../../assets/observability-local-lab/faro-loki.jpg)
+![Faro events in Loki](assets/faro-loki.jpg)
 
 如果 `faro_receiver_*` 一直是 0，先检查：
 
@@ -139,7 +139,7 @@ sum by (cpu_mode) (
 )
 ```
 
-![Beyla metrics in Prometheus](../../../assets/observability-local-lab/beyla-prometheus.jpg)
+![Beyla metrics in Prometheus](assets/beyla-prometheus.jpg)
 
 Tempo 里也可以搜索：
 
@@ -194,7 +194,7 @@ max_over_time(k6_http_req_duration_p99[30m])
 max_over_time(k6_checks_rate[30m])
 ```
 
-![k6 metrics in Prometheus](../../../assets/observability-local-lab/k6-prometheus.jpg)
+![k6 metrics in Prometheus](assets/k6-prometheus.jpg)
 
 同时可以从 API 侧验证 webhook 入口确实收到流量：
 

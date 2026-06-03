@@ -152,5 +152,5 @@ json
 | scheduler duration 高，profile 不宽 | 多半是扫描查询或外部等待 | 看 scheduler trace、DB session duration、日志 |
 | Top Table 主要是 OTel/Pyroscope 函数 | 可观测后台成本占主导 | 增加业务流量后再看，或调大采样/导出间隔 |
 
-![Pyroscope flamegraph](../../../assets/observability-local-lab/pyroscope-ui.jpg)
+![Pyroscope flamegraph](assets/pyroscope-ui.jpg)
 

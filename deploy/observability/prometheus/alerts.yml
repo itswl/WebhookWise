@@ -534,4 +534,4 @@ groups:
           service: alloy
         annotations:
           summary: Alloy configuration failed to load.
-          runbook: Inspect Alloy logs and validate deploy/observability/alloy.alloy.
+          runbook: Inspect Alloy logs and validate deploy/observability/alloy/config.alloy.

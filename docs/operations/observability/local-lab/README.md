@@ -105,7 +105,7 @@ docker compose -p webhookwise-observability --env-file .env -f deploy/compose/do
 
 服务级 Prometheus 总览：
 
-![Service metrics overview](../../../assets/observability-local-lab/services-prometheus.jpg)
+![Service metrics overview](assets/services-prometheus.jpg)
 
 Dashboard 面板覆盖范围、No data 语义和维护 checklist 见 [dashboards.md](../dashboards.md)。
 
@@ -132,4 +132,4 @@ Dashboard 面板覆盖范围、No data 语义和维护 checklist 见 [dashboards
 - `faro.receiver "dashboard"` -> `loki.process "faro"` -> `loki.write "local"`
 - 应用日志也走 `otelcol.receiver.otlp "default"`，不再通过文件 tail 进入 Loki
 
-![Alloy graph](../../../assets/observability-local-lab/alloy-graph.jpg)
+![Alloy graph](assets/alloy-graph.jpg)
