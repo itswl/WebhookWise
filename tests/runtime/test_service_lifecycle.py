@@ -83,7 +83,6 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         calls.append("redis")
         return object()
 
-    monkeypatch.setattr(lifecycle, "initialize_adapters", lambda: record("adapters"))
     monkeypatch.setattr(AppContext, "ensure_http_client", ensure_http_client)
     monkeypatch.setattr(AppContext, "ensure_db", ensure_db)
     monkeypatch.setattr(AppContext, "ensure_redis_client", ensure_redis_client)
@@ -102,6 +101,7 @@ async def test_start_runtime_services_initializes_requested_dependencies(monkeyp
         initialize_logger=lambda: record("logger"),
         initialize_observability=lambda: record("observability"),
         initialize_redis_client=True,
+        initialize_adapter_registry_hook=lambda: record("adapters"),
         initialize_ai_client=True,
         initialize_ai_client_hook=initialize_ai_client,
     )

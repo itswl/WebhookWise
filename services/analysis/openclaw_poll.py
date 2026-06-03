@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
+from contracts.webhook_payload import JsonObject
 from core import json
 from core.datetime_utils import parse_utc_datetime, utcnow
 from core.http_client import get_http_client
@@ -43,7 +44,6 @@ from services.webhooks.types import (
     OPENCLAW_RUN_ID,
     OPENCLAW_TEXT,
     DeepAnalysisStatus,
-    JsonObject,
 )
 
 logger = get_logger("openclaw.poll")

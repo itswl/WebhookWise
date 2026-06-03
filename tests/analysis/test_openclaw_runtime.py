@@ -7,12 +7,13 @@ from typing import Any
 import httpx
 import pytest
 
+from contracts.webhook_payload import webhook_data_from_mapping
 from core import json
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.datetime_utils import utcnow
 from services.forwarding.circuit_breakers import OpenClawForwardDependencies
 from services.forwarding.policies import OpenClawTriggerPolicy
-from services.webhooks.types import DeepAnalysisStatus, degraded_forward_result, webhook_data_from_mapping
+from services.webhooks.types import DeepAnalysisStatus, degraded_forward_result
 from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 

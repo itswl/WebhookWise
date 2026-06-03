@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from core.collections_utils import dict_or_empty, list_or_empty
 from core.logger import get_logger
 from services.analysis.analysis_policies import NoiseScoringConfig
 from services.webhooks.types import ANALYSIS_EMBEDDING, AnalysisResult, NoiseReductionContext
@@ -36,14 +37,6 @@ DEFAULT_SCORING_CONFIG = NoiseScoringConfig(
     severity_downgrade_score=0.03,
     related_min_confidence=0.35,
 )
-
-
-def _safe_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _safe_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _tokenize_text(*values: Any) -> set[str]:
@@ -77,7 +70,7 @@ def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
         if value:
             ids.add(str(value).strip().lower())
 
-    resources = _safe_list(parsed_data.get("Resources"))
+    resources = list_or_empty(parsed_data.get("Resources"))
     for item in resources:
         if not isinstance(item, dict):
             continue
@@ -88,10 +81,10 @@ def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
                 ids.add(candidate.lower())
                 break
 
-    alerts = _safe_list(parsed_data.get("alerts"))
+    alerts = list_or_empty(parsed_data.get("alerts"))
     if alerts:
         first_alert = alerts[0] if isinstance(alerts[0], dict) else {}
-        labels = _safe_dict(first_alert.get("labels"))
+        labels = dict_or_empty(first_alert.get("labels"))
         for key in ("instance", "pod", "host", "service", "namespace"):
             value = labels.get(key)
             if value:
@@ -101,8 +94,8 @@ def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
 
 
 def _extract_features(ctx: AlertContext) -> tuple[set[str], set[str]]:
-    parsed = _safe_dict(ctx.parsed_data)
-    analysis = _safe_dict(ctx.analysis)
+    parsed = dict_or_empty(ctx.parsed_data)
+    analysis = dict_or_empty(ctx.analysis)
 
     resource_ids = _extract_resource_ids(parsed)
 
@@ -120,11 +113,11 @@ def _extract_features(ctx: AlertContext) -> tuple[set[str], set[str]]:
         analysis.get("impact_scope"),
     ]
 
-    alerts = _safe_list(parsed.get("alerts"))
+    alerts = list_or_empty(parsed.get("alerts"))
     if alerts:
         first_alert = alerts[0] if isinstance(alerts[0], dict) else {}
-        labels = _safe_dict(first_alert.get("labels"))
-        annotations = _safe_dict(first_alert.get("annotations"))
+        labels = dict_or_empty(first_alert.get("labels"))
+        annotations = dict_or_empty(first_alert.get("annotations"))
         primary_fields.extend(
             [
                 labels.get("alertname"),
@@ -152,7 +145,7 @@ def _semantic_similarity(
     current: AlertContext, candidate: AlertContext, current_tokens: set[str], candidate_tokens: set[str]
 ) -> float:
     def _get_embedding(ctx: AlertContext) -> list[float] | None:
-        for container in (_safe_dict(ctx.analysis), _safe_dict(ctx.parsed_data)):
+        for container in (dict_or_empty(ctx.analysis), dict_or_empty(ctx.parsed_data)):
             value = container.get(ANALYSIS_EMBEDDING) or container.get("embedding")
             if not isinstance(value, list) or not value:
                 continue

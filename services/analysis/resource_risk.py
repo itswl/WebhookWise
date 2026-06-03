@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from core.collections_utils import list_or_empty, mapping_or_empty
 from services.webhooks.types import AnalysisResult
 
 GPU_USED_METRIC = "GpuUsedUtilization"
@@ -22,14 +23,6 @@ GPU_MEMORY_WARNING_THRESHOLD = 90.0
 class ResourceRiskAssessment:
     bucket: str
     reason: str
-
-
-def _as_mapping(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _as_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _to_float(value: Any) -> float | None:
@@ -49,10 +42,10 @@ def _to_float(value: Any) -> float | None:
 
 
 def _metric_items(data: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:
-    for resource in _as_list(data.get("Resources")):
-        resource_map = _as_mapping(resource)
-        for metric in _as_list(resource_map.get("Metrics")):
-            metric_map = _as_mapping(metric)
+    for resource in list_or_empty(data.get("Resources")):
+        resource_map = mapping_or_empty(resource)
+        for metric in list_or_empty(resource_map.get("Metrics")):
+            metric_map = mapping_or_empty(metric)
             if metric_map:
                 yield metric_map
 

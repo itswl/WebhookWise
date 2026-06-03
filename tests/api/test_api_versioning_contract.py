@@ -4,7 +4,7 @@ from tests.helpers.paths import PROJECT_ROOT
 
 
 def _route_paths() -> set[str]:
-    from core.app import app
+    from api.app import app
 
     return {str(getattr(route, "path", "")) for route in app.routes}
 
@@ -45,6 +45,25 @@ def test_business_api_routes_are_v1_only() -> None:
     assert not {path for path in paths if path.startswith("/api/")}
     assert "/webhook" not in paths
     assert "/webhook/{source}" not in paths
+
+
+def test_v1_routes_have_explicit_auth_contract() -> None:
+    from api.app import app
+
+    webhook_ingest_paths = {"/v1/webhook", "/v1/webhook/{source}"}
+
+    for route in app.routes:
+        path = str(getattr(route, "path", ""))
+        if not path.startswith("/v1/"):
+            continue
+        dependency_names = {
+            getattr(dependency.call, "__name__", str(dependency.call))
+            for dependency in getattr(route, "dependant", object()).dependencies
+        }
+        if path in webhook_ingest_paths:
+            assert {"check_rate_limit_dep", "verify_webhook_auth_dep"} <= dependency_names
+        else:
+            assert "verify_api_key" in dependency_names, path
 
 
 def test_business_api_modules_live_under_v1_package() -> None:

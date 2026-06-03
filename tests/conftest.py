@@ -52,7 +52,7 @@ def reset_default_app_context():
     reset_redis_health()
     invalidate_forward_rules_cache()
     set_default_app_context(context)
-    app_module = sys.modules.get("core.app")
+    app_module = sys.modules.get("api.app")
     if app_module is not None:
         app_module.app.state.app_context = context
     yield

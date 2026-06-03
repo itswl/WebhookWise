@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.v1.webhook import JSONDict, build_webhook_context
+from contracts.webhook_payload import webhook_data_from_mapping
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -16,7 +17,7 @@ from schemas.analysis import ReanalysisResponse
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
 from services.webhooks.forwarding_stage import resolve_forward_decision
-from services.webhooks.types import AnalysisResult, webhook_data_from_mapping
+from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.v1.reanalysis")
 

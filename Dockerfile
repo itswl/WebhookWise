@@ -82,6 +82,6 @@ ENTRYPOINT ["./entrypoint.sh"]
 #   - Gunicorn 提供进程管理（自动重启崩溃的 Worker）、graceful restart、信号处理
 #   - 多 Worker 模式（workers=4）充分利用多核 CPU，提升吞吐量
 #   - 如果只需单 Worker 且不需要进程管理，可直接使用：
-#     CMD ["uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
+#     CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # timeout 120 秒：OpenClaw 分析已改为异步轮询，handler 不再长时间阻塞
-CMD ["gunicorn", "-c", "gunicorn_config.py", "core.app:app"]
+CMD ["gunicorn", "-c", "gunicorn_config.py", "api.app:app"]

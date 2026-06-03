@@ -36,7 +36,7 @@ only the reusable primitive in `core/`.
 
 Allowed examples:
 
-- `core/app.py`: FastAPI application construction and middleware registration.
+- `api/app.py`: FastAPI application construction and middleware registration.
 - `core/web/`: web middleware and startup checks.
 - `core/config/`: static settings and read-only process configuration access.
 - `core/metrics.py` and `core/otel.py`: instrumentation setup.

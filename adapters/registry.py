@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from typing import TypeVar
 
+from contracts.webhook_payload import JsonObject, WebhookData, webhook_data_from_mapping
 from core.logger import get_logger
-from services.webhooks.types import JsonObject, WebhookData, webhook_data_from_mapping
 
 logger = get_logger("adapters.registry")
 

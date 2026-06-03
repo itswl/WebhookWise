@@ -8,6 +8,7 @@ import sqlalchemy
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contracts.webhook_payload import WebhookData
 from core.app_context import get_config_manager
 from core.compression import compress_payload
 from core.datetime_utils import utcnow
@@ -17,7 +18,7 @@ from db.session import session_scope
 from models import WebhookEvent, WebhookEventInput
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
-from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus, unknown_analysis_result
+from services.webhooks.types import AnalysisResult, WebhookProcessingStatus, unknown_analysis_result
 
 logger = get_logger("webhooks.command_service")
 

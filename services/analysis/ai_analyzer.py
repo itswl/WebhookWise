@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from contracts.webhook_payload import WebhookData
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import (
@@ -30,7 +31,6 @@ from services.analysis.resource_risk import apply_resource_importance_override
 from services.dedup import generate_alert_hash
 from services.webhooks.types import (
     AnalysisResult,
-    WebhookData,
     cache_hit_count,
     is_analysis_degraded,
     mark_analysis_degraded,

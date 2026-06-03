@@ -6,12 +6,13 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, cast
 from urllib.parse import urlsplit
 
+from contracts.webhook_payload import JsonObject, WebhookData
 from core.app_context import get_config_manager
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.types import OPENCLAW_TEXT, AnalysisResult, ForwardResult, JsonObject, WebhookData
+from services.webhooks.types import OPENCLAW_TEXT, AnalysisResult, ForwardResult
 
 _FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
 _FEISHU_HOSTS = ("feishu.cn", "larksuite.com")

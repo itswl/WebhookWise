@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import httpx
 
+from contracts.webhook_payload import WebhookData, webhook_data_from_mapping
 from core import json
 from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import get_logger, mask_url
@@ -33,13 +34,11 @@ from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import (
     AnalysisResult,
     ForwardResult,
-    WebhookData,
     analysis_degraded_reason,
     degraded_forward_result,
     is_analysis_degraded,
     is_pending_result,
     pending_forward_result,
-    webhook_data_from_mapping,
 )
 
 logger = get_logger("openclaw.analysis")

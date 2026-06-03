@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from adapters.normalized import AlertIdentity, with_alert_identity
+from contracts.webhook_payload import JsonObject, WebhookData, webhook_data_from_mapping
+from core.collections_utils import pick_case_insensitive
 from core.logger import get_logger
-from services.webhooks.types import JsonObject, WebhookData, webhook_data_from_mapping
 
 logger = get_logger("ecosystem_adapters")
 
@@ -85,12 +86,7 @@ def _pick_first[PickValue](*values: PickValue | None) -> PickValue | None:
 
 
 def _pick_label(labels: Mapping[str, Any], *keys: str) -> Any | None:
-    lower_map = {str(k).lower(): v for k, v in labels.items()}
-    for key in keys:
-        value = lower_map.get(key.lower())
-        if value is not None and str(value).strip():
-            return value
-    return None
+    return pick_case_insensitive(labels, *keys)
 
 
 def _extract_tag(tags: object, key: str) -> str | None:

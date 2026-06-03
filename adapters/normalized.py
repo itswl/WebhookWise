@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from services.webhooks.types import WebhookData, webhook_data_from_mapping
+from contracts.webhook_payload import WebhookData, webhook_data_from_mapping
 
 IDENTITY_FIELD = "_alert_identity"
 

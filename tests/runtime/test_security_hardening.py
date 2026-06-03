@@ -120,7 +120,7 @@ async def test_request_body_limit_middleware_rejects_oversized_body(
 ) -> None:
     import httpx
 
-    from core.app import app
+    from api.app import app
 
     monkeypatch.setattr(temp_config.security, "MAX_WEBHOOK_BODY_BYTES", 4)
     transport = httpx.ASGITransport(app=app)
@@ -134,7 +134,7 @@ async def test_request_body_limit_middleware_rejects_oversized_body(
 async def test_security_headers_include_hsts() -> None:
     import httpx
 
-    from core.app import app
+    from api.app import app
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
@@ -251,7 +251,7 @@ def test_deep_analysis_view_does_not_render_unsanitized_marked_html() -> None:
 
 @pytest.mark.asyncio
 async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
-    from core.app import app, lifespan
+    from api.app import app, lifespan
 
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setattr(temp_config.security, "API_KEY", "real-api-key")
@@ -404,7 +404,7 @@ async def test_reanalysis_unhandled_exception_is_sanitized() -> None:
 @pytest.mark.asyncio
 async def test_global_exception_handler_is_sanitized() -> None:
     from api import INTERNAL_ERROR_MESSAGE
-    from core.app import unhandled_exception_handler
+    from api.app import unhandled_exception_handler
 
     request = SimpleNamespace(url=SimpleNamespace(path="/v1/leaky"))
     response = await unhandled_exception_handler(  # type: ignore[arg-type]
@@ -420,7 +420,7 @@ async def test_global_exception_handler_is_sanitized() -> None:
 @pytest.mark.asyncio
 async def test_global_unhandled_exception_handler_is_sanitized() -> None:
     from api import INTERNAL_ERROR_MESSAGE
-    from core.app import app, unhandled_exception_handler
+    from api.app import app, unhandled_exception_handler
 
     assert app.debug is False
     request = SimpleNamespace(url=SimpleNamespace(path="/v1/leaky"))
@@ -517,7 +517,7 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 ) -> None:
     import httpx
 
-    from core.app import app
+    from api.app import app
 
     monkeypatch.setattr(temp_config.security, "API_KEY", "api-key")
     monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "admin-key")
@@ -636,7 +636,7 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(
 ) -> None:
     import httpx
 
-    from core.app import app
+    from api.app import app
     from services.operations.tasks import process_webhook_task
 
     monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
@@ -681,7 +681,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
 ) -> None:
     import httpx
 
-    from core.app import app
+    from api.app import app
 
     monkeypatch.setattr(temp_config.server, "RUN_MODE", "api")
     monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)

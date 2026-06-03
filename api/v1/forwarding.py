@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
+from contracts.webhook_payload import JsonObject, WebhookData
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -25,7 +26,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
-from services.webhooks.types import AnalysisResult, JsonObject, WebhookData
+from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.v1.forwarding")
 

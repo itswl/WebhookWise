@@ -142,7 +142,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
 async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api.v1 import deep_analysis
+    from services.analysis import deep_analysis_workflow
     from services.analysis import openclaw as openclaw_service
 
     calls: list[dict[str, object]] = []
@@ -158,9 +158,9 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
         return {"summary": "local fallback", "importance": "medium"}
 
     monkeypatch.setattr(openclaw_service, "analyze_with_openclaw", degraded_openclaw)
-    monkeypatch.setattr(deep_analysis, "analyze_webhook_with_ai", analyze_webhook_with_ai)
+    monkeypatch.setattr(deep_analysis_workflow, "analyze_webhook_with_ai", analyze_webhook_with_ai)
 
-    fallback_result, fallback_engine = await deep_analysis._run_openclaw_deep_analysis(
+    fallback_result, fallback_engine = await deep_analysis_workflow.run_openclaw_deep_analysis(
         {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}},
         {"x": "1"},
         "why",
@@ -171,7 +171,7 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
     assert calls
 
     monkeypatch.setattr(openclaw_service, "analyze_with_openclaw", healthy_openclaw)
-    result, engine = await deep_analysis._run_openclaw_deep_analysis(
+    result, engine = await deep_analysis_workflow.run_openclaw_deep_analysis(
         {"source": "grafana", "parsed_data": {}},
         {},
         "",
@@ -193,7 +193,7 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
         send_deep_analysis_success_notification,
     )
 
-    await deep_analysis._notify_completed_deep_analysis(
+    await deep_analysis_workflow.notify_completed_deep_analysis(
         Session(),  # type: ignore[arg-type]
         _record(id=9, webhook_event_id=10, engine="openclaw", analysis_result={"summary": "done"}),
     )
@@ -330,7 +330,11 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     assert scheduled[-1][0] == 3
 
     monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", completed_run)
-    monkeypatch.setattr(deep_analysis, "_notify_completed_deep_analysis", lambda *_args, **_kwargs: None)
+
+    async def skip_notification(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(deep_analysis, "_notify_completed_deep_analysis_best_effort", skip_notification)
     completed_record = _record(id=4, status=DeepAnalysisStatus.FAILED, openclaw_session_key="")
     completed_response = await deep_analysis.retry_deep_analysis(
         4,

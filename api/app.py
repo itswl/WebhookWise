@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from adapters.ecosystem_adapters import initialize_adapters
 from api import internal_error_response
 from api.dashboard import dashboard_router
 from api.health import health_router
@@ -18,6 +19,7 @@ from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from core.taskiq_broker import broker
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
 from core.web.startup_checks import validate_startup_security
+from services.analysis.ai_llm_client import initialize_openai_client, reset_openai_client
 
 logger = get_logger("app")
 
@@ -42,7 +44,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config.server.RUN_MODE,
         config.ai.ENABLE_AI_ANALYSIS,
     )
-    from services.analysis.ai_llm_client import initialize_openai_client, reset_openai_client
 
     validate_startup_security(config)
     services = await start_runtime_services(
@@ -50,6 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         context=context,
         broker=broker,
         start_broker=True,
+        initialize_adapter_registry=True,
+        initialize_adapter_registry_hook=initialize_adapters,
         initialize_ai_client=True,
         initialize_ai_client_hook=initialize_openai_client,
     )
@@ -86,22 +89,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 setup_observability(app)
 app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
-
 app.add_middleware(SecurityHeadersMiddleware)
-
 
 app.add_middleware(
     RequestBodyLimitMiddleware,
     max_body_bytes_provider=lambda: _app_context(app).config.security.MAX_WEBHOOK_BODY_BYTES,
 )
 
-
 app.add_middleware(TraceContextMiddleware)
-
 
 _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 logger.debug("worker_id=%s", _WORKER_ID)
-
 
 app.include_router(health_router)
 app.include_router(dashboard_router)

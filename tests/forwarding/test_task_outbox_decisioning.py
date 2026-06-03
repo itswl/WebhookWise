@@ -10,7 +10,7 @@ from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 @pytest.mark.asyncio
 async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core import taskiq_broker
+    from services.operations import taskiq_wiring
 
     startup_calls: list[dict[str, object]] = []
     shutdown_calls: list[dict[str, object]] = []
@@ -20,24 +20,24 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     scheduler_config = SimpleNamespace(name="scheduler-config")
 
     monkeypatch.setattr(
-        taskiq_broker,
+        taskiq_wiring,
         "_settings",
         SimpleNamespace(run_mode="scheduler", worker_startup_jitter_seconds=0.0),
     )
-    await taskiq_broker.worker_startup_event(object())
-    await taskiq_broker.worker_shutdown_event(object())
+    await taskiq_wiring.worker_startup_event(object())
+    await taskiq_wiring.worker_shutdown_event(object())
 
     monkeypatch.setattr(
-        taskiq_broker,
+        taskiq_wiring,
         "_settings",
         SimpleNamespace(run_mode="worker", worker_startup_jitter_seconds=2.0),
     )
-    monkeypatch.setattr(taskiq_broker._jitter_rng, "uniform", lambda _a, _b: 1.25)
+    monkeypatch.setattr(taskiq_wiring._jitter_rng, "uniform", lambda _a, _b: 1.25)
 
     async def fake_sleep(delay: float) -> None:
         sleeps.append(delay)
 
-    monkeypatch.setattr(taskiq_broker.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(taskiq_wiring.asyncio, "sleep", fake_sleep)
 
     def init_context(_config: object) -> object:
         return contexts[0]
@@ -50,7 +50,7 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
 
     monkeypatch.setattr("core.app_context.init_default_app_context", init_context)
     monkeypatch.setattr("core.app_context.get_default_app_context", lambda: contexts[0])
-    monkeypatch.setattr(taskiq_broker, "get_settings", lambda: scheduler_config)
+    monkeypatch.setattr(taskiq_wiring, "get_settings", lambda: scheduler_config)
     monkeypatch.setattr(
         "core.web.startup_checks.validate_startup_security", lambda config: validated_configs.append(config)
     )
@@ -67,22 +67,23 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     ai_llm_client.reset_openai_client = lambda *_args: None
     monkeypatch.setitem(sys.modules, "services.analysis.ai_llm_client", ai_llm_client)
 
-    await taskiq_broker.worker_startup_event(object())
-    await taskiq_broker.worker_shutdown_event(object())
+    await taskiq_wiring.worker_startup_event(object())
+    await taskiq_wiring.worker_shutdown_event(object())
 
     assert sleeps == [1.25]
     assert startup_calls[0]["initialize_redis_client"] is True
+    assert startup_calls[0]["initialize_adapter_registry_hook"] is taskiq_wiring.initialize_adapters
     assert startup_calls[0]["initialize_ai_client"] is True
     assert shutdown_calls[0]["reset_ai_client"] is True
     assert shutdown_calls[-1] == {"shutdown": True}
 
     monkeypatch.setattr(
-        taskiq_broker,
+        taskiq_wiring,
         "_settings",
         SimpleNamespace(run_mode="scheduler", worker_startup_jitter_seconds=0.0),
     )
-    await taskiq_broker.scheduler_startup_event(object())
-    await taskiq_broker.scheduler_shutdown_event(object())
+    await taskiq_wiring.scheduler_startup_event(object())
+    await taskiq_wiring.scheduler_shutdown_event(object())
 
     assert scheduler_config in validated_configs
     assert startup_calls[-1] == {"setup_observability": True}

@@ -1,5 +1,3 @@
-import contextlib
-from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -9,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.v1.webhook import JSONDict, build_webhook_context
+from contracts.webhook_payload import JsonObject
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
 from core.datetime_utils import utc_isoformat, utcnow
@@ -17,20 +16,13 @@ from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse, deep_analysis_to_dict
-from services.analysis.ai_analyzer import analyze_webhook_with_ai
+from services.analysis import deep_analysis_workflow
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
 from services.forwarding.policies import OpenClawTriggerPolicy
 from services.notifications.feishu import is_feishu_url
 from services.operations import taskiq_retry_scheduler
 from services.webhooks.types import (
-    MANUAL_RETRY_STARTED_AT,
-    AnalysisResult,
     DeepAnalysisStatus,
-    ForwardResult,
-    JsonObject,
-    WebhookData,
-    analysis_degraded_reason,
-    is_analysis_degraded,
     is_pending_result,
     openclaw_run_id,
     openclaw_session_key,
@@ -41,72 +33,13 @@ logger = get_logger("api.v1.deep_analysis")
 deep_analysis_router = APIRouter()
 
 MAX_PAGE = 500
-MANUAL_RETRY_STARTED_AT_KEY = MANUAL_RETRY_STARTED_AT
-
-
-def _is_supported_deep_analysis_engine(requested: str) -> bool:
-    return requested in ("", "auto", "openclaw")
-
-
-async def _run_openclaw_deep_analysis(
-    ctx: JSONDict, headers: dict[str, Any], user_question: str
-) -> tuple[AnalysisResult | ForwardResult, str]:
-    from services.analysis.openclaw import analyze_with_openclaw
-
-    webhook_data: WebhookData = {
-        "source": ctx["source"],
-        "headers": headers,
-        "parsed_data": ctx["parsed_data"],
-    }
-    result = await analyze_with_openclaw(webhook_data, user_question)
-    if is_analysis_degraded(result):
-        logger.warning("[DeepAnalysis] OpenClaw 降级，回退本地 AI: %s", analysis_degraded_reason(result))
-        return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
-    return result, "openclaw"
-
-
-async def _notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
-    from services.operations.deep_analysis_notifications import (
-        EVENT_IMPORTANCE_KEY,
-        EVENT_IS_DUPLICATE_KEY,
-        EVENT_PARSED_DATA_KEY,
-        send_deep_analysis_success_notification,
-    )
-
-    event = await session.get(WebhookEvent, record.webhook_event_id)
-    source = event.source if event else ""
-    record_dict: JSONDict = {
-        "id": record.id,
-        "webhook_event_id": record.webhook_event_id,
-        "engine": record.engine,
-        "analysis_result": record.analysis_result,
-        "duration_seconds": record.duration_seconds,
-    }
-    if event:
-        record_dict[EVENT_IMPORTANCE_KEY] = str(getattr(event, "importance", "") or "")
-        record_dict[EVENT_IS_DUPLICATE_KEY] = bool(getattr(event, "is_duplicate", False))
-        parsed_data = getattr(event, "parsed_data", None)
-        record_dict[EVENT_PARSED_DATA_KEY] = dict(parsed_data or {}) if isinstance(parsed_data, dict) else {}
-    await send_deep_analysis_success_notification(record_dict, source)
-
-
-def _prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
-    if record.status != DeepAnalysisStatus.PENDING:
-        return None
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
-
-    delay = compute_openclaw_poll_delay(record.poll_attempts or 0)
-    record.next_poll_at = utcnow() + timedelta(seconds=delay)
-    return delay
-
-
-def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime) -> None:
-    record.status = DeepAnalysisStatus.PENDING
-    record.analysis_result = {MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
-    record.duration_seconds = 0
-    record.poll_attempts = 0
-    record.last_polled_at = None
-    record.next_poll_at = now
+MANUAL_RETRY_STARTED_AT_KEY = deep_analysis_workflow.MANUAL_RETRY_STARTED_AT_KEY
+_clear_openclaw_poll_state_best_effort = deep_analysis_workflow.clear_openclaw_poll_state_best_effort
+_is_supported_deep_analysis_engine = deep_analysis_workflow.is_supported_deep_analysis_engine
+_notify_completed_deep_analysis_best_effort = deep_analysis_workflow.notify_completed_deep_analysis_best_effort
+_prepare_openclaw_poll_if_pending = deep_analysis_workflow.prepare_openclaw_poll_if_pending
+_reset_deep_analysis_for_background_poll = deep_analysis_workflow.reset_deep_analysis_for_background_poll
+_run_openclaw_deep_analysis = deep_analysis_workflow.run_openclaw_deep_analysis
 
 
 @deep_analysis_router.post(
@@ -257,20 +190,16 @@ async def retry_deep_analysis(
         record.analysis_result = dict(new_result)
         record.duration_seconds = 0
         await session.flush()
-        with contextlib.suppress(Exception):
-            await _notify_completed_deep_analysis(session, record)
+        await _notify_completed_deep_analysis_best_effort(session, record)
         await session.commit()
         logger.info("[DeepAnalysis] 重试后同步完成 analysis_id=%s engine=%s", record.id, engine_name)
         return {"success": True, "message": "分析已完成"}
-
-    from services.analysis.openclaw import clear_openclaw_poll_state
 
     _reset_deep_analysis_for_background_poll(record, utcnow())
     await session.flush()
     record_data = deep_analysis_to_dict(record)
     await session.commit()
-    with contextlib.suppress(Exception):
-        await clear_openclaw_poll_state(int(record.id))
+    await _clear_openclaw_poll_state_best_effort(int(record.id))
     await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(int(record.id), 0)
     logger.info("[DeepAnalysis] 已提交后台拉取 analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id)
     return {"success": True, "message": "已提交后台拉取，请稍后刷新查看结果", "data": record_data}

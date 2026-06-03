@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from contracts.webhook_payload import webhook_data_from_mapping
 from services.dedup import DedupAction, DedupResult
 from services.webhooks.command_service import SaveWebhookResult
 from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
@@ -14,7 +15,6 @@ from services.webhooks.types import (
     NoiseReductionContext,
     WebhookProcessContext,
     WebhookRequestContext,
-    webhook_data_from_mapping,
 )
 from tests.helpers.metric_helpers import MetricCall, StubMetric
 

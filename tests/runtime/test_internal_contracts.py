@@ -5,11 +5,39 @@ from pathlib import Path
 from typing import Any
 
 from api import INTERNAL_ERROR_MESSAGE, internal_error_response
+from contracts import webhook_payload
 from services.webhooks import types as webhook_types
 from tests.helpers.metric_helpers import MetricCall, StubMetric
 from tests.helpers.paths import PROJECT_ROOT
 
 ROOT = PROJECT_ROOT
+
+
+def test_core_and_adapter_dependency_direction_is_enforced() -> None:
+    forbidden_core_imports: list[str] = []
+    for path in (ROOT / "core").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        forbidden_core_imports.extend(
+            f"{path.relative_to(ROOT)}:{pattern}"
+            for pattern in (
+                "from api.",
+                "import api.",
+                "from services.",
+                "import services.",
+                "from adapters.",
+                "import adapters.",
+            )
+            if pattern in text
+        )
+
+    adapter_type_imports: list[str] = []
+    for path in (ROOT / "adapters").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "services.webhooks.types" in text:
+            adapter_type_imports.append(str(path.relative_to(ROOT)))
+
+    assert forbidden_core_imports == []
+    assert adapter_type_imports == []
 
 
 def test_internal_protocol_keys_are_declared_in_one_place() -> None:
@@ -29,9 +57,9 @@ def test_internal_protocol_keys_are_declared_in_one_place() -> None:
         webhook_types.OPENCLAW_TEXT,
         webhook_types.OPENCLAW_NEED_SUCCESS_NOTIFY,
         webhook_types.MANUAL_RETRY_STARTED_AT,
-        webhook_types.WEBHOOK_ADAPTER,
+        webhook_payload.WEBHOOK_ADAPTER,
     }
-    allowed = {Path("services/webhooks/types.py")}
+    allowed = {Path("services/webhooks/types.py"), Path("contracts/webhook_payload.py")}
     offenders: list[str] = []
     for base in ("api", "services"):
         for path in (ROOT / base).rglob("*.py"):
@@ -54,7 +82,7 @@ def test_internal_error_response_does_not_leak_exception_text() -> None:
 
 
 def test_webhook_data_from_mapping_validates_runtime_boundary() -> None:
-    data = webhook_types.webhook_data_from_mapping(
+    data = webhook_payload.webhook_data_from_mapping(
         {
             "source": "prometheus",
             "parsed_data": {"alert": "disk"},
@@ -68,27 +96,27 @@ def test_webhook_data_from_mapping_validates_runtime_boundary() -> None:
     assert data["body"] == "source-specific body text is allowed"
 
     try:
-        webhook_types.webhook_data_from_mapping({"source": "custom", "source_native_field": "surprise"})
+        webhook_payload.webhook_data_from_mapping({"source": "custom", "source_native_field": "surprise"})
     except ValueError as exc:
         assert "source_native_field" in str(exc)
     else:
         raise AssertionError("strict WebhookData should reject undeclared fields")
 
-    passthrough = webhook_types.webhook_data_from_mapping(
+    passthrough = webhook_payload.webhook_data_from_mapping(
         {"source": "custom", "source_native_field": {"still": "json"}},
         strict=False,
     )
     assert dict(passthrough)["source_native_field"] == {"still": "json"}
 
     try:
-        webhook_types.webhook_data_from_mapping({"parsed_data": "not-an-object"})
+        webhook_payload.webhook_data_from_mapping({"parsed_data": "not-an-object"})
     except ValueError as exc:
         assert "parsed_data" in str(exc)
     else:
         raise AssertionError("invalid parsed_data should be rejected")
 
     try:
-        webhook_types.webhook_data_from_mapping({1: "bad"})  # type: ignore[dict-item]
+        webhook_payload.webhook_data_from_mapping({1: "bad"})  # type: ignore[dict-item]
     except ValueError as exc:
         assert "non-string key" in str(exc)
     else:
