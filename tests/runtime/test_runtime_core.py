@@ -176,7 +176,8 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
         client = SimpleNamespace(host="1.2.3.4")
         url = SimpleNamespace(path="/v1/admin")
         method = "POST"
-        headers = {"authorization": "Bearer bad"}
+        headers = {"authorization": " Bearer bad  "}
+        query_params = {}
 
         async def body(self) -> bytes:
             return b'{"secret":"value"}'
@@ -217,6 +218,13 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
         await auth.verify_admin_write(request, bad_credentials, temp_config)
     assert invalid_admin_key.value.status_code == 403
 
+    request = Request()
+    request.headers = {}
+    request.query_params = {"token": "admin-token"}
+    assert auth._first_token(request, None, "x-admin-write-key") == "admin-token"
+    request.headers = {}
+    request.query_params = {"api_key": "api-token"}
+    assert auth._first_token(request, None, "x-admin-write-key") == "api-token"
 
 @pytest.mark.asyncio
 async def test_url_security_edge_cases_private_policy_and_dns_cache(

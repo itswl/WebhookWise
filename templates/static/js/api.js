@@ -607,7 +607,7 @@ const API = {
         if (params.cursor !== null && params.cursor !== undefined) q.append('cursor', params.cursor);
         if (params.status) q.append('status', params.status);
         if (params.event_type) q.append('event_type', params.event_type);
-        const response = await this.authenticatedFetch('/v1/outbox?' + q.toString());
+        const response = await this.authenticatedFetch('/v1/outbox?' + q.toString(), { authMode: "write" });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },
