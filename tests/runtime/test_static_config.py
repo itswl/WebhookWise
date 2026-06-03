@@ -123,3 +123,19 @@ def test_production_rejects_local_default_database_url(temp_config) -> None:
 
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         validate_startup_security(temp_config)
+
+
+def test_production_rejects_k8s_placeholder_secret_values(temp_config) -> None:
+    from core.web.startup_checks import looks_like_placeholder_secret, validate_startup_security
+
+    assert looks_like_placeholder_secret("replace-me-api-key")
+    assert looks_like_placeholder_secret("replace-me-webhook-secret")
+
+    temp_config.server.APP_ENV = "production"
+    temp_config.security.API_KEY = "replace-me-api-key"
+    temp_config.security.ADMIN_WRITE_KEY = "real-admin-write-key"
+    temp_config.security.REQUIRE_WEBHOOK_AUTH = True
+    temp_config.security.WEBHOOK_SECRET = "real-webhook-secret"
+
+    with pytest.raises(RuntimeError, match="API_KEY"):
+        validate_startup_security(temp_config)

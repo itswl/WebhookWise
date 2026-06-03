@@ -50,7 +50,7 @@ class CircuitBreaker:
         name: str,
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
-        expected_exceptions: tuple[type[BaseException], ...] = (httpx.RequestError,),
+        expected_exceptions: tuple[type[BaseException], ...] = (httpx.RequestError, httpx.HTTPStatusError),
         failure_window: int = 60,
     ) -> None:
         self.name = name

@@ -348,7 +348,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
     assert manual_retry_ids != [ids[0]]
     assert outbox._outbox_result([])["status"] == "skipped"
     assert outbox._mask_url_for_display("") == ""
-    assert outbox._mask_url_for_display("not a url" * 20).endswith("…")
+    assert outbox._mask_url_for_display("not a url" * 20) == "***"
 
     scheduled: list[list[int]] = []
     delivered: list[int] = []

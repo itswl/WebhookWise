@@ -17,14 +17,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
-from core.logger import get_logger
+from core.logger import get_logger, mask_url
 from core.observability.attributes import FORWARD_STATUS, FORWARD_TARGET_TYPE, WEBHOOK_EVENT_ID
 from core.observability.metrics import (
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
 )
 from core.observability.tracing import otel_span, set_span_error
-from db.session import session_scope
+from db.session import count_with_timeout, session_scope
 from models import ForwardOutbox, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
@@ -637,7 +637,7 @@ async def list_outbox_records(
         count_q = select(func.count()).select_from(ForwardOutbox)
         for f in filters:
             count_q = count_q.where(f)
-        total = (await session.execute(count_q)).scalar() or 0
+        total = await count_with_timeout(session, count_q) or 0
 
         query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
         for f in filters:
@@ -690,16 +690,4 @@ async def list_outbox_records(
 def _mask_url_for_display(url: str) -> str:
     if not url:
         return ""
-    from urllib.parse import urlparse
-
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme and parsed.hostname:
-            path = parsed.path or ""
-            qs = ("?" + parsed.query) if parsed.query else ""
-            if len(path) > 40:
-                path = path[:40] + "…"
-            return f"{parsed.scheme}://{parsed.hostname}{path}{qs}"
-    except ValueError as e:
-        logger.debug("[ForwardOutbox] 展示 URL 解析失败: %s", e)
-    return url[:80] + ("…" if len(url) > 80 else "")
+    return mask_url(url)

@@ -6,6 +6,7 @@ from typing import Any, Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from core.datetime_utils import utc_isoformat
+from core.logger import mask_url
 
 from .base import APIResponse
 
@@ -152,6 +153,7 @@ class ForwardRuleSchema(BaseModel):
     match_payload: str | None = None
     target_type: str
     target_url: str
+    target_url_sensitive: bool = True
     target_name: str | None = None
     stop_on_match: bool
     created_at: datetime | str | None = None
@@ -166,8 +168,11 @@ class ForwardRuleDetailResponse(APIResponse[ForwardRuleSchema]):
     """转发规则详情响应"""
 
 
-def forward_rule_to_dict(rule: Any) -> dict[str, Any]:
+def forward_rule_to_dict(rule: Any, *, mask_target_url: bool = False) -> dict[str, Any]:
     data = ForwardRuleSchema.model_validate(rule).model_dump()
+    if mask_target_url and data.get("target_url"):
+        data["target_url"] = mask_url(str(data["target_url"]))
+        data["target_url_sensitive"] = False
     for field in ("created_at", "updated_at"):
         if isinstance(data.get(field), datetime):
             data[field] = utc_isoformat(data[field])

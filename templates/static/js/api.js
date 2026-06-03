@@ -528,8 +528,12 @@ const API = {
      * 获取转发规则列表
      * @returns {Promise<object>} 规则列表
      */
-    async getForwardRules() {
-        const response = await this.authenticatedFetch('/api/forward-rules');
+    async getForwardRules(options = {}) {
+        const includeSensitive = !!options.includeSensitive;
+        const response = await this.authenticatedFetch(
+            includeSensitive ? '/api/forward-rules/sensitive' : '/api/forward-rules',
+            includeSensitive ? { authMode: 'write' } : {}
+        );
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },

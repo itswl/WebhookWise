@@ -17,6 +17,7 @@ from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListRedisScheduleSource, RedisAsyncResultBackend, RedisStreamBroker
 
 from core.config.defaults import get_settings
+from core.logger import mask_url
 from core.logging_levels import apply_log_levels
 
 logger = logging.getLogger("webhook_service.taskiq")
@@ -93,7 +94,7 @@ if _settings.debug and not _settings.redis_url.startswith("redis"):
     broker = InMemoryBroker()
     logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
 else:
-    logger.info("[TaskIQ] 已初始化 Redis Broker: %s", _settings.redis_url)
+    logger.info("[TaskIQ] 已初始化 Redis Broker: %s", mask_url(_settings.redis_url))
 
 dynamic_schedule_source = ListRedisScheduleSource(
     url=_settings.redis_url,
@@ -107,8 +108,11 @@ scheduler = TaskiqScheduler(
 )
 
 if _settings.run_mode == "scheduler":
+    from core.config import UnifiedConfigManager
     from core.observability import setup_observability
+    from core.web.startup_checks import validate_startup_security
 
+    validate_startup_security(UnifiedConfigManager())
     setup_observability()
 
 
@@ -124,6 +128,7 @@ async def worker_startup_event(state: object) -> None:
     from core.logger import setup_logger
     from core.observability import setup_observability
     from core.service_lifecycle import start_runtime_services
+    from core.web.startup_checks import validate_startup_security
 
     if _settings.worker_startup_jitter_seconds > 0:
         await asyncio.sleep(_jitter_rng.uniform(0.0, _settings.worker_startup_jitter_seconds))
@@ -131,6 +136,7 @@ async def worker_startup_event(state: object) -> None:
     from services.analysis.ai_llm_client import initialize_openai_client
 
     context = init_default_app_context(UnifiedConfigManager())
+    validate_startup_security(context.config)
     await start_runtime_services(
         context.config,
         context=context,

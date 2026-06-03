@@ -56,7 +56,7 @@ async def test_ai_usage_stats_periods_and_cache_math(
 
 
 @pytest.mark.asyncio
-async def test_deep_analysis_queries_return_cursor_page_and_webhook_context() -> None:
+async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.analysis import analysis_queries
 
     created = datetime(2026, 5, 27, 8, 0, tzinfo=timezone.utc)
@@ -99,10 +99,6 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context() ->
         ),
     ]
 
-    class CountResult:
-        def scalar(self) -> int:
-            return 3
-
     class ListResult:
         def all(self) -> list[tuple[object, object | None]]:
             return records
@@ -122,10 +118,13 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context() ->
         async def execute(self, _stmt: object) -> object:
             self.calls += 1
             if self.calls == 1:
-                return CountResult()
-            if self.calls == 2:
                 return ListResult()
             return AnalysesResult()
+
+    async def count_with_timeout(_session: object, _stmt: object) -> int:
+        return 3
+
+    monkeypatch.setattr(analysis_queries, "count_with_timeout", count_with_timeout)
 
     session = Session()
     result = await analysis_queries.get_deep_analysis_list(

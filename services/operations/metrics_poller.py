@@ -15,7 +15,7 @@ from core.observability.metrics import (
     WEBHOOK_PROCESSING_STATUS_COUNT,
 )
 from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
-from db.session import session_scope
+from db.session import count_with_timeout, session_scope
 from models import WebhookEvent
 
 logger = get_logger("metrics")
@@ -36,7 +36,9 @@ async def refresh_all_metrics(*, mq_queue: str | None = None, mq_consumer_group:
 async def _refresh_db_event_count() -> None:
     try:
         async with session_scope() as session:
-            count = (await session.execute(select(func.count()).select_from(WebhookEvent))).scalar() or 0
+            count = await count_with_timeout(session, select(func.count()).select_from(WebhookEvent))
+            if count is None:
+                return
         DATABASE_EVENTS_COUNT.set(count)
     except Exception as e:
         logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)

@@ -1,6 +1,6 @@
 import asyncio
+import http.client
 import os
-import urllib.request
 
 
 async def _check_background_process() -> None:
@@ -21,7 +21,15 @@ async def _check_background_process() -> None:
 
 def _check_api() -> None:
     port = int(os.getenv("PORT") or "8000")
-    urllib.request.urlopen(f"http://localhost:{port}/ready", timeout=5).read()
+    conn = http.client.HTTPConnection("localhost", port, timeout=5)
+    try:
+        conn.request("GET", "/ready")
+        response = conn.getresponse()
+        response.read()
+        if response.status >= 400:
+            raise SystemExit(1)
+    finally:
+        conn.close()
 
 
 def main() -> int:

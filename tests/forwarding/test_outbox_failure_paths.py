@@ -72,6 +72,7 @@ async def _insert_outbox(
     attempts: int = 0,
     max_attempts: int = 3,
     target_type: str = "webhook",
+    target_url: str = "https://example.test/hook",
     next_attempt_at: datetime | None = None,
     updated_at: datetime | None = None,
     created_at: datetime | None = None,
@@ -85,7 +86,7 @@ async def _insert_outbox(
             webhook_event_id=webhook_event_id,
             original_event_id=original_event_id,
             target_type=target_type,
-            target_url="https://example.test/hook",
+            target_url=target_url,
             status=status,
             attempts=attempts,
             max_attempts=max_attempts,
@@ -404,6 +405,24 @@ async def test_list_outbox_records_includes_original_event_id(
 
     assert row["webhook_event_id"] == 42763
     assert row["original_event_id"] == 42672
+
+
+async def test_list_outbox_records_masks_target_url(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from services.forwarding.outbox import list_outbox_records
+
+    outbox_id = await _insert_outbox(
+        session_factory,
+        webhook_event_id=42764,
+        target_url="https://open.feishu.cn/open-apis/bot/v2/hook/secret-token?debug=true",
+    )
+
+    data = await list_outbox_records(page=1, page_size=10)
+    row = next(item for item in data["items"] if item["id"] == outbox_id)
+
+    assert "secret-token" not in row["target_url"]
+    assert "debug=true" not in row["target_url"]
 
 
 async def test_list_outbox_records_uses_cursor_pagination(

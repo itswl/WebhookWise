@@ -21,7 +21,8 @@ async function loadForwardRules() {
             </div>
         `;
 
-        const result = await API.getForwardRules();
+        const tokenStatus = typeof API.getTokenStatus === 'function' ? API.getTokenStatus() : { write: false };
+        const result = await API.getForwardRules({ includeSensitive: !!tokenStatus.write });
 
         if (result.success) {
             forwardRules = result.data || [];
@@ -272,6 +273,13 @@ function showRuleForm(ruleId) {
         title.textContent = '编辑转发规则';
         const rule = forwardRules.find(r => r.id === ruleId);
         if (rule) {
+            if (rule.target_url_sensitive === false) {
+                alert('编辑转发规则需要先保存 ADMIN_WRITE_KEY，以便加载完整目标 URL。');
+                if (typeof openAuthModal === 'function') {
+                    openAuthModal();
+                }
+                return;
+            }
             document.getElementById('ruleFormId').value = rule.id;
             document.getElementById('ruleFormName').value = rule.name || '';
             document.getElementById('ruleFormPriority').value = rule.priority || 10;

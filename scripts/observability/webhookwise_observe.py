@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 from typing import Any
@@ -234,7 +234,7 @@ def cmd_acceptance(args: argparse.Namespace) -> int:
             "--rm",
             "k6",
         ]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+        result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603  # nosec B603
         output = (result.stdout or result.stderr).strip().splitlines()
         rows.append(
             {
