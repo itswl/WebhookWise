@@ -19,6 +19,30 @@ _AUTH_DEPENDENCY = Security(security)
 _CONFIG_DEPENDENCY = Depends(get_config_manager)
 
 
+def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> str | None:
+    if auth and auth.credentials:
+        return auth.credentials
+
+    if auth and auth.scheme:
+        token = str(auth.credentials).strip() if auth.credentials else ""
+        if token:
+            return token
+
+    header_value = request.headers.get("authorization")
+    if header_value:
+        token = header_value.strip()
+        if token.lower().startswith("bearer "):
+            return token[7:].strip()
+        if token:
+            return token
+
+    for key in header_keys:
+        candidate = request.headers.get(key)
+        if candidate:
+            return str(candidate).strip()
+    return None
+
+
 def _body_meta(body: bytes) -> dict[str, object]:
     if not body:
         return {"size": 0, "sha256": None}
@@ -46,7 +70,8 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not auth or not _matches_any_configured_token(auth.credentials, api_key, config.security.ADMIN_WRITE_KEY):
+    credential = _first_token(request, auth, "x-api-key", "x-admin-key")
+    if not credential or not _matches_any_configured_token(credential, api_key, config.security.ADMIN_WRITE_KEY):
         client_ip = request.client.host if request.client else "unknown"
 
         if logger.isEnabledFor(logging.WARNING):
@@ -85,7 +110,10 @@ async def verify_admin_write(
             detail="ADMIN_WRITE_KEY is not configured",
         )
 
-    if not auth or not _matches_any_configured_token(auth.credentials, admin_write_key):
+    credential = _first_token(
+        request, auth, "x-admin-write-key", "x-admin-key", "x-api-key"
+    )
+    if not credential or not _matches_any_configured_token(credential, admin_write_key):
         client_ip = request.client.host if request.client else "unknown"
         logger.warning(
             "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
