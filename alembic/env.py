@@ -15,7 +15,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from core.config import UnifiedConfigManager  # noqa: E402
+from core.config.defaults import get_settings  # noqa: E402
 from db.session import Base  # noqa: E402
 from models import (  # noqa: E402, F401
     AIUsageLog,
@@ -27,7 +27,7 @@ from models import (  # noqa: E402, F401
 
 # Alembic Config object
 config = context.config
-app_config = UnifiedConfigManager()
+app_config = get_settings()
 
 # 设置日志
 if config.config_file_name is not None:

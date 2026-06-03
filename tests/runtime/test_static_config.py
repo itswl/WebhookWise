@@ -37,6 +37,13 @@ def test_config_manager_no_longer_wraps_settings_sections() -> None:
 
     assert not hasattr(config, "UnifiedConfigManager")
     assert not hasattr(manager, "UnifiedConfigManager")
+    references = [
+        str(path.relative_to(ROOT))
+        for path in ROOT.rglob("*.py")
+        if path.parts[-2:] != ("runtime", "test_static_config.py")
+        and "UnifiedConfigManager" in path.read_text()
+    ]
+    assert references == []
 
 
 def test_full_env_example_covers_config_model_keys() -> None:
