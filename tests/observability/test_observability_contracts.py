@@ -210,7 +210,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     db_engine = (ROOT / "db/engine.py").read_text()
     app = (ROOT / "core/app.py").read_text()
     broker = (ROOT / "core/taskiq_broker.py").read_text()
-    webhook = (ROOT / "api/webhook.py").read_text()
+    webhook = (ROOT / "api/v1/webhook.py").read_text()
     tasks = (ROOT / "services/operations/tasks.py").read_text()
     pipeline = (ROOT / "services/webhooks/pipeline.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()

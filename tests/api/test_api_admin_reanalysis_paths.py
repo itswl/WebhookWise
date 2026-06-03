@@ -17,7 +17,8 @@ def _body(response: Any) -> dict[str, Any]:
 async def test_admin_prompt_endpoints_normalize_kinds_and_sanitize_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import INTERNAL_ERROR_MESSAGE, admin
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import admin
 
     assert admin._normalize_prompt_kind(" ai ") == "user"
     assert admin._normalize_prompt_kind("deep-analysis") == "deep_analysis"
@@ -67,7 +68,7 @@ async def test_admin_deep_health_reports_dependency_and_queue_state(
     monkeypatch: pytest.MonkeyPatch,
     temp_config: Any,
 ) -> None:
-    from api import admin
+    from api.v1 import admin
     from core.app_context import AppContext
 
     monkeypatch.setattr(temp_config.mq, "WEBHOOK_MQ_QUEUE", "queue:test")
@@ -143,7 +144,8 @@ async def test_admin_deep_health_reports_dependency_and_queue_state(
 async def test_admin_dead_letter_listing_retry_and_replay_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import INTERNAL_ERROR_MESSAGE, admin
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import admin
 
     event = SimpleNamespace(
         id=1,
@@ -230,7 +232,7 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
 async def test_reanalysis_updates_original_duplicates_and_schedules_outbox(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import reanalysis
+    from api.v1 import reanalysis
 
     event = SimpleNamespace(
         id=99,
@@ -297,7 +299,8 @@ async def test_reanalysis_updates_original_duplicates_and_schedules_outbox(
 
 @pytest.mark.asyncio
 async def test_reanalysis_error_paths_are_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import INTERNAL_ERROR_MESSAGE, reanalysis
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import reanalysis
 
     class MissingSession:
         async def get(self, _model: object, _webhook_id: int) -> None:
@@ -320,7 +323,8 @@ async def test_reanalysis_error_paths_are_sanitized(monkeypatch: pytest.MonkeyPa
 async def test_manual_forward_webhook_handles_success_skipped_delivery_and_url_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, reanalysis
+    from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE
+    from api.v1 import reanalysis
     from core.url_security import UnsafeTargetUrlError
 
     event = SimpleNamespace(

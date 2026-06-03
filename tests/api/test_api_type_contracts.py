@@ -206,7 +206,7 @@ async def test_webhook_summary_uses_sent_outbox_status_for_duplicate(session):
 
 
 async def test_deep_analyses_list_fields(session, monkeypatch):
-    from api.deep_analysis import list_all_deep_analyses
+    from api.v1.deep_analysis import list_all_deep_analyses
     from models import DeepAnalysis, WebhookEvent
 
     event = WebhookEvent(
@@ -242,7 +242,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
     session.add_all([r1, r2])
     await session.commit()
 
-    monkeypatch.setattr("api.deep_analysis.MAX_PAGE", 2)
+    monkeypatch.setattr("api.v1.deep_analysis.MAX_PAGE", 2)
 
     resp = await list_all_deep_analyses(page=1, per_page=20, cursor=None, status="", engine="", session=session)
     assert resp["success"] is True
@@ -258,7 +258,7 @@ async def test_deep_analyses_list_fields(session, monkeypatch):
 
 
 async def test_list_deep_analyses_uses_cursor_pagination(session):
-    from api.deep_analysis import list_all_deep_analyses
+    from api.v1.deep_analysis import list_all_deep_analyses
     from models import DeepAnalysis
 
     records = [
@@ -296,7 +296,7 @@ async def test_list_deep_analyses_uses_cursor_pagination(session):
 
 
 async def test_get_deep_analyses_returns_serializable_dicts(session):
-    from api.deep_analysis import get_deep_analyses
+    from api.v1.deep_analysis import get_deep_analyses
     from models import DeepAnalysis, WebhookEvent
 
     event = WebhookEvent(
@@ -330,7 +330,7 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
 
 
 async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatch):
-    from api import deep_analysis
+    from api.v1 import deep_analysis
     from models import DeepAnalysis, WebhookEvent
     from services.webhooks.types import DeepAnalysisStatus
 

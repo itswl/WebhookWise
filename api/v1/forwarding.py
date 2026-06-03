@@ -27,7 +27,7 @@ from services.forwarding.rules import (
 )
 from services.webhooks.types import AnalysisResult, JsonObject, WebhookData
 
-logger = get_logger("api.forwarding")
+logger = get_logger("api.v1.forwarding")
 
 forwarding_router = APIRouter()
 
@@ -45,14 +45,14 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
 # ── Forwarding Rules ─────────────────────────────────────────────────────────
 
 
-@forwarding_router.get("/v1/forward-rules", response_model=ForwardRuleListResponse)
+@forwarding_router.get("/forward-rules", response_model=ForwardRuleListResponse)
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
     return {"success": True, "data": [forward_rule_to_dict(rule, mask_target_url=True) for rule in rules]}
 
 
 @forwarding_router.get(
-    "/v1/forward-rules/sensitive",
+    "/forward-rules/sensitive",
     response_model=ForwardRuleListResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -62,7 +62,7 @@ async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(g
 
 
 @forwarding_router.post(
-    "/v1/forward-rules",
+    "/forward-rules",
     response_model=ForwardRuleDetailResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -110,7 +110,7 @@ async def create_forward_rule_endpoint(
 
 
 @forwarding_router.put(
-    "/v1/forward-rules/{rule_id}",
+    "/forward-rules/{rule_id}",
     response_model=ForwardRuleDetailResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -146,7 +146,7 @@ async def update_forward_rule_endpoint(
 
 
 @forwarding_router.delete(
-    "/v1/forward-rules/{rule_id}",
+    "/forward-rules/{rule_id}",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -161,7 +161,7 @@ async def delete_forward_rule_endpoint(
 
 
 @forwarding_router.post(
-    "/v1/forward-rules/{rule_id}/test",
+    "/forward-rules/{rule_id}/test",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -225,7 +225,7 @@ async def test_forward_rule_endpoint(
 # ── Outbox Queries ─────────────────────────────────────────────────────────
 
 
-@forwarding_router.get("/v1/outbox", response_model=None)
+@forwarding_router.get("/outbox", response_model=None)
 async def list_outbox_endpoint(
     page: int = Query(1, ge=1, le=100),
     page_size: int = Query(20, ge=1, le=200),

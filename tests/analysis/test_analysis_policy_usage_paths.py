@@ -49,7 +49,7 @@ def test_openclaw_poll_policy_methods_are_bounded() -> None:
 async def test_ai_usage_endpoint_uses_minute_cache_and_writes_best_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import ai_usage
+    from api.v1 import ai_usage
 
     cache: dict[str, dict[str, object]] = {}
     stats_calls: list[str] = []

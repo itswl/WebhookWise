@@ -356,7 +356,7 @@ async def test_update_existing_dead_letter_marks_existing_row(
 async def test_forwarding_target_url_validation_branches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import forwarding
+    from api.v1 import forwarding
     from core.url_security import UnsafeTargetUrlError
 
     seen_urls: list[str] = []
@@ -381,7 +381,7 @@ async def test_forwarding_target_url_validation_branches(
 async def test_forward_rule_create_and_update_endpoints_use_validated_models(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import forwarding
+    from api.v1 import forwarding
     from schemas.forwarding import ForwardRuleCreateRequest, ForwardRuleUpdateRequest
 
     class FakeSession:
@@ -465,7 +465,7 @@ async def test_forward_rule_create_and_update_endpoints_use_validated_models(
 async def test_forwarding_outbox_endpoint_returns_cursor_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import forwarding
+    from api.v1 import forwarding
     from services.forwarding import outbox
 
     calls: list[dict[str, object]] = []
@@ -505,7 +505,8 @@ async def test_forwarding_outbox_endpoint_sanitizes_query_errors(
 ) -> None:
     import json
 
-    from api import INTERNAL_ERROR_MESSAGE, forwarding
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import forwarding
     from services.forwarding import outbox
 
     async def list_outbox_records(**_: object) -> dict[str, object]:

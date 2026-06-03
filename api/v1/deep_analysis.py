@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
-from api.webhook import JSONDict, build_webhook_context
+from api.v1.webhook import JSONDict, build_webhook_context
 from core.app_context import get_http_client_dependency
 from core.auth import verify_admin_write
 from core.datetime_utils import utc_isoformat, utcnow
@@ -36,7 +36,7 @@ from services.webhooks.types import (
     openclaw_session_key,
 )
 
-logger = get_logger("api.deep_analysis")
+logger = get_logger("api.v1.deep_analysis")
 
 deep_analysis_router = APIRouter()
 
@@ -110,7 +110,7 @@ def _reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime
 
 
 @deep_analysis_router.post(
-    "/v1/deep-analyze/{webhook_id}",
+    "/deep-analyze/{webhook_id}",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -169,7 +169,7 @@ async def deep_analyze_webhook(
     return {"success": True, "data": record_data}
 
 
-@deep_analysis_router.get("/v1/deep-analyses", response_model=DeepAnalysisListResponse)
+@deep_analysis_router.get("/deep-analyses", response_model=DeepAnalysisListResponse)
 async def list_all_deep_analyses(
     page: int = Query(1, ge=1, le=MAX_PAGE),
     per_page: int = Query(20, ge=1, le=MAX_PAGE),
@@ -185,14 +185,14 @@ async def list_all_deep_analyses(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@deep_analysis_router.get("/v1/deep-analyses/{webhook_id}")
+@deep_analysis_router.get("/deep-analyses/{webhook_id}")
 async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     records = await get_deep_analyses_for_webhook(session, webhook_id)
     return {"success": True, "data": [deep_analysis_to_dict(record) for record in records]}
 
 
 @deep_analysis_router.post(
-    "/v1/deep-analyses/{analysis_id}/retry",
+    "/deep-analyses/{analysis_id}/retry",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -277,7 +277,7 @@ async def retry_deep_analysis(
 
 
 @deep_analysis_router.post(
-    "/v1/deep-analyses/{analysis_id}/forward",
+    "/deep-analyses/{analysis_id}/forward",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )

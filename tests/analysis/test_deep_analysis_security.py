@@ -3,7 +3,8 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_forward_deep_analysis_validates_outbound_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import TARGET_URL_UNAVAILABLE_MESSAGE, deep_analysis
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE
+    from api.v1 import deep_analysis
     from core.url_security import UnsafeTargetUrlError
 
     async def reject_url(url: str) -> str:

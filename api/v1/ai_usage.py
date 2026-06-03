@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.webhook import JSONDict
+from api.v1.webhook import JSONDict
 from db.session import get_db_session
 from schemas.ai_usage import AIUsageResponse
 from services.analysis.analysis_queries import get_ai_usage_stats
@@ -12,7 +12,7 @@ from services.analysis.analysis_queries import get_ai_usage_stats
 ai_usage_router = APIRouter()
 
 
-@ai_usage_router.get("/v1/ai-usage", response_model=AIUsageResponse)
+@ai_usage_router.get("/ai-usage", response_model=AIUsageResponse)
 async def get_ai_usage_endpoint(
     period: str = Query("day"), session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict:

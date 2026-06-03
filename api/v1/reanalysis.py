@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
-from api.webhook import JSONDict, build_webhook_context
+from api.v1.webhook import JSONDict, build_webhook_context
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -18,13 +18,13 @@ from services.forwarding.outbox import forward_notification, resolve_and_forward
 from services.webhooks.forwarding_stage import resolve_forward_decision
 from services.webhooks.types import AnalysisResult, webhook_data_from_mapping
 
-logger = get_logger("api.reanalysis")
+logger = get_logger("api.v1.reanalysis")
 
 reanalysis_router = APIRouter()
 
 
 @reanalysis_router.post(
-    "/v1/reanalyze/{webhook_id}",
+    "/reanalyze/{webhook_id}",
     response_model=ReanalysisResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -106,7 +106,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
 
 @reanalysis_router.post(
-    "/v1/forward/{webhook_id}",
+    "/forward/{webhook_id}",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )

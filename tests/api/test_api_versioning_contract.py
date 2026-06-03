@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.helpers.paths import PROJECT_ROOT
+
 
 def _route_paths() -> set[str]:
     from core.app import app
@@ -43,3 +45,21 @@ def test_business_api_routes_are_v1_only() -> None:
     assert not {path for path in paths if path.startswith("/api/")}
     assert "/webhook" not in paths
     assert "/webhook/{source}" not in paths
+
+
+def test_business_api_modules_live_under_v1_package() -> None:
+    root_api = PROJECT_ROOT / "api"
+    v1_api = root_api / "v1"
+    business_modules = {
+        "admin.py",
+        "ai_usage.py",
+        "deep_analysis.py",
+        "forwarding.py",
+        "reanalysis.py",
+        "webhook.py",
+    }
+
+    assert all((v1_api / module).is_file() for module in business_modules)
+    assert not any((root_api / module).exists() for module in business_modules)
+    assert (root_api / "health.py").is_file()
+    assert (root_api / "dashboard.py").is_file()

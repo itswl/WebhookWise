@@ -3,19 +3,15 @@ import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from api import internal_error_response
-from api.admin import admin_router
-from api.ai_usage import ai_usage_router
-from api.deep_analysis import deep_analysis_router
-from api.forwarding import forwarding_router
-from api.reanalysis import reanalysis_router
-from api.webhook import webhook_router
+from api.dashboard import dashboard_router
+from api.health import health_router
+from api.v1.router import v1_router
 from core.app_context import AppContext, get_default_app_context, init_default_app_context, set_default_app_context
-from core.auth import verify_api_key
 from core.config import UnifiedConfigManager
 from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
@@ -108,9 +104,6 @@ _WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
 logger.debug("worker_id=%s", _WORKER_ID)
 
 
-app.include_router(deep_analysis_router, dependencies=[Depends(verify_api_key)])
-app.include_router(reanalysis_router, dependencies=[Depends(verify_api_key)])
-app.include_router(ai_usage_router, dependencies=[Depends(verify_api_key)])
-app.include_router(forwarding_router, dependencies=[Depends(verify_api_key)])
-app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
-app.include_router(webhook_router)
+app.include_router(health_router)
+app.include_router(dashboard_router)
+app.include_router(v1_router)
