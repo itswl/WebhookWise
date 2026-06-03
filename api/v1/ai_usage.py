@@ -24,6 +24,6 @@ async def get_ai_usage_endpoint(
         return {"success": True, "data": cached_dict}
 
     data = await get_ai_usage_stats(session, period)
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(OSError, RuntimeError, TimeoutError, ValueError):
         await redis_setex_json(cache_key, 70, data)
     return {"success": True, "data": data}

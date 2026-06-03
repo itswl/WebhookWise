@@ -8,7 +8,9 @@ from urllib.parse import urlsplit
 
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.app_context import get_config_manager
+from core.collections_utils import scalar_text_or_empty
 from core.datetime_utils import naive_utc, parse_utc_datetime
+from core.json import extract_balanced_json_text
 from core.logger import mask_url
 from services.forwarding.circuit_breakers import RemoteForwardDependencies, build_remote_forward_dependencies, feishu_cb
 from services.forwarding.policies import ForwardDeliveryPolicy
@@ -84,48 +86,13 @@ def _sanitize_loose_json(text: str) -> str:
     return re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", text)
 
 
-def _extract_json_block(text: str) -> str:
-    start = -1
-    for idx, char in enumerate(text):
-        if char in "{[":
-            start = idx
-            break
-    if start < 0:
-        return ""
-
-    pairs = {"{": "}", "[": "]"}
-    stack: list[str] = []
-    in_string = False
-    escaped = False
-    for idx in range(start, len(text)):
-        char = text[idx]
-        if in_string:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                in_string = False
-            continue
-
-        if char == '"':
-            in_string = True
-        elif char in pairs:
-            stack.append(pairs[char])
-        elif stack and char == stack[-1]:
-            stack.pop()
-            if not stack:
-                return text[start : idx + 1]
-    return ""
-
-
 def _parse_json_like_text(value: object) -> JsonObject | list[Any] | None:
     if not isinstance(value, str):
         return None
     stripped = _strip_json_fence(value)
     if not stripped:
         return None
-    json_block = _extract_json_block(stripped)
+    json_block = extract_balanced_json_text(stripped, allow_arrays=True) or ""
     candidates = [stripped, _sanitize_loose_json(stripped), json_block, _sanitize_loose_json(json_block)]
     seen: set[str] = set()
     for candidate in candidates:
@@ -273,12 +240,6 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
     return None
 
 
-def _identity_text(value: object) -> str:
-    if not value:
-        return ""
-    return " ".join(str(value).splitlines()).strip()
-
-
 def _build_identity_content(analysis_result: AnalysisResult, parsed: dict[str, Any]) -> str:
     identity_raw = analysis_result.get("alert_identity")
     identity = dict(identity_raw) if isinstance(identity_raw, dict) else {}
@@ -287,7 +248,7 @@ def _build_identity_content(analysis_result: AnalysisResult, parsed: dict[str, A
     seen_values: set[tuple[str, str]] = set()
     for key, label in _IDENTITY_LABELS:
         raw = _identity_value(identity, parsed, key)
-        value = _identity_text(raw)
+        value = scalar_text_or_empty(raw)
         if not value:
             continue
         dedupe_key = (label, value)
@@ -307,7 +268,7 @@ def _build_identity_content(analysis_result: AnalysisResult, parsed: dict[str, A
 def is_feishu_url(url: str) -> bool:
     try:
         host = (urlsplit(str(url)).hostname or "").lower().rstrip(".")
-    except Exception:
+    except ValueError:
         return False
     return host in _FEISHU_HOSTS or any(host.endswith(suffix) for suffix in _FEISHU_HOST_SUFFIXES)
 
