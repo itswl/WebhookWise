@@ -1,10 +1,11 @@
 """AI usage audit logging."""
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from core.logger import get_logger
 from db.session import session_scope
 from models import AIUsageLog
 from services.analysis.analysis_policies import AIProviderPolicy
-from sqlalchemy.exc import SQLAlchemyError
 
 logger = get_logger("analysis.ai_usage")
 

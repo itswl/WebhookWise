@@ -8,9 +8,13 @@ from typing import Any, cast
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
+from services.notifications.feishu_parser import (
+    _build_identity_content,
+    _deep_analysis_view,
+    _markdown_bullets,
+    _section_text,
+)
 from services.webhooks.types import OPENCLAW_TEXT, AnalysisResult
-
-from services.notifications.feishu_parser import _build_identity_content, _deep_analysis_view, _markdown_bullets, _section_text
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {

@@ -7,6 +7,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, cast
+
 from redis.exceptions import RedisError
 
 from core.logger import get_logger
