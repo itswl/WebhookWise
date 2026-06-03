@@ -145,7 +145,7 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.analysis import deep_analysis_workflow
-    from services.analysis import openclaw as openclaw_service
+    from services.analysis import openclaw_analysis as openclaw_service
 
     calls: list[dict[str, object]] = []
 
@@ -304,7 +304,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         "services.analysis.deep_analysis_workflow.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort",
         schedule_openclaw_poll_best_effort,
     )
-    monkeypatch.setattr("services.analysis.openclaw.clear_openclaw_poll_state", clear_openclaw_poll_state)
+    monkeypatch.setattr("services.analysis.openclaw_poll.clear_openclaw_poll_state", clear_openclaw_poll_state)
 
     missing = await deep_analysis.retry_deep_analysis(1, session=Session(None))  # type: ignore[arg-type]
     assert missing.status_code == 404

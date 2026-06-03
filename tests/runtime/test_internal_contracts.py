@@ -40,6 +40,23 @@ def test_core_and_adapter_dependency_direction_is_enforced() -> None:
     assert adapter_type_imports == []
 
 
+def test_openclaw_compatibility_facade_is_not_reintroduced() -> None:
+    assert not (ROOT / "services/analysis/openclaw.py").exists()
+
+    offenders: list[str] = []
+    for base in ("api", "services", "scripts"):
+        for path in (ROOT / base).rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            if (
+                "from services.analysis.openclaw import" in text
+                or "import services.analysis.openclaw" in text
+                or "services.analysis.openclaw." in text
+            ):
+                offenders.append(str(path.relative_to(ROOT)))
+
+    assert offenders == []
+
+
 def test_internal_protocol_keys_are_declared_in_one_place() -> None:
     keys = {
         webhook_types.ANALYSIS_ROUTE_TYPE,

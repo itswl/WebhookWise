@@ -81,7 +81,7 @@ async def build_deep_analysis_context(event: WebhookEvent) -> JsonObject:
 async def run_openclaw_deep_analysis(
     ctx: Mapping[str, Any], headers: dict[str, Any], user_question: str
 ) -> tuple[AnalysisResult | ForwardResult, str]:
-    from services.analysis.openclaw import analyze_with_openclaw
+    from services.analysis.openclaw_analysis import analyze_with_openclaw
 
     webhook_data: WebhookData = {
         "source": str(ctx["source"]),
@@ -140,7 +140,7 @@ async def notify_completed_deep_analysis_best_effort(session: AsyncSession, reco
 
 
 async def clear_openclaw_poll_state_best_effort(analysis_id: int) -> None:
-    from services.analysis.openclaw import clear_openclaw_poll_state
+    from services.analysis.openclaw_poll import clear_openclaw_poll_state
 
     try:
         await clear_openclaw_poll_state(analysis_id)

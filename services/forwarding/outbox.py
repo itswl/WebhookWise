@@ -10,23 +10,27 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contracts.webhook_payload import JsonObject, WebhookData
-from core.datetime_utils import utc_isoformat, utcnow
-from core.logger import get_logger, mask_url
+from core.datetime_utils import utcnow
+from core.logger import get_logger
 from core.observability.attributes import FORWARD_STATUS, FORWARD_TARGET_TYPE, WEBHOOK_EVENT_ID
 from core.observability.metrics import (
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS,
     FORWARD_OUTBOX_RECORDS_TOTAL,
 )
 from core.observability.tracing import otel_span, set_span_error
-from db.session import count_with_timeout, session_scope
-from models import ForwardOutbox, WebhookEvent
+from db.session import session_scope
+from models import DeepAnalysis, ForwardOutbox, WebhookEvent
+from services.forwarding import outbox_queries
+from services.forwarding.outbox_delivery import _is_forward_success, deliver_outbox_record
+from services.forwarding.outbox_queries import (
+    _mask_url_for_display as _mask_url_for_display,
+)
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot
 from services.webhooks.types import (
@@ -271,47 +275,6 @@ async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> Forw
     return {**result, "outbox_id": outbox_id}
 
 
-async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
-    channel_name = str(record.channel_name or record.target_type or "")
-    if channel_name == "openclaw":
-        from services.analysis.openclaw import forward_to_openclaw
-
-        forward_data = cast(WebhookData, dict(record.forward_data or {}))
-        analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
-        return await forward_to_openclaw(forward_data, analysis)
-
-    target_url = str(record.target_url or "")
-    from services.notifications.feishu import build_feishu_card, is_feishu_url
-
-    payload: JsonObject | None = record.formatted_payload if isinstance(record.formatted_payload, dict) else None
-    if payload is None and isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
-        wd = cast(WebhookData, dict(record.forward_data))
-        ar = cast(AnalysisResult, dict(record.analysis_result))
-        is_reminder = bool(record.is_periodic_reminder)
-        if is_feishu_url(target_url):
-            payload = build_feishu_card(wd, ar, is_periodic_reminder=is_reminder)
-        else:
-            payload = {"webhook": wd, "analysis": ar, "is_periodic_reminder": is_reminder}
-    if payload is None:
-        payload = {}
-
-    from services.forwarding.circuit_breakers import build_remote_forward_dependencies
-    from services.forwarding.remote import post_json_to_remote
-
-    if is_feishu_url(target_url):
-        from services.notifications.feishu import send_to_feishu
-
-        return await send_to_feishu(target_url, payload)
-
-    deps = build_remote_forward_dependencies(target_url)
-    return await post_json_to_remote(
-        target_url,
-        payload,
-        dependencies=deps,
-        target_type_label=channel_name or "webhook",
-    )
-
-
 def _idempotency_key(
     *,
     webhook_id: int,
@@ -424,10 +387,6 @@ def _related_webhook_event_ids(record: ForwardOutbox) -> list[int]:
     return list(dict.fromkeys(int(i) for i in ids if i))
 
 
-def _is_forward_success(result: ForwardResult) -> bool:
-    return result.get("status") == "success" or is_pending_result(result)
-
-
 async def process_forward_outbox_by_id(outbox_id: int) -> None:
     started = time.perf_counter()
     target_type = "unknown"
@@ -511,7 +470,6 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         current.response_data = dict(result)
 
         if current.target_type == "openclaw" and is_pending_result(result):
-            from models import DeepAnalysis
             from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
 
             target_event_id = current.webhook_event_id
@@ -606,9 +564,6 @@ async def _finalize_outbox_failure(
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 
 
-# ── Outbox Queries ──────────────────────────────────────────────────────────
-
-
 async def list_outbox_records(
     *,
     page: int = 1,
@@ -617,69 +572,11 @@ async def list_outbox_records(
     status: str = "",
     event_type: str = "",
 ) -> dict[str, Any]:
-    """分页查询转发队列记录。"""
-    from sqlalchemy import func
-
-    page = max(1, min(page, 100))
-    page_size = max(1, min(page_size, 200))
-
-    filters = []
-    if status:
-        filters.append(ForwardOutbox.status == status)
-    if event_type:
-        filters.append(ForwardOutbox.event_type == event_type)
-
-    async with session_scope() as session:
-        count_q = select(func.count()).select_from(ForwardOutbox)
-        for f in filters:
-            count_q = count_q.where(f)
-        total = await count_with_timeout(session, count_q) or 0
-
-        query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
-        for f in filters:
-            query = query.where(f)
-        query = query.where(ForwardOutbox.id < cursor) if cursor is not None else query.offset((page - 1) * page_size)
-        query = query.limit(page_size + 1)
-        rows = (await session.execute(query)).scalars().all()
-        has_more = len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
-
-        items = [
-            {
-                "id": r.id,
-                "webhook_event_id": r.webhook_event_id,
-                "original_event_id": r.original_event_id,
-                "rule_name": r.rule_name,
-                "target_type": r.target_type,
-                "target_url": _mask_url_for_display(r.target_url or ""),
-                "target_name": r.target_name,
-                "event_type": r.event_type,
-                "status": r.status,
-                "attempts": r.attempts,
-                "max_attempts": r.max_attempts,
-                "next_attempt_at": utc_isoformat(r.next_attempt_at),
-                "last_attempt_at": utc_isoformat(r.last_attempt_at),
-                "sent_at": utc_isoformat(r.sent_at),
-                "last_error": (r.last_error or "")[:200],
-                "is_periodic_reminder": r.is_periodic_reminder,
-                "created_at": utc_isoformat(r.created_at),
-            }
-            for r in rows
-        ]
-
-    return {
-        "items": items,
-        "page": page,
-        "page_size": page_size,
-        "total": total,
-        "total_pages": max(1, (total + page_size - 1) // page_size) if total else 1,
-        "next_cursor": items[-1]["id"] if has_more and items else None,
-        "has_more": has_more,
-    }
-
-
-def _mask_url_for_display(url: str) -> str:
-    if not url:
-        return ""
-    return mask_url(url)
+    return await outbox_queries.list_outbox_records(
+        page=page,
+        page_size=page_size,
+        cursor=cursor,
+        status=status,
+        event_type=event_type,
+        session_scope_factory=session_scope,
+    )
