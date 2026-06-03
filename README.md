@@ -78,13 +78,13 @@ cp .env.example .env
 ### 2. 启动本地完整栈
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build
+docker compose up -d --build
 curl http://localhost:8000/ready
 ```
 
 Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.yml up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
 
-Compose 文件位于 `deploy/compose/`，所以命令统一显式带 `--env-file .env` 读取仓库根目录配置；`-p webhookwise` 固定 project 名，线上滚动更新和 `ps/logs/exec` 都能继续管理同一组容器。
+根目录的 `compose.yaml` 是日常入口，只 include PostgreSQL、Redis、API、Worker、Scheduler 等业务栈；`docker compose ps/logs/exec` 默认也只看这组容器。完整 Compose 片段仍放在 `deploy/compose/`，观测栈按观测文档显式追加。
 
 ### 3. 发送测试事件
 
@@ -156,8 +156,8 @@ uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.loc
 ### Docker Compose
 
 ```bash
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --build
-docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml ps
+docker compose up -d --build
+docker compose ps
 ```
 
 带观测栈的线上完整命令：

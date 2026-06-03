@@ -1,7 +1,7 @@
 # WebhookWise 应用服务
 #
-# 本地开发（自带基础设施）：
-#   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d
+# 日常业务栈（从仓库根目录执行，自动带 PostgreSQL / Redis）：
+#   docker compose up -d
 #
 # 使用云服务（RDS / ElastiCache 等）：
 #   在 .env 中设置 DATABASE_URL 和 REDIS_URL 指向云实例，然后：
@@ -102,7 +102,7 @@ services:
     build:
       context: ../..
     # No fixed container_name here: this service is intended to scale horizontally.
-    # Example: docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml up -d --scale worker=3
+    # Example: docker compose up -d --scale worker=3
     restart: unless-stopped
     deploy:
       resources:
