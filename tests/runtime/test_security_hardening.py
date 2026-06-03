@@ -125,7 +125,7 @@ async def test_request_body_limit_middleware_rejects_oversized_body(
     monkeypatch.setattr(temp_config.security, "MAX_WEBHOOK_BODY_BYTES", 4)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/webhook/prometheus", content=b"12345")
+        response = await client.post("/v1/webhook/prometheus", content=b"12345")
 
     assert response.status_code == 413
 
@@ -403,7 +403,7 @@ async def test_global_exception_handler_is_sanitized() -> None:
     from api import INTERNAL_ERROR_MESSAGE
     from core.app import unhandled_exception_handler
 
-    request = SimpleNamespace(url=SimpleNamespace(path="/api/leaky"))
+    request = SimpleNamespace(url=SimpleNamespace(path="/v1/leaky"))
     response = await unhandled_exception_handler(  # type: ignore[arg-type]
         request,
         RuntimeError("postgresql://user:pass@db.internal/webhooks"),
@@ -420,7 +420,7 @@ async def test_global_unhandled_exception_handler_is_sanitized() -> None:
     from core.app import app, unhandled_exception_handler
 
     assert app.debug is False
-    request = SimpleNamespace(url=SimpleNamespace(path="/api/leaky"))
+    request = SimpleNamespace(url=SimpleNamespace(path="/v1/leaky"))
     response = await unhandled_exception_handler(
         request,  # type: ignore[arg-type]
         RuntimeError("Traceback postgresql://user:pass@db.internal/webhooks"),
@@ -524,9 +524,9 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        read_with_admin = await client.get("/api/prompt", headers={"Authorization": "Bearer admin-key"})
-        write_with_api = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer api-key"})
-        write_with_admin = await client.post("/api/prompt/reload", headers={"Authorization": "Bearer admin-key"})
+        read_with_admin = await client.get("/v1/prompt", headers={"Authorization": "Bearer admin-key"})
+        write_with_api = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer api-key"})
+        write_with_admin = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer admin-key"})
 
     assert read_with_admin.status_code == 200
     assert write_with_api.status_code == 403
@@ -649,16 +649,16 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)
         monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "configured-but-disabled")
-        disabled = await client.post("/webhook/prometheus", json={"alertname": "no-auth"})
+        disabled = await client.post("/v1/webhook/prometheus", json={"alertname": "no-auth"})
 
         monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", True)
         monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "")
-        missing_secret = await client.post("/webhook/prometheus", json={"alertname": "missing-secret"})
+        missing_secret = await client.post("/v1/webhook/prometheus", json={"alertname": "missing-secret"})
 
         monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "real-secret")
-        missing_token = await client.post("/webhook/prometheus", json={"alertname": "missing-token"})
+        missing_token = await client.post("/v1/webhook/prometheus", json={"alertname": "missing-token"})
         valid_token = await client.post(
-            "/webhook/prometheus",
+            "/v1/webhook/prometheus",
             json={"alertname": "valid-token"},
             headers={"token": "real-secret"},
         )
@@ -700,7 +700,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/webhook/prometheus", json={"alertname": "canonical"})
+        response = await client.post("/v1/webhook/prometheus", json={"alertname": "canonical"})
 
     assert response.status_code == 202
     assert response.json()["message"] == "Webhook received and queued for processing"

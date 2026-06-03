@@ -12,7 +12,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from contextvars import Token
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
@@ -47,7 +47,6 @@ from services.operations.policies import TaskRuntimePolicy
 
 logger = get_logger("tasks")
 
-_last_success_by_name: dict[str, float] = {}
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 _SCHEDULING_ERRORS = (OSError, RedisError, RuntimeError, TimeoutError)
 _TASK_PROCESSING_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
@@ -64,6 +63,25 @@ class _WebhookTaskContext:
     ingest_retry_count: int
     traceparent: str | None
     trace_headers: dict[str, str]
+
+
+@dataclass(slots=True)
+class _ScheduledTaskRuntime:
+    last_success_by_name: dict[str, float] = field(default_factory=dict)
+
+    def record_success(self, name: str, interval_seconds: int, now: float) -> float:
+        prev = self.last_success_by_name.get(name)
+        self.last_success_by_name[name] = now
+        return max(0.0, now - prev - float(interval_seconds)) if prev is not None else 0.0
+
+    def lag_since_success(self, name: str, interval_seconds: int, now: float) -> float | None:
+        last = self.last_success_by_name.get(name)
+        if last is None:
+            return None
+        return max(0.0, now - last - float(interval_seconds))
+
+
+_scheduled_task_runtime = _ScheduledTaskRuntime()
 
 
 def _background_scan_interval_seconds() -> int:
@@ -204,7 +222,14 @@ async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]
         await _run_scheduled_locked(name, interval_seconds, fn)
 
 
-async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
+async def _run_scheduled_locked(
+    name: str,
+    interval_seconds: int,
+    fn: Awaitable[object],
+    *,
+    runtime: _ScheduledTaskRuntime | None = None,
+) -> None:
+    runtime = runtime or _scheduled_task_runtime
     start = time.time()
     status = "success"
     lag = 0.0
@@ -213,16 +238,14 @@ async def _run_scheduled_locked(name: str, interval_seconds: int, fn: Awaitable[
         try:
             await fn
             now = time.time()
-            prev = _last_success_by_name.get(name)
-            lag = max(0.0, now - prev - float(interval_seconds)) if prev is not None else 0.0
+            lag = runtime.record_success(name, interval_seconds, now)
             SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
-            _last_success_by_name[name] = now
             SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME.labels(name=name).set(now)
         except BaseException:
             status = "error"
-            last = _last_success_by_name.get(name)
-            if last is not None:
-                lag = max(0.0, time.time() - last - float(interval_seconds))
+            error_lag = runtime.lag_since_success(name, interval_seconds, time.time())
+            if error_lag is not None:
+                lag = error_lag
                 SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
             logger.exception(
                 "[ScheduledTask] 周期任务失败 name=%s interval=%ss lag=%.3fs",

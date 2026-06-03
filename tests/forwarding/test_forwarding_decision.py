@@ -73,6 +73,7 @@ async def test_medium_importance_no_rules_does_not_forward():
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     assert decision.should_forward is False
+    assert decision.skip_code == "no_match"
     assert "未匹配转发规则" in (decision.skip_reason or "")
 
 
@@ -100,6 +101,7 @@ async def test_noise_suppression_overrides_high_importance():
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("high", False, noise, None, "prometheus")
     assert decision.should_forward is False
+    assert decision.skip_code == "noise_suppressed"
     assert "智能降噪抑制转发" in (decision.skip_reason or "")
 
 
@@ -128,6 +130,7 @@ async def test_duplicate_in_cooldown_skips():
         with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
             decision = await resolve_forward_decision("high", True, None, event, "prometheus")
         assert decision.should_forward is False
+        assert decision.skip_code == "cooldown"
         assert "冷却" in (decision.skip_reason or "")
     finally:
         _set_config("NOTIFICATION_COOLDOWN_SECONDS", orig)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -66,18 +68,55 @@ class WebhookEvent(Base):
         Index("idx_dedup_key_timestamp", "dedup_key", "timestamp"),
     )
 
-    def fill_fields(self, **kwargs: object) -> None:
-        """统一填充字段"""
-        unknown_fields = sorted(k for k in kwargs if k not in WEBHOOK_EVENT_VALID_FIELDS)
-        if unknown_fields:
-            raise ValueError(f"未知 WebhookEvent 字段: {','.join(unknown_fields)}")
-        for k, v in kwargs.items():
-            if k == "headers" and isinstance(v, dict):
-                v = dict(v)
-            if getattr(self, k) != v:
-                setattr(self, k, v)
-        if not self.timestamp:
-            self.timestamp = utcnow()
+    def fill_fields(
+        self,
+        *,
+        source: str,
+        request_id: str | None = None,
+        client_ip: str | None = None,
+        timestamp: datetime | None = None,
+        raw_payload: bytes | None = None,
+        headers: Mapping[str, Any] | None = None,
+        parsed_data: Mapping[str, Any] | None = None,
+        alert_hash: str | None = None,
+        dedup_key: str | None = None,
+        ai_analysis: Mapping[str, Any] | None = None,
+        importance: str | None = None,
+        processing_status: str = "received",
+        retry_count: int = 0,
+        next_retry_at: datetime | None = None,
+        failure_reason: str | None = None,
+        error_message: str | None = None,
+        forward_status: str | None = None,
+        prev_alert_id: int | None = None,
+        is_duplicate: bool = False,
+        duplicate_of: int | None = None,
+        duplicate_count: int = 1,
+        last_notified_at: datetime | None = None,
+    ) -> None:
+        """Fill the mutable event columns through an explicit typed surface."""
+        self.source = source
+        self.request_id = request_id
+        self.client_ip = client_ip
+        self.timestamp = timestamp or self.timestamp or utcnow()
+        self.raw_payload = raw_payload
+        self.headers = dict(headers) if headers is not None else None
+        self.parsed_data = dict(parsed_data) if parsed_data is not None else None
+        self.alert_hash = alert_hash
+        self.dedup_key = dedup_key
+        self.ai_analysis = dict(ai_analysis) if ai_analysis is not None else None
+        self.importance = importance
+        self.processing_status = processing_status
+        self.retry_count = retry_count
+        self.next_retry_at = next_retry_at
+        self.failure_reason = failure_reason
+        self.error_message = error_message
+        self.forward_status = forward_status
+        self.prev_alert_id = prev_alert_id
+        self.is_duplicate = is_duplicate
+        self.duplicate_of = duplicate_of
+        self.duplicate_count = duplicate_count
+        self.last_notified_at = last_notified_at
         if not self.created_at:
             self.created_at = utcnow()
 
@@ -121,6 +160,3 @@ class ArchivedWebhookEvent(Base):
     archived_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     __table_args__ = (Index("idx_archived_hash_timestamp", "alert_hash", "timestamp"),)
-
-
-WEBHOOK_EVENT_VALID_FIELDS: frozenset[str] = frozenset(WebhookEvent.__mapper__.column_attrs.keys())

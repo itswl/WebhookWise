@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel
 
-T = TypeVar("T")
 
-
-class APIResponse(BaseModel, Generic[T]):
+class APIResponse[T](BaseModel):
     success: bool
     data: T | None = None
     message: str | None = None

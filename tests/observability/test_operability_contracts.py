@@ -1,8 +1,8 @@
 import re
+import tomllib
 from collections.abc import Iterator
 from typing import Any
 
-import tomllib
 import yaml
 
 from tests.helpers.paths import PROJECT_ROOT
@@ -34,6 +34,9 @@ def test_ci_enforces_coverage_gate() -> None:
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
+    assert re.search(r"(?m)^  pull_request:\s*$", ci)
+    assert re.search(r"(?m)^  push:\s*$", ci)
+    assert "shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh" in ci
     assert "--cov=core" in ci
     assert "--cov=api" in ci
     assert "--cov=services" in ci
@@ -41,6 +44,17 @@ def test_ci_enforces_coverage_gate() -> None:
     assert "--cov-fail-under=90" in ci
     assert "python scripts/observability/webhookwise_observe.py contract" in ci
     assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 90
+
+
+def test_dependency_updates_and_ai_dev_entrypoint_are_configured() -> None:
+    dependabot = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    ecosystems = {item["package-ecosystem"] for item in dependabot["updates"]}
+    guide = (ROOT / "CLAUDE.md").read_text()
+
+    assert ecosystems == {"docker", "github-actions", "pip"}
+    assert "ruff check ." in guide
+    assert "shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh" in guide
+    assert "Keep metrics labels stable and machine-readable" in guide
 
 
 def test_dockerfile_uses_directory_copy_contract() -> None:
@@ -97,7 +111,7 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
 
     receiver = next(item for item in alertmanager["receivers"] if item["name"] == "webhookwise-local")
     webhook_config = receiver["webhook_configs"][0]
-    assert webhook_config["url"] == "http://webhook-service:8000/webhook/alertmanager"
+    assert webhook_config["url"] == "http://webhook-service:8000/v1/webhook/alertmanager"
     assert webhook_config["send_resolved"] is True
     assert webhook_config["max_alerts"] == 20
 

@@ -47,7 +47,7 @@ tests/e2e/run_webhook_to_feishu.sh
 
 ## Documentation
 
-- API docs: [docs/api/README.md](docs/api/README.md)
+- API docs: [docs/reference/api.md](docs/reference/api.md)
 - Architecture boundaries: [docs/architecture/boundaries.md](docs/architecture/boundaries.md)
 - Observability: [docs/architecture/observability.md](docs/architecture/observability.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)

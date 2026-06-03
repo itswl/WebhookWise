@@ -13,6 +13,8 @@ RUN python -m venv /opt/venv && \
 # ====== 运行阶段 ======
 FROM python:3.12-slim
 
+ARG APP_VERSION=0.1.0
+
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
@@ -36,8 +38,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
     PORT=8000 \
     API_WORKERS=4 \
+    APP_VERSION=$APP_VERSION \
+    OTEL_SERVICE_VERSION=$APP_VERSION \
     PYTHONPATH=/app \
     PATH=/opt/venv/bin:$PATH
+
+LABEL org.opencontainers.image.title="WebhookWise" \
+      org.opencontainers.image.description="Webhook ingestion, analysis, forwarding, and observability service" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.source="https://github.com/itswl/WebhookWise"
 
 # 从构建阶段复制已安装的依赖
 COPY --from=builder /opt/venv /opt/venv

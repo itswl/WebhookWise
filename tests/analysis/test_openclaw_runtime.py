@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 from datetime import timedelta
 from typing import Any
@@ -32,7 +31,7 @@ class _FakeWebSocket:
             if isinstance(value, BaseException):
                 raise value
             return value
-        raise asyncio.TimeoutError
+        raise TimeoutError
 
 
 class _HistoryWebSocket(_FakeWebSocket):
@@ -398,7 +397,7 @@ async def test_openclaw_challenge_and_handshake_branches(monkeypatch: pytest.Mon
         [json.dumps({"type": "event", "event": "connect.challenge", "payload": {"nonce": "nonce-1"}})]
     )
     assert await openclaw._try_recv_challenge(challenge_ws, policy=WsPolicy()) == "nonce-1"
-    assert await openclaw._try_recv_challenge(_FakeWebSocket([asyncio.TimeoutError()]), policy=WsPolicy()) is None
+    assert await openclaw._try_recv_challenge(_FakeWebSocket([TimeoutError()]), policy=WsPolicy()) is None
     assert await openclaw._try_recv_challenge(_FakeWebSocket([RuntimeError("closed")]), policy=WsPolicy()) is None
 
     monkeypatch.setattr(
@@ -447,7 +446,7 @@ async def test_openclaw_challenge_and_handshake_branches(monkeypatch: pytest.Mon
     timeout_ws = _FakeWebSocket(
         [
             json.dumps({"type": "event", "event": "connect.challenge", "payload": {"nonce": "abc"}}),
-            asyncio.TimeoutError(),
+            TimeoutError(),
         ]
     )
     assert await openclaw._handshake(timeout_ws, "gateway-token", timeout=1, policy=WsPolicy()) == (

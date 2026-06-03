@@ -247,7 +247,6 @@ histogram_quantile(
 | `webhook_received_total` | Counter | `webhook_source`、`webhook_status` | 接收到的 webhook 数量 | 某个 source 暴涨说明外部告警激增；失败状态升高说明入口校验、解析或入队有问题 |
 | `webhook_ingress_payload_size_bytes_bucket` | Histogram | `webhook_source`、`webhook_outcome` | webhook payload 大小分布 | 大 payload 会放大解析、DB、AI 和转发压力 |
 | `security_checks_total` | Counter | `security_check`、`security_result` | 安全检查结果计数 | `denied`、`failed` 升高时先查签名、token、来源 IP、限流配置 |
-| `webhook_parse_failures_total` | Counter | `webhook_source`、`webhook_field`、`error_reason` | 告警字段解析失败次数 | 某字段持续失败说明上游 payload schema 变化或字段格式不稳定 |
 
 `webhook_received_total` 是入口吞吐，`http_server_request_duration_seconds_count` 是 HTTP 层吞吐。两者不一定完全相等，因为 HTTP 层还包含 ready、dashboard、静态资源或其他接口。
 
@@ -298,7 +297,6 @@ Dashboard 和查询脚本统一使用 `webhook_running_tasks` 等 recording rule
 | --- | --- | --- | --- | --- |
 | `worker_task_runs_total` | Counter | `worker_task_name`、`worker_task_status` | worker 任务执行次数 | `error` 或 `failed` 升高时按任务名查 Loki 日志 |
 | `worker_task_duration_seconds_bucket` | Histogram | `worker_task_name`、`worker_task_status` | worker 任务耗时 | p95 高说明任务处理慢，继续拆 DB、Redis、AI、Forwarding |
-| `webhook_semaphore_timeouts_total` | Counter | 通常无业务标签 | 获取并发信号量超时次数 | 升高表示当前并发限制被打满，任务排队等待 |
 | `webhook_dead_letter_total` | Counter | 通常无业务标签 | 不再重试的死信数量 | 这是高优先级异常，需要查具体 event 和错误原因 |
 
 Worker 指标主要回答“任务有没有被消费、执行是否成功、耗时是否稳定”。它和 Queue 指标一起看最有价值。
@@ -453,4 +451,3 @@ max_over_time(k6_http_req_duration_p95[30m])
 | `up` | Prometheus | scrape target 是否可用 | 为 0 表示对应 target 抓取失败 |
 | `prometheus_tsdb_wal_writes_failed_total` | Prometheus | WAL 写入失败次数 | 升高说明 Prometheus 本地存储有问题 |
 | `prometheus_tsdb_wal_storage_size_bytes` | Prometheus | WAL 占用空间 | 持续膨胀时检查磁盘和采样量 |
-

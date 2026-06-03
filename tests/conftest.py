@@ -69,24 +69,6 @@ def _has_marker(request: pytest.FixtureRequest, *names: str) -> bool:
 
 
 @pytest.fixture(autouse=True)
-def mock_requests(request: pytest.FixtureRequest):
-    """所有测试默认 mock requests，避免发起真实 HTTP 请求。"""
-    if _has_marker(request, "real_requests", "real_network", "real_services"):
-        yield None
-        return
-    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.content = b"{}"
-        mock_response.text = "{}"
-        mock_response.json.return_value = {}
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
-        mock_get.return_value = mock_response
-        yield {"post": mock_post, "get": mock_get}
-
-
-@pytest.fixture(autouse=True)
 def mock_httpx(request: pytest.FixtureRequest):
     """Mock httpx async client，阻止所有真实 HTTP 请求。"""
     if _has_marker(request, "real_httpx", "real_network", "real_services"):

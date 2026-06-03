@@ -24,7 +24,7 @@ reanalysis_router = APIRouter()
 
 
 @reanalysis_router.post(
-    "/api/reanalyze/{webhook_id}",
+    "/v1/reanalyze/{webhook_id}",
     response_model=ReanalysisResponse,
     dependencies=[Depends(verify_admin_write)],
 )
@@ -106,7 +106,7 @@ async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get
 
 
 @reanalysis_router.post(
-    "/api/forward/{webhook_id}",
+    "/v1/forward/{webhook_id}",
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )

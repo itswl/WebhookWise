@@ -4,7 +4,7 @@ import contextlib
 import inspect
 import time
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import redis.asyncio as redis
 
@@ -15,11 +15,9 @@ from core.logger import get_logger, mask_url
 logger = get_logger("redis_client")
 
 if TYPE_CHECKING:
-    RedisClient: TypeAlias = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
+    type RedisClient = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
 else:
     RedisClient = redis.Redis
-
-T = TypeVar("T")
 
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
 
@@ -104,7 +102,7 @@ def coerce_str(raw: object) -> str | None:
     return str(raw)
 
 
-async def record_redis_operation(operation: str, awaitable: Awaitable[T]) -> T:
+async def record_redis_operation[T](operation: str, awaitable: Awaitable[T]) -> T:
     from core.observability.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
     from core.observability.tracing import otel_span
     from core.redis_health import mark_redis_failure, mark_redis_success

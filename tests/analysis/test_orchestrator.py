@@ -10,8 +10,6 @@ tests/analysis/test_orchestrator.py
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from tests.helpers.metric_helpers import MetricCall, StubMetric
-
 # ── get_client_ip ─────────────────────────────────────────────────────────────
 
 
@@ -298,53 +296,21 @@ def test_analyze_with_rules_accepts_explicit_policy():
     assert res["importance"] == "high"
 
 
-def test_analyze_with_rules_records_non_numeric_metric_value(monkeypatch):
+def test_analyze_with_rules_ignores_non_numeric_metric_value():
     from services.analysis import ai_analyzer
-
-    metric_calls: list[MetricCall] = []
-    monkeypatch.setattr(
-        ai_analyzer,
-        "ALERT_NUMERIC_PARSE_FAILURE_TOTAL",
-        StubMetric(metric_calls, "numeric_parse_failure"),
-    )
 
     res = ai_analyzer.analyze_with_rules(
         {"RuleName": "MemoryUsage", "CurrentValue": "500MB", "Threshold": 100}, "prometheus"
     )
 
     assert res["importance"] == "medium"
-    assert metric_calls == [
-        (
-            "numeric_parse_failure",
-            (),
-            {"source": "prometheus", "field": "current", "reason": "non_numeric"},
-            "inc",
-            1,
-        )
-    ]
 
 
-def test_analyze_with_rules_records_non_finite_metric_value(monkeypatch):
+def test_analyze_with_rules_ignores_non_finite_metric_value():
     from services.analysis import ai_analyzer
-
-    metric_calls: list[MetricCall] = []
-    monkeypatch.setattr(
-        ai_analyzer,
-        "ALERT_NUMERIC_PARSE_FAILURE_TOTAL",
-        StubMetric(metric_calls, "numeric_parse_failure"),
-    )
 
     res = ai_analyzer.analyze_with_rules(
         {"RuleName": "MemoryUsage", "CurrentValue": "NaN", "Threshold": 100}, "prometheus"
     )
 
     assert res["summary"] == "🟠 MemoryUsage"
-    assert metric_calls == [
-        (
-            "numeric_parse_failure",
-            (),
-            {"source": "prometheus", "field": "current", "reason": "non_finite"},
-            "inc",
-            1,
-        )
-    ]

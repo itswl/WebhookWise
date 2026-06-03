@@ -231,9 +231,10 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"worker.webhook_process_task"' in tasks
     assert '"worker.task.name": "webhook_process_task"' in tasks
     assert "worker.task.status" in tasks
-    assert '"pipeline.step": "validate"' in pipeline
-    assert '"pipeline.step": "dedup"' in pipeline
-    assert '"pipeline.step": "noise"' in pipeline
+    assert '"pipeline.step": step' in pipeline
+    assert '_pipeline_step(ctx, "validate")' in pipeline
+    assert '_pipeline_step(ctx, "dedup")' in pipeline
+    assert '_pipeline_step(ctx, "noise")' in pipeline
     assert '"webhook.dedup"' in pipeline
     assert "webhook.pipeline.step.completed" in pipeline
     assert '"forward.target_type": first_target_type' in forwarding_stage
@@ -390,7 +391,7 @@ def test_docs_and_e2e_cover_project_operability_contracts() -> None:
     assert 'ENABLE_AI_ANALYSIS: "true"' in e2e_compose
     assert 'CACHE_ENABLED: "true"' in e2e_compose
     assert 'ENABLE_ALERT_NOISE_REDUCTION: "true"' in e2e_compose
-    assert "/api/forward-rules" in e2e_runner
+    assert "/v1/forward-rules" in e2e_runner
     assert "e2e-admin-write-key" in e2e_runner
     assert "http://open.feishu.cn:9000/open-apis/bot/v2/hook/e2e-token" in e2e_runner
     assert "AI E2E 摘要" in e2e_runner

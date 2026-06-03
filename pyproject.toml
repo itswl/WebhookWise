@@ -1,3 +1,9 @@
+[project]
+name = "webhookwise"
+version = "0.1.0"
+description = "Webhook ingestion, analysis, forwarding, and observability service."
+requires-python = ">=3.12"
+
 [tool.ruff]
 line-length = 120
 
@@ -17,7 +23,6 @@ markers = [
   "real_httpx: allow a test to use the real httpx client instead of the default mock",
   "real_network: allow a test to use real outbound HTTP libraries",
   "real_redis: allow a test to use a real Redis client instead of the default mock",
-  "real_requests: allow a test to use real requests calls instead of the default mock",
   "real_services: allow a test to opt out of default external-service mocks",
 ]
 

@@ -14,8 +14,10 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
 
     startup_calls: list[dict[str, object]] = []
     shutdown_calls: list[dict[str, object]] = []
+    validated_configs: list[object] = []
     sleeps: list[float] = []
     contexts = [SimpleNamespace(config=SimpleNamespace(name="config"))]
+    scheduler_config = SimpleNamespace(name="scheduler-config")
 
     monkeypatch.setattr(
         taskiq_broker,
@@ -48,7 +50,8 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
 
     monkeypatch.setattr("core.app_context.init_default_app_context", init_context)
     monkeypatch.setattr("core.app_context.get_default_app_context", lambda: contexts[0])
-    monkeypatch.setattr("core.web.startup_checks.validate_startup_security", lambda _config: None)
+    monkeypatch.setattr("core.config.UnifiedConfigManager", lambda: scheduler_config)
+    monkeypatch.setattr("core.web.startup_checks.validate_startup_security", lambda config: validated_configs.append(config))
     lifecycle = ModuleType("core.service_lifecycle")
     lifecycle.start_runtime_services = start_services
     lifecycle.stop_runtime_services = stop_services
@@ -69,6 +72,18 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     assert startup_calls[0]["initialize_redis_client"] is True
     assert startup_calls[0]["initialize_ai_client"] is True
     assert shutdown_calls[0]["reset_ai_client"] is True
+    assert shutdown_calls[-1] == {"shutdown": True}
+
+    monkeypatch.setattr(
+        taskiq_broker,
+        "_settings",
+        SimpleNamespace(run_mode="scheduler", worker_startup_jitter_seconds=0.0),
+    )
+    await taskiq_broker.scheduler_startup_event(object())
+    await taskiq_broker.scheduler_shutdown_event(object())
+
+    assert scheduler_config in validated_configs
+    assert startup_calls[-1] == {"setup_observability": True}
     assert shutdown_calls[-1] == {"shutdown": True}
 
 

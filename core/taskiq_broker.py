@@ -107,13 +107,32 @@ scheduler = TaskiqScheduler(
     sources=[LabelScheduleSource(broker), dynamic_schedule_source],
 )
 
-if _settings.run_mode == "scheduler":
+
+@broker.on_event(TaskiqEvents.CLIENT_STARTUP)
+async def scheduler_startup_event(state: object) -> None:
+    """Scheduler process startup hook."""
+    if _settings.run_mode != "scheduler":
+        logger.debug("[TaskIQ] 跳过 scheduler runtime 初始化 run_mode=%s", _settings.run_mode)
+        return
+
     from core.config import UnifiedConfigManager
     from core.observability import setup_observability
     from core.web.startup_checks import validate_startup_security
 
     validate_startup_security(UnifiedConfigManager())
     setup_observability()
+
+
+@broker.on_event(TaskiqEvents.CLIENT_SHUTDOWN)
+async def scheduler_shutdown_event(state: object) -> None:
+    """Scheduler process shutdown hook."""
+    if _settings.run_mode != "scheduler":
+        logger.debug("[TaskIQ] 跳过 scheduler runtime 关闭 run_mode=%s", _settings.run_mode)
+        return
+
+    from core.observability import shutdown_observability
+
+    shutdown_observability()
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)

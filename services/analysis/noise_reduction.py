@@ -81,9 +81,12 @@ def _extract_resource_ids(parsed_data: AlertPayload) -> set[str]:
     for item in resources:
         if not isinstance(item, dict):
             continue
-        candidate = next((str(v).strip() for k in ("InstanceId", "Id", "id") if (v := item.get(k)) and str(v).strip()), None)
-        if candidate:
-            ids.add(candidate.lower())
+        for key in ("InstanceId", "Id", "id"):
+            value = item.get(key)
+            candidate = str(value).strip() if value else ""
+            if candidate:
+                ids.add(candidate.lower())
+                break
 
     alerts = _safe_list(parsed_data.get("alerts"))
     if alerts:

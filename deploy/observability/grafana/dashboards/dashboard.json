@@ -1581,7 +1581,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "",
+      "description": "Webhook storm/backpressure suppressions over the selected range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1646,13 +1646,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(webhook_semaphore_timeouts_total[$__range]) or vector(0)",
-          "legendFormat": "timeouts",
+          "expr": "sum(increase(webhook_storm_suppressed_total[$__range])) or vector(0)",
+          "legendFormat": "suppressed",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "并发信号量超时 (Semaphore Timeouts)",
+      "title": "告警风暴抑制 (Storm Suppression)",
       "type": "stat"
     },
     {

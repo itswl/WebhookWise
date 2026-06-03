@@ -60,7 +60,7 @@ export default function () {
         headers["X-Webhook-Signature"] = sign(body);
     }
 
-    const response = http.post(`${BASE_URL}/webhook/k6`, body, {
+    const response = http.post(`${BASE_URL}/v1/webhook/k6`, body, {
         headers,
         tags: {
             endpoint: "webhook_receive",

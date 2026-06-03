@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import httpx
@@ -41,7 +41,7 @@ async def test_ai_usage_stats_periods_and_cache_math(
     async def count_with_timeout(_session: object, _stmt: object) -> int:
         return 12
 
-    monkeypatch.setattr(analysis_queries, "utcnow", lambda: datetime(2026, 5, 27, tzinfo=timezone.utc))
+    monkeypatch.setattr(analysis_queries, "utcnow", lambda: datetime(2026, 5, 27, tzinfo=UTC))
     monkeypatch.setattr(analysis_queries, "count_with_timeout", count_with_timeout)
 
     stats = await analysis_queries.get_ai_usage_stats(Session(), period=period)  # type: ignore[arg-type]
@@ -59,7 +59,7 @@ async def test_ai_usage_stats_periods_and_cache_math(
 async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.analysis import analysis_queries
 
-    created = datetime(2026, 5, 27, 8, 0, tzinfo=timezone.utc)
+    created = datetime(2026, 5, 27, 8, 0, tzinfo=UTC)
     records = [
         (
             SimpleNamespace(

@@ -174,7 +174,7 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
 
     class Request:
         client = SimpleNamespace(host="1.2.3.4")
-        url = SimpleNamespace(path="/api/admin")
+        url = SimpleNamespace(path="/v1/admin")
         method = "POST"
         headers = {"authorization": "Bearer bad"}
 

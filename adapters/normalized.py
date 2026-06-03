@@ -36,7 +36,12 @@ class AlertIdentity:
             "fingerprint": self.fingerprint,
             "severity": self.severity,
         }
-        return {key: normalized for key, value in values.items() if (normalized := _normalize_identity_value(value))}
+        payload: dict[str, str] = {}
+        for key, value in values.items():
+            normalized = _normalize_identity_value(value)
+            if normalized is not None:
+                payload[key] = normalized
+        return payload
 
 
 def with_alert_identity(data: Mapping[str, Any], identity: AlertIdentity) -> WebhookData:
@@ -49,7 +54,9 @@ def extract_alert_identity(data: Mapping[str, Any]) -> dict[str, str] | None:
     value = data.get(IDENTITY_FIELD)
     if not isinstance(value, dict):
         return None
-    identity = {
-        str(key): normalized for key, raw in value.items() if (normalized := _normalize_identity_value(raw)) is not None
-    }
+    identity: dict[str, str] = {}
+    for key, raw in value.items():
+        normalized = _normalize_identity_value(raw)
+        if normalized is not None:
+            identity[str(key)] = normalized
     return identity or None

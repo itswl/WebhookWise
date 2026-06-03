@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from core.logger import get_logger
@@ -38,7 +38,7 @@ def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolic
 async def _schedule_by_time(schedule_id: str, delay_seconds: int, task: Any, **kwargs: Any) -> None:
     """Shared scheduling helper: delete existing, then schedule at future time."""
     await dynamic_schedule_source.delete_schedule(schedule_id)
-    run_at = datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds)))
+    run_at = datetime.now(UTC) + timedelta(seconds=max(0, int(delay_seconds)))
     await task.kicker().with_schedule_id(schedule_id).schedule_by_time(dynamic_schedule_source, run_at, **kwargs)
 
 

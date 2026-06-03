@@ -4,8 +4,6 @@ ruff==0.6.9
 bandit==1.7.9
 pip-audit==2.8.0
 mypy>=1.11.2
-types-requests>=2.32.0
-requests>=2.32.4
 types-redis>=4.6.0
 types-PyYAML>=6.0.12
 PyYAML==6.0.1

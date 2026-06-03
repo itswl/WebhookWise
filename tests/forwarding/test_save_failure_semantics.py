@@ -25,10 +25,10 @@ def test_build_event_fill_fields_works():
     assert event.is_duplicate is True
 
 
-def test_fill_fields_rejects_unknown_fields() -> None:
+def test_fill_fields_rejects_unknown_fields_at_call_boundary() -> None:
     event = WebhookEvent()
 
-    with pytest.raises(ValueError, match="duplicate_from"):
+    with pytest.raises(TypeError, match="duplicate_from"):
         event.fill_fields(source="test", duplicate_from=1)
 
 

@@ -115,7 +115,6 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         "AI_DEGRADATIONS_TOTAL": ("ai.degradation.reason",),
         "WORKER_TASKS_TOTAL": ("worker.task.name", "worker.task.status"),
         "WORKER_TASK_DURATION_SECONDS": ("worker.task.name", "worker.task.status"),
-        "WEBHOOK_SEMAPHORE_TIMEOUTS_TOTAL": (),
         "FORWARD_DELIVERY_TOTAL": ("forward.target_type", "forward.status"),
         "FORWARD_DELIVERY_DURATION_SECONDS": ("forward.target_type", "forward.status"),
         "FORWARD_OUTBOX_RECORDS_TOTAL": ("forward.target_type", "forward.status"),
