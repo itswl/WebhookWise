@@ -1,5 +1,5 @@
 # ====== 构建阶段 ======
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN python -m venv /opt/venv && \
 
 
 # ====== 运行阶段 ======
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG APP_VERSION=0.1.0
 
