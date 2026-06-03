@@ -7,7 +7,7 @@ ROOT = PROJECT_ROOT
 
 
 def test_grafana_trace_log_correlation_is_bidirectional() -> None:
-    datasources = yaml.safe_load((ROOT / "deploy/observability/grafana-datasources.yml").read_text())["datasources"]
+    datasources = yaml.safe_load((ROOT / "deploy/observability/grafana/provisioning/datasources.yml").read_text())["datasources"]
     by_uid = {item["uid"]: item for item in datasources}
 
     prometheus = by_uid["prometheus"]["jsonData"]["exemplarTraceIdDestinations"]
@@ -28,7 +28,7 @@ def test_grafana_trace_log_correlation_is_bidirectional() -> None:
 
 
 def test_alloy_routes_otlp_logs_without_file_tailing() -> None:
-    config = (ROOT / "deploy/observability/alloy.alloy").read_text()
+    config = (ROOT / "deploy/observability/alloy/config.alloy").read_text()
     assert 'loki.source.file "webhook_logs"' not in config
     assert 'loki.process "webhook_logs"' not in config
     assert "logs    = [otelcol.processor.memory_limiter.default.input]" in config
@@ -44,17 +44,17 @@ def test_alloy_routes_otlp_logs_without_file_tailing() -> None:
 
 
 def test_prometheus_loads_webhookwise_rules() -> None:
-    prometheus = yaml.safe_load((ROOT / "deploy/observability/prometheus.yml").read_text())
+    prometheus = yaml.safe_load((ROOT / "deploy/observability/prometheus/prometheus.yml").read_text())
     assert "/etc/prometheus/rules/*.yml" in prometheus["rule_files"]
     alerting_targets = prometheus["alerting"]["alertmanagers"][0]["static_configs"][0]["targets"]
     assert "alertmanager:9093" in alerting_targets
 
     compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
-    assert "../../deploy/observability/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro" in compose
-    assert "../../deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" in compose
+    assert "../../deploy/observability/prometheus/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro" in compose
+    assert "../../deploy/observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" in compose
     assert "alertmanager:" in compose
 
-    rules = yaml.safe_load((ROOT / "deploy/observability/alerts.yml").read_text())["groups"]
+    rules = yaml.safe_load((ROOT / "deploy/observability/prometheus/alerts.yml").read_text())["groups"]
     records = {rule["record"] for group in rules for rule in group["rules"] if "record" in rule}
     alerts = {rule["alert"] for group in rules for rule in group["rules"] if "alert" in rule}
     assert {
@@ -105,12 +105,12 @@ def test_prometheus_loads_webhookwise_rules() -> None:
         "WebhookWiseCircuitBreakerOpen",
         "WebhookWiseLokiDrops",
     } <= alerts
-    alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager.yml").read_text())
+    alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager/alertmanager.yml").read_text())
     assert alertmanager["route"]["receiver"] == "webhookwise-local"
 
 
 def test_tempo_enables_traceql_metrics_generator() -> None:
-    tempo = yaml.safe_load((ROOT / "deploy/observability/tempo.yml").read_text())
+    tempo = yaml.safe_load((ROOT / "deploy/observability/tempo/tempo.yml").read_text())
 
     processors = tempo["overrides"]["defaults"]["metrics_generator"]["processors"]
     assert "local-blocks" in processors

@@ -35,7 +35,7 @@ sum by (security_check, security_result) (
 )
 ```
 
-![API metrics in Prometheus](../../../assets/observability-local-lab/api-prometheus.jpg)
+![API metrics in Prometheus](assets/api-prometheus.jpg)
 
 ### Worker
 
@@ -59,7 +59,7 @@ webhook_running_tasks
 or webhook_running_tasks_ratio
 ```
 
-![Worker metrics in Prometheus](../../../assets/observability-local-lab/worker-prometheus.jpg)
+![Worker metrics in Prometheus](assets/worker-prometheus.jpg)
 
 ### Scheduler
 
@@ -77,7 +77,7 @@ time() - scheduler_task_last_success_unixtime_seconds
 scheduler_task_lag_seconds
 ```
 
-![Scheduler metrics in Prometheus](../../../assets/observability-local-lab/scheduler-prometheus.jpg)
+![Scheduler metrics in Prometheus](assets/scheduler-prometheus.jpg)
 
 ### Queue
 
@@ -101,7 +101,7 @@ sum by (queue_name, queue_operation, queue_status) (
 )
 ```
 
-![Queue metrics in Prometheus](../../../assets/observability-local-lab/queue-prometheus.jpg)
+![Queue metrics in Prometheus](assets/queue-prometheus.jpg)
 
 ### Database Client And Pool
 
@@ -146,7 +146,7 @@ histogram_quantile(
 )
 ```
 
-![DB and Redis client metrics in Prometheus](../../../assets/observability-local-lab/db-redis-prometheus.jpg)
+![DB and Redis client metrics in Prometheus](assets/db-redis-prometheus.jpg)
 
 ### AI / Forwarding / Domain Events
 
@@ -177,7 +177,7 @@ sum by (event_name) (
 )
 ```
 
-![AI, forwarding, and domain event metrics](../../../assets/observability-local-lab/ai-forward-events-prometheus.jpg)
+![AI, forwarding, and domain event metrics](assets/ai-forward-events-prometheus.jpg)
 
 ## 指标解释速查
 

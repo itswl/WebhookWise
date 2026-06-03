@@ -81,7 +81,7 @@ def test_local_compose_quickstart_uses_infra_service_dns() -> None:
 def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> None:
     env_example = (ROOT / ".env.example.all").read_text()
     compose = yaml.safe_load((ROOT / "deploy/compose/docker-compose.observability.yml").read_text())
-    alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager.yml").read_text())
+    alertmanager = yaml.safe_load((ROOT / "deploy/observability/alertmanager/alertmanager.yml").read_text())
 
     assert ":latest" not in env_example
     assert ":latest" not in (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
