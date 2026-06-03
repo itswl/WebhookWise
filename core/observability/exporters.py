@@ -54,8 +54,7 @@ def otlp_protocol() -> str:
     protocol = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "").strip().lower()
     if protocol:
         return protocol
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
-    return "http/protobuf" if endpoint.startswith(("http://", "https://")) else "grpc"
+    return "grpc"
 
 
 def otlp_timeout() -> int:

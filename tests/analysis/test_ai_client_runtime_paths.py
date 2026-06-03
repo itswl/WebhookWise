@@ -106,7 +106,9 @@ async def test_analyze_with_openai_tracks_prompt_usage_cost_and_span_attrs(
     async def load_user_prompt_template() -> str:
         return "source={source}\nidentity={identity_json}\ndata={data_json}"
 
-    async def create_with_completion(_client: object, *, model: str, user_prompt: str, policy: object) -> tuple[object, object]:
+    async def create_with_completion(
+        _client: object, *, model: str, user_prompt: str, policy: object
+    ) -> tuple[object, object]:
         prompts.append(user_prompt)
         assert model == "gpt-test"
         assert isinstance(policy, _Policy)
@@ -185,7 +187,9 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
 ) -> None:
     ai_llm_client, metric_calls = ai_runtime
 
-    async def analyze_success(_data: dict[str, object], source: str, *, http_client: httpx.AsyncClient | None = None) -> tuple[dict[str, object], int, int]:
+    async def analyze_success(
+        _data: dict[str, object], source: str, *, http_client: httpx.AsyncClient | None = None
+    ) -> tuple[dict[str, object], int, int]:
         assert source == "source-a"
         assert http_client is None
         return {"summary": "ok"}, 3, 4
@@ -193,7 +197,9 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
     monkeypatch.setattr(ai_llm_client, "_analyze_with_openai_tracked", analyze_success)
     assert await ai_llm_client._call_ai_with_retry({"a": 1}, "source-a") == ({"summary": "ok"}, 3, 4)
 
-    async def analyze_error(_data: dict[str, object], _source: str, *, http_client: httpx.AsyncClient | None = None) -> tuple[dict[str, object], int, int]:
+    async def analyze_error(
+        _data: dict[str, object], _source: str, *, http_client: httpx.AsyncClient | None = None
+    ) -> tuple[dict[str, object], int, int]:
         raise ValueError("bad payload")
 
     monkeypatch.setattr(ai_llm_client, "_analyze_with_openai_tracked", analyze_error)

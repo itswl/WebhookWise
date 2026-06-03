@@ -322,10 +322,7 @@ def _idempotency_key(
     is_periodic_reminder: bool,
     extra: str = "",
 ) -> str:
-    raw = (
-        f"{webhook_id}|{rule_id or 'default'}|{target_type}|{target_url}|"
-        f"{int(is_periodic_reminder)}|{extra}"
-    )
+    raw = f"{webhook_id}|{rule_id or 'default'}|{target_type}|{target_url}|{int(is_periodic_reminder)}|{extra}"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"forward:{webhook_id}:{digest[:32]}"
 
@@ -642,11 +639,7 @@ async def list_outbox_records(
         query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
         for f in filters:
             query = query.where(f)
-        query = (
-            query.where(ForwardOutbox.id < cursor)
-            if cursor is not None
-            else query.offset((page - 1) * page_size)
-        )
+        query = query.where(ForwardOutbox.id < cursor) if cursor is not None else query.offset((page - 1) * page_size)
         query = query.limit(page_size + 1)
         rows = (await session.execute(query)).scalars().all()
         has_more = len(rows) > page_size

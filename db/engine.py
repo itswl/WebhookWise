@@ -4,13 +4,13 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.logger import get_logger, mask_url
 
 _logger = get_logger("db.engine")
 
 
-def _build_engine_kwargs(config: UnifiedConfigManager) -> dict[str, Any]:
+def _build_engine_kwargs(config: AppConfig) -> dict[str, Any]:
     """返回连接池公共参数"""
     return {
         "echo": False,
@@ -28,7 +28,7 @@ def _build_engine_kwargs(config: UnifiedConfigManager) -> dict[str, Any]:
     }
 
 
-def _async_url(config: UnifiedConfigManager) -> str:
+def _async_url(config: AppConfig) -> str:
     """将 DATABASE_URL 的 driver 前缀安全替换为 asyncpg。
 
     不使用 make_url 解析，避免密码含 @#%: 等特殊字符时被误判为 URL 分隔符。
@@ -41,7 +41,7 @@ def _async_url(config: UnifiedConfigManager) -> str:
 
 
 def build_engine_and_session_factory(
-    config: UnifiedConfigManager | None = None,
+    config: AppConfig | None = None,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     if config is None:
         from core.app_context import get_config_manager
@@ -60,7 +60,7 @@ def build_engine_and_session_factory(
     return engine, session_factory
 
 
-async def init_engine(config: UnifiedConfigManager | None = None) -> None:
+async def init_engine(config: AppConfig | None = None) -> None:
     """Ensure the current AppContext owns a DB engine and session factory."""
     from core.app_context import get_or_create_default_app_context
 

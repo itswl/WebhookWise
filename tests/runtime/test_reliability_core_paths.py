@@ -122,10 +122,13 @@ async def test_send_feishu_deep_analysis_handles_missing_url_and_enqueue_error(
 
     monkeypatch.setattr(notifications, "forward_notification", forward_notification)
 
-    assert await notifications.send_feishu_deep_analysis(
-        "https://example.com/hook",
-        {"analysis_result": {"summary": "x"}, "engine": "openclaw"},
-    ) is False
+    assert (
+        await notifications.send_feishu_deep_analysis(
+            "https://example.com/hook",
+            {"analysis_result": {"summary": "x"}, "engine": "openclaw"},
+        )
+        is False
+    )
 
 
 @pytest.mark.asyncio

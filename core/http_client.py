@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.logger import get_logger
 from core.observability.tracing import inject_trace_headers
 
@@ -14,7 +14,7 @@ async def _inject_trace_headers(request: httpx.Request) -> None:
 
 
 def build_http_client(
-    config: UnifiedConfigManager | None = None,
+    config: AppConfig | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.AsyncClient:
     if config is None:

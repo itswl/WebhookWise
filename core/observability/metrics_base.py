@@ -46,10 +46,8 @@ def _histogram_views() -> list[Any]:
 
     buckets_by_instrument: dict[str, Sequence[float]] = {
         "http.server.request.duration": request_seconds,
-        "webhook.ingress.request.duration": request_seconds,
         "webhook.processing.duration": request_seconds,
         "webhook.pipeline.step.duration": request_seconds,
-        "webhook.dedup.duration": fast_seconds,
         "webhook.noise.evaluation.duration": fast_seconds,
         "webhook.ingress.payload.size": bytes_buckets,
         "ai.request.duration": ai_seconds,

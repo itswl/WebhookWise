@@ -90,23 +90,8 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         "SECURITY_CHECKS_TOTAL": ("security.check", "security.result"),
         "WEBHOOK_INGRESS_PAYLOAD_BYTES": ("webhook.source", "webhook.outcome"),
         "WEBHOOK_INGRESS_REQUESTS_TOTAL": ("webhook.source", "webhook.outcome"),
-        "WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS": ("webhook.source", "webhook.outcome"),
         "WEBHOOK_PIPELINE_STEP_TOTAL": ("pipeline.step", "webhook.source", "webhook.outcome"),
         "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS": ("pipeline.step", "webhook.source", "webhook.outcome"),
-        "WEBHOOK_DEDUP_DECISIONS_TOTAL": ("webhook.source", "dedup.action"),
-        "WEBHOOK_DEDUP_DURATION_SECONDS": ("webhook.source", "dedup.action"),
-        "WEBHOOK_ANALYSIS_RESULTS_TOTAL": (
-            "webhook.source",
-            "webhook.route",
-            "webhook.importance",
-            "ai.degraded",
-        ),
-        "WEBHOOK_FORWARD_DECISIONS_TOTAL": (
-            "webhook.source",
-            "forward.decision",
-            "forward.reason",
-            "forward.target_type",
-        ),
         "WEBHOOK_NOISE_EVALUATIONS_TOTAL": ("webhook.source", "webhook.relation", "webhook.suppressed"),
         "WEBHOOK_NOISE_EVALUATION_DURATION_SECONDS": ("webhook.source", "webhook.relation", "webhook.suppressed"),
         "AI_REQUESTS_TOTAL": ("webhook.source", "ai.engine", "ai.status"),
@@ -127,9 +112,6 @@ def test_component_metric_label_contracts_are_low_cardinality() -> None:
         "DB_SESSION_DURATION_SECONDS": ("db.operation", "db.status"),
         "REDIS_OPERATIONS_TOTAL": ("redis.operation", "redis.status"),
         "REDIS_OPERATION_DURATION_SECONDS": ("redis.operation", "redis.status"),
-        "REDIS_HEALTH_STATE": ("redis.state",),
-        "CIRCUIT_BREAKER_REQUESTS_TOTAL": ("circuit_breaker.name", "circuit_breaker.outcome"),
-        "CIRCUIT_BREAKER_TRANSITIONS_TOTAL": ("circuit_breaker.name", "circuit_breaker.state"),
         "CIRCUIT_BREAKER_STATE": ("circuit_breaker.name", "circuit_breaker.state"),
     }
 

@@ -49,6 +49,7 @@ from services.webhooks.types import (
 logger = get_logger("openclaw.poll")
 MANUAL_RETRY_STARTED_AT_KEY = MANUAL_RETRY_STARTED_AT
 
+
 async def _safe_notify(coro: Any) -> None:
     try:
         await coro
@@ -317,7 +318,9 @@ async def _handle_completed_poll_result(
         return _completed_update(rec, text, timeout_started_at)
 
     logger.info("[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s", record_id, msg_count, len(text))
-    await _set_poll_stability(record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}, policy=policy)
+    await _set_poll_stability(
+        record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}, policy=policy
+    )
     return _poll_skip(record_id)
 
 

@@ -783,6 +783,15 @@ def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
     )
     rows.append(_contract_row("dashboard-and-rules-metric-coverage", not unknown, _detail_list(unknown)))
 
+    consumed_expressions = expressions + list(PROMQL_PRESETS.values())
+    consumed_metrics = _referenced_prometheus_metrics([expand_grafana_macros(expr) for expr in consumed_expressions])
+    unconsumed = sorted(
+        dotted_name
+        for kind, dotted_name, unit in _metric_definitions(metrics_text)
+        if not (_prometheus_names_for_definition(kind, dotted_name, unit) & consumed_metrics)
+    )
+    rows.append(_contract_row("custom-metrics-have-consumers", not unconsumed, _detail_list(unconsumed)))
+
     parse_errors = [expr for expr in expanded_expressions if not _promql_is_balanced(expr)]
     rows.append(_contract_row("promql-basic-parse", not parse_errors, f"{len(expressions)} expressions checked"))
 
@@ -832,16 +841,22 @@ def _detail_list(items: list[str]) -> str:
 def _defined_prometheus_metrics(metrics_text: str) -> set[str]:
     names: set[str] = set()
     for kind, dotted_name, unit in _metric_definitions(metrics_text):
-        bases = _prometheus_metric_bases(dotted_name, unit)
-        if kind == "Counter":
-            for base in bases:
-                names.update({base, f"{base}_total"})
-        elif kind == "Histogram":
-            for base in bases:
-                names.update({f"{base}_bucket", f"{base}_count", f"{base}_sum"})
-        elif kind == "Gauge":
-            for base in bases:
-                names.update({base, f"{base}_ratio"})
+        names.update(_prometheus_names_for_definition(kind, dotted_name, unit))
+    return names
+
+
+def _prometheus_names_for_definition(kind: str, dotted_name: str, unit: str) -> set[str]:
+    names: set[str] = set()
+    bases = _prometheus_metric_bases(dotted_name, unit)
+    if kind == "Counter":
+        for base in bases:
+            names.update({base, f"{base}_total"})
+    elif kind == "Histogram":
+        for base in bases:
+            names.update({f"{base}_bucket", f"{base}_count", f"{base}_sum"})
+    elif kind == "Gauge":
+        for base in bases:
+            names.update({base, f"{base}_ratio"})
     return names
 
 
@@ -1126,7 +1141,9 @@ def _health_loki_proxy(endpoints: Endpoints) -> dict[str, str]:
         return {"service": "loki-proxy", "status": "error", "detail": str(exc)[:200]}
 
 
-def dashboard_queries(path: str | Path = "deploy/observability/grafana/dashboards/dashboard.json") -> list[dict[str, str]]:
+def dashboard_queries(
+    path: str | Path = "deploy/observability/grafana/dashboards/dashboard.json",
+) -> list[dict[str, str]]:
     raw = json.loads(Path(path).read_text())
     queries: list[dict[str, str]] = []
     for panel in raw.get("panels", []):

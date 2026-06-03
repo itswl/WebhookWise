@@ -12,7 +12,6 @@ from api.dashboard import dashboard_router
 from api.health import health_router
 from api.v1.router import v1_router
 from core.app_context import AppContext, get_default_app_context, init_default_app_context, set_default_app_context
-from core.config import UnifiedConfigManager
 from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
@@ -26,7 +25,7 @@ logger = get_logger("app")
 def _app_context(app: FastAPI) -> AppContext:
     context = getattr(app.state, "app_context", None)
     if not isinstance(context, AppContext):
-        context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
+        context = get_default_app_context() or init_default_app_context()
         app.state.app_context = context
     return context
 
@@ -75,7 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan, debug=False)
-app.state.app_context = get_default_app_context() or init_default_app_context(UnifiedConfigManager())
+app.state.app_context = get_default_app_context() or init_default_app_context()
 
 
 @app.exception_handler(Exception)

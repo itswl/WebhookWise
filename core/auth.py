@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.app_context import get_config_manager
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 
@@ -35,7 +35,7 @@ def _matches_any_configured_token(credentials: str | None, *tokens: str) -> bool
 async def verify_api_key(
     request: Request,
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
-    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+    config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> bool:
     """验证管理 API Bearer Token。"""
     api_key = config.security.API_KEY
@@ -75,7 +75,7 @@ async def verify_api_key(
 async def verify_admin_write(
     request: Request,
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
-    config: UnifiedConfigManager = _CONFIG_DEPENDENCY,
+    config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> bool:
     """验证 Admin 写操作 Bearer Token。"""
     admin_write_key = config.security.ADMIN_WRITE_KEY

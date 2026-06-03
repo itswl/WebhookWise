@@ -292,7 +292,9 @@ async def test_app_context_lazy_resources_close_and_dependency_fallback(
     live_client = httpx.AsyncClient()
     fallback_client = httpx.AsyncClient()
     try:
-        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app_context=app_context.AppContext(http_client=live_client))))
+        request = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(app_context=app_context.AppContext(http_client=live_client)))
+        )
         assert app_context.get_http_client_dependency(request) is live_client
         request.app.state.app_context = object()
         monkeypatch.setattr("core.http_client.get_http_client", lambda: fallback_client)

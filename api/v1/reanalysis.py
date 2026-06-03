@@ -28,7 +28,9 @@ reanalysis_router = APIRouter()
     response_model=ReanalysisResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def reanalyze_webhook(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict | JSONResponse:
+async def reanalyze_webhook(
+    webhook_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
     try:
         logger.info("[Reanalysis] 重新分析请求 webhook_id=%s", webhook_id)
         event = await session.get(WebhookEvent, webhook_id)
@@ -133,7 +135,9 @@ async def manual_forward_webhook(
                 target_url = await validate_outbound_url(target_url)
             except UnsafeTargetUrlError as e:
                 logger.warning("[Reanalysis] 手动转发目标 URL 被拒绝 webhook_id=%s error=%s", webhook_id, e)
-                return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
+                return JSONResponse(
+                    status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE}
+                )
 
         ctx = await build_webhook_context(event)
         fwd_res = await forward_notification(

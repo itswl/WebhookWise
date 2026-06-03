@@ -50,8 +50,10 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
 
     monkeypatch.setattr("core.app_context.init_default_app_context", init_context)
     monkeypatch.setattr("core.app_context.get_default_app_context", lambda: contexts[0])
-    monkeypatch.setattr("core.config.UnifiedConfigManager", lambda: scheduler_config)
-    monkeypatch.setattr("core.web.startup_checks.validate_startup_security", lambda config: validated_configs.append(config))
+    monkeypatch.setattr(taskiq_broker, "get_settings", lambda: scheduler_config)
+    monkeypatch.setattr(
+        "core.web.startup_checks.validate_startup_security", lambda config: validated_configs.append(config)
+    )
     lifecycle = ModuleType("core.service_lifecycle")
     lifecycle.start_runtime_services = start_services
     lifecycle.stop_runtime_services = stop_services
@@ -178,7 +180,9 @@ async def test_outbox_worker_scheduling_deliver_and_process_branches(monkeypatch
     await outbox.process_forward_outbox_by_id(10)
     await outbox.process_forward_outbox_by_id(10)
     await outbox.process_forward_outbox_by_id(10)
-    statuses = [args[1] for name, args, _kwargs, action, _value in metric_calls if name == "RECORDS" and action == "inc"]
+    statuses = [
+        args[1] for name, args, _kwargs, action, _value in metric_calls if name == "RECORDS" and action == "inc"
+    ]
     assert {"not_claimed", "failed", "sent"} <= set(statuses)
 
 
@@ -242,12 +246,9 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
     assert (await outbox.deliver_outbox_record(empty_record))["channel"] == "remote"
 
 
-def test_forward_rule_matching_payload_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forward_rule_matching_payload_paths() -> None:
     from services.webhooks import decisioning
     from services.webhooks.decisioning import ForwardRuleSnapshot
-
-    metric_calls: list[MetricCall] = []
-    monkeypatch.setattr(decisioning, "FORWARD_RULE_MATCH_TOTAL", StubMetric(metric_calls, "RULES"))
 
     def rule(**overrides: object) -> ForwardRuleSnapshot:
         values: dict[str, object] = {
@@ -278,7 +279,9 @@ def test_forward_rule_matching_payload_paths(monkeypatch: pytest.MonkeyPatch) ->
     assert not decisioning._rule_matches(rule(), event_type="other", importance="high", source="prometheus")
     assert not decisioning._rule_matches(rule(), event_type="alert", importance="low", source="prometheus")
     assert not decisioning._rule_matches(rule(), event_type="alert", importance="high", source="other")
-    assert not decisioning._rule_matches(rule(), event_type="alert", importance="high", source="prometheus", is_duplicate=True)
+    assert not decisioning._rule_matches(
+        rule(), event_type="alert", importance="high", source="prometheus", is_duplicate=True
+    )
     assert decisioning._rule_matches(
         rule(match_duplicate="all"),
         event_type="alert",
@@ -295,7 +298,6 @@ def test_forward_rule_matching_payload_paths(monkeypatch: pytest.MonkeyPatch) ->
         parsed_data=payload,
     )
     assert [item.name for item in selected] == ["rule", "stop"]
-    assert metric_calls
 
 
 def test_taskiq_wiring_exports_registered_entrypoints() -> None:

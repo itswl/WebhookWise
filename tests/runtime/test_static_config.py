@@ -31,14 +31,12 @@ def test_config_keys_are_derived_from_config_models() -> None:
     assert keys["OPENAI_API_KEY"] == {"type": "str", "sub": "ai"}
 
 
-def test_config_manager_sections_are_explicit_properties() -> None:
+def test_config_manager_no_longer_wraps_settings_sections() -> None:
+    import core.config as config
     import core.config.manager as manager
-    from core.config.manager import UnifiedConfigManager
 
-    assert not hasattr(manager, "_ConfigSection")
-    assert isinstance(UnifiedConfigManager.server, property)
-    assert isinstance(UnifiedConfigManager.notifications, property)
-    assert isinstance(UnifiedConfigManager.retry, property)
+    assert not hasattr(config, "UnifiedConfigManager")
+    assert not hasattr(manager, "UnifiedConfigManager")
 
 
 def test_full_env_example_covers_config_model_keys() -> None:

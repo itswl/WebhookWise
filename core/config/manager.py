@@ -1,4 +1,4 @@
-"""Static configuration facade backed by ``core.config.defaults.get_settings``."""
+"""Static configuration metadata backed by ``core.config.defaults.get_settings``."""
 
 from __future__ import annotations
 
@@ -7,23 +7,7 @@ from typing import Literal, TypedDict, get_args, get_origin
 
 from pydantic_settings import BaseSettings
 
-from core.config.defaults import (
-    AIConfig,
-    AppConfig,
-    CircuitBreakerConfig,
-    DBConfig,
-    MaintenanceConfig,
-    MQConfig,
-    NoiseConfig,
-    NotificationConfig,
-    OpenClawConfig,
-    RedisConfig,
-    RetryConfig,
-    SecurityConfig,
-    ServerConfig,
-    TaskConfig,
-    get_settings,
-)
+from core.config.defaults import get_settings
 
 ConfigValueType = Literal["str", "int", "float", "bool"]
 
@@ -63,66 +47,3 @@ def get_config_keys() -> dict[str, ConfigKeyMeta]:
                 continue
             keys[key] = {"type": value_type, "sub": sub_name}
     return keys
-
-
-class UnifiedConfigManager:
-    """Read-only access to process configuration loaded at startup."""
-
-    def __init__(self, settings: AppConfig | None = None) -> None:
-        self._settings = settings
-
-    @property
-    def app(self) -> AppConfig:
-        return self._settings or get_settings()
-
-    @property
-    def server(self) -> ServerConfig:
-        return self.app.server
-
-    @property
-    def tasks(self) -> TaskConfig:
-        return self.app.tasks
-
-    @property
-    def mq(self) -> MQConfig:
-        return self.app.mq
-
-    @property
-    def security(self) -> SecurityConfig:
-        return self.app.security
-
-    @property
-    def db(self) -> DBConfig:
-        return self.app.db
-
-    @property
-    def redis(self) -> RedisConfig:
-        return self.app.redis
-
-    @property
-    def noise(self) -> NoiseConfig:
-        return self.app.noise
-
-    @property
-    def ai(self) -> AIConfig:
-        return self.app.ai
-
-    @property
-    def notifications(self) -> NotificationConfig:
-        return self.app.notifications
-
-    @property
-    def openclaw(self) -> OpenClawConfig:
-        return self.app.openclaw
-
-    @property
-    def circuit_breaker(self) -> CircuitBreakerConfig:
-        return self.app.circuit_breaker
-
-    @property
-    def retry(self) -> RetryConfig:
-        return self.app.retry
-
-    @property
-    def maintenance(self) -> MaintenanceConfig:
-        return self.app.maintenance

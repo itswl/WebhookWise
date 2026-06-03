@@ -239,12 +239,16 @@ def build_alert_identity_context(source: str, data: JsonMap) -> dict[str, Any]:
     _put(
         identity,
         "metric_description",
-        _first_non_empty(first_metric.get("DescriptionCN"), first_metric.get("Description"), first_metric.get("DescriptionEN")),
+        _first_non_empty(
+            first_metric.get("DescriptionCN"), first_metric.get("Description"), first_metric.get("DescriptionEN")
+        ),
     )
     _put(identity, "current_value", first_metric.get("CurrentValue"))
     _put(identity, "threshold", first_metric.get("Threshold"))
     _put(identity, "unit", first_metric.get("Unit"))
-    _put(identity, "trigger_condition", _first_non_empty(first_metric.get("TriggerCondition"), data.get("RuleCondition")))
+    _put(
+        identity, "trigger_condition", _first_non_empty(first_metric.get("TriggerCondition"), data.get("RuleCondition"))
+    )
     _put(
         identity,
         "fingerprint",
@@ -265,7 +269,9 @@ def build_alert_identity_context(source: str, data: JsonMap) -> dict[str, Any]:
     _put(
         identity,
         "instance",
-        _first_non_empty(_pick_label(labels, "instance"), _pick_label(common_labels, "instance"), resource.get("InstanceId")),
+        _first_non_empty(
+            _pick_label(labels, "instance"), _pick_label(common_labels, "instance"), resource.get("InstanceId")
+        ),
     )
     _put(identity, "job", _first_non_empty(_pick_label(labels, "job"), _pick_label(common_labels, "job")))
     _put(

@@ -21,9 +21,7 @@ cffi==2.0.0
     #   -c requirements.lock
     #   cryptography
 charset-normalizer==3.4.7
-    # via
-    #   -c requirements.lock
-    #   requests
+    # via requests
 coverage==7.14.0
     # via pytest-cov
 cryptography==47.0.0
@@ -43,7 +41,6 @@ googleapis-common-protos==1.74.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 greenlet==3.5.0
     # via -r requirements-dev.txt
 grpcio==1.80.0
@@ -83,7 +80,6 @@ opentelemetry-api==1.41.1
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -96,12 +92,7 @@ opentelemetry-exporter-otlp-proto-common==1.41.1
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-grpc==1.41.1
-    # via
-    #   -c requirements.lock
-    #   -r requirements-dev.txt
-opentelemetry-exporter-otlp-proto-http==1.41.1
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
@@ -139,13 +130,11 @@ opentelemetry-proto==1.41.1
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.41.1
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-semantic-conventions==0.62b1
     # via
     #   -c requirements.lock
@@ -226,9 +215,7 @@ redis==7.4.0
     #   fakeredis
 requests==2.33.1
     # via
-    #   -c requirements.lock
     #   cachecontrol
-    #   opentelemetry-exporter-otlp-proto-http
     #   pip-audit
 rich==13.9.4
     # via
@@ -262,7 +249,6 @@ typing-extensions==4.15.0
     #   mypy
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   pytest-asyncio

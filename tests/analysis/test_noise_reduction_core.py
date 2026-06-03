@@ -274,9 +274,7 @@ def test_analyze_related_alert_detected():
         event_id=1, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"}, offset_seconds=120
     )
 
-    decision = analyze_noise_reduction(
-        current, [related], window_minutes=5, min_confidence=0.4, suppress_derived=True
-    )
+    decision = analyze_noise_reduction(current, [related], window_minutes=5, min_confidence=0.4, suppress_derived=True)
     assert decision.relation != "standalone"
 
 

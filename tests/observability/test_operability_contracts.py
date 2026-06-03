@@ -57,16 +57,15 @@ def test_dependency_updates_and_ai_dev_entrypoint_are_configured() -> None:
     assert "Keep metrics labels stable and machine-readable" in guide
 
 
-def test_dockerfile_uses_directory_copy_contract() -> None:
+def test_dockerfile_uses_single_context_copy_with_dockerignore_boundary() -> None:
     lines = (ROOT / "Dockerfile").read_text().splitlines()
     copy_lines = [line.strip() for line in lines if line.strip().startswith("COPY ")]
+    dockerignore = (ROOT / ".dockerignore").read_text()
 
-    assert not any(re.match(r"^COPY\s+\./?\s+", line) for line in copy_lines)
-    assert "COPY core/ ./core/" in copy_lines
-    assert "COPY api/ ./api/" in copy_lines
-    assert "COPY services/ ./services/" in copy_lines
-    assert "COPY adapters/ ./adapters/" in copy_lines
-    assert "COPY scripts/ ./scripts/" in copy_lines
+    assert "COPY . ." in copy_lines
+    assert "tests/" in dockerignore
+    assert "docs/" in dockerignore
+    assert ".github/" in dockerignore
 
 
 def test_local_compose_quickstart_uses_infra_service_dns() -> None:
@@ -86,9 +85,14 @@ def test_local_compose_quickstart_uses_infra_service_dns() -> None:
         "deploy/compose/docker-compose.infra.yml",
         "deploy/compose/docker-compose.yml",
     ]
-    assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example
+    assert (
+        "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example
+    )
     assert "REDIS_URL=redis://redis:6379/0" in env_example
-    assert "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks" in env_example_all
+    assert (
+        "DATABASE_URL=postgresql://webhook_user:please-change-postgres-password@postgres:5432/webhooks"
+        in env_example_all
+    )
     assert "POSTGRES_PASSWORD=please-change-postgres-password" in env_example_all
 
 

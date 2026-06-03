@@ -455,7 +455,9 @@ async def test_data_maintenance_uses_importance_before_source_and_default_retent
             await session.scalars(select(WebhookEvent.request_id).order_by(WebhookEvent.request_id.asc()))
         ).all()
         archived_request_ids = (
-            await session.scalars(select(ArchivedWebhookEvent.request_id).order_by(ArchivedWebhookEvent.request_id.asc()))
+            await session.scalars(
+                select(ArchivedWebhookEvent.request_id).order_by(ArchivedWebhookEvent.request_id.asc())
+            )
         ).all()
 
     assert archived_count == 3

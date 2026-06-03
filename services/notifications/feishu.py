@@ -161,9 +161,7 @@ def _display_deep_value(value: object, *, separator: str = "\n", max_depth: int 
     if isinstance(value, dict):
         if _depth < max_depth:
             for key in _DEEP_TEXT_FIELD_CANDIDATES:
-                text = _display_deep_value(
-                    value.get(key), separator=separator, max_depth=max_depth, _depth=_depth + 1
-                )
+                text = _display_deep_value(value.get(key), separator=separator, max_depth=max_depth, _depth=_depth + 1)
                 if text:
                     return text
         try:
@@ -410,7 +408,9 @@ def build_deep_analysis_card(
     summary = _section_text(view.get("summary") or view.get("conclusion"), 900)
     root_cause = view.get("root_cause") or view.get("reason") or view.get("analysis") or view.get("failure_reason")
     impact = view.get("impact") or view.get("impact_scope")
-    recommendations = view.get("recommendations") or view.get("actions") or view.get("next_steps") or view.get("solution")
+    recommendations = (
+        view.get("recommendations") or view.get("actions") or view.get("next_steps") or view.get("solution")
+    )
     evidence = view.get("evidence") or view.get("supports") or view.get("observations")
 
     elements: list[JsonObject] = [

@@ -42,9 +42,7 @@ class IngressPolicy:
             max_body_bytes=max(0, int(cfg.security.MAX_WEBHOOK_BODY_BYTES or 0)),
             ingress_backpressure_threshold=max(0, int(cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
             ingress_backpressure_window_seconds=max(1, int(cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
-            ingress_backpressure_fail_open_on_redis_error=bool(
-                cfg.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR
-            ),
+            ingress_backpressure_fail_open_on_redis_error=bool(cfg.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR),
         )
 
 
@@ -90,4 +88,3 @@ class WebhookRetryPolicy:
             max_delay=int(cfg.retry.WEBHOOK_RETRY_MAX_DELAY),
             backoff_multiplier=float(cfg.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
         )
-

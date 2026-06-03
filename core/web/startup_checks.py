@@ -1,4 +1,4 @@
-from core.config import UnifiedConfigManager
+from core.config import AppConfig
 
 _PLACEHOLDER_SECRETS = {"change-me", "changeme", "replace-me", "please-change", "please-change-me"}
 _DEFAULT_DATABASE_URL_MARKERS = (
@@ -10,10 +10,7 @@ _DEFAULT_DATABASE_URL_MARKERS = (
 
 def looks_like_placeholder_secret(value: str) -> bool:
     normalized = value.strip().lower()
-    return (
-        normalized in _PLACEHOLDER_SECRETS
-        or normalized.startswith(("please-change-", "replace-me-"))
-    )
+    return normalized in _PLACEHOLDER_SECRETS or normalized.startswith(("please-change-", "replace-me-"))
 
 
 def looks_like_default_database_url(value: str) -> bool:
@@ -21,7 +18,7 @@ def looks_like_default_database_url(value: str) -> bool:
     return any(marker in normalized for marker in _DEFAULT_DATABASE_URL_MARKERS)
 
 
-def validate_startup_security(config: UnifiedConfigManager, *, app_env: str | None = None) -> None:
+def validate_startup_security(config: AppConfig, *, app_env: str | None = None) -> None:
     env = app_env or config.server.APP_ENV
     if env == "production" and looks_like_default_database_url(config.db.DATABASE_URL):
         raise RuntimeError("DATABASE_URL 仍是本地默认连接串，请配置生产数据库连接")

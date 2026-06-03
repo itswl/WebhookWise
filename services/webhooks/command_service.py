@@ -14,7 +14,7 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
-from models import WebhookEvent
+from models import WebhookEvent, WebhookEventInput
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
 from services.webhooks.types import AnalysisResult, WebhookData, WebhookProcessingStatus, unknown_analysis_result
@@ -103,22 +103,24 @@ def _fill_duplicate_event(
     importance: str | None,
 ) -> None:
     event.fill_fields(
-        source=payload.source,
-        request_id=payload.request_id,
-        client_ip=payload.client_ip,
-        parsed_data=payload.data,
-        alert_hash=payload.alert_hash,
-        dedup_key=payload.dedup_key,
-        ai_analysis=ai_analysis,
-        importance=importance,
-        forward_status=payload.forward_status,
-        is_duplicate=True,
-        duplicate_of=original_id,
-        duplicate_count=duplicate_count,
-        headers=payload.headers,
-        raw_payload=payload.raw_payload,
-        processing_status=WebhookProcessingStatus.COMPLETED,
-        next_retry_at=None,
+        WebhookEventInput(
+            source=payload.source,
+            request_id=payload.request_id,
+            client_ip=payload.client_ip,
+            parsed_data=payload.data,
+            alert_hash=payload.alert_hash,
+            dedup_key=payload.dedup_key,
+            ai_analysis=ai_analysis,
+            importance=importance,
+            forward_status=payload.forward_status,
+            is_duplicate=True,
+            duplicate_of=original_id,
+            duplicate_count=duplicate_count,
+            headers=payload.headers,
+            raw_payload=payload.raw_payload,
+            processing_status=WebhookProcessingStatus.COMPLETED,
+            next_retry_at=None,
+        )
     )
 
 
@@ -130,23 +132,25 @@ def _fill_completed_event(
     next_retry_at: datetime | None = None,
 ) -> None:
     event.fill_fields(
-        source=payload.source,
-        request_id=payload.request_id,
-        client_ip=payload.client_ip,
-        raw_payload=payload.raw_payload,
-        headers=payload.headers,
-        parsed_data=payload.data,
-        alert_hash=payload.alert_hash,
-        dedup_key=payload.dedup_key,
-        ai_analysis=payload.ai_analysis,
-        importance=payload.ai_analysis.get("importance") if payload.ai_analysis else None,
-        forward_status=payload.forward_status,
-        processing_status=processing_status,
-        next_retry_at=next_retry_at,
-        is_duplicate=False,
-        duplicate_count=1,
-        last_notified_at=None,
-        prev_alert_id=payload.prev_alert_id,
+        WebhookEventInput(
+            source=payload.source,
+            request_id=payload.request_id,
+            client_ip=payload.client_ip,
+            raw_payload=payload.raw_payload,
+            headers=payload.headers,
+            parsed_data=payload.data,
+            alert_hash=payload.alert_hash,
+            dedup_key=payload.dedup_key,
+            ai_analysis=payload.ai_analysis,
+            importance=payload.ai_analysis.get("importance") if payload.ai_analysis else None,
+            forward_status=payload.forward_status,
+            processing_status=processing_status,
+            next_retry_at=next_retry_at,
+            is_duplicate=False,
+            duplicate_count=1,
+            last_notified_at=None,
+            prev_alert_id=payload.prev_alert_id,
+        )
     )
 
 

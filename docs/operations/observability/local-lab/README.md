@@ -44,7 +44,7 @@ docker compose up -d --build
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
 
-如果要让 API、Worker、Scheduler 上报到本地观测栈，`.env` 中至少需要开启 `OTEL_ENABLED=true`、`OTEL_LOGS_ENABLED=true`，并设置 `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318`。启用 Pyroscope 时同时设置 `PYROSCOPE_ENABLED=true`、`PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`，修改后重启业务容器。
+如果要让 API、Worker、Scheduler 上报到本地观测栈，`.env` 中至少需要开启 `OTEL_ENABLED=true`、`OTEL_LOGS_ENABLED=true`，并设置 `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317`、`OTEL_EXPORTER_OTLP_PROTOCOL=grpc`。启用 Pyroscope 时同时设置 `PYROSCOPE_ENABLED=true`、`PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`，修改后重启业务容器。
 
 确认服务状态：
 
@@ -118,7 +118,7 @@ Dashboard 面板覆盖范围、No data 语义和维护 checklist 见 [dashboards
 3. 是否入队和消费：查 `queue_operations_total`、`queue_pending`、`queue_lag`；`queue_depth` 只表示 Redis Stream 保留长度。
 4. worker 是否处理：查 `worker_task_runs_total`、`webhook_processed_total`、`webhook_processing_duration_seconds_bucket`。
 5. DB/Redis 是否慢或失败：查 `db_sessions_total`、`redis_operations_total`、对应 duration bucket。
-6. 是否转发/AI 异常：查 `webhook_forward_decisions_total`、`forward_*`、`ai_requests_total`、`ai_*`、Loki 里按 `trace_id` / `event.name` 搜。
+6. 是否转发/AI 异常：查 `forward_*`、`ai_requests_total`、`ai_*`、Loki 里按 `trace_id` / `event.name` 搜。
 7. 需要链路细节：Tempo 按 `service.name`、`trace_id` 或 Grafana 的 trace/log 跳转。
 8. CPU/内存疑点：Pyroscope profiles 或 Beyla `process_*` 指标。
 

@@ -7,7 +7,9 @@ ROOT = PROJECT_ROOT
 
 
 def test_grafana_trace_log_correlation_is_bidirectional() -> None:
-    datasources = yaml.safe_load((ROOT / "deploy/observability/grafana/provisioning/datasources.yml").read_text())["datasources"]
+    datasources = yaml.safe_load((ROOT / "deploy/observability/grafana/provisioning/datasources.yml").read_text())[
+        "datasources"
+    ]
     by_uid = {item["uid"]: item for item in datasources}
 
     prometheus = by_uid["prometheus"]["jsonData"]["exemplarTraceIdDestinations"]
@@ -268,10 +270,8 @@ def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeyp
 
     for instrument in (
         "http.server.request.duration",
-        "webhook.ingress.request.duration",
         "webhook.processing.duration",
         "webhook.ingress.payload.size",
-        "webhook.dedup.duration",
         "ai.request.duration",
         "db.session.duration",
         "queue.operation.duration",

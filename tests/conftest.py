@@ -43,12 +43,12 @@ def initialize_adapter_registry():
 def reset_default_app_context():
     """Keep AppContext-owned resources isolated between tests."""
     from core.app_context import AppContext, set_default_app_context
-    from core.config import UnifiedConfigManager, get_settings
+    from core.config import get_settings
     from core.redis_health import reset_redis_health
     from services.forwarding.rules import invalidate_forward_rules_cache
 
     settings = get_settings().model_copy(deep=True)
-    context = AppContext(config=UnifiedConfigManager(settings))
+    context = AppContext(config=settings)
     reset_redis_health()
     invalidate_forward_rules_cache()
     set_default_app_context(context)

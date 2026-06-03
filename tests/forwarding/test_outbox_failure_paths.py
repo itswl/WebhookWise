@@ -430,10 +430,7 @@ async def test_list_outbox_records_uses_cursor_pagination(
 ) -> None:
     from services.forwarding.outbox import list_outbox_records
 
-    ids = [
-        await _insert_outbox(session_factory, webhook_event_id=idx)
-        for idx in range(1, 4)
-    ]
+    ids = [await _insert_outbox(session_factory, webhook_event_id=idx) for idx in range(1, 4)]
 
     first = await list_outbox_records(page_size=2)
     assert [item["id"] for item in first["items"]] == list(reversed(ids))[0:2]

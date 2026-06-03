@@ -376,11 +376,17 @@ def test_histogram_views_and_meter_provider_lifecycle(
         ExplicitBucketHistogramAggregation=ExplicitBucketHistogramAggregation,
     )
     _install_module(monkeypatch, "opentelemetry.sdk.metrics", MeterProvider=MeterProvider)
-    _install_module(monkeypatch, "opentelemetry.sdk.metrics.export", PeriodicExportingMetricReader=PeriodicExportingMetricReader)
-    _install_module(monkeypatch, "opentelemetry.metrics", set_meter_provider=lambda provider: configured.update(provider=provider))
+    _install_module(
+        monkeypatch, "opentelemetry.sdk.metrics.export", PeriodicExportingMetricReader=PeriodicExportingMetricReader
+    )
+    _install_module(
+        monkeypatch, "opentelemetry.metrics", set_meter_provider=lambda provider: configured.update(provider=provider)
+    )
     monkeypatch.setattr(metrics_base, "otel_enabled", lambda: True)
     monkeypatch.setattr(metrics_base, "build_metric_exporter", lambda: "metric-exporter")
-    monkeypatch.setattr(metrics_base, "env_int", lambda name, default: {"OTEL_METRIC_EXPORT_INTERVAL": 10}.get(name, default))
+    monkeypatch.setattr(
+        metrics_base, "env_int", lambda name, default: {"OTEL_METRIC_EXPORT_INTERVAL": 10}.get(name, default)
+    )
     monkeypatch.setattr(metrics_base, "build_resource", lambda service_name=None: {"service.name": service_name})
 
     views = metrics_base._histogram_views()
@@ -447,9 +453,7 @@ def test_metric_wrappers_create_instruments_cache_and_observe_values(
     assert meter.histogram_creates == 1
     assert calls[0] == ("add", 2, {"worker.task.name": "webhook"})
     assert calls[1] == ("add", 3, {"worker.task.name": "forward"})
-    assert any(
-        call[0] == "record" and call[1] == 1.5 and call[2]["worker.task.name"] == "webhook" for call in calls
-    )
+    assert any(call[0] == "record" and call[1] == 1.5 and call[2]["worker.task.name"] == "webhook" for call in calls)
     assert any(call[0] == "record" and call[1] == 4 for call in calls)
 
 

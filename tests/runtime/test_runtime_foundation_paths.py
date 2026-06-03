@@ -286,10 +286,10 @@ def test_otel_exporter_env_parsing_and_signal_endpoints(monkeypatch: pytest.Monk
     assert exporters.env_flag("FLAG_OFF", default=True) is False
     assert exporters.parse_headers("a=b, empty, c = d=e ") == {"a": "b", "c": "d=e"}
 
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4317")
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
-    assert exporters.otlp_protocol() == "http/protobuf"
-    assert exporters.signal_endpoint("traces") == "http://collector:4318/v1/traces"
+    assert exporters.otlp_protocol() == "grpc"
+    assert exporters.signal_endpoint("traces") == "http://collector:4317"
 
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "collector:4317")
@@ -305,7 +305,9 @@ def test_otel_build_exporter_uses_protocol_specific_classes(monkeypatch: pytest.
         def __init__(self, **kwargs: object) -> None:
             built.append((self.__class__.__name__, dict(kwargs)))
 
-    def fake_import(name: str, globals: object = None, locals: object = None, fromlist: tuple[str, ...] = (), level: int = 0) -> object:
+    def fake_import(
+        name: str, globals: object = None, locals: object = None, fromlist: tuple[str, ...] = (), level: int = 0
+    ) -> object:
         if name.startswith("opentelemetry.exporter.otlp"):
             return SimpleNamespace(OTLPSpanExporter=Exporter)
         return original_import(name, globals, locals, fromlist, level)

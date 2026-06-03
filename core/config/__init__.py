@@ -16,7 +16,7 @@ from core.config.defaults import (
     TaskConfig,
     get_settings,
 )
-from core.config.manager import ConfigKeyMeta, ConfigValueType, UnifiedConfigManager
+from core.config.manager import ConfigKeyMeta, ConfigValueType
 
 __all__ = [
     "AIConfig",
@@ -34,6 +34,5 @@ __all__ = [
     "SecurityConfig",
     "ServerConfig",
     "TaskConfig",
-    "UnifiedConfigManager",
     "get_settings",
 ]

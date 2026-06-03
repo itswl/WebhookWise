@@ -30,7 +30,7 @@ kubectl -n webhookwise get pods
 ```
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` in `configmap.yaml` to your cluster collector
-before production rollout, for example `http://alloy.monitoring.svc:4318`.
+before production rollout, for example `http://alloy.monitoring.svc:4317`.
 The Kubernetes baseline enables OTLP logs, metrics, traces, schema URL
 `https://opentelemetry.io/schemas/1.41.0`, trace-based metric exemplars, and
 `parentbased_traceidratio` head sampling. Keep `OTEL_TRACES_SAMPLER_ARG`

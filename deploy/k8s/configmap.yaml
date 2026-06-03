@@ -14,7 +14,7 @@ data:
   REDIS_URL: redis://webhookwise-redis:6379/0
   OTEL_ENABLED: "true"
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
-  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
   OTEL_SERVICE_NAMESPACE: webhookwise
   OTEL_SERVICE_VERSION: "0.1.0"
   OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0

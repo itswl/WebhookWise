@@ -19,6 +19,24 @@ async def _check_background_process() -> None:
         await dispose_engine()
 
 
+async def _check_migration_completed() -> None:
+    from sqlalchemy import text
+
+    from db.engine import dispose_engine, get_engine, init_engine
+
+    try:
+        await init_engine()
+        engine = get_engine()
+        if engine is None:
+            raise SystemExit(1)
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+            if result.scalar_one_or_none() is None:
+                raise SystemExit(1)
+    finally:
+        await dispose_engine()
+
+
 def _check_api() -> None:
     port = int(os.getenv("PORT") or "8000")
     conn = http.client.HTTPConnection("localhost", port, timeout=5)
@@ -37,7 +55,7 @@ def main() -> int:
     if run_mode in {"worker", "scheduler"}:
         asyncio.run(_check_background_process())
     elif run_mode == "migrate":
-        return 0
+        asyncio.run(_check_migration_completed())
     else:
         _check_api()
     return 0

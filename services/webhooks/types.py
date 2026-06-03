@@ -177,7 +177,9 @@ def set_analysis_route(result: AnalysisResult, route: str) -> AnalysisResult:
     return result
 
 
-def mark_analysis_degraded(result: AnalysisResult, reason: str, *, route: AnalysisRouteType | None = None) -> AnalysisResult:
+def mark_analysis_degraded(
+    result: AnalysisResult, reason: str, *, route: AnalysisRouteType | None = None
+) -> AnalysisResult:
     result[ANALYSIS_DEGRADED] = True
     result[ANALYSIS_DEGRADED_REASON] = reason
     if route is not None:
@@ -407,8 +409,10 @@ def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True) -
                 raise ValueError(f"WebhookData.{key} must be a numeric list")
             normalized[key] = [float(item) for item in value]
         elif key in _DATETIME_WEBHOOK_FIELDS:
-            normalized[key] = value if isinstance(value, (datetime, date)) else _copy_json_compatible(
-                value, path=f"WebhookData.{key}"
+            normalized[key] = (
+                value
+                if isinstance(value, (datetime, date))
+                else _copy_json_compatible(value, path=f"WebhookData.{key}")
             )
         elif key in _JSON_WEBHOOK_FIELDS:
             normalized[key] = _copy_json_compatible(value, path=f"WebhookData.{key}")

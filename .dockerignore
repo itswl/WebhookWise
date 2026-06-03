@@ -12,6 +12,10 @@ logs/
 .DS_Store
 .vscode/
 .idea/
+.github/
+docs/
+tests/
+deploy/
 *.sqlite
 *.db
 webhooks_data/

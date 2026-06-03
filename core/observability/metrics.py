@@ -133,11 +133,6 @@ FORWARD_OUTBOX_RECORDS_TOTAL = Counter(
     "Forwarding outbox lifecycle count",
     ("forward.target_type", "forward.status"),
 )
-FORWARD_RULE_MATCH_TOTAL = Counter(
-    "forward.rule.matches",
-    "Forward rule match count",
-    ("forward.rule_name", "forward.target_type"),
-)
 FORWARD_OUTBOX_PROCESS_DURATION_SECONDS = Histogram(
     "forward.outbox.process.duration",
     "Forwarding outbox processing duration",
@@ -197,29 +192,12 @@ REDIS_OPERATION_DURATION_SECONDS = Histogram(
     ("redis.operation", "redis.status"),
     unit="s",
 )
-REDIS_HEALTH_STATE = Gauge(
-    "redis.health.state",
-    "Current Redis health state as 1 for active and 0 for inactive states",
-    ("redis.state",),
-)
 REDIS_UNAVAILABLE_TOTAL = Counter(
     "redis.unavailable",
     "Redis unavailable degradations by component/action",
     ("redis.component", "redis.action"),
 )
 
-
-CIRCUIT_BREAKER_REQUESTS_TOTAL = Counter(
-    "circuit_breaker.requests",
-    "Circuit breaker request decisions and outcomes",
-    ("circuit_breaker.name", "circuit_breaker.outcome"),
-)
-
-CIRCUIT_BREAKER_TRANSITIONS_TOTAL = Counter(
-    "circuit_breaker.transitions",
-    "Circuit breaker state transitions",
-    ("circuit_breaker.name", "circuit_breaker.state"),
-)
 
 CIRCUIT_BREAKER_STATE = Gauge(
     "circuit_breaker.state",
@@ -281,12 +259,6 @@ WEBHOOK_INGRESS_REQUESTS_TOTAL = Counter(
     "Webhook ingress request outcomes before worker processing",
     ("webhook.source", "webhook.outcome"),
 )
-WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS = Histogram(
-    "webhook.ingress.request.duration",
-    "Time spent receiving and enqueueing a webhook request",
-    ("webhook.source", "webhook.outcome"),
-    unit="s",
-)
 WEBHOOK_INGRESS_PAYLOAD_BYTES = Histogram(
     "webhook.ingress.payload.size",
     "Webhook ingress payload size",
@@ -315,32 +287,6 @@ WEBHOOK_PROCESSING_DURATION_SECONDS = Histogram(
     ("webhook.source", "webhook.outcome"),
     unit="s",
 )
-WEBHOOK_ANALYSIS_ROUTE_TOTAL = Counter(
-    "webhook.analysis.route",
-    "Webhook analysis route decisions",
-    ("webhook.source", "webhook.route"),
-)
-WEBHOOK_ANALYSIS_RESULTS_TOTAL = Counter(
-    "webhook.analysis.results",
-    "Webhook analysis results by route, importance, and degradation state",
-    ("webhook.source", "webhook.route", "webhook.importance", "ai.degraded"),
-)
-WEBHOOK_DEDUP_DECISIONS_TOTAL = Counter(
-    "webhook.dedup.decisions",
-    "Webhook deduplication decisions",
-    ("webhook.source", "dedup.action"),
-)
-WEBHOOK_DEDUP_DURATION_SECONDS = Histogram(
-    "webhook.dedup.duration",
-    "Time spent resolving webhook deduplication",
-    ("webhook.source", "dedup.action"),
-    unit="s",
-)
-WEBHOOK_FORWARD_DECISIONS_TOTAL = Counter(
-    "webhook.forward.decisions",
-    "Webhook forwarding decisions after analysis",
-    ("webhook.source", "forward.decision", "forward.reason", "forward.target_type"),
-)
 WEBHOOK_NOISE_EVALUATIONS_TOTAL = Counter(
     "webhook.noise.evaluations",
     "Noise-reduction evaluation count",
@@ -363,11 +309,6 @@ WEBHOOK_PROCESSING_STATUS_COUNT = Gauge(
     "webhook.processing.status_count",
     "Webhook event count by processing status",
     ("webhook.status",),
-)
-WEBHOOK_IDENTITY_DEGRADED_TOTAL = Counter(
-    "webhook.identity.degraded",
-    "Webhook identity degraded count (no adapter-produced alert identity)",
-    ("webhook.source",),
 )
 
 
@@ -398,9 +339,7 @@ __all__ = [
     "AI_REQUESTS_TOTAL",
     "AI_TOKENS_TOTAL",
     "Counter",
-    "CIRCUIT_BREAKER_REQUESTS_TOTAL",
     "CIRCUIT_BREAKER_STATE",
-    "CIRCUIT_BREAKER_TRANSITIONS_TOTAL",
     "DATABASE_EVENTS_COUNT",
     "DB_HEALTH_STATE",
     "DB_POOL_CHECKED_OUT",
@@ -413,7 +352,6 @@ __all__ = [
     "FORWARD_OUTBOX_BACKLOG_AGE_SECONDS",
     "FORWARD_OUTBOX_PROCESS_DURATION_SECONDS",
     "FORWARD_OUTBOX_RECORDS_TOTAL",
-    "FORWARD_RULE_MATCH_TOTAL",
     "Gauge",
     "Histogram",
     "OBSERVABILITY_EVENTS_TOTAL",
@@ -421,7 +359,6 @@ __all__ = [
     "OPENAI_ERRORS_TOTAL",
     "QUEUE_OPERATION_DURATION_SECONDS",
     "QUEUE_OPERATIONS_TOTAL",
-    "REDIS_HEALTH_STATE",
     "REDIS_UNAVAILABLE_TOTAL",
     "REDIS_OPERATION_DURATION_SECONDS",
     "REDIS_OPERATIONS_TOTAL",
@@ -432,14 +369,7 @@ __all__ = [
     "SECURITY_CHECKS_TOTAL",
     "WEBHOOK_DEAD_LETTER_TOTAL",
     "WEBHOOK_INGRESS_PAYLOAD_BYTES",
-    "WEBHOOK_INGRESS_REQUEST_DURATION_SECONDS",
     "WEBHOOK_INGRESS_REQUESTS_TOTAL",
-    "WEBHOOK_ANALYSIS_ROUTE_TOTAL",
-    "WEBHOOK_ANALYSIS_RESULTS_TOTAL",
-    "WEBHOOK_DEDUP_DECISIONS_TOTAL",
-    "WEBHOOK_DEDUP_DURATION_SECONDS",
-    "WEBHOOK_FORWARD_DECISIONS_TOTAL",
-    "WEBHOOK_IDENTITY_DEGRADED_TOTAL",
     "WEBHOOK_MQ_GROUP_LAG",
     "WEBHOOK_MQ_GROUP_PENDING",
     "WEBHOOK_MQ_STREAM_LENGTH",

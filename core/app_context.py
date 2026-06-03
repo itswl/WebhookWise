@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import httpx
 from fastapi import Request
 
-from core.config import UnifiedConfigManager
+from core.config import AppConfig, get_settings
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class AppContext:
-    config: UnifiedConfigManager = field(default_factory=UnifiedConfigManager)
+    config: AppConfig = field(default_factory=get_settings)
     http_client: httpx.AsyncClient | None = None
     redis_client: RedisClient | None = None
     db_engine: AsyncEngine | None = None
@@ -80,13 +80,13 @@ def get_default_app_context() -> AppContext | None:
     return _default_context.get()
 
 
-def init_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
-    context = AppContext(config=config or UnifiedConfigManager())
+def init_default_app_context(config: AppConfig | None = None) -> AppContext:
+    context = AppContext(config=config or get_settings())
     _default_context.set(context)
     return context
 
 
-def get_or_create_default_app_context(config: UnifiedConfigManager | None = None) -> AppContext:
+def get_or_create_default_app_context(config: AppConfig | None = None) -> AppContext:
     context = _default_context.get()
     if context is None:
         return init_default_app_context(config)
@@ -95,9 +95,9 @@ def get_or_create_default_app_context(config: UnifiedConfigManager | None = None
     return context
 
 
-def get_config_manager() -> UnifiedConfigManager:
+def get_config_manager() -> AppConfig:
     context = get_default_app_context()
-    return context.config if context is not None else UnifiedConfigManager()
+    return context.config if context is not None else get_settings()
 
 
 def get_http_client_dependency(request: Request) -> httpx.AsyncClient:

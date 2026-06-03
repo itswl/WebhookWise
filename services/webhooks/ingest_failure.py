@@ -12,7 +12,7 @@ from core.datetime_utils import parse_utc_datetime, utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
 from db.session import session_scope
-from models import WebhookEvent
+from models import WebhookEvent, WebhookEventInput
 from services.webhooks.types import WebhookProcessingStatus
 
 logger = get_logger("webhooks.ingest_failure")
@@ -59,17 +59,19 @@ async def record_raw_ingest_dead_letter(
 
     event = WebhookEvent()
     event.fill_fields(
-        source=source or "unknown",
-        request_id=request_id,
-        client_ip=client_ip or "",
-        raw_payload=raw_body.encode("utf-8"),
-        headers=redact_headers(raw_headers),
-        parsed_data=_parse_raw_body(raw_body),
-        processing_status=WebhookProcessingStatus.DEAD_LETTER,
-        retry_count=max(0, int(retry_count)),
-        failure_reason="retry_exhausted" if retryable else "fat_err",
-        error_message=_safe_error_message(err),
-        timestamp=_parse_received_at(received_at) or utcnow(),
+        WebhookEventInput(
+            source=source or "unknown",
+            request_id=request_id,
+            client_ip=client_ip or "",
+            raw_payload=raw_body.encode("utf-8"),
+            headers=redact_headers(raw_headers),
+            parsed_data=_parse_raw_body(raw_body),
+            processing_status=WebhookProcessingStatus.DEAD_LETTER,
+            retry_count=max(0, int(retry_count)),
+            failure_reason="retry_exhausted" if retryable else "fat_err",
+            error_message=_safe_error_message(err),
+            timestamp=_parse_received_at(received_at) or utcnow(),
+        )
     )
 
     try:

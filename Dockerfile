@@ -51,21 +51,8 @@ LABEL org.opencontainers.image.title="WebhookWise" \
 # 从构建阶段复制已安装的依赖
 COPY --from=builder /opt/venv /opt/venv
 
-# 复制项目文件
-COPY entrypoint.sh .
-COPY gunicorn_config.py .
-COPY core/ ./core/
-COPY api/ ./api/
-COPY models/ ./models/
-COPY db/ ./db/
-COPY services/ ./services/
-COPY adapters/ ./adapters/
-COPY templates/ ./templates/
-COPY prompts/ ./prompts/
-COPY schemas/ ./schemas/
-COPY scripts/ ./scripts/
-COPY alembic.ini .
-COPY alembic/ ./alembic/
+# 复制运行时项目文件；排除边界由 .dockerignore 统一维护，避免遗漏新目录。
+COPY . .
 
 # 注意: 不复制 .env 文件以避免敏感信息打包进镜像
 # 部署时通过挂载卷或环境变量方式注入配置
