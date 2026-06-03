@@ -227,7 +227,7 @@ When metrics change:
 1. Update `scripts/observability/query_lib.py` presets.
 2. Update `.codex/skills/webhookwise-observability/SKILL.md` if the workflow changes.
 3. Update `deploy/observability/grafana/dashboards/dashboard.json` if the dashboard should reflect the change.
-4. Update `deploy/observability/alerts.yml` if the new metric affects SLOs or alerting.
+4. Update `deploy/observability/prometheus/alerts.yml` if the new metric affects SLOs or alerting.
 5. Run:
 
 ```bash

@@ -752,9 +752,9 @@ def telemetry_contract(root: str | Path | None = None) -> list[dict[str, str]]:
         root_path / "deploy/observability/grafana/dashboards/dashboard.json",
         root_path / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json",
     ]
-    rules_text = (root_path / "deploy/observability/alerts.yml").read_text()
+    rules_text = (root_path / "deploy/observability/prometheus/alerts.yml").read_text()
     metrics_text = (root_path / "core/observability/metrics.py").read_text()
-    alloy_text = (root_path / "deploy/observability/alloy.alloy").read_text()
+    alloy_text = (root_path / "deploy/observability/alloy/config.alloy").read_text()
     env_text = (root_path / ".env.example.all").read_text()
     app_compose_text = (root_path / "deploy/compose/docker-compose.yml").read_text()
     docs_text = "\n".join(
