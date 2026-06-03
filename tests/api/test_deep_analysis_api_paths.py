@@ -39,7 +39,8 @@ def _record(**overrides: object) -> SimpleNamespace:
 async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import INTERNAL_ERROR_MESSAGE, deep_analysis
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import deep_analysis
 
     event = SimpleNamespace(id=10, source="prometheus", headers={"x": "1"}, parsed_data={"alertname": "HighCPU"})
 
@@ -134,7 +135,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
 async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import deep_analysis
+    from api.v1 import deep_analysis
     from services.analysis import openclaw as openclaw_service
 
     calls: list[dict[str, object]] = []
@@ -211,7 +212,7 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
 async def test_deep_analysis_list_and_get_endpoints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import deep_analysis
+    from api.v1 import deep_analysis
 
     async def get_deep_analysis_list(*args: object, **kwargs: object) -> dict[str, object]:
         assert args[1:5] == (1, 200, None, "pending")
@@ -246,7 +247,7 @@ async def test_deep_analysis_list_and_get_endpoints(
 
 @pytest.mark.asyncio
 async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import deep_analysis
+    from api.v1 import deep_analysis
     from services.webhooks.types import DeepAnalysisStatus
 
     event = SimpleNamespace(id=10, source="grafana", headers={}, parsed_data={"alertname": "HighCPU"})
@@ -340,7 +341,8 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
 async def test_forward_deep_analysis_validation_success_and_delivery_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, deep_analysis
+    from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE
+    from api.v1 import deep_analysis
     from core.url_security import UnsafeTargetUrlError
     from services.webhooks.types import DeepAnalysisStatus
 

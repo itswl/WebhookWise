@@ -266,7 +266,7 @@ async def test_lifespan_rejects_placeholder_admin_write_key(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import reanalysis
+    from api.v1 import reanalysis
 
     event = SimpleNamespace(
         id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False
@@ -315,7 +315,8 @@ async def test_manual_forward_requires_target_url_field(monkeypatch: pytest.Monk
 
 @pytest.mark.asyncio
 async def test_manual_forward_failure_does_not_leak_downstream_exception(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import DELIVERY_ERROR_MESSAGE, reanalysis
+    from api import DELIVERY_ERROR_MESSAGE
+    from api.v1 import reanalysis
 
     event = SimpleNamespace(
         id=1, source="test", ai_analysis={"summary": "ok"}, forward_status=None, importance="high", is_duplicate=False
@@ -355,7 +356,8 @@ async def test_manual_forward_failure_does_not_leak_downstream_exception(monkeyp
 
 @pytest.mark.asyncio
 async def test_manual_forward_invalid_target_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import TARGET_URL_UNAVAILABLE_MESSAGE, reanalysis
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE
+    from api.v1 import reanalysis
     from core.url_security import UnsafeTargetUrlError
 
     event = SimpleNamespace(
@@ -385,7 +387,8 @@ async def test_manual_forward_invalid_target_error_is_sanitized(monkeypatch: pyt
 
 @pytest.mark.asyncio
 async def test_reanalysis_unhandled_exception_is_sanitized() -> None:
-    from api import INTERNAL_ERROR_MESSAGE, reanalysis
+    from api import INTERNAL_ERROR_MESSAGE
+    from api.v1 import reanalysis
 
     class FakeSession:
         async def get(self, _model: object, _item_id: int) -> object:
@@ -435,7 +438,8 @@ async def test_global_unhandled_exception_handler_is_sanitized() -> None:
 
 @pytest.mark.asyncio
 async def test_forward_rule_test_exception_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import DELIVERY_ERROR_MESSAGE, forwarding
+    from api import DELIVERY_ERROR_MESSAGE
+    from api.v1 import forwarding
 
     rule = SimpleNamespace(id=1, name="leaky", target_type="webhook", target_url="https://example.com/hook")
 
@@ -458,7 +462,8 @@ async def test_forward_rule_test_exception_is_sanitized(monkeypatch: pytest.Monk
 
 @pytest.mark.asyncio
 async def test_forward_rule_invalid_target_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import TARGET_URL_UNAVAILABLE_MESSAGE, forwarding
+    from api import TARGET_URL_UNAVAILABLE_MESSAGE
+    from api.v1 import forwarding
     from core.url_security import UnsafeTargetUrlError
     from schemas.forwarding import ForwardRuleCreateRequest
 
@@ -499,7 +504,7 @@ def test_is_feishu_url_requires_hostname_match() -> None:
 def test_source_hint_is_bounded() -> None:
     from fastapi import HTTPException
 
-    from api.webhook import _normalize_source_hint
+    from api.v1.webhook import _normalize_source_hint
 
     assert _normalize_source_hint(" prometheus ") == "prometheus"
     with pytest.raises(HTTPException):
@@ -520,7 +525,7 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
     async def fake_reload() -> str:
         return "test prompt"
 
-    monkeypatch.setattr("api.admin.reload_user_prompt_template", fake_reload)
+    monkeypatch.setattr("api.v1.admin.reload_user_prompt_template", fake_reload)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -695,8 +700,8 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
     async def fake_kiq(**kwargs: object) -> None:
         enqueued.append(kwargs)
 
-    monkeypatch.setattr("api.webhook.check_ingress_backpressure", fake_backpressure)
-    monkeypatch.setattr("api.webhook.process_webhook_task.kiq", fake_kiq)
+    monkeypatch.setattr("api.v1.webhook.check_ingress_backpressure", fake_backpressure)
+    monkeypatch.setattr("api.v1.webhook.process_webhook_task.kiq", fake_kiq)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -712,7 +717,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
 
 @pytest.mark.asyncio
 async def test_readiness_requires_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api.webhook import readiness_check
+    from api.health import readiness_check
 
     async def db_ok() -> bool:
         return True
@@ -720,8 +725,8 @@ async def test_readiness_requires_redis(monkeypatch: pytest.MonkeyPatch) -> None
     async def redis_failed() -> bool:
         return False
 
-    monkeypatch.setattr("api.webhook.test_db_connection", db_ok)
-    monkeypatch.setattr("api.webhook.redis_ping", redis_failed)
+    monkeypatch.setattr("api.health.test_db_connection", db_ok)
+    monkeypatch.setattr("api.health.redis_ping", redis_failed)
 
     response = await readiness_check()
     body = json.loads(response.body.decode("utf-8"))

@@ -288,7 +288,7 @@ async def test_ingress_backpressure_suppresses_on_redis_error() -> None:
 
 @pytest.mark.asyncio
 async def test_receive_webhook_suppression_does_not_write_db(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api import webhook
+    from api.v1 import webhook
     from services.operations.tasks import process_webhook_task
     from services.webhooks.ingress_backpressure import IngressBackpressureResult
 
