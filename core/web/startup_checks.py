@@ -10,7 +10,10 @@ _DEFAULT_DATABASE_URL_MARKERS = (
 
 def looks_like_placeholder_secret(value: str) -> bool:
     normalized = value.strip().lower()
-    return normalized in _PLACEHOLDER_SECRETS or normalized.startswith("please-change-")
+    return (
+        normalized in _PLACEHOLDER_SECRETS
+        or normalized.startswith(("please-change-", "replace-me-"))
+    )
 
 
 def looks_like_default_database_url(value: str) -> bool:

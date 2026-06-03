@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     migrations._run_alembic_upgrade()
 
     assert captured == {
-        "command": ["alembic", "upgrade", "head"],
+        "command": [sys.executable, "-m", "alembic", "upgrade", "head"],
         "cwd": migrations.PROJECT_ROOT,
         "check": True,
     }
@@ -54,5 +55,7 @@ def test_alembic_history_keeps_current_schema_baseline() -> None:
     assert "0001_current_schema.py" in [path.name for path in revision_paths]
     by_name = {path.name: path for path in revision_paths}
     source = by_name["0001_current_schema.py"].read_text()
-    assert "Base.metadata.create_all" in source
-    assert "Base.metadata.drop_all" in source
+    assert "Base.metadata.create_all" not in source
+    assert "Base.metadata.drop_all" not in source
+    assert "op.create_table" in source
+    assert "op.create_index" in source

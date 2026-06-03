@@ -107,7 +107,7 @@ async def get_deep_analysis_list(
         count_query = count_query.where(DeepAnalysis.status == status_filter)
     if engine_filter:
         count_query = count_query.where(DeepAnalysis.engine == engine_filter)
-    total = (await session.execute(count_query)).scalar() or 0
+    total = await count_with_timeout(session, count_query) or 0
     total_pages = max(1, (total + per_page - 1) // per_page)
 
     query = (

@@ -48,6 +48,7 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
 
     monkeypatch.setattr("core.app_context.init_default_app_context", init_context)
     monkeypatch.setattr("core.app_context.get_default_app_context", lambda: contexts[0])
+    monkeypatch.setattr("core.web.startup_checks.validate_startup_security", lambda _config: None)
     lifecycle = ModuleType("core.service_lifecycle")
     lifecycle.start_runtime_services = start_services
     lifecycle.stop_runtime_services = stop_services
