@@ -20,8 +20,10 @@ _CONFIG_DEPENDENCY = Depends(get_config_manager)
 
 
 def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> str | None:
-    if auth and auth.credentials:
-        return auth.credentials
+    if auth is not None:
+        token = str(auth.credentials).strip() if auth.credentials else ""
+        if token:
+            return token
 
     if auth and auth.scheme:
         token = str(auth.credentials).strip() if auth.credentials else ""
@@ -39,7 +41,25 @@ def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *h
     for key in header_keys:
         candidate = request.headers.get(key)
         if candidate:
-            return str(candidate).strip()
+            token = str(candidate).strip()
+            if token:
+                return token
+
+    query = getattr(request, "query_params", None)
+    if query is not None:
+        for key in (
+            "admin_key",
+            "admin-write-key",
+            "admin_write_key",
+            "api_key",
+            "api-key",
+            "token",
+        ):
+            candidate = query.get(key)
+            if isinstance(candidate, str):
+                token = candidate.strip()
+                if token:
+                    return token
     return None
 
 
