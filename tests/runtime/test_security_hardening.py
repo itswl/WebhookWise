@@ -663,10 +663,10 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(
             headers={"token": "real-secret"},
         )
 
-    assert disabled.status_code == 202
+    assert disabled.status_code == 200
     assert missing_secret.status_code == 401
     assert missing_token.status_code == 401
-    assert valid_token.status_code == 202
+    assert valid_token.status_code == 200
     assert len(enqueued) == 2
 
 
@@ -702,7 +702,7 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/v1/webhook/prometheus", json={"alertname": "canonical"})
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     assert response.json()["message"] == "Webhook received and queued for processing"
     assert len(backpressure_calls) == 1
     assert len(enqueued) == 1

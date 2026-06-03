@@ -68,7 +68,7 @@ export default function () {
     });
 
     check(response, {
-        "webhook accepted": (r) => r.status === 202,
+        "webhook accepted": (r) => r.status === 200,
         "request id returned": (r) => (r.json("request_id") || "").length > 0,
     });
 
