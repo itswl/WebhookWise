@@ -48,11 +48,11 @@ jobs:
             exit 1
           fi
           declared="$(python - <<'PY'
-import tomllib
-with open("pyproject.toml", "rb") as fh:
-    print(tomllib.load(fh)["project"]["version"])
-PY
-)"
+          import tomllib
+          with open("pyproject.toml", "rb") as fh:
+              print(tomllib.load(fh)["project"]["version"])
+          PY
+          )"
           if [[ "$declared" != "$version" ]]; then
             echo "pyproject.toml version $declared does not match release $version" >&2
             exit 1
