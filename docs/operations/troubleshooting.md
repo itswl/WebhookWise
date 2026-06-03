@@ -19,11 +19,13 @@ curl http://localhost:8000/ready
 
 ```bash
 # Docker 模式
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs webhook-service -f
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker -f
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs webhook-service -f
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker -f
 
 # 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
 ```
+
+线上排障时必须保留 `-p webhookwise --env-file .env`。如果省略 `--env-file .env`，Compose 可能不会读取仓库根目录配置，并提示 `DATABASE_URL`、`REDIS_URL`、`API_KEY` 等变量为空；如果省略 `-p webhookwise`，`ps` 可能会查到另一个空 project，看不到正在运行的容器。
 
 日志输出到 stdout；启用观测栈时通过 OTLP logs 进入 Loki。每条日志含 `trace_id`、`span_id`、`request.id`、`webhook.event_id`（若有上下文）。
 
@@ -44,22 +46,22 @@ docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/dock
 
 2. 确认 Worker 进程是否在运行：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml ps worker
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml ps worker
    ```
 
 3. 检查 Worker 日志是否有报错：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker --tail 50
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml logs worker --tail 50
    ```
 
 4. 检查 Redis 连接：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli ping  # 应返回 PONG
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml exec redis redis-cli ping  # 应返回 PONG
    ```
 
 5. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli xinfo stream webhook:queue
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml exec redis redis-cli xinfo stream webhook:queue
    ```
 
 6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
@@ -81,7 +83,7 @@ docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/dock
 
 1. 检查进程环境中的 `ENABLE_AI_ANALYSIS` 和 `OPENAI_API_KEY` 是否已配置。
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
    ```
 
 2. 检查 AI API 连通性（Worker 日志会有 HTTP 错误详情）。
@@ -102,8 +104,8 @@ docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/dock
 
 **排查：**
 ```bash
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml config
-docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service env | sort
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml config
+docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service env | sort
 ```
 
 ---
@@ -142,7 +144,7 @@ docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/dock
 
 1. 确认 `DEEP_ANALYSIS_FEISHU_WEBHOOK` 已配置：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml -f deploy/compose/docker-compose.yml exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
    ```
 
 2. 手动测试飞书 Webhook 连通性：
@@ -227,7 +229,7 @@ docker compose -f deploy/compose/docker-compose.infra.yml -f deploy/compose/dock
 
 2. 检查 Redis 内存：
    ```bash
-   docker compose -f deploy/compose/docker-compose.infra.yml exec redis redis-cli info memory | grep used_memory_human
+   docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.infra.yml exec redis redis-cli info memory | grep used_memory_human
    ```
 
 3. 检查主表 `webhook_events` 行数：如果很大，说明过期数据清理未正常执行。清理由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
