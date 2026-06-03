@@ -214,9 +214,19 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "admin-token")
     assert await auth.verify_admin_write(request, admin_credentials, temp_config) is True
+
     with pytest.raises(HTTPException) as invalid_admin_key:
         await auth.verify_admin_write(request, bad_credentials, temp_config)
     assert invalid_admin_key.value.status_code == 403
+
+    api_as_admin_request = Request()
+    api_as_admin_request.client = None
+    api_as_admin_request.headers = {}
+    api_as_admin_request.query_params = {}
+    with pytest.raises(HTTPException) as api_key_is_read_only:
+        await auth.verify_admin_write(api_as_admin_request, credentials, temp_config)
+    assert api_key_is_read_only.value.status_code == 403
+    assert "API key is insufficient" in str(api_key_is_read_only.value.detail)
 
     request = Request()
     request.headers = {}
