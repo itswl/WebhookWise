@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from contracts.deep_analysis_report import normalize_deep_analysis_report
 from core.datetime_utils import utc_isoformat
 
 
@@ -45,6 +46,7 @@ class DeepAnalysisRecord(BaseModel):
     engine: str | None = None
     user_question: str | None = None
     analysis_result: dict[str, Any] | str | None = None
+    normalized_report: dict[str, Any] = Field(default_factory=dict)
     duration_seconds: float | None = None
     created_at: datetime | str | None = None
     openclaw_run_id: str | None = None
@@ -95,4 +97,5 @@ def deep_analysis_to_dict(record: Any) -> dict[str, Any]:
     for field in ("created_at", "next_poll_at", "last_polled_at"):
         if isinstance(data.get(field), datetime):
             data[field] = utc_isoformat(data[field])
+    data["normalized_report"] = normalize_deep_analysis_report(data.get("analysis_result")).to_dict()
     return data

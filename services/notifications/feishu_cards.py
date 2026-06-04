@@ -5,16 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
+from contracts.deep_analysis_report import DEEP_ANALYSIS_REPORT_SCHEMA, normalize_deep_analysis_report
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
-from services.notifications.feishu_parser import (
-    _build_identity_content,
-    _deep_analysis_view,
-    _markdown_bullets,
-    _section_text,
-)
-from services.webhooks.types import OPENCLAW_TEXT, AnalysisResult
+from services.notifications.feishu_parser import _build_identity_content
+from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {
@@ -27,7 +23,7 @@ _CHINA_TZ = timezone(timedelta(hours=8), "UTC+8")
 
 
 def _add_md_section(elements: list[JsonObject], title: str, content: object, max_len: int = 800) -> None:
-    text = _section_text(content, max_len)
+    text = _truncate_section_text(content, max_len)
     if not text:
         return
     elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{title}**\n{text}"}})
@@ -41,6 +37,40 @@ def _float_or_zero(value: object) -> float:
         except ValueError:
             return 0.0
     return 0.0
+
+
+def _truncate_section_text(value: object, max_len: int) -> str:
+    if value in (None, ""):
+        return ""
+    text = str(value).strip()
+    return text if len(text) <= max_len else text[: max_len - 3] + "..."
+
+
+def _single_line(value: object) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _string_list(value: object) -> list[str]:
+    if not value:
+        return []
+    items = value if isinstance(value, list) else [value]
+    return [text for text in (_single_line(item) for item in items) if text]
+
+
+def _markdown_list(value: object, *, max_items: int = 4, max_item_len: int = 180) -> str:
+    lines = []
+    for item in _string_list(value)[:max_items]:
+        text = item if len(item) <= max_item_len else item[: max_item_len - 3] + "..."
+        if text:
+            lines.append(f"- {text}")
+    return "\n".join(lines)
+
+
+def _normalized_report_from_record(analysis_record: dict[str, Any]) -> dict[str, Any]:
+    existing = analysis_record.get("normalized_report")
+    if isinstance(existing, dict) and existing.get("schema") == DEEP_ANALYSIS_REPORT_SCHEMA:
+        return existing
+    return normalize_deep_analysis_report(analysis_record.get("analysis_result")).to_dict()
 
 
 def _format_card_time(value: object) -> str:
@@ -144,33 +174,28 @@ def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degr
 def build_deep_analysis_card(
     analysis_record: dict[str, Any], source: str = "", webhook_event_id: int = 0
 ) -> JsonObject:
-    result = analysis_record.get("analysis_result", {})
-    result = result if isinstance(result, dict) else {}
-    view = _deep_analysis_view(result)
-    # 兼容 OpenClaw 文本字段
-    if OPENCLAW_TEXT in result and OPENCLAW_TEXT not in view:
-        text = result.get(OPENCLAW_TEXT)
-        if text:
-            view = dict(view)
-            view[OPENCLAW_TEXT] = text
-
+    report = _normalized_report_from_record(analysis_record)
+    identity_value = report.get("alert_identity")
+    identity: dict[str, Any] = identity_value if isinstance(identity_value, dict) else {}
+    display_source = source or str(identity.get("source") or "")
     engine = analysis_record.get("engine", "uk")
     duration = analysis_record.get("duration_seconds") or 0
-    confidence = view.get("confidence", 0)
+    confidence = report.get("confidence")
     confidence_percent = round(confidence * 100) if isinstance(confidence, (int, float)) else 0
-    analysis_failed = bool(view.get("analysis_failed"))
+    analysis_failed = bool(report.get("analysis_failed"))
 
-    summary = _section_text(view.get("summary") or view.get("conclusion"), 900)
-    root_cause = view.get("root_cause") or view.get("reason") or view.get("analysis") or view.get("failure_reason")
-    impact = view.get("impact") or view.get("impact_scope")
-    recommendations = view.get("recommendations") or view.get("actions") or view.get("next_steps") or view.get("solution")
-    evidence = view.get("evidence") or view.get("supports") or view.get("observations")
+    summary = _truncate_section_text(report.get("summary"), 900)
+    root_cause = report.get("root_cause") or report.get("failure_reason")
+    impact = report.get("impact")
+    recommendations = report.get("recommendations")
+    evidence = report.get("evidence")
+    next_checks = report.get("next_checks")
 
     elements: list[JsonObject] = [
         {
             "tag": "div",
             "fields": [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{display_source or '—'}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**告警 ID**\n{webhook_event_id or '—'}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**引擎**\n{engine or '—'}"}},
                 {
@@ -189,23 +214,28 @@ def build_deep_analysis_card(
     _add_md_section(elements, "🔍 根因定位", root_cause, 1000)
     _add_md_section(elements, "💥 影响评估", impact, 800)
 
-    recommendation_md = _markdown_bullets(recommendations, max_items=4, max_item_len=240)
+    recommendation_md = _markdown_list(recommendations, max_items=4, max_item_len=240)
     if recommendation_md:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🛠️ 修复建议**\n{recommendation_md}"}})
         elements.append({"tag": "hr"})
 
-    evidence_md = _markdown_bullets(evidence, max_items=4, max_item_len=220)
+    evidence_md = _markdown_list(evidence, max_items=4, max_item_len=220)
     if evidence_md:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 关键证据**\n{evidence_md}"}})
         elements.append({"tag": "hr"})
 
-    identity_content = _build_identity_content(view, {})
+    next_checks_md = _markdown_list(next_checks, max_items=4, max_item_len=220)
+    if next_checks_md:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 后续检查**\n{next_checks_md}"}})
+        elements.append({"tag": "hr"})
+
+    identity_content = _build_identity_content({"alert_identity": identity}, {})
     if identity_content:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
         elements.append({"tag": "hr"})
 
     if len(elements) == 2:
-        fallback = _section_text(view or result, 1200) or "无"
+        fallback = _truncate_section_text(report.get("primary_text") or report.get("raw_text"), 1200) or "无"
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 分析内容**\n{fallback}"}})
         elements.append({"tag": "hr"})
 
@@ -231,12 +261,12 @@ def build_deep_analysis_card(
                 "title": {
                     "tag": "plain_text",
                     "content": (
-                        f"❌ [{source}] 深度分析失败"
-                        if source and analysis_failed
+                        f"❌ [{display_source}] 深度分析失败"
+                        if display_source and analysis_failed
                         else "❌ 深度分析失败"
                         if analysis_failed
-                        else f"🔬 [{source}] 深度分析完成"
-                        if source
+                        else f"🔬 [{display_source}] 深度分析完成"
+                        if display_source
                         else "🔬 深度分析完成"
                     ),
                 },
