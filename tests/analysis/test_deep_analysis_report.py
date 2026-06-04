@@ -86,3 +86,33 @@ def test_plain_text_result_has_stable_empty_sections() -> None:
     assert report["primary_text"] == "无法获取 OpenClaw 结构化结果"
     assert report["source_format"] == "plain_text"
     assert report["sections"] == []
+
+
+def test_repairs_unescaped_quotes_inside_upstream_json_string() -> None:
+    from contracts.deep_analysis_report import normalize_deep_analysis_report
+
+    broken = """```json
+{
+  "summary": "ES 集群持续 yellow。",
+  "root_cause": {
+    "description": "副本分片恢复超时。"
+  },
+  "recommendations": [
+    {
+      "priority": "P3",
+      "answer": "在 VCM 告警规则中增加"集群状态持续 yellow > 30 分钟"的独立告警项",
+      "reason": "区分短暂抖动和持续异常"
+    }
+  ],
+  "confidence": 0.85
+}
+```"""
+
+    report = normalize_deep_analysis_report({"root_cause": broken}).to_dict()
+
+    assert report["summary"] == "ES 集群持续 yellow。"
+    assert report["root_cause"] == "副本分片恢复超时。"
+    assert report["recommendations"] == [
+        '在 VCM 告警规则中增加"集群状态持续 yellow > 30 分钟"的独立告警项（区分短暂抖动和持续异常）'
+    ]
+    assert report["confidence"] == 0.85
