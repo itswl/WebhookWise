@@ -167,6 +167,7 @@ def _make_row(
 ):
     row = MagicMock()
     row.id = id
+    row.request_id = None
     row.source = source
     row.client_ip = client_ip
     row.timestamp = timestamp or datetime(2025, 1, 1, 12, 0, 0)
@@ -175,7 +176,10 @@ def _make_row(
     row.duplicate_of = duplicate_of
     row.duplicate_count = duplicate_count
     row.forward_status = forward_status
+    row.outbox_forward_status = None
     row.ai_analysis = ai_analysis
+    row.summary = None
+    row.duplicate_type = "new"
     row.parsed_data = parsed_data or {}
     row.created_at = created_at or datetime(2025, 1, 1, 11, 59, 0)
     row.prev_alert_id = prev_alert_id

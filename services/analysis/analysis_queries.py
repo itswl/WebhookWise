@@ -10,6 +10,7 @@ from core.datetime_utils import utcnow
 from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas.analysis import deep_analysis_to_dict
+from services.pagination import apply_cursor_window, clamp_page_params, trim_cursor_window
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
@@ -93,8 +94,7 @@ async def get_deep_analysis_list(
     engine_filter: str = "",
     max_page: int = 500,
 ) -> dict[str, Any]:
-    page = max(1, min(page, max_page))
-    per_page = max(1, min(per_page, max_page))
+    page, per_page = clamp_page_params(page, per_page, max_page=max_page)
 
     filters = []
     if status_filter:
@@ -117,30 +117,25 @@ async def get_deep_analysis_list(
     )
     for condition in filters:
         query = query.where(condition)
-    query = query.where(DeepAnalysis.id < cursor) if cursor is not None else query.offset((page - 1) * per_page)
-    query = query.limit(per_page + 1)
+    query = apply_cursor_window(query, DeepAnalysis.id, page=page, page_size=per_page, cursor=cursor)
 
     res = await session.execute(query)
-    rows = res.all()
-    has_more = len(rows) > per_page
-    if has_more:
-        rows = rows[:per_page]
+    page_window = trim_cursor_window(res.all(), per_page, lambda row: row[0].id)
 
     items = []
-    for rec, evt in rows:
+    for rec, evt in page_window.rows:
         item = deep_analysis_to_dict(rec)
         item["source"] = evt.source if evt else None
         item["is_duplicate"] = evt.is_duplicate if evt else False
         items.append(item)
-    next_cursor = items[-1]["id"] if has_more and items else None
     return {
         "items": items,
         "per_page": per_page,
         "page": page,
         "total": total,
         "total_pages": total_pages,
-        "next_cursor": next_cursor,
-        "has_more": has_more,
+        "next_cursor": page_window.next_cursor,
+        "has_more": page_window.has_more,
     }
 
 

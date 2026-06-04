@@ -18,7 +18,7 @@ from core.observability.metrics import (
 )
 from db.session import session_scope
 from models import ForwardOutbox
-from services.forwarding import outbox as _outbox_module
+from services.forwarding import outbox_scheduling
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import ForwardOutboxStatus
 
@@ -117,7 +117,7 @@ async def run_forward_outbox_scan(limit: int = 100, *, policy: ForwardDeliveryPo
             .limit(limit)
         )
         ids = list((await session.execute(stmt)).scalars().all())
-    await _outbox_module.schedule_forward_outbox_many(ids)
+    await outbox_scheduling.schedule_forward_outbox_many(ids)
     FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_queued").inc(len(ids))
     if expired_count:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scan_expired").inc(expired_count)

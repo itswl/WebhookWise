@@ -21,6 +21,7 @@ else:
     RedisClient = redis.Redis
 
 RedisEvalArg = bytes | bytearray | str | int | float | memoryview
+_REDIS_CLOSE_ERRORS = (AttributeError, OSError, RedisError, RuntimeError, TimeoutError, TypeError, ValueError)
 
 
 def build_redis_client(config: AppConfig | None = None) -> RedisClient:
@@ -63,12 +64,14 @@ async def dispose_redis() -> None:
 
 
 async def close_redis_client(client: RedisClient) -> None:
-    with contextlib.suppress(Exception):
+    try:
         close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
         if callable(close_fn):
             result = close_fn()
             if inspect.isawaitable(result):
                 await cast(Awaitable[object], result)
+    except _REDIS_CLOSE_ERRORS as exc:
+        logger.debug("[Redis] close suppressed error_type=%s", type(exc).__name__, exc_info=True)
     with contextlib.suppress(AttributeError):
         pool = getattr(client, "connection_pool", None)
         disconnect_fn = getattr(pool, "disconnect", None)

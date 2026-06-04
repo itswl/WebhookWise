@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat
 from models import ForwardOutbox, WebhookEvent
+from schemas.webhook import WebhookEventSummary
+from services.pagination import apply_cursor_window, trim_cursor_window
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
 _prev_ts_subq = (
@@ -37,28 +39,7 @@ _SUMMARY_COLUMNS = [
 
 
 def _row_to_summary_dict(row: Any) -> dict[str, Any]:
-    ai_analysis = row.ai_analysis
-    is_dup = row.is_duplicate
-    prev_ts = getattr(row, "prev_alert_timestamp", None)
-    duplicate_type = "within_window" if is_dup else "new"
-    return {
-        "id": row.id,
-        "request_id": row.request_id,
-        "source": row.source,
-        "client_ip": row.client_ip,
-        "timestamp": utc_isoformat(row.timestamp),
-        "importance": row.importance,
-        "is_duplicate": is_dup,
-        "duplicate_of": row.duplicate_of,
-        "duplicate_count": row.duplicate_count,
-        "forward_status": row.forward_status,
-        "summary": ai_analysis.get("summary", "") if ai_analysis else None,
-        "created_at": utc_isoformat(row.created_at),
-        "prev_alert_id": row.prev_alert_id,
-        "prev_alert_timestamp": utc_isoformat(prev_ts),
-        "is_within_window": bool(is_dup),
-        "duplicate_type": duplicate_type,
-    }
+    return WebhookEventSummary.model_validate(row).model_dump(mode="json")
 
 
 def _merge_forward_status(current: str | None, outbox_status: str | None) -> str | None:
@@ -101,23 +82,17 @@ async def list_webhook_summaries(
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
     query = select(*_SUMMARY_COLUMNS)
-    if cursor is not None:
-        query = query.where(WebhookEvent.id < cursor)
     if importance:
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
-    if cursor is None and page > 1:
-        query = query.offset((page - 1) * page_size)
-    query = query.order_by(WebhookEvent.id.desc()).limit(page_size + 1)
+    query = query.order_by(WebhookEvent.id.desc())
+    query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
-    rows = result.all()
-    has_more = len(rows) > page_size
-    if has_more:
-        rows = rows[:page_size]
-    items = [_row_to_summary_dict(r) for r in rows]
+    page_window = trim_cursor_window(result.all(), page_size, lambda row: row.id)
+    items = [_row_to_summary_dict(r) for r in page_window.rows]
     await _apply_outbox_forward_statuses(session, items)
-    return items, has_more, (rows[-1].id if has_more and rows else None)
+    return items, page_window.has_more, page_window.next_cursor
 
 
 async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:

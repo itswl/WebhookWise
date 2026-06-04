@@ -17,6 +17,15 @@ from core.observability.metrics import (
 )
 from services.analysis import ai_llm_client as _llm_client
 from services.analysis.ai_cache import get_cached_analysis, save_to_cache
+from services.analysis.ai_errors import (
+    extract_ai_error_message as _extract_ai_error_message,
+)
+from services.analysis.ai_errors import (
+    is_ai_policy_refusal as _is_ai_policy_refusal,
+)
+from services.analysis.ai_errors import (
+    is_ai_provider_runtime_error as _is_ai_provider_runtime_error,
+)
 from services.analysis.ai_prompt import (
     get_prompt_source,
     load_deep_analysis_prompt_template,
@@ -49,60 +58,6 @@ __all__ = [
     "reload_deep_analysis_prompt_template",
     "reload_user_prompt_template",
 ]
-
-_AI_POLICY_REFUSAL_MARKERS = (
-    "terms of service",
-    "content_policy",
-    "content policy",
-    "content filter",
-    "prohibited",
-    "policy violation",
-    "violation of provider",
-)
-
-
-def _iter_exception_chain(root: BaseException) -> list[BaseException]:
-    visited: set[int] = set()
-    out: list[BaseException] = []
-    curr: BaseException | None = root
-    while curr is not None and id(curr) not in visited:
-        visited.add(id(curr))
-        out.append(curr)
-        curr = curr.__cause__ or curr.__context__
-    return out
-
-
-def _extract_ai_error_message(exc: BaseException) -> str:
-    for curr in _iter_exception_chain(exc):
-        body = getattr(curr, "body", None)
-        if isinstance(body, dict):
-            err = body.get("error")
-            if isinstance(err, dict):
-                message = err.get("message")
-                if isinstance(message, str) and message.strip():
-                    return message.strip()
-        text = str(curr).strip()
-        if text:
-            return text[:500]
-    return type(exc).__name__
-
-
-def _is_ai_policy_refusal(exc: BaseException) -> bool:
-    for curr in _iter_exception_chain(exc):
-        error_text = str(curr).lower()
-        body = getattr(curr, "body", None)
-        if isinstance(body, dict):
-            error_text += f" {body!s}".lower()
-
-        if any(marker in error_text for marker in _AI_POLICY_REFUSAL_MARKERS):
-            return True
-
-        status_code = getattr(curr, "status_code", None)
-        if type(curr).__name__ == "PermissionDeniedError" and status_code == 403:
-            return True
-
-    return False
-
 
 def analyze_with_rules(
     data: dict[str, Any], source: str, *, policy: RuleAnalysisPolicy | None = None
@@ -309,6 +264,12 @@ async def analyze_webhook_with_ai(
     except Exception as e:
         if _is_ai_policy_refusal(e):
             error_reason = _extract_ai_error_message(e)
+            logger.warning(
+                "[AI] 策略拒绝，降级为规则分析 source=%s error_type=%s error=%s",
+                source,
+                type(e).__name__,
+                error_reason,
+            )
             return await _degrade_to_rules(
                 webhook_data,
                 parsed,
@@ -318,7 +279,7 @@ async def analyze_webhook_with_ai(
                 notify=True,
             )
 
-        if not isinstance(e, (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError)):
+        if not _is_ai_provider_runtime_error(e):
             raise
 
         error_reason = _extract_ai_error_message(e)

@@ -26,6 +26,7 @@ from core.observability.metrics import (
 )
 from core.observability.tracing import otel_span, set_span_error
 from schemas.analysis import WebhookAnalysisResult
+from services.analysis.ai_errors import is_ai_provider_retryable_error, is_ai_provider_runtime_error
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy
@@ -179,7 +180,7 @@ async def _analyze_with_openai_tracked(
             res, completion = await _create_with_completion(
                 client, model=policy.model, user_prompt=user_prompt, policy=policy
             )
-        except (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError, httpx.RequestError, httpx.TimeoutException) as exc:
+        except Exception as exc:
             set_span_error(s, exc)
             raise
 
@@ -212,7 +213,7 @@ async def _analyze_with_openai_tracked(
     wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
     reraise=True,
     retry=retry_if_exception(
-        lambda e: isinstance(e, (httpx.RequestError, httpx.TimeoutException, ConnectionError, TimeoutError))
+        is_ai_provider_retryable_error
     ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
@@ -226,7 +227,9 @@ async def _call_ai_with_retry(
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "success").inc()
         AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="openai").observe(time.time() - start)
         return res, t_in, t_out
-    except (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError, httpx.RequestError, httpx.TimeoutException) as e:
+    except Exception as e:
+        if not is_ai_provider_runtime_error(e):
+            raise
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "error").inc()
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
         logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)

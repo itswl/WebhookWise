@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.compression import decompress_payload
 from core.datetime_utils import utc_isoformat
@@ -22,6 +22,8 @@ class WebhookEventSummary(BaseModel):
     request_id: str | None = None
     source: str
     client_ip: str | None = None
+    ai_analysis: dict[str, Any] | None = Field(default=None, exclude=True)
+    outbox_forward_status: str | None = Field(default=None, exclude=True)
     timestamp: str | None = None
     importance: str | None = None
     is_duplicate: bool
@@ -32,6 +34,48 @@ class WebhookEventSummary(BaseModel):
     summary: str | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
+    prev_alert_timestamp: str | None = None
+    is_within_window: bool = False
+
+    @field_validator("timestamp", "created_at", "prev_alert_timestamp", mode="before")
+    @classmethod
+    def _serialize_datetime(cls, value: object) -> object:
+        return utc_isoformat(value) if isinstance(value, datetime) else value
+
+    @model_validator(mode="after")
+    def _derive_fields(self) -> WebhookEventSummary:
+        if self.summary is None and isinstance(self.ai_analysis, dict):
+            self.summary = str(self.ai_analysis.get("summary", "") or "")
+        if self.is_duplicate:
+            self.duplicate_type = "within_window"
+            self.is_within_window = True
+        if self.outbox_forward_status:
+            self.forward_status = self.outbox_forward_status
+        return self
+
+
+class WebhookEventFull(WebhookEventSummary):
+    """Webhook 事件详情"""
+
+    ai_analysis: dict[str, Any] | None = None
+    raw_payload: str | None = None
+    headers: dict[str, Any] | None = None
+    parsed_data: dict[str, Any] | None = None
+    alert_hash: str | None = None
+    processing_status: str | None = None
+    updated_at: str | None = None
+
+    @field_validator("raw_payload", mode="before")
+    @classmethod
+    def _decompress_raw_payload(cls, value: object) -> object:
+        if isinstance(value, bytearray):
+            return decompress_payload(bytes(value))
+        return decompress_payload(value) if isinstance(value, bytes) or value is None else value
+
+    @field_validator("updated_at", mode="before")
+    @classmethod
+    def _serialize_updated_at(cls, value: object) -> object:
+        return utc_isoformat(value) if isinstance(value, datetime) else value
 
 
 class WebhookReceiveResponse(BaseModel):
@@ -61,43 +105,9 @@ class HealthResponse(APIResponse[HealthData]):
     pass
 
 
-def _iso_or_none(value: object) -> str | None:
-    return utc_isoformat(value) if isinstance(value, datetime) else None
-
-
 def webhook_event_to_summary_dict(event: Any) -> dict[str, Any]:
-    ai_analysis = getattr(event, "ai_analysis", None)
-    source = str(getattr(event, "source", ""))
-    is_duplicate = bool(getattr(event, "is_duplicate", False))
-    duplicate_type: DuplicateType = "new"
-    if is_duplicate:
-        duplicate_type = "within_window"
-    return {
-        "id": event.id,
-        "request_id": getattr(event, "request_id", None),
-        "source": source,
-        "client_ip": getattr(event, "client_ip", None),
-        "timestamp": _iso_or_none(getattr(event, "timestamp", None)),
-        "importance": getattr(event, "importance", None),
-        "is_duplicate": is_duplicate,
-        "duplicate_of": getattr(event, "duplicate_of", None),
-        "duplicate_count": int(getattr(event, "duplicate_count", 0) or 0),
-        "duplicate_type": duplicate_type,
-        "forward_status": getattr(event, "forward_status", None),
-        "summary": ai_analysis.get("summary", "") if isinstance(ai_analysis, dict) else None,
-        "created_at": _iso_or_none(getattr(event, "created_at", None)),
-        "prev_alert_id": getattr(event, "prev_alert_id", None),
-    }
+    return WebhookEventSummary.model_validate(event).model_dump(mode="json")
 
 
 def webhook_event_to_full_dict(event: Any) -> dict[str, Any]:
-    return {
-        **webhook_event_to_summary_dict(event),
-        "raw_payload": decompress_payload(getattr(event, "raw_payload", None)),
-        "headers": getattr(event, "headers", None),
-        "parsed_data": getattr(event, "parsed_data", None),
-        "alert_hash": getattr(event, "alert_hash", None),
-        "ai_analysis": getattr(event, "ai_analysis", None),
-        "processing_status": getattr(event, "processing_status", None),
-        "updated_at": _iso_or_none(getattr(event, "updated_at", None)),
-    }
+    return WebhookEventFull.model_validate(event).model_dump(mode="json")

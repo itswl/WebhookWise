@@ -23,6 +23,13 @@ class _Policy:
         return round((tokens_in + tokens_out) * 0.001, 6)
 
 
+class ProviderBadRequestError(Exception):
+    status_code = 400
+
+
+ProviderBadRequestError.__module__ = "openai._exceptions"
+
+
 @pytest.fixture
 def ai_runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[MetricValueCall]]:
     from services.analysis import ai_llm_client
@@ -200,12 +207,12 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
     async def analyze_error(
         _data: dict[str, object], _source: str, *, http_client: httpx.AsyncClient | None = None
     ) -> tuple[dict[str, object], int, int]:
-        raise ValueError("bad payload")
+        raise ProviderBadRequestError("bad payload")
 
     monkeypatch.setattr(ai_llm_client, "_analyze_with_openai_tracked", analyze_error)
-    with pytest.raises(ValueError, match="bad payload"):
+    with pytest.raises(ProviderBadRequestError, match="bad payload"):
         await ai_llm_client._call_ai_with_retry({"a": 1}, "source-b")
 
     assert ("AI_REQUESTS_TOTAL", ("safe:source-a", "openai", "success"), {}, 1) in metric_calls
     assert ("AI_REQUESTS_TOTAL", ("safe:source-b", "openai", "error"), {}, 1) in metric_calls
-    assert ("OPENAI_ERRORS_TOTAL", (), {"type": "valueerror"}, 1) in metric_calls
+    assert ("OPENAI_ERRORS_TOTAL", (), {"type": "providerbadrequesterror"}, 1) in metric_calls
