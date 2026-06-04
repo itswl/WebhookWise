@@ -251,6 +251,36 @@ var DeepAnalysesModule = (function() {
         }
     }
 
+    function findLoadedRecord(id) {
+        const numericId = Number(id);
+        return loadedRecords.find(record => Number(record.id) === numericId) || null;
+    }
+
+    function toggleDebugPayload(id) {
+        const rawJsonId = `raw-da-${id}`;
+        const container = document.getElementById(rawJsonId);
+        if (!container) return;
+
+        if (container.hidden) {
+            if (container.dataset.rendered !== 'true') {
+                const record = findLoadedRecord(id);
+                const report = normalizedReport(record);
+                container.innerHTML = `
+                    <div class="raw-data">
+                        <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(JSON.stringify({
+                            normalized_report: report,
+                            analysis_result: record ? record.analysis_result || null : null
+                        }, null, 2))}</pre>
+                    </div>
+                `;
+                container.dataset.rendered = 'true';
+            }
+            container.hidden = false;
+        } else {
+            container.hidden = true;
+        }
+    }
+
     function buildSummaryHtml(record) {
         var report = normalizedReport(record);
         var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
@@ -372,21 +402,11 @@ var DeepAnalysesModule = (function() {
 
         // Raw Data Toggle
         const rawJsonId = `raw-da-${record.id}`;
-        detailsHtml += `<button class="btn" onclick="document.getElementById('${rawJsonId}').style.display = document.getElementById('${rawJsonId}').style.display === 'none' ? 'block' : 'none'">💻 Debug 报文</button>`;
+        detailsHtml += `<button class="btn" onclick="DeepAnalysesModule.toggleDebugPayload(${record.id})">💻 Debug 报文</button>`;
 
         detailsHtml += `</div>`;
 
-        // Raw JSON container
-        detailsHtml += `
-            <div id="${rawJsonId}" style="display: none; margin-top: 1.5rem;">
-                <div class="raw-data">
-                    <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(JSON.stringify({
-                        normalized_report: report,
-                        analysis_result: record.analysis_result || null
-                    }, null, 2))}</pre>
-                </div>
-            </div>
-        `;
+        detailsHtml += `<div id="${rawJsonId}" style="margin-top: 1.5rem;" hidden></div>`;
 
         return detailsHtml;
     }
@@ -599,6 +619,7 @@ var DeepAnalysesModule = (function() {
         forwardResult: forwardResult,
         retryAnalysis: retryAnalysis,
         reanalyzeFromDeepAnalysis: reanalyzeFromDeepAnalysis,
-        toggleExpand: toggleExpand
+        toggleExpand: toggleExpand,
+        toggleDebugPayload: toggleDebugPayload
     };
 })();
