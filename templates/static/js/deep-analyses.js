@@ -121,18 +121,66 @@ var DeepAnalysesModule = (function() {
         if (typeof text !== 'string') return '';
         return text
             .trim()
-            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/^```(?:[a-z0-9_-]+)?\s*/i, '')
             .replace(/\s*```$/i, '')
             .trim();
     }
 
+    function decodeEscapedJsonText(text) {
+        if (typeof text !== 'string') return '';
+        const trimmed = text.trim();
+        if (!trimmed || (!trimmed.includes('\\"') && !trimmed.includes('\\n') && !trimmed.includes('\\t'))) {
+            return '';
+        }
+        return trimmed
+            .replace(/\\r/g, '\r')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\')
+            .trim();
+    }
+
+    function uniqueTextCandidates(values) {
+        const seen = new Set();
+        return values.filter(value => {
+            if (!value) return false;
+            const text = String(value).trim();
+            if (!text || seen.has(text)) return false;
+            seen.add(text);
+            return true;
+        });
+    }
+
     function parseJsonLikeText(value) {
         if (typeof value !== 'string') return null;
-        const stripped = stripMarkdownJsonFence(value);
+        let stripped = stripMarkdownJsonFence(value);
         if (!stripped) return null;
 
+        try {
+            const decoded = JSON.parse(stripped);
+            if (typeof decoded === 'string') {
+                stripped = stripMarkdownJsonFence(decoded);
+            } else if (decoded && typeof decoded === 'object') {
+                return decoded;
+            }
+        } catch (e) {
+            // Keep parsing text-like payloads below.
+        }
+
         const jsonBlock = extractJsonBlock(stripped);
-        const candidates = [stripped, sanitizeLooseJson(stripped), jsonBlock, sanitizeLooseJson(jsonBlock)].filter(Boolean);
+        const decodedStripped = decodeEscapedJsonText(stripped);
+        const decodedBlock = decodeEscapedJsonText(jsonBlock);
+        const candidates = uniqueTextCandidates([
+            stripped,
+            sanitizeLooseJson(stripped),
+            decodedStripped,
+            sanitizeLooseJson(decodedStripped),
+            jsonBlock,
+            sanitizeLooseJson(jsonBlock),
+            decodedBlock,
+            sanitizeLooseJson(decodedBlock)
+        ]);
         for (const candidate of candidates) {
             try {
                 const parsed = JSON.parse(candidate);
@@ -233,6 +281,9 @@ var DeepAnalysesModule = (function() {
     }
 
     function renderParagraph(value) {
+        const parsed = parseJsonLikeText(value);
+        if (parsed) return renderStructuredValue(parsed);
+
         const text = displayValue(value, { pretty: true, separator: '\n' });
         if (!text) return '';
         return `<p>${escapeHtml(text)}</p>`;
@@ -247,8 +298,7 @@ var DeepAnalysesModule = (function() {
         }
 
         if (typeof value === 'object') {
-            const text = displayValue(value, { pretty: true, separator: '\n' });
-            return text ? `<p>${escapeHtml(text)}</p>` : renderKeyValueGrid(value);
+            return renderStructuredValue(value);
         }
 
         return renderParagraph(value);
@@ -290,11 +340,62 @@ var DeepAnalysesModule = (function() {
             .map(key => `
                 <div class="da-kv-row">
                     <dt>${escapeHtml(formatFieldName(key))}</dt>
-                    <dd>${escapeHtml(displayValue(value[key], { pretty: true, separator: '；' }))}</dd>
+                    <dd>${renderInlineStructuredValue(value[key])}</dd>
                 </div>
             `)
             .join('');
         return rows ? `<dl class="da-kv-grid">${rows}</dl>` : '';
+    }
+
+    function renderInlineStructuredValue(value) {
+        if (value === null || value === undefined || value === '') return '';
+        if (Array.isArray(value)) {
+            const items = value
+                .map(item => renderInlineStructuredValue(item))
+                .filter(Boolean)
+                .map(item => `<li>${item}</li>`)
+                .join('');
+            return items ? `<ul class="da-inline-list">${items}</ul>` : '';
+        }
+
+        if (typeof value === 'object') {
+            return renderKeyValueGrid(value) || renderJsonBlock(value);
+        }
+
+        if (typeof value === 'string') {
+            const parsed = parseJsonLikeText(value);
+            if (parsed) return renderStructuredValue(parsed);
+        }
+
+        return escapeHtml(displayValue(value, { pretty: true, separator: '；' }));
+    }
+
+    function renderStructuredValue(value) {
+        if (value === null || value === undefined || value === '') return '';
+        if (Array.isArray(value)) {
+            const items = value
+                .map(item => renderInlineStructuredValue(item))
+                .filter(Boolean)
+                .map(item => `<li>${item}</li>`)
+                .join('');
+            return items ? `<ul>${items}</ul>` : '';
+        }
+
+        if (typeof value === 'object') {
+            return renderKeyValueGrid(value) || renderJsonBlock(value);
+        }
+
+        return renderParagraph(value);
+    }
+
+    function renderJsonBlock(value) {
+        let text = '';
+        try {
+            text = typeof value === 'string' ? stripMarkdownJsonFence(value) : JSON.stringify(value, null, 2);
+        } catch (e) {
+            text = displayValue(value, { pretty: true, separator: '\n' });
+        }
+        return text ? `<pre class="da-json-block"><code>${escapeHtml(text)}</code></pre>` : '';
     }
 
     function renderStructuredAnalysis(analysis) {

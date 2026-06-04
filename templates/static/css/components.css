@@ -795,6 +795,37 @@
   min-width: 0;
 }
 
+.da-kv-row dd .da-kv-grid {
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  margin-top: 0.15rem;
+  padding: 0.65rem;
+}
+
+.da-inline-list {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.da-json-block {
+  background: #0f172a;
+  border-radius: var(--radius-sm);
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 0.83rem;
+  line-height: 1.6;
+  margin: 0;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0.85rem 1rem;
+  white-space: pre;
+}
+
+.da-json-block code {
+  font-family: inherit;
+}
+
 .da-id {
   font-weight: 600;
   color: var(--text-muted);
