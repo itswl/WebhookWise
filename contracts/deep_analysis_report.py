@@ -14,6 +14,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from json_repair import repair_json
+
 from core.collections_utils import scalar_text_or_empty
 from core.json import JSONDecodeError, dumps, extract_balanced_json_text, loads
 
@@ -22,7 +24,7 @@ OPENCLAW_TEXT_KEY = "_openclaw_text"
 
 ReportSectionKind = Literal["text", "list", "identity"]
 
-_NESTED_REPORT_KEYS = (
+_WRAPPER_REPORT_KEYS = (
     "analysis_result",
     "normalized_report",
     "result",
@@ -34,14 +36,23 @@ _NESTED_REPORT_KEYS = (
     "content",
     "message",
     "text",
-    "summary",
-    "root_cause",
-    "analysis",
     "details",
     "detail",
     OPENCLAW_TEXT_KEY,
 )
+_STRING_REPORT_KEYS = (
+    "summary",
+    "root_cause",
+    "analysis",
+    "impact",
+    "recommendations",
+    "evidence",
+    "next_checks",
+    "failure_reason",
+    "error",
+)
 _TEXT_KEYS = (
+    "answer",
     "description",
     "summary",
     "conclusion",
@@ -52,6 +63,7 @@ _TEXT_KEYS = (
     "root_cause",
     "impact",
     "impact_scope",
+    "scope",
     "action",
     "recommendation",
     "solution",
@@ -258,10 +270,17 @@ def _collect_candidate_mappings(value: Any, *, depth: int = 0) -> list[dict[str,
     if isinstance(value, Mapping):
         current = {str(key): item for key, item in value.items()}
         mappings = [current]
-        for key in _NESTED_REPORT_KEYS:
+        for key in _WRAPPER_REPORT_KEYS:
             nested = _pick(current, key)
             if nested is not None and nested is not value:
                 mappings.extend(_collect_candidate_mappings(nested, depth=depth + 1))
+        for key in _STRING_REPORT_KEYS:
+            nested = _pick(current, key)
+            if not isinstance(nested, str):
+                continue
+            parsed = _parse_json_like_text(nested)
+            if parsed is not None and parsed is not nested:
+                mappings.extend(_collect_candidate_mappings(parsed, depth=depth + 1))
         return mappings
 
     if isinstance(value, list):
@@ -319,13 +338,28 @@ def _parse_json_like_text(value: Any, *, depth: int = 0) -> Any | None:
         try:
             parsed = loads(candidate)
         except (TypeError, JSONDecodeError):
-            continue
+            parsed = _repair_json_like_text(candidate)
         if isinstance(parsed, str):
             nested = _parse_json_like_text(parsed, depth=depth + 1)
             return nested if nested is not None else parsed
         if isinstance(parsed, Mapping | list):
             return parsed
     return None
+
+
+def _repair_json_like_text(text: str) -> Any | None:
+    if not _looks_like_json_container(text):
+        return None
+    try:
+        repaired = repair_json(text, return_objects=True)
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+    return repaired if isinstance(repaired, Mapping | list) else None
+
+
+def _looks_like_json_container(text: str) -> bool:
+    stripped = _strip_markdown_json_fence(text)
+    return stripped.startswith(("{", "["))
 
 
 def _strip_markdown_json_fence(text: str) -> str:
@@ -386,10 +420,10 @@ def _first_text(mapping: Mapping[str, Any], keys: tuple[str, ...]) -> str:
 def _display_value(value: Any, *, depth: int = 0) -> str:
     if depth > 4 or value in (None, ""):
         return ""
-    parsed = _parse_json_like_text(value)
-    if parsed is not None and parsed is not value:
-        return _display_value(parsed, depth=depth + 1)
     if isinstance(value, str):
+        parsed = _parse_json_container_text(value)
+        if parsed is not None and parsed is not value:
+            return _display_value(parsed, depth=depth + 1)
         return value.strip()
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -398,7 +432,7 @@ def _display_value(value: Any, *, depth: int = 0) -> str:
     if isinstance(value, list):
         return "\n".join(text for text in (_display_value(item, depth=depth + 1) for item in value) if text)
     if isinstance(value, Mapping):
-        action = _display_value(_pick(value, "action", "recommendation", "solution"), depth=depth + 1)
+        action = _display_value(_pick(value, "action", "answer", "recommendation", "solution", "step"), depth=depth + 1)
         reason = _display_value(_pick(value, "reason", "why"), depth=depth + 1)
         if action and reason:
             return f"{action}（{reason}）"
@@ -414,7 +448,7 @@ def _display_value(value: Any, *, depth: int = 0) -> str:
 
 
 def _list_texts(value: Any, *, style: Literal["recommendation", "evidence"]) -> list[str]:
-    parsed = _parse_json_like_text(value)
+    parsed = _parse_json_container_text(value) if isinstance(value, str) else _parse_json_like_text(value)
     if parsed is not None:
         value = parsed
     if value in (None, ""):
@@ -423,7 +457,7 @@ def _list_texts(value: Any, *, style: Literal["recommendation", "evidence"]) -> 
     texts: list[str] = []
     for item in items:
         if style == "recommendation" and isinstance(item, Mapping):
-            action = _display_value(_pick(item, "action", "recommendation", "solution", "step"))
+            action = _display_value(_pick(item, "action", "answer", "recommendation", "solution", "step"))
             reason = _display_value(_pick(item, "reason", "why"))
             text = f"{action}（{reason}）" if action and reason else action or _display_value(item)
         else:
@@ -431,6 +465,10 @@ def _list_texts(value: Any, *, style: Literal["recommendation", "evidence"]) -> 
         if text:
             texts.append(text)
     return texts
+
+
+def _parse_json_container_text(value: str) -> Any | None:
+    return _parse_json_like_text(value) if _looks_like_json_container(value) else None
 
 
 def _extract_identity(data: Mapping[str, Any]) -> dict[str, str]:
