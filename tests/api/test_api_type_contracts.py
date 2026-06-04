@@ -27,6 +27,41 @@ def test_parse_utc_datetime_normalizes_explicit_offsets_to_naive_utc():
     assert parse_utc_datetime("2026-01-01T00:00:00Z") == datetime(2026, 1, 1, 0, 0, 0)
 
 
+def test_webhook_event_serializers_use_schema_from_attributes():
+    from models import WebhookEvent
+    from schemas.webhook import webhook_event_to_full_dict, webhook_event_to_summary_dict
+
+    event = WebhookEvent(
+        id=42,
+        source="prometheus",
+        client_ip="127.0.0.1",
+        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+        raw_payload=b'{"service":"api"}',
+        headers={"x-request-id": "req-1"},
+        parsed_data={"alertname": "HighCPU"},
+        alert_hash="hash-1",
+        ai_analysis={"summary": "CPU high"},
+        importance="high",
+        processing_status="completed",
+        is_duplicate=True,
+        duplicate_of=1,
+        duplicate_count=2,
+        created_at=datetime(2026, 1, 1, 0, 0, 1),
+        updated_at=datetime(2026, 1, 1, 0, 0, 2),
+    )
+
+    summary = webhook_event_to_summary_dict(event)
+    full = webhook_event_to_full_dict(event)
+
+    assert summary["summary"] == "CPU high"
+    assert summary["duplicate_type"] == "within_window"
+    assert summary["timestamp"] == "2026-01-01T00:00:00Z"
+    assert "ai_analysis" not in summary
+    assert full["raw_payload"] == '{"service":"api"}'
+    assert full["ai_analysis"] == {"summary": "CPU high"}
+    assert full["updated_at"] == "2026-01-01T00:00:02Z"
+
+
 def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
     offenders = []
     for path in (PROJECT_ROOT / "models").glob("*.py"):

@@ -130,8 +130,8 @@ taskiq scheduler services.operations.taskiq_wiring:scheduler
 
 依赖策略：
 
-- `requirements.txt` / `requirements-dev.txt` 是人工维护的直接依赖。
-- `requirements.lock` / `requirements-dev.lock` 是安装和 CI/Docker 的准绳。
+- `requirements.txt` / `requirements-dev.txt` 是人工维护的直接依赖，统一表达最低支持版本。
+- `requirements.lock` / `requirements-dev.lock` 精确锁定解析结果，是安装和 CI/Docker 的准绳。
 - 锁文件由 uv 生成，项目当前不是 `[project]` 风格 uv 工程，因此不维护 `uv.lock`。
 
 更新锁文件：

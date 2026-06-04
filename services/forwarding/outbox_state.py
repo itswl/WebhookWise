@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timedelta
 
 from sqlalchemy import update
@@ -12,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
+from db.session import session_scope
 from models import DeepAnalysis, ForwardOutbox, WebhookEvent
+from services.forwarding import outbox_notifications, outbox_scheduling
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications import feishu
 from services.operations import taskiq_retry_scheduler
@@ -34,12 +35,6 @@ _TERMINAL_OUTBOX_STATUSES = {
     ForwardOutboxStatus.EXPIRED,
     ForwardOutboxStatus.EXHAUSTED,
 }
-
-
-def _session_scope() -> AbstractAsyncContextManager[AsyncSession]:
-    from services.forwarding import outbox
-
-    return outbox.session_scope()  # type: ignore[attr-defined]
 
 
 def _is_outbox_terminal(status: ForwardOutboxStatus | str | None) -> bool:
@@ -95,7 +90,7 @@ async def _claim_outbox(
         policy = ForwardDeliveryPolicy.from_config()
 
     now = utcnow()
-    async with _session_scope() as session:
+    async with session_scope() as session:
         if await _expire_outbox_if_old(session, outbox_id, now=now, policy=policy):
             return None
         stmt = (
@@ -118,7 +113,7 @@ async def _claim_outbox(
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
     now = utcnow()
     openclaw_analysis_id: int | None = None
-    async with _session_scope() as session:
+    async with session_scope() as session:
         current = await session.get(ForwardOutbox, record.id)
         if not current or _is_outbox_terminal(current.status):
             return
@@ -173,7 +168,7 @@ async def _finalize_outbox_failure(
     if policy is None:
         policy = ForwardDeliveryPolicy.from_config()
 
-    async with _session_scope() as session:
+    async with session_scope() as session:
         record = await session.get(ForwardOutbox, outbox_id)
         if not record or _is_outbox_terminal(record.status):
             return
@@ -209,9 +204,7 @@ async def _finalize_outbox_failure(
         try:
             exhausted_event_type = str(getattr(exhausted_record, "event_type", "") or "")
             if exhausted_event_type != "outbox_exhausted":
-                from services.forwarding.outbox import forward_notification
-
-                await forward_notification(
+                await outbox_notifications.enqueue_forward_notification(
                     event_type="outbox_exhausted",
                     formatted_payload=feishu.build_delivery_exhausted_card(exhausted_record),
                     webhook_id=exhausted_record.webhook_event_id,
@@ -223,6 +216,4 @@ async def _finalize_outbox_failure(
                 exc,
             )
     if retry_outbox_id is not None and retry_delay is not None:
-        from services.forwarding.outbox import schedule_forward_outbox_retry
-
-        await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
+        await outbox_scheduling.schedule_forward_outbox_retry(retry_outbox_id, retry_delay)

@@ -10,6 +10,7 @@ from core.datetime_utils import utc_isoformat
 from core.logger import mask_url
 from db.session import count_with_timeout, session_scope
 from models import ForwardOutbox
+from services.pagination import apply_cursor_window, clamp_page_params, trim_cursor_window
 
 
 async def list_outbox_records(
@@ -23,8 +24,7 @@ async def list_outbox_records(
     count_with_timeout_fn: Any | None = None,
 ) -> dict[str, Any]:
     """Return paginated forwarding outbox records for admin/API screens."""
-    page = max(1, min(page, 100))
-    page_size = max(1, min(page_size, 200))
+    page, page_size = clamp_page_params(page, page_size, max_page=100, max_page_size=200)
 
     filters = []
     if status:
@@ -43,12 +43,8 @@ async def list_outbox_records(
         query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
         for condition in filters:
             query = query.where(condition)
-        query = query.where(ForwardOutbox.id < cursor) if cursor is not None else query.offset((page - 1) * page_size)
-        query = query.limit(page_size + 1)
-        rows = (await session.execute(query)).scalars().all()
-        has_more = len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
+        query = apply_cursor_window(query, ForwardOutbox.id, page=page, page_size=page_size, cursor=cursor)
+        page_window = trim_cursor_window((await session.execute(query)).scalars().all(), page_size, lambda row: row.id)
 
         items = [
             {
@@ -70,7 +66,7 @@ async def list_outbox_records(
                 "is_periodic_reminder": row.is_periodic_reminder,
                 "created_at": utc_isoformat(row.created_at),
             }
-            for row in rows
+            for row in page_window.rows
         ]
 
     return {
@@ -79,8 +75,8 @@ async def list_outbox_records(
         "page_size": page_size,
         "total": total,
         "total_pages": max(1, (total + page_size - 1) // page_size) if total else 1,
-        "next_cursor": items[-1]["id"] if has_more and items else None,
-        "has_more": has_more,
+        "next_cursor": page_window.next_cursor,
+        "has_more": page_window.has_more,
     }
 
 
