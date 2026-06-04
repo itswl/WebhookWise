@@ -40,10 +40,6 @@ from services.webhooks.types import (
 
 logger = get_logger("forward_outbox")
 
-_mask_url_for_display = outbox_queries._mask_url_for_display
-_create_outbox_records = outbox_records.create_outbox_records
-_idempotency_key = outbox_records.idempotency_key
-_outbox_result = outbox_records.outbox_result
 _DELIVERY_RUNTIME_ERRORS = (OSError, RuntimeError, ValueError)
 
 
@@ -62,7 +58,7 @@ async def resolve_and_forward(
     if not matched:
         return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
 
-    outbox_ids = await _create_outbox_records(
+    outbox_ids = await outbox_records.create_outbox_records(
         session,
         matched,
         webhook_id=webhook_id,
@@ -75,7 +71,7 @@ async def resolve_and_forward(
         policy=policy or ForwardDeliveryPolicy.from_config(),
         log_tag="ResolveForward",
     )
-    return _outbox_result(outbox_ids)
+    return outbox_records.outbox_result(outbox_ids)
 
 
 async def forward_notification(
@@ -118,7 +114,7 @@ async def forward_notification(
         return {"status": "skipped", "reason": skip_reason, "outbox_ids": []}
 
     if not outbox_ids:
-        return _outbox_result(outbox_ids)
+        return outbox_records.outbox_result(outbox_ids)
 
     if wait:
         results: list[ForwardResult] = []
@@ -128,7 +124,7 @@ async def forward_notification(
         return results[0] if results else {"status": "skipped"}
 
     await schedule_forward_outbox_many(outbox_ids)
-    return _outbox_result(outbox_ids)
+    return outbox_records.outbox_result(outbox_ids)
 
 
 async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> ForwardResult:

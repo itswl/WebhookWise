@@ -32,6 +32,12 @@ def _declared_package_names(path: Path) -> set[str]:
     return names
 
 
+def _assert_contains(path: Path, expected: str) -> None:
+    text = path.read_text()
+    if expected not in text:
+        raise SystemExit(f"{path.relative_to(PROJECT_ROOT)} must contain: {expected}")
+
+
 def main() -> None:
     runtime = _locked_versions(PROJECT_ROOT / "requirements.lock")
     dev = _locked_versions(PROJECT_ROOT / "requirements-dev.lock")
@@ -41,10 +47,19 @@ def main() -> None:
     if conflicts:
         raise SystemExit(f"runtime/dev lock version conflicts: {conflicts}")
 
-    declared = _declared_package_names(PROJECT_ROOT / "requirements-dev.txt")
-    missing = declared - set(dev)
-    if missing:
-        raise SystemExit(f"requirements-dev.lock is missing direct dev requirements: {sorted(missing)}")
+    runtime_declared = _declared_package_names(PROJECT_ROOT / "requirements.txt")
+    runtime_missing = runtime_declared - set(runtime)
+    if runtime_missing:
+        raise SystemExit(f"requirements.lock is missing direct runtime requirements: {sorted(runtime_missing)}")
+
+    dev_declared = _declared_package_names(PROJECT_ROOT / "requirements-dev.txt")
+    dev_missing = dev_declared - set(dev)
+    if dev_missing:
+        raise SystemExit(f"requirements-dev.lock is missing direct dev requirements: {sorted(dev_missing)}")
+
+    _assert_contains(PROJECT_ROOT / "Dockerfile", "pip install --no-cache-dir -r requirements.lock")
+    _assert_contains(PROJECT_ROOT / ".github/workflows/ci.yml", "pip install -r requirements.lock -r requirements-dev.lock")
+    _assert_contains(PROJECT_ROOT / ".github/workflows/ci.yml", "pip-audit -r requirements.lock -r requirements-dev.lock")
 
     pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
     has_project_metadata = "\n[project]\n" in f"\n{pyproject}\n"

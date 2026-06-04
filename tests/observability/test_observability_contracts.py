@@ -214,7 +214,9 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     broker = (ROOT / "core/taskiq_broker.py").read_text()
     webhook = (ROOT / "api/v1/webhook.py").read_text()
     tasks = (ROOT / "services/operations/tasks.py").read_text()
-    pipeline = (ROOT / "services/webhooks/pipeline.py").read_text()
+    pipeline_orchestrator = (ROOT / "services/webhooks/pipeline_orchestrator.py").read_text()
+    pipeline_runtime = (ROOT / "services/webhooks/pipeline_runtime.py").read_text()
+    pipeline_stages = (ROOT / "services/webhooks/pipeline_stages.py").read_text()
     forwarding_stage = (ROOT / "services/webhooks/forwarding_stage.py").read_text()
     forward_outbox = (ROOT / "services/forwarding/outbox.py").read_text()
     redis_metrics = (ROOT / "core/redis_client.py").read_text()
@@ -234,12 +236,15 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert '"worker.webhook_process_task"' in tasks
     assert '"worker.task.name": "webhook_process_task"' in tasks
     assert "worker.task.status" in tasks
-    assert '"pipeline.step": step' in pipeline
-    assert '_pipeline_step(ctx, "validate")' in pipeline
-    assert '_pipeline_step(ctx, "dedup")' in pipeline
-    assert '_pipeline_step(ctx, "noise")' in pipeline
-    assert '"webhook.dedup"' in pipeline
-    assert "webhook.pipeline.step.completed" in pipeline
+    assert "validate_backpressure(ctx, gate_res)" in pipeline_orchestrator
+    assert "resolve_noise_context(ctx, dependencies)" in pipeline_orchestrator
+    assert "persist_and_schedule(ctx, analysis, noise, analysis_res, dependencies)" in pipeline_orchestrator
+    assert '"pipeline.step": step' in pipeline_runtime
+    assert 'pipeline_step(ctx, "validate")' in pipeline_stages
+    assert 'pipeline_step(ctx, "dedup")' in pipeline_stages
+    assert 'pipeline_step(ctx, "noise")' in pipeline_stages
+    assert '"webhook.dedup"' in pipeline_runtime
+    assert "webhook.pipeline.step.completed" in pipeline_runtime
     assert '"forward.target_type": first_target_type' in forwarding_stage
     assert "FORWARD_TARGET_TYPE" in forward_outbox
     assert '"redis.operation": operation' in redis_metrics

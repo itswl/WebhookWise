@@ -185,13 +185,20 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monk
 def test_ecosystem_adapter_helpers_volcengine_and_feishu_card() -> None:
     from adapters import ecosystem_adapters as adapters
     from adapters.normalized import extract_alert_identity
+    from adapters.simple_adapters import (
+        _extract_tag,
+        _pick_first,
+        _pick_first_resource,
+        _pick_label,
+        _safe_resource_list,
+    )
 
     assert adapters._header_get({"X-WEBHOOK-SOURCE": "Grafana"}, "x-webhook-source") == "Grafana"
-    assert adapters._pick_first(None, "", "value") == "value"
-    assert adapters._pick_label({"Severity": "critical"}, "severity") == "critical"
-    assert adapters._extract_tag(["host:web-01", "service:api"], "service") == "api"
-    assert adapters._safe_resource_list([{"id": "one"}, "bad"]) == [{"id": "one"}]
-    assert adapters._pick_first_resource([{"Dimensions": [{"Name": "Pod", "Value": "pod-a"}]}]) == "pod-a"
+    assert _pick_first(None, "", "value") == "value"
+    assert _pick_label({"Severity": "critical"}, "severity") == "critical"
+    assert _extract_tag(["host:web-01", "service:api"], "service") == "api"
+    assert _safe_resource_list([{"id": "one"}, "bad"]) == [{"id": "one"}]
+    assert _pick_first_resource([{"Dimensions": [{"Name": "Pod", "Value": "pod-a"}]}]) == "pod-a"
     assert adapters.normalize_level("service recovered normally") == "info"
 
     volc = adapters.normalize_webhook_event(
