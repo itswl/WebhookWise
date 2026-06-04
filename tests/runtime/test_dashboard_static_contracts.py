@@ -67,9 +67,11 @@ def test_deep_analysis_formats_json_like_reports_as_structured_content() -> None
     js = _static_js("deep-analyses.js")
     css = _static_css("components.css")
 
-    assert "decodeEscapedJsonText" in js
-    assert "renderStructuredValue(parsed)" in js
-    assert "renderKeyValueGrid(value) || renderJsonBlock(value)" in js
-    assert "da-json-block" in js
-    assert ".da-json-block" in css
-    assert ".da-inline-list" in css
+    assert "DEEP_ANALYSIS_REPORT_SCHEMA = 'deep_analysis_report.v1'" in js
+    assert "record.normalized_report" in js
+    assert "renderNormalizedReport(report)" in js
+    assert "parseJsonLikeText" not in js
+    assert "stripMarkdownJsonFence" not in js
+    assert ".da-report-strip" in css
+    assert ".da-empty-report" in css
+    assert ".da-json-block" not in css

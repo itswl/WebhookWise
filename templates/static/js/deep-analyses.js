@@ -13,41 +13,10 @@ var DeepAnalysesModule = (function() {
     var autoRefreshTimer = null;
     var expandedIds = new Set();
     const DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000;
-
-    const TEXT_FIELD_CANDIDATES = [
-        'summary',
-        'root_cause',
-        '_openclaw_text',
-        'analysis',
-        'conclusion',
-        'content',
-        'text',
-        'message',
-        'finding',
-        'observation',
-        'result',
-        'cause',
-        'error',
-        'failure_reason',
-        'description',
-        'annotations',
-        'details',
-        'detail',
-        'reason',
-        'action',
-        'recommendation',
-        'solution',
-        'value',
-        'name',
-        'title'
-    ];
+    const DEEP_ANALYSIS_REPORT_SCHEMA = 'deep_analysis_report.v1';
 
     function displayValue(value, options) {
-        const opts = Object.assign({ pretty: false, separator: ' · ', maxDepth: 3 }, options || {});
-        return displayValueInternal(value, opts, 0);
-    }
-
-    function displayValueInternal(value, opts, depth) {
+        const opts = Object.assign({ pretty: false, separator: ' · ' }, options || {});
         if (value === null || value === undefined || value === '') return '';
 
         if (typeof value === 'string') return value.trim();
@@ -55,21 +24,12 @@ var DeepAnalysesModule = (function() {
 
         if (Array.isArray(value)) {
             const items = value
-                .map(item => displayValueInternal(item, opts, depth + 1))
+                .map(item => displayValue(item, opts))
                 .filter(Boolean);
             return items.join(opts.separator);
         }
 
         if (typeof value === 'object') {
-            if (depth < opts.maxDepth) {
-                for (const key of TEXT_FIELD_CANDIDATES) {
-                    if (Object.prototype.hasOwnProperty.call(value, key)) {
-                        const text = displayValueInternal(value[key], opts, depth + 1);
-                        if (text) return text;
-                    }
-                }
-            }
-
             try {
                 return JSON.stringify(value, null, opts.pretty ? 2 : 0);
             } catch (e) {
@@ -80,185 +40,49 @@ var DeepAnalysesModule = (function() {
         return String(value);
     }
 
-    function extractJsonBlock(text) {
-        if (typeof text !== 'string') return '';
-        const start = text.search(/[\{\[]/);
-        if (start < 0) return '';
+    function emptyReport() {
+        return {
+            schema: DEEP_ANALYSIS_REPORT_SCHEMA,
+            summary: '',
+            root_cause: '',
+            impact: '',
+            recommendations: [],
+            evidence: [],
+            next_checks: [],
+            alert_identity: {},
+            confidence: null,
+            analysis_failed: false,
+            failure_reason: '',
+            primary_text: '',
+            source_format: 'missing',
+            raw_text: '',
+            sections: []
+        };
+    }
 
-        const opener = text[start];
-        const closer = opener === '{' ? '}' : ']';
-        let depth = 0;
-        let inString = false;
-        let escaped = false;
-
-        for (let i = start; i < text.length; i += 1) {
-            const ch = text[i];
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch === '\\') {
-                    escaped = true;
-                } else if (ch === '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (ch === '"') {
-                inString = true;
-            } else if (ch === opener) {
-                depth += 1;
-            } else if (ch === closer) {
-                depth -= 1;
-                if (depth === 0) return text.slice(start, i + 1);
-            }
+    function normalizedReport(record) {
+        const report = record && record.normalized_report;
+        if (!report || typeof report !== 'object' || Array.isArray(report) || report.schema !== DEEP_ANALYSIS_REPORT_SCHEMA) {
+            return emptyReport();
         }
-
-        return '';
-    }
-
-    function stripMarkdownJsonFence(text) {
-        if (typeof text !== 'string') return '';
-        return text
-            .trim()
-            .replace(/^```(?:[a-z0-9_-]+)?\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
-    }
-
-    function decodeEscapedJsonText(text) {
-        if (typeof text !== 'string') return '';
-        const trimmed = text.trim();
-        if (!trimmed || (!trimmed.includes('\\"') && !trimmed.includes('\\n') && !trimmed.includes('\\t'))) {
-            return '';
-        }
-        return trimmed
-            .replace(/\\r/g, '\r')
-            .replace(/\\n/g, '\n')
-            .replace(/\\t/g, '\t')
-            .replace(/\\"/g, '"')
-            .replace(/\\\\/g, '\\')
-            .trim();
-    }
-
-    function uniqueTextCandidates(values) {
-        const seen = new Set();
-        return values.filter(value => {
-            if (!value) return false;
-            const text = String(value).trim();
-            if (!text || seen.has(text)) return false;
-            seen.add(text);
-            return true;
+        return Object.assign(emptyReport(), report, {
+            recommendations: Array.isArray(report.recommendations) ? report.recommendations : [],
+            evidence: Array.isArray(report.evidence) ? report.evidence : [],
+            next_checks: Array.isArray(report.next_checks) ? report.next_checks : [],
+            alert_identity: report.alert_identity && typeof report.alert_identity === 'object' && !Array.isArray(report.alert_identity)
+                ? report.alert_identity
+                : {},
+            sections: Array.isArray(report.sections) ? report.sections : []
         });
     }
 
-    function parseJsonLikeText(value) {
-        if (typeof value !== 'string') return null;
-        let stripped = stripMarkdownJsonFence(value);
-        if (!stripped) return null;
-
-        try {
-            const decoded = JSON.parse(stripped);
-            if (typeof decoded === 'string') {
-                stripped = stripMarkdownJsonFence(decoded);
-            } else if (decoded && typeof decoded === 'object') {
-                return decoded;
-            }
-        } catch (e) {
-            // Keep parsing text-like payloads below.
-        }
-
-        const jsonBlock = extractJsonBlock(stripped);
-        const decodedStripped = decodeEscapedJsonText(stripped);
-        const decodedBlock = decodeEscapedJsonText(jsonBlock);
-        const candidates = uniqueTextCandidates([
-            stripped,
-            sanitizeLooseJson(stripped),
-            decodedStripped,
-            sanitizeLooseJson(decodedStripped),
-            jsonBlock,
-            sanitizeLooseJson(jsonBlock),
-            decodedBlock,
-            sanitizeLooseJson(decodedBlock)
-        ]);
-        for (const candidate of candidates) {
-            try {
-                const parsed = JSON.parse(candidate);
-                if (parsed && typeof parsed === 'object') return parsed;
-            } catch (e) {
-                // Ignore non-JSON prose and fall back to the next candidate.
-            }
-        }
-        return null;
+    function reportPreviewText(report) {
+        return displayValue(report.primary_text || report.summary || report.root_cause || report.impact || report.failure_reason, { separator: '；' });
     }
 
-    function sanitizeLooseJson(text) {
-        if (typeof text !== 'string') return '';
-        return text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-    }
-
-    function isRawJsonLikeText(value) {
-        if (typeof value !== 'string') return false;
-        const text = value.trim();
-        return text.startsWith('```') || text.startsWith('{') || text.startsWith('[');
-    }
-
-    function buildAnalysisView(analysis) {
-        const data = normalizeAnalysisResult(analysis);
-        const parsed =
-            parseJsonLikeText(data.summary) ||
-            parseJsonLikeText(data.root_cause) ||
-            parseJsonLikeText(data._openclaw_text) ||
-            parseJsonLikeText(data.analysis) ||
-            parseJsonLikeText(data.details);
-
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            return Object.assign({}, data, parsed);
-        }
-        return data;
-    }
-
-    function displayPreviewValue(value) {
-        const parsed = parseJsonLikeText(value);
-        if (parsed) return buildPreviewText(parsed);
-        if (isRawJsonLikeText(value)) return '';
-        return displayValue(value, { separator: '；' });
-    }
-
-    function buildPreviewText(analysis) {
-        const view = buildAnalysisView(analysis);
-        const candidates = [
-            view.summary,
-            view.conclusion,
-            view.root_cause,
-            view.impact,
-            view.impact_scope,
-            view.error,
-            view.failure_reason,
-            view.message
-        ];
-
-        for (const candidate of candidates) {
-            const text = displayPreviewValue(candidate);
-            if (text) return text;
-        }
-
-        return '';
-    }
-
-    function normalizeAnalysisResult(value) {
-        if (!value) return {};
-        if (typeof value === 'object' && !Array.isArray(value)) return value;
-        const text = displayValue(value);
-        return text ? { root_cause: text, _openclaw_text: text } : {};
-    }
-
-    function firstDisplayValue(values, options) {
-        for (const value of values) {
-            const text = displayValue(value, options);
-            if (text) return text;
-        }
-        return '';
+    function confidenceLabel(confidence) {
+        if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return '—';
+        return Math.round(Math.max(0, Math.min(1, confidence)) * 100) + '%';
     }
 
     function truncateText(text, maxLength) {
@@ -272,45 +96,28 @@ var DeepAnalysesModule = (function() {
         return items
             .map(item => displayValue(item))
             .filter(Boolean)
-            .map(item => `<li style="margin-bottom: 0.5rem;">${escapeHtml(item)}</li>`)
+            .map(item => `<li>${escapeHtml(item)}</li>`)
             .join('');
     }
 
-    function hasDisplayValue(value) {
-        return !!displayValue(value);
-    }
-
-    function renderParagraph(value) {
-        const parsed = parseJsonLikeText(value);
-        if (parsed) return renderStructuredValue(parsed);
-
-        const text = displayValue(value, { pretty: true, separator: '\n' });
+    function renderTextSection(title, value, extraClass) {
+        const text = displayValue(value, { separator: '\n' });
         if (!text) return '';
-        return `<p>${escapeHtml(text)}</p>`;
-    }
-
-    function renderValueBody(value) {
-        if (value === null || value === undefined || value === '') return '';
-
-        if (Array.isArray(value)) {
-            const items = renderListItems(value);
-            return items ? `<ul>${items}</ul>` : '';
-        }
-
-        if (typeof value === 'object') {
-            return renderStructuredValue(value);
-        }
-
-        return renderParagraph(value);
-    }
-
-    function renderSection(title, value, extraClass) {
-        const body = renderValueBody(value);
-        if (!body) return '';
         return `
             <section class="da-analysis-section ${extraClass || ''}">
                 <h4>${escapeHtml(title)}</h4>
-                ${body}
+                <p>${escapeHtml(text)}</p>
+            </section>
+        `;
+    }
+
+    function renderListSection(title, value, extraClass) {
+        const items = renderListItems(value);
+        if (!items) return '';
+        return `
+            <section class="da-analysis-section ${extraClass || ''}">
+                <h4>${escapeHtml(title)}</h4>
+                <ul class="da-report-list">${items}</ul>
             </section>
         `;
     }
@@ -336,107 +143,81 @@ var DeepAnalysesModule = (function() {
     function renderKeyValueGrid(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
         const rows = Object.keys(value)
-            .filter(key => hasDisplayValue(value[key]))
+            .filter(key => displayValue(value[key]))
             .map(key => `
                 <div class="da-kv-row">
                     <dt>${escapeHtml(formatFieldName(key))}</dt>
-                    <dd>${renderInlineStructuredValue(value[key])}</dd>
+                    <dd>${escapeHtml(value[key])}</dd>
                 </div>
             `)
             .join('');
         return rows ? `<dl class="da-kv-grid">${rows}</dl>` : '';
     }
 
-    function renderInlineStructuredValue(value) {
-        if (value === null || value === undefined || value === '') return '';
-        if (Array.isArray(value)) {
-            const items = value
-                .map(item => renderInlineStructuredValue(item))
-                .filter(Boolean)
-                .map(item => `<li>${item}</li>`)
-                .join('');
-            return items ? `<ul class="da-inline-list">${items}</ul>` : '';
-        }
-
-        if (typeof value === 'object') {
-            return renderKeyValueGrid(value) || renderJsonBlock(value);
-        }
-
-        if (typeof value === 'string') {
-            const parsed = parseJsonLikeText(value);
-            if (parsed) return renderStructuredValue(parsed);
-        }
-
-        return escapeHtml(displayValue(value, { pretty: true, separator: '；' }));
+    function reportHasContent(report) {
+        return !!(
+            report.summary ||
+            report.root_cause ||
+            report.impact ||
+            report.recommendations.length ||
+            report.evidence.length ||
+            report.next_checks.length ||
+            Object.keys(report.alert_identity).length ||
+            report.primary_text ||
+            report.failure_reason
+        );
     }
 
-    function renderStructuredValue(value) {
-        if (value === null || value === undefined || value === '') return '';
-        if (Array.isArray(value)) {
-            const items = value
-                .map(item => renderInlineStructuredValue(item))
-                .filter(Boolean)
-                .map(item => `<li>${item}</li>`)
-                .join('');
-            return items ? `<ul>${items}</ul>` : '';
-        }
-
-        if (typeof value === 'object') {
-            return renderKeyValueGrid(value) || renderJsonBlock(value);
-        }
-
-        return renderParagraph(value);
-    }
-
-    function renderJsonBlock(value) {
-        let text = '';
-        try {
-            text = typeof value === 'string' ? stripMarkdownJsonFence(value) : JSON.stringify(value, null, 2);
-        } catch (e) {
-            text = displayValue(value, { pretty: true, separator: '\n' });
-        }
-        return text ? `<pre class="da-json-block"><code>${escapeHtml(text)}</code></pre>` : '';
-    }
-
-    function renderStructuredAnalysis(analysis) {
-        const view = buildAnalysisView(analysis);
-        const summary = displayPreviewValue(view.summary);
-        const rootCause = view.root_cause || view.reason || view.analysis;
-        const impact = view.impact || view.impact_scope;
-        const recommendationSource =
-            Array.isArray(view.recommendations) && view.recommendations.length > 0
-                ? view.recommendations
-                : (view.recommendations || view.actions || view.next_steps || view.solution);
-        const evidence = view.evidence || view.supports || view.observations;
-
+    function renderNormalizedReport(report) {
         let html = '<div class="da-analysis-report">';
-        if (summary) {
+        if (!reportHasContent(report)) {
+            html += `
+                <section class="da-empty-report">
+                    <strong>结构化报告不可用</strong>
+                    <span>后端没有返回 normalized_report，无法稳定展示。</span>
+                </section>
+            `;
+            html += '</div>';
+            return html;
+        }
+
+        if (report.summary) {
             html += `
                 <section class="da-analysis-section da-analysis-summary">
                     <h4>分析摘要</h4>
-                    <p>${escapeHtml(summary)}</p>
+                    <p>${escapeHtml(report.summary)}</p>
                 </section>
             `;
         }
 
+        const confidence = confidenceLabel(report.confidence);
+        html += `
+            <div class="da-report-strip">
+                <span>结构: ${escapeHtml(report.source_format || 'unknown')}</span>
+                <span>置信度: ${escapeHtml(confidence)}</span>
+                ${report.analysis_failed ? '<span class="da-report-failed">失败报告</span>' : '<span>完成报告</span>'}
+            </div>
+        `;
+
         html += '<div class="da-analysis-grid">';
-        html += renderSection('根因定位', rootCause);
-        html += renderSection('影响评估', impact);
-        html += renderSection('修复建议', recommendationSource, 'da-analysis-section-wide');
-        html += renderSection('关键证据', evidence, 'da-analysis-section-wide');
+        html += renderTextSection('根因定位', report.root_cause || report.failure_reason);
+        html += renderTextSection('影响评估', report.impact);
+        html += renderListSection('修复建议', report.recommendations, 'da-analysis-section-wide');
+        html += renderListSection('关键证据', report.evidence, 'da-analysis-section-wide');
+        html += renderListSection('后续检查', report.next_checks, 'da-analysis-section-wide');
         html += '</div>';
 
-        if (view.alert_identity) {
+        if (Object.keys(report.alert_identity).length) {
             html += `
                 <section class="da-analysis-section da-analysis-section-wide">
                     <h4>告警身份</h4>
-                    ${renderKeyValueGrid(view.alert_identity)}
+                    ${renderKeyValueGrid(report.alert_identity)}
                 </section>
             `;
         }
 
-        if (!summary && !hasDisplayValue(rootCause) && !hasDisplayValue(impact) && !hasDisplayValue(recommendationSource) && !hasDisplayValue(evidence)) {
-            html += renderSection('分析内容', view, 'da-analysis-section-wide');
+        if (!report.summary && !report.root_cause && !report.impact && report.primary_text) {
+            html += renderTextSection('分析内容', report.primary_text, 'da-analysis-section-wide');
         }
 
         html += '</div>';
@@ -452,10 +233,6 @@ var DeepAnalysesModule = (function() {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
-    }
-
-    function renderPlainMarkdown(text) {
-        return `<pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${escapeHtml(text)}</pre>`;
     }
 
     function toggleExpand(id) {
@@ -475,10 +252,10 @@ var DeepAnalysesModule = (function() {
     }
 
     function buildSummaryHtml(record) {
-        var analysis = normalizeAnalysisResult(record.analysis_result);
+        var report = normalizedReport(record);
         var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
         var duration = typeof record.duration_seconds === 'number' ? record.duration_seconds.toFixed(2) + 's' : '-';
-        var source = displayValue(record.source || analysis.source) || '未知来源';
+        var source = displayValue(record.source || report.alert_identity.source) || '未知来源';
 
         const engineMap = {
             'openclaw': { label: 'OpenClaw', class: 'badge-high', icon: '🦞', bg: '#dbeafe', color: '#4338ca' },
@@ -516,13 +293,12 @@ var DeepAnalysesModule = (function() {
         `;
 
         if (record.status === 'completed') {
-            let textPreview = buildPreviewText(analysis);
-            if (!textPreview && !isRawJsonLikeText(record.analysis_result)) {
-                textPreview = firstDisplayValue([record.analysis_result], { separator: '；' });
-            }
+            let textPreview = reportPreviewText(report);
             textPreview = truncateText(textPreview, 180);
             if (textPreview) {
                 html += `<div class="da-preview">${escapeHtml(textPreview)}</div>`;
+            } else {
+                html += '<div class="da-preview da-preview-empty">结构化报告不可用</div>';
             }
         } else if (record.status === 'pending') {
             const runIdText = record.openclaw_run_id ? `(Run ID: <span style="font-family: monospace;">${escapeHtml(record.openclaw_run_id.substring(0,8))}</span>)` : '';
@@ -532,7 +308,7 @@ var DeepAnalysesModule = (function() {
             const pollText = pollInfo.length > 0 ? `<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">${pollInfo.join(' · ')}</div>` : '';
             html += `<div class="da-preview da-preview-pending">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>${pollText}`;
         } else if (record.status === 'failed') {
-            let errorMsg = firstDisplayValue([analysis.root_cause, analysis.error, analysis.failure_reason, analysis.message], { separator: '；' }) || '未知错误';
+            let errorMsg = report.failure_reason || report.root_cause || report.primary_text || '未知错误';
             errorMsg = truncateText(errorMsg, 160);
             html += `<div class="da-preview da-preview-error">❌ ${escapeHtml(errorMsg)}</div>`;
         }
@@ -549,7 +325,7 @@ var DeepAnalysesModule = (function() {
     }
 
     function buildDetailsHtml(record) {
-        var analysis = normalizeAnalysisResult(record.analysis_result);
+        var report = normalizedReport(record);
         const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : (record.engine === 'hermes' ? 'Hermes' : 'Local AI');
 
         let detailsHtml = '';
@@ -575,26 +351,12 @@ var DeepAnalysesModule = (function() {
             detailsHtml += `
                 <div style="background: var(--danger-bg); border: 1px solid rgba(239,68,68,0.2); padding: 1.5rem; border-radius: var(--radius-md); color: var(--danger);">
                     <h4 style="margin-bottom: 0.5rem; font-weight: 600;">⚠️ 分析任务崩溃</h4>
-                    <p style="margin: 0; font-size: 0.95rem;">${escapeHtml(analysis.root_cause || analysis.error || analysis.failure_reason || '未知异常')}</p>
+                    <p style="margin: 0; font-size: 0.95rem;">${escapeHtml(report.failure_reason || report.root_cause || report.primary_text || '未知异常')}</p>
                 </div>
             `;
+            detailsHtml += renderNormalizedReport(report);
         } else {
-            // Completed
-            const openclawText = displayValue(analysis._openclaw_text, { pretty: true, separator: '\n' });
-            const parsedOpenclawText = parseJsonLikeText(openclawText);
-            if (parsedOpenclawText) {
-                detailsHtml += renderStructuredAnalysis(Object.assign({}, analysis, parsedOpenclawText));
-            } else if (openclawText && !isRawJsonLikeText(openclawText)) {
-                const mdHtml = renderPlainMarkdown(openclawText);
-                detailsHtml += `
-                    <div style="background: #ffffff; padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.95rem; line-height: 1.6; color: var(--text-main);" class="markdown-body">
-                        ${mdHtml}
-                    </div>
-                `;
-            } else {
-                // Structured output (Local Engine)
-                detailsHtml += renderStructuredAnalysis(analysis);
-            }
+            detailsHtml += renderNormalizedReport(report);
         }
 
         // Action Buttons Row
@@ -618,7 +380,10 @@ var DeepAnalysesModule = (function() {
         detailsHtml += `
             <div id="${rawJsonId}" style="display: none; margin-top: 1.5rem;">
                 <div class="raw-data">
-                    <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(JSON.stringify(analysis, null, 2))}</pre>
+                    <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(JSON.stringify({
+                        normalized_report: report,
+                        analysis_result: record.analysis_result || null
+                    }, null, 2))}</pre>
                 </div>
             </div>
         `;
