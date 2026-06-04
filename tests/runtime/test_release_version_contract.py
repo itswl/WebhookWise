@@ -51,17 +51,23 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text()
 
     assert 'tags:\n      - "v*.*.*"' in workflow
+    assert "actions: read" in workflow
     assert "GHCR_IMAGE: ghcr.io/itswl/webhookwise" in workflow
     assert "DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}" in workflow
     assert "IMAGE_PLATFORMS: linux/amd64,linux/arm64" in workflow
+    assert "ci-gate:" in workflow
+    assert "--workflow ci.yml" in workflow
+    assert '--commit "$RELEASE_SHA"' in workflow
+    assert "Waiting for ci.yml to pass" in workflow
     assert "docker/setup-qemu-action@v3" in workflow
     assert "Log in to Docker Hub" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
     assert "docker/build-push-action@v6" in workflow
     assert "platforms: ${{ env.IMAGE_PLATFORMS }}" in workflow
     assert "APP_VERSION=${{ needs.verify.outputs.version }}" in workflow
-    assert "pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db" in workflow
-    assert "tests/e2e/run_webhook_to_feishu.sh" in workflow
-    assert "      - test\n      - docker-e2e" in workflow
+    assert "pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db" not in workflow
+    assert "tests/e2e/run_webhook_to_feishu.sh" not in workflow
+    assert "      - ci-gate" in workflow
+    assert "      - test\n      - docker-e2e" not in workflow
     assert 'tomllib.load(fh)["project"]["version"]' in workflow
     assert 'grep -Eq "^## \\\\[$version\\\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md' in workflow
