@@ -19,31 +19,30 @@ _AUTH_DEPENDENCY = Security(security)
 _CONFIG_DEPENDENCY = Depends(get_config_manager)
 
 
-def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> str | None:
+def _token_candidates(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> list[str]:
+    candidates: list[str] = []
+
+    def add_token(value: object) -> None:
+        token = str(value).strip() if value else ""
+        if token and token not in candidates:
+            candidates.append(token)
+
     if auth is not None:
-        token = str(auth.credentials).strip() if auth.credentials else ""
-        if token:
-            return token
+        add_token(auth.credentials)
 
     if auth and auth.scheme:
-        token = str(auth.credentials).strip() if auth.credentials else ""
-        if token:
-            return token
+        add_token(auth.credentials)
 
     header_value = request.headers.get("authorization")
     if header_value:
         token = header_value.strip()
         if token.lower().startswith("bearer "):
-            return token[7:].strip()
-        if token:
-            return token
+            add_token(token[7:])
+        else:
+            add_token(token)
 
     for key in header_keys:
-        candidate = request.headers.get(key)
-        if candidate:
-            token = str(candidate).strip()
-            if token:
-                return token
+        add_token(request.headers.get(key))
 
     query = getattr(request, "query_params", None)
     if query is not None:
@@ -57,10 +56,12 @@ def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *h
         ):
             candidate = query.get(key)
             if isinstance(candidate, str):
-                token = candidate.strip()
-                if token:
-                    return token
-    return None
+                add_token(candidate)
+    return candidates
+
+
+def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> str | None:
+    return next(iter(_token_candidates(request, auth, *header_keys)), None)
 
 
 def _body_meta(body: bytes) -> dict[str, object]:
@@ -90,8 +91,11 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    credential = _first_token(request, auth, "x-api-key", "x-admin-key")
-    if not credential or not _matches_any_configured_token(credential, api_key, config.security.ADMIN_WRITE_KEY):
+    credentials = _token_candidates(request, auth, "x-api-key", "x-admin-key", "x-admin-write-key")
+    if not any(
+        _matches_any_configured_token(credential, api_key, config.security.ADMIN_WRITE_KEY)
+        for credential in credentials
+    ):
         client_ip = request.client.host if request.client else "unknown"
 
         if logger.isEnabledFor(logging.WARNING):
@@ -131,11 +135,9 @@ async def verify_admin_write(
             detail="ADMIN_WRITE_KEY is not configured",
         )
 
-    credential = _first_token(
-        request, auth, "x-admin-write-key", "x-admin-key", "x-api-key"
-    )
+    credentials = _token_candidates(request, auth, "x-admin-write-key", "x-admin-key", "x-api-key")
 
-    if not credential:
+    if not credentials:
         client_ip = request.client.host if request.client else "unknown"
         logger.warning(
             "[Auth] Admin write operation requires permission: missing token, IP=%s, URL=%s",
@@ -147,9 +149,15 @@ async def verify_admin_write(
             detail="Admin write permission required. Missing ADMIN_WRITE_KEY.",
         )
 
-    if _matches_any_configured_token(credential, admin_write_key) is False and _matches_any_configured_token(
-        credential,
-        api_key,
+    if any(_matches_any_configured_token(credential, admin_write_key) for credential in credentials):
+        return True
+
+    if any(
+        _matches_any_configured_token(
+            credential,
+            api_key,
+        )
+        for credential in credentials
     ):
         client_ip = request.client.host if request.client else "unknown"
         logger.warning(
@@ -162,15 +170,13 @@ async def verify_admin_write(
             detail="Admin write token required. API key is insufficient for this endpoint.",
         )
 
-    if not _matches_any_configured_token(credential, admin_write_key):
-        client_ip = request.client.host if request.client else "unknown"
-        logger.warning(
-            "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
-            client_ip,
-            request.url.path,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin write permission required",
-        )
-    return True
+    client_ip = request.client.host if request.client else "unknown"
+    logger.warning(
+        "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
+        client_ip,
+        request.url.path,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin write permission required",
+    )

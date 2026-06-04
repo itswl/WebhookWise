@@ -351,7 +351,11 @@ const API = {
             return false;
         }
         const body = await response.clone().json().catch(() => null);
-        return body?.detail === 'Admin write permission required';
+        return [
+            'Admin write permission required',
+            'Admin write permission required. Missing ADMIN_WRITE_KEY.',
+            'Admin write token required. API key is insufficient for this endpoint.'
+        ].includes(body?.detail);
     },
 
     // ========== 告警相关 API ==========

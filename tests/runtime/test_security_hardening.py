@@ -530,14 +530,23 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         read_with_admin = await client.get("/v1/prompt", headers={"Authorization": "Bearer admin-key"})
+        read_with_admin_header = await client.get("/v1/prompt", headers={"x-admin-write-key": "admin-key"})
         write_with_api = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer api-key"})
         write_with_admin = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer admin-key"})
+        write_with_admin_header = await client.post("/v1/prompt/reload", headers={"x-admin-write-key": "admin-key"})
+        write_with_mixed_headers = await client.post(
+            "/v1/prompt/reload",
+            headers={"Authorization": "Bearer api-key", "x-admin-write-key": "admin-key"},
+        )
 
     assert read_with_admin.status_code == 200
+    assert read_with_admin_header.status_code == 200
     assert write_with_api.status_code == 403
     assert write_with_api.json()["detail"] == "Admin write token required. API key is insufficient for this endpoint."
     assert write_with_admin.status_code == 200
     assert write_with_admin.json()["template_length"] == len("test prompt")
+    assert write_with_admin_header.status_code == 200
+    assert write_with_mixed_headers.status_code == 200
 
 
 def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
@@ -549,6 +558,7 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
     assert "this.getWriteToken()" in api_js
     assert "Admin write permission required" in api_js
+    assert "API key is insufficient for this endpoint" in api_js
     assert "window.indexedDB" in api_js
     assert "localStorage.setItem(storageKey, JSON.stringify(record))" in api_js
 
