@@ -28,6 +28,10 @@ def _static_js(name: str) -> str:
     return (PROJECT_ROOT / "templates/static/js" / name).read_text()
 
 
+def _static_css(name: str) -> str:
+    return (PROJECT_ROOT / "templates/static/css" / name).read_text()
+
+
 def test_dashboard_references_existing_static_assets_in_order() -> None:
     parser = _AssetParser()
     parser.feed(_dashboard_html())
@@ -57,3 +61,15 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
+
+
+def test_deep_analysis_formats_json_like_reports_as_structured_content() -> None:
+    js = _static_js("deep-analyses.js")
+    css = _static_css("components.css")
+
+    assert "decodeEscapedJsonText" in js
+    assert "renderStructuredValue(parsed)" in js
+    assert "renderKeyValueGrid(value) || renderJsonBlock(value)" in js
+    assert "da-json-block" in js
+    assert ".da-json-block" in css
+    assert ".da-inline-list" in css
