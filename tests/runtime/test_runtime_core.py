@@ -215,6 +215,11 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "admin-token")
     assert await auth.verify_admin_write(request, admin_credentials, temp_config) is True
 
+    mixed_token_request = Request()
+    mixed_token_request.headers = {"x-admin-write-key": "admin-token"}
+    mixed_token_request.query_params = {}
+    assert await auth.verify_admin_write(mixed_token_request, credentials, temp_config) is True
+
     with pytest.raises(HTTPException) as invalid_admin_key:
         await auth.verify_admin_write(request, bad_credentials, temp_config)
     assert invalid_admin_key.value.status_code == 403
