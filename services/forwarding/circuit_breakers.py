@@ -32,32 +32,40 @@ class LazyCircuitBreaker:
         return await self._get().call_async(func, *args, **kwargs)
 
 
-def _build_feishu_circuit_breaker(config: AppConfig) -> CircuitBreaker:
-    return CircuitBreaker(
-        name="feishu",
-        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_THRESHOLD,
-        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_FEISHU_TIMEOUT,
-    )
+@dataclass(frozen=True, slots=True)
+class CircuitBreakerSpec:
+    name: str
+    failure_threshold_attr: str
+    recovery_timeout_attr: str
+
+    def build(self, config: AppConfig) -> CircuitBreaker:
+        circuit_config = config.circuit_breaker
+        return CircuitBreaker(
+            name=self.name,
+            failure_threshold=getattr(circuit_config, self.failure_threshold_attr),
+            recovery_timeout=getattr(circuit_config, self.recovery_timeout_attr),
+        )
 
 
-def _build_openclaw_circuit_breaker(config: AppConfig) -> CircuitBreaker:
-    return CircuitBreaker(
-        name="openclaw",
-        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_THRESHOLD,
-        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_OPENCLAW_TIMEOUT,
-    )
+_FEISHU_BREAKER_SPEC = CircuitBreakerSpec(
+    name="feishu",
+    failure_threshold_attr="CIRCUIT_BREAKER_FEISHU_THRESHOLD",
+    recovery_timeout_attr="CIRCUIT_BREAKER_FEISHU_TIMEOUT",
+)
+_OPENCLAW_BREAKER_SPEC = CircuitBreakerSpec(
+    name="openclaw",
+    failure_threshold_attr="CIRCUIT_BREAKER_OPENCLAW_THRESHOLD",
+    recovery_timeout_attr="CIRCUIT_BREAKER_OPENCLAW_TIMEOUT",
+)
+_FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
+    name="forward",
+    failure_threshold_attr="CIRCUIT_BREAKER_FORWARD_THRESHOLD",
+    recovery_timeout_attr="CIRCUIT_BREAKER_FORWARD_TIMEOUT",
+)
 
 
-def _build_forward_circuit_breaker(config: AppConfig) -> CircuitBreaker:
-    return CircuitBreaker(
-        name="forward",
-        failure_threshold=config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_THRESHOLD,
-        recovery_timeout=config.circuit_breaker.CIRCUIT_BREAKER_FORWARD_TIMEOUT,
-    )
-
-
-feishu_cb = LazyCircuitBreaker(_build_feishu_circuit_breaker)
-openclaw_cb = LazyCircuitBreaker(_build_openclaw_circuit_breaker)
+feishu_cb = LazyCircuitBreaker(_FEISHU_BREAKER_SPEC.build)
+openclaw_cb = LazyCircuitBreaker(_OPENCLAW_BREAKER_SPEC.build)
 
 _host_breakers: dict[str, LazyCircuitBreaker] = {}
 _host_breakers_lock = Lock()
@@ -70,7 +78,7 @@ def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
     if host not in _host_breakers:
         with _host_breakers_lock:
             if host not in _host_breakers:
-                _host_breakers[host] = LazyCircuitBreaker(_build_forward_circuit_breaker)
+                _host_breakers[host] = LazyCircuitBreaker(_FORWARD_BREAKER_SPEC.build)
     return _host_breakers[host]
 
 

@@ -42,6 +42,7 @@ RETRYABLE_DEEP_ANALYSIS_STATUSES = frozenset(
     }
 )
 _BEST_EFFORT_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
+build_deep_analysis_context = build_webhook_context
 
 
 class DeepAnalysisWorkflowError(RuntimeError):
@@ -72,10 +73,6 @@ class DeepAnalysisForwardOutcome:
 
 def is_supported_deep_analysis_engine(requested: str) -> bool:
     return requested in ("", "auto", "openclaw")
-
-
-async def build_deep_analysis_context(event: WebhookEvent) -> JsonObject:
-    return await build_webhook_context(event)
 
 
 async def run_openclaw_deep_analysis(

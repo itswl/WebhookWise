@@ -13,6 +13,7 @@ from typing import Any, Protocol, cast
 
 from core.observability.attributes import INSTRUMENTATION_SCOPE_NAME, normalize_attributes
 from core.observability.exporters import build_span_exporter, env_flag, otel_enabled
+from core.observability.guard import suppress_observability_error
 from core.observability.resource import build_resource, get_otel_schema_url, get_service_version
 
 _httpx_instrumented = False
@@ -117,9 +118,9 @@ def shutdown_tracing() -> None:
     provider = _trace_provider
     if provider is None:
         return
-    with suppress(Exception):
+    with suppress_observability_error("trace.force_flush"):
         provider.force_flush()
-    with suppress(Exception):
+    with suppress_observability_error("trace.shutdown"):
         provider.shutdown()
     _trace_provider = None
     _provider_initialized = False
@@ -286,7 +287,7 @@ def inject_trace_headers(
 ) -> MutableMapping[str, str]:
     """Inject W3C trace context and a separate business request id."""
     if otel_enabled():
-        with suppress(Exception):
+        with suppress_observability_error("trace.inject_headers"):
             from opentelemetry import propagate
 
             propagate.inject(carrier)
@@ -324,14 +325,14 @@ def trace_context_from_headers(headers: Mapping[str, Any] | None) -> Iterator[No
     try:
         yield
     finally:
-        with suppress(Exception):
+        with suppress_observability_error("trace.detach_context"):
             context.detach(token)
 
 
 def get_otel_span_id() -> str:
     if not otel_enabled():
         return ""
-    with suppress(Exception):
+    with suppress_observability_error("trace.get_span_id"):
         from opentelemetry import trace
 
         ctx = trace.get_current_span().get_span_context()
@@ -344,7 +345,7 @@ def set_span_error(span_obj: Any | None, error: BaseException | str) -> None:
     """Mark a span as failed and attach the exception when possible."""
     if span_obj is None:
         return
-    with suppress(Exception):
+    with suppress_observability_error("trace.set_span_error"):
         from opentelemetry.trace import StatusCode
 
         description = str(error)
@@ -357,7 +358,7 @@ def set_span_ok(span_obj: Any | None) -> None:
     """Mark a span as successfully completed when the SDK supports it."""
     if span_obj is None:
         return
-    with suppress(Exception):
+    with suppress_observability_error("trace.set_span_ok"):
         from opentelemetry.trace import StatusCode
 
         span_obj.set_status(StatusCode.OK)
@@ -366,14 +367,14 @@ def set_span_ok(span_obj: Any | None) -> None:
 def add_span_event_to(span_obj: Any | None, name: str, attributes: Mapping[str, Any] | None = None) -> None:
     if span_obj is None or not hasattr(span_obj, "add_event"):
         return
-    with suppress(Exception):
+    with suppress_observability_error("trace.add_span_event"):
         span_obj.add_event(name, normalize_attributes(attributes))
 
 
 def set_current_span_error(error: BaseException | str) -> None:
     if not otel_enabled():
         return
-    with suppress(Exception):
+    with suppress_observability_error("trace.set_current_span_error"):
         from opentelemetry import trace
 
         current = trace.get_current_span()

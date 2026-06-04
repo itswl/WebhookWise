@@ -199,7 +199,7 @@ class TestFinalizeOutboxFailure:
         async def _noop(*_: object, **__: object) -> None:
             pass
 
-        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
+        monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_retry", _noop)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=0, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)
@@ -226,14 +226,14 @@ class TestFinalizeOutboxFailure:
         async def _noop(*_: object, **__: object) -> None:
             pass
 
-        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_retry", _noop)
+        monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_retry", _noop)
         enqueued: list[dict[str, object]] = []
 
         async def fake_forward_notification(**kwargs: object) -> dict[str, object]:
             enqueued.append(dict(kwargs))
             return {"status": "queued", "outbox_id": 1}
 
-        monkeypatch.setattr("services.forwarding.outbox.forward_notification", fake_forward_notification)
+        monkeypatch.setattr("services.forwarding.outbox_notifications.enqueue_forward_notification", fake_forward_notification)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=2, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)
@@ -460,7 +460,7 @@ class TestRunForwardOutboxScan:
         async def _fake_schedule(ids: list[int]) -> None:
             scheduled_ids.append(ids)
 
-        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
+        monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_many", _fake_schedule)
 
         stale_time = utcnow() - timedelta(hours=1)
         await _insert_outbox(
@@ -489,7 +489,7 @@ class TestRunForwardOutboxScan:
         async def _fake_schedule(ids: list[int]) -> None:
             scheduled_ids.append(ids)
 
-        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
+        monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_many", _fake_schedule)
 
         await _insert_outbox(session_factory, next_attempt_at=utcnow() - timedelta(seconds=10))
 
@@ -511,7 +511,7 @@ class TestRunForwardOutboxScan:
         async def _fake_schedule(ids: list[int]) -> None:
             scheduled_ids.append(ids)
 
-        monkeypatch.setattr("services.forwarding.outbox.schedule_forward_outbox_many", _fake_schedule)
+        monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_many", _fake_schedule)
 
         old = utcnow() - timedelta(hours=1)
         await _insert_outbox(

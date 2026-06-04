@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from contextlib import suppress
 from typing import Any
 
 from core.observability.attributes import normalize_attributes
 from core.observability.exporters import otel_enabled
+from core.observability.guard import suppress_observability_error
 from core.observability.log_attrs import log_extra
 from core.observability.metrics import OBSERVABILITY_EVENTS_TOTAL, OBSERVABILITY_SIGNAL_TOTAL
 
@@ -18,7 +18,7 @@ def add_span_event(name: str, attributes: Mapping[str, Any] | None = None) -> No
         return
 
     normalized = normalize_attributes(attributes)
-    with suppress(Exception):
+    with suppress_observability_error("events.add_span_event"):
         from opentelemetry import trace
 
         current_span = trace.get_current_span()

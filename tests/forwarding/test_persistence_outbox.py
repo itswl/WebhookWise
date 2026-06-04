@@ -37,7 +37,7 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
         await conn.run_sync(Base.metadata.create_all)
 
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    context = AppContext(session_factory=factory)
+    context = AppContext(db_engine=engine, session_factory=factory)
     set_default_app_context(context)
 
     @asynccontextmanager
@@ -429,8 +429,8 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
         return {"status": "queued"}
 
     monkeypatch.setattr(outbox, "schedule_forward_outbox_many", schedule_many)
-    monkeypatch.setattr(outbox, "schedule_forward_outbox_retry", schedule_retry)
-    monkeypatch.setattr(outbox, "forward_notification", exhausted_notification)
+    monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_retry", schedule_retry)
+    monkeypatch.setattr("services.forwarding.outbox_notifications.enqueue_forward_notification", exhausted_notification)
     monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", schedule_poll)
 
     async with session_factory.begin() as session:
