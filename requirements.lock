@@ -2,7 +2,7 @@
 #    uv pip compile requirements.txt -o requirements.lock --python-version 3.12
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.5
+aiohttp==3.14.0
     # via
     #   instructor
     #   taskiq
@@ -294,6 +294,7 @@ typer==0.25.0
     #   instructor
 typing-extensions==4.15.0
     # via
+    #   aiohttp
     #   aiosignal
     #   alembic
     #   anyio
