@@ -695,6 +695,11 @@
   color: var(--danger);
 }
 
+.da-preview-empty {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .da-summary-runtime {
   color: var(--text-muted);
   flex: 0 0 9.5rem;
@@ -718,6 +723,48 @@
   flex-direction: column;
   gap: 1rem;
   padding: 1.25rem;
+}
+
+.da-report-strip {
+  align-items: center;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 0.45rem 0.85rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.da-report-strip span {
+  line-height: 1.4;
+}
+
+.da-report-failed {
+  color: var(--danger);
+}
+
+.da-empty-report {
+  background: var(--warning-bg);
+  border: 1px solid rgba(217,119,6,0.18);
+  border-radius: var(--radius-md);
+  color: var(--warning);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.da-empty-report strong {
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.da-empty-report span {
+  font-size: 0.86rem;
 }
 
 .da-analysis-grid {
@@ -771,6 +818,14 @@
   padding-left: 1.25rem;
 }
 
+.da-report-list li {
+  margin-bottom: 0.45rem;
+}
+
+.da-report-list li:last-child {
+  margin-bottom: 0;
+}
+
 .da-kv-grid {
   display: grid;
   gap: 0.6rem;
@@ -801,29 +856,6 @@
   border-radius: var(--radius-sm);
   margin-top: 0.15rem;
   padding: 0.65rem;
-}
-
-.da-inline-list {
-  margin: 0;
-  padding-left: 1.15rem;
-}
-
-.da-json-block {
-  background: #0f172a;
-  border-radius: var(--radius-sm);
-  color: #e2e8f0;
-  font-family: var(--font-mono);
-  font-size: 0.83rem;
-  line-height: 1.6;
-  margin: 0;
-  max-height: 24rem;
-  overflow: auto;
-  padding: 0.85rem 1rem;
-  white-space: pre;
-}
-
-.da-json-block code {
-  font-family: inherit;
 }
 
 .da-id {

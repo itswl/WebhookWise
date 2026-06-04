@@ -2,38 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
 
-from contracts.webhook_payload import JsonObject
 from core.collections_utils import scalar_text_or_empty
-from core.json import extract_balanced_json_text
-from services.webhooks.types import OPENCLAW_TEXT
 
 _FEISHU_HOST_SUFFIXES = (".feishu.cn", ".larksuite.com")
 _FEISHU_HOSTS = ("feishu.cn", "larksuite.com")
-
-_DEEP_TEXT_FIELD_CANDIDATES = (
-    "summary",
-    "description",
-    "finding",
-    "observation",
-    "action",
-    "reason",
-    "message",
-    "content",
-    "text",
-    "root_cause",
-    "impact",
-    "impact_scope",
-    "error",
-    "failure_reason",
-    "name",
-    "title",
-)
 
 
 def is_feishu_url(url: str) -> bool:
@@ -43,163 +19,6 @@ def is_feishu_url(url: str) -> bool:
     except ValueError:
         return False
     return host in _FEISHU_HOSTS or any(host.endswith(suffix) for suffix in _FEISHU_HOST_SUFFIXES)
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    stripped = re.sub(r"^```(?:[a-z0-9_-]+)?\s*", "", stripped, flags=re.IGNORECASE)
-    stripped = re.sub(r"\s*```$", "", stripped, flags=re.IGNORECASE)
-    return stripped.strip()
-
-
-def _sanitize_loose_json(text: str) -> str:
-    return re.sub(r"\\(?![\"\\/bfnrtu])", r"\\\\", text)
-
-
-def _decode_escaped_json_text(text: str) -> str:
-    stripped = text.strip()
-    if not stripped or not any(token in stripped for token in ('\\"', "\\n", "\\t")):
-        return ""
-    return (
-        stripped.replace("\\r", "\r")
-        .replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace('\\"', '"')
-        .replace("\\\\", "\\")
-        .strip()
-    )
-
-
-def _unique_text_candidates(candidates: list[str]) -> list[str]:
-    seen: set[str] = set()
-    unique: list[str] = []
-    for candidate in candidates:
-        text = candidate.strip() if isinstance(candidate, str) else ""
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        unique.append(text)
-    return unique
-
-
-def _parse_json_like_text(value: object) -> JsonObject | list[Any] | None:
-    if not isinstance(value, str):
-        return None
-    stripped = _strip_json_fence(value)
-    if not stripped:
-        return None
-
-    try:
-        decoded = json.loads(stripped)
-    except (TypeError, json.JSONDecodeError):
-        decoded = None
-    if isinstance(decoded, (dict, list)):
-        return decoded
-    if isinstance(decoded, str):
-        stripped = _strip_json_fence(decoded)
-
-    json_block = extract_balanced_json_text(stripped, allow_arrays=True) or ""
-    decoded_stripped = _decode_escaped_json_text(stripped)
-    decoded_block = _decode_escaped_json_text(json_block)
-    candidates = _unique_text_candidates(
-        [
-            stripped,
-            _sanitize_loose_json(stripped),
-            decoded_stripped,
-            _sanitize_loose_json(decoded_stripped),
-            json_block,
-            _sanitize_loose_json(json_block),
-            decoded_block,
-            _sanitize_loose_json(decoded_block),
-        ]
-    )
-    for candidate in candidates:
-        try:
-            parsed = json.loads(candidate)
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(parsed, (dict, list)):
-            return parsed
-    return None
-
-
-def _display_deep_value(value: object, *, separator: str = "\n", max_depth: int = 3, _depth: int = 0) -> str:
-    if value in (None, ""):
-        return ""
-    parsed = _parse_json_like_text(value)
-    if parsed is not None:
-        return _display_deep_value(parsed, separator=separator, max_depth=max_depth, _depth=_depth + 1)
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, (int, float, bool)):
-        return str(value)
-    if isinstance(value, list):
-        return separator.join(
-            item
-            for item in (
-                _display_deep_value(v, separator=separator, max_depth=max_depth, _depth=_depth + 1)
-                for v in value
-            )
-            if item
-        )
-    if isinstance(value, dict):
-        if _depth < max_depth:
-            for key in _DEEP_TEXT_FIELD_CANDIDATES:
-                text = _display_deep_value(value.get(key), separator=separator, max_depth=max_depth, _depth=_depth + 1)
-                if text:
-                    return text
-        try:
-            return json.dumps(value, ensure_ascii=False)
-        except TypeError:
-            return str(value)
-    return str(value)
-
-
-def _section_text(value: object, max_len: int) -> str:
-    return _truncate_text(_display_deep_value(value, separator="\n"), max_len)
-
-
-def _truncate_text(text: object, max_len: int) -> str:
-    if not text:
-        return ""
-    normalized = str(text)
-    return normalized if len(normalized) <= max_len else normalized[: max_len - 3] + "..."
-
-
-def _single_line(text: object) -> str:
-    return " ".join(str(text or "").split()).strip()
-
-
-def _list_lines(value: object, *, max_items: int, max_item_len: int) -> list[str]:
-    if not value:
-        return []
-    items = value if isinstance(value, list) else [value]
-    lines: list[str] = []
-    for item in items[:max_items]:
-        text = _display_deep_value(item, separator=" ｜ ")
-        if text:
-            lines.append(_truncate_text(_single_line(text), max_item_len))
-    return lines
-
-
-def _markdown_bullets(value: object, *, max_items: int = 4, max_item_len: int = 180) -> str:
-    lines = _list_lines(value, max_items=max_items, max_item_len=max_item_len)
-    return "\n".join(f"- {line}" for line in lines)
-
-
-def _deep_analysis_view(result: object) -> JsonObject:
-    direct = _parse_json_like_text(result)
-    data = direct if isinstance(direct, dict) else dict(result) if isinstance(result, dict) else {}
-    parsed = (
-        _parse_json_like_text(data.get("summary"))
-        or _parse_json_like_text(data.get("root_cause"))
-        or _parse_json_like_text(data.get(OPENCLAW_TEXT))
-        or _parse_json_like_text(data.get("analysis"))
-        or _parse_json_like_text(data.get("details"))
-    )
-    if isinstance(parsed, dict):
-        return {**data, **parsed}
-    return data
 
 
 def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) -> object:

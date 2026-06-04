@@ -327,6 +327,8 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
     assert isinstance(resp["data"][0], dict)
     assert resp["data"][0]["webhook_event_id"] == event.id
     assert resp["data"][0]["analysis_result"] == {"root_cause": "x"}
+    assert resp["data"][0]["normalized_report"]["schema"] == "deep_analysis_report.v1"
+    assert resp["data"][0]["normalized_report"]["root_cause"] == "x"
 
 
 async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatch):
