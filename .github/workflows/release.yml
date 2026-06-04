@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       publish:
-        description: "Push the built image to GHCR"
+        description: "Push the built images to GHCR and Docker Hub"
         required: true
         default: true
         type: boolean
@@ -21,7 +21,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  GHCR_IMAGE: ghcr.io/itswl/webhookwise
+  DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
   IMAGE_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
@@ -111,17 +112,65 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Prepare image names
+        id: image_names
+        shell: bash
+        env:
+          GHCR_IMAGE: ${{ env.GHCR_IMAGE }}
+          DOCKERHUB_IMAGE: ${{ env.DOCKERHUB_IMAGE }}
+          SHOULD_PUBLISH: ${{ needs.verify.outputs.should_publish }}
+        run: |
+          set -euo pipefail
+          images="$GHCR_IMAGE"
+          if [[ -n "$DOCKERHUB_IMAGE" ]]; then
+            dockerhub_image="${DOCKERHUB_IMAGE#docker.io/}"
+            images="${images}"$'\n'"docker.io/${dockerhub_image}"
+          elif [[ "$SHOULD_PUBLISH" == "true" ]]; then
+            echo "Repository variable DOCKERHUB_IMAGE is required, e.g. imwl/webhookwise" >&2
+            exit 1
+          fi
+          {
+            echo "images<<EOF"
+            printf '%s\n' "$images"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate Docker Hub credentials
+        if: needs.verify.outputs.should_publish == 'true'
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DOCKERHUB_USERNAME" ]]; then
+            echo "Secret DOCKERHUB_USERNAME is required for release publishing" >&2
+            exit 1
+          fi
+          if [[ -z "$DOCKERHUB_TOKEN" ]]; then
+            echo "Secret DOCKERHUB_TOKEN is required for release publishing" >&2
+            exit 1
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         if: needs.verify.outputs.should_publish == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        if: needs.verify.outputs.should_publish == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.image_names.outputs.images }}
           tags: |
             type=raw,value=${{ needs.verify.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}

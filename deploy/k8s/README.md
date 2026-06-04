@@ -38,7 +38,7 @@ aligned with the production traffic budget.
 
 ## Image Promotion
 
-The default application image is pinned to `ghcr.io/itswl/webhookwise:0.1.0`. Override it per release:
+The default application image is pinned to `ghcr.io/itswl/webhookwise:3.0.0`. Override it per release:
 
 ```bash
 kubectl -n webhookwise set image deploy/webhookwise-api webhookwise-api=ghcr.io/itswl/webhookwise:<release-tag>

@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv && \
 # ====== 运行阶段 ======
 FROM python:3.12-slim
 
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=3.0.0
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai

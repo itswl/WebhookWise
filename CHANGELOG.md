@@ -5,8 +5,11 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.0.0] - 2026-06-04
+
 - Breaking: moved business API and webhook ingestion endpoints to `/v1/*`.
-- Added release automation for GHCR image publishing.
+- Added multi-architecture release image publishing to GHCR and Docker Hub.
+- Added grouped Dependabot update PRs to reduce dependency-update noise.
 - Added explicit runtime version metadata.
 
 ## [0.1.0] - 2026-06-03
