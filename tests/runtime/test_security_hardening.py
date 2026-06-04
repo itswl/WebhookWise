@@ -535,7 +535,7 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 
     assert read_with_admin.status_code == 200
     assert write_with_api.status_code == 403
-    assert write_with_api.json()["detail"] == "Admin write permission required"
+    assert write_with_api.json()["detail"] == "Admin write token required. API key is insufficient for this endpoint."
     assert write_with_admin.status_code == 200
     assert write_with_admin.json()["template_length"] == len("test prompt")
 
