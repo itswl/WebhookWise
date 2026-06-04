@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -87,6 +88,54 @@ def test_build_deep_analysis_card_extracts_openclaw_json_text() -> None:
     assert "改用日周期基线" in rendered
     assert "置信度: 87%" in rendered
     assert "ID: 46708" in rendered
+
+
+def test_build_deep_analysis_card_formats_root_cause_json_report() -> None:
+    from services.notifications.feishu import build_deep_analysis_card
+
+    report = {
+        "alert_identity": {
+            "source": "volcengine",
+            "project": "eve-cn",
+            "region": "cn-shanghai",
+            "namespace": "VCM_ESCloud",
+            "service": "ESCloud",
+            "resource_name": "eve-cn-prod-es",
+            "resource_id": "o-00soqlw9sik6",
+            "rule_name": "云搜索服务实例告警策略_自定义",
+            "metric_name": "InstanceHealthState",
+            "severity": "warning",
+            "status": "firing",
+        },
+        "summary": "ES集群 eve-cn-prod-es 自 2026-06-03 23:38 CST 起处于 yellow 状态。",
+        "root_cause": {
+            "status": "confirmed",
+            "description": "数据节点约 12.3 小时前发生重启，部分分片恢复失败。",
+        },
+        "impact_scope": "副本分片未完全恢复，读写正常但容错能力下降。",
+        "recommendations": ["检查重启节点 JVM/磁盘水位", "手动重试失败分片"],
+        "evidence": ["InstanceHealthState=warning"],
+        "confidence": 0.91,
+    }
+    fenced_report = "```json\n" + json.dumps(report, ensure_ascii=False, indent=2) + "\n```"
+
+    card = build_deep_analysis_card(
+        {"analysis_result": {"root_cause": fenced_report}, "engine": "openclaw", "duration_seconds": 417.06},
+        source="volcengine",
+        webhook_event_id=47332,
+    )
+
+    rendered = str(card)
+    assert "```json" not in rendered
+    assert '"alert_identity"' not in rendered
+    assert "ES集群 eve-cn-prod-es" in rendered
+    assert "数据节点约 12.3 小时前发生重启" in rendered
+    assert "副本分片未完全恢复" in rendered
+    assert "检查重启节点 JVM/磁盘水位" in rendered
+    assert "项目: eve-cn" in rendered
+    assert "资源: eve-cn-prod-es" in rendered
+    assert "指标: InstanceHealthState" in rendered
+    assert "置信度: 91%" in rendered
 
 
 @pytest.mark.asyncio

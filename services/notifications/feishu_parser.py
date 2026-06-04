@@ -47,7 +47,7 @@ def is_feishu_url(url: str) -> bool:
 
 def _strip_json_fence(text: str) -> str:
     stripped = text.strip()
-    stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
+    stripped = re.sub(r"^```(?:[a-z0-9_-]+)?\s*", "", stripped, flags=re.IGNORECASE)
     stripped = re.sub(r"\s*```$", "", stripped, flags=re.IGNORECASE)
     return stripped.strip()
 
@@ -56,19 +56,64 @@ def _sanitize_loose_json(text: str) -> str:
     return re.sub(r"\\(?![\"\\/bfnrtu])", r"\\\\", text)
 
 
+def _decode_escaped_json_text(text: str) -> str:
+    stripped = text.strip()
+    if not stripped or not any(token in stripped for token in ('\\"', "\\n", "\\t")):
+        return ""
+    return (
+        stripped.replace("\\r", "\r")
+        .replace("\\n", "\n")
+        .replace("\\t", "\t")
+        .replace('\\"', '"')
+        .replace("\\\\", "\\")
+        .strip()
+    )
+
+
+def _unique_text_candidates(candidates: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for candidate in candidates:
+        text = candidate.strip() if isinstance(candidate, str) else ""
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique.append(text)
+    return unique
+
+
 def _parse_json_like_text(value: object) -> JsonObject | list[Any] | None:
     if not isinstance(value, str):
         return None
     stripped = _strip_json_fence(value)
     if not stripped:
         return None
+
+    try:
+        decoded = json.loads(stripped)
+    except (TypeError, json.JSONDecodeError):
+        decoded = None
+    if isinstance(decoded, (dict, list)):
+        return decoded
+    if isinstance(decoded, str):
+        stripped = _strip_json_fence(decoded)
+
     json_block = extract_balanced_json_text(stripped, allow_arrays=True) or ""
-    candidates = [stripped, _sanitize_loose_json(stripped), json_block, _sanitize_loose_json(json_block)]
-    seen: set[str] = set()
+    decoded_stripped = _decode_escaped_json_text(stripped)
+    decoded_block = _decode_escaped_json_text(json_block)
+    candidates = _unique_text_candidates(
+        [
+            stripped,
+            _sanitize_loose_json(stripped),
+            decoded_stripped,
+            _sanitize_loose_json(decoded_stripped),
+            json_block,
+            _sanitize_loose_json(json_block),
+            decoded_block,
+            _sanitize_loose_json(decoded_block),
+        ]
+    )
     for candidate in candidates:
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
         try:
             parsed = json.loads(candidate)
         except (TypeError, json.JSONDecodeError):
@@ -143,7 +188,8 @@ def _markdown_bullets(value: object, *, max_items: int = 4, max_item_len: int = 
 
 
 def _deep_analysis_view(result: object) -> JsonObject:
-    data = dict(result) if isinstance(result, dict) else {}
+    direct = _parse_json_like_text(result)
+    data = direct if isinstance(direct, dict) else dict(result) if isinstance(result, dict) else {}
     parsed = (
         _parse_json_like_text(data.get("summary"))
         or _parse_json_like_text(data.get("root_cause"))
