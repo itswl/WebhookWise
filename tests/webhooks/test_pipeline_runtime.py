@@ -64,28 +64,52 @@ def _ctx() -> WebhookProcessContext:
     )
 
 
+def _deps():
+    from services.webhooks import pipeline_runtime
+
+    return pipeline_runtime.WebhookPipelineDependencies(dedup_window_seconds=60)
+
+
 @pytest.fixture
 def patched_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]]:
-    from services.webhooks import pipeline
+    from services.webhooks import pipeline, pipeline_runtime, pipeline_stages
 
     metric_calls: list[MetricCall] = []
-    for name in (
-        "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS",
-        "WEBHOOK_PIPELINE_STEP_TOTAL",
-        "WEBHOOK_PROCESSING_DURATION_SECONDS",
-        "WEBHOOK_PROCESSING_STATUS_TOTAL",
-        "WEBHOOK_RECEIVED_TOTAL",
-        "WEBHOOK_STORM_SUPPRESSED_TOTAL",
+    for module, names in (
+        (
+            pipeline,
+            (
+                "WEBHOOK_PROCESSING_DURATION_SECONDS",
+                "WEBHOOK_PROCESSING_STATUS_TOTAL",
+                "WEBHOOK_RECEIVED_TOTAL",
+            ),
+        ),
+        (
+            pipeline_runtime,
+            (
+                "WEBHOOK_PIPELINE_STEP_DURATION_SECONDS",
+                "WEBHOOK_PIPELINE_STEP_TOTAL",
+            ),
+        ),
+        (
+            pipeline_stages,
+            (
+                "WEBHOOK_PROCESSING_STATUS_TOTAL",
+                "WEBHOOK_STORM_SUPPRESSED_TOTAL",
+            ),
+        ),
     ):
-        monkeypatch.setattr(pipeline, name, StubMetric(metric_calls, name))
-    monkeypatch.setattr(pipeline, "otel_span", _span_context)
-    monkeypatch.setattr(pipeline, "set_span_ok", lambda _span: None)
+        for name in names:
+            monkeypatch.setattr(module, name, StubMetric(metric_calls, name))
+    for module in (pipeline, pipeline_runtime):
+        monkeypatch.setattr(module, "otel_span", _span_context)
+        monkeypatch.setattr(module, "set_span_ok", lambda _span: None)
+        monkeypatch.setattr(module, "add_span_event_to", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(pipeline, "set_span_error", lambda _span, _exc: None)
-    monkeypatch.setattr(pipeline, "add_span_event_to", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(pipeline, "emit_event", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(pipeline, "record_signal", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pipeline_stages, "emit_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pipeline_stages, "record_signal", lambda *_args, **_kwargs: None)
     return pipeline, metric_calls
 
 
@@ -93,15 +117,17 @@ def patched_pipeline(
 async def test_pipeline_step_metrics_success_and_error(
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
-    pipeline, metric_calls = patched_pipeline
+    _pipeline, metric_calls = patched_pipeline
+    from services.webhooks import pipeline_runtime
+
     ctx = _ctx()
 
-    async with pipeline._pipeline_step(ctx, "dedup") as (span, outcome):
+    async with pipeline_runtime.pipeline_step(ctx, "dedup") as (span, outcome):
         outcome["value"] = "custom"
         span.set_attribute("inside", True)
 
     with pytest.raises(RuntimeError):
-        async with pipeline._pipeline_step(ctx, "dedup"):
+        async with pipeline_runtime.pipeline_step(ctx, "dedup"):
             raise RuntimeError("boom")
 
     outcomes = [
@@ -118,7 +144,9 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     monkeypatch: pytest.MonkeyPatch,
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
-    pipeline, _metric_calls = patched_pipeline
+    _pipeline, _metric_calls = patched_pipeline
+    from services.webhooks import pipeline_stages
+
     ctx = _ctx()
 
     async def reused(_key: str) -> DedupResult:
@@ -129,9 +157,9 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     async def log_usage(*args: object, **kwargs: object) -> None:
         usage_calls.append((*args, kwargs))
 
-    monkeypatch.setattr(pipeline, "resolve_dedup", reused)
-    monkeypatch.setattr(pipeline, "log_ai_usage", log_usage)
-    analysis, noise, dedup = await pipeline._resolve_noise_context(ctx, pipeline.WebhookPipelineDependencies())
+    monkeypatch.setattr(pipeline_stages, "resolve_dedup", reused)
+    monkeypatch.setattr(pipeline_stages, "log_ai_usage", log_usage)
+    analysis, noise, dedup = await pipeline_stages.resolve_noise_context(ctx, _deps())
     assert analysis["_route_type"] == "redis_reuse"
     assert noise.reason == "缓存复用路径"
     assert dedup.is_duplicate
@@ -140,10 +168,10 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     async def fresh(_key: str) -> DedupResult:
         return DedupResult(DedupAction.NEW, None, None)
 
-    remembered: list[tuple[str, int, bool]] = []
+    remembered: list[tuple[str, int, int, bool]] = []
 
     async def remember(key: str, *, original_event_id: int, **_kwargs: object) -> None:
-        remembered.append((key, original_event_id, bool(_kwargs.get("reset_chain"))))
+        remembered.append((key, original_event_id, int(_kwargs["ttl_seconds"]), bool(_kwargs.get("reset_chain"))))
 
     async def analyze(_webhook_data: dict[str, object], **_kwargs: object) -> dict[str, object]:
         return {"importance": "medium", "summary": "fresh"}
@@ -151,25 +179,25 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     async def compute(*_args: object, **_kwargs: object) -> NoiseReductionContext:
         return NoiseReductionContext("standalone", None, 0.0, False, "none", 0, ())
 
-    monkeypatch.setattr(pipeline, "resolve_dedup", fresh)
-    monkeypatch.setattr(pipeline, "remember_dedup_state", remember)
+    monkeypatch.setattr(pipeline_stages, "resolve_dedup", fresh)
+    monkeypatch.setattr(pipeline_stages, "remember_dedup_state", remember)
     monkeypatch.setattr("services.analysis.ai_analyzer.analyze_webhook_with_ai", analyze)
-    monkeypatch.setattr(pipeline, "compute_noise", compute)
-    analysis, noise, dedup = await pipeline._resolve_noise_context(ctx, pipeline.WebhookPipelineDependencies())
+    monkeypatch.setattr(pipeline_stages, "compute_noise", compute)
+    analysis, noise, dedup = await pipeline_stages.resolve_noise_context(ctx, _deps())
     assert analysis["summary"] == "fresh"
     assert noise.relation == "standalone"
     assert dedup.action == DedupAction.NEW
-    assert remembered == [(ctx.dedup_key, 0, False)]
+    assert remembered == [(ctx.dedup_key, 0, 120, False)]
 
     async def stale_new(_key: str) -> DedupResult:
         return DedupResult(DedupAction.NEW, None, None, reset_chain=True)
 
     remembered.clear()
-    monkeypatch.setattr(pipeline, "resolve_dedup", stale_new)
-    analysis, noise, dedup = await pipeline._resolve_noise_context(ctx, pipeline.WebhookPipelineDependencies())
+    monkeypatch.setattr(pipeline_stages, "resolve_dedup", stale_new)
+    analysis, noise, dedup = await pipeline_stages.resolve_noise_context(ctx, _deps())
     assert analysis["summary"] == "fresh"
     assert dedup.reset_chain is True
-    assert remembered == [(ctx.dedup_key, 0, True)]
+    assert remembered == [(ctx.dedup_key, 0, 120, True)]
 
 
 @pytest.mark.asyncio
@@ -177,7 +205,9 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     monkeypatch: pytest.MonkeyPatch,
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
-    pipeline, metric_calls = patched_pipeline
+    _pipeline, metric_calls = patched_pipeline
+    from services.webhooks import pipeline_orchestrator, pipeline_stages
+
     ctx = _ctx()
     noise = NoiseReductionContext("standalone", None, 0.0, False, "none", 0, ())
     dedup_results = [
@@ -190,8 +220,8 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     async def suppressed_gate(_key: str):
         yield _GateResult(True, 9, "queue full")
 
-    monkeypatch.setattr(pipeline, "alert_processing_gate", suppressed_gate)
-    suppressed = await pipeline._run_processing_pipeline(ctx, pipeline.WebhookPipelineDependencies())
+    monkeypatch.setattr(pipeline_orchestrator, "alert_processing_gate", suppressed_gate)
+    suppressed = await pipeline_orchestrator.run_processing_pipeline(ctx, _deps())
     assert suppressed.suppressed is True
 
     @asynccontextmanager
@@ -229,15 +259,15 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     async def finalize(*_args: object, **_kwargs: object) -> FinalizeAnalysisResult:
         return finalize_results.pop(0)
 
-    monkeypatch.setattr(pipeline, "alert_processing_gate", open_gate)
-    monkeypatch.setattr(pipeline, "_resolve_noise_context", resolved)
-    monkeypatch.setattr(pipeline, "remember_dedup_state", remember)
-    monkeypatch.setattr(pipeline, "schedule_forward_outbox_many", schedule)
-    monkeypatch.setattr(pipeline, "finalize_analysis_transaction", finalize)
+    monkeypatch.setattr(pipeline_orchestrator, "alert_processing_gate", open_gate)
+    monkeypatch.setattr(pipeline_stages, "resolve_noise_context", resolved)
+    monkeypatch.setattr(pipeline_stages, "remember_dedup_state", remember)
+    monkeypatch.setattr(pipeline_stages, "schedule_forward_outbox_many", schedule)
+    monkeypatch.setattr(pipeline_stages, "finalize_analysis_transaction", finalize)
 
-    unknown = await pipeline._run_processing_pipeline(ctx, pipeline.WebhookPipelineDependencies())
-    skipped = await pipeline._run_processing_pipeline(ctx, pipeline.WebhookPipelineDependencies())
-    queued = await pipeline._run_processing_pipeline(ctx, pipeline.WebhookPipelineDependencies())
+    unknown = await pipeline_orchestrator.run_processing_pipeline(ctx, _deps())
+    skipped = await pipeline_orchestrator.run_processing_pipeline(ctx, _deps())
+    queued = await pipeline_orchestrator.run_processing_pipeline(ctx, _deps())
 
     assert unknown.save_result.webhook_id == 1
     assert skipped.forward_decision.should_forward is False
@@ -266,6 +296,8 @@ def test_log_completed_processing_branches(
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
     pipeline, _metric_calls = patched_pipeline
+    from services.webhooks import pipeline_runtime
+
     ctx = _ctx()
     span = _Span()
     noise = NoiseReductionContext("derived", 2, 0.8, True, "same root", 1, (2,))
@@ -273,7 +305,7 @@ def test_log_completed_processing_branches(
     with pytest.raises(RuntimeError, match="missing final state"):
         pipeline._log_completed_processing(
             ctx=ctx,
-            result=pipeline.PipelineProcessingResult(False),
+            result=pipeline_runtime.PipelineProcessingResult(False),
             request_id="req",
             start_perf=0.0,
             span=None,
@@ -287,7 +319,7 @@ def test_log_completed_processing_branches(
     ):
         pipeline._log_completed_processing(
             ctx=ctx,
-            result=pipeline.PipelineProcessingResult(
+            result=pipeline_runtime.PipelineProcessingResult(
                 False,
                 save_result=SaveWebhookResult(100, decision is None, 42),
                 forward_decision=decision,
@@ -310,6 +342,7 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
 ) -> None:
     pipeline, metric_calls = patched_pipeline
+    from services.webhooks import pipeline_orchestrator, pipeline_runtime
 
     envelopes: list[object] = []
     real_raw_ingest = pipeline._handle_raw_ingest
@@ -337,18 +370,18 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
         return req_ctx
 
     async def run_suppressed(*_args: object, **_kwargs: object) -> Any:
-        return pipeline.PipelineProcessingResult(True)
+        return pipeline_runtime.PipelineProcessingResult(True)
 
     monkeypatch.setattr(pipeline, "parse_request", parse_ok)
     monkeypatch.setattr(pipeline, "generate_event_keys", lambda *_args: ("hash", "dedup"))
-    monkeypatch.setattr(pipeline, "_run_processing_pipeline", run_suppressed)
+    monkeypatch.setattr(pipeline_orchestrator, "run_processing_pipeline", run_suppressed)
     await pipeline._handle_raw_ingest(
         pipeline.EventEnvelope({}, {"ok": True}, b"{}", "prometheus", "ts", "req"),
-        dependencies=pipeline.WebhookPipelineDependencies(),
+        dependencies=_deps(),
     )
 
     async def run_completed(*_args: object, **_kwargs: object) -> Any:
-        return pipeline.PipelineProcessingResult(
+        return pipeline_runtime.PipelineProcessingResult(
             False,
             save_result=SaveWebhookResult(1, False, None),
             forward_decision=None,
@@ -356,10 +389,10 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
             final_analysis={"importance": "medium", "summary": "ok"},
         )
 
-    monkeypatch.setattr(pipeline, "_run_processing_pipeline", run_completed)
+    monkeypatch.setattr(pipeline_orchestrator, "run_processing_pipeline", run_completed)
     await pipeline._handle_raw_ingest(
         pipeline.EventEnvelope({}, {"ok": True}, b"{}", "prometheus", "ts", "req"),
-        dependencies=pipeline.WebhookPipelineDependencies(),
+        dependencies=_deps(),
     )
 
     def parse_fail(*_args: object, **_kwargs: object) -> WebhookRequestContext:
@@ -369,7 +402,7 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
     with pytest.raises(ValueError, match="bad payload"):
         await pipeline._handle_raw_ingest(
             pipeline.EventEnvelope({}, {"ok": True}, b"{}", "prometheus", "ts", "req"),
-            dependencies=pipeline.WebhookPipelineDependencies(),
+            dependencies=_deps(),
         )
 
     outcomes = [

@@ -9,15 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from adapters.simple_adapters import (
-    _extract_tag,
-    _pick_first,
-    _pick_first_resource,
-    _pick_label,
-    _safe_resource_list,
-    normalize_level,
-    register_simple_adapters,
-)
+from adapters.simple_adapters import normalize_level, register_simple_adapters
 from contracts.webhook_payload import WebhookData, webhook_data_from_mapping
 from core.logger import get_logger
 
@@ -28,12 +20,7 @@ HeadersLike = Mapping[str, Any]
 __all__ = [
     "HeadersLike",
     "NormalizedWebhook",
-    "_extract_tag",
     "_header_get",
-    "_pick_first",
-    "_pick_first_resource",
-    "_pick_label",
-    "_safe_resource_list",
     "initialize_adapters",
     "normalize_level",
     "normalize_webhook_event",
