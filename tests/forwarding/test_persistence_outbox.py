@@ -286,7 +286,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
     monkeypatch: pytest.MonkeyPatch,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    from services.forwarding import outbox
+    from services.forwarding import outbox, outbox_queries, outbox_records
     from services.webhooks.decisioning import ForwardDecision
 
     async with session_factory.begin() as session:
@@ -296,7 +296,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             webhook_id=1,
             policy=_policy(),
         )
-        ids = await outbox._create_outbox_records(
+        ids = await outbox_records.create_outbox_records(
             session,
             [
                 _rule(id=1, target_url=""),
@@ -313,7 +313,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             policy=_policy(),
             log_tag="test",
         )
-        duplicate_ids = await outbox._create_outbox_records(
+        duplicate_ids = await outbox_records.create_outbox_records(
             session,
             [_rule(id=2, target_url="https://target.test/a/" + "x" * 80)],
             webhook_id=1,
@@ -326,7 +326,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             policy=_policy(),
             log_tag="test",
         )
-        manual_retry_ids = await outbox._create_outbox_records(
+        manual_retry_ids = await outbox_records.create_outbox_records(
             session,
             [_rule(id=2, target_url="https://target.test/a/" + "x" * 80)],
             webhook_id=1,
@@ -346,9 +346,9 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
     assert duplicate_ids == [ids[0]]
     assert len(manual_retry_ids) == 1
     assert manual_retry_ids != [ids[0]]
-    assert outbox._outbox_result([])["status"] == "skipped"
-    assert outbox._mask_url_for_display("") == ""
-    assert outbox._mask_url_for_display("not a url" * 20) == "***"
+    assert outbox_records.outbox_result([])["status"] == "skipped"
+    assert outbox_queries._mask_url_for_display("") == ""
+    assert outbox_queries._mask_url_for_display("not a url" * 20) == "***"
 
     scheduled: list[list[int]] = []
     delivered: list[int] = []

@@ -6,15 +6,13 @@ final persistence and forwarding intent creation.
 
 import sys
 import time
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from contracts.webhook_payload import WEBHOOK_ADAPTER
 from core import json
-from core.alert_concurrency import alert_processing_gate
+from core.app_context import get_config_manager
 from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -28,14 +26,10 @@ from core.observability.attributes import (
     WEBHOOK_ROUTE,
     WEBHOOK_SOURCE,
 )
-from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
-    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS,
-    WEBHOOK_PIPELINE_STEP_TOTAL,
     WEBHOOK_PROCESSING_DURATION_SECONDS,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_RECEIVED_TOTAL,
-    WEBHOOK_STORM_SUPPRESSED_TOTAL,
     sanitize_source,
 )
 from core.observability.tracing import (
@@ -48,25 +42,15 @@ from core.observability.tracing import (
     set_span_error,
     set_span_ok,
 )
-from services.analysis.ai_usage import log_ai_usage
-from services.dedup import DedupResult, generate_event_keys, remember_dedup_state, resolve_dedup
-from services.forwarding.outbox import schedule_forward_outbox_many
-from services.webhooks.command_service import SaveWebhookResult
-from services.webhooks.decisioning import ForwardDecision, ForwardingPolicy, build_final_analysis, normalize_importance
-from services.webhooks.forwarding_stage import finalize_analysis_transaction
-from services.webhooks.noise_stage import compute_noise
-from services.webhooks.policies import NoiseReductionPolicy
+from services.dedup import generate_event_keys
+from services.webhooks import pipeline_orchestrator, pipeline_runtime
+from services.webhooks.decisioning import normalize_importance
 from services.webhooks.repository import EventEnvelope
 from services.webhooks.types import (
-    AnalysisResult,
-    NoiseReductionContext,
     WebhookProcessContext,
     WebhookProcessingStatus,
     WebhookRequestContext,
     analysis_route,
-    is_analysis_degraded,
-    pending_dedup_placeholder,
-    set_analysis_route,
 )
 
 
@@ -105,280 +89,14 @@ logger = get_logger("webhooks.pipeline")
 _PIPELINE_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 _PARSE_ERRORS = (TypeError, ValueError, json.JSONDecodeError)
 
+
+def _default_pipeline_dependencies() -> pipeline_runtime.WebhookPipelineDependencies:
+    config = get_config_manager()
+    return pipeline_runtime.WebhookPipelineDependencies(
+        dedup_window_seconds=int(config.retry.DEDUP_WINDOW_SECONDS),
+    )
+
 # ── 主入口 ───────────────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True, slots=True)
-class WebhookPipelineDependencies:
-    noise_policy: NoiseReductionPolicy | None = None
-    forwarding_policy: ForwardingPolicy | None = None
-    http_client: Any | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PipelineProcessingResult:
-    suppressed: bool
-    save_result: SaveWebhookResult | None = None
-    forward_decision: ForwardDecision | None = None
-    noise: NoiseReductionContext | None = None
-    final_analysis: AnalysisResult | None = None
-    outbox_count: int = 0
-
-
-def _record_step_metrics(step: str, metric_source: str, outcome: str, started: float) -> None:
-    WEBHOOK_PIPELINE_STEP_TOTAL.labels(step, metric_source, outcome).inc()
-    WEBHOOK_PIPELINE_STEP_DURATION_SECONDS.labels(step, metric_source, outcome).observe(time.perf_counter() - started)
-
-
-_PIPELINE_SPAN_NAMES = {
-    "parse": "webhook.parse",
-    "validate": "webhook.validate",
-    "dedup": "webhook.dedup",
-    "analysis": "webhook.analyze",
-    "noise": "webhook.noise",
-}
-
-
-def _step_attrs(ctx: WebhookProcessContext, step: str) -> dict[str, Any]:
-    return {
-        WEBHOOK_EVENT_ID: ctx.event_id or 0,
-        WEBHOOK_SOURCE: ctx.req_ctx.source,
-        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-        "pipeline.step": step,
-    }
-
-
-@asynccontextmanager
-async def _instrument_step(
-    *,
-    step_name: str,
-    metric_source: str,
-    span_attrs: dict[str, Any],
-) -> Any:
-    started = time.perf_counter()
-    outcome: dict[str, str] = {"value": "success"}
-    with otel_span(_PIPELINE_SPAN_NAMES[step_name], span_attrs) as span:
-        try:
-            yield span, outcome
-        finally:
-            if sys.exception() is not None:
-                outcome["value"] = "error"
-            duration = time.perf_counter() - started
-            if span is not None:
-                span.set_attribute(WEBHOOK_OUTCOME, outcome["value"])
-                span.set_attribute("pipeline.step", step_name)
-                span.set_attribute("pipeline.step.duration_ms", int(duration * 1000))
-                add_span_event_to(
-                    span,
-                    "webhook.pipeline.step.completed",
-                    {
-                        "pipeline.step": step_name,
-                        WEBHOOK_OUTCOME: outcome["value"],
-                        "pipeline.step.duration_ms": int(duration * 1000),
-                    },
-                )
-                if outcome["value"] != "error":
-                    set_span_ok(span)
-            _record_step_metrics(step_name, metric_source, outcome["value"], started)
-
-
-@asynccontextmanager
-async def _pipeline_step(ctx: WebhookProcessContext, step_name: str) -> Any:
-    async with _instrument_step(
-        step_name=step_name,
-        metric_source=ctx.metric_source,
-        span_attrs=_step_attrs(ctx, step_name),
-    ) as state:
-        yield state
-
-
-@asynccontextmanager
-async def _ingest_step(*, step_name: str, metric_source: str, source: str | None) -> Any:
-    async with _instrument_step(
-        step_name=step_name,
-        metric_source=metric_source,
-        span_attrs={
-            WEBHOOK_SOURCE: source or "unknown",
-            WEBHOOK_EVENT_ID: 0,
-            "pipeline.step": step_name,
-        },
-    ) as state:
-        yield state
-
-
-async def _resolve_noise_context(
-    ctx: WebhookProcessContext, dependencies: WebhookPipelineDependencies
-) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
-    dedup_action = "error"
-    async with _pipeline_step(ctx, "dedup") as (dedup_span, _outcome):
-        try:
-            dedup_result = await resolve_dedup(ctx.dedup_key)
-            dedup_action = str(dedup_result.action)
-        finally:
-            if dedup_span is not None:
-                dedup_span.set_attribute("dedup.action", dedup_action)
-
-    if dedup_result.action in ("reuse", "rechain"):
-        analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
-        route_type = dedup_result.route_type or "redis_reuse"
-        set_analysis_route(analysis, route_type)
-        importance = normalize_importance(analysis.get("importance", "unknown"))
-        set_log_context(webhook_route=route_type)
-        await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
-        logger.debug(
-            "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
-            ctx.event_id,
-            ctx.request_id,
-            importance,
-            route_type,
-        )
-        emit_event(
-            "webhook.analysis.reused",
-            {
-                WEBHOOK_EVENT_ID: ctx.event_id or 0,
-                WEBHOOK_SOURCE: ctx.req_ctx.source,
-                WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-                WEBHOOK_IMPORTANCE: importance,
-            },
-        )
-        return (
-            analysis,
-            NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, ()),
-            dedup_result,
-        )
-
-    async with _pipeline_step(ctx, "analysis") as (_span, _outcome):
-        from core.app_context import get_config_manager
-        from services.analysis.ai_analyzer import analyze_webhook_with_ai
-
-        dedup_ttl = max(60, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS) * 2)
-        await remember_dedup_state(
-            ctx.dedup_key,
-            original_event_id=0,
-            analysis=pending_dedup_placeholder(),
-            ttl_seconds=dedup_ttl,
-            reset_chain=dedup_result.reset_chain,
-        )
-
-        analysis_result = await analyze_webhook_with_ai(
-            ctx.req_ctx.webhook_full_data,
-            http_client=dependencies.http_client,
-        )
-
-    route_type = analysis_route(analysis_result)
-    importance = normalize_importance(analysis_result.get("importance", "unknown"))
-    set_log_context(webhook_route=route_type)
-
-    logger.info(
-        "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
-        ctx.event_id,
-        ctx.request_id,
-        route_type,
-        importance,
-        is_analysis_degraded(analysis_result),
-    )
-    emit_event(
-        "webhook.analysis.completed",
-        {
-            WEBHOOK_EVENT_ID: ctx.event_id or 0,
-            WEBHOOK_SOURCE: ctx.req_ctx.source,
-            WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-            WEBHOOK_IMPORTANCE: importance,
-            WEBHOOK_ROUTE: route_type,
-            "ai.degraded": is_analysis_degraded(analysis_result),
-        },
-    )
-
-    async with _pipeline_step(ctx, "noise") as (_span, _outcome):
-        noise = await compute_noise(
-            ctx.alert_hash,
-            ctx.req_ctx.source,
-            dict(ctx.req_ctx.parsed_data),
-            analysis_result,
-            policy=dependencies.noise_policy,
-        )
-
-    return analysis_result, noise, dedup_result
-
-
-async def _run_processing_pipeline(
-    ctx: WebhookProcessContext, dependencies: WebhookPipelineDependencies
-) -> PipelineProcessingResult:
-    async with alert_processing_gate(ctx.alert_hash) as gate_res:
-        async with _pipeline_step(ctx, "validate") as (_span, outcome):
-            if getattr(gate_res, "suppressed", False):
-                logger.info(
-                    "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
-                    ctx.event_id,
-                    ctx.request_id,
-                    getattr(gate_res, "queue_size", 0),
-                    getattr(gate_res, "reason", "") or "alert_storm_backpressure",
-                )
-                WEBHOOK_STORM_SUPPRESSED_TOTAL.labels(source=ctx.metric_source).inc()
-                WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="suppressed").inc()
-                emit_event(
-                    "webhook.storm.suppressed",
-                    {
-                        WEBHOOK_EVENT_ID: ctx.event_id or 0,
-                        WEBHOOK_SOURCE: ctx.req_ctx.source,
-                        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-                        "webhook.status": "suppressed",
-                        "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
-                        "queue.depth": getattr(gate_res, "queue_size", 0),
-                    },
-                )
-                record_signal(
-                    "webhook.ingest",
-                    "suppressed",
-                    {
-                        WEBHOOK_EVENT_ID: ctx.event_id or 0,
-                        WEBHOOK_SOURCE: ctx.req_ctx.source,
-                        WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
-                        "webhook.status": "suppressed",
-                        "webhook.suppression.reason": getattr(gate_res, "reason", "") or "alert_storm_backpressure",
-                        "queue.depth": getattr(gate_res, "queue_size", 0),
-                    },
-                )
-                outcome["value"] = "suppressed"
-                return PipelineProcessingResult(suppressed=True)
-
-        analysis, noise, analysis_res = await _resolve_noise_context(ctx, dependencies)
-        final_analysis = build_final_analysis(analysis, noise)
-        persist_started = time.perf_counter()
-        persist_outcome = "error"
-        try:
-            finalize_res = await finalize_analysis_transaction(
-                ctx,
-                analysis_res,
-                final_analysis,
-                noise,
-                forwarding_policy=dependencies.forwarding_policy,
-            )
-            persist_outcome = "success"
-        finally:
-            _record_step_metrics("persist", ctx.metric_source, persist_outcome, persist_started)
-
-        from core.app_context import get_config_manager
-
-        config = get_config_manager()
-        dedup_ttl = max(60, int(config.retry.DEDUP_WINDOW_SECONDS) * 2)
-        await remember_dedup_state(
-            ctx.dedup_key,
-            original_event_id=finalize_res.save_result.webhook_id,
-            analysis=dict(final_analysis),
-            ttl_seconds=dedup_ttl,
-            reset_chain=analysis_res.reset_chain or analysis_res.is_rechain,
-        )
-        await schedule_forward_outbox_many(finalize_res.outbox_ids)
-
-        return PipelineProcessingResult(
-            suppressed=False,
-            save_result=finalize_res.save_result,
-            forward_decision=finalize_res.forward_decision,
-            noise=noise,
-            final_analysis=final_analysis,
-            outbox_count=len(finalize_res.outbox_ids),
-        )
 
 
 async def handle_webhook_ingest(
@@ -389,7 +107,7 @@ async def handle_webhook_ingest(
     client_ip: str = "",
     request_id: str | None = None,
     received_at: str | None = None,
-    dependencies: WebhookPipelineDependencies | None = None,
+    dependencies: pipeline_runtime.WebhookPipelineDependencies | None = None,
 ) -> None:
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
     request_context_id = request_id or generate_trace_id()
@@ -425,7 +143,7 @@ async def handle_webhook_ingest(
         await _handle_raw_ingest(
             env,
             client_ip,
-            dependencies=dependencies or WebhookPipelineDependencies(),
+            dependencies=dependencies or _default_pipeline_dependencies(),
         )
     finally:
         reset_fallback_trace_id(trace_token)
@@ -434,7 +152,7 @@ async def handle_webhook_ingest(
 def _log_completed_processing(
     *,
     ctx: WebhookProcessContext,
-    result: PipelineProcessingResult,
+    result: pipeline_runtime.PipelineProcessingResult,
     request_id: str | None,
     start_perf: float,
     span: Any | None,
@@ -496,7 +214,7 @@ async def _handle_raw_ingest(
     envelope: EventEnvelope,
     client_ip: str = "",
     *,
-    dependencies: WebhookPipelineDependencies,
+    dependencies: pipeline_runtime.WebhookPipelineDependencies,
 ) -> None:
     start_perf = time.perf_counter()
     outcome = "unknown"
@@ -508,7 +226,7 @@ async def _handle_raw_ingest(
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="processing").inc()
             WEBHOOK_RECEIVED_TOTAL.labels(source=metric_source, status="received").inc()
 
-            async with _ingest_step(
+            async with pipeline_runtime.ingest_step(
                 step_name="parse",
                 metric_source=metric_source,
                 source=envelope.source,
@@ -547,7 +265,7 @@ async def _handle_raw_ingest(
                 _span.set_attribute(WEBHOOK_SOURCE, req_ctx.source or "unknown")
                 _span.set_attribute(WEBHOOK_ALERT_HASH, alert_hash[:12])
 
-            result = await _run_processing_pipeline(ctx, dependencies)
+            result = await pipeline_orchestrator.run_processing_pipeline(ctx, dependencies)
             if result.suppressed:
                 outcome = "suppressed"
                 return

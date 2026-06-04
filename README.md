@@ -131,8 +131,10 @@ taskiq scheduler services.operations.taskiq_wiring:scheduler
 依赖策略：
 
 - `requirements.txt` / `requirements-dev.txt` 是人工维护的直接依赖，统一表达最低支持版本。
-- `requirements.lock` / `requirements-dev.lock` 精确锁定解析结果，是安装和 CI/Docker 的准绳。
+- `requirements.lock` / `requirements-dev.lock` 精确锁定解析结果，是本地安装、CI、Docker 构建和部署的准绳；不要用 `requirements.txt` 作为可复现安装入口。
 - 锁文件由 uv 生成，项目当前不是 `[project]` 风格 uv 工程，因此不维护 `uv.lock`。
+- GitHub Actions 使用 lock 文件安装，Dockerfile 只安装 `requirements.lock`，`scripts/check_requirements_locks.py` 会检查这些路径没有漂移。
+- Dependabot 每周扫描根目录 pip 依赖；依赖升级 PR 需要同时更新直接依赖声明和对应 lock 文件。
 
 更新锁文件：
 
