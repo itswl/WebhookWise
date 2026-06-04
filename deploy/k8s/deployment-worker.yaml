@@ -20,7 +20,7 @@ spec:
       serviceAccountName: webhookwise
       containers:
         - name: webhookwise-worker
-          image: ghcr.io/itswl/webhookwise:0.1.0
+          image: ghcr.io/itswl/webhookwise:3.0.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

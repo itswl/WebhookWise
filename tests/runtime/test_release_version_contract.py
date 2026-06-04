@@ -51,8 +51,14 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text()
 
     assert 'tags:\n      - "v*.*.*"' in workflow
-    assert "ghcr.io/${{ github.repository }}" in workflow
+    assert "GHCR_IMAGE: ghcr.io/itswl/webhookwise" in workflow
+    assert "DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}" in workflow
+    assert "IMAGE_PLATFORMS: linux/amd64,linux/arm64" in workflow
+    assert "docker/setup-qemu-action@v3" in workflow
+    assert "Log in to Docker Hub" in workflow
+    assert "DOCKERHUB_TOKEN" in workflow
     assert "docker/build-push-action@v6" in workflow
+    assert "platforms: ${{ env.IMAGE_PLATFORMS }}" in workflow
     assert "APP_VERSION=${{ needs.verify.outputs.version }}" in workflow
     assert "pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db" in workflow
     assert "tests/e2e/run_webhook_to_feishu.sh" in workflow
