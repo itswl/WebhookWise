@@ -1281,3 +1281,85 @@
     gap: 1rem;
   }
 }
+
+/* ── 死信详情境 ────────────────────────────────────────────────────────── */
+
+.dl-detail h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.dl-detail-section {
+    margin-bottom: 16px;
+}
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.detail-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.detail-table td:first-child {
+    width: 120px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.detail-table pre {
+    margin: 4px 0;
+    max-height: 200px;
+    overflow: auto;
+    background: var(--bg-code, #1e1e2e);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+.json-preview {
+    background: var(--bg-code, #1e1e2e);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 8px 0;
+}
+.dl-detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+/* 死信选择列 */
+.col-check {
+    width: 36px;
+    text-align: center;
+}
+.col-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+/* 配置版本栏 */
+.config-version-bar {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+}
+
+/* 通用成功 badge */
+.badge-success {
+    background: rgba(5, 150, 105, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(5, 150, 105, 0.2);
+}

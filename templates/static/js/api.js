@@ -623,5 +623,84 @@ const API = {
         const response = await this.authenticatedFetch('/v1/admin/outbox/' + id + '/retry', { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
-    }
+    },
+
+    // ========== 死信队列 API ==========
+
+    /**
+     * 获取 dead-letter 记录列表
+     */
+    async getDeadLetters(params = {}) {
+        const q = new URLSearchParams();
+        if (params.page) q.append('page', params.page);
+        if (params.page_size) q.append('page_size', params.page_size);
+        if (params.source) q.append('source', params.source);
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters?' + q.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * 重放一条 dead-letter 事件
+     */
+    async replayDeadLetter(eventId) {
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/' + eventId + '/replay', { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * 批量重放所有 dead-letter 事件
+     */
+    async replayAllDeadLetters(batchSize) {
+        const q = batchSize ? '?batch_size=' + batchSize : '';
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-all' + q, { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    // ========== 系统管理 API ==========
+
+    /**
+     * 重新加载配置段
+     */
+    async reloadConfig(section) {
+        const q = section ? '?section=' + section : '';
+        const response = await this.authenticatedFetch('/v1/admin/config/reload' + q, { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
 };
+
+
+    // ========== 死信队列 API 增强 ==========
+
+    /**
+     * 获取 dead-letter 详情（含完整 payload）
+     */
+    async getDeadLetterDetail(eventId) {
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/' + eventId);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * 批量重放指定 dead-letter 事件
+     */
+    async replayDeadLettersByIds(eventIds) {
+        const q = '?event_ids=' + eventIds.join(',');
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-all' + q, { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    // ========== 系统配置 API ==========
+
+    /**
+     * 获取配置版本及段信息
+     */
+    async getConfigVersion() {
+        const response = await this.authenticatedFetch('/v1/admin/config/version');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },

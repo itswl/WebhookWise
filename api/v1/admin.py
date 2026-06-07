@@ -15,6 +15,8 @@ from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write, verify_api_key
 from core.config import get_settings
+from core.config.manager import get_config_version, get_reloadable_sections
+from core.config.manager import reload_config as _reload_config
 from core.datetime_utils import utc_isoformat
 from core.logger import get_logger
 from core.redis_client import redis_ping
@@ -39,8 +41,16 @@ from services.analysis.ai_analyzer import (
 )
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
-from services.webhooks.query_service import count_dead_letters, list_dead_letters
-from services.webhooks.repository import count_suppressed_records, list_suppressed_records, load_event_payload
+from services.webhooks.query_service import (
+    count_dead_letters,
+    get_dead_letter_detail,
+    list_dead_letters,
+)
+from services.webhooks.repository import (
+    count_suppressed_records,
+    list_suppressed_records,
+    load_event_payload,
+)
 
 logger = get_logger("api.v1.admin")
 
@@ -190,16 +200,55 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
 async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
+    source: str = Query("", description="按来源筛选"),
+    status: str = Query("dead_letter", description="处理状态筛选（默认 dead_letter）"),
+    search: str = Query("", description="搜索 error_message 内容"),
+    time_from: str = Query("", description="起始时间 ISO 格式"),
+    time_to: str = Query("", description="结束时间 ISO 格式"),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     try:
-        items = await list_dead_letters(session, page=page, page_size=page_size)
-        total = await count_dead_letters(session)
+        items = await list_dead_letters(
+            session,
+            page=page,
+            page_size=page_size,
+            source=source or None,
+            status=status,
+            search=search or None,
+            time_from=time_from or None,
+            time_to=time_to or None,
+        )
+        total = await count_dead_letters(
+            session,
+            source=source or None,
+            status=status,
+            search=search or None,
+            time_from=time_from or None,
+            time_to=time_to or None,
+        )
         return ok_response(
             data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total}
         )
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
+        return internal_error_response()
+
+
+@admin_router.get(
+    "/admin/dead-letters/{event_id}",
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_dead_letter_detail_endpoint(
+    event_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        detail = await get_dead_letter_detail(session, event_id)
+        if detail is None:
+            return fail_response(f"事件 {event_id} 不存在", 404)
+        return ok_response(data=detail, http_status=200)
+    except _ADMIN_RUNTIME_ERRORS as e:
+        logger.error("查询 dead_letter 详情失败: event_id=%s error=%s", event_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -259,9 +308,27 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
     dependencies=[Depends(verify_admin_write)],
 )
 async def replay_all_dead_letters(
-    batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)
+    batch_size: int = Query(50, ge=1, le=500),
+    event_ids: str = Query("", description="指定重放的 event_id 列表（逗号分隔）；为空则重放全部"),
+    session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
+    """批量重放 dead-letter 事件。可指定 event_ids 或多个 ID，不指定则重放全部。"""
     try:
+        if event_ids:
+            ids = [int(x.strip()) for x in event_ids.split(",") if x.strip()]
+            replayed_ids = []
+            for eid in ids:
+                event = await session.get(WebhookEvent, eid)
+                if event and event.processing_status == "dead_letter":
+                    replayed_ids.append(eid)
+                    await _enqueue_dead_letter_event(event)
+            logger.info("[Admin] 指定重放 dead_letter 完成 replayed=%s event_ids=%s", len(replayed_ids), ids)
+            return ok_response(
+                http_status=200,
+                message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+                replayed=len(replayed_ids),
+                event_ids=replayed_ids,
+            )
         items = await list_dead_letters(session, page=1, page_size=batch_size)
         if not items:
             logger.info("[Admin] 批量重放 dead_letter：无待处理记录")
@@ -283,3 +350,58 @@ async def replay_all_dead_letters(
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
         return internal_error_response()
+
+
+# ── 配置热加载 ─────────────────────────────────────────────────────────────────
+
+
+@admin_router.get(
+    "/admin/config/version",
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_config_version_endpoint() -> JSONResponse:
+    """返回当前配置版本号和各配置段元信息。"""
+    version = get_config_version()
+    sections = get_reloadable_sections()
+    return ok_response(
+        http_status=200,
+        data={
+            "version": version,
+            "sections": sections,
+        },
+    )
+
+
+@admin_router.post(
+    "/admin/config/reload",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def reload_config_endpoint(
+    request: Request,
+    section: str = "all",
+) -> JSONResponse:
+    """重新加载配置段（无需重启进程）。从 .env 和环境变量重新读取。"""
+    try:
+        result = _reload_config(section)
+    except _ADMIN_RUNTIME_ERRORS as e:
+        logger.error("[Admin] Config reload failed section=%s error=%s", section, e, exc_info=True)
+        return internal_error_response()
+
+    if not result.get("success"):
+        not_hot = result.get("not_hot_reloadable", False)
+        status_code = 400 if not not_hot else 409  # 409 = conflict for not-hot-reloadable
+        return fail_response(str(result.get("error", "unknown")), status_code)
+
+    # Update the AppContext config reference so in-process code sees the new values
+    context: AppContext | None = getattr(request.app.state, "app_context", None)
+    if context is not None:
+        from core.config import get_settings as _get_settings
+
+        context.config = _get_settings()
+        logger.info("[Admin] AppContext config reference updated section=%s", section)
+
+    return ok_response(
+        http_status=200,
+        message=f"配置已重新加载: section={section}, settings={result.get('settings_count', 0)}",
+        data=result,
+    )

@@ -95,23 +95,53 @@ async def list_webhook_summaries(
     return items, page_window.has_more, page_window.next_cursor
 
 
-async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
-    stmt = (
-        select(
-            WebhookEvent.id,
-            WebhookEvent.source,
-            WebhookEvent.timestamp,
-            WebhookEvent.created_at,
-            WebhookEvent.alert_hash,
-            WebhookEvent.importance,
-            WebhookEvent.retry_count,
-            WebhookEvent.processing_status,
+async def list_dead_letters(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    source: str | None = None,
+    status: str = "dead_letter",
+    search: str | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+) -> list[dict[str, Any]]:
+    stmt = select(
+        WebhookEvent.id,
+        WebhookEvent.source,
+        WebhookEvent.timestamp,
+        WebhookEvent.created_at,
+        WebhookEvent.alert_hash,
+        WebhookEvent.importance,
+        WebhookEvent.retry_count,
+        WebhookEvent.processing_status,
+        WebhookEvent.failure_reason,
+        WebhookEvent.error_message,
+    ).where(WebhookEvent.processing_status == status)
+
+    if source:
+        stmt = stmt.where(WebhookEvent.source == source)
+    if search:
+        like_pattern = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                WebhookEvent.error_message.ilike(like_pattern),
+                WebhookEvent.failure_reason.ilike(like_pattern),
+            )
         )
-        .where(WebhookEvent.processing_status == "dead_letter")
-        .order_by(WebhookEvent.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
+    if time_from:
+        try:
+            from core.datetime_utils import parse_utc_datetime
+            stmt = stmt.where(WebhookEvent.timestamp >= parse_utc_datetime(time_from))
+        except (ValueError, TypeError):
+            pass
+    if time_to:
+        try:
+            from core.datetime_utils import parse_utc_datetime
+            stmt = stmt.where(WebhookEvent.timestamp <= parse_utc_datetime(time_to))
+        except (ValueError, TypeError):
+            pass
+
+    stmt = stmt.order_by(WebhookEvent.id.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await session.execute(stmt)
     rows: list[dict[str, Any]] = []
     for row in result.all():
@@ -123,8 +153,70 @@ async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int
     return rows
 
 
-async def count_dead_letters(session: AsyncSession) -> int | None:
+async def count_dead_letters(
+    session: AsyncSession,
+    source: str | None = None,
+    status: str = "dead_letter",
+    search: str | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+) -> int | None:
     from db.session import count_with_timeout
 
-    stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == "dead_letter")
+    stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == status)
+    if source:
+        stmt = stmt.where(WebhookEvent.source == source)
+    if search:
+        like_pattern = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                WebhookEvent.error_message.ilike(like_pattern),
+                WebhookEvent.failure_reason.ilike(like_pattern),
+            )
+        )
+    if time_from:
+        try:
+            from core.datetime_utils import parse_utc_datetime
+            stmt = stmt.where(WebhookEvent.timestamp >= parse_utc_datetime(time_from))
+        except (ValueError, TypeError):
+            pass
+    if time_to:
+        try:
+            from core.datetime_utils import parse_utc_datetime
+            stmt = stmt.where(WebhookEvent.timestamp <= parse_utc_datetime(time_to))
+        except (ValueError, TypeError):
+            pass
     return await count_with_timeout(session, stmt)
+
+
+async def get_dead_letter_detail(session: AsyncSession, event_id: int) -> dict[str, Any] | None:
+    """Get a single dead letter event with full detail including payload."""
+    stmt = select(WebhookEvent).where(WebhookEvent.id == event_id)
+    result = await session.execute(stmt)
+    event = result.scalar_one_or_none()
+    if event is None:
+        return None
+
+    # Load the raw payload
+    from services.webhooks.repository import load_event_payload
+    parsed, raw_body = await load_event_payload(event)
+
+    detail = {
+        "id": event.id,
+        "source": event.source,
+        "request_id": event.request_id,
+        "client_ip": event.client_ip,
+        "timestamp": utc_isoformat(event.timestamp) if event.timestamp else None,
+        "created_at": utc_isoformat(event.created_at) if event.created_at else None,
+        "processing_status": event.processing_status,
+        "failure_reason": event.failure_reason,
+        "error_message": event.error_message,
+        "retry_count": event.retry_count,
+        "importance": event.importance,
+        "alert_hash": event.alert_hash,
+        "dedup_key": event.dedup_key,
+        "forward_status": event.forward_status,
+        "parsed_data": event.parsed_data,
+        "raw_payload": parsed,
+    }
+    return detail
