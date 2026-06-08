@@ -100,7 +100,11 @@ async def post_json_to_remote(
             return {"status": "invalid_target", "message": str(e)}
 
     async def _do_post() -> httpx.Response:
-        final_url = await dependencies.validate_url(url) if validate_target else url
+        from core.url_security import validate_outbound_url
+
+        final_url = (
+            await validate_outbound_url(url, bypass_dns_cache=True) if validate_target else url
+        )
         logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(final_url))
         resp = cast(
             httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)

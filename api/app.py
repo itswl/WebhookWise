@@ -57,6 +57,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_ai_client_hook=initialize_openai_client,
     )
     app.state.app_context = services.app_context
+
+    from services.forwarding.rules import start_rules_invalidation_listener
+
+    await start_rules_invalidation_listener()
     logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
     try:
