@@ -66,7 +66,7 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
-    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="true: Redis 不可用时降级放行; false: 拒绝请求返回 503")
+    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: Redis 不可用时降级放行; false(默认): 拒绝请求返回 503。生产环境面向公网时建议 false 以防止限流失效")
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
