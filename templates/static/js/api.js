@@ -278,6 +278,12 @@ const API = {
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
+        if (authMode === 'write') {
+            const readToken = this.getReadToken();
+            if (readToken) {
+                headers['x-api-key'] = readToken;
+            }
+        }
 
         const { authMode: _ignoredAuthMode, ...fetchOptions } = options;
         const response = await fetch(url, { ...fetchOptions, headers });
