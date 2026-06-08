@@ -7,9 +7,12 @@ pytest 全局 fixtures：外部服务 mock、测试数据库 session。
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ps = str(_ROOT)
@@ -17,6 +20,12 @@ if _ps not in sys.path:
     sys.path.insert(0, _ps)
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://webhook_user:test-password@localhost:5432/webhooks_test")
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
+    """Let SQLite-backed unit tests create models that use PostgreSQL JSONB."""
+    return "JSON"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -129,3 +138,32 @@ def temp_config():
     context = get_default_app_context()
     assert context is not None
     yield context.config
+
+
+@pytest.fixture
+def inline_webhook_task_runner(monkeypatch: pytest.MonkeyPatch):
+    """Run the TaskIQ webhook task body directly for request-path integration tests."""
+    from services.operations.tasks import process_webhook_task
+    from services.webhooks.pipeline import handle_webhook_ingest
+
+    async def run_task_inline(
+        client_ip: str | None = None,
+        source_name: str | None = None,
+        raw_headers: dict[str, str] | None = None,
+        raw_body: str | None = None,
+        request_id: str | None = None,
+        received_at: str | None = None,
+        ingest_retry_count: int = 0,
+        traceparent: str | None = None,
+    ) -> None:
+        await handle_webhook_ingest(
+            source=source_name or "unknown",
+            raw_headers=raw_headers or {},
+            raw_body=raw_body or "",
+            client_ip=client_ip or "",
+            request_id=request_id,
+            received_at=received_at,
+        )
+
+    monkeypatch.setattr(process_webhook_task, "kiq", run_task_inline)
+    return run_task_inline
