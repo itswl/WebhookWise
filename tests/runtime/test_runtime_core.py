@@ -200,7 +200,9 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(temp_config.security, "API_KEY", "api-token")
     monkeypatch.setattr(temp_config.security, "ADMIN_WRITE_KEY", "admin-token")
     assert await auth.verify_api_key(request, credentials, temp_config) is True
-    assert await auth.verify_api_key(request, admin_credentials, temp_config) is True
+    with pytest.raises(HTTPException) as admin_key_rejected_by_api_endpoint:
+        await auth.verify_api_key(request, admin_credentials, temp_config)
+    assert admin_key_rejected_by_api_endpoint.value.status_code == 401
 
     monkeypatch.setattr(auth.logger, "isEnabledFor", lambda _level: False)
     with pytest.raises(HTTPException) as invalid_api_key:
@@ -232,14 +234,6 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
         await auth.verify_admin_write(api_as_admin_request, credentials, temp_config)
     assert api_key_is_read_only.value.status_code == 403
     assert "API key is insufficient" in str(api_key_is_read_only.value.detail)
-
-    request = Request()
-    request.headers = {}
-    request.query_params = {"token": "admin-token"}
-    assert auth._first_token(request, None, "x-admin-write-key") == "admin-token"
-    request.headers = {}
-    request.query_params = {"api_key": "api-token"}
-    assert auth._first_token(request, None, "x-admin-write-key") == "api-token"
 
 @pytest.mark.asyncio
 async def test_url_security_edge_cases_private_policy_and_dns_cache(

@@ -15,6 +15,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -87,8 +88,8 @@ class WebhookEvent(Base):
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow(), server_default=func.now())
 
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),

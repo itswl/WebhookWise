@@ -6,7 +6,7 @@ import os
 import socket
 from functools import lru_cache
 
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,11 +33,6 @@ class ServerConfig(StaticSettings):
     PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096)
     PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES: int = Field(default=4096)
 
-    @model_validator(mode="after")
-    def _derive_debug_default(self) -> ServerConfig:
-        if "DEBUG" not in self.model_fields_set:
-            self.DEBUG = self.APP_ENV == "development"
-        return self
 
 
 class TaskConfig(StaticSettings):
@@ -45,7 +40,7 @@ class TaskConfig(StaticSettings):
 
     BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
-    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300)
+    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300, description="Outbox 记录认领后超时秒数; 需大于 FORWARD_TIMEOUT + 退避上限，否则正常重试的记录会被误判为过期")
     WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0)
 
 
@@ -71,8 +66,8 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
-    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True)
-    REQUIRE_WEBHOOK_AUTH: bool = Field(default=False)
+    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="true: Redis 不可用时降级放行; false: 拒绝请求返回 503")
+    REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
     ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)
@@ -223,7 +218,7 @@ class RetryConfig(StaticSettings):
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
-    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True)
+    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="Redis 不可用时背压检查是否放行; true: 降级放行, false: 拒绝请求")
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)
@@ -270,11 +265,6 @@ class AppConfig(StaticSettings):
         "maintenance",
     )
 
-    @model_validator(mode="after")
-    def _validate_cross_fields(self) -> AppConfig:
-        if self.security.REQUIRE_WEBHOOK_AUTH and not self.security.WEBHOOK_SECRET:
-            raise ValueError("REQUIRE_WEBHOOK_AUTH=true 但 WEBHOOK_SECRET 为空")
-        return self
 
 
 @lru_cache

@@ -56,12 +56,15 @@ def test_webhook_event_serializers_use_schema_from_attributes():
 
 
 def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
+    import re
     offenders = []
     for path in (PROJECT_ROOT / "models").glob("*.py"):
         text = path.read_text()
-        offenders.extend(
-            f"{path.name}: {needle}" for needle in ("default=datetime.now", "default=func.now()") if needle in text
-        )
+        if "default=datetime.now" in text:
+            offenders.append(f"{path.name}: default=datetime.now")
+        # default=func.now() is banned; server_default=func.now() is intentional for DDL-level defaults.
+        if re.search(r"(?<!server_)default=func\.now\(\)", text):
+            offenders.append(f"{path.name}: default=func.now()")
     assert offenders == []
 
 

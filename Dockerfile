@@ -59,6 +59,7 @@ COPY . .
 
 # 创建必要的目录并设置权限
 RUN mkdir -p logs && \
+    rm -f .env .env.* && \
     chmod +x entrypoint.sh && \
     chown -R appuser:appuser /app
 
