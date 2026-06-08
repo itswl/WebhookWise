@@ -73,12 +73,21 @@ def _payload_too_large_response(
     return None
 
 
+_ACCEPTED_CONTENT_TYPES = {"application/json", "text/json", "application/x-www-form-urlencoded"}
+
+
 async def _receive_and_enqueue_webhook(
     *,
     request: Request,
     source_hint: str,
     request_id: str,
 ) -> JSONDict | JSONResponse:
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if content_type and content_type not in _ACCEPTED_CONTENT_TYPES:
+        return JSONResponse(
+            status_code=415,
+            content={"success": False, "error": f"Unsupported Content-Type: {content_type}"},
+        )
     try:
         client_ip = get_client_ip(request)
     except _CLIENT_IP_CONTEXT_ERRORS:

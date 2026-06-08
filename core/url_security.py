@@ -125,8 +125,14 @@ async def _resolve_ips_cached(host: str, port: int | None) -> list[ipaddress.IPv
     return resolved_ips
 
 
-async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = None) -> str:
-    """Return a normalized URL if it is safe for server-side outbound calls."""
+async def validate_outbound_url(
+    url: str, *, policy: OutboundURLPolicy | None = None, bypass_dns_cache: bool = False
+) -> str:
+    """Return a normalized URL if it is safe for server-side outbound calls.
+
+    When bypass_dns_cache=True, DNS resolution skips the local cache to mitigate
+    DNS rebinding attacks (use at delivery time, not at rule-save time).
+    """
     policy = policy or OutboundURLPolicy.from_config()
     candidate = str(url or "").strip()
     if not candidate:
@@ -148,7 +154,10 @@ async def validate_outbound_url(url: str, *, policy: OutboundURLPolicy | None = 
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
-        ips = await _resolve_ips_cached(host, parts.port)
+        if bypass_dns_cache:
+            ips = await asyncio.to_thread(_resolved_ips, host, parts.port)
+        else:
+            ips = await _resolve_ips_cached(host, parts.port)
         for ip in ips:
             _reject_private_ip(ip, policy)
     else:
