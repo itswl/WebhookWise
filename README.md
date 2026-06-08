@@ -168,6 +168,18 @@ docker compose ps
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
 ```
 
+### Database Backups
+
+`scripts.ops.backup_db` 使用 `pg_dump` 生成 PostgreSQL custom-format 备份，并为每个 `.dump` 写入同名 `.dump.sha256` 校验文件。
+
+```bash
+python -m scripts.ops.backup_db --verbose
+python -m scripts.ops.backup_db --verify backups
+python -m scripts.ops.backup_db --cleanup-only
+```
+
+配置项见 `.env.example.all` 的 `DB Backup` 区段。设置 `AWS_BUCKET` 后会上传备份和 checksum；对象存储上传失败时命令返回非 0。
+
 ### Kubernetes
 
 `deploy/k8s/` 提供基础清单：API、Worker、Scheduler、迁移 Job、Redis、PostgreSQL、ConfigMap、Secret 示例与 ServiceAccount。
