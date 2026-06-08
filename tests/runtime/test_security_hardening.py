@@ -512,7 +512,7 @@ def test_source_hint_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
+async def test_admin_write_key_does_not_bypass_api_key_and_requires_mixed_headers(
     monkeypatch: pytest.MonkeyPatch, temp_config: Any
 ) -> None:
     import httpx
@@ -529,24 +529,32 @@ async def test_admin_write_key_is_accepted_by_router_and_required_for_write(
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # verify_api_key 只接受 API_KEY，不再接受 ADMIN_WRITE_KEY
+        read_with_api = await client.get("/v1/prompt", headers={"Authorization": "Bearer api-key"})
         read_with_admin = await client.get("/v1/prompt", headers={"Authorization": "Bearer admin-key"})
         read_with_admin_header = await client.get("/v1/prompt", headers={"x-admin-write-key": "admin-key"})
+        # 写操作需要同时通过 verify_api_key + verify_admin_write
+        # 只有 Bearer api-key 无法通过 admin write 检查
         write_with_api = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer api-key"})
-        write_with_admin = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer admin-key"})
+        # 只有 Bearer admin-key 无法通过 verify_api_key 检查
+        write_with_admin_bearer = await client.post("/v1/prompt/reload", headers={"Authorization": "Bearer admin-key"})
+        # 只有 x-admin-write-key header 无法通过 verify_api_key 检查
         write_with_admin_header = await client.post("/v1/prompt/reload", headers={"x-admin-write-key": "admin-key"})
+        # 正确方式：Bearer api-key + x-admin-write-key admin-key
         write_with_mixed_headers = await client.post(
             "/v1/prompt/reload",
             headers={"Authorization": "Bearer api-key", "x-admin-write-key": "admin-key"},
         )
 
-    assert read_with_admin.status_code == 200
-    assert read_with_admin_header.status_code == 200
+    assert read_with_api.status_code == 200
+    assert read_with_admin.status_code == 401
+    assert read_with_admin_header.status_code == 401
     assert write_with_api.status_code == 403
     assert write_with_api.json()["detail"] == "Admin write token required. API key is insufficient for this endpoint."
-    assert write_with_admin.status_code == 200
-    assert write_with_admin.json()["template_length"] == len("test prompt")
-    assert write_with_admin_header.status_code == 200
+    assert write_with_admin_bearer.status_code == 401
+    assert write_with_admin_header.status_code == 401
     assert write_with_mixed_headers.status_code == 200
+    assert write_with_mixed_headers.json()["template_length"] == len("test prompt")
 
 
 def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
