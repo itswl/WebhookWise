@@ -7,8 +7,9 @@ Create Date: 2026-06-08 10:00:00.000000
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision: str = "0003_server_defaults_and_fk_cleanup"
 down_revision: str | Sequence[str] | None = "0002_forward_rule_identity_match"
