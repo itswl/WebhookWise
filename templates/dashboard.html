@@ -30,9 +30,6 @@
                 <button class="nav-tab" data-tab="outbox" type="button" aria-label="切换到转发队列">
                     <span>📤</span> 转发队列
                 </button>
-                <button class="nav-tab" data-tab="dead-letters" type="button" aria-label="切换到死信队列">
-                    <span>🗂️</span> 死信队列
-                </button>
                 <button class="nav-tab" data-tab="forward-rules" type="button" aria-label="切换到转发规则">
                     <span>⚙️</span> 转发规则
                 </button>
@@ -220,47 +217,6 @@
                     <div style="text-align: center; padding: 40px; color: var(--text-muted);">点击「转发队列」标签加载数据...</div>
                 </div>
                 <div id="outboxPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
-            </div>
-        </div>
-
-        <!-- 死信队列 Tab -->
-        <div id="deadLettersTab" class="tab-content" style="display: none;">
-            <div class="dead-letters-section" style="padding: 20px 0;">
-                <div class="section-header">
-                    <div class="section-title">死信队列</div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn" onclick="DeadLettersModule.load()">🔄 刷新</button>
-                        <button class="btn btn-primary" id="dlReplaySelectedBtn" onclick="DeadLettersModule.replaySelected()" disabled>🔄 重放已选</button>
-                    </div>
-                </div>
-                <div class="filter-section" style="margin-bottom: 16px;">
-                    <div class="filter-grid" style="grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(140px, 1fr)) auto;">
-                        <div class="filter-item">
-                            <label class="filter-label">搜索错误</label>
-                            <input type="search" id="dlSearchInput" class="filter-input" placeholder="错误信息 / 失败原因" autocomplete="off">
-                        </div>
-                        <div class="filter-item">
-                            <label class="filter-label">来源</label>
-                            <input type="text" id="dlSourceFilter" class="filter-input" placeholder="如 prometheus" autocomplete="off">
-                        </div>
-                        <div class="filter-item">
-                            <label class="filter-label">起始时间</label>
-                            <input type="date" id="dlTimeFrom" class="filter-input">
-                        </div>
-                        <div class="filter-item">
-                            <label class="filter-label">结束时间</label>
-                            <input type="date" id="dlTimeTo" class="filter-input">
-                        </div>
-                        <div class="filter-item" style="display:flex; gap:6px; align-items:flex-end;">
-                            <button class="btn btn-sm" onclick="DeadLettersModule.applyFilters()">筛选</button>
-                            <button class="btn btn-sm" onclick="DeadLettersModule.resetFilters()">重置</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="deadLettersList">
-                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">点击「死信队列」标签加载数据...</div>
-                </div>
-                <div id="deadLettersPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -487,7 +443,6 @@
     <script src="/static/js/forward-rules.js"></script>
     <script src="/static/js/deep-analyses.js?v=20260604-da-report-v2"></script>
     <script src="/static/js/outbox.js"></script>
-    <script src="/static/js/dead-letters.js"></script>
     <script src="/static/js/dashboard.js?v=20260528-ui"></script>
 </body>
 </html>
