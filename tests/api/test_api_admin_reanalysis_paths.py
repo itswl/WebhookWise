@@ -168,12 +168,41 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
                 return SimpleNamespace(id=2, processing_status="completed")
             return None
 
-    async def list_dead_letters(_session: object, *, page: int, page_size: int) -> list[dict[str, int]]:
+    async def list_dead_letters(
+        _session: object,
+        *,
+        page: int,
+        page_size: int,
+        source: str | None = None,
+        search: str | None = None,
+        time_from: datetime | None = None,
+        time_to: datetime | None = None,
+    ) -> list[dict[str, int]]:
         assert (page, page_size) == (1, 50)
+        assert source == "prometheus"
+        assert search == "HighCPU"
+        assert time_from == datetime(2026, 5, 27, 0, 0)
+        assert time_to == datetime(2026, 5, 28, 0, 0)
         return [{"id": 1}, {"id": 2}]
 
-    async def count_dead_letters(_session: object) -> int:
+    async def count_dead_letters(
+        _session: object,
+        *,
+        source: str | None = None,
+        search: str | None = None,
+        time_from: datetime | None = None,
+        time_to: datetime | None = None,
+    ) -> int:
+        assert source == "prometheus"
+        assert search == "HighCPU"
+        assert time_from == datetime(2026, 5, 27, 0, 0)
+        assert time_to == datetime(2026, 5, 28, 0, 0)
         return 2
+
+    async def get_dead_letter_detail(_session: object, event_id: int) -> dict[str, object] | None:
+        if event_id == 1:
+            return {"id": 1, "source": "prometheus", "raw_body": '{"alertname":"HighCPU"}'}
+        return None
 
     async def load_event_payload(_event: object) -> tuple[dict[str, object], str]:
         return {}, '{"alertname":"HighCPU"}'
@@ -183,13 +212,34 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
 
     monkeypatch.setattr(admin, "list_dead_letters", list_dead_letters)
     monkeypatch.setattr(admin, "count_dead_letters", count_dead_letters)
+    monkeypatch.setattr(admin, "get_dead_letter_detail", get_dead_letter_detail)
     monkeypatch.setattr(admin, "load_event_payload", load_event_payload)
     monkeypatch.setattr(admin.process_webhook_task, "kiq", kiq)
 
-    listed = _body(await admin.get_dead_letters_endpoint(page=1, page_size=50, session=object()))  # type: ignore[arg-type]
+    listed = _body(
+        await admin.get_dead_letters_endpoint(
+            page=1,
+            page_size=50,
+            source="prometheus",
+            search="HighCPU",
+            time_from="2026-05-27T00:00:00Z",
+            time_to="2026-05-28T00:00:00Z",
+            session=object(),  # type: ignore[arg-type]
+        )
+    )
     assert listed["success"] is True
     assert listed["data"] == [{"id": 1}, {"id": 2}]
     assert listed["pagination"] == {"page": 1, "page_size": 50, "total": 2}
+
+    invalid_time = await admin.get_dead_letters_endpoint(time_from="not-a-date", session=object())  # type: ignore[arg-type]
+    assert invalid_time.status_code == 400
+
+    detail = _body(await admin.get_dead_letter_detail_endpoint(1, session=object()))  # type: ignore[arg-type]
+    assert detail["success"] is True
+    assert detail["data"]["raw_body"] == '{"alertname":"HighCPU"}'
+
+    detail_missing = await admin.get_dead_letter_detail_endpoint(404, session=object())  # type: ignore[arg-type]
+    assert detail_missing.status_code == 404
 
     async def requeue_ok(_outbox_id: int) -> bool:
         return True
@@ -215,6 +265,21 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
     replay_missing = await admin.replay_single_dead_letter(3, session=Session())  # type: ignore[arg-type]
     assert replay_missing.status_code == 404
 
+    batch_replay = _body(
+        await admin.replay_dead_letter_batch(
+            admin.ReplayBatchRequest(event_ids=[1, 2, 1]),
+            session=Session(),  # type: ignore[arg-type]
+        )
+    )
+    assert batch_replay["replayed"] == 1
+    assert batch_replay["event_ids"] == [1]
+    assert batch_replay["skipped_event_ids"] == [2]
+
+    async def list_dead_letters_for_replay_all(_session: object, *, page: int, page_size: int) -> list[dict[str, int]]:
+        assert (page, page_size) == (1, 50)
+        return [{"id": 1}, {"id": 2}]
+
+    monkeypatch.setattr(admin, "list_dead_letters", list_dead_letters_for_replay_all)
     replay_all = _body(await admin.replay_all_dead_letters(batch_size=50, session=Session()))  # type: ignore[arg-type]
     assert replay_all["replayed"] == 1
     assert replay_all["event_ids"] == [1]
