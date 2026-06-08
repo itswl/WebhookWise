@@ -96,13 +96,15 @@ class OpenClawForwardDependencies:
 
 
 def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDependencies:
+    from functools import partial
+
     from core.http_client import get_http_client
     from core.url_security import validate_outbound_url
 
     return RemoteForwardDependencies(
         http_client=get_http_client(),
         circuit_breaker=get_forward_breaker(target_url or "_default_"),
-        validate_url=validate_outbound_url,
+        validate_url=partial(validate_outbound_url, bypass_dns_cache=True),
     )
 
 
