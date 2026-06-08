@@ -1,18 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.compiler import compiles
 
 from core.datetime_utils import parse_utc_datetime, utcnow
 from tests.helpers.paths import PROJECT_ROOT
 
 pytest.importorskip("fastapi")
-
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_, compiler, **kw):
-    return "JSON"
 
 
 def test_utc_isoformat_marks_naive_datetimes_as_utc():

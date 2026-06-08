@@ -3,15 +3,8 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
-
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
-    return "JSON"
 
 
 @pytest.fixture()
