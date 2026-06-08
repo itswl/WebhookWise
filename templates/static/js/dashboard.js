@@ -138,7 +138,6 @@ function switchMainTab(tabId) {
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
         'outbox': 'outboxTab',
-        'dead-letters': 'deadLettersTab',
         'forward-rules': 'forwardRulesTab'
     };
 
@@ -180,14 +179,6 @@ function switchMainTab(tabId) {
                 OutboxModule.load();
             }
             break;
-        case 'dead-letters':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof DeadLettersModule !== 'undefined') {
-                DeadLettersModule.load();
-            }
-            break;
         case 'forward-rules':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
@@ -214,11 +205,6 @@ function refreshCurrentTab() {
         case 'outbox':
             if (typeof OutboxModule !== 'undefined') {
                 OutboxModule.load();
-            }
-            break;
-        case 'dead-letters':
-            if (typeof DeadLettersModule !== 'undefined') {
-                DeadLettersModule.load();
             }
             break;
         case 'forward-rules':
