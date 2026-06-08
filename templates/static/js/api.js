@@ -623,5 +623,52 @@ const API = {
         const response = await this.authenticatedFetch('/v1/admin/outbox/' + id + '/retry', { method: 'POST' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
+    },
+
+    // ========== 死信队列 API ==========
+
+    async getDeadLetters(params = {}) {
+        const q = new URLSearchParams();
+        if (params.page) q.append('page', params.page);
+        if (params.page_size) q.append('page_size', params.page_size);
+        if (params.source) q.append('source', params.source);
+        if (params.search) q.append('search', params.search);
+        if (params.time_from) q.append('time_from', params.time_from);
+        if (params.time_to) q.append('time_to', params.time_to);
+        const query = q.toString();
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters' + (query ? '?' + query : ''));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async getDeadLetterDetail(eventId) {
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/' + eventId);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async replayDeadLetter(eventId) {
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/' + eventId + '/replay', {
+            method: 'POST'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async replayDeadLettersByIds(eventIds) {
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_ids: eventIds })
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async replayAllDeadLetters(batchSize) {
+        const q = batchSize ? '?batch_size=' + encodeURIComponent(batchSize) : '';
+        const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-all' + q, { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
     }
 };
