@@ -118,7 +118,7 @@ async def test_forward_to_remote_uses_injected_dependencies_only() -> None:
     from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.remote import forward_to_remote
 
-    async def accept_url(url: str) -> str:
+    async def accept_url(url: str, **kwargs: Any) -> str:
         return url
 
     class Response:
@@ -182,7 +182,7 @@ async def test_feishu_forward_checks_business_status_code() -> None:
     from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.remote import post_json_to_remote
 
-    async def accept_url(url: str) -> str:
+    async def accept_url(url: str, **kwargs: Any) -> str:
         return url
 
     class Response:
