@@ -3,6 +3,7 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and dead-letter replay.
 """
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -15,7 +16,7 @@ from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write, verify_api_key
 from core.config import get_settings
-from core.datetime_utils import utc_isoformat
+from core.datetime_utils import parse_utc_datetime, utc_isoformat
 from core.logger import get_logger
 from core.redis_client import redis_ping
 from core.redis_health import get_redis_health_snapshot
@@ -28,6 +29,7 @@ from schemas.admin import (
     PromptGetResponse,
     PromptReloadResponse,
     ReplayAllResponse,
+    ReplayBatchRequest,
     ReplayResponse,
 )
 from services.analysis.ai_analyzer import (
@@ -39,7 +41,7 @@ from services.analysis.ai_analyzer import (
 )
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
-from services.webhooks.query_service import count_dead_letters, list_dead_letters
+from services.webhooks.query_service import count_dead_letters, get_dead_letter_detail, list_dead_letters
 from services.webhooks.repository import count_suppressed_records, list_suppressed_records, load_event_payload
 
 logger = get_logger("api.v1.admin")
@@ -186,20 +188,72 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
     )
 
 
+def _parse_dead_letter_time(value: str, field_name: str) -> datetime | None:
+    if not value:
+        return None
+    parsed = parse_utc_datetime(value)
+    if parsed is None:
+        raise ValueError(f"{field_name} 必须是有效 ISO 时间")
+    return parsed
+
+
+def _dead_letter_query_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
 @admin_router.get("/admin/dead-letters", response_model=DeadLetterListResponse, dependencies=[Depends(verify_api_key)])
 async def get_dead_letters_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
+    source: str = Query("", max_length=100),
+    search: str = Query("", max_length=300),
+    time_from: str = Query(""),
+    time_to: str = Query(""),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     try:
-        items = await list_dead_letters(session, page=page, page_size=page_size)
-        total = await count_dead_letters(session)
+        source_filter = _dead_letter_query_text(source)
+        search_filter = _dead_letter_query_text(search)
+        parsed_time_from = _parse_dead_letter_time(_dead_letter_query_text(time_from), "time_from")
+        parsed_time_to = _parse_dead_letter_time(_dead_letter_query_text(time_to), "time_to")
+        items = await list_dead_letters(
+            session,
+            page=page,
+            page_size=page_size,
+            source=source_filter or None,
+            search=search_filter or None,
+            time_from=parsed_time_from,
+            time_to=parsed_time_to,
+        )
+        total = await count_dead_letters(
+            session,
+            source=source_filter or None,
+            search=search_filter or None,
+            time_from=parsed_time_from,
+            time_to=parsed_time_to,
+        )
         return ok_response(
             data=items, http_status=200, pagination={"page": page, "page_size": page_size, "total": total}
         )
+    except ValueError as e:
+        return fail_response(str(e), 400)
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
+        return internal_error_response()
+
+
+@admin_router.get("/admin/dead-letters/{event_id}", dependencies=[Depends(verify_api_key)])
+async def get_dead_letter_detail_endpoint(
+    event_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        detail = await get_dead_letter_detail(session, event_id)
+        if detail is None:
+            return fail_response(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
+        return ok_response(http_status=200, data=detail)
+    except _ADMIN_RUNTIME_ERRORS as e:
+        logger.error("查询 dead_letter 详情失败: event_id=%s, error=%s", event_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -253,6 +307,54 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
         return internal_error_response()
 
 
+async def _replay_dead_letter_ids(event_ids: list[int], session: AsyncSession) -> tuple[list[int], list[int]]:
+    replayed_ids: list[int] = []
+    skipped_ids: list[int] = []
+    seen: set[int] = set()
+    for event_id in event_ids:
+        if event_id in seen:
+            continue
+        seen.add(event_id)
+        event = await session.get(WebhookEvent, event_id)
+        if event and event.processing_status == "dead_letter":
+            replayed_ids.append(event_id)
+            await _enqueue_dead_letter_event(event)
+        else:
+            skipped_ids.append(event_id)
+    return replayed_ids, skipped_ids
+
+
+@admin_router.post(
+    "/admin/dead-letters/replay-batch",
+    response_model=ReplayAllResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def replay_dead_letter_batch(
+    request: ReplayBatchRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        if not request.event_ids:
+            return fail_response("event_ids 不能为空", 400)
+        replayed_ids, skipped_ids = await _replay_dead_letter_ids(request.event_ids, session)
+        logger.info(
+            "[Admin] 指定重放 dead_letter 完成 replayed=%s skipped=%s event_ids=%s",
+            len(replayed_ids),
+            len(skipped_ids),
+            request.event_ids,
+        )
+        return ok_response(
+            http_status=200,
+            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+            replayed=len(replayed_ids),
+            event_ids=replayed_ids,
+            skipped_event_ids=skipped_ids,
+        )
+    except _ADMIN_RUNTIME_ERRORS as e:
+        logger.error("批量重放指定 dead_letter 失败: %s", e, exc_info=True)
+        return internal_error_response()
+
+
 @admin_router.post(
     "/admin/dead-letters/replay-all",
     response_model=ReplayAllResponse,
@@ -266,19 +368,19 @@ async def replay_all_dead_letters(
         if not items:
             logger.info("[Admin] 批量重放 dead_letter：无待处理记录")
             return ok_response(http_status=200, message="无 dead_letter 需要重放", replayed=0)
-        replayed_ids = []
-        for item in items:
-            eid = item["id"]
-            event = await session.get(WebhookEvent, eid)
-            if event and event.processing_status == "dead_letter":
-                replayed_ids.append(eid)
-                await _enqueue_dead_letter_event(event)
-        logger.info("[Admin] 批量重放 dead_letter 完成 replayed=%s event_ids=%s", len(replayed_ids), replayed_ids)
+        replayed_ids, skipped_ids = await _replay_dead_letter_ids([int(item["id"]) for item in items], session)
+        logger.info(
+            "[Admin] 批量重放 dead_letter 完成 replayed=%s skipped=%s event_ids=%s",
+            len(replayed_ids),
+            len(skipped_ids),
+            replayed_ids,
+        )
         return ok_response(
             http_status=200,
             message=f"已重放 {len(replayed_ids)} 条 dead_letter",
             replayed=len(replayed_ids),
             event_ids=replayed_ids,
+            skipped_event_ids=skipped_ids,
         )
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
