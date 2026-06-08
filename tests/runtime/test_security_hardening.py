@@ -204,7 +204,7 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
     validate_calls = 0
     posted_urls: list[str] = []
 
-    async def validate_url(url: str) -> str:
+    async def validate_url(url: str, **kwargs: Any) -> str:
         nonlocal validate_calls
         validate_calls += 1
         if validate_calls == 2:

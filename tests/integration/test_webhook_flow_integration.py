@@ -126,7 +126,7 @@ async def test_webhook_receive_to_feishu_card_flow(
 
     monkeypatch.setattr("core.http_client.get_http_client", lambda: FakeHttpClient())
 
-    async def accept_url(url: str) -> str:
+    async def accept_url(url: str, **kwargs: Any) -> str:
         return url
 
     monkeypatch.setattr("core.url_security.validate_outbound_url", accept_url)

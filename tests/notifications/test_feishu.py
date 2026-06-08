@@ -148,7 +148,7 @@ async def test_send_to_feishu_uses_feishu_timeout_and_circuit_breaker(
 
     client = object()
 
-    async def validate_url(url: str) -> str:
+    async def validate_url(url: str, **kwargs: Any) -> str:
         return url
 
     captured: dict[str, Any] = {}
