@@ -7,18 +7,11 @@ from typing import Any, cast
 import httpx
 import pytest
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
 from core.datetime_utils import utcnow
 from services.dedup import generate_alert_hash
-
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
-    return "JSON"
 
 
 def _set_config(monkeypatch: pytest.MonkeyPatch, config: Any, key: str, value: object) -> None:
@@ -59,6 +52,7 @@ async def integration_session_factory(
 async def test_webhook_receive_to_feishu_card_flow(
     integration_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
+    inline_webhook_task_runner: object,
 ) -> None:
     monkeypatch.setenv("OTEL_ENABLED", "false")
 
@@ -66,8 +60,7 @@ async def test_webhook_receive_to_feishu_card_flow(
     from core.app_context import get_default_app_context
     from models import WebhookEvent
     from services.forwarding.outbox import process_forward_outbox_by_id
-    from services.operations.tasks import process_forward_outbox_task, process_webhook_task
-    from services.webhooks.pipeline import handle_webhook_ingest
+    from services.operations.tasks import process_forward_outbox_task
 
     context = get_default_app_context()
     assert context is not None
@@ -137,27 +130,6 @@ async def test_webhook_receive_to_feishu_card_flow(
         return url
 
     monkeypatch.setattr("core.url_security.validate_outbound_url", accept_url)
-
-    async def run_task_inline(
-        client_ip: str | None = None,
-        source_name: str | None = None,
-        raw_headers: dict[str, str] | None = None,
-        raw_body: str | None = None,
-        request_id: str | None = None,
-        received_at: str | None = None,
-        ingest_retry_count: int = 0,
-        traceparent: str | None = None,
-    ) -> None:
-        await handle_webhook_ingest(
-            source=source_name or "unknown",
-            raw_headers=raw_headers or {},
-            raw_body=raw_body or "",
-            client_ip=client_ip or "",
-            request_id=request_id,
-            received_at=received_at,
-        )
-
-    monkeypatch.setattr(cast(Any, process_webhook_task), "kiq", run_task_inline)
 
     async def run_outbox_inline(outbox_id: int) -> None:
         await process_forward_outbox_by_id(outbox_id)

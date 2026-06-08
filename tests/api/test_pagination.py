@@ -3,22 +3,13 @@
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.ext.compiler import compiles
 
 from db.session import Base
 from models import WebhookEvent
 from services.webhooks.query_service import list_webhook_summaries
-
-
-# SQLite 不原生支持 JSONB，DDL 编译时降级为 JSON
-@compiles(JSONB, "sqlite")
-def compile_jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
-    return "JSON"
 
 
 @pytest.fixture()

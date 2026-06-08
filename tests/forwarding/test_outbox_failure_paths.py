@@ -8,19 +8,12 @@ from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 
 from core.datetime_utils import utcnow
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
-
-
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(type_: object, compiler: object, **kw: object) -> str:
-    return "JSON"
 
 
 @pytest.fixture()
