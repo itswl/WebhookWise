@@ -80,7 +80,8 @@ rule_request = urllib.request.Request(
     "http://localhost:18080/v1/forward-rules",
     data=json.dumps(rule_payload).encode("utf-8"),
     headers={
-        "authorization": "Bearer e2e-admin-write-key",
+        "authorization": "Bearer e2e-api-key",
+        "x-admin-write-key": "e2e-admin-write-key",
         "content-type": "application/json",
     },
     method="POST",
