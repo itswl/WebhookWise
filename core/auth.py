@@ -44,19 +44,6 @@ def _token_candidates(request: Request, auth: HTTPAuthorizationCredentials | Non
     for key in header_keys:
         add_token(request.headers.get(key))
 
-    query = getattr(request, "query_params", None)
-    if query is not None:
-        for key in (
-            "admin_key",
-            "admin-write-key",
-            "admin_write_key",
-            "api_key",
-            "api-key",
-            "token",
-        ):
-            candidate = query.get(key)
-            if isinstance(candidate, str):
-                add_token(candidate)
     return candidates
 
 
@@ -93,7 +80,7 @@ async def verify_api_key(
 
     credentials = _token_candidates(request, auth, "x-api-key", "x-admin-key", "x-admin-write-key")
     if not any(
-        _matches_any_configured_token(credential, api_key, config.security.ADMIN_WRITE_KEY)
+        _matches_any_configured_token(credential, api_key)
         for credential in credentials
     ):
         client_ip = request.client.host if request.client else "unknown"

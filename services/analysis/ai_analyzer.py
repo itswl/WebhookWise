@@ -46,6 +46,9 @@ from services.webhooks.types import (
     set_analysis_route,
 )
 
+_IMPORTANCE_EMOJI = {"high": "🔴", "medium": "🟠", "low": "🟢"}
+_IMPORTANCE_EMOJI_DEFAULT = "🟠"
+
 logger = get_logger("analysis.ai_analyzer")
 
 __all__ = [
@@ -144,7 +147,7 @@ def analyze_with_rules(
                 importance = "medium"
 
     res["importance"] = importance
-    prefix = {"high": "🔴", "medium": "🟠", "low": "🟢"}.get(importance, "🟠")
+    prefix = _IMPORTANCE_EMOJI.get(importance, _IMPORTANCE_EMOJI_DEFAULT)
     if cur_f is not None and thr_f is not None:
         res["summary"] = f"{prefix} {rule_name}: 当前值 {cur_f:g} / 阈值 {thr_f:g}"
     else:
