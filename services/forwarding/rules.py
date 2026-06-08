@@ -204,6 +204,6 @@ async def start_rules_invalidation_listener() -> None:
         finally:
             with contextlib.suppress(Exception):
                 await pubsub.unsubscribe(_RULES_INVALIDATION_CHANNEL)
-                await pubsub.aclose()
+                await pubsub.close()
 
     asyncio.create_task(_listen())
