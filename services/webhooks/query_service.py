@@ -95,19 +95,49 @@ async def list_webhook_summaries(
     return items, page_window.has_more, page_window.next_cursor
 
 
-async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
+def _dead_letter_base_query(
+    *,
+    source: str | None = None,
+    search: str | None = None,
+    time_from: datetime | None = None,
+    time_to: datetime | None = None,
+) -> Any:
+    stmt = select(
+        WebhookEvent.id,
+        WebhookEvent.source,
+        WebhookEvent.timestamp,
+        WebhookEvent.created_at,
+        WebhookEvent.alert_hash,
+        WebhookEvent.importance,
+        WebhookEvent.retry_count,
+        WebhookEvent.processing_status,
+        WebhookEvent.failure_reason,
+        WebhookEvent.error_message,
+    ).where(WebhookEvent.processing_status == "dead_letter")
+    if source:
+        stmt = stmt.where(WebhookEvent.source == source)
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(or_(WebhookEvent.error_message.ilike(pattern), WebhookEvent.failure_reason.ilike(pattern)))
+    if time_from is not None:
+        stmt = stmt.where(WebhookEvent.timestamp >= time_from)
+    if time_to is not None:
+        stmt = stmt.where(WebhookEvent.timestamp <= time_to)
+    return stmt
+
+
+async def list_dead_letters(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    *,
+    source: str | None = None,
+    search: str | None = None,
+    time_from: datetime | None = None,
+    time_to: datetime | None = None,
+) -> list[dict[str, Any]]:
     stmt = (
-        select(
-            WebhookEvent.id,
-            WebhookEvent.source,
-            WebhookEvent.timestamp,
-            WebhookEvent.created_at,
-            WebhookEvent.alert_hash,
-            WebhookEvent.importance,
-            WebhookEvent.retry_count,
-            WebhookEvent.processing_status,
-        )
-        .where(WebhookEvent.processing_status == "dead_letter")
+        _dead_letter_base_query(source=source, search=search, time_from=time_from, time_to=time_to)
         .order_by(WebhookEvent.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -123,8 +153,58 @@ async def list_dead_letters(session: AsyncSession, page: int = 1, page_size: int
     return rows
 
 
-async def count_dead_letters(session: AsyncSession) -> int | None:
+async def count_dead_letters(
+    session: AsyncSession,
+    *,
+    source: str | None = None,
+    search: str | None = None,
+    time_from: datetime | None = None,
+    time_to: datetime | None = None,
+) -> int | None:
     from db.session import count_with_timeout
 
-    stmt = select(func.count()).select_from(WebhookEvent).where(WebhookEvent.processing_status == "dead_letter")
+    stmt = (
+        select(func.count())
+        .select_from(WebhookEvent)
+        .where(WebhookEvent.processing_status == "dead_letter")
+    )
+    if source:
+        stmt = stmt.where(WebhookEvent.source == source)
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(or_(WebhookEvent.error_message.ilike(pattern), WebhookEvent.failure_reason.ilike(pattern)))
+    if time_from is not None:
+        stmt = stmt.where(WebhookEvent.timestamp >= time_from)
+    if time_to is not None:
+        stmt = stmt.where(WebhookEvent.timestamp <= time_to)
     return await count_with_timeout(session, stmt)
+
+
+async def get_dead_letter_detail(session: AsyncSession, event_id: int) -> dict[str, Any] | None:
+    from services.webhooks.repository import load_event_payload
+
+    stmt = select(WebhookEvent).where(WebhookEvent.id == event_id, WebhookEvent.processing_status == "dead_letter")
+    event = (await session.execute(stmt)).scalar_one_or_none()
+    if event is None:
+        return None
+    parsed_payload, raw_body = await load_event_payload(event)
+    return {
+        "id": event.id,
+        "source": event.source,
+        "request_id": event.request_id,
+        "client_ip": event.client_ip,
+        "timestamp": utc_isoformat(event.timestamp),
+        "created_at": utc_isoformat(event.created_at),
+        "processing_status": event.processing_status,
+        "retry_count": event.retry_count,
+        "failure_reason": event.failure_reason,
+        "error_message": event.error_message,
+        "importance": event.importance,
+        "alert_hash": event.alert_hash,
+        "dedup_key": event.dedup_key,
+        "forward_status": event.forward_status,
+        "headers": event.headers or {},
+        "parsed_data": event.parsed_data,
+        "payload": parsed_payload,
+        "raw_body": raw_body,
+    }

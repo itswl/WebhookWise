@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DeadLetterItem(BaseModel):
@@ -11,6 +11,10 @@ class DeadLetterItem(BaseModel):
     timestamp: str | None = None
     processing_status: str | None = None
     retry_count: int | None = None
+    failure_reason: str | None = None
+    error_message: str | None = None
+    importance: str | None = None
+    alert_hash: str | None = None
     created_at: str | None = None
 
 
@@ -42,7 +46,14 @@ class ReplayAllResponse(BaseModel):
     success: bool
     message: str
     replayed: int
-    event_ids: list[int] = []
+    event_ids: list[int] = Field(default_factory=list)
+    skipped_event_ids: list[int] = Field(default_factory=list)
+
+
+class ReplayBatchRequest(BaseModel):
+    """指定 dead letter 批量重放请求"""
+
+    event_ids: list[int] = Field(min_length=1, max_length=500)
 
 
 class PromptGetResponse(BaseModel):
