@@ -9,7 +9,7 @@ import hashlib
 import importlib
 import os
 import re
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 from dataclasses import dataclass
@@ -190,7 +190,8 @@ def run_backup(*, verbose: bool = False) -> Path:
 
     started = time.monotonic()
     try:
-        subprocess.run(
+        # pg_dump is invoked with a fixed argv list; shell=False is the subprocess default.
+        subprocess.run(  # nosec B603
             cmd,
             env=pg_dump_env(target),
             capture_output=True,
