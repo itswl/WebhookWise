@@ -11,8 +11,8 @@ Create Date: 2026-06-09
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0004"
-down_revision = "0003"
+revision = "0004_sync_archived_table"
+down_revision = "0003_server_defaults"
 branch_labels = None
 depends_on = None
 
