@@ -16,15 +16,35 @@ down_revision = "0003_server_defaults"
 branch_labels = None
 depends_on = None
 
+_TABLE = "archived_webhook_events"
+
+_COLUMNS = [
+    ("processing_status", sa.String(length=20)),
+    ("retry_count", sa.Integer()),
+    ("next_retry_at", sa.DateTime()),
+    ("failure_reason", sa.String(length=500)),
+    ("error_message", sa.Text()),
+    ("prev_alert_id", sa.BigInteger()),
+    ("request_id", sa.String(length=64)),
+]
+
+
+def _column_exists(table: str, column: str) -> bool:
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :table AND column_name = :column"
+        ),
+        {"table": table, "column": column},
+    )
+    return result.scalar() is not None
+
 
 def upgrade() -> None:
-    op.add_column("archived_webhook_events", sa.Column("processing_status", sa.String(length=20), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("retry_count", sa.Integer(), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("next_retry_at", sa.DateTime(), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("failure_reason", sa.String(length=500), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("error_message", sa.Text(), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("prev_alert_id", sa.BigInteger(), nullable=True))
-    op.add_column("archived_webhook_events", sa.Column("request_id", sa.String(length=64), nullable=True))
+    for col_name, col_type in _COLUMNS:
+        if not _column_exists(_TABLE, col_name):
+            op.add_column(_TABLE, sa.Column(col_name, col_type, nullable=True))
 
 
 def downgrade() -> None:
