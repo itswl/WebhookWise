@@ -21,7 +21,7 @@ services:
           cpus: '0.25'
           memory: 128M
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-webhooks}
       POSTGRES_USER: ${POSTGRES_USER:-webhook_user}
@@ -48,7 +48,7 @@ services:
         reservations:
           memory: 64M
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - webhookwise_redis_data:/data
     healthcheck:
