@@ -16,6 +16,9 @@ resources:
   - deployment-worker.yaml
   - deployment-scheduler.yaml
   - job-migrate.yaml
+  - pdb.yaml
+  - hpa-worker.yaml
+  - networkpolicy.yaml
 images:
   - name: ghcr.io/itswl/webhookwise
     newTag: 3.0.0

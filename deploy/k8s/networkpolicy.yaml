@@ -1,0 +1,48 @@
+# Network isolation for the data tier. Postgres/Redis should only accept
+# connections from in-namespace WebhookWise workloads, not from anything else
+# that lands in the namespace. Requires a CNI that enforces NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhookwise-postgres
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: webhookwise
+      app.kubernetes.io/component: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: webhookwise
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhookwise-redis
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: redis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: webhookwise
+      app.kubernetes.io/component: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: webhookwise
+      ports:
+        - protocol: TCP
+          port: 6379

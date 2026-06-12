@@ -41,9 +41,12 @@ def test_ci_enforces_coverage_gate() -> None:
     assert "--cov=api" in ci
     assert "--cov=services" in ci
     assert "--cov-report=xml" in ci
-    assert "--cov-fail-under=90" in ci
+    # Branch coverage enabled; gate is a ratchet (>=85, raised incrementally).
+    assert "--cov-branch" in ci
+    assert "--cov-fail-under=85" in ci
     assert "python scripts/observability/webhookwise_observe.py contract" in ci
-    assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 90
+    assert pyproject["tool"]["coverage"]["run"]["branch"] is True
+    assert pyproject["tool"]["coverage"]["report"]["fail_under"] >= 85
 
 
 def test_dependency_updates_and_ai_dev_entrypoint_are_configured() -> None:

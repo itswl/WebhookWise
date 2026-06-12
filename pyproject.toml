@@ -29,11 +29,18 @@ markers = [
 [tool.coverage.run]
 source = ["core", "api", "services", "models", "adapters", "db"]
 omit = ["tests/*", "alembic/*", "scripts/*"]
+# Measure branch coverage, not just line coverage: error/degradation branches
+# dominate this codebase and line-only coverage doesn't prove both sides are
+# exercised.
+branch = true
 
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-fail_under = 90
+# Ratchet: branch coverage is currently ~87%. The gate is set just below the
+# current value to prevent regressions; raise it incrementally as branch
+# coverage improves (target 90%+). Do NOT lower it.
+fail_under = 85
 
 [tool.mypy]
 python_version = "3.12"
