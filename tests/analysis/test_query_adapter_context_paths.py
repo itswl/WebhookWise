@@ -77,7 +77,8 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monk
                 next_poll_at=None,
                 last_polled_at=created,
             ),
-            SimpleNamespace(source="prometheus", is_duplicate=True),
+            "prometheus",
+            True,
         ),
         (
             SimpleNamespace(
@@ -96,11 +97,12 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monk
                 last_polled_at=created,
             ),
             None,
+            None,
         ),
     ]
 
     class ListResult:
-        def all(self) -> list[tuple[object, object | None]]:
+        def all(self) -> list[tuple[object, object | None, object | None]]:
             return records
 
     class ScalarList:

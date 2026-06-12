@@ -110,8 +110,12 @@ async def get_deep_analysis_list(
     total = await count_with_timeout(session, count_query) or 0
     total_pages = max(1, (total + per_page - 1) // per_page)
 
+    # Join only the two WebhookEvent scalars the list needs (source,
+    # is_duplicate) instead of the whole entity, which would also pull the
+    # event's heavy JSONB columns (raw_payload, headers, parsed_data,
+    # ai_analysis) for every joined row.
     query = (
-        select(DeepAnalysis, WebhookEvent)
+        select(DeepAnalysis, WebhookEvent.source, WebhookEvent.is_duplicate)
         .outerjoin(WebhookEvent, WebhookEvent.id == DeepAnalysis.webhook_event_id)
         .order_by(DeepAnalysis.id.desc())
     )
@@ -123,13 +127,13 @@ async def get_deep_analysis_list(
     page_window = trim_cursor_window(res.all(), per_page, lambda row: row[0].id)
 
     items = []
-    for rec, evt in page_window.rows:
+    for rec, source, is_duplicate in page_window.rows:
         # Lightweight list item: a cheap summary preview, no full normalized
         # report and no raw analysis_result blob (fetched on demand via the
         # detail endpoint when a row is expanded).
         item = deep_analysis_to_summary_dict(rec)
-        item["source"] = evt.source if evt else None
-        item["is_duplicate"] = evt.is_duplicate if evt else False
+        item["source"] = source
+        item["is_duplicate"] = bool(is_duplicate) if is_duplicate is not None else False
         items.append(item)
     return {
         "items": items,

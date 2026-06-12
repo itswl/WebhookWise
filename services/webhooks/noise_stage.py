@@ -1,5 +1,6 @@
 """Noise-reduction stage for webhook processing."""
 
+import asyncio
 import time
 from typing import Any
 
@@ -55,7 +56,11 @@ async def compute_noise(
             analysis,
             now,
         )
-        dec = analyze_noise_reduction(
+        # Scoring is synchronous and CPU-bound (regex tokenization + similarity
+        # over up to ~100 candidates); offload it so the worker event loop is
+        # not stalled per non-duplicate webhook.
+        dec = await asyncio.to_thread(
+            analyze_noise_reduction,
             curr,
             recent,
             window_minutes=policy.window_minutes,

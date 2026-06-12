@@ -1,19 +1,48 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import inspect
 import time
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, cast
 
 import redis.asyncio as redis
-from redis.exceptions import RedisError
+from redis.exceptions import NoScriptError, RedisError
 
 from core import json
 from core.config import AppConfig
 from core.logger import get_logger, mask_url
 
 logger = get_logger("redis_client")
+
+# Cache of script SHA1 -> source so we can run scripts via EVALSHA (sending the
+# short hash) instead of EVAL (re-sending the full Lua source on every call).
+_SCRIPT_SHA_CACHE: dict[str, str] = {}
+
+
+def _script_sha(script: str) -> str:
+    sha = _SCRIPT_SHA_CACHE.get(script)
+    if sha is None:
+        sha = hashlib.sha1(script.encode("utf-8")).hexdigest()  # noqa: S324 - Redis uses SHA1 for script ids
+        _SCRIPT_SHA_CACHE[script] = sha
+    return sha
+
+
+async def _eval_script(script: str, numkeys: int, args: tuple[RedisEvalArg, ...]) -> object:
+    """Run a Lua script via EVALSHA, transparently loading it on NOSCRIPT.
+
+    Avoids shipping the full Lua source on every call (the EVAL behaviour). The
+    SHA is derived locally; on first use (or after a Redis SCRIPT FLUSH) Redis
+    raises NOSCRIPT and we fall back to EVAL, which also caches the script
+    server-side for subsequent EVALSHA hits.
+    """
+    client = cast(Any, get_redis())
+    sha = _script_sha(script)
+    try:
+        return await client.evalsha(sha, int(numkeys), *args)
+    except NoScriptError:
+        return await client.eval(script, int(numkeys), *args)
 
 if TYPE_CHECKING:
     type RedisClient = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
@@ -137,19 +166,20 @@ async def redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
 
 
 async def redis_eval_int(script: str, numkeys: int, *args: RedisEvalArg) -> int | None:
-    raw = await record_redis_operation(
-        "eval",
-        cast(Awaitable[object], cast(Any, get_redis()).eval(script, int(numkeys), *args)),
-    )
+    raw = await record_redis_operation("eval", _eval_script(script, numkeys, args))
     return parse_int(raw)
 
 
 async def redis_eval_str(script: str, numkeys: int, *args: RedisEvalArg) -> str | None:
-    raw = await record_redis_operation(
-        "eval",
-        cast(Awaitable[object], cast(Any, get_redis()).eval(script, int(numkeys), *args)),
-    )
+    raw = await record_redis_operation("eval", _eval_script(script, numkeys, args))
     return coerce_str(raw)
+
+
+async def redis_eval_int_list(script: str, numkeys: int, *args: RedisEvalArg) -> list[int]:
+    raw = await record_redis_operation("eval", _eval_script(script, numkeys, args))
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [coerce_int(item) for item in raw]
 
 
 async def redis_get_str(key: str) -> str | None:
@@ -175,10 +205,17 @@ async def redis_publish(channel: str, message: str) -> int:
     return coerce_int(raw)
 
 
+# INCR then (re)set TTL in a single round-trip instead of INCR + EXPIRE.
+_INCR_WITH_EXPIRE_LUA = """
+local v = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+return v
+"""
+
+
 async def redis_incr_with_expire(key: str, ttl_seconds: int) -> int:
-    val = coerce_int(await record_redis_operation("incr", get_redis().incr(key)))
-    await record_redis_operation("expire", get_redis().expire(key, int(ttl_seconds)))
-    return val
+    val = await redis_eval_int(_INCR_WITH_EXPIRE_LUA, 1, key, int(ttl_seconds))
+    return coerce_int(val)
 
 
 async def redis_ping() -> bool:
@@ -218,6 +255,7 @@ __all__ = [
     "record_redis_operation",
     "redis_delete",
     "redis_eval_int",
+    "redis_eval_int_list",
     "redis_eval_str",
     "redis_get_json_dict",
     "redis_get_str",
