@@ -1,0 +1,30 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webhookwise-worker
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webhookwise-worker
+  minReplicas: 2
+  maxReplicas: 8
+  # CPU-based autoscaling out of the box. The most accurate signal for this
+  # service is the TaskIQ queue backlog (queue.pending / queue.lag metrics) —
+  # wire a KEDA ScaledObject against Prometheus for queue-driven scaling when
+  # KEDA is available; CPU is the portable baseline.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30

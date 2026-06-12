@@ -8,6 +8,7 @@ import httpx
 
 from contracts.webhook_payload import WebhookData
 from core.app_context import get_config_manager
+from core.circuit_breaker import CircuitBreakerOpenException
 from core.logger import get_logger
 from core.observability.metrics import (
     AI_ANALYSIS_DURATION_SECONDS,
@@ -236,7 +237,7 @@ async def analyze_webhook_with_ai(
             provider_policy.model,
             alert_hash[:12],
         )
-        analysis, t_in, t_out = await _llm_client._call_ai_with_retry(parsed, source, http_client=http_client)
+        analysis, t_in, t_out = await _llm_client.call_ai_with_breaker(parsed, source, http_client=http_client)
         logger.info(
             "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,
@@ -264,6 +265,17 @@ async def analyze_webhook_with_ai(
         )
         set_analysis_route(analysis_result, "ai")
         return analysis_result
+    except CircuitBreakerOpenException:
+        # Provider is broadly failing; skip the retry budget and degrade now.
+        logger.warning("[AI] LLM 熔断器开启,直接降级为规则分析 source=%s", source)
+        return await _degrade_to_rules(
+            webhook_data,
+            parsed,
+            source,
+            alert_hash,
+            "llm_circuit_open",
+            notify=False,
+        )
     except Exception as e:
         if _is_ai_policy_refusal(e):
             error_reason = _extract_ai_error_message(e)
