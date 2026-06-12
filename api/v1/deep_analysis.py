@@ -116,6 +116,27 @@ async def list_all_deep_analyses(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@deep_analysis_router.get(
+    "/deep-analyses/detail/{analysis_id}", response_model=None, dependencies=[Depends(verify_api_key)]
+)
+async def get_deep_analysis_detail(
+    analysis_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse | JSONDict:
+    """Full record for one analysis (normalized_report + raw analysis_result).
+
+    The list endpoint returns lightweight summaries; the dashboard calls this on
+    demand when a row is expanded so heavy fields are not shipped per page.
+    """
+    record = await session.get(DeepAnalysis, analysis_id)
+    if record is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Analysis not found"})
+    data = deep_analysis_to_dict(record)
+    event = await session.get(WebhookEvent, record.webhook_event_id)
+    data["source"] = event.source if event else None
+    data["is_duplicate"] = event.is_duplicate if event else False
+    return {"success": True, "data": data}
+
+
 @deep_analysis_router.get("/deep-analyses/{webhook_id}", dependencies=[Depends(verify_api_key)])
 async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     records = await get_deep_analyses_for_webhook(session, webhook_id)

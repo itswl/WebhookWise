@@ -474,6 +474,17 @@ const API = {
     },
 
     /**
+     * 获取单条深度分析的完整内容（含 normalized_report + 原始 analysis_result）
+     * 列表只返回轻量摘要，展开某条时按需调用此接口。
+     * @param {number} analysisId - 深度分析记录 ID
+     */
+    async getDeepAnalysisDetail(analysisId) {
+        const response = await this.authenticatedFetch('/v1/deep-analyses/detail/' + analysisId);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * 获取深度分析历史记录
      * @param {number} webhookId - 告警 ID
      * @returns {Promise<object>} 深度分析历史记录列表
