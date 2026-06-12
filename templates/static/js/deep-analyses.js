@@ -244,11 +244,41 @@ var DeepAnalysesModule = (function() {
             expandedIds.delete(id);
             card.className = 'da-card';
             details.style.display = 'none';
-        } else {
-            expandedIds.add(id);
-            card.className = 'da-card da-card-expanded';
-            details.style.display = 'block';
+            return;
         }
+
+        expandedIds.add(id);
+        card.className = 'da-card da-card-expanded';
+        details.style.display = 'block';
+
+        var record = findLoadedRecord(id);
+        if (!record) return;
+
+        // Full report (normalized_report + analysis_result) is not in the list
+        // payload; fetch it once on first expand, then cache on the record.
+        if (record._detailLoaded) {
+            details.innerHTML = buildDetailsHtml(record);
+            return;
+        }
+        details.innerHTML = '<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);"><div class="spinner" style="width: 20px; height: 20px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div>加载详细报告...</div>';
+        API.getDeepAnalysisDetail(id)
+            .then(function(res) {
+                if (res && res.success && res.data) {
+                    Object.assign(record, res.data);
+                    record._detailLoaded = true;
+                }
+                // Only render if the row is still expanded.
+                if (expandedIds.has(id)) {
+                    var liveDetails = document.getElementById('da-details-' + id);
+                    if (liveDetails) liveDetails.innerHTML = buildDetailsHtml(record);
+                }
+            })
+            .catch(function(err) {
+                var liveDetails = document.getElementById('da-details-' + id);
+                if (liveDetails) {
+                    liveDetails.innerHTML = '<div style="padding: 1.5rem; color: var(--danger);">详细报告加载失败：' + escapeHtml(String(err && err.message || err)) + '</div>';
+                }
+            });
     }
 
     function findLoadedRecord(id) {
@@ -323,7 +353,9 @@ var DeepAnalysesModule = (function() {
         `;
 
         if (record.status === 'completed') {
-            let textPreview = reportPreviewText(report);
+            // Prefer the lightweight server-provided preview; fall back to the
+            // normalized report when a full record has already been fetched.
+            let textPreview = record.summary_preview || reportPreviewText(report);
             textPreview = truncateText(textPreview, 180);
             if (textPreview) {
                 html += `<div class="da-preview">${escapeHtml(textPreview)}</div>`;
@@ -338,7 +370,7 @@ var DeepAnalysesModule = (function() {
             const pollText = pollInfo.length > 0 ? `<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">${pollInfo.join(' · ')}</div>` : '';
             html += `<div class="da-preview da-preview-pending">正在等待 ${engine.label} 返回诊断报告... ${runIdText}</div>${pollText}`;
         } else if (record.status === 'failed') {
-            let errorMsg = report.failure_reason || report.root_cause || report.primary_text || '未知错误';
+            let errorMsg = record.summary_preview || report.failure_reason || report.root_cause || report.primary_text || '未知错误';
             errorMsg = truncateText(errorMsg, 160);
             html += `<div class="da-preview da-preview-error">❌ ${escapeHtml(errorMsg)}</div>`;
         }
@@ -431,8 +463,13 @@ var DeepAnalysesModule = (function() {
             html += '<div id="da-record-' + record.id + '" class="' + cardClass + '">';
             html += buildSummaryHtml(record);
 
+            // Details are rendered lazily on expand (full report fetched on
+            // demand), so a collapsed row carries no heavy markup. An already
+            // expanded row (e.g. preserved across auto-refresh) is re-rendered
+            // only if its full record is present.
+            var detailsInner = (isExpanded && record._detailLoaded) ? buildDetailsHtml(record) : '';
             html += '<div id="da-details-' + record.id + '" class="da-details" style="' + (isExpanded ? 'display: block;' : 'display: none;') + '">';
-            html += buildDetailsHtml(record);
+            html += detailsInner;
             html += '</div>';
 
             html += '</div>';
@@ -500,7 +537,24 @@ var DeepAnalysesModule = (function() {
                     totalPages = data.total_pages || Math.max(1, Math.ceil(totalRecords / perPage));
                     nextCursor = data.next_cursor || null;
                     hasMoreRecords = !!data.has_more;
-                    loadedRecords = append ? loadedRecords.concat(data.items || []) : (data.items || []);
+                    var incoming = data.items || [];
+                    // Preserve already-fetched full report across a refresh so an
+                    // expanded row keeps showing its details (and pending rows
+                    // that just completed still re-fetch correctly).
+                    if (!append) {
+                        var prevById = {};
+                        loadedRecords.forEach(function(r) { prevById[r.id] = r; });
+                        incoming.forEach(function(item) {
+                            var prev = prevById[item.id];
+                            if (prev && prev._detailLoaded && prev.status === item.status) {
+                                item.normalized_report = prev.normalized_report;
+                                item.analysis_result = prev.analysis_result;
+                                item.user_question = prev.user_question;
+                                item._detailLoaded = true;
+                            }
+                        });
+                    }
+                    loadedRecords = append ? loadedRecords.concat(incoming) : incoming;
                     if (append) isLoadingMore = false;
                     renderDeepAnalyses(loadedRecords);
                     renderPagination();

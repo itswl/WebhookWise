@@ -141,37 +141,21 @@ async def test_deep_analysis_queries_return_cursor_page_and_webhook_context(monk
     assert result["per_page"] == 1
     assert result["has_more"] is True
     assert result["next_cursor"] == 3
+    # List items are lightweight: a cheap summary_preview, no heavy
+    # normalized_report and no raw analysis_result blob (fetched on demand via
+    # the detail endpoint).
     assert result["items"] == [
         {
             "id": 3,
             "webhook_event_id": 30,
             "engine": "openclaw",
             "user_question": "why",
-            "analysis_result": {"summary": "third"},
-            "normalized_report": {
-                "schema": "deep_analysis_report.v1",
-                "summary": "third",
-                "root_cause": "",
-                "impact": "",
-                "recommendations": [],
-                "evidence": [],
-                "next_checks": [],
-                "alert_identity": {},
-                "confidence": None,
-                "analysis_failed": False,
-                "failure_reason": "",
-                "primary_text": "third",
-                "source_format": "object",
-                "raw_text": "third",
-                "sections": [],
-            },
+            "summary_preview": "third",
             "duration_seconds": 1.2,
             "created_at": "2026-05-27T08:00:00Z",
             "openclaw_run_id": "run-3",
-            "openclaw_session_key": "session-3",
             "status": "completed",
             "poll_attempts": 1,
-            "next_poll_at": None,
             "last_polled_at": "2026-05-27T08:00:00Z",
             "source": "prometheus",
             "is_duplicate": True,

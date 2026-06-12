@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from contracts.deep_analysis_report import normalize_deep_analysis_report
+from contracts.deep_analysis_report import normalize_deep_analysis_report, summarize_deep_analysis_preview
 from core.datetime_utils import utc_isoformat
 
 
@@ -59,6 +59,31 @@ class DeepAnalysisRecord(BaseModel):
     is_duplicate: bool = False
 
 
+class DeepAnalysisSummary(BaseModel):
+    """深度分析列表项（轻量）。
+
+    列表视图只需渲染元信息 + 一句预览,不需要完整 normalized_report,更不需要
+    原始 analysis_result(含 _openclaw_text 大 blob)。完整内容在展开时经详情
+    接口按需获取。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    webhook_event_id: int
+    engine: str | None = None
+    user_question: str | None = None
+    summary_preview: str = ""
+    duration_seconds: float | None = None
+    created_at: datetime | str | None = None
+    openclaw_run_id: str | None = None
+    status: str | None = None
+    poll_attempts: int | None = None
+    last_polled_at: datetime | str | None = None
+    source: str | None = None
+    is_duplicate: bool = False
+
+
 class DeepAnalysisListData(BaseModel):
     """深度分析列表数据（含分页）"""
 
@@ -68,7 +93,7 @@ class DeepAnalysisListData(BaseModel):
     per_page: int
     next_cursor: int | None = None
     has_more: bool = False
-    items: list[DeepAnalysisRecord]
+    items: list[DeepAnalysisSummary]
 
 
 class DeepAnalysisListResponse(BaseModel):
@@ -99,3 +124,18 @@ def deep_analysis_to_dict(record: Any) -> dict[str, Any]:
             data[field] = utc_isoformat(data[field])
     data["normalized_report"] = normalize_deep_analysis_report(data.get("analysis_result")).to_dict()
     return data
+
+
+def deep_analysis_to_summary_dict(record: Any) -> dict[str, Any]:
+    """Lightweight list-item serializer.
+
+    Cheaply derives a one-line ``summary_preview`` instead of building (and
+    shipping) the full normalized report, and omits the raw ``analysis_result``
+    blob entirely. Used by the list endpoint to keep page payloads small.
+    """
+    summary = DeepAnalysisSummary.model_validate(record).model_dump()
+    summary["summary_preview"] = summarize_deep_analysis_preview(getattr(record, "analysis_result", None))
+    for field in ("created_at", "last_polled_at"):
+        if isinstance(summary.get(field), datetime):
+            summary[field] = utc_isoformat(summary[field])
+    return summary

@@ -261,6 +261,29 @@ def parse_openclaw_report_payload(text: Any) -> dict[str, Any] | None:
     return None
 
 
+def summarize_deep_analysis_preview(value: Any, *, limit: int = 260) -> str:
+    """Cheaply extract a short preview line for list views.
+
+    Avoids the full normalize_deep_analysis_report pipeline (json_repair + regex
+    + section building) so a list of N rows does not pay N× that cost. When the
+    stored result is already a mapping (the common case after the poll-layer fix
+    persists structured JSON), it reads summary-like fields directly; otherwise
+    it falls back to a trimmed single line of the raw text.
+    """
+    if isinstance(value, Mapping):
+        text = _first_text(value, _SUMMARY_KEYS)
+        if not text:
+            text = _display_value(_pick(value, *_ROOT_CAUSE_KEYS))
+        if not text:
+            text = _display_value(_pick(value, *_IMPACT_KEYS))
+        if not text:
+            text = _display_value(_pick(value, *_ERROR_KEYS))
+        return _truncate(_single_line(text), limit)
+    if isinstance(value, str):
+        return _truncate(_single_line(value), limit)
+    return ""
+
+
 def _text_section(key: str, text: str) -> DeepAnalysisReportSection:
     return DeepAnalysisReportSection(key=key, title=_SECTION_TITLES[key], kind="text", text=text)
 
