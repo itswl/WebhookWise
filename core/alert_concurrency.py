@@ -1,7 +1,14 @@
 """Per-alert concurrency gate for webhook analysis.
 
-Redis provides cross-worker single-flight per ``alert_hash``. The in-process
-lock is only a local serialization layer after the Redis-backed gate succeeds.
+Redis provides cross-worker single-flight per ``dedup_key``. The gate must key
+on the same value the dedup decision keys on: ``resolve_dedup`` and
+``remember_dedup_state`` both operate on ``dedup_key`` (which deliberately
+excludes ``severity``), so a flapping alert whose severity oscillates produces
+one ``dedup_key`` and must serialise as one alert. Keying the gate on
+``alert_hash`` (which includes ``severity``) would let such flaps run
+concurrently and each emit a fresh original + forward — exactly the storm case
+this gate exists to collapse. The in-process lock is only a local serialization
+layer after the Redis-backed gate succeeds.
 """
 
 from __future__ import annotations
@@ -35,15 +42,28 @@ from core.redis_lua import (
 logger = get_logger("alert_concurrency")
 
 
+class ProcessingLockLost(TimeoutError):
+    """Raised when the distributed processing lock was lost mid-flight.
+
+    Subclasses ``TimeoutError`` (an ``OSError``) on purpose: the ingest task's
+    retry classifier treats ``OSError`` as retryable, so raising this aborts the
+    in-flight commit and re-queues the webhook instead of dead-lettering it. On
+    reprocessing, the dedup state written by whichever worker held the lock
+    short-circuits to REUSE, so the retry does not duplicate the original.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class AlertProcessingGateResult:
     suppressed: bool
     queue_size: int = 0
     reason: str = ""
     # Set when the distributed lock is lost mid-processing (TTL lapsed or
-    # another worker took it). Callers can check this before committing
-    # side-effects; the DB-layer advisory lock in the save path is the hard
-    # guard, this is an early-warning signal. None when no distributed lock.
+    # another worker took it). The commit path checks this before persisting
+    # side-effects and aborts (raising ProcessingLockLost) if it is set. This
+    # narrows the double-processing window but does not fully close it: the lock
+    # can still be lost between the check and the commit. None when no
+    # distributed lock is held.
     lock_lost: asyncio.Event | None = None
 
 
@@ -55,16 +75,16 @@ class _QueueSlotReservation:
     reason: str = ""
 
 
-async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
+async def _reserve_processing_slot(dedup_key: str) -> _QueueSlotReservation:
     config = get_config_manager()
     threshold = max(0, int(config.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD))
     if not threshold:
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=False)
 
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
-    queue_key = webhook_processing_queue(alert_hash)
+    queue_key = webhook_processing_queue(dedup_key)
     if not await redis_health.ensure_redis_available("alert_concurrency:reserve_processing_slot"):
-        logger.warning("[Concurrency] Redis 不可用，告警处理槽按背压抑制 alert_hash=%s", alert_hash)
+        logger.warning("[Concurrency] Redis 不可用，告警处理槽按背压抑制 dedup_key=%s", dedup_key)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     try:
@@ -89,26 +109,26 @@ async def _reserve_processing_slot(alert_hash: str) -> _QueueSlotReservation:
     return _QueueSlotReservation(reserved=True, queue_size=queue_size, suppressed=False)
 
 
-async def _release_processing_slot(alert_hash: str) -> None:
+async def _release_processing_slot(dedup_key: str) -> None:
     config = get_config_manager()
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
-    queue_key = webhook_processing_queue(alert_hash)
+    queue_key = webhook_processing_queue(dedup_key)
     try:
         await redis_client.redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         logger.warning("[Concurrency] 告警风暴处理槽释放失败: %s", e)
 
 
-def _lock_key(alert_hash: str) -> str:
-    return webhook_processing_lock(alert_hash)
+def _lock_key(dedup_key: str) -> str:
+    return webhook_processing_lock(dedup_key)
 
 
-async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
+async def _acquire_distributed_lock(dedup_key: str) -> tuple[str, str] | None:
     config = get_config_manager()
     if not config.retry.PROCESSING_LOCK_DISTRIBUTED_ENABLED:
         return None
 
-    key = _lock_key(alert_hash)
+    key = _lock_key(dedup_key)
     token = f"{config.server.WORKER_ID}:{uuid.uuid4().hex}"
     ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
     timeout_seconds = max(0.0, float(config.retry.PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS))
@@ -117,7 +137,7 @@ async def _acquire_distributed_lock(alert_hash: str) -> tuple[str, str] | None:
     deadline = loop.time() + timeout_seconds
 
     if not await redis_health.ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
-        logger.warning("[Concurrency] Redis 不可用，拒绝降级为本进程锁 alert_hash=%s", alert_hash)
+        logger.warning("[Concurrency] Redis 不可用，拒绝降级为本进程锁 dedup_key=%s", dedup_key)
         return "", "redis_unavailable"
 
     while True:
@@ -164,11 +184,11 @@ async def _refresh_distributed_lock(
 
 
 @asynccontextmanager
-async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessingGateResult, None]:
-    """Serialize same-alert processing across workers and apply storm backpressure."""
+async def alert_processing_gate(dedup_key: str) -> AsyncGenerator[AlertProcessingGateResult, None]:
+    """Serialize same-dedup-key processing across workers and apply storm backpressure."""
     config = get_config_manager()
 
-    slot = await _reserve_processing_slot(alert_hash)
+    slot = await _reserve_processing_slot(dedup_key)
     if slot.suppressed:
         yield AlertProcessingGateResult(
             suppressed=True,
@@ -181,7 +201,7 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
     lock_token: str | None = None
     refresh_task: asyncio.Task[None] | None = None
     try:
-        lock = await _acquire_distributed_lock(alert_hash)
+        lock = await _acquire_distributed_lock(dedup_key)
         if lock is not None and lock[0] == "":
             yield AlertProcessingGateResult(
                 suppressed=True,
@@ -207,4 +227,4 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
         if lock_key and lock_token:
             await _release_distributed_lock(lock_key, lock_token)
         if slot.reserved:
-            await _release_processing_slot(alert_hash)
+            await _release_processing_slot(dedup_key)

@@ -3,6 +3,7 @@
 - _finalize_outbox_success claims SENT atomically (no double DeepAnalysis)
 - requeue_forward_outbox does not requeue a PROCESSING row
 - alert_processing_gate exposes a lock_lost signal that fires on ownership loss
+  (consumed by persist_and_schedule; see tests/webhooks/test_pipeline_runtime.py)
 """
 
 from __future__ import annotations

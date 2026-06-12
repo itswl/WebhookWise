@@ -238,7 +238,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert "worker.task.status" in tasks
     assert "validate_backpressure(ctx, gate_res)" in pipeline_orchestrator
     assert "resolve_noise_context(ctx, dependencies)" in pipeline_orchestrator
-    assert "persist_and_schedule(ctx, analysis, noise, analysis_res, dependencies)" in pipeline_orchestrator
+    assert "persist_and_schedule(ctx, analysis, noise, analysis_res, dependencies, gate_res)" in pipeline_orchestrator
     assert '"pipeline.step": step' in pipeline_runtime
     assert 'pipeline_step(ctx, "validate")' in pipeline_stages
     assert 'pipeline_step(ctx, "dedup")' in pipeline_stages

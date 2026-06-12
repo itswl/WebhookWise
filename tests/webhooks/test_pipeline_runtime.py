@@ -32,6 +32,7 @@ class _GateResult:
     suppressed: bool = False
     queue_size: int = 0
     reason: str = ""
+    lock_lost: Any | None = None
 
 
 @contextmanager
@@ -274,6 +275,107 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
     assert queued.outbox_count == 2
     assert scheduled[-1] == [10, 11]
     assert remembered == [False, True, True]
+
+
+@pytest.mark.asyncio
+async def test_persist_and_schedule_aborts_when_lock_lost(
+    monkeypatch: pytest.MonkeyPatch,
+    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
+) -> None:
+    """A lost processing lock must abort before committing side-effects and raise
+    a retryable error, so the webhook re-queues instead of double-committing."""
+    import asyncio
+
+    from core.alert_concurrency import ProcessingLockLost
+    from services.webhooks import pipeline_stages
+
+    _pipeline, _metric_calls = patched_pipeline
+    ctx = _ctx()
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "none", 0, ())
+
+    finalize_called = False
+    scheduled_called = False
+    remembered_called = False
+
+    async def finalize(*_args: object, **_kwargs: object) -> FinalizeAnalysisResult:
+        nonlocal finalize_called
+        finalize_called = True
+        return FinalizeAnalysisResult(SaveWebhookResult(1, False, None), None, [])
+
+    async def remember(*_args: object, **_kwargs: object) -> None:
+        nonlocal remembered_called
+        remembered_called = True
+
+    async def schedule(_ids: list[int]) -> None:
+        nonlocal scheduled_called
+        scheduled_called = True
+
+    monkeypatch.setattr(pipeline_stages, "finalize_analysis_transaction", finalize)
+    monkeypatch.setattr(pipeline_stages, "remember_dedup_state", remember)
+    monkeypatch.setattr(pipeline_stages, "schedule_forward_outbox_many", schedule)
+
+    lock_lost = asyncio.Event()
+    lock_lost.set()
+    gate_res = _GateResult(suppressed=False, lock_lost=lock_lost)
+
+    with pytest.raises(ProcessingLockLost):
+        await pipeline_stages.persist_and_schedule(
+            ctx,
+            {"importance": "high", "summary": "x"},
+            noise,
+            DedupResult(DedupAction.NEW, None, None),
+            _deps(),
+            gate_res,
+        )
+
+    # Side-effects must NOT have run.
+    assert finalize_called is False
+    assert remembered_called is False
+    assert scheduled_called is False
+    # The abort is classified retryable (re-queue, not dead-letter).
+    from core.retry_policies import retry_policy
+
+    assert retry_policy.should_retry(ProcessingLockLost("x")) is True
+
+
+@pytest.mark.asyncio
+async def test_persist_and_schedule_proceeds_when_lock_held(
+    monkeypatch: pytest.MonkeyPatch,
+    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
+) -> None:
+    """When the lock is still held (lock_lost unset), the commit proceeds."""
+    import asyncio
+
+    from services.webhooks import pipeline_stages
+
+    _pipeline, _metric_calls = patched_pipeline
+    ctx = _ctx()
+    noise = NoiseReductionContext("standalone", None, 0.0, False, "none", 0, ())
+
+    async def finalize(*_args: object, **_kwargs: object) -> FinalizeAnalysisResult:
+        return FinalizeAnalysisResult(SaveWebhookResult(7, False, None), None, [])
+
+    async def remember(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def schedule(_ids: list[int]) -> None:
+        return None
+
+    monkeypatch.setattr(pipeline_stages, "finalize_analysis_transaction", finalize)
+    monkeypatch.setattr(pipeline_stages, "remember_dedup_state", remember)
+    monkeypatch.setattr(pipeline_stages, "schedule_forward_outbox_many", schedule)
+
+    gate_res = _GateResult(suppressed=False, lock_lost=asyncio.Event())  # not set
+    result = await pipeline_stages.persist_and_schedule(
+        ctx,
+        {"importance": "high", "summary": "x"},
+        noise,
+        DedupResult(DedupAction.NEW, None, None),
+        _deps(),
+        gate_res,
+    )
+    assert result.save_result is not None
+    assert result.save_result.webhook_id == 7
 
 
 def _rule(target_type: str = "webhook") -> ForwardRuleSnapshot:

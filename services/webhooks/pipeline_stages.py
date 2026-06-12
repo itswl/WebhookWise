@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, cast
 
+from core.alert_concurrency import ProcessingLockLost
 from core.log_context import set_log_context
 from core.logger import get_logger
 from core.observability.attributes import (
@@ -192,7 +193,23 @@ async def persist_and_schedule(
     noise: NoiseReductionContext,
     analysis_res: DedupResult,
     dependencies: pipeline_runtime.WebhookPipelineDependencies,
+    gate_res: Any | None = None,
 ) -> pipeline_runtime.PipelineProcessingResult:
+    # If the distributed processing lock was lost while analysis was running,
+    # another worker may already be processing this same dedup_key. Abort before
+    # committing side-effects (persist + outbox) rather than racing it. Raising a
+    # retryable error re-queues the webhook; on retry the dedup state short-
+    # circuits to REUSE so the original is not duplicated.
+    lock_lost = getattr(gate_res, "lock_lost", None)
+    if lock_lost is not None and lock_lost.is_set():
+        WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="lock_lost").inc()
+        logger.warning(
+            "[Pipeline] 处理锁中途丢失，放弃提交并重试 request_id=%s dedup_key=%s",
+            ctx.request_id,
+            ctx.dedup_key[:12],
+        )
+        raise ProcessingLockLost(f"processing lock lost mid-flight dedup_key={ctx.dedup_key[:12]}")
+
     final_analysis = build_final_analysis(analysis, noise)
     persist_started = time.perf_counter()
     persist_outcome = "error"
