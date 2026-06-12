@@ -226,18 +226,46 @@ def extract_robust_json(text: str) -> str | None:
     return extract_balanced_json_text(text, allow_arrays=False)
 
 
-def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> JsonObject:
-    parsed_result = None
+def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
+    """Best-effort structured parse of OpenClaw text.
+
+    Uses the same robust pipeline as the report normalizer so that a leading
+    "thinking" prose preamble, trailing text, markdown fences, escaped JSON and
+    *truncated* JSON are all recovered into a mapping instead of collapsing the
+    whole raw blob into ``root_cause``. Falls back to a plain ``json.loads`` on
+    the first balanced object, then to ``None`` when nothing parses.
+    """
+    # Imported lazily to avoid a heavy import (json_repair) on module load and
+    # to keep the contracts -> analysis dependency one-directional at runtime.
+    from contracts.deep_analysis_report import parse_openclaw_report_payload
+
+    parsed = parse_openclaw_report_payload(text)
+    if isinstance(parsed, dict):
+        return parsed
+
     json_text = extract_robust_json(text)
     if json_text:
         try:
-            parsed_result = json.loads(json_text)
+            loaded = json.loads(json_text)
         except json.JSONDecodeError:
-            parsed_result = None
-    if parsed_result and isinstance(parsed_result, dict):
+            loaded = None
+        if isinstance(loaded, dict):
+            return loaded
+    return None
+
+
+def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> JsonObject:
+    parsed_result = _parse_openclaw_payload(text)
+    if parsed_result is not None:
         parsed_result[OPENCLAW_RUN_ID] = run_id
         parsed_result[OPENCLAW_TEXT] = text
         return dict(parsed_result)
+    # Nothing parsed as structured JSON. This is now reached only for genuinely
+    # unstructured text (plain prose / degraded fallback), NOT for the
+    # "thinking prefix + (possibly truncated) JSON" blobs that previously
+    # collapsed here — those are recovered by _parse_openclaw_payload above.
+    # For real prose the text itself is the best available signal, so surface it
+    # as root_cause for display.
     return {"root_cause": text, OPENCLAW_TEXT: text}
 
 
