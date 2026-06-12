@@ -26,6 +26,7 @@ redis_data/
 *.bak
 *.tmp
 .coverage
+coverage.xml
 htmlcov/
 build/
 .DS_Store
