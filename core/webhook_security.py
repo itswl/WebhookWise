@@ -14,9 +14,15 @@ from core.app_context import get_config_manager
 from core.config import AppConfig, SecurityConfig
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, SECURITY_CHECKS_TOTAL
-from core.redis_client import redis_eval_int_list
-from core.redis_health import rate_limit_burst, rate_limit_global, rate_limit_sustained
+from core.redis_client import redis_eval_int, redis_eval_int_list
+from core.redis_health import (
+    rate_limit_admin_api,
+    rate_limit_burst,
+    rate_limit_global,
+    rate_limit_sustained,
+)
 from core.redis_lua import MULTI_TIER_RATE_LIMIT as _MULTI_TIER_LUA
+from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
 from core.request_ip import get_client_ip
 
 logger = get_logger("webhook_security")
@@ -303,3 +309,63 @@ async def check_rate_limit_dep(
         REDIS_UNAVAILABLE_TOTAL.labels("rate_limit", "rejected").inc()
         SECURITY_CHECKS_TOTAL.labels("rate_limit", "error_rejected").inc()
         raise HTTPException(status_code=503, detail="Rate limit backend unavailable") from None
+
+
+async def check_admin_rate_limit_dep(
+    request: Request,
+    response: Response,
+    config: AppConfig = _CONFIG_DEPENDENCY,
+) -> None:
+    """FastAPI Depends: per-IP rate limit for the authenticated admin/read API.
+
+    Opt-in (ADMIN_API_RATE_LIMIT_PER_MINUTE > 0). Throttles API-key brute force
+    and load on the management surface, which is otherwise unlimited. Ordered
+    BEFORE verify_api_key on the router so failed-auth attempts are counted too
+    (auth would otherwise reject them before the limiter runs).
+
+    Fail-open on Redis trouble: this is a load/brute-force speed bump on an
+    authenticated surface, not the hard security boundary (auth is). Availability
+    of the admin API is preferred over strict throttling here — unlike the public
+    webhook ingress, whose fail mode is operator-configurable.
+    """
+    per_minute = config.security.ADMIN_API_RATE_LIMIT_PER_MINUTE
+    if per_minute <= 0:
+        return
+
+    client_ip = get_client_ip(request)
+    now = time.time()
+    try:
+        from core.redis_health import ensure_redis_available
+
+        if not await ensure_redis_available("webhook_security:admin_rate_limit"):
+            SECURITY_CHECKS_TOTAL.labels("admin_api", "redis_unavailable_allowed").inc()
+            return
+
+        remaining = await redis_eval_int(
+            _SLIDING_WINDOW_LUA,
+            1,
+            rate_limit_admin_api(client_ip),
+            _SUSTAINED_WINDOW_SECONDS,
+            per_minute,
+            now,
+        )
+    except (RuntimeError, TypeError, ValueError, RedisError) as e:
+        from core.redis_health import mark_redis_failure
+
+        mark_redis_failure("webhook_security:admin_rate_limit", e)
+        logger.error("管理 API 限流检查异常（降级放行）: %s", e, exc_info=True)
+        SECURITY_CHECKS_TOTAL.labels("admin_api", "error_allowed").inc()
+        return
+
+    reset_at = (math.floor(now / _SUSTAINED_WINDOW_SECONDS) + 1) * _SUSTAINED_WINDOW_SECONDS
+    response.headers["X-RateLimit-Limit"] = str(per_minute)
+    if remaining is not None and remaining < 0:
+        response.headers["X-RateLimit-Remaining"] = "0"
+        response.headers["X-RateLimit-Reset"] = str(int(reset_at))
+        response.headers["Retry-After"] = str(max(int(reset_at - now), 1))
+        SECURITY_CHECKS_TOTAL.labels("admin_api", "rejected").inc()
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    response.headers["X-RateLimit-Remaining"] = str(max(remaining or 0, 0))
+    response.headers["X-RateLimit-Reset"] = str(int(reset_at))
+    SECURITY_CHECKS_TOTAL.labels("admin_api", "allowed").inc()
