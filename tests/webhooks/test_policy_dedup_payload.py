@@ -103,20 +103,25 @@ async def test_dedup_state_read_write_errors_and_payload_coercion(monkeypatch: p
     assert state.count == 3
     assert state.analysis == {"importance": "high"}
 
-    writes: list[tuple[str, int, dict[str, object]]] = []
+    # remember_dedup_state now does an atomic read-modify-write via a single Lua
+    # script (redis_eval_int); count/first_seen_at are computed server-side.
+    evals: list[tuple[int, tuple[object, ...]]] = []
 
-    async def write_ok(key: str, ttl: int, payload: dict[str, object]) -> None:
-        writes.append((key, ttl, payload))
+    async def eval_ok(_script: str, numkeys: int, *args: object) -> int:
+        evals.append((numkeys, args))
+        return 4  # script returns the new count
 
-    monkeypatch.setattr(dedup, "redis_setex_json", write_ok)
+    monkeypatch.setattr(dedup, "redis_eval_int", eval_ok)
     await dedup.remember_dedup_state("alert", 42, {"importance": "low"}, 10)
-    assert writes[-1][1] == 60
-    assert writes[-1][2]["count"] == 4
+    # Args: (key, original_event_id, now, ttl, reset_chain, dedup_key, analysis_json).
+    # numkeys=1; TTL (args index 3) floored to 60.
+    assert evals[-1][0] == 1
+    assert int(evals[-1][1][3]) == 60
 
-    async def write_error(_key: str, _ttl: int, _payload: dict[str, object]) -> None:
+    async def eval_error(_script: str, _numkeys: int, *_args: object) -> int:
         raise RuntimeError("write down")
 
-    monkeypatch.setattr(dedup, "redis_setex_json", write_error)
+    monkeypatch.setattr(dedup, "redis_eval_int", eval_error)
     await dedup.remember_dedup_state("alert", 42, None, 120, reset_chain=True)
     assert metric_calls[-1][:4] == ("REDIS_UNAVAILABLE_TOTAL", ("dedup", "write_failed"), {}, "inc")
 
