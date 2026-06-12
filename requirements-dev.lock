@@ -21,7 +21,9 @@ cffi==2.0.0
     #   -c requirements.lock
     #   cryptography
 charset-normalizer==3.4.7
-    # via requests
+    # via
+    #   -c requirements.lock
+    #   requests
 coverage==7.14.0
     # via pytest-cov
 cryptography==47.0.0
@@ -41,8 +43,10 @@ googleapis-common-protos==1.74.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-greenlet==3.5.0
-    # via -r requirements-dev.txt
+greenlet==3.5.1
+    # via
+    #   -c requirements.lock
+    #   -r requirements-dev.txt
 grpcio==1.80.0
     # via
     #   -c requirements.lock
@@ -213,8 +217,9 @@ redis==7.4.0
     # via
     #   -c requirements.lock
     #   fakeredis
-requests==2.33.1
+requests==2.34.2
     # via
+    #   -c requirements.lock
     #   cachecontrol
     #   pip-audit
 rich==13.9.4
