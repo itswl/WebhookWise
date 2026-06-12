@@ -259,3 +259,19 @@ async def _call_ai_with_retry(
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
         logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)
         raise
+
+
+async def call_ai_with_breaker(
+    parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
+) -> tuple[AnalysisResult, int, int]:
+    """Run the (retried) LLM analysis behind a circuit breaker.
+
+    Wraps the whole retry sequence as one breaker call, so sustained provider
+    failures open the breaker and subsequent alerts fast-fail with
+    CircuitBreakerOpenException (the caller degrades to rule analysis) instead of
+    each paying the full retry+timeout budget. A policy-refusal (non runtime
+    error) propagates without tripping the breaker.
+    """
+    from services.analysis.circuit_breakers import llm_cb
+
+    return await llm_cb.call_async(_call_ai_with_retry, parsed_data, source, http_client=http_client)

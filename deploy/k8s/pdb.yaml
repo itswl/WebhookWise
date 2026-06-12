@@ -1,0 +1,29 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webhookwise-api
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: api
+spec:
+  # Keep at least one API replica serving during voluntary disruptions
+  # (node drains, rolling node upgrades) so a drain can't take both at once.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: webhookwise
+      app.kubernetes.io/component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webhookwise-worker
+  labels:
+    app.kubernetes.io/name: webhookwise
+    app.kubernetes.io/component: worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: webhookwise
+      app.kubernetes.io/component: worker

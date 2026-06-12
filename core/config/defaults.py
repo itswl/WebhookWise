@@ -204,6 +204,11 @@ class CircuitBreakerConfig(StaticSettings):
     CIRCUIT_BREAKER_OPENCLAW_TIMEOUT: float = Field(default=30.0)
     CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FORWARD_TIMEOUT: float = Field(default=30.0)
+    # LLM (main AI analysis) breaker: when the provider is broadly failing, open
+    # the breaker so each alert degrades to rule analysis immediately instead of
+    # paying the full retry+timeout budget per webhook.
+    CIRCUIT_BREAKER_LLM_THRESHOLD: int = Field(default=5)
+    CIRCUIT_BREAKER_LLM_TIMEOUT: float = Field(default=30.0)
 
 
 class MaintenanceConfig(StaticSettings):
