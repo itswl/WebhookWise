@@ -394,7 +394,7 @@ def _first_raw_text(value: Any, *, depth: int = 0) -> str:
         stripped = _strip_markdown_json_fence(value)
         parsed = _parse_json_like_text(stripped)
         if isinstance(parsed, Mapping | list):
-            return _first_raw_text(parsed, depth=depth + 1) or stripped
+            return stripped
         return stripped
     if isinstance(value, Mapping):
         for key in (OPENCLAW_TEXT_KEY, "raw_text", "content", "text", "message", "root_cause", "summary"):
