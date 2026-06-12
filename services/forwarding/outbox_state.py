@@ -114,13 +114,24 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
     now = utcnow()
     openclaw_analysis_id: int | None = None
     async with session_scope() as session:
-        current = await session.get(ForwardOutbox, record.id)
-        if not current or _is_outbox_terminal(current.status):
+        # Atomically claim the SENT transition: only a row that is not already
+        # terminal flips to SENT, and exactly one finalizer wins. A stale-scan
+        # requeue can cause a slow delivery to be re-claimed and delivered
+        # twice; without this conditional UPDATE both finalizers could pass the
+        # read-then-write check and each insert a duplicate DeepAnalysis row.
+        claim = await session.execute(
+            update(ForwardOutbox)
+            .where(ForwardOutbox.id == record.id)
+            .where(ForwardOutbox.status.notin_(_TERMINAL_OUTBOX_STATUSES))
+            .values(status=ForwardOutboxStatus.SENT, sent_at=now, updated_at=now, last_error=None)
+            .returning(ForwardOutbox.id)
+        )
+        if claim.scalar_one_or_none() is None:
+            # Another finalizer already terminalized this record.
             return
-        current.status = ForwardOutboxStatus.SENT
-        current.sent_at = now
-        current.updated_at = now
-        current.last_error = None
+        current = await session.get(ForwardOutbox, record.id)
+        if current is None:
+            return
         current.response_data = dict(result)
 
         if current.target_type == "openclaw" and is_pending_result(result):

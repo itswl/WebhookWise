@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from datetime import datetime, timedelta
 from typing import Any
@@ -533,6 +532,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             )
             return
 
+        notify_payload: tuple[dict[str, Any], str] | None = None
         async with session_scope() as session:
             result = await session.execute(
                 select(DeepAnalysis)
@@ -552,21 +552,27 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             await session.flush()
 
             if poll_result.get(OPENCLAW_NEED_SUCCESS_NOTIFY):
-                try:
-                    evt_stmt = select(WebhookEvent).filter_by(id=record_dict["webhook_event_id"])
-                    evt_result = await session.execute(evt_stmt)
-                    event = evt_result.scalars().first()
-                    source = event.source if event else ""
-                    notify_dict = {**record_dict, **poll_result}
-                    if event:
-                        notify_dict[EVENT_IMPORTANCE_KEY] = str(event.importance or "")
-                        notify_dict[EVENT_IS_DUPLICATE_KEY] = bool(event.is_duplicate)
-                        notify_dict[EVENT_PARSED_DATA_KEY] = dict(event.parsed_data or {})
-                    asyncio.create_task(
-                        _safe_notify(send_deep_analysis_success_notification(notify_dict, source, policy=policy))
-                    )
-                except (OSError, RuntimeError, SQLAlchemyError, ValueError) as e:
-                    logger.debug("飞书深度分析通知失败: %s", e)
+                # Collect notification data inside the session (detached plain
+                # dicts), but send it AFTER the transaction commits so a slow
+                # notification cannot hold the DB transaction open.
+                evt_stmt = select(WebhookEvent).filter_by(id=record_dict["webhook_event_id"])
+                evt_result = await session.execute(evt_stmt)
+                event = evt_result.scalars().first()
+                source = event.source if event else ""
+                notify_dict = {**record_dict, **poll_result}
+                if event:
+                    notify_dict[EVENT_IMPORTANCE_KEY] = str(event.importance or "")
+                    notify_dict[EVENT_IS_DUPLICATE_KEY] = bool(event.is_duplicate)
+                    notify_dict[EVENT_PARSED_DATA_KEY] = dict(event.parsed_data or {})
+                notify_payload = (notify_dict, source)
+
+        # Awaited (not fire-and-forget): a bare create_task here can be
+        # garbage-collected or dropped on worker shutdown, silently losing the
+        # success notification. _safe_notify swallows delivery errors so this
+        # cannot fail the poll.
+        if notify_payload is not None:
+            notify_dict, source = notify_payload
+            await _safe_notify(send_deep_analysis_success_notification(notify_dict, source, policy=policy))
     except (OSError, RuntimeError, SQLAlchemyError, ValueError) as e:
         logger.error("[Poller] 轮询任务异常 analysis_id=%s error=%s", analysis_id, e, exc_info=True)
 

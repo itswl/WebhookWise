@@ -14,16 +14,21 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
 ) -> None:
     import core.redis_client as redis_client
     from core import json
-    from services.analysis.ai_cache import get_cached_analysis, save_to_cache
+    from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
 
     monkeypatch.setattr(temp_config.ai, "CACHE_ENABLED", True)
     monkeypatch.setattr(temp_config.ai, "ANALYSIS_CACHE_TTL", 300)
+
+    # Key includes a model+prompt fingerprint, so derive expected keys via the
+    # public helper rather than hardcoding the literal format.
+    key_alert_1 = get_cache_key("alert-1")
+    key_alert_2 = get_cache_key("alert-2")
 
     get_calls: list[tuple[str, int]] = []
     writes: dict[str, object] = {}
 
     async def redis_get_str(key: str) -> str | None:
-        assert key == "analysis_alert-1"
+        assert key == key_alert_1
         return '{"summary":"cached","importance":"high"}'
 
     async def redis_incr_with_expire(key: str, ttl_seconds: int) -> int:
@@ -49,7 +54,7 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
         "_cache_hit": True,
         "_cache_hit_count": 4,
     }
-    assert get_calls == [("analysis_alert-1:hits", 120)]
+    assert get_calls == [(f"{key_alert_1}:hits", 120)]
 
     saved = await save_to_cache(
         "alert-2",
@@ -63,8 +68,8 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
     )
 
     assert saved is True
-    assert writes["analysis_alert-2"] == (90, {"summary": "fresh", "importance": "low"})
-    assert writes["analysis_alert-2:hits:str"] == (90, "0")
+    assert writes[key_alert_2] == (90, {"summary": "fresh", "importance": "low"})
+    assert writes[f"{key_alert_2}:hits:str"] == (90, "0")
 
 
 @pytest.mark.asyncio
