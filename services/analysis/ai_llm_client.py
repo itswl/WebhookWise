@@ -72,6 +72,23 @@ class _InstructorClient(Protocol):
     chat: _InstructorChat
 
 
+def _resolve_instructor_mode(mode_name: str) -> instructor.Mode:
+    """Resolve a configured instructor Mode by name, falling back to JSON.
+
+    Lets operators opt into stricter structured-output modes (e.g.
+    openrouter_structured_outputs / tools_strict / json_schema) when the
+    upstream provider supports them, without betting the deployment on a single
+    mode — an unknown or unavailable name safely degrades to Mode.JSON.
+    """
+    import instructor
+
+    try:
+        return instructor.Mode[mode_name.strip().upper()]
+    except (KeyError, AttributeError):
+        logger.warning("[AI] 未知 instructor 模式 %r,回退到 JSON", mode_name)
+        return instructor.Mode.JSON
+
+
 async def _get_instructor_client_async(*, http_client: httpx.AsyncClient | None = None) -> instructor.Instructor:
     if _instructor_client is not None:
         return _instructor_client
@@ -103,7 +120,7 @@ async def initialize_openai_client(
                     http_client=http_client or get_http_client(),
                     timeout=httpx.Timeout(policy.http_timeout_seconds, connect=policy.http_connect_timeout_seconds),
                 )
-            _instructor_client = instructor.from_openai(_openai_client, mode=instructor.Mode.JSON)
+            _instructor_client = instructor.from_openai(_openai_client, mode=_resolve_instructor_mode(policy.instructor_mode))
             logger.info("[AI] OpenAI 客户端初始化完成 model=%s", policy.model)
 
 

@@ -18,6 +18,7 @@ class _Policy:
     http_connect_timeout_seconds = 3
     system_prompt = "You are testing."
     temperature = 0.2
+    instructor_mode = "json"
 
     def cost_for_tokens(self, tokens_in: int, tokens_out: int) -> float:
         return round((tokens_in + tokens_out) * 0.001, 6)
@@ -60,9 +61,15 @@ async def test_initialize_reset_and_get_instructor_client(
         def __init__(self, **kwargs: object) -> None:
             created["openai"] = kwargs
 
+    class _Mode:
+        JSON = "json"
+
+        def __class_getitem__(cls, name: str) -> str:
+            # Mimic instructor.Mode[NAME] enum lookup used by _resolve_instructor_mode.
+            return {"JSON": cls.JSON}[name]
+
     class InstructorModule:
-        class Mode:
-            JSON = "json"
+        Mode = _Mode
 
         @staticmethod
         def from_openai(client: object, *, mode: object) -> object:
