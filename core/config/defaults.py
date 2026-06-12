@@ -66,6 +66,10 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
+    ADMIN_API_RATE_LIMIT_PER_MINUTE: int = Field(
+        default=0,
+        description="认证管理/读 API 的 per-IP 每分钟限流; 0(默认)关闭。开启后可抑制 API Key 暴力破解和负载; 需高于 Dashboard 单次加载请求数(每 60s 自动刷新一次)",
+    )
     RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: Redis 不可用时降级放行; false(默认): 拒绝请求返回 503。生产环境面向公网时建议 false 以防止限流失效")
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
     WEBHOOK_REPLAY_PROTECTION_ENABLED: bool = Field(

@@ -752,3 +752,104 @@ async def test_readiness_requires_redis(monkeypatch: pytest.MonkeyPatch) -> None
     assert response.status_code == 503
     assert body["data"]["redis"] == "failed"
     assert body["data"]["queue"] == "redis_stream"
+
+
+def _admin_rl_request() -> Any:
+    return SimpleNamespace(
+        client=SimpleNamespace(host="9.9.9.9"),
+        headers={},
+        url=SimpleNamespace(path="/v1/webhooks"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_admin_rate_limit_disabled_is_noop(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
+    from fastapi import Response
+
+    from core import webhook_security
+
+    monkeypatch.setattr(temp_config.security, "ADMIN_API_RATE_LIMIT_PER_MINUTE", 0)
+
+    called = False
+
+    async def must_not_run(*_a: object, **_k: object) -> int:
+        nonlocal called
+        called = True
+        return 1
+
+    monkeypatch.setattr(webhook_security, "redis_eval_int", must_not_run)
+    response = Response()
+    # Disabled -> returns without touching Redis or setting headers.
+    await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), response, temp_config)
+    assert called is False
+    assert "X-RateLimit-Limit" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_admin_rate_limit_allows_then_rejects(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
+    from fastapi import HTTPException, Response
+
+    from core import webhook_security
+
+    monkeypatch.setattr(temp_config.security, "ADMIN_API_RATE_LIMIT_PER_MINUTE", 5)
+
+    async def redis_ok(_op: str) -> bool:
+        return True
+
+    monkeypatch.setattr("core.redis_health.ensure_redis_available", redis_ok)
+
+    # remaining >= 0 -> allowed (headers set, no raise).
+    async def remaining_two(*_a: object, **_k: object) -> int:
+        return 2
+
+    monkeypatch.setattr(webhook_security, "redis_eval_int", remaining_two)
+    response = Response()
+    await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), response, temp_config)
+    assert response.headers["X-RateLimit-Limit"] == "5"
+    assert response.headers["X-RateLimit-Remaining"] == "2"
+
+    # remaining < 0 -> over limit -> 429 with Retry-After.
+    async def over_limit(*_a: object, **_k: object) -> int:
+        return -1
+
+    monkeypatch.setattr(webhook_security, "redis_eval_int", over_limit)
+    rejected = Response()
+    with pytest.raises(HTTPException) as exc:
+        await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), rejected, temp_config)
+    assert exc.value.status_code == 429
+    assert rejected.headers["X-RateLimit-Remaining"] == "0"
+    assert int(rejected.headers["Retry-After"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_admin_rate_limit_fails_open_on_redis_trouble(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    from fastapi import Response
+
+    from core import webhook_security
+
+    monkeypatch.setattr(temp_config.security, "ADMIN_API_RATE_LIMIT_PER_MINUTE", 5)
+
+    # Redis unavailable -> allow (fail-open), no raise.
+    async def redis_down(_op: str) -> bool:
+        return False
+
+    monkeypatch.setattr("core.redis_health.ensure_redis_available", redis_down)
+    await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), Response(), temp_config)
+
+    # Redis raising -> allow (fail-open), no raise.
+    async def redis_ok(_op: str) -> bool:
+        return True
+
+    async def boom(*_a: object, **_k: object) -> int:
+        from redis.exceptions import RedisError
+
+        raise RedisError("down")
+
+    monkeypatch.setattr("core.redis_health.ensure_redis_available", redis_ok)
+    monkeypatch.setattr(webhook_security, "redis_eval_int", boom)
+    monkeypatch.setattr("core.redis_health.mark_redis_failure", lambda _op, _e: None)
+    # Must not raise.
+    await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), Response(), temp_config)

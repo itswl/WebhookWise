@@ -163,6 +163,10 @@ def rate_limit_global() -> str:
     return "rl:g"
 
 
+def rate_limit_admin_api(client_ip: str) -> str:
+    return f"rl:a:{client_ip}"
+
+
 def ai_error_alert_lock(error_hash: str) -> str:
     return f"ai_error_alert_lock:{error_hash}"
 

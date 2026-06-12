@@ -35,7 +35,7 @@ from core.observability.tracing import (
 )
 from core.request_ip import get_client_ip
 from core.sensitive_data import redact_event_dict
-from core.webhook_security import check_rate_limit_dep, verify_webhook_auth_dep
+from core.webhook_security import check_admin_rate_limit_dep, check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.webhook import WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
@@ -275,7 +275,11 @@ async def receive_webhook(
 # ── 查询路由 ───────────────────────────────────────────────────────────────────
 
 
-@webhook_router.get("/webhooks", dependencies=[Depends(verify_api_key)], response_model=WebhookListResponse)
+@webhook_router.get(
+    "/webhooks",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+    response_model=WebhookListResponse,
+)
 async def get_webhooks_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=500),
@@ -297,7 +301,7 @@ async def get_webhooks_endpoint(
 
 @webhook_router.get(
     "/webhooks/by-request/{request_id}",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
     response_model=None,
 )
 async def get_webhook_by_request_id_endpoint(
@@ -313,7 +317,11 @@ async def get_webhook_by_request_id_endpoint(
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
 
 
-@webhook_router.get("/webhooks/{webhook_id}", dependencies=[Depends(verify_api_key)], response_model=None)
+@webhook_router.get(
+    "/webhooks/{webhook_id}",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+    response_model=None,
+)
 async def get_webhook_detail_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:

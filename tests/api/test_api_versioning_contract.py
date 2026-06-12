@@ -58,14 +58,21 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
         path = str(getattr(route, "path", ""))
         if not path.startswith("/v1/"):
             continue
-        dependency_names = {
+        ordered_dependency_names = [
             getattr(dependency.call, "__name__", str(dependency.call))
             for dependency in getattr(route, "dependant", object()).dependencies
-        }
+        ]
+        dependency_names = set(ordered_dependency_names)
         if path in webhook_ingest_paths:
             assert {"check_rate_limit_dep", "verify_webhook_auth_dep"} <= dependency_names
         else:
             assert "verify_api_key" in dependency_names, path
+            # Every authenticated admin/read route carries the per-IP admin rate
+            # limit, ordered BEFORE auth so failed-auth attempts are counted.
+            assert "check_admin_rate_limit_dep" in dependency_names, path
+            assert ordered_dependency_names.index("check_admin_rate_limit_dep") < ordered_dependency_names.index(
+                "verify_api_key"
+            ), path
 
 
 def test_sensitive_read_routes_declare_local_auth_dependency() -> None:
