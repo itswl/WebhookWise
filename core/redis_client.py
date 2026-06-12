@@ -24,7 +24,10 @@ _SCRIPT_SHA_CACHE: dict[str, str] = {}
 def _script_sha(script: str) -> str:
     sha = _SCRIPT_SHA_CACHE.get(script)
     if sha is None:
-        sha = hashlib.sha1(script.encode("utf-8")).hexdigest()  # noqa: S324 - Redis uses SHA1 for script ids
+        # Redis identifies cached scripts by their SHA1 (EVALSHA). This is a
+        # content id, not a security hash — usedforsecurity=False documents that
+        # and satisfies the SHA1 linters.
+        sha = hashlib.sha1(script.encode("utf-8"), usedforsecurity=False).hexdigest()
         _SCRIPT_SHA_CACHE[script] = sha
     return sha
 
