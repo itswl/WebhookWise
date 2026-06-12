@@ -240,6 +240,27 @@ def normalize_deep_analysis_report(value: Any) -> DeepAnalysisReport:
     )
 
 
+def parse_openclaw_report_payload(text: Any) -> dict[str, Any] | None:
+    """Recover the structured JSON report mapping from raw OpenClaw text.
+
+    Applies the same robust parsing the normalizer uses (thinking-prefix prose,
+    trailing text, markdown fences, escaped JSON and truncated JSON are all
+    handled) and returns the parsed mapping, or ``None`` when nothing parses.
+
+    This is the single entry point the poll layer should use so the persisted
+    ``analysis_result`` is already structured rather than a raw blob collapsed
+    into ``root_cause``.
+    """
+    parsed = _parse_json_like_text(text) if isinstance(text, str) else None
+    if isinstance(parsed, Mapping):
+        return dict(parsed)
+    if isinstance(parsed, list):
+        first = _first_mapping_from_list(parsed)
+        if first:
+            return dict(first)
+    return None
+
+
 def _text_section(key: str, text: str) -> DeepAnalysisReportSection:
     return DeepAnalysisReportSection(key=key, title=_SECTION_TITLES[key], kind="text", text=text)
 

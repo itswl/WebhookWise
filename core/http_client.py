@@ -21,7 +21,7 @@ def build_http_client(
         from core.app_context import get_config_manager
 
         config = get_config_manager()
-    return httpx.AsyncClient(
+    client = httpx.AsyncClient(
         timeout=httpx.Timeout(config.retry.FORWARD_TIMEOUT, connect=10.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
         follow_redirects=False,
@@ -29,6 +29,15 @@ def build_http_client(
         transport=transport,
         event_hooks={"request": [_inject_trace_headers]},
     )
+    # Pin DNS at connect time so a target hostname cannot rebind to a private/
+    # metadata IP between URL validation and the actual socket connect. Only the
+    # default transport is hardened; an explicitly injected transport (tests,
+    # mocks) is left untouched.
+    if transport is None:
+        from core.pinned_dns import harden_transport_against_rebinding
+
+        harden_transport_against_rebinding(client._transport)
+    return client
 
 
 def get_http_client() -> httpx.AsyncClient:
