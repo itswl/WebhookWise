@@ -52,7 +52,7 @@ def _check_api() -> None:
 
 def main() -> int:
     run_mode = (os.getenv("RUN_MODE") or "").strip().lower()
-    if run_mode in {"worker", "priority-worker", "scheduler"}:
+    if run_mode in {"worker", "scheduler"}:
         asyncio.run(_check_background_process())
     elif run_mode == "migrate":
         asyncio.run(_check_migration_completed())

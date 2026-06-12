@@ -14,7 +14,6 @@ resources:
   - postgres-statefulset.yaml
   - deployment-api.yaml
   - deployment-worker.yaml
-  - deployment-priority-worker.yaml
   - deployment-scheduler.yaml
   - job-migrate.yaml
   - pdb.yaml

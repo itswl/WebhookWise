@@ -40,7 +40,6 @@ from db.session import get_db_session
 from models import WebhookEvent
 from schemas.webhook import WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
 from services.operations.tasks import process_webhook_task
-from services.webhooks.ingest_routing import is_priority_payload
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import IngressPolicy
 from services.webhooks.query_service import list_webhook_summaries
@@ -169,17 +168,8 @@ async def _receive_and_enqueue_webhook(
     }
     enqueue_started = time.perf_counter()
     enqueue_status = "success"
-    # Severity-based routing: high-severity alerts go to the priority queue so a
-    # low-priority AI-analysis backlog on the default queue can't starve them.
-    # Best-effort; falls back to the default queue on any uncertainty.
-    is_priority = is_priority_payload(raw_body_str)
     try:
-        if is_priority:
-            from core.taskiq_broker import priority_broker
-
-            await process_webhook_task.kicker().with_broker(priority_broker).kiq(**task_kwargs)
-        else:
-            await process_webhook_task.kiq(**task_kwargs)
+        await process_webhook_task.kiq(**task_kwargs)
     except _WEBHOOK_RUNTIME_ERRORS as e:
         enqueue_status = "error"
         WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=sanitize_source(source_hint), outcome="enqueue_failed").observe(
