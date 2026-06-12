@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat
 from models import ForwardOutbox, WebhookEvent
-from schemas.webhook import WebhookEventSummary
 from services.pagination import apply_cursor_window, trim_cursor_window
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
@@ -31,7 +30,10 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.duplicate_of,
     WebhookEvent.duplicate_count,
     WebhookEvent.forward_status,
-    WebhookEvent.ai_analysis,
+    # Project only ai_analysis->>'summary' instead of loading the whole JSONB
+    # blob per row just to read one string (works on PostgreSQL JSONB and the
+    # SQLite-JSON test shim alike).
+    WebhookEvent.ai_analysis["summary"].astext.label("summary"),
     WebhookEvent.created_at,
     WebhookEvent.prev_alert_id,
     _prev_ts_subq,
@@ -39,7 +41,30 @@ _SUMMARY_COLUMNS = [
 
 
 def _row_to_summary_dict(row: Any) -> dict[str, Any]:
-    return WebhookEventSummary.model_validate(row).model_dump(mode="json")
+    # Build the response dict directly from the trusted DB projection instead of
+    # per-row Pydantic validate+dump (the hot cost on large list pages). Mirrors
+    # WebhookEventSummary's derived fields.
+    is_duplicate = bool(row.is_duplicate)
+    return {
+        "id": row.id,
+        "request_id": row.request_id,
+        "source": row.source,
+        "client_ip": row.client_ip,
+        "timestamp": utc_isoformat(row.timestamp) if row.timestamp is not None else None,
+        "importance": row.importance,
+        "is_duplicate": is_duplicate,
+        "duplicate_of": row.duplicate_of,
+        "duplicate_count": row.duplicate_count,
+        "duplicate_type": "within_window" if is_duplicate else "new",
+        "forward_status": row.forward_status,
+        "summary": row.summary,
+        "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
+        "prev_alert_id": row.prev_alert_id,
+        "prev_alert_timestamp": (
+            utc_isoformat(row.prev_alert_timestamp) if row.prev_alert_timestamp is not None else None
+        ),
+        "is_within_window": is_duplicate,
+    }
 
 
 def _merge_forward_status(current: str | None, outbox_status: str | None) -> str | None:
