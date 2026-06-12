@@ -304,7 +304,8 @@ def test_forward_rule_matching_payload_paths() -> None:
 def test_taskiq_wiring_exports_registered_entrypoints() -> None:
     import services.operations.taskiq_wiring as wiring
 
-    assert wiring.__all__ == ("broker", "dynamic_schedule_source", "scheduler")
+    assert wiring.__all__ == ("broker", "dynamic_schedule_source", "priority_broker", "scheduler")
     assert wiring.broker is not None
     assert wiring.dynamic_schedule_source is not None
+    assert wiring.priority_broker is not None
     assert wiring.scheduler is not None

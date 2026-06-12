@@ -24,6 +24,7 @@ markers = [
   "real_network: allow a test to use real outbound HTTP libraries",
   "real_redis: allow a test to use a real Redis client instead of the default mock",
   "real_services: allow a test to opt out of default external-service mocks",
+  "postgres: requires a real PostgreSQL (POSTGRES_TEST_URL); skipped otherwise",
 ]
 
 [tool.coverage.run]
