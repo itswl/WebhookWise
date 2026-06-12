@@ -131,6 +131,12 @@ class AIConfig(StaticSettings):
     OPENAI_API_KEY: str = Field(default="")
     OPENAI_API_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENAI_MODEL: str = Field(default="anthropic/claude-sonnet-4")
+    # instructor structured-output mode (case-insensitive Mode name). "json" is
+    # the safe default; set a stricter schema mode when the upstream provider
+    # supports it for fewer malformed outputs at the source — e.g.
+    # "openrouter_structured_outputs" (OpenRouter), "tools_strict"/"json_schema"
+    # (OpenAI). Unknown/unsupported names fall back to JSON at client init.
+    AI_INSTRUCTOR_MODE: str = Field(default="json", description="instructor 结构化输出模式名(不区分大小写)")
     AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
     AI_HTTP_TIMEOUT_SECONDS: float = Field(default=60.0)
     AI_HTTP_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0)
