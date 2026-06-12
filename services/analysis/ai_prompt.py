@@ -20,6 +20,20 @@ def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:
     return _prompt_sources.get(kind, "unknown")
 
 
+def get_prompt_version(kind: str = USER_PROMPT_KIND) -> str:
+    """Return a short content fingerprint of the loaded prompt template.
+
+    Used to namespace the AI analysis cache so editing the prompt invalidates
+    stale results. Returns "unloaded" before the template has been read.
+    """
+    import hashlib
+
+    template = _prompt_templates.get(kind)
+    if template is None:
+        return "unloaded"
+    return hashlib.blake2b(template.encode("utf-8"), digest_size=6).hexdigest()
+
+
 def resolve_prompt_path(prompt_file: str) -> Path:
     file_path = Path(prompt_file)
     if file_path.is_absolute():

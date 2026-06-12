@@ -8,6 +8,16 @@ These manifests provide a production-shaped baseline for running WebhookWise on 
 - migration Job
 - Redis and PostgreSQL StatefulSets for small deployments
 
+## Security & startup ordering
+
+- All app workloads run with a hardened `securityContext`: `runAsNonRoot`,
+  non-root uid/gid 1000, dropped Linux capabilities, `readOnlyRootFilesystem`
+  (with a writable `/tmp` `emptyDir`), and the `RuntimeDefault` seccomp profile.
+- API/worker/scheduler pods each have a `wait-for-migrations` initContainer that
+  blocks until the migration Job has populated `alembic_version`. Because
+  `kubectl apply -k` creates the Job and Deployments concurrently, this prevents
+  app pods from serving against an un-migrated schema.
+
 ## Apply
 
 Create the namespace and a real secret first:

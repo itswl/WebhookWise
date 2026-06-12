@@ -48,6 +48,69 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
     return result
 
 
+def verify_timestamped_signature(timestamp: str, payload: bytes, signature: str, secret: str) -> bool:
+    """Verify an HMAC computed over ``timestamp.body`` (replay-resistant form).
+
+    Binding the timestamp into the signed material prevents an attacker from
+    replaying a captured (timestamp, signature, body) tuple with a fresh
+    timestamp, and lets the server reject stale timestamps.
+    """
+    if not secret or not timestamp:
+        return False
+    signed = timestamp.encode("utf-8") + b"." + payload
+    expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+class ReplayError(Exception):
+    """Webhook replay protection rejected the request (stale or reused)."""
+
+
+async def enforce_replay_protection(
+    headers: Mapping[str, str], raw_body: bytes, *, security: SecurityConfig
+) -> None:
+    """Reject stale or replayed signed webhooks when replay protection is on.
+
+    Backward compatible: only enforced when WEBHOOK_REPLAY_PROTECTION_ENABLED is
+    true AND the request carries a signature. Requires the sender to send
+    ``x-webhook-timestamp`` and to sign ``"<timestamp>.<body>"``.
+    """
+    signature = headers.get("x-webhook-signature", "")
+    if not signature:
+        # Token-auth path; nothing to replay-protect here.
+        return
+
+    timestamp = headers.get("x-webhook-timestamp", "").strip()
+    if not timestamp:
+        raise ReplayError("missing x-webhook-timestamp")
+
+    try:
+        ts_value = int(timestamp)
+    except ValueError as exc:
+        raise ReplayError("invalid x-webhook-timestamp") from exc
+
+    max_skew = max(1, int(security.WEBHOOK_REPLAY_MAX_SKEW_SECONDS))
+    now = int(time.time())
+    if abs(now - ts_value) > max_skew:
+        raise ReplayError("timestamp outside allowed skew window")
+
+    if not verify_timestamped_signature(timestamp, raw_body, signature, security.WEBHOOK_SECRET):
+        raise ReplayError("timestamped signature mismatch")
+
+    # One-time use: the first request with this signature wins; later replays
+    # (within the skew window) fail to claim the nonce. Fail closed on Redis
+    # error to preserve the anti-replay guarantee.
+    from core.redis_client import redis_set_nx_ex
+    from core.redis_health import webhook_replay_nonce
+
+    try:
+        claimed = await redis_set_nx_ex(webhook_replay_nonce(signature), "1", max_skew * 2)
+    except (RedisError, RuntimeError, TypeError, ValueError) as exc:
+        raise ReplayError("replay nonce store unavailable") from exc
+    if not claimed:
+        raise ReplayError("signature already used (replay)")
+
+
 def extract_token(headers: Mapping[str, str]) -> str:
     token = headers.get("token", "")
     if not token and headers.get("authorization", "").startswith("Token "):
@@ -173,6 +236,15 @@ async def verify_webhook_auth_dep(
         logger.exception("Webhook 认证内部错误")
         SECURITY_CHECKS_TOTAL.labels("webhook_auth", "error").inc()
         raise HTTPException(status_code=500, detail="Internal server error") from None
+
+    if config.security.WEBHOOK_REPLAY_PROTECTION_ENABLED:
+        try:
+            await enforce_replay_protection(headers, raw_body, security=config.security)
+        except ReplayError as e:
+            logger.warning("Webhook 重放保护拒绝请求: %s", e)
+            SECURITY_CHECKS_TOTAL.labels("webhook_replay", "rejected").inc()
+            raise HTTPException(status_code=401, detail="Unauthorized") from None
+
     SECURITY_CHECKS_TOTAL.labels("webhook_auth", "allowed").inc()
 
 

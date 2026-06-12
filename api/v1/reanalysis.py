@@ -2,23 +2,20 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.v1.webhook import JSONDict
-from contracts.webhook_payload import webhook_data_from_mapping
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
-from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.forwarding.outbox import forward_notification, resolve_and_forward, schedule_forward_outbox_many
+from services.forwarding.outbox import forward_notification
 from services.webhooks.event_context import build_webhook_context
-from services.webhooks.forwarding_stage import resolve_forward_decision
+from services.webhooks.reanalysis_service import WebhookEventNotFoundError, reanalyze_webhook_event
 from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.v1.reanalysis")
@@ -37,71 +34,21 @@ async def reanalyze_webhook(
 ) -> JSONDict | JSONResponse:
     try:
         logger.info("[Reanalysis] 重新分析请求 webhook_id=%s", webhook_id)
-        event = await session.get(WebhookEvent, webhook_id)
-        if not event:
+        try:
+            result = await reanalyze_webhook_event(session, webhook_id)
+        except WebhookEventNotFoundError:
             logger.warning("[Reanalysis] 重新分析失败，事件不存在 webhook_id=%s", webhook_id)
-            raise HTTPException(404, "Webhook not found")
+            raise HTTPException(404, "Webhook not found") from None
 
-        ctx = await build_webhook_context(event)
-        res = await analyze_webhook_with_ai(webhook_data_from_mapping(ctx), skip_cache=True)
-
-        old_imp, new_imp = event.importance, res.get("importance")
-        event.ai_analysis, event.importance = dict(res), new_imp
-        event.processing_status = "completed"
-
-        updated_dups = 0
-        if event.is_duplicate is False:
-            dups_stmt = select(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id)
-            dups_res = await session.execute(dups_stmt)
-            dups = dups_res.scalars().all()
-            for d in dups:
-                d.ai_analysis, d.importance = dict(res), new_imp
-                d.processing_status = "completed"
-            updated_dups = len(dups)
-
-        fwd_ctx = await build_webhook_context(event)
-        decision = await resolve_forward_decision(
-            importance=new_imp or "medium",
-            is_duplicate=bool(event.is_duplicate),
-            noise=None,
-            orig=None,
-            source=event.source or "unknown",
-            parsed_data=cast(dict[str, Any], fwd_ctx.get("parsed_data") or {}),
-            session=session,
-        )
-        outbox_ids: list[int] = []
-        if decision.should_forward:
-            fwd_result = await resolve_and_forward(
-                session=session,
-                decision=decision,
-                forward_data=fwd_ctx,
-                analysis_result=res,
-                webhook_id=event.id,
-            )
-            outbox_ids = list(fwd_result.get("outbox_ids") or [])
-        else:
-            logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
-
-        await session.commit()
-        await schedule_forward_outbox_many(outbox_ids)
-        logger.info(
-            "[Reanalysis] 重新分析完成 webhook_id=%s source=%s old_importance=%s new_importance=%s updated_duplicates=%s outboxes=%s",
-            webhook_id,
-            event.source,
-            old_imp,
-            new_imp,
-            updated_dups,
-            len(outbox_ids),
-        )
         return {
             "success": True,
             "status": "success",
-            "analysis": res,
-            "original_importance": old_imp,
-            "new_importance": new_imp,
-            "updated_duplicates": updated_dups,
-            "forward_status": "queued" if outbox_ids else ("skipped" if not decision.should_forward else "no_target"),
-            "forward_outbox_ids": outbox_ids,
+            "analysis": result.analysis,
+            "original_importance": result.original_importance,
+            "new_importance": result.new_importance,
+            "updated_duplicates": result.updated_duplicates,
+            "forward_status": result.forward_status,
+            "forward_outbox_ids": result.outbox_ids,
             "message": "重新分析完成",
         }
     except HTTPException:
