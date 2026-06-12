@@ -66,6 +66,7 @@ class AIProviderPolicy:
     degradation_enabled: bool
     http_timeout_seconds: float
     http_connect_timeout_seconds: float
+    instructor_mode: str
 
     @classmethod
     def from_config(cls) -> "AIProviderPolicy":
@@ -83,6 +84,7 @@ class AIProviderPolicy:
             degradation_enabled=bool(cfg.ENABLE_AI_DEGRADATION),
             http_timeout_seconds=timeout_seconds,
             http_connect_timeout_seconds=max(1.0, min(float(cfg.AI_HTTP_CONNECT_TIMEOUT_SECONDS), timeout_seconds)),
+            instructor_mode=str(cfg.AI_INSTRUCTOR_MODE or "json"),
         )
 
     @property
