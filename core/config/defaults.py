@@ -68,6 +68,11 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
     RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: Redis 不可用时降级放行; false(默认): 拒绝请求返回 503。生产环境面向公网时建议 false 以防止限流失效")
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
+    WEBHOOK_REPLAY_PROTECTION_ENABLED: bool = Field(
+        default=False,
+        description="true: 对带签名的 webhook 强制校验时间戳+nonce 防重放(需上游发送 x-webhook-timestamp)。默认 false 保持向后兼容",
+    )
+    WEBHOOK_REPLAY_MAX_SKEW_SECONDS: int = Field(default=300, description="签名时间戳允许的最大时钟偏差(秒)")
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
     ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)

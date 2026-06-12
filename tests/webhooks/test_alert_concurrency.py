@@ -48,7 +48,7 @@ async def test_alert_processing_gate_releases_distributed_lock(monkeypatch: pyte
     async def release(key: str, token: str) -> None:
         released.append((key, token))
 
-    async def refresh(_: str, __: str, ___: int) -> None:
+    async def refresh(_: str, __: str, ___: int, ____: object = None) -> None:
         await asyncio.sleep(60)
 
     monkeypatch.setattr(concurrency, "_reserve_processing_slot", reserve_slot)

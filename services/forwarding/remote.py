@@ -67,6 +67,31 @@ async def forward_to_remote(
     )
 
 
+async def send_forward_rule_test(
+    *, rule_name: str, target_url: str, target_type: str | None
+) -> ForwardResult:
+    """Deliver a synthetic test message for a forward rule, bypassing the outbox.
+
+    Owns the channel decision (feishu vs generic webhook) and payload building so
+    the API layer does not perform external delivery directly. The test path is
+    intentionally direct (not via the idempotent outbox) so each test really
+    sends.
+    """
+    from services.notifications.feishu import build_feishu_card, is_feishu_url, send_to_feishu
+
+    test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule_name}}
+    test_analysis: AnalysisResult = {"summary": f"测试规则: {rule_name}", "importance": "low", "event_type": "test"}
+
+    if is_feishu_url(target_url):
+        payload: JsonObject = build_feishu_card(test_webhook, test_analysis)
+        return await send_to_feishu(target_url, payload)
+    return await post_json_to_remote(
+        target_url,
+        {"webhook": test_webhook, "analysis": test_analysis},
+        target_type_label=target_type or "webhook",
+    )
+
+
 async def post_json_to_remote(
     target_url: str,
     payload: dict[str, Any],

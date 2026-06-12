@@ -511,9 +511,28 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
 
     assert scheduled_retry == [(retry_id, 3)]
     assert scheduled_openclaw == [analyses[0].id]
+
+    # Terminal-success guard: re-finalizing an already-SENT openclaw record is a
+    # no-op and must NOT insert a second DeepAnalysis row (review group A C4).
+    await outbox._finalize_outbox_success(
+        ForwardOutbox(id=openclaw_id),
+        {"status": "pending", "_pending": True, "_openclaw_run_id": "run-2", "_openclaw_session_key": "session-2"},
+    )
+    async with session_factory() as session:
+        analyses_after = (await session.execute(select(DeepAnalysis))).scalars().all()
+        assert len(analyses_after) == 1, "double finalize must not create a duplicate DeepAnalysis"
+
     assert await outbox.requeue_forward_outbox(retry_id) is True
     assert await outbox.requeue_forward_outbox(999999) is False
     assert scheduled_many[-1] == [retry_id]
+
+    # requeue must refuse a PROCESSING row (review group A C5): it would
+    # otherwise race a live worker and reset the attempt budget.
+    async with session_factory.begin() as session:
+        proc = await session.get(ForwardOutbox, retry_id)
+        assert proc is not None
+        proc.status = ForwardOutboxStatus.PROCESSING
+    assert await outbox.requeue_forward_outbox(retry_id) is False
 
 
 @pytest.mark.asyncio

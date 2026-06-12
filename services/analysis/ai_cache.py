@@ -14,8 +14,24 @@ from services.webhooks.types import AnalysisResult, mark_cache_hit
 logger = get_logger("analysis.ai_cache")
 
 
+def _cache_fingerprint() -> str:
+    """Short fingerprint of the model + prompt version.
+
+    Folding this into the cache key means changing the model or editing the
+    analysis prompt naturally invalidates stale cached results, and two configs
+    can never read each other's cache entries for the same alert_hash.
+    """
+    import hashlib
+
+    from services.analysis.ai_prompt import USER_PROMPT_KIND, get_prompt_version
+
+    model = str(get_config_manager().ai.OPENAI_MODEL or "")
+    prompt_version = get_prompt_version(USER_PROMPT_KIND)
+    return hashlib.blake2b(f"{model}|{prompt_version}".encode(), digest_size=6).hexdigest()
+
+
 def get_cache_key(alert_hash: str) -> str:
-    return f"analysis_{alert_hash}"
+    return f"analysis_{_cache_fingerprint()}_{alert_hash}"
 
 
 def _resolve_cache_settings(*, enabled: bool | None, ttl_seconds: int | None) -> tuple[bool, int]:

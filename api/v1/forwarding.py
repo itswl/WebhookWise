@@ -8,7 +8,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
-from contracts.webhook_payload import JsonObject, WebhookData
 from core.auth import verify_admin_write, verify_api_key
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
@@ -27,7 +26,6 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
-from services.webhooks.types import AnalysisResult
 
 logger = get_logger("api.v1.forwarding")
 
@@ -183,9 +181,6 @@ async def test_forward_rule_endpoint(
     if not target_url:
         return JSONResponse(status_code=400, content={"success": False, "error": "规则未配置目标 URL"})
 
-    test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule.name}}
-    test_analysis: AnalysisResult = {"summary": f"测试规则: {rule.name}", "importance": "low", "event_type": "test"}
-
     logger.info(
         "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s target=%s",
         rule.id,
@@ -194,22 +189,16 @@ async def test_forward_rule_endpoint(
         mask_url(target_url),
     )
 
-    # 测试通道直连目标 URL，不走 Outbox 幂等链路，确保每次测试都真实发送
-    from services.forwarding.remote import post_json_to_remote
-    from services.notifications.feishu import build_feishu_card, is_feishu_url, send_to_feishu
+    # Delivery (channel decision + payload build) lives in services/forwarding;
+    # the API layer must not perform external delivery directly.
+    from services.forwarding.remote import send_forward_rule_test
 
     try:
-        payload: JsonObject
-        if is_feishu_url(target_url):
-            payload = build_feishu_card(test_webhook, test_analysis)
-            result = await send_to_feishu(target_url, payload)
-        else:
-            payload = {"webhook": test_webhook, "analysis": test_analysis}
-            result = await post_json_to_remote(
-                target_url,
-                payload,
-                target_type_label=rule.target_type or "webhook",
-            )
+        result = await send_forward_rule_test(
+            rule_name=rule.name,
+            target_url=target_url,
+            target_type=rule.target_type,
+        )
     except _FORWARDING_RUNTIME_ERRORS as e:
         logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
         return JSONResponse(status_code=502, content={"success": False, "error": DELIVERY_ERROR_MESSAGE})

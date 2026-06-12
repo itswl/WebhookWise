@@ -344,11 +344,15 @@ async def test_reanalysis_updates_original_duplicates_and_schedules_outbox(
     async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
         scheduled.append(outbox_ids)
 
-    monkeypatch.setattr(reanalysis, "build_webhook_context", build_webhook_context)
-    monkeypatch.setattr(reanalysis, "analyze_webhook_with_ai", analyze_webhook_with_ai)
-    monkeypatch.setattr(reanalysis, "resolve_forward_decision", resolve_forward_decision)
-    monkeypatch.setattr(reanalysis, "resolve_and_forward", resolve_and_forward)
-    monkeypatch.setattr(reanalysis, "schedule_forward_outbox_many", schedule_forward_outbox_many)
+    # The reanalysis workflow now lives in services.webhooks.reanalysis_service;
+    # patch the collaborators where they are looked up.
+    from services.webhooks import reanalysis_service
+
+    monkeypatch.setattr(reanalysis_service, "build_webhook_context", build_webhook_context)
+    monkeypatch.setattr(reanalysis_service, "analyze_webhook_with_ai", analyze_webhook_with_ai)
+    monkeypatch.setattr(reanalysis_service, "resolve_forward_decision", resolve_forward_decision)
+    monkeypatch.setattr(reanalysis_service, "resolve_and_forward", resolve_and_forward)
+    monkeypatch.setattr(reanalysis_service, "schedule_forward_outbox_many", schedule_forward_outbox_many)
 
     result = await reanalysis.reanalyze_webhook(99, session=session)  # type: ignore[arg-type]
 

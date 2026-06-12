@@ -40,6 +40,11 @@ class AlertProcessingGateResult:
     suppressed: bool
     queue_size: int = 0
     reason: str = ""
+    # Set when the distributed lock is lost mid-processing (TTL lapsed or
+    # another worker took it). Callers can check this before committing
+    # side-effects; the DB-layer advisory lock in the save path is the hard
+    # guard, this is an early-warning signal. None when no distributed lock.
+    lock_lost: asyncio.Event | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,17 +143,23 @@ async def _release_distributed_lock(key: str, token: str) -> None:
         logger.warning("[Concurrency] Redis 分布式锁释放失败: %s", e)
 
 
-async def _refresh_distributed_lock(key: str, token: str, ttl_seconds: int) -> None:
+async def _refresh_distributed_lock(
+    key: str, token: str, ttl_seconds: int, lock_lost: asyncio.Event | None = None
+) -> None:
     interval = max(1.0, float(ttl_seconds) / 3.0)
     while True:
         await asyncio.sleep(interval)
         try:
             refreshed = await redis_client.redis_eval_int(_REFRESH_IF_OWNER_LUA, 1, key, token, ttl_seconds)
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
-            logger.warning("[Concurrency] Redis 分布式锁续期失败: %s", e)
+            logger.warning("[Concurrency] Redis 分布式锁续期失败，标记锁可能丢失: %s", e)
+            if lock_lost is not None:
+                lock_lost.set()
             return
         if not refreshed:
             logger.warning("[Concurrency] Redis 分布式锁已失去所有权 key=%s", key)
+            if lock_lost is not None:
+                lock_lost.set()
             return
 
 
@@ -178,12 +189,16 @@ async def alert_processing_gate(alert_hash: str) -> AsyncGenerator[AlertProcessi
                 reason=lock[1] or "alert_processing_lock_timeout",
             )
             return
+        lock_lost: asyncio.Event | None = None
         if lock is not None:
             lock_key, lock_token = lock
             ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
-            refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds))
+            lock_lost = asyncio.Event()
+            refresh_task = asyncio.create_task(
+                _refresh_distributed_lock(lock_key, lock_token, ttl_seconds, lock_lost)
+            )
 
-        yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size)
+        yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size, lock_lost=lock_lost)
     finally:
         if refresh_task:
             refresh_task.cancel()

@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
@@ -197,27 +198,31 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
 
 async def requeue_forward_outbox(outbox_id: int) -> bool:
     now = utcnow()
-    updated = False
+    # Conditional UPDATE rather than load-then-mutate: a manual requeue must not
+    # race a worker that currently holds the row as PROCESSING (which would
+    # reset attempts to 0 and double-schedule the delivery). Only requeue from a
+    # quiescent state; PROCESSING is deliberately excluded.
+    requeueable = {
+        ForwardOutboxStatus.EXHAUSTED,
+        ForwardOutboxStatus.EXPIRED,
+        ForwardOutboxStatus.RETRYING,
+        ForwardOutboxStatus.PENDING,
+    }
     async with session_scope() as session:
-        record = await session.get(ForwardOutbox, outbox_id)
-        if record is None:
-            return False
-        status_value = (
-            record.status.value if isinstance(record.status, ForwardOutboxStatus) else str(record.status or "")
+        result = await session.execute(
+            update(ForwardOutbox)
+            .where(ForwardOutbox.id == outbox_id)
+            .where(ForwardOutbox.status.in_(requeueable))
+            .values(
+                status=ForwardOutboxStatus.RETRYING,
+                next_attempt_at=now,
+                updated_at=now,
+                attempts=0,
+                last_error="manual_retry",
+            )
+            .returning(ForwardOutbox.id)
         )
-        if status_value not in {
-            ForwardOutboxStatus.EXHAUSTED.value,
-            ForwardOutboxStatus.EXPIRED.value,
-            ForwardOutboxStatus.RETRYING.value,
-            ForwardOutboxStatus.PENDING.value,
-        }:
-            return False
-        record.status = ForwardOutboxStatus.RETRYING
-        record.next_attempt_at = now
-        record.updated_at = now
-        record.attempts = 0
-        record.last_error = "manual_retry"
-        updated = True
+        updated = result.scalar_one_or_none() is not None
     if updated:
         await schedule_forward_outbox_many([outbox_id])
     return updated

@@ -18,10 +18,50 @@ spec:
         app.kubernetes.io/component: api
     spec:
       serviceAccountName: webhookwise
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Gate app start on the migration Job having applied the schema. The
+        # plain migrate Job and these Deployments are created concurrently by
+        # `kubectl apply -k`, so without this gate pods can serve against an
+        # un-migrated schema.
+        - name: wait-for-migrations
+          image: ghcr.io/itswl/webhookwise:3.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until RUN_MODE=migrate python3 -m scripts.healthcheck; do
+                echo "waiting for database migrations to complete..."
+                sleep 3
+              done
+          envFrom:
+            - configMapRef:
+                name: webhookwise-config
+            - secretRef:
+                name: webhookwise-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: webhookwise-api
           image: ghcr.io/itswl/webhookwise:3.0.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - configMapRef:
                 name: webhookwise-config
@@ -62,3 +102,11 @@ spec:
             limits:
               cpu: "2"
               memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # Writable scratch dir so readOnlyRootFilesystem can stay enabled
+        # (jemalloc / OTel / temp files write under /tmp).
+        - name: tmp
+          emptyDir: {}

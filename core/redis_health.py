@@ -139,6 +139,10 @@ def webhook_dedupe(alert_hash: str) -> str:
     return f"webhook:dedupe:{alert_hash}"
 
 
+def webhook_replay_nonce(signature: str) -> str:
+    return f"webhook:replay:{signature}"
+
+
 def webhook_processing_queue(alert_hash: str) -> str:
     return f"queue:webhook:{alert_hash}"
 
