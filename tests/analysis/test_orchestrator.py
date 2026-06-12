@@ -223,18 +223,22 @@ def test_row_to_summary_dict_duplicate_within_window():
     assert d["is_within_window"] is True
 
 
-def test_row_to_summary_dict_summary_from_ai_analysis():
+def test_row_to_summary_dict_summary_from_projected_column():
     from services.webhooks.query_service import _row_to_summary_dict
 
-    row = _make_row(ai_analysis={"summary": "High memory usage detected"})
+    # summary now comes from the SQL projection (ai_analysis->>'summary'),
+    # surfaced on the row as `summary`, not re-derived in Python.
+    row = _make_row()
+    row.summary = "High memory usage detected"
     d = _row_to_summary_dict(row)
     assert d["summary"] == "High memory usage detected"
 
 
-def test_row_to_summary_dict_summary_none_when_no_ai_analysis():
+def test_row_to_summary_dict_summary_none_when_absent():
     from services.webhooks.query_service import _row_to_summary_dict
 
-    row = _make_row(ai_analysis=None)
+    row = _make_row()
+    row.summary = None
     d = _row_to_summary_dict(row)
     assert d["summary"] is None
 
