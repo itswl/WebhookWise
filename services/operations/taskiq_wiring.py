@@ -15,21 +15,10 @@ from taskiq import TaskiqEvents
 import services.operations.tasks as _tasks  # noqa: F401
 from adapters.ecosystem_adapters import initialize_adapters
 from core.config.defaults import get_settings
-from core.taskiq_broker import (
-    broker,
-    dynamic_schedule_source,
-    load_taskiq_broker_settings,
-    mirror_tasks_to_priority_broker,
-    priority_broker,
-    scheduler,
-)
+from core.taskiq_broker import broker, dynamic_schedule_source, load_taskiq_broker_settings, scheduler
 from services.analysis.ai_llm_client import initialize_openai_client, reset_openai_client
 
-# Tasks are declared on the default broker (via importing _tasks above); mirror
-# them onto the priority broker so the priority worker can execute them.
-mirror_tasks_to_priority_broker()
-
-__all__ = ("broker", "dynamic_schedule_source", "priority_broker", "scheduler")
+__all__ = ("broker", "dynamic_schedule_source", "scheduler")
 
 logger = logging.getLogger("webhook_service.taskiq")
 _settings = load_taskiq_broker_settings()

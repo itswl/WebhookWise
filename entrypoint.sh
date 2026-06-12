@@ -26,10 +26,6 @@ case "${RUN_MODE:-api}" in
         echo "Starting in TaskIQ Worker mode..."
         exec taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" services.operations.taskiq_wiring:broker
         ;;
-    priority-worker)
-        echo "Starting in TaskIQ Priority Worker mode..."
-        exec taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" services.operations.taskiq_wiring:priority_broker
-        ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."
         exec taskiq scheduler \
