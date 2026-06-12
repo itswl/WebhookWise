@@ -204,3 +204,40 @@ services:
         condition: service_completed_successfully
     networks:
       - webhook_net
+
+  # Scheduled database backups. Runs scripts.ops.backup_db on a fixed interval
+  # (default daily), writing pg_dump custom-format dumps + .sha256 checksums to
+  # a host-mounted directory, then pruning per BACKUP_RETENTION_DAYS. Disabled
+  # by default unless started explicitly: `docker compose --profile backup up -d`.
+  backup:
+    build:
+      context: ../..
+    container_name: webhook-backup
+    profiles: ["backup"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[backup] starting; interval=${BACKUP_INTERVAL_SECONDS:-86400}s dir=${BACKUP_DIR:-/backups}";
+        while true; do
+          python3 -m scripts.ops.backup_db --verbose || echo "[backup] run failed (will retry next interval)";
+          sleep "${BACKUP_INTERVAL_SECONDS:-86400}";
+        done
+    env_file:
+      - ../../.env
+    environment:
+      APP_ENV: ${COMPOSE_APP_ENV:-development}
+      PYTHONPATH: /app
+      DATABASE_URL: ${DATABASE_URL}
+      OTEL_ENABLED: "false"
+      BACKUP_DIR: ${BACKUP_DIR:-/backups}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_COMPRESS: ${BACKUP_COMPRESS:-true}
+    volumes:
+      - ../../.env:/app/.env
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - webhook_net
