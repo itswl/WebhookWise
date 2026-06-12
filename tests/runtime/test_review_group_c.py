@@ -32,14 +32,23 @@ def test_cache_key_changes_with_model(monkeypatch: pytest.MonkeyPatch, temp_conf
 # --- secret min length ----------------------------------------------------------
 
 
-def test_startup_rejects_short_api_key(temp_config) -> None:
-    from core.web.startup_checks import validate_startup_security
+def test_startup_warns_but_allows_short_api_key(temp_config, monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.web import startup_checks
 
     temp_config.security.API_KEY = "short"
     temp_config.security.ADMIN_WRITE_KEY = "a-sufficiently-long-admin-key"
-    temp_config.security.REQUIRE_WEBHOOK_AUTH = False
-    with pytest.raises(RuntimeError, match="API_KEY 太短"):
-        validate_startup_security(temp_config, app_env="production")
+    temp_config.security.REQUIRE_WEBHOOK_AUTH = True
+    temp_config.security.WEBHOOK_SECRET = "a-sufficiently-long-webhook-secret"
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        startup_checks.logger, "warning", lambda msg, *args, **_k: warnings.append(msg % args if args else msg)
+    )
+
+    # Short secrets warn (rotate prompt) but must NOT block startup so an
+    # existing deployment with legacy keys is not bricked.
+    startup_checks.validate_startup_security(temp_config, app_env="production")
+    assert any("API_KEY" in w for w in warnings)
 
 
 def test_startup_rejects_empty_webhook_secret_when_auth_required(temp_config) -> None:
