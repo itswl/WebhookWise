@@ -160,13 +160,20 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
     )
     enqueued: list[dict[str, object]] = []
 
+    _all_events = {
+        1: event,
+        2: SimpleNamespace(id=2, processing_status="completed"),
+    }
+
     class Session:
         async def get(self, _model: object, event_id: int) -> object | None:
-            if event_id == 1:
-                return event
-            if event_id == 2:
-                return SimpleNamespace(id=2, processing_status="completed")
-            return None
+            return _all_events.get(event_id)
+
+        async def execute(self, _stmt: object) -> object:
+            # Batch replay does select(WebhookEvent).where(id.in_(...)); return
+            # all known events (the code filters by processing_status itself).
+            rows = list(_all_events.values())
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
 
     async def list_dead_letters(
         _session: object,
