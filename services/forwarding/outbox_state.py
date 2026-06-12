@@ -14,6 +14,7 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from db.session import session_scope
 from models import DeepAnalysis, ForwardOutbox, WebhookEvent
 from services.forwarding import outbox_notifications, outbox_scheduling
+from services.forwarding.channels import resolve_channel
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications import feishu
 from services.operations import taskiq_retry_scheduler
@@ -21,7 +22,6 @@ from services.webhooks.types import (
     DeepAnalysisStatus,
     ForwardOutboxStatus,
     ForwardResult,
-    is_pending_result,
     openclaw_run_id,
     openclaw_session_key,
 )
@@ -134,7 +134,12 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             return
         current.response_data = dict(result)
 
-        if current.target_type == "openclaw" and is_pending_result(result):
+        # Ask the channel whether a successful delivery needs a post-commit
+        # follow-up record (OpenClaw spawns a DeepAnalysis poll). The state
+        # machine owns the session/transaction, so the openclaw-specific row is
+        # built here, but the decision is delegated to the channel strategy
+        # instead of a hardcoded target_type check.
+        if resolve_channel(current).needs_followup_on_success(current, result):
             target_event_id = current.webhook_event_id
             initial_poll_delay = taskiq_retry_scheduler.compute_openclaw_poll_delay(0)
             analysis_record = DeepAnalysis(
