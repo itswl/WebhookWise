@@ -176,6 +176,8 @@ def score_candidate(
     candidate: AlertContext,
     window_minutes: int,
     scoring_config: NoiseScoringConfig = DEFAULT_SCORING_CONFIG,
+    *,
+    current_features: tuple[set[str], set[str]] | None = None,
 ) -> float:
     if candidate.timestamp > current.timestamp:
         return 0.0
@@ -183,7 +185,9 @@ def score_candidate(
     elapsed = (current.timestamp - candidate.timestamp).total_seconds()
     window_seconds = max(window_minutes, 1) * 60
 
-    current_resources, current_tokens = _extract_features(current)
+    # The current alert's features are identical across candidates; accept a
+    # precomputed pair to avoid re-tokenizing it N times in the scoring loop.
+    current_resources, current_tokens = current_features if current_features is not None else _extract_features(current)
     candidate_resources, candidate_tokens = _extract_features(candidate)
 
     source_score = scoring_config.source_weight if current.source == candidate.source else 0.0
@@ -216,8 +220,9 @@ def _collect_related(
     scoring_config: NoiseScoringConfig,
 ) -> list[tuple[AlertContext, float]]:
     scored: list[tuple[AlertContext, float]] = []
+    current_features = _extract_features(current)  # computed once, reused per candidate
     for alert in recent_alerts:
-        score = score_candidate(current, alert, window_minutes, scoring_config)
+        score = score_candidate(current, alert, window_minutes, scoring_config, current_features=current_features)
         if score > 0:
             scored.append((alert, score))
 

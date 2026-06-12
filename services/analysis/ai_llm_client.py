@@ -132,6 +132,13 @@ async def _create_with_completion(
     )
 
 
+def _dump_prompt_yaml(identity_context: dict[str, Any], cleaned_data: dict[str, Any]) -> tuple[str, str]:
+    """Serialize the two prompt sections to YAML (run in a worker thread)."""
+    identity_yaml = yaml.dump(identity_context, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    return identity_yaml, data_yaml
+
+
 async def _analyze_with_openai_tracked(
     data: dict[str, Any],
     source: str,
@@ -143,8 +150,9 @@ async def _analyze_with_openai_tracked(
     client = await _get_instructor_client_async(http_client=http_client)
     cleaned_data = await sanitize_for_ai_async(data)
     identity_context = build_alert_identity_context(source, cleaned_data)
-    identity_yaml = yaml.dump(identity_context, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    data_yaml = yaml.dump(cleaned_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    # PyYAML's pure-Python emitter is CPU-bound and the payload can be large;
+    # offload both dumps to a thread so the worker event loop is not stalled.
+    identity_yaml, data_yaml = await asyncio.to_thread(_dump_prompt_yaml, identity_context, cleaned_data)
     user_prompt = (await load_user_prompt_template()).format(
         source=source,
         identity_json=identity_yaml,
