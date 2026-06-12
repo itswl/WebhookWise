@@ -344,7 +344,28 @@ def _parse_json_like_text(value: Any, *, depth: int = 0) -> Any | None:
             return nested if nested is not None else parsed
         if isinstance(parsed, Mapping | list):
             return parsed
+
+    if not json_block:
+        truncated_json = _extract_truncated_json(stripped)
+        if truncated_json:
+            return truncated_json
     return None
+
+
+def _extract_truncated_json(text: str) -> Any | None:
+    """Attempt to repair a truncated JSON object embedded after free-text preamble."""
+    opening_chars = "{["
+    start = -1
+    for idx, char in enumerate(text):
+        if char in opening_chars:
+            start = idx
+            break
+    if start < 0:
+        return None
+    fragment = text[start:]
+    if len(fragment) < 20:
+        return None
+    return _repair_json_like_text(fragment)
 
 
 def _repair_json_like_text(text: str) -> Any | None:
