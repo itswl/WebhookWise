@@ -36,6 +36,8 @@ class TaskiqBrokerSettings:
     log_level: str
     third_party_log_level: str
     worker_startup_jitter_seconds: float
+    priority_queue_name: str
+    priority_consumer_group_name: str
 
 
 def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
@@ -57,6 +59,8 @@ def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
         log_level=settings.server.LOG_LEVEL,
         third_party_log_level=settings.server.THIRD_PARTY_LOG_LEVEL,
         worker_startup_jitter_seconds=float(settings.tasks.WORKER_STARTUP_JITTER_SECONDS or 0.0),
+        priority_queue_name=settings.mq.WEBHOOK_MQ_PRIORITY_QUEUE,
+        priority_consumer_group_name=settings.mq.WEBHOOK_MQ_PRIORITY_CONSUMER_GROUP,
     )
 
 
@@ -86,12 +90,47 @@ broker: AsyncBroker = RedisStreamBroker(
     maxlen=_settings.stream_maxlen,
 ).with_result_backend(result_backend)
 
+# Priority broker: a separate Redis stream + consumer group consumed by a
+# dedicated priority worker pool. Ingest tasks for high-severity alerts are
+# kicked here (process_webhook_task.kicker().with_broker(priority_broker)) so a
+# low-priority AI analysis backlog on the default queue cannot starve them. It
+# runs the identical task code — only the queue/worker pool differs.
+priority_broker: AsyncBroker = RedisStreamBroker(
+    url=_settings.redis_url,
+    queue_name=_settings.priority_queue_name,
+    consumer_group_name=_settings.priority_consumer_group_name,
+    consumer_name=_settings.consumer_name,
+    xread_count=_settings.consumer_batch_size,
+    xread_block=_settings.consumer_timeout_ms,
+    idle_timeout=_settings.pending_idle_timeout_ms,
+    unacknowledged_lock_timeout=max(30.0, _settings.pending_idle_timeout_ms / 1000 * 2),
+    maxlen=_settings.stream_maxlen,
+).with_result_backend(result_backend)
+
 # 在测试环境下可以切换为 InMemoryBroker
 if _settings.debug and not _settings.redis_url.startswith("redis"):
     broker = InMemoryBroker()
+    priority_broker = broker
     logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
 else:
     logger.info("[TaskIQ] 已初始化 Redis Broker: %s", mask_url(_settings.redis_url))
+
+def mirror_tasks_to_priority_broker() -> None:
+    """Register every default-broker task on the priority broker.
+
+    Tasks are declared with @broker.task on the default broker; the priority
+    worker consumes a different queue but must be able to execute the same task
+    functions, so we copy the registry once after all tasks are imported. No-op
+    when the two brokers are the same object (DEBUG InMemoryBroker).
+    """
+    if priority_broker is broker:
+        return
+    existing = priority_broker.get_all_tasks()
+    for name, task in broker.get_all_tasks().items():
+        if name in existing:
+            continue
+        priority_broker.register_task(task.original_func, task_name=name, **dict(task.labels or {}))
+
 
 dynamic_schedule_source = ListRedisScheduleSource(
     url=_settings.redis_url,

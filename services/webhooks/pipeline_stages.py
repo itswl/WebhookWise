@@ -16,6 +16,7 @@ from core.observability.attributes import (
 )
 from core.observability.events import emit_event, record_signal
 from core.observability.metrics import (
+    AI_UPGRADED_PRIORITY_TOTAL,
     WEBHOOK_PROCESSING_STATUS_TOTAL,
     WEBHOOK_STORM_SUPPRESSED_TOTAL,
 )
@@ -94,9 +95,34 @@ async def _run_fresh_analysis(
         )
 
 
+def _record_ai_priority_upgrade(ctx: WebhookProcessContext, importance: str) -> None:
+    """Observe alerts AI deems high-priority that ingest routing couldn't catch.
+
+    The raw payload's severity was not priority-routed, but AI concluded the
+    alert is high importance. This is the known blind spot of severity-based
+    ingest routing; the metric quantifies how often it happens (and thus whether
+    a deeper two-stage queue split would be worth it).
+    """
+    from services.webhooks.ingest_routing import is_priority_mapping
+
+    if normalize_importance(importance) != "high":
+        return
+    parsed = cast(dict[str, Any], ctx.req_ctx.parsed_data or {})
+    if is_priority_mapping(parsed):
+        return  # already priority-routed at ingest; not a blind-spot case
+    AI_UPGRADED_PRIORITY_TOTAL.labels(importance).inc()
+    logger.info(
+        "[Pipeline] AI 将普通告警升级为高优先(入口未走快队列) request_id=%s source=%s importance=%s",
+        ctx.request_id,
+        ctx.req_ctx.source,
+        importance,
+    )
+
+
 def _record_analysis_completed(ctx: WebhookProcessContext, analysis_result: AnalysisResult) -> None:
     route_type = analysis_route(analysis_result)
     importance = normalize_importance(analysis_result.get("importance", "unknown"))
+    _record_ai_priority_upgrade(ctx, importance)
     set_log_context(webhook_route=route_type)
     logger.info(
         "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
