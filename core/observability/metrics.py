@@ -81,17 +81,6 @@ AI_DEGRADATIONS_TOTAL = Counter(
     "AI analysis degradation count",
     ("ai.degradation.reason",),
 )
-# Alerts whose raw severity was NOT priority but whose AI-derived importance is
-# high. These are the blind spot of severity-based ingest routing: their high
-# priority is only known after AI runs, so they cannot be edge-routed to the
-# priority queue (forwarding stays correct, they just don't queue-jump). The
-# label records the AI importance. Use this to size whether deeper queue work
-# (two-stage rule-then-AI forwarding) is worth it.
-AI_UPGRADED_PRIORITY_TOTAL = Counter(
-    "ai.upgraded_priority",
-    "Alerts upgraded to high importance by AI that were not priority-routed at ingest",
-    ("webhook.importance",),
-)
 AI_REQUESTS_TOTAL = Counter(
     "ai.requests",
     "AI analysis request outcomes",

@@ -53,17 +53,6 @@ class MQConfig(StaticSettings):
     WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000)
     WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS: int = Field(default=300000)
     WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000)
-    # Priority queue: ingest tasks for high-severity alerts are routed here so a
-    # backlog of low-priority AI analysis on the default queue cannot starve P0
-    # alerts. A dedicated priority worker pool consumes it.
-    WEBHOOK_MQ_PRIORITY_QUEUE: str = Field(default="webhook:queue:priority")
-    WEBHOOK_MQ_PRIORITY_CONSUMER_GROUP: str = Field(default="webhook-processors-priority")
-    # Enable severity-based priority routing at ingest. When false, everything
-    # goes to the default queue (current behavior).
-    WEBHOOK_PRIORITY_ROUTING_ENABLED: bool = Field(default=False)
-    # Normalized levels (adapters.normalize_level output) routed to the priority
-    # queue. Comma-separated; default just "critical".
-    WEBHOOK_PRIORITY_LEVELS: str = Field(default="critical")
 
 
 class SecurityConfig(StaticSettings):
