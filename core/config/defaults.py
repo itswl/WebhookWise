@@ -83,10 +83,14 @@ class DBConfig(StaticSettings):
     """PostgreSQL 连接池"""
 
     DATABASE_URL: str
-    DB_POOL_SIZE: int = Field(default=5)
-    DB_MAX_OVERFLOW: int = Field(default=5)
+    # Per-process pool. Total Postgres connections ≈ (API workers + worker
+    # procs) × (DB_POOL_SIZE + DB_MAX_OVERFLOW). Size deliberately against
+    # Postgres max_connections and expected per-request concurrency; consider
+    # pgbouncer when scaling out. Defaults suit a small single-node deployment.
+    DB_POOL_SIZE: int = Field(default=5, description="每进程连接池常驻连接数")
+    DB_MAX_OVERFLOW: int = Field(default=5, description="每进程连接池可临时超出的连接数")
     DB_POOL_RECYCLE: int = Field(default=3600)
-    DB_POOL_TIMEOUT: int = Field(default=30)
+    DB_POOL_TIMEOUT: int = Field(default=30, description="等待空闲连接的超时(秒);超时请求会报错")
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
     DB_SYNC_COMMIT: str = Field(default="on")
 

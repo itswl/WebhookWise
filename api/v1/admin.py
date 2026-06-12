@@ -8,6 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -310,12 +311,24 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
 async def _replay_dead_letter_ids(event_ids: list[int], session: AsyncSession) -> tuple[list[int], list[int]]:
     replayed_ids: list[int] = []
     skipped_ids: list[int] = []
+
+    # De-dupe while preserving the caller's order.
+    ordered_ids: list[int] = []
     seen: set[int] = set()
     for event_id in event_ids:
-        if event_id in seen:
-            continue
-        seen.add(event_id)
-        event = await session.get(WebhookEvent, event_id)
+        if event_id not in seen:
+            seen.add(event_id)
+            ordered_ids.append(event_id)
+
+    if not ordered_ids:
+        return replayed_ids, skipped_ids
+
+    # Single bulk fetch instead of one session.get per id (avoids N+1).
+    result = await session.execute(select(WebhookEvent).where(WebhookEvent.id.in_(ordered_ids)))
+    events_by_id = {event.id: event for event in result.scalars().all()}
+
+    for event_id in ordered_ids:
+        event = events_by_id.get(event_id)
         if event and event.processing_status == "dead_letter":
             replayed_ids.append(event_id)
             await _enqueue_dead_letter_event(event)

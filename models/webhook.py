@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -94,6 +95,14 @@ class WebhookEvent(Base):
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
         Index("idx_dedup_key_timestamp", "dedup_key", "timestamp"),
+        # Partial index for the dead-letter list/count queries, which filter on
+        # processing_status='dead_letter' (otherwise a full sequential scan of a
+        # large events table). Mirrors the pending partial indexes.
+        Index(
+            "idx_webhook_events_dead_letter",
+            "id",
+            postgresql_where=text("processing_status = 'dead_letter'"),
+        ),
     )
 
     def fill_fields(self, data: WebhookEventInput) -> None:
