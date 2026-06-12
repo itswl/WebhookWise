@@ -24,7 +24,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
 # jemalloc 替换 glibc malloc，减少内存碎片 30-40%，降低 RSS 占用
 # 对 Python 多 Worker 长时间运行的服务尤其显著
 # LD_PRELOAD 在 entrypoint.sh 中按 x86_64/aarch64 动态设置
-RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && rm -rf /var/lib/apt/lists/*
+# libjemalloc2: memory allocator (see above). postgresql-client: provides
+# pg_dump/pg_restore used by scripts.ops.backup_db / restore_db (backup service
+# and in-container restore) and the healthcheck's DB tooling.
+RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 appuser
