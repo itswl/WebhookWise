@@ -55,6 +55,9 @@ async def test_redis_client_build_close_dispose_and_all_wrapper_coercions(
         async def eval(self, _script: str, _numkeys: int, *_args: object) -> object:
             return b"7"
 
+        async def evalsha(self, _sha: str, _numkeys: int, *_args: object) -> object:
+            return b"7"
+
         async def get(self, key: str) -> object:
             return self.values.get(key)
 
@@ -104,7 +107,9 @@ async def test_redis_client_build_close_dispose_and_all_wrapper_coercions(
         await redis_client.redis_setex_bytes("kb", 11, b"v")
         assert await redis_client.redis_delete("gone") == 2
         assert await redis_client.redis_publish("events", "hello") == 3
-        assert await redis_client.redis_incr_with_expire("counter", 60) == 4
+        # redis_incr_with_expire now runs a single Lua script (INCR + EXPIRE),
+        # so it goes through eval/evalsha rather than separate incr/expire calls.
+        assert await redis_client.redis_incr_with_expire("counter", 60) == 7
         assert await redis_client.redis_ping() is True
         assert await redis_client.redis_get_json_dict("json") == {"ok": True}
         assert await redis_client.redis_get_json_dict("json-list") is None
@@ -600,6 +605,8 @@ async def test_webhook_auth_dep_exception_branches_and_rate_limit_dep(
             return b"{}"
 
     request = Request()
+    # Captured before later blocks stub it, so the multi-tier block can call the real impl.
+    real_enforce_rate_limit = webhook_security.enforce_webhook_rate_limit
     monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", True)
     monkeypatch.setattr(temp_config.security, "WEBHOOK_SECRET", "secret")
 
@@ -699,20 +706,38 @@ async def test_webhook_auth_dep_exception_branches_and_rate_limit_dep(
         await webhook_security.check_rate_limit_dep(request, Response(), temp_config)
     assert redis_error.value.status_code == 503
 
-    async def remaining(_script: str, _numkeys: int, *_args: object) -> int | None:
-        return -1
+    # Multi-tier rate limit now runs as a single script returning a flat list:
+    # [failed_index, remaining...]. A non-zero failed_index means rejected.
+    rl_config = SimpleNamespace(
+        WEBHOOK_RATE_LIMIT_BURST=10,
+        WEBHOOK_RATE_LIMIT_PER_MINUTE=0,
+        WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE=0,
+    )
 
-    monkeypatch.setattr(webhook_security, "redis_eval_int", remaining)
-    denied_tier = await webhook_security._check_tier("rl:test", 60, 10, 120.0)
-    assert denied_tier.allowed is False
-    assert denied_tier.remaining == 0
+    monkeypatch.setattr(webhook_security, "get_client_ip", lambda _req: "9.9.9.9")
 
-    async def no_remaining(_script: str, _numkeys: int, *_args: object) -> int | None:
-        return None
+    async def denied(_script: str, _numkeys: int, *_args: object) -> list[int]:
+        return [1]  # tier 1 over limit
 
-    monkeypatch.setattr(webhook_security, "redis_eval_int", no_remaining)
-    with pytest.raises(RuntimeError, match="no integer"):
-        await webhook_security._check_tier("rl:test", 60, 10, 120.0)
+    monkeypatch.setattr(webhook_security, "redis_eval_int_list", denied)
+    ip, res = await real_enforce_rate_limit(request, security_config=rl_config)
+    assert ip is not None
+    assert res is not None and res.allowed is False
+
+    async def allowed(_script: str, _numkeys: int, *_args: object) -> list[int]:
+        return [0, 5]  # all allow, tier 1 has 5 remaining
+
+    monkeypatch.setattr(webhook_security, "redis_eval_int_list", allowed)
+    ip2, res2 = await real_enforce_rate_limit(request, security_config=rl_config)
+    assert ip2 is None
+    assert res2 is not None and res2.allowed is True and res2.remaining == 5
+
+    async def empty(_script: str, _numkeys: int, *_args: object) -> list[int]:
+        return []
+
+    monkeypatch.setattr(webhook_security, "redis_eval_int_list", empty)
+    with pytest.raises(RuntimeError, match="no result"):
+        await real_enforce_rate_limit(request, security_config=rl_config)
 
 
 @pytest.mark.asyncio

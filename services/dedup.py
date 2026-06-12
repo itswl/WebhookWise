@@ -14,8 +14,9 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL
-from core.redis_client import redis_get_json_dict, redis_setex_json
+from core.redis_client import redis_eval_int, redis_get_json_dict
 from core.redis_health import webhook_dedupe
+from core.redis_lua import DEDUP_REMEMBER as _DEDUP_REMEMBER_LUA
 from db.session import session_scope
 from services.analysis.resource_risk import resource_dedup_bucket
 from services.webhooks.types import is_analysis_degraded, is_pending_result
@@ -76,25 +77,23 @@ async def remember_dedup_state(
     reset_chain: bool = False,
 ) -> None:
     current_time = time.time()
-    existing = await get_dedup_state(dedup_key)
-    if reset_chain:
-        count = 1
-        first_seen_at = current_time
-    else:
-        count = (existing.count + 1) if existing else 1
-        first_seen_at = existing.first_seen_at if existing else current_time
-
-    payload: dict[str, Any] = {
-        "dedup_key": dedup_key,
-        "original_event_id": original_event_id,
-        "first_seen_at": first_seen_at,
-        "last_seen_at": current_time,
-        "count": count,
-    }
-    if analysis:
-        payload["analysis"] = analysis
+    analysis_json = json.dumps(analysis) if analysis else ""
     try:
-        await redis_setex_json(webhook_dedupe(dedup_key), max(60, ttl_seconds), payload)
+        # Atomic read-modify-write in a single round-trip: the script reads the
+        # existing payload, bumps count and preserves first_seen_at, then writes
+        # back with TTL. This is race-free under concurrent duplicates of the
+        # same alert (the old GET-then-SETEX could lose increments).
+        await redis_eval_int(
+            _DEDUP_REMEMBER_LUA,
+            1,
+            webhook_dedupe(dedup_key),
+            original_event_id,
+            current_time,
+            max(60, ttl_seconds),
+            "1" if reset_chain else "0",
+            dedup_key,
+            analysis_json,
+        )
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         REDIS_UNAVAILABLE_TOTAL.labels("dedup", "write_failed").inc()
         logger.warning(

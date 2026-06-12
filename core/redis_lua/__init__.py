@@ -15,6 +15,8 @@ CIRCUIT_BREAKER_CHECK_STATE = _read_script("circuit_breaker_check_state.lua")
 CIRCUIT_BREAKER_RECORD_FAILURE = _read_script("circuit_breaker_record_failure.lua")
 CIRCUIT_BREAKER_RECORD_SUCCESS = _read_script("circuit_breaker_record_success.lua")
 SLIDING_WINDOW_RATE_LIMIT = _read_script("sliding_window_rate_limit.lua")
+MULTI_TIER_RATE_LIMIT = _read_script("multi_tier_rate_limit.lua")
+DEDUP_REMEMBER = _read_script("dedup_remember.lua")
 
 __all__ = [
     "ALERT_REFRESH_LOCK_IF_OWNER",
@@ -24,5 +26,7 @@ __all__ = [
     "CIRCUIT_BREAKER_CHECK_STATE",
     "CIRCUIT_BREAKER_RECORD_FAILURE",
     "CIRCUIT_BREAKER_RECORD_SUCCESS",
+    "DEDUP_REMEMBER",
+    "MULTI_TIER_RATE_LIMIT",
     "SLIDING_WINDOW_RATE_LIMIT",
 ]

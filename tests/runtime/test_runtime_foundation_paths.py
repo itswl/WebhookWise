@@ -219,16 +219,16 @@ async def test_rate_limit_enforcement_and_dependency_fail_open_closed(
 
     request = SimpleNamespace(path_params={"source": "prometheus"}, query_params={}, headers={})
     response = Response()
-    tiers_seen: list[tuple[str, int, int]] = []
+    eval_calls: list[tuple[int, tuple[object, ...]]] = []
 
     monkeypatch.setattr(webhook_security, "get_client_ip", lambda _request: "1.2.3.4")
 
-    async def check_tier(prefix: str, window: int, limit: int, now: float) -> object:
-        tiers_seen.append((prefix, window, limit))
-        remaining = 3 if "b:" in prefix else 1
-        return webhook_security._TierResult(allowed=True, remaining=remaining, limit=limit, reset_at=now + window)
+    # All tiers allow; the single multi-tier script returns [0, r_burst, r_sustained, r_global].
+    async def allow_all(_script: str, numkeys: int, *args: object) -> list[int]:
+        eval_calls.append((numkeys, args))
+        return [0, 3, 1, 7]
 
-    monkeypatch.setattr(webhook_security, "_check_tier", check_tier)
+    monkeypatch.setattr(webhook_security, "redis_eval_int_list", allow_all)
     limited_ip, tier = await webhook_security.enforce_webhook_rate_limit(
         request,  # type: ignore[arg-type]
         security_config=SimpleNamespace(
@@ -240,14 +240,16 @@ async def test_rate_limit_enforcement_and_dependency_fail_open_closed(
 
     assert limited_ip is None
     assert tier is not None
-    assert tier.remaining == 1
-    assert tiers_seen[0][0] == "rl:b:1.2.3.4"
-    assert tiers_seen[-1][0] == "rl:g"
+    assert tier.remaining == 1  # tightest across tiers
+    # One round-trip with 3 tier keys; burst key first, global key last.
+    assert eval_calls[0][0] == 3
+    assert eval_calls[0][1][0] == "rl:b:1.2.3.4"
+    assert eval_calls[0][1][2] == "rl:g"
 
-    async def deny_tier(prefix: str, window: int, limit: int, now: float) -> object:
-        return webhook_security._TierResult(allowed=False, remaining=0, limit=limit, reset_at=now + window)
+    async def deny_first(_script: str, _numkeys: int, *_args: object) -> list[int]:
+        return [1]  # first (only) tier over limit
 
-    monkeypatch.setattr(webhook_security, "_check_tier", deny_tier)
+    monkeypatch.setattr(webhook_security, "redis_eval_int_list", deny_first)
     limited_ip, denied = await webhook_security.enforce_webhook_rate_limit(
         request,  # type: ignore[arg-type]
         security_config=SimpleNamespace(

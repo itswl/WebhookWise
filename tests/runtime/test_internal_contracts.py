@@ -164,15 +164,12 @@ async def test_dedup_read_failure_is_observable(monkeypatch: Any) -> None:
 async def test_dedup_write_failure_is_observable(monkeypatch: Any) -> None:
     from services import dedup
 
-    async def no_existing_state(_: str) -> None:
-        return None
-
     async def fail_write(*_: Any) -> None:
         raise RuntimeError("redis down")
 
     metric_calls: list[MetricCall] = []
-    monkeypatch.setattr(dedup, "get_dedup_state", no_existing_state)
-    monkeypatch.setattr(dedup, "redis_setex_json", fail_write)
+    # remember_dedup_state now writes via an atomic Lua script (redis_eval_int).
+    monkeypatch.setattr(dedup, "redis_eval_int", fail_write)
     monkeypatch.setattr(dedup, "REDIS_UNAVAILABLE_TOTAL", StubMetric(metric_calls, "redis_unavailable"))
 
     await dedup.remember_dedup_state("alert-key", 42, {"summary": "x"}, 60)

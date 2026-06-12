@@ -14,9 +14,9 @@ from core.app_context import get_config_manager
 from core.config import AppConfig, SecurityConfig
 from core.logger import get_logger
 from core.observability.metrics import REDIS_UNAVAILABLE_TOTAL, SECURITY_CHECKS_TOTAL
-from core.redis_client import redis_eval_int
+from core.redis_client import redis_eval_int_list
 from core.redis_health import rate_limit_burst, rate_limit_global, rate_limit_sustained
-from core.redis_lua import SLIDING_WINDOW_RATE_LIMIT as _SLIDING_WINDOW_LUA
+from core.redis_lua import MULTI_TIER_RATE_LIMIT as _MULTI_TIER_LUA
 from core.request_ip import get_client_ip
 
 logger = get_logger("webhook_security")
@@ -145,15 +145,6 @@ class _TierResult:
     reset_at: float
 
 
-async def _check_tier(prefix: str, window: int, limit: int, now: float) -> _TierResult:
-    remaining = await redis_eval_int(_SLIDING_WINDOW_LUA, 1, prefix, window, limit, now)
-    if remaining is None:
-        raise RuntimeError("rate limit script returned no integer")
-    allowed = remaining >= 0
-    reset_at = (math.floor(now / window) + 1) * window
-    return _TierResult(allowed=allowed, remaining=max(remaining, 0), limit=limit, reset_at=reset_at)
-
-
 async def enforce_webhook_rate_limit(
     request: Request, *, security_config: SecurityConfig | None = None
 ) -> tuple[str | None, _TierResult | None]:
@@ -167,7 +158,6 @@ async def enforce_webhook_rate_limit(
 
     client_ip = get_client_ip(request)
     now = time.time()
-    tightest: _TierResult | None = None
 
     tiers: list[tuple[str, int, int]] = []
     if burst > 0:
@@ -177,13 +167,31 @@ async def enforce_webhook_rate_limit(
     if global_per_minute > 0:
         tiers.append((rate_limit_global(), _SUSTAINED_WINDOW_SECONDS, global_per_minute))
 
-    for prefix, window, limit in tiers:
-        res = await _check_tier(prefix, window, limit, now)
-        if not res.allowed:
-            return client_ip, res
+    # Evaluate all tiers in a single Redis round-trip. The script checks every
+    # tier before incrementing any, so an over-limit later tier no longer leaves
+    # earlier tiers spuriously incremented.
+    keys = [t[0] for t in tiers]
+    argv: list[int | float] = [now]
+    for _prefix, window, limit in tiers:
+        argv.extend((window, limit))
+    result = await redis_eval_int_list(_MULTI_TIER_LUA, len(keys), *keys, *argv)
+    if not result:
+        raise RuntimeError("rate limit script returned no result")
+
+    failed_index = result[0]
+    if failed_index > 0:
+        _prefix, window, limit = tiers[failed_index - 1]
+        reset_at = (math.floor(now / window) + 1) * window
+        return client_ip, _TierResult(allowed=False, remaining=0, limit=limit, reset_at=reset_at)
+
+    tightest: _TierResult | None = None
+    remainings = result[1:]
+    for idx, (_prefix, window, limit) in enumerate(tiers):
+        remaining = remainings[idx] if idx < len(remainings) else 0
+        reset_at = (math.floor(now / window) + 1) * window
+        res = _TierResult(allowed=True, remaining=max(remaining, 0), limit=limit, reset_at=reset_at)
         if tightest is None or res.remaining < tightest.remaining:
             tightest = res
-
     return None, tightest
 
 
