@@ -40,11 +40,35 @@ async def list_outbox_records(
             count_q = count_q.where(condition)
         total = await count_fn(session, count_q) or 0
 
-        query = select(ForwardOutbox).order_by(ForwardOutbox.id.desc())
+        # Project only the columns the list needs. Selecting the full entity
+        # would also pull 4 large JSONB columns (forward_data, analysis_result,
+        # formatted_payload, response_data) that are never returned here.
+        query = (
+            select(
+                ForwardOutbox.id,
+                ForwardOutbox.webhook_event_id,
+                ForwardOutbox.original_event_id,
+                ForwardOutbox.rule_name,
+                ForwardOutbox.target_type,
+                ForwardOutbox.target_url,
+                ForwardOutbox.target_name,
+                ForwardOutbox.event_type,
+                ForwardOutbox.status,
+                ForwardOutbox.attempts,
+                ForwardOutbox.max_attempts,
+                ForwardOutbox.next_attempt_at,
+                ForwardOutbox.last_attempt_at,
+                ForwardOutbox.sent_at,
+                ForwardOutbox.last_error,
+                ForwardOutbox.is_periodic_reminder,
+                ForwardOutbox.created_at,
+            )
+            .order_by(ForwardOutbox.id.desc())
+        )
         for condition in filters:
             query = query.where(condition)
         query = apply_cursor_window(query, ForwardOutbox.id, page=page, page_size=page_size, cursor=cursor)
-        page_window = trim_cursor_window((await session.execute(query)).scalars().all(), page_size, lambda row: row.id)
+        page_window = trim_cursor_window((await session.execute(query)).all(), page_size, lambda row: row.id)
 
         items = [
             {
