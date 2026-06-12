@@ -197,17 +197,22 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
         assert analysis["importance"] == "high"
         return {"status": "pending"}
 
-    async def send_feishu(url: str, payload: dict[str, object]) -> dict[str, object]:
+    async def send_feishu(url: str, payload: dict[str, object], **kwargs: object) -> dict[str, object]:
         assert "feishu" in url
         assert payload
+        # The at-least-once forward must carry the stable outbox idempotency key.
+        assert kwargs["idempotency_key"] == "forward:feishu:key"
         return {"status": "success", "channel": "feishu"}
 
     async def post_remote(url: str, payload: dict[str, object], **kwargs: object) -> dict[str, object]:
         assert url in {"https://remote.test/hook", "https://empty.test/hook"}
         if url == "https://remote.test/hook":
             assert payload["is_periodic_reminder"] is True
+            assert kwargs["idempotency_key"] == "forward:remote:key"
         else:
             assert payload == {}
+            # empty_record has no idempotency_key -> no header.
+            assert kwargs["idempotency_key"] is None
         assert kwargs["target_type_label"] == "webhook"
         return {"status": "success", "channel": "remote"}
 
@@ -228,6 +233,7 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
         target_type="webhook",
         channel_name="webhook",
         target_url="https://feishu.test/hook",
+        idempotency_key="forward:feishu:key",
         forward_data={"source": "prometheus", "parsed_data": {"RuleName": "HighCPU"}},
         analysis_result={"importance": "high"},
     )
@@ -235,6 +241,7 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
         target_type="webhook",
         channel_name="webhook",
         target_url="https://remote.test/hook",
+        idempotency_key="forward:remote:key",
         forward_data={"source": "prometheus", "parsed_data": {"RuleName": "HighCPU"}},
         analysis_result={"importance": "high"},
         is_periodic_reminder=True,

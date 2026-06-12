@@ -120,8 +120,10 @@ async def test_webhook_receive_to_feishu_card_flow(
             return None
 
     class FakeHttpClient:
-        async def post(self, url: str, *, json: dict[str, Any], timeout: int) -> FakeResponse:
-            posted.append({"url": url, "json": json, "timeout": timeout})
+        async def post(
+            self, url: str, *, json: dict[str, Any], timeout: int, headers: dict[str, str] | None = None
+        ) -> FakeResponse:
+            posted.append({"url": url, "json": json, "timeout": timeout, "headers": headers})
             return FakeResponse()
 
     monkeypatch.setattr("core.http_client.get_http_client", lambda: FakeHttpClient())
@@ -180,6 +182,10 @@ async def test_webhook_receive_to_feishu_card_flow(
     assert len(posted) == 1
     outbound = posted[0]
     assert outbound["url"] == forward_target_url
+    # The at-least-once forward carries a stable Idempotency-Key derived from the
+    # outbox row, so a redelivery sends the same value for downstream dedupe.
+    idem = (outbound["headers"] or {}).get("Idempotency-Key")
+    assert idem is not None and idem.startswith("forward:")
     card = outbound["json"]
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "red"
