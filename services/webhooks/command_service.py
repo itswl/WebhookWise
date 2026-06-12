@@ -14,7 +14,7 @@ from core.compression import compress_payload
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
-from db.session import session_scope
+from db.session import acquire_advisory_xact_lock, session_scope
 from models import WebhookEvent, WebhookEventInput
 from services.dedup import generate_alert_hash
 from services.webhooks.repository import check_duplicate_event
@@ -240,37 +240,8 @@ async def _update_existing_event(
     if not event:
         return await _save_new_event(session, payload=payload)
     _fill_completed_event(event, payload=payload)
-    try:
-        async with session.begin_nested():
-            await session.flush()
-        return SaveWebhookResult(event.id, False, None)
-    except sqlalchemy.exc.IntegrityError as e:
-        if "idx_unique_alert_hash_original" in str(e):
-            session.expunge(event)
-
-            stmt = sqlalchemy.select(WebhookEvent).filter(
-                WebhookEvent.alert_hash == payload.alert_hash, WebhookEvent.is_duplicate.is_(False)
-            )
-            original = (await session.execute(stmt)).scalar_one_or_none()
-
-            if original:
-                event = await session.get(WebhookEvent, event_id)
-                if event is None:
-                    raise RuntimeError("WebhookEvent not found") from e
-                original.duplicate_count = (original.duplicate_count or 1) + 1
-                original.updated_at = utcnow()
-
-                _fill_duplicate_event(
-                    event,
-                    payload=payload,
-                    original_id=original.id,
-                    duplicate_count=original.duplicate_count or 1,
-                    ai_analysis=payload.ai_analysis or unknown_analysis_result(),
-                    importance=payload.ai_analysis.get("importance") if payload.ai_analysis else None,
-                )
-                await session.flush()
-                return SaveWebhookResult(event.id, True, original.id)
-        raise
+    await session.flush()
+    return SaveWebhookResult(event.id, False, None)
 
 
 async def _resolve_request_id(
@@ -366,6 +337,17 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
         dedup_key=input.dedup_key,
         prev_alert_id=input.prev_alert_id,
     )
+    # Serialise concurrent saves for the same alert identity so the duplicate
+    # check-then-insert below stays atomic across workers. Without this, two
+    # workers racing on the same alert_hash can each read "no original" and both
+    # insert a fresh original, leaking a duplicate alert that gets forwarded
+    # twice. A transaction-scoped advisory lock (released on commit/rollback)
+    # serialises only same-hash saves and—unlike a unique constraint—still
+    # permits the legitimate creation of a new original once the dedup window
+    # expires (RECHAIN).
+    if not input.skip_duplicate_lookup and payload.alert_hash:
+        await acquire_advisory_xact_lock(session, f"webhook_alert_hash:{payload.alert_hash}")
+
     request_resolution = await _resolve_request_id(
         session,
         request_id=input.request_id,
