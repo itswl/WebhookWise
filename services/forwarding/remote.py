@@ -101,8 +101,16 @@ async def post_json_to_remote(
     validate_target: bool = True,
     dependencies: RemoteForwardDependencies | None = None,
     target_type_label: str = "raw_json",
+    idempotency_key: str | None = None,
 ) -> ForwardResult:
-    """Post an already-built JSON payload to a remote webhook target."""
+    """Post an already-built JSON payload to a remote webhook target.
+
+    Forwarding is at-least-once (stale-recovery and retries can re-deliver the
+    same outbox row), so when an ``idempotency_key`` is supplied it is sent as an
+    ``Idempotency-Key`` request header. The key is stable across redeliveries of
+    the same outbox row, letting a downstream that honours it collapse
+    duplicates; one that ignores it is unaffected.
+    """
     started = time.perf_counter()
     status = "unknown"
     policy = policy or ForwardDeliveryPolicy.from_config()
@@ -124,11 +132,16 @@ async def post_json_to_remote(
             FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)
             return {"status": "invalid_target", "message": str(e)}
 
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+
     async def _do_post() -> httpx.Response:
         final_url = await dependencies.validate_url(url) if validate_target else url
         logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(final_url))
         resp = cast(
-            httpx.Response, await dependencies.http_client.post(final_url, json=payload, timeout=policy.timeout_seconds)
+            httpx.Response,
+            await dependencies.http_client.post(
+                final_url, json=payload, timeout=policy.timeout_seconds, headers=headers
+            ),
         )
         resp.raise_for_status()
         return resp

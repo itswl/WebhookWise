@@ -228,6 +228,65 @@ async def test_feishu_forward_checks_business_status_code() -> None:
 
 
 @pytest.mark.asyncio
+async def test_post_json_to_remote_sends_idempotency_key_header() -> None:
+    """An at-least-once forward must put the outbox idempotency key on the wire
+    as an Idempotency-Key header so a cooperating downstream can dedupe."""
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
+    from services.forwarding.policies import ForwardDeliveryPolicy
+    from services.forwarding.remote import post_json_to_remote
+
+    async def accept_url(url: str, **_kwargs: Any) -> str:
+        return url
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class Client:
+        def __init__(self) -> None:
+            self.headers_seen: list[dict[str, str] | None] = []
+
+        async def post(self, _url: str, **kwargs: Any) -> Response:
+            self.headers_seen.append(kwargs.get("headers"))
+            return Response()
+
+    class Breaker:
+        async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> object:
+            return await func(*args, **kwargs)
+
+    def _deps(client: Client) -> RemoteForwardDependencies:
+        return RemoteForwardDependencies(
+            http_client=cast(Any, client),
+            circuit_breaker=cast(Any, Breaker()),
+            validate_url=accept_url,
+        )
+
+    policy = ForwardDeliveryPolicy.from_config()
+
+    with_key = Client()
+    await post_json_to_remote(
+        "https://remote.test/hook",
+        {"x": 1},
+        policy=policy,
+        dependencies=_deps(with_key),
+        idempotency_key="forward:42:abc",
+    )
+    assert with_key.headers_seen == [{"Idempotency-Key": "forward:42:abc"}]
+
+    # No key supplied -> no headers forced (None), so we don't override defaults.
+    without_key = Client()
+    await post_json_to_remote(
+        "https://remote.test/hook",
+        {"x": 1},
+        policy=policy,
+        dependencies=_deps(without_key),
+    )
+    assert without_key.headers_seen == [None]
+
+
+@pytest.mark.asyncio
 async def test_ingress_backpressure_suppresses_after_threshold() -> None:
     from services.webhooks.ingress_backpressure import check_ingress_backpressure
     from services.webhooks.policies import IngressPolicy

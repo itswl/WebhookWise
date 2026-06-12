@@ -17,6 +17,7 @@ async def send_to_feishu(
     payload: dict[str, Any],
     *,
     build_remote_forward_dependencies_fn: Callable[[], RemoteForwardDependencies] = build_remote_forward_dependencies,
+    idempotency_key: str | None = None,
 ) -> ForwardResult:
     from services.forwarding.remote import post_json_to_remote
 
@@ -35,4 +36,5 @@ async def send_to_feishu(
         validate_target=True,
         dependencies=dependencies,
         target_type_label="feishu",
+        idempotency_key=idempotency_key,
     )

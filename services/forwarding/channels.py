@@ -84,7 +84,11 @@ class _FeishuChannel:
     async def deliver(self, record: ForwardOutbox) -> ForwardResult:
         from services.notifications import feishu
 
-        return await feishu.send_to_feishu(str(record.target_url or ""), _build_http_payload(record))
+        return await feishu.send_to_feishu(
+            str(record.target_url or ""),
+            _build_http_payload(record),
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
         return False
@@ -109,6 +113,7 @@ class _WebhookChannel:
             _build_http_payload(record),
             dependencies=deps,
             target_type_label=label,
+            idempotency_key=str(record.idempotency_key or "") or None,
         )
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
