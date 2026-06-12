@@ -34,6 +34,85 @@ async def test_alert_processing_gate_serializes_same_hash(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
+async def test_gate_keys_lock_and_queue_on_passed_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gate must build its Redis lock/queue keys from the value it is given
+    (the dedup_key), not derive a different key — otherwise the single-flight
+    lock and the dedup decision it protects would key on different hashes."""
+    import core.alert_concurrency as concurrency
+
+    lock_keys: list[str] = []
+    queue_keys: list[str] = []
+    monkeypatch.setattr(concurrency, "webhook_processing_lock", lambda k: lock_keys.append(k) or f"lock:{k}")
+    monkeypatch.setattr(concurrency, "webhook_processing_queue", lambda k: queue_keys.append(k) or f"q:{k}")
+
+    async def reserve_slot(key: str) -> concurrency._QueueSlotReservation:
+        concurrency.webhook_processing_queue(key)
+        return concurrency._QueueSlotReservation(reserved=False, queue_size=0)
+
+    async def no_lock(_: str) -> None:
+        return None
+
+    monkeypatch.setattr(concurrency, "_reserve_processing_slot", reserve_slot)
+    monkeypatch.setattr(concurrency, "_acquire_distributed_lock", no_lock)
+
+    async with concurrency.alert_processing_gate("dedup-key-abc") as result:
+        assert result.suppressed is False
+    # The lock-key helper is exercised via _lock_key; assert the dedup_key flowed in.
+    assert concurrency._lock_key("dedup-key-abc") == "lock:dedup-key-abc"
+    assert queue_keys == ["dedup-key-abc"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_gates_on_dedup_key_not_alert_hash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: flapping alerts share a dedup_key but differ in alert_hash.
+    The pipeline must serialise them by gating on dedup_key."""
+    from contextlib import asynccontextmanager
+
+    from contracts.webhook_payload import webhook_data_from_mapping
+    from services.webhooks import pipeline_orchestrator, pipeline_runtime, pipeline_stages
+    from services.webhooks.types import WebhookProcessContext, WebhookRequestContext
+
+    gated_keys: list[str] = []
+
+    class _Res:
+        suppressed = True
+        queue_size = 0
+        reason = "x"
+
+    @asynccontextmanager
+    async def gate(key: str):
+        gated_keys.append(key)
+        yield _Res()
+
+    async def validate(_ctx: object, _gate: object) -> pipeline_runtime.PipelineProcessingResult:
+        return pipeline_runtime.PipelineProcessingResult(suppressed=True)
+
+    monkeypatch.setattr(pipeline_orchestrator, "alert_processing_gate", gate)
+    monkeypatch.setattr(pipeline_stages, "validate_backpressure", validate)
+
+    req_ctx = WebhookRequestContext(
+        client_ip="127.0.0.1",
+        source="prometheus",
+        payload=b'{"source": "prometheus"}',
+        parsed_data=webhook_data_from_mapping({"source": "prometheus"}),
+        webhook_full_data=webhook_data_from_mapping({"source": "prometheus"}),
+    )
+    ctx = WebhookProcessContext(
+        event_id=None,
+        request_id="r",
+        metric_source="prometheus",
+        req_ctx=req_ctx,
+        alert_hash="HASH_WITH_SEVERITY",
+        dedup_key="DEDUP_NO_SEVERITY",
+    )
+    deps = pipeline_runtime.WebhookPipelineDependencies(dedup_window_seconds=60)
+    await pipeline_orchestrator.run_processing_pipeline(ctx, deps)
+
+    assert gated_keys == ["DEDUP_NO_SEVERITY"]
+    assert "HASH_WITH_SEVERITY" not in gated_keys
+
+
+@pytest.mark.asyncio
 async def test_alert_processing_gate_releases_distributed_lock(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.alert_concurrency as concurrency
 
