@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utcnow
 from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
-from schemas.analysis import deep_analysis_to_dict
+from schemas.analysis import deep_analysis_to_summary_dict
 from services.pagination import apply_cursor_window, clamp_page_params, trim_cursor_window
 
 
@@ -124,7 +124,10 @@ async def get_deep_analysis_list(
 
     items = []
     for rec, evt in page_window.rows:
-        item = deep_analysis_to_dict(rec)
+        # Lightweight list item: a cheap summary preview, no full normalized
+        # report and no raw analysis_result blob (fetched on demand via the
+        # detail endpoint when a row is expanded).
+        item = deep_analysis_to_summary_dict(rec)
         item["source"] = evt.source if evt else None
         item["is_duplicate"] = evt.is_duplicate if evt else False
         items.append(item)
