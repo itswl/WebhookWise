@@ -22,7 +22,11 @@ _AI_USAGE_RUNTIME_ERRORS = (OSError, RuntimeError, TimeoutError, ValueError)
     dependencies=[Depends(verify_api_key)],
 )
 async def get_ai_usage_endpoint(
-    period: str = Query("day"), session: AsyncSession = Depends(get_db_session)
+    # Constrain to the buckets get_ai_usage_stats actually understands. Without
+    # this, an arbitrary period flows straight into the Redis cache key below,
+    # letting a caller mint unlimited distinct keys (cache-cardinality abuse).
+    period: str = Query("day", pattern="^(day|week|month|year)$"),
+    session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     from core.redis_client import redis_get_json_dict, redis_setex_json
 

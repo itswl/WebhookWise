@@ -438,18 +438,28 @@ def _sanitize_loose_json(text: str) -> str:
     return re.sub(r"\\(?![\"\\/bfnrtu])", r"\\\\", text) if text else ""
 
 
+_JSON_ESCAPE_MAP = {"\\": "\\", '"': '"', "/": "/", "n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}
+_JSON_ESCAPE_RE = re.compile(r"\\(.)", re.DOTALL)
+
+
 def _decode_escaped_json_text(text: str) -> str:
     stripped = text.strip() if isinstance(text, str) else ""
     if not stripped or not any(token in stripped for token in ('\\"', "\\n", "\\t")):
         return ""
-    return (
-        stripped.replace("\\r", "\r")
-        .replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace('\\"', '"')
-        .replace("\\\\", "\\")
-        .strip()
-    )
+
+    # Decode in a SINGLE left-to-right pass: a chained .replace() is
+    # order-dependent and corrupts input (e.g. a literal "\\n" would first be
+    # turned into a newline by the "\n" pass before the "\\" pass collapses the
+    # backslash). Matching each "\<char>" once and consuming both characters
+    # makes the result independent of escape ordering. Unknown escapes (e.g.
+    # "\u" sequences we don't expand here) are left verbatim.
+    def _replace(match: re.Match[str]) -> str:
+        char = match.group(1)
+        if char in _JSON_ESCAPE_MAP:
+            return _JSON_ESCAPE_MAP[char]
+        return match.group(0)
+
+    return _JSON_ESCAPE_RE.sub(_replace, stripped).strip()
 
 
 def _first_raw_text(value: Any, *, depth: int = 0) -> str:

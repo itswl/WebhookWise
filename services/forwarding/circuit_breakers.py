@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from threading import Lock
@@ -67,7 +68,12 @@ _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
 feishu_cb = LazyCircuitBreaker(_FEISHU_BREAKER_SPEC.build)
 openclaw_cb = LazyCircuitBreaker(_OPENCLAW_BREAKER_SPEC.build)
 
-_host_breakers: dict[str, LazyCircuitBreaker] = {}
+# Bounded LRU of per-host breakers. The map is keyed on the forward target's
+# hostname, which can be attacker-influenced (rule targets) or high-cardinality,
+# so an unbounded dict is a slow memory leak. Cap it and evict least-recently
+# used; evicting a breaker only resets its (in-memory) state, which is harmless.
+_MAX_HOST_BREAKERS = 512
+_host_breakers: OrderedDict[str, LazyCircuitBreaker] = OrderedDict()
 _host_breakers_lock = Lock()
 
 
@@ -75,11 +81,16 @@ def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
     from urllib.parse import urlsplit
 
     host = urlsplit(target_url).hostname or "_default_"
-    if host not in _host_breakers:
-        with _host_breakers_lock:
-            if host not in _host_breakers:
-                _host_breakers[host] = LazyCircuitBreaker(_FORWARD_BREAKER_SPEC.build)
-    return _host_breakers[host]
+    with _host_breakers_lock:
+        breaker = _host_breakers.get(host)
+        if breaker is None:
+            breaker = LazyCircuitBreaker(_FORWARD_BREAKER_SPEC.build)
+            _host_breakers[host] = breaker
+            if len(_host_breakers) > _MAX_HOST_BREAKERS:
+                _host_breakers.popitem(last=False)
+        else:
+            _host_breakers.move_to_end(host)
+        return breaker
 
 
 @dataclass(frozen=True, slots=True)
