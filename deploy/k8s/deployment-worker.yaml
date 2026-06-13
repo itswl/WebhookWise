@@ -25,6 +25,17 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Spread the 2 worker replicas across nodes so a single node failure does
+      # not take out all workers. ScheduleAnyway keeps scheduling possible on a
+      # single-node cluster (degrades to best-effort rather than blocking).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: webhookwise
+              app.kubernetes.io/component: worker
       initContainers:
         - name: wait-for-migrations
           image: ghcr.io/itswl/webhookwise:3.0.0
@@ -80,6 +91,14 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
+          # Give a slow cold start (deps connecting, OTel init) up to 2 minutes
+          # before liveness starts counting, matching the api deployment.
+          startupProbe:
+            exec:
+              command: ["python3", "-m", "scripts.healthcheck"]
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 24
           resources:
             requests:
               cpu: 250m

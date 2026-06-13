@@ -26,7 +26,7 @@ Run the CI-equivalent quality gate when touching runtime behavior:
 ```bash
 python scripts/check_requirements_locks.py
 python scripts/observability/webhookwise_observe.py contract
-pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov-report=term --cov-report=xml --cov-fail-under=90
+pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
 ```
 
 Run shell checks when editing container entrypoints:

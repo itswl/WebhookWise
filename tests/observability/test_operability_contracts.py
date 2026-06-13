@@ -201,3 +201,31 @@ def test_k8s_docs_include_secret_and_image_promotion_workflow() -> None:
     assert "kubectl apply -k deploy/k8s" in readme
     assert "kubectl -n webhookwise rollout status deploy/webhookwise-api" in readme
     assert "Avoid `latest`" in readme
+
+
+def test_stateful_datastores_run_non_root() -> None:
+    """Redis/Postgres StatefulSets must declare a non-root securityContext, like
+    the app Deployments — they were the unhardened outliers (review #25)."""
+    for resource in ("postgres-statefulset.yaml", "redis-statefulset.yaml"):
+        doc = _yaml_documents(f"deploy/k8s/{resource}")[0]
+        pod_spec = doc["spec"]["template"]["spec"]
+        assert pod_spec["securityContext"]["runAsNonRoot"] is True, resource
+        assert pod_spec["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault", resource
+        container = pod_spec["containers"][0]
+        assert container["securityContext"]["allowPrivilegeEscalation"] is False, resource
+        assert container["securityContext"]["capabilities"]["drop"] == ["ALL"], resource
+
+
+def test_long_running_workloads_have_startup_probe_and_spread() -> None:
+    """worker/scheduler need a startupProbe (review #28); multi-replica
+    workloads need topology spread so replicas don't co-locate (review #29)."""
+    for resource in ("deployment-worker.yaml", "deployment-scheduler.yaml"):
+        doc = _yaml_documents(f"deploy/k8s/{resource}")[0]
+        container = doc["spec"]["template"]["spec"]["containers"][0]
+        assert "startupProbe" in container, resource
+
+    for resource in ("deployment-api.yaml", "deployment-worker.yaml"):
+        doc = _yaml_documents(f"deploy/k8s/{resource}")[0]
+        pod_spec = doc["spec"]["template"]["spec"]
+        constraints = pod_spec.get("topologySpreadConstraints") or []
+        assert any(c.get("topologyKey") == "kubernetes.io/hostname" for c in constraints), resource

@@ -80,6 +80,14 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
+          # Give a slow cold start (deps connecting, OTel init) up to 2 minutes
+          # before liveness starts counting, matching the api deployment.
+          startupProbe:
+            exec:
+              command: ["python3", "-m", "scripts.healthcheck"]
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 24
           resources:
             requests:
               cpu: 100m

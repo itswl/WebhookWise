@@ -18,10 +18,25 @@ spec:
         app.kubernetes.io/name: webhookwise
         app.kubernetes.io/component: postgres
     spec:
+      # postgres:15-alpine runs as uid 70 (the "postgres" user). Pin it
+      # explicitly and set fsGroup so the PVC is group-writable, mirroring the
+      # non-root posture the app Deployments already use.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: POSTGRES_DB
               value: webhooks
