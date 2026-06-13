@@ -315,18 +315,21 @@ async def test_reanalysis_updates_original_duplicates_and_schedules_outbox(
         is_duplicate=False,
         processing_status="completed",
     )
-    duplicate = SimpleNamespace(ai_analysis={}, importance="low", processing_status="received")
     scheduled: list[list[int]] = []
 
     class Session:
         def __init__(self) -> None:
             self.commits = 0
+            self.executed: list[object] = []
 
         async def get(self, _model: object, webhook_id: int) -> object | None:
             return event if webhook_id == 99 else None
 
-        async def execute(self, _stmt: object) -> object:
-            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [duplicate]))
+        async def execute(self, stmt: object) -> object:
+            # Duplicates are now updated via a single bulk UPDATE that reports
+            # how many rows it touched through rowcount.
+            self.executed.append(stmt)
+            return SimpleNamespace(rowcount=1)
 
         async def commit(self) -> None:
             self.commits += 1
@@ -369,9 +372,10 @@ async def test_reanalysis_updates_original_duplicates_and_schedules_outbox(
     assert result["updated_duplicates"] == 1
     assert result["forward_outbox_ids"] == [101, 102]
     assert event.importance == "high"
-    assert duplicate.importance == "high"
     assert scheduled == [[101, 102]]
     assert session.commits == 1
+    # A bulk UPDATE for the duplicates was issued (not a per-row load+mutate).
+    assert any(type(stmt).__name__ == "Update" for stmt in session.executed)
 
 
 @pytest.mark.asyncio

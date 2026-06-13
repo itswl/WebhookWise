@@ -11,10 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contracts.webhook_payload import webhook_data_from_mapping
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from models import WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
@@ -65,12 +66,15 @@ async def reanalyze_webhook_event(session: AsyncSession, webhook_id: int) -> Rea
 
     updated_dups = 0
     if event.is_duplicate is False:
-        dups_res = await session.execute(select(WebhookEvent).filter(WebhookEvent.duplicate_of == webhook_id))
-        dups = dups_res.scalars().all()
-        for d in dups:
-            d.ai_analysis, d.importance = dict(res), new_imp
-            d.processing_status = "completed"
-        updated_dups = len(dups)
+        # Bulk UPDATE instead of loading every duplicate row into the session:
+        # an original with many duplicates would otherwise pull them all into
+        # memory and emit one UPDATE per row.
+        dups_res = await session.execute(
+            update(WebhookEvent)
+            .where(WebhookEvent.duplicate_of == webhook_id)
+            .values(ai_analysis=dict(res), importance=new_imp, processing_status="completed", updated_at=utcnow())
+        )
+        updated_dups = dups_res.rowcount or 0
 
     fwd_ctx = await build_webhook_context(event)
     decision = await resolve_forward_decision(

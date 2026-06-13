@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from adapters.normalized import AlertIdentity, with_alert_identity
-from contracts.webhook_payload import JsonObject, WebhookData, webhook_data_from_mapping
+from contracts.webhook_payload import JsonObject, WebhookData
 from core.collections_utils import pick_case_insensitive
 
 Detector = Callable[[JsonObject], bool]
@@ -49,13 +50,30 @@ def normalize_level(value: Any) -> str:
     if text in low:
         return "info"
 
-    if any(k in text for k in high):
+    # Fallback for compound values like "critical-alert" or "service recovered
+    # normally". Match each keyword at a LEADING word boundary rather than as a
+    # raw substring: a bare `"ok" in text` mis-classifies "token_expired" /
+    # "stockout" (which merely contain the letters "ok") as info. `\bok` only
+    # matches "ok" at a word start, so "stockout" no longer matches while
+    # "normal" still matches "normally". CJK keywords keep plain-substring
+    # matching since `\b` is unreliable between CJK word chars.
+    if _matches_level_keyword(text, high):
         return "critical"
-    if any(k in text for k in medium):
+    if _matches_level_keyword(text, medium):
         return "warning"
-    if any(k in text for k in ("resolved", "ok", "normal", "low", "info")):
+    if _matches_level_keyword(text, low):
         return "info"
     return "warning"
+
+
+def _matches_level_keyword(text: str, keywords: set[str]) -> bool:
+    for kw in keywords:
+        if kw.isascii():
+            if re.search(r"\b" + re.escape(kw), text):
+                return True
+        elif kw in text:
+            return True
+    return False
 
 
 def _pick_first[PickValue](*values: PickValue | None) -> PickValue | None:
@@ -343,7 +361,22 @@ def _norm_feishu_card(data: JsonObject) -> WebhookData:
     if content_text:
         normalized["summary"] = content_text
 
-    return webhook_data_from_mapping(normalized, strict=False)
+    # Populate AlertIdentity so feishu_card alerts dedup by identity (name +
+    # resource) like every other adapter. Without it, dedup fell back to
+    # hashing the whole payload, so only byte-identical cards were ever treated
+    # as duplicates. fingerprint binds strategy + trigger condition so distinct
+    # rules on the same log topic stay separate.
+    fingerprint = "|".join(p for p in (alert_strategy, trigger_condition) if p) or None
+    return with_alert_identity(
+        normalized,
+        AlertIdentity(
+            source="feishu_card",
+            name=alert_strategy or header_title or None,
+            resource=log_topic or None,
+            fingerprint=fingerprint,
+            severity=normalize_level(alert_level),
+        ),
+    )
 
 
 _BUILTIN_ADAPTERS = (
