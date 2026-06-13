@@ -18,11 +18,27 @@ spec:
         app.kubernetes.io/name: webhookwise
         app.kubernetes.io/component: redis
     spec:
+      # redis:7-alpine runs as uid 999 (the "redis" user). Pin it and set
+      # fsGroup so the AOF data dir is group-writable, mirroring the non-root
+      # posture the app Deployments already use.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: redis:7-alpine
           imagePullPolicy: IfNotPresent
           args: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: redis
               containerPort: 6379
