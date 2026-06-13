@@ -6,10 +6,18 @@ import asyncio
 
 import zstandard as zstd
 
+from core.logger import get_logger
+
+logger = get_logger("compression")
+
 _DEFAULT_THRESHOLD_BYTES = 4096
 _compressor = zstd.ZstdCompressor(level=3)
 _decompressor = zstd.ZstdDecompressor()
 _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+# Returned when a stored payload cannot be decoded. Keeping this a stable,
+# JSON-safe string means a single corrupt row degrades to a placeholder instead
+# of 500-ing every API call that serializes that event.
+_UNDECODABLE_PLACEHOLDER = "<payload-decode-error>"
 
 
 def _threshold(attr: str) -> int:
@@ -33,17 +41,30 @@ def compress_payload(text: str | bytes | None) -> bytes | None:
 
 
 def decompress_payload(data: bytes | str | None) -> str | None:
-    """解压 bytes 为文本。自动识别 Zstd/原始 UTF-8 数据。"""
+    """解压 bytes 为文本。自动识别 Zstd/原始 UTF-8 数据。
+
+    对损坏数据做降级处理而不是抛异常：一条损坏记录不应让所有序列化该事件的
+    API 报 500。无法解压的 zstd 返回占位符，非法 UTF-8 用 replace 容错解码。
+    """
     if data is None:
         return None
     if isinstance(data, str):
         if data.startswith("\\x"):
-            data = bytes.fromhex(data[2:])
+            try:
+                data = bytes.fromhex(data[2:])
+            except ValueError:
+                logger.warning("[Compression] 十六进制 payload 解析失败，返回占位符")
+                return _UNDECODABLE_PLACEHOLDER
         else:
             return data
     if data[:4] == _ZSTD_MAGIC:
-        return _decompressor.decompress(data).decode("utf-8")
-    return data.decode("utf-8")
+        try:
+            decompressed = _decompressor.decompress(data)
+        except zstd.ZstdError:
+            logger.warning("[Compression] Zstd 解压失败（数据可能损坏），返回占位符")
+            return _UNDECODABLE_PLACEHOLDER
+        return decompressed.decode("utf-8", errors="replace")
+    return data.decode("utf-8", errors="replace")
 
 
 async def decompress_payload_async(data: bytes | str | None) -> str | None:
