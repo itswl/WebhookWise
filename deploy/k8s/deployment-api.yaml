@@ -25,6 +25,17 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Spread the 2 api replicas across nodes so a single node failure does not
+      # take out all ingress. ScheduleAnyway keeps scheduling possible on a
+      # single-node cluster (degrades to best-effort rather than blocking).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: webhookwise
+              app.kubernetes.io/component: api
       initContainers:
         # Gate app start on the migration Job having applied the schema. The
         # plain migrate Job and these Deployments are created concurrently by
