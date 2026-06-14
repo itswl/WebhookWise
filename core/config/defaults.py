@@ -151,6 +151,13 @@ class AIConfig(StaticSettings):
     RULE_METRIC_KEYWORDS: str = Field(default="4xxqps,5xxqps,error,cpu,memory,disk")
     RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0)
 
+    # Tiered AI routing: when on, alerts the rule pass judges low-value skip the
+    # (paid) LLM and return the rule analysis directly, concentrating AI spend on
+    # alerts that need it. OFF by default → behavior unchanged. AI_ROUTING_SKIP_
+    # IMPORTANCE lists the rule-importances that bypass the LLM (default "low").
+    AI_ROUTING_ENABLED: bool = Field(default=False)
+    AI_ROUTING_SKIP_IMPORTANCE: str = Field(default="low")
+
     ENABLE_AI_DEGRADATION: bool = Field(default=False)
     OPENAI_TEMPERATURE: float = Field(default=0.2)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
