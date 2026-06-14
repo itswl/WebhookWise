@@ -173,6 +173,15 @@ class NotificationConfig(StaticSettings):
     FEISHU_WEBHOOK_TIMEOUT: int = Field(default=10)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
 
+    # Periodic alert-health digest (cost + noise report). Reads already-collected
+    # AIUsageLog + webhook_events, summarizes via the LLM, and pushes one card to
+    # the report webhook (falls back to DEEP_ANALYSIS_FEISHU_WEBHOOK). Off by
+    # default; enable to get a weekly "are my alerts healthy / where did AI $ go".
+    WEEKLY_REPORT_ENABLED: bool = Field(default=False)
+    WEEKLY_REPORT_CRON: str = Field(default="0 9 * * 1")
+    WEEKLY_REPORT_WINDOW_DAYS: int = Field(default=7)
+    WEEKLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
+
 
 class OpenClawConfig(StaticSettings):
     """OpenClaw 深度分析引擎"""
