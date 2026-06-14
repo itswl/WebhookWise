@@ -507,3 +507,18 @@ async def scheduled_data_maintenance() -> None:
     from services.operations.data_maintenance import cleanup_old_data_by_policy
 
     await _run_scheduled("data_maintenance", 86400, cleanup_old_data_by_policy())
+
+
+def _weekly_report_cron() -> str:
+    from core.app_context import get_config_manager
+
+    return str(get_config_manager().notifications.WEEKLY_REPORT_CRON)
+
+
+@broker.task(task_name="scheduled_weekly_report", schedule=[{"cron": _weekly_report_cron()}])
+async def scheduled_weekly_report() -> None:
+    from services.operations.weekly_report import generate_and_send_weekly_report
+
+    # Internally a no-op unless WEEKLY_REPORT_ENABLED; the leader lock prevents
+    # duplicate sends if more than one scheduler is ever running.
+    await _run_scheduled("weekly_report", 86400, generate_and_send_weekly_report())
