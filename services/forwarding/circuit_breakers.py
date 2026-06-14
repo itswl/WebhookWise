@@ -6,31 +6,14 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, ParamSpec, TypeVar
+from typing import Any
 
 from core.app_context import get_config_manager
 from core.circuit_breaker import CircuitBreaker
 from core.config import AppConfig
+from core.resilience import LazyCircuitBreaker
 
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
 ValidateURL = Callable[[str], Awaitable[str]]
-
-
-class LazyCircuitBreaker:
-    """Create the configured breaker on first use, not at module import time."""
-
-    def __init__(self, factory: Callable[[AppConfig], CircuitBreaker]) -> None:
-        self._factory = factory
-        self._breaker: CircuitBreaker | None = None
-
-    def _get(self) -> CircuitBreaker:
-        if self._breaker is None:
-            self._breaker = self._factory(get_config_manager())
-        return self._breaker
-
-    async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:
-        return await self._get().call_async(func, *args, **kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +29,10 @@ class CircuitBreakerSpec:
             failure_threshold=getattr(circuit_config, self.failure_threshold_attr),
             recovery_timeout=getattr(circuit_config, self.recovery_timeout_attr),
         )
+
+    def lazy(self) -> LazyCircuitBreaker:
+        """A LazyCircuitBreaker that builds this spec from current config on first use."""
+        return LazyCircuitBreaker(lambda: self.build(get_config_manager()))
 
 
 _FEISHU_BREAKER_SPEC = CircuitBreakerSpec(
@@ -65,8 +52,8 @@ _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
 )
 
 
-feishu_cb = LazyCircuitBreaker(_FEISHU_BREAKER_SPEC.build)
-openclaw_cb = LazyCircuitBreaker(_OPENCLAW_BREAKER_SPEC.build)
+feishu_cb = _FEISHU_BREAKER_SPEC.lazy()
+openclaw_cb = _OPENCLAW_BREAKER_SPEC.lazy()
 
 # Bounded LRU of per-host breakers. The map is keyed on the forward target's
 # hostname, which can be attacker-influenced (rule targets) or high-cardinality,
@@ -84,7 +71,7 @@ def get_forward_breaker(target_url: str) -> LazyCircuitBreaker:
     with _host_breakers_lock:
         breaker = _host_breakers.get(host)
         if breaker is None:
-            breaker = LazyCircuitBreaker(_FORWARD_BREAKER_SPEC.build)
+            breaker = _FORWARD_BREAKER_SPEC.lazy()
             _host_breakers[host] = breaker
             if len(_host_breakers) > _MAX_HOST_BREAKERS:
                 _host_breakers.popitem(last=False)
