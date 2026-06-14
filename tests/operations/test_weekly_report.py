@@ -55,6 +55,31 @@ async def test_collect_report_stats_aggregates_noise_sources_and_cost(session: A
 
 
 @pytest.mark.asyncio
+async def test_top_rules_breaks_down_noisiest_source_by_rule(session: AsyncSession) -> None:
+    """'source' (e.g. volcengine) is too coarse — the report must break the
+    noisiest source down by its alert rule name."""
+    from services.operations.weekly_report import collect_report_stats
+
+    now = utcnow()
+    # volcengine is noisiest (5), dominated by one rule (4x GPU vs 1x storage).
+    for _ in range(4):
+        session.add(WebhookEvent(source="volcengine", timestamp=now, duplicate_count=1,
+                                 parsed_data={"RuleName": "GPU卡告警", "Type": "Metric"}))
+    session.add(WebhookEvent(source="volcengine", timestamp=now, duplicate_count=1,
+                             parsed_data={"RuleName": "对象存储告警", "Type": "Metric"}))
+    session.add(WebhookEvent(source="grafana", timestamp=now, duplicate_count=1,
+                             parsed_data={"RuleName": "x"}))
+    await session.commit()
+
+    stats = await collect_report_stats(session, window_days=7)
+    assert stats["top_sources"][0]["source"] == "volcengine"
+    rules = {r["rule"]: r["count"] for r in stats["top_rules"]}
+    assert rules["GPU卡告警"] == 4
+    assert rules["对象存储告警"] == 1
+    assert all(r["source"] == "volcengine" for r in stats["top_rules"])
+
+
+@pytest.mark.asyncio
 async def test_collect_report_stats_excludes_events_outside_window(session: AsyncSession) -> None:
     from datetime import timedelta
 

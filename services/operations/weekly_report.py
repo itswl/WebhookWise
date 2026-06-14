@@ -23,6 +23,7 @@ from models import AIUsageLog, WebhookEvent
 logger = get_logger("weekly_report")
 
 _TOP_SOURCES = 5
+_TOP_RULES = 5
 
 
 async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[str, Any]:
@@ -55,6 +56,30 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     )).all()
     top_sources = [{"source": r[0] or "unknown", "count": int(r[1])} for r in source_rows]
 
+    # "source" is just the adapter (e.g. volcengine) — too coarse. Break the
+    # noisiest source down by its alert rule name so the report says WHAT is
+    # actually noisy. .astext is portable (-> ->> on Postgres, json_extract on
+    # SQLite). RuleName is the volcengine/grafana rule; fall back to Type.
+    top_rules: list[dict[str, Any]] = []
+    if top_sources:
+        noisiest = top_sources[0]["source"]
+        rule_expr = func.coalesce(
+            WebhookEvent.parsed_data["RuleName"].astext,
+            WebhookEvent.parsed_data["AlertName"].astext,
+            WebhookEvent.parsed_data["MetricName"].astext,
+            WebhookEvent.parsed_data["Type"].astext,
+        )
+        rule_rows = (await session.execute(
+            select(rule_expr, func.count(WebhookEvent.id))
+            .where(WebhookEvent.timestamp >= start, WebhookEvent.source == noisiest)
+            .group_by(rule_expr)
+            .order_by(func.count(WebhookEvent.id).desc())
+            .limit(_TOP_RULES)
+        )).all()
+        top_rules = [
+            {"source": noisiest, "rule": r[0] or "unknown", "count": int(r[1])} for r in rule_rows
+        ]
+
     cost_row = (await session.execute(
         select(
             func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0),
@@ -81,6 +106,7 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "noise_pct": noise_pct,
         "importance_breakdown": importance_breakdown,
         "top_sources": top_sources,
+        "top_rules": top_rules,
         "ai_cost_usd": round(ai_cost, 4),
         "ai_calls": ai_calls,
         "cache_hit_pct": cache_pct,
@@ -95,13 +121,21 @@ def _build_summary(stats: dict[str, Any]) -> str:
     top_txt = f"{top['source']}（{top['count']} 条）" if top else "无"
     imp = stats["importance_breakdown"]
     imp_txt = "、".join(f"{k}:{v}" for k, v in sorted(imp.items(), key=lambda kv: -kv[1])) or "无"
-    return (
+    lines = [
         f"过去 {stats['window_days']} 天：告警 {stats['total_events']} 条，"
-        f"其中去重/重复 {stats['duplicate_events']} 条（噪声率 {stats['noise_pct']}%）。\n"
-        f"重要度分布：{imp_txt}。\n"
-        f"最吵的来源：{top_txt}。\n"
+        f"其中去重/重复 {stats['duplicate_events']} 条（噪声率 {stats['noise_pct']}%）。",
+        f"重要度分布：{imp_txt}。",
+        f"最吵的来源：{top_txt}。",
+    ]
+    # Break the noisiest source down by rule so the report says WHAT is noisy.
+    rules = stats.get("top_rules") or []
+    if rules:
+        rule_lines = "\n".join(f"  · {r['rule']}：{r['count']} 条" for r in rules)
+        lines.append(f"其中 {rules[0]['source']} 按告警规则细分（Top{len(rules)}）：\n{rule_lines}")
+    lines.append(
         f"AI：调用 {stats['ai_calls']} 次，缓存命中 {stats['cache_hit_pct']}%，花费 ${stats['ai_cost_usd']}。"
     )
+    return "\n".join(lines)
 
 
 def _build_card(stats: dict[str, Any]) -> dict[str, Any]:
