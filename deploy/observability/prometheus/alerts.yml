@@ -425,6 +425,24 @@ groups:
           summary: Redis Stream retained depth is growing.
           runbook: Check queue pending/lag first. If pending and lag are normal, tune Redis Stream maxlen/trimming rather than scaling workers.
 
+      - alert: WebhookWiseQueueDepthNearMaxlen
+        # The broker XADDs with a capped maxlen (WEBHOOK_MQ_STREAM_MAXLEN, default
+        # 100000). Ingress is at-most-once-until-consumed: a webhook becomes
+        # durable only once a worker saves its result. If stream depth approaches
+        # the cap while consumers lag, Redis trims still-unacked pending entries
+        # -> silent webhook loss. Fire at 80% of the default cap so operators
+        # raise maxlen or shed load BEFORE eviction starts. NOTE: if
+        # WEBHOOK_MQ_STREAM_MAXLEN is changed from its 100000 default, update the
+        # 80000 threshold below to match.
+        expr: (max(queue_depth) or vector(0)) > 80000
+        for: 5m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: Redis Stream depth is near the configured maxlen cap.
+          runbook: At-most-once ingress means capped-stream eviction drops unconsumed webhooks. Check queue pending/lag and worker throughput; raise WEBHOOK_MQ_STREAM_MAXLEN or scale workers before depth reaches the cap.
+
       - alert: WebhookWiseDbPoolNearCapacity
         expr: |
           (
