@@ -193,6 +193,35 @@ async def _degrade_to_rules(
     return res
 
 
+def _routing_skip_importances(ai_config: Any) -> frozenset[str]:
+    raw = str(getattr(ai_config, "AI_ROUTING_SKIP_IMPORTANCE", "") or "")
+    return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
+
+
+async def _maybe_route_to_rules(
+    webhook_data: WebhookData,
+    parsed: dict[str, Any],
+    source: str,
+    alert_hash: str,
+    ai_config: Any,
+) -> AnalysisResult | None:
+    """Return a rule-only analysis (skipping the LLM) when tiered routing is on
+    and the rule pass judges the alert low-value; else None (proceed to AI)."""
+    if not bool(getattr(ai_config, "AI_ROUTING_ENABLED", False)):
+        return None
+    skip = _routing_skip_importances(ai_config)
+    if not skip:
+        return None
+    res = apply_resource_importance_override(analyze_with_rules(parsed, source), parsed)
+    importance = str(res.get("importance", "")).lower()
+    if importance not in skip:
+        return None
+    logger.info("[AI] 分级路由：低价值告警跳过 LLM source=%s importance=%s", source, importance)
+    await log_ai_usage("rule_routed", alert_hash, source)
+    AI_REQUESTS_TOTAL.labels(sanitize_source(source), "rule_routed", "success").inc()
+    return set_analysis_route(res, "rule_routed")
+
+
 async def analyze_webhook_with_ai(
     webhook_data: WebhookData,
     alert_hash: str | None = None,
@@ -218,6 +247,13 @@ async def analyze_webhook_with_ai(
             set_analysis_route(cached_result, "cache")
             AI_REQUESTS_TOTAL.labels(sanitize_source(source), "cache", "hit").inc()
             return cached_result
+
+    # Tiered routing (opt-in): if the cheap rule pass deems this a low-value alert,
+    # skip the paid LLM and return the rule analysis. This is an intentional route,
+    # NOT a degradation — so it is logged as "rule_routed" and not marked degraded.
+    routed = await _maybe_route_to_rules(webhook_data, parsed, source, alert_hash, ai_config)
+    if routed is not None:
+        return routed
 
     if not provider_policy.available:
         reason = "disabled" if not provider_policy.enabled else "no_api_key"
