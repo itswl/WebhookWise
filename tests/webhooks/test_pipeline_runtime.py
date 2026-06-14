@@ -278,6 +278,27 @@ async def test_run_processing_pipeline_suppressed_and_forward_decision_metrics(
 
 
 @pytest.mark.asyncio
+async def test_validate_backpressure_requeues_on_redis_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],
+) -> None:
+    """Gap fix: a Redis-unavailable suppression must re-queue (raise a retryable
+    error), not silently drop the alert. Genuine storm backpressure still drops."""
+    from core.alert_concurrency import ProcessingLockLost
+    from services.webhooks import pipeline_stages
+
+    ctx = _ctx()
+
+    # redis_unavailable -> retryable raise (re-queue), not a dropped result.
+    with pytest.raises(ProcessingLockLost):
+        await pipeline_stages.validate_backpressure(ctx, _GateResult(True, 0, "redis_unavailable"))
+
+    # genuine storm backpressure -> still suppressed (intentional load-shed).
+    result = await pipeline_stages.validate_backpressure(ctx, _GateResult(True, 9, "alert_storm_backpressure"))
+    assert result is not None and result.suppressed is True
+
+
+@pytest.mark.asyncio
 async def test_persist_and_schedule_aborts_when_lock_lost(
     monkeypatch: pytest.MonkeyPatch,
     patched_pipeline: tuple[Any, list[tuple[str, tuple[object, ...], dict[str, object], str, object]]],

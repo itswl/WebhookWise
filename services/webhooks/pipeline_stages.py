@@ -182,6 +182,21 @@ async def validate_backpressure(
     async with pipeline_runtime.pipeline_step(ctx, "validate") as (_span, outcome):
         if not getattr(gate_res, "suppressed", False):
             return None
+        reason = getattr(gate_res, "reason", "") or "alert_storm_backpressure"
+        # Distinguish genuine storm backpressure (intentional load-shed: drop) from
+        # a Redis outage. When the gate suppresses because Redis is unavailable,
+        # dropping the event would turn a Redis blip into silent alert loss. Raise
+        # a retryable error instead so the broker re-queues the webhook; once Redis
+        # recovers the retry processes it normally.
+        if reason == "redis_unavailable":
+            outcome["value"] = "redis_unavailable"
+            WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="redis_unavailable_requeue").inc()
+            logger.warning(
+                "[Pipeline] Redis 不可用导致背压抑制，改为重排而非丢弃 request_id=%s dedup_key=%s",
+                ctx.request_id,
+                ctx.dedup_key[:12],
+            )
+            raise ProcessingLockLost(f"redis unavailable, requeue dedup_key={ctx.dedup_key[:12]}")
         _record_suppressed(ctx, gate_res)
         outcome["value"] = "suppressed"
         return pipeline_runtime.PipelineProcessingResult(suppressed=True)
