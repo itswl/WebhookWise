@@ -48,8 +48,12 @@ OPENCLAW_TEXT: Final = OpenClawMetaKey.TEXT.value
 OPENCLAW_NEED_SUCCESS_NOTIFY: Final = OpenClawMetaKey.NEED_SUCCESS_NOTIFY.value
 MANUAL_RETRY_STARTED_AT: Final = OpenClawMetaKey.MANUAL_RETRY_STARTED_AT.value
 
-AnalysisRouteType = Literal["ai", "cache", "rule", "redis_reuse", "db_reuse", "rechain"]
-ALLOWED_ANALYSIS_ROUTE_TYPES: Final = frozenset({"ai", "cache", "rule", "redis_reuse", "db_reuse", "rechain"})
+# "rule" = degraded to rules (AI unavailable/failed). "rule_routed" = tiered
+# routing intentionally skipped the LLM for a low-value alert (not a degradation).
+AnalysisRouteType = Literal["ai", "cache", "rule", "rule_routed", "redis_reuse", "db_reuse", "rechain"]
+ALLOWED_ANALYSIS_ROUTE_TYPES: Final = frozenset(
+    {"ai", "cache", "rule", "rule_routed", "redis_reuse", "db_reuse", "rechain"}
+)
 
 
 class AnalysisResult(TypedDict):
