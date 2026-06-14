@@ -237,7 +237,11 @@ def test_payload_sanitizer_list_and_recursion_guard() -> None:
 
     truncated_list = _truncate_large_values(list(range(20)), max_bytes=10)
     assert isinstance(truncated_list, list)
-    assert truncated_list[-1] == {"_truncated": True, "_original_length": 20}
+    # Head + tail are kept (recent items matter); the elision marker sits between.
+    assert truncated_list[0] == 0
+    assert truncated_list[-1] == 19
+    marker = next(x for x in truncated_list if isinstance(x, dict) and x.get("_truncated"))
+    assert marker["_original_length"] == 20
     assert _truncate_large_values({"too": {"deep": "x"}}, max_bytes=1, depth=6) == {
         "_truncated": True,
         "_reason": "max depth exceeded",

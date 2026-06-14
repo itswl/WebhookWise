@@ -126,8 +126,71 @@ def _strip_keys_recursive(data: object, strip_keys: set[str], max_depth: int = 2
     return data
 
 
+# Lines containing these (case-insensitive) survive string truncation: in a big
+# log blob the root-cause signal is usually an error/stack line, which a blind
+# head-cut (v[:200]) would discard. Keeping head + tail + matching lines gives
+# the AI the highest-signal slice within the same byte budget.
+_ERROR_KEYWORDS = (
+    "error",
+    "panic",
+    "fatal",
+    "exception",
+    "traceback",
+    "failed",
+    "failure",
+    "timeout",
+    "timed out",
+    "refused",
+    "denied",
+    "oom",
+    "killed",
+    "crash",
+    "unhealthy",
+    "5xx",
+    "critical",
+    "错误",
+    "失败",
+    "异常",
+    "超时",
+)
+_STRING_TRUNCATE_THRESHOLD = 200
+_STRING_HEAD_CHARS = 600
+_STRING_TAIL_CHARS = 400
+_MAX_ERROR_LINES = 20
+_LIST_HEAD = 8
+_LIST_TAIL = 2
+
+
+def _summarize_large_string(value: str) -> str:
+    """Structure-aware string truncation: keep head + tail + error/stack lines
+    instead of a blind prefix, so the root-cause signal survives."""
+    head = value[:_STRING_HEAD_CHARS]
+    tail = value[-_STRING_TAIL_CHARS:] if len(value) > _STRING_HEAD_CHARS + _STRING_TAIL_CHARS else ""
+
+    # Pull out lines that look like errors and aren't already in head/tail.
+    head_end, tail_start = _STRING_HEAD_CHARS, len(value) - _STRING_TAIL_CHARS
+    error_lines: list[str] = []
+    pos = 0
+    for line in value.splitlines():
+        line_start, pos = pos, pos + len(line) + 1
+        if line_start < head_end or (tail and line_start >= tail_start):
+            continue  # already represented in head/tail
+        low = line.lower()
+        if any(kw in low for kw in _ERROR_KEYWORDS):
+            error_lines.append(line.strip())
+            if len(error_lines) >= _MAX_ERROR_LINES:
+                break
+
+    parts = [f"{head}...[truncated, original {len(value)} chars; kept head+tail+error lines]"]
+    if error_lines:
+        parts.append("[error lines]\n" + "\n".join(error_lines))
+    if tail:
+        parts.append("[tail]\n" + tail)
+    return "\n".join(parts)
+
+
 def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> object:
-    """按值大小降序截断，直到总大小低于限制。"""
+    """按值大小降序截断，直到总大小低于限制。截断时做结构感知摘要而非盲砍前缀。"""
     if depth > 5:
         # 超过递归深度直接返回摘要
         return {"_truncated": True, "_reason": "max depth exceeded"}
@@ -143,12 +206,20 @@ def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> obje
         result: dict[str, object] = {}
         current_size = 2  # {}
         for k, v, size in items_with_size:
-            if current_size + size + len(k) + 4 > max_bytes and result:
-                # 截断此字段
-                if isinstance(v, str) and len(v) > 200:
-                    result[k] = v[:200] + f"...[truncated, original {len(v)} chars]"
-                elif isinstance(v, (dict, list)):
-                    result[k] = {"_truncated": True, "_original_size": size}
+            # Truncate when adding this field whole would blow the budget. Unlike
+            # the old guard (which kept the first/largest field whole even when it
+            # alone exceeded the budget — silently bypassing the limit), a field
+            # that on its own is larger than the budget is also summarized.
+            over_budget = current_size + size + len(k) + 4 > max_bytes
+            if over_budget and (result or size + len(k) + 4 > max_bytes):
+                # 截断此字段：长字符串保留 头+尾+错误行；大 dict 递归做同样的智能摘要
+                # （保留嵌套日志里的错误行），大 list 保留头尾。
+                if isinstance(v, str) and len(v) > _STRING_TRUNCATE_THRESHOLD:
+                    result[k] = _summarize_large_string(v)
+                elif isinstance(v, dict):
+                    result[k] = _truncate_large_values(v, max(max_bytes // 2, 256), depth + 1)
+                elif isinstance(v, list):
+                    result[k] = _summarize_large_list(v)
                 else:
                     result[k] = v
             else:
@@ -157,9 +228,19 @@ def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> obje
         return result
 
     if isinstance(data, list) and len(json.dumps_bytes(data)) > max_bytes:
-        # 截断列表到合理长度
-        truncated = data[:10]
-        truncated.append({"_truncated": True, "_original_length": len(data)})
-        return truncated
+        return _summarize_large_list(data)
 
     return data
+
+
+def _summarize_large_list(data: list[Any]) -> list[Any]:
+    """Keep head + tail of a large list with an elision marker, instead of only
+    the head — the last items (most recent events) are often the relevant ones."""
+    if len(data) <= _LIST_HEAD + _LIST_TAIL + 1:
+        return data
+    omitted = len(data) - _LIST_HEAD - _LIST_TAIL
+    return [
+        *data[:_LIST_HEAD],
+        {"_truncated": True, "_omitted_items": omitted, "_original_length": len(data)},
+        *data[-_LIST_TAIL:],
+    ]
