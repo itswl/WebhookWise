@@ -1,13 +1,14 @@
 """Periodic alert-health digest (cost + noise report).
 
 Reads already-collected telemetry (AIUsageLog + webhook_events), aggregates it
-into an alert-health summary, optionally adds a one-paragraph LLM narrative, and
-pushes a single Feishu card. This is read-only over existing data — no new
-instruments, no hot-path impact. Off by default (WEEKLY_REPORT_ENABLED).
+into an alert-health summary, and pushes a single Feishu card. This is read-only
+over existing data — no new instruments, no hot-path impact. Each cadence
+(daily / weekly / monthly) is independent and off by default.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
@@ -24,6 +25,42 @@ logger = get_logger("weekly_report")
 
 _TOP_SOURCES = 5
 _TOP_RULES = 5
+
+
+@dataclass(frozen=True, slots=True)
+class ReportPeriod:
+    """One report cadence and the config keys that drive it."""
+
+    key: str  # "daily" | "weekly" | "monthly"
+    title: str  # Feishu card header
+    enabled_attr: str
+    window_attr: str
+    webhook_attr: str
+
+
+REPORT_PERIODS: dict[str, ReportPeriod] = {
+    "daily": ReportPeriod(
+        key="daily",
+        title="📊 WebhookWise Alert Health Daily Report",
+        enabled_attr="DAILY_REPORT_ENABLED",
+        window_attr="DAILY_REPORT_WINDOW_DAYS",
+        webhook_attr="DAILY_REPORT_FEISHU_WEBHOOK",
+    ),
+    "weekly": ReportPeriod(
+        key="weekly",
+        title="📊 WebhookWise Alert Health Weekly Report",
+        enabled_attr="WEEKLY_REPORT_ENABLED",
+        window_attr="WEEKLY_REPORT_WINDOW_DAYS",
+        webhook_attr="WEEKLY_REPORT_FEISHU_WEBHOOK",
+    ),
+    "monthly": ReportPeriod(
+        key="monthly",
+        title="📊 WebhookWise Alert Health Monthly Report",
+        enabled_attr="MONTHLY_REPORT_ENABLED",
+        window_attr="MONTHLY_REPORT_WINDOW_DAYS",
+        webhook_attr="MONTHLY_REPORT_FEISHU_WEBHOOK",
+    ),
+}
 
 
 async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[str, Any]:
@@ -138,43 +175,70 @@ def _build_summary(stats: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _build_card(stats: dict[str, Any]) -> dict[str, Any]:
+def _build_card(stats: dict[str, Any], title: str = "📊 WebhookWise Alert Health Weekly Report") -> dict[str, Any]:
     body = _build_summary(stats)
     return {
         "msg_type": "interactive",
         "card": {
-            "header": {"title": {"tag": "plain_text", "content": "📊 WebhookWise Alert Health Weekly Report"}},
+            "header": {"title": {"tag": "plain_text", "content": title}},
             "elements": [{"tag": "markdown", "content": body}],
         },
     }
 
 
-async def generate_and_send_weekly_report() -> dict[str, Any]:
-    """Entry point for the scheduled task. Returns the stats (for tests/logs)."""
-    cfg = get_config_manager()
-    notif = cfg.notifications
-    if not notif.WEEKLY_REPORT_ENABLED:
-        logger.debug("[WeeklyReport] Not enabled, skipping")
+async def generate_and_send_report(period_key: str) -> dict[str, Any]:
+    """Generate and send one cadence's report. Returns the stats (for tests/logs).
+
+    Each cadence has its own enable flag, window, and (optional) dedicated
+    webhook; the webhook falls back to the weekly webhook, then the deep-analysis
+    webhook. Returns a ``{"skipped": ...}`` marker when not enabled / unconfigured.
+    """
+    period = REPORT_PERIODS[period_key]
+    notif = get_config_manager().notifications
+
+    if not getattr(notif, period.enabled_attr):
+        logger.debug("[PeriodicReport] %s not enabled, skipping", period.key)
         return {"skipped": "disabled"}
 
-    webhook_url = notif.WEEKLY_REPORT_FEISHU_WEBHOOK or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    webhook_url = (
+        getattr(notif, period.webhook_attr)
+        or notif.WEEKLY_REPORT_FEISHU_WEBHOOK
+        or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    )
     if not webhook_url:
-        logger.warning("[WeeklyReport] Enabled but no webhook configured (WEEKLY_REPORT_FEISHU_WEBHOOK / DEEP_ANALYSIS_FEISHU_WEBHOOK)")
+        logger.warning(
+            "[PeriodicReport] %s enabled but no webhook configured (%s / WEEKLY_REPORT_FEISHU_WEBHOOK / DEEP_ANALYSIS_FEISHU_WEBHOOK)",
+            period.key,
+            period.webhook_attr,
+        )
         return {"skipped": "no_webhook"}
 
     async with session_scope() as session:
-        stats = await collect_report_stats(session, notif.WEEKLY_REPORT_WINDOW_DAYS)
+        stats = await collect_report_stats(session, getattr(notif, period.window_attr))
 
-    card = _build_card(stats)
+    card = _build_card(stats, period.title)
 
     from services.notifications.feishu import send_to_feishu
 
     result = await send_to_feishu(webhook_url, card)
     logger.info(
-        "[WeeklyReport] Sent events=%s noise=%s%% ai_cost=$%s status=%s",
+        "[PeriodicReport] %s sent events=%s noise=%s%% ai_cost=$%s status=%s",
+        period.key,
         stats["total_events"],
         stats["noise_pct"],
         stats["ai_cost_usd"],
         result.get("status"),
     )
     return stats
+
+
+async def generate_and_send_daily_report() -> dict[str, Any]:
+    return await generate_and_send_report("daily")
+
+
+async def generate_and_send_weekly_report() -> dict[str, Any]:
+    return await generate_and_send_report("weekly")
+
+
+async def generate_and_send_monthly_report() -> dict[str, Any]:
+    return await generate_and_send_report("monthly")

@@ -1,5 +1,6 @@
-"""Tests for the alert-health weekly report (#A)."""
+"""Tests for the alert-health periodic reports (daily / weekly / monthly)."""
 
+import contextlib
 from collections.abc import AsyncIterator
 
 import pytest
@@ -8,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from core.datetime_utils import utcnow
 from db.session import Base
 from models import AIUsageLog, WebhookEvent
+
+
+@contextlib.asynccontextmanager
+async def _noop_session_scope() -> AsyncIterator[None]:
+    """Stand-in for db.session_scope so report tests don't open a real engine."""
+    yield None
 
 
 @pytest.fixture()
@@ -130,3 +137,125 @@ def test_build_summary_is_deterministic_and_human_readable() -> None:
     }
     text = _build_summary(stats)
     assert "100" in text and "40.0%" in text and "prometheus" in text and "$1.23" in text
+
+
+@pytest.mark.parametrize(
+    ("period_key", "enabled_attr", "window_attr", "webhook_attr", "title_word"),
+    [
+        ("daily", "DAILY_REPORT_ENABLED", "DAILY_REPORT_WINDOW_DAYS", "DAILY_REPORT_FEISHU_WEBHOOK", "Daily"),
+        ("weekly", "WEEKLY_REPORT_ENABLED", "WEEKLY_REPORT_WINDOW_DAYS", "WEEKLY_REPORT_FEISHU_WEBHOOK", "Weekly"),
+        ("monthly", "MONTHLY_REPORT_ENABLED", "MONTHLY_REPORT_WINDOW_DAYS", "MONTHLY_REPORT_FEISHU_WEBHOOK", "Monthly"),
+    ],
+)
+def test_report_periods_registry_matches_config(period_key, enabled_attr, window_attr, webhook_attr, title_word) -> None:
+    from services.operations.weekly_report import REPORT_PERIODS
+
+    period = REPORT_PERIODS[period_key]
+    assert period.enabled_attr == enabled_attr
+    assert period.window_attr == window_attr
+    assert period.webhook_attr == webhook_attr
+    assert title_word in period.title
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("period_key", ["daily", "weekly", "monthly"])
+async def test_report_no_op_when_disabled(temp_config, period_key) -> None:
+    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+
+    setattr(temp_config.notifications, REPORT_PERIODS[period_key].enabled_attr, False)
+    result = await generate_and_send_report(period_key)
+    assert result == {"skipped": "disabled"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("period_key", ["daily", "weekly", "monthly"])
+async def test_report_skips_when_no_webhook(temp_config, period_key) -> None:
+    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+
+    notif = temp_config.notifications
+    setattr(notif, REPORT_PERIODS[period_key].enabled_attr, True)
+    setattr(notif, REPORT_PERIODS[period_key].webhook_attr, "")
+    notif.WEEKLY_REPORT_FEISHU_WEBHOOK = ""
+    notif.DEEP_ANALYSIS_FEISHU_WEBHOOK = ""
+    result = await generate_and_send_report(period_key)
+    assert result == {"skipped": "no_webhook"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("period_key", "title_word"),
+    [("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly")],
+)
+async def test_report_sends_card_with_period_title(temp_config, monkeypatch, period_key, title_word) -> None:
+    """Each cadence sends a card titled for its period, using its window + webhook."""
+    import services.operations.weekly_report as wr
+    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+
+    notif = temp_config.notifications
+    setattr(notif, REPORT_PERIODS[period_key].enabled_attr, True)
+    setattr(notif, REPORT_PERIODS[period_key].webhook_attr, "https://example.com/hook")
+
+    sent: dict[str, object] = {}
+
+    async def fake_collect(_session, window_days):
+        sent["window_days"] = window_days
+        return {
+            "window_days": window_days,
+            "total_events": 0,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 0,
+            "cache_hit_pct": 0.0,
+        }
+
+    async def fake_send(url, card):
+        sent["url"] = url
+        sent["title"] = card["card"]["header"]["title"]["content"]
+        return {"status": "success"}
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+
+    await generate_and_send_report(period_key)
+
+    assert sent["url"] == "https://example.com/hook"
+    assert title_word in sent["title"]
+    assert sent["window_days"] == getattr(notif, REPORT_PERIODS[period_key].window_attr)
+
+
+@pytest.mark.asyncio
+async def test_report_webhook_falls_back_to_weekly_then_deep_analysis(temp_config, monkeypatch) -> None:
+    """Daily report with no dedicated webhook falls back to the weekly webhook."""
+    import services.operations.weekly_report as wr
+    from services.operations.weekly_report import generate_and_send_report
+
+    notif = temp_config.notifications
+    notif.DAILY_REPORT_ENABLED = True
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = ""
+    notif.WEEKLY_REPORT_FEISHU_WEBHOOK = "https://example.com/weekly-hook"
+    notif.DEEP_ANALYSIS_FEISHU_WEBHOOK = "https://example.com/deep-hook"
+
+    captured: dict[str, str] = {}
+
+    async def fake_collect(_session, window_days):
+        return {
+            "window_days": window_days, "total_events": 0, "duplicate_events": 0,
+            "noise_pct": 0.0, "importance_breakdown": {}, "top_sources": [],
+            "top_rules": [], "ai_cost_usd": 0.0, "ai_calls": 0, "cache_hit_pct": 0.0,
+        }
+
+    async def fake_send(url, card):
+        captured["url"] = url
+        return {"status": "success"}
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+
+    await generate_and_send_report("daily")
+    assert captured["url"] == "https://example.com/weekly-hook"

@@ -181,13 +181,25 @@ class NotificationConfig(StaticSettings):
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
-    # AIUsageLog + webhook_events, summarizes via the LLM, and pushes one card to
-    # the report webhook (falls back to DEEP_ANALYSIS_FEISHU_WEBHOOK). Off by
-    # default; enable to get a weekly "are my alerts healthy / where did AI $ go".
+    # AIUsageLog + webhook_events, summarizes the numbers, and pushes one card to
+    # the report webhook (each cadence falls back to WEEKLY_REPORT_FEISHU_WEBHOOK,
+    # then DEEP_ANALYSIS_FEISHU_WEBHOOK). All off by default; enable any cadence to
+    # get "are my alerts healthy / where did AI $ go" over that window.
+    # Cron is evaluated in the container timezone (Asia/Shanghai in the image).
     WEEKLY_REPORT_ENABLED: bool = Field(default=False)
-    WEEKLY_REPORT_CRON: str = Field(default="0 9 * * 1")
+    WEEKLY_REPORT_CRON: str = Field(default="0 9 * * 1")  # Monday 09:00
     WEEKLY_REPORT_WINDOW_DAYS: int = Field(default=7)
     WEEKLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
+
+    DAILY_REPORT_ENABLED: bool = Field(default=False)
+    DAILY_REPORT_CRON: str = Field(default="0 9 * * *")  # every day 09:00
+    DAILY_REPORT_WINDOW_DAYS: int = Field(default=1)
+    DAILY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
+
+    MONTHLY_REPORT_ENABLED: bool = Field(default=False)
+    MONTHLY_REPORT_CRON: str = Field(default="0 9 1 * *")  # 1st of month 09:00
+    MONTHLY_REPORT_WINDOW_DAYS: int = Field(default=30)
+    MONTHLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
 
 
 class OpenClawConfig(StaticSettings):

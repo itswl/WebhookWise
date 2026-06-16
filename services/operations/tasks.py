@@ -509,10 +509,31 @@ async def scheduled_data_maintenance() -> None:
     await _run_scheduled("data_maintenance", 86400, cleanup_old_data_by_policy())
 
 
+def _daily_report_cron() -> str:
+    from core.app_context import get_config_manager
+
+    return str(get_config_manager().notifications.DAILY_REPORT_CRON)
+
+
 def _weekly_report_cron() -> str:
     from core.app_context import get_config_manager
 
     return str(get_config_manager().notifications.WEEKLY_REPORT_CRON)
+
+
+def _monthly_report_cron() -> str:
+    from core.app_context import get_config_manager
+
+    return str(get_config_manager().notifications.MONTHLY_REPORT_CRON)
+
+
+@broker.task(task_name="scheduled_daily_report", schedule=[{"cron": _daily_report_cron()}])
+async def scheduled_daily_report() -> None:
+    from services.operations.weekly_report import generate_and_send_daily_report
+
+    # Internally a no-op unless DAILY_REPORT_ENABLED; the leader lock prevents
+    # duplicate sends if more than one scheduler is ever running.
+    await _run_scheduled("daily_report", 86400, generate_and_send_daily_report())
 
 
 @broker.task(task_name="scheduled_weekly_report", schedule=[{"cron": _weekly_report_cron()}])
@@ -522,3 +543,12 @@ async def scheduled_weekly_report() -> None:
     # Internally a no-op unless WEEKLY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
     await _run_scheduled("weekly_report", 86400, generate_and_send_weekly_report())
+
+
+@broker.task(task_name="scheduled_monthly_report", schedule=[{"cron": _monthly_report_cron()}])
+async def scheduled_monthly_report() -> None:
+    from services.operations.weekly_report import generate_and_send_monthly_report
+
+    # Internally a no-op unless MONTHLY_REPORT_ENABLED; the leader lock prevents
+    # duplicate sends if more than one scheduler is ever running.
+    await _run_scheduled("monthly_report", 86400, generate_and_send_monthly_report())
