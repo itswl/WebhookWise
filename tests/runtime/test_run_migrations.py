@@ -49,13 +49,49 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
-def test_alembic_history_keeps_current_schema_baseline() -> None:
+def test_alembic_history_is_single_consolidated_baseline() -> None:
     revision_paths = sorted((migrations.PROJECT_ROOT / "alembic/versions").glob("*.py"))
+    names = [path.name for path in revision_paths]
 
-    assert "0001_current_schema.py" in [path.name for path in revision_paths]
-    by_name = {path.name: path for path in revision_paths}
-    source = by_name["0001_current_schema.py"].read_text()
+    # The incremental chain was squashed into one baseline.
+    assert names == ["0001_baseline.py"]
+    source = revision_paths[0].read_text()
+    # Real DDL, not a metadata.create_all shortcut (keeps it explicit/inspectable).
     assert "Base.metadata.create_all" not in source
     assert "Base.metadata.drop_all" not in source
     assert "op.create_table" in source
     assert "op.create_index" in source
+    assert 'revision: str = "0001_baseline"' in source
+    assert "down_revision: str | Sequence[str] | None = None" in source
+
+
+def test_reconcile_restamps_pre_squash_revisions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A DB stamped on the old chain is re-stamped onto the baseline."""
+    stamped: list[tuple[str, ...]] = []
+
+    async def fake_current() -> str | None:
+        return "0006_drop_duplicate_outbox_index"
+
+    monkeypatch.setattr(migrations, "_current_alembic_revision", fake_current)
+    monkeypatch.setattr(migrations, "_alembic", lambda *args: stamped.append(args))
+
+    migrations._reconcile_squashed_history()
+
+    assert stamped == [("stamp", "0001_baseline", "--purge")]
+
+
+@pytest.mark.parametrize("current", [None, "0001_baseline"])
+def test_reconcile_leaves_fresh_and_baseline_databases_untouched(
+    monkeypatch: pytest.MonkeyPatch, current: str | None
+) -> None:
+    called: list[tuple[str, ...]] = []
+
+    async def fake_current() -> str | None:
+        return current
+
+    monkeypatch.setattr(migrations, "_current_alembic_revision", fake_current)
+    monkeypatch.setattr(migrations, "_alembic", lambda *args: called.append(args))
+
+    migrations._reconcile_squashed_history()
+
+    assert called == []
