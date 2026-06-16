@@ -142,12 +142,12 @@ const AlertsModule = {
         try {
             // Show loading indicator
             const alertList = document.getElementById('alertList');
-            alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading data...</p></div>';
+            alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
             const result = await API.getWebhooks({ page_size: 200, cursor: null });
 
             if (!result.success || !result.data) {
-                throw new Error('Invalid data format');
+                throw new Error(t('alerts.error.invalidData'));
             }
 
             this.alerts = result.data;
@@ -165,7 +165,7 @@ const AlertsModule = {
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
         } catch (error) {
             console.error('Load failed:', error);
-            showError('Load failed: ' + error.message);
+            showError(t('alerts.error.loadFailed') + ': ' + error.message);
         }
     },
 
@@ -176,12 +176,12 @@ const AlertsModule = {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
                 btn.disabled = true;
-                btn.textContent = 'Loading...';
+                btn.textContent = t('common.loading');
             }
 
             const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
             if (!result.success || !result.data) {
-                throw new Error('Invalid data format');
+                throw new Error(t('alerts.error.invalidData'));
             }
 
             this.alerts = this.alerts.concat(result.data);
@@ -193,12 +193,12 @@ const AlertsModule = {
             this.filterAlerts(false);
         } catch (error) {
             console.error('Load more failed:', error);
-            alert('Load more failed: ' + error.message);
+            alert(t('alerts.error.loadMoreFailed') + ': ' + error.message);
         } finally {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = 'Load 200 more';
+                btn.textContent = t('alerts.page.loadMore');
             }
             this._loadingMore = false;
         }
@@ -309,7 +309,7 @@ const AlertsModule = {
         const container = document.getElementById('alertList');
 
         if (webhooks.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No alerts</div><div class="empty-text">No alerts match the filter criteria</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">' + t('alerts.empty.title') + '</div><div class="empty-text">' + t('alerts.empty.text') + '</div></div>';
             return;
         }
 
@@ -326,7 +326,7 @@ const AlertsModule = {
             html += '<div class="alert-left">';
             html += '<div class="alert-title-row">';
             html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || ('Alert #' + webhook.id))) + '</span>';
+            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || t('alerts.titleFallback', {id: webhook.id}))) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
             html += '<span class="alert-meta-item">🆔 #' + escapeHtml(String(webhook.id)) + '</span>';
@@ -341,10 +341,10 @@ const AlertsModule = {
 
             // Show duplicate information
             if (isDuplicate) {
-                html += '<span class="alert-meta-item">🔗 Original #' + webhook.duplicate_of + '</span>';
+                html += '<span class="alert-meta-item">🔗 ' + t('alerts.meta.original', {id: webhook.duplicate_of}) + '</span>';
                 // Show previous alert ID and time
                 if (webhook.prev_alert_id) {
-                    let prevText = '⏮️ Previous #' + webhook.prev_alert_id;
+                    let prevText = '⏮️ ' + t('alerts.meta.previous', {id: webhook.prev_alert_id});
                     if (webhook.prev_alert_timestamp) {
                         prevText += ' (' + timeAgo(webhook.prev_alert_timestamp) + ')';
                     }
@@ -355,35 +355,35 @@ const AlertsModule = {
             html += '<div class="alert-right">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
             if (isDuplicate) {
-                html += '<span class="badge badge-duplicate" title="Duplicate alert">Duplicate alert</span>';
+                html += '<span class="badge badge-duplicate" title="' + t('alerts.badge.duplicate') + '">' + t('alerts.badge.duplicate') + '</span>';
             } else {
-                html += '<span class="badge badge-new">New alert</span>';
+                html += '<span class="badge badge-new">' + t('alerts.badge.new') + '</span>';
             }
             // Forward status badge
             if (webhook.forward_status) {
-                var fwdLabels = { 'pending': 'Pending forward', 'queued': 'Queued', 'skipped': 'Skipped', 'forwarded': 'Forwarded', 'sent': 'Delivered', 'failed': 'Forward failed', 'success': 'Delivered' };
+                var fwdLabels = { 'pending': t('alerts.fwd.pending'), 'queued': t('alerts.fwd.queued'), 'skipped': t('alerts.fwd.skipped'), 'forwarded': t('alerts.fwd.forwarded'), 'sent': t('alerts.fwd.sent'), 'failed': t('alerts.fwd.failed'), 'success': t('alerts.fwd.sent') };
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
-                html += '<span class="badge ' + fwdClass + '" title="Forward status">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
+                html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
-            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 Reanalyze</button>';
-            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 Deep Analysis</button>';
-            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 Forward</button>';
+            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
+            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
+            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
             html += '</div></div></div>';
 
             html += '<div class="alert-details">';
             html += '<div class="details-tabs">';
-            html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">Overview</div>';
-            html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">Raw Data</div>';
+            html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">' + t('alerts.tab.overview') + '</div>';
+            html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">' + t('alerts.tab.rawData') + '</div>';
             // AI Analysis tab
             if (analysis && Object.keys(analysis).length > 0) {
-                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI Analysis</div>';
+                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">' + t('alerts.tab.ai') + '</div>';
             } else if (summary || webhook.importance) {
-                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI Analysis</div>';
+                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">' + t('alerts.tab.ai') + '</div>';
             }
             // Deep Analysis tab
-            html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">Deep Analysis</div>';
+            html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">' + t('alerts.tab.deep') + '</div>';
             html += '</div>';
 
             html += '<div class="tab-content active" data-tab-content="overview">';
@@ -392,9 +392,9 @@ const AlertsModule = {
 
             html += '<div class="tab-content" data-tab-content="data">';
             if (webhook.parsed_data) {
-                html += renderJSONBlock(webhook.parsed_data, 'Raw Data');
+                html += renderJSONBlock(webhook.parsed_data, t('alerts.tab.rawData'));
             } else {
-                html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No data</div>';
+                html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.noData') + '</div>';
             }
             html += '</div>';
 
@@ -406,24 +406,24 @@ const AlertsModule = {
             } else if (summary || webhook.importance) {
                 html += '<div class="tab-content" data-tab-content="ai">';
                 html += '<div class="ai-section">';
-                html += '<div class="ai-header">🤖 AI Analysis Results</div>';
+                html += '<div class="ai-header">🤖 ' + t('alerts.ai.resultsTitle') + '</div>';
                 html += '<div class="ai-content">';
                 if (summary) {
-                    html += '<div class="ai-item"><div class="ai-label">Summary</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
+                    html += '<div class="ai-item"><div class="ai-label">' + t('alerts.ai.summary') + '</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
                 }
                 if (webhook.importance) {
-                    html += '<div class="ai-item"><div class="ai-label">Importance</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
+                    html += '<div class="ai-item"><div class="ai-label">' + t('alerts.ai.importance') + '</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
                 }
                 html += '</div></div>';
                 html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 The full AI analysis results will load automatically when first expanded</p>';
+                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 ' + t('alerts.ai.autoLoadHint') + '</p>';
                 html += '</div>';
                 html += '</div>';
             }
 
             // Deep analysis content panel
             html += '<div class="tab-content" data-tab-content="deep-analysis">';
-            html += '<div id="deep-analysis-container-' + webhook.id + '">Click the tab to load deep analysis history...</div>';
+            html += '<div id="deep-analysis-container-' + webhook.id + '">' + t('alerts.deep.clickToLoad') + '</div>';
             html += '</div>';
 
             html += '</div></div>';
@@ -437,38 +437,38 @@ const AlertsModule = {
      */
     renderOverview(webhook) {
         let html = '<div class="info-grid">';
-        html += '<div class="info-item"><div class="info-label">Alert ID</div><div class="info-value">#' + webhook.id + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">Source</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.alertId') + '</div><div class="info-value">#' + webhook.id + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.source') + '</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
         if (webhook.request_id) {
-            html += '<div class="info-item"><div class="info-label">Request ID</div><div class="info-value" style="font-size:0.75rem;word-break:break-all;">' + escapeHtml(String(webhook.request_id)) + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.requestId') + '</div><div class="info-value" style="font-size:0.75rem;word-break:break-all;">' + escapeHtml(String(webhook.request_id)) + '</div></div>';
         }
         if (webhook.alert_hash) {
-            html += '<div class="info-item"><div class="info-label">Alert Fingerprint</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.fingerprint') + '</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
         }
-        html += '<div class="info-item"><div class="info-label">Client IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">Received At</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
-        const statusMap = { received: 'Received', analyzing: 'Analyzing', completed: 'Completed', failed: 'Failed', dead_letter: 'Dead Letter' };
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.clientIp') + '</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.receivedAt') + '</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
+        const statusMap = { received: t('alerts.status.received'), analyzing: t('alerts.status.analyzing'), completed: t('alerts.status.completed'), failed: t('alerts.status.failed'), dead_letter: t('alerts.status.deadLetter') };
         const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
-        html += '<div class="info-item"><div class="info-label">Processing Status</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.processingStatus') + '</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
         if (webhook.updated_at) {
-            html += '<div class="info-item"><div class="info-label">Last Updated</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.lastUpdated') + '</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
         }
         if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
             const failure = webhook.failure_reason || webhook.error_message || '-';
-            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">Failure Reason</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
+            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">' + t('alerts.overview.failureReason') + '</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
         }
         if (webhook.is_duplicate) {
-            html += '<div class="info-item"><div class="info-label">Original Alert</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.originalAlert') + '</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
             if (webhook.prev_alert_id) {
                 let prevValue = '#' + webhook.prev_alert_id;
                 if (webhook.prev_alert_timestamp) {
                     prevValue += ' (' + new Date(webhook.prev_alert_timestamp).toLocaleString('zh-CN') + ')';
                 }
-                html += '<div class="info-item"><div class="info-label">Previous Alert</div><div class="info-value">' + prevValue + '</div></div>';
+                html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.previousAlert') + '</div><div class="info-value">' + prevValue + '</div></div>';
             }
-            html += '<div class="info-item"><div class="info-label">Duplicate Count</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.duplicateCount') + '</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
 
-            html += '<div class="info-item"><div class="info-label">Duplicate Type</div><div class="info-value">Duplicate alert</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.duplicateType') + '</div><div class="info-value">' + t('alerts.badge.duplicate') + '</div></div>';
         }
         html += '</div>';
         return html;
@@ -479,20 +479,20 @@ const AlertsModule = {
      */
     renderAIAnalysis(analysis) {
         if (!analysis || Object.keys(analysis).length === 0) {
-            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No AI analysis data</div>';
+            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.ai.noData') + '</div>';
         }
 
         let html = `
             <div class="ai-analysis" style="border-left: 4px solid #4f46e5; background: #ffffff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 1rem;">
                 <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: #4f46e5; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                    <span>🤖</span> AIOps Diagnostic Report
+                    <span>🤖</span> ${t('alerts.ai.reportTitle')}
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
-                        ${escapeHtml(String(analysis._degraded ? 'Local rule fallback' : (analysis._route_type || 'Smart routing')))}
+                        ${escapeHtml(String(analysis._degraded ? t('alerts.ai.localFallback') : (analysis._route_type || t('alerts.ai.smartRouting'))))}
                     </span>
                 </div>
 
                 <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
-                    ${escapeHtml(String(analysis.summary || 'No analysis summary'))}
+                    ${escapeHtml(String(analysis.summary || t('alerts.ai.noSummary')))}
                 </div>
 
                 <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
@@ -501,14 +501,14 @@ const AlertsModule = {
         if (analysis.root_cause) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 Root Cause</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 ${t('alerts.ai.rootCause')}</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
                 </div>
             `;
         } else if (analysis.event_type) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ Event Type</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ ${t('alerts.ai.eventType')}</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
                 </div>
             `;
@@ -518,7 +518,7 @@ const AlertsModule = {
             const impact = analysis.impact || analysis.impact_scope;
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 Impact Assessment</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 ${t('alerts.ai.impact')}</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
                 </div>
             `;
@@ -528,7 +528,7 @@ const AlertsModule = {
         if (actions && actions.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ Recommendations & Actions</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ ${t('alerts.ai.recommendations')}</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -539,7 +539,7 @@ const AlertsModule = {
         if (analysis.risks && analysis.risks.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ Potential Risks</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ ${t('alerts.ai.risks')}</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -552,23 +552,23 @@ const AlertsModule = {
         // Metadata footer
         html += `
             <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span>⚡ Importance: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || 'Unknown'))}</strong></span>
+                <span>⚡ ${t('alerts.ai.importance')}: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || t('alerts.ai.unknown')))}</strong></span>
         `;
 
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
-            const relationMap = { root_cause: 'Root cause alert', derived: 'Derived alert', standalone: 'Standalone alert' };
-            const relation = relationMap[nr.relation] || nr.relation || 'Unknown';
-            html += `<span>🛡️ Noise reduction: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (confidence: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
+            const relationMap = { root_cause: t('alerts.ai.relation.rootCause'), derived: t('alerts.ai.relation.derived'), standalone: t('alerts.ai.relation.standalone') };
+            const relation = relationMap[nr.relation] || nr.relation || t('alerts.ai.unknown');
+            html += `<span>🛡️ ${t('alerts.ai.noiseReduction')}: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += `<span>🔗 Related root cause: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
+                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
 
-        html += `<span>🔀 Route channel: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || 'Unknown'))}</strong></span>`;
+        html += `<span>🔀 ${t('alerts.ai.routeChannel')}: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
-            html += `<span title="Hit count: ${escapeHtml(String(hitCount))}" style="color: #10b981; font-weight: 600;">🎯 Cache hit (${escapeHtml(String(hitCount))} times)</span>`;
+            html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: #10b981; font-weight: 600;">🎯 ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
         }
 
         html += `
@@ -578,7 +578,7 @@ const AlertsModule = {
 
         // Render Raw JSON analysis below it for debugging
         if (typeof renderJSONBlock === 'function') {
-            html += renderJSONBlock(analysis, 'Raw Analysis Data');
+            html += renderJSONBlock(analysis, t('alerts.ai.rawAnalysisData'));
         }
 
         return html;
@@ -710,13 +710,13 @@ const AlertsModule = {
                 }
             } catch (error) {
                 console.error('Failed to locate alert:', error);
-                showError('Failed to locate alert: ' + error.message);
+                showError(t('alerts.error.locateFailed') + ': ' + error.message);
                 return false;
             }
         }
 
         if (index === -1) {
-            showError('Alert #' + id + ' not found');
+            showError(t('alerts.error.notFound', {id: id}));
             return false;
         }
 
@@ -737,7 +737,7 @@ const AlertsModule = {
         const aiTab = alertItem.querySelector('[data-tab-content="ai"]');
 
         if (dataTab) {
-            dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>Loading full data...</p></div>';
+            dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>' + t('alerts.loadingFullData') + '</p></div>';
         }
 
         try {
@@ -761,7 +761,7 @@ const AlertsModule = {
                 // Update the raw data tab
                 if (dataTab) {
                     if (fullData.parsed_data) {
-                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, 'Raw Data');
+                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, t('alerts.tab.rawData'));
                     } else if (fullData.raw_payload) {
                         // parsed_data is null (zero-parse mode), use the decompressed raw_payload
                         let rawData;
@@ -770,9 +770,9 @@ const AlertsModule = {
                         } catch (e) {
                             rawData = fullData.raw_payload;
                         }
-                        dataTab.innerHTML = renderJSONBlock(rawData, 'Raw Data');
+                        dataTab.innerHTML = renderJSONBlock(rawData, t('alerts.tab.rawData'));
                     } else {
-                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No data</div>';
+                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.noData') + '</div>';
                     }
                 }
 
@@ -783,7 +783,7 @@ const AlertsModule = {
                         if (!k.startsWith('x-forwarded') && k !== 'traceparent') filteredHeaders[k] = fullData.headers[k];
                     });
                     if (Object.keys(filteredHeaders).length > 0) {
-                        dataTab.innerHTML += '<div style="margin-top:1rem;">' + renderJSONBlock(filteredHeaders, 'Request Headers') + '</div>';
+                        dataTab.innerHTML += '<div style="margin-top:1rem;">' + renderJSONBlock(filteredHeaders, t('alerts.requestHeaders')) + '</div>';
                     }
                 }
 
@@ -791,17 +791,17 @@ const AlertsModule = {
                 if (aiTab && fullData.ai_analysis) {
                     aiTab.innerHTML = this.renderAIAnalysis(fullData.ai_analysis);
                 } else if (aiTab) {
-                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No AI analysis data</div>';
+                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.ai.noData') + '</div>';
                 }
 
                 console.log('✅ Full data loaded successfully');
             } else {
-                throw new Error(result.error || 'Load failed');
+                throw new Error(result.error || t('alerts.error.loadFailed'));
             }
         } catch (error) {
             console.error('❌ Failed to load full data:', error);
             if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ Load failed: ' + escapeHtml(String(error.message || error)) + '</div>';
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
             }
         }
     },
@@ -812,7 +812,7 @@ const AlertsModule = {
     async reanalyzeAlert(id) {
         console.log('Starting reanalysis of webhook:', id);
 
-        if (!confirm('Are you sure you want to reanalyze this alert?')) {
+        if (!confirm(t('alerts.confirm.reanalyze'))) {
             return;
         }
 
@@ -822,14 +822,14 @@ const AlertsModule = {
             console.log('Reanalysis result:', result);
 
             if (result.success) {
-                alert('✅ Reanalysis successful!');
+                alert('✅ ' + t('alerts.msg.reanalyzeSuccess'));
                 this.loadAlerts();
             } else {
-                alert('❌ Analysis failed: ' + (result.error || 'Unknown error'));
+                alert('❌ ' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
-            alert('❌ Request failed: ' + error.message);
+            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },
 
@@ -867,19 +867,19 @@ const AlertsModule = {
      */
     async confirmForward() {
         const url = document.getElementById('forwardUrl').value;
-        if (!url) return alert('Please enter a forward address');
+        if (!url) return alert(t('alerts.msg.enterForwardUrl'));
 
         try {
             const result = await API.forward(this.currentForwardId, url);
 
             if (result.success) {
-                alert('✅ Forward successful!');
+                alert('✅ ' + t('alerts.msg.forwardSuccess'));
                 this.closeForwardModal();
             } else {
-                alert('❌ Forward failed: ' + (result.error || 'Unknown error'));
+                alert('❌ ' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
             }
         } catch (error) {
-            alert('❌ Request failed: ' + error.message);
+            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },
 
@@ -890,7 +890,7 @@ const AlertsModule = {
         const container = document.getElementById('deep-analysis-container-' + webhookId);
         if (!container) return;
 
-        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>Loading deep analysis history...</p></div>';
+        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>' + t('alerts.deep.loadingHistory') + '</p></div>';
 
         try {
             const result = await API.getDeepAnalyses(webhookId);
@@ -898,8 +898,8 @@ const AlertsModule = {
 
             if (records.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' +
-                    '<p>No deep analysis records</p>' +
-                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c Analyze now</button>' +
+                    '<p>' + t('alerts.deep.noRecords') + '</p>' +
+                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c ' + t('alerts.deep.analyzeNow') + '</button>' +
                     '</div>';
                 return;
             }
@@ -907,7 +907,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 Local AI';
+                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 ' + t('deep.engine.local');
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
@@ -916,13 +916,13 @@ const AlertsModule = {
                 // Header: engine, time, duration
                 html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #eee;">';
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
-                html += '<span style="color:#888; font-size:0.85em;">' + time + ' | Duration ' + duration + '</span>';
+                html += '<span style="color:#888; font-size:0.85em;">' + time + ' | ' + t('alerts.deep.duration') + ' ' + duration + '</span>';
                 html += '</div>';
 
                 // User question (if any)
                 if (record.user_question) {
                     html += '<div style="margin-bottom:10px; padding:8px 12px; background:#e8f4fd; border-radius:4px; font-size:0.9em;">';
-                    html += '<strong>User question: </strong>' + escapeHtml(String(record.user_question));
+                    html += '<strong>' + t('alerts.deep.userQuestion') + ': </strong>' + escapeHtml(String(record.user_question));
                     html += '</div>';
                 }
 
@@ -931,11 +931,11 @@ const AlertsModule = {
                     // Analyzing-state card
                     html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid #bae6fd; border-radius:8px; color:var(--info);">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw is analyzing...</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">' + t('alerts.deep.openclawAnalyzing') + '</div>';
                     if (record.openclaw_run_id) {
-                        html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">Run ID: ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
+                        html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">' + t('alerts.deep.runId') + ': ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
                     }
-                    html += '<div style="font-size:0.9em; opacity:0.85;">Results will update automatically, please refresh the page later</div>';
+                    html += '<div style="font-size:0.9em; opacity:0.85;">' + t('alerts.deep.willUpdate') + '</div>';
                     html += '</div>';
                 } else {
                     // Normal analysis result rendering
@@ -945,18 +945,18 @@ const AlertsModule = {
                         // If there is a confidence score, display it separately
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">Confidence: ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
                         }
                     } else {
                         // Original JSON field rendering logic
                         if (analysis.root_cause) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d Root Cause Analysis: </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d ' + t('alerts.deep.rootCause') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
                         }
                         if (analysis.impact) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 Impact Scope: </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 ' + t('alerts.deep.impactScope') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
                         }
                         if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-                            html += '<div style="margin-bottom:8px;"><strong>\u2705 Recommendations: </strong><ul style="margin:4px 0; padding-left:20px;">';
+                            html += '<div style="margin-bottom:8px;"><strong>\u2705 ' + t('alerts.deep.recommendations') + ': </strong><ul style="margin:4px 0; padding-left:20px;">';
                             analysis.recommendations.forEach(function(rec) {
                                 if (typeof rec === 'object' && rec !== null) {
                                     var label = (rec.priority ? '<strong>' + escapeHtml(String(rec.priority)) + '</strong>: ' : '') + escapeHtml(String(rec.action || JSON.stringify(rec)));
@@ -969,7 +969,7 @@ const AlertsModule = {
                         }
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">Confidence: ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
                         }
 
                         // If there are no structured fields, display the raw JSON directly
@@ -984,12 +984,12 @@ const AlertsModule = {
 
             // Footer: re-analyze button
             html += '<div style="text-align:center; margin-top:12px;">';
-            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c Analyze again</button>';
+            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c ' + t('alerts.deep.analyzeAgain') + '</button>';
             html += '</div>';
 
             container.innerHTML = html;
         } catch (e) {
-            container.innerHTML = '<div style="color:red; padding:20px;">Load failed: ' + escapeHtml(String(e.message || e)) + '</div>';
+            container.innerHTML = '<div style="color:red; padding:20px;">' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(e.message || e)) + '</div>';
         }
     },
 
@@ -997,7 +997,7 @@ const AlertsModule = {
      * Deep-analyze an alert
      */
     async deepAnalyzeAlert(id) {
-        const question = prompt('Enter the question you want to ask (optional):', '');
+        const question = prompt(t('alerts.deep.questionPrompt'), '');
         if (question === null) return;  // User cancelled
 
         try {
@@ -1034,13 +1034,13 @@ const AlertsModule = {
                     this.loadDeepAnalyses(id);
                 } else {
                     // If the alert item is not on the current page, show a simple notice
-                    alert('✅ Analysis complete! Expand the alert details to view the deep analysis results.');
+                    alert('✅ ' + t('alerts.deep.completeNotice'));
                 }
             } else {
-                alert('Analysis failed: ' + (result.error || 'Unknown error'));
+                alert(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
             }
         } catch (error) {
-            alert('Request failed: ' + error.message);
+            alert(t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },
 
@@ -1066,12 +1066,12 @@ const AlertsModule = {
         notification.innerHTML = `
             <div style="display:flex; align-items:center; margin-bottom:8px;">
                 <span style="font-size:1.5em; margin-right:10px;">\ud83d\ude80</span>
-                <strong style="font-size:1.1em;">OpenClaw analysis triggered</strong>
+                <strong style="font-size:1.1em;">${t('alerts.deep.triggeredTitle')}</strong>
             </div>
             <div style="font-size:0.9em; color:rgba(255,255,255,0.9); margin-bottom:8px;">
-                The analysis request has been sent; results will appear in the OpenClaw console
+                ${t('alerts.deep.triggeredDesc')}
             </div>
-            ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${escapeHtml(String(runId))}</div>` : ''}
+            ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">${t('alerts.deep.runId')}: ${escapeHtml(String(runId))}</div>` : ''}
         `;
 
         // Add animation styles

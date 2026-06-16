@@ -32,10 +32,10 @@ function timeAgo(timestamp) {
     if (Number.isNaN(past.getTime())) return '-';
     const seconds = Math.floor((now - past) / 1000);
 
-    if (seconds < 60) return seconds + ' seconds ago';
-    if (seconds < 3600) return Math.floor(seconds / 60) + ' minutes ago';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + ' hours ago';
-    return Math.floor(seconds / 86400) + ' days ago';
+    if (seconds < 60) return t('utils.timeAgo.seconds', { n: seconds });
+    if (seconds < 3600) return t('utils.timeAgo.minutes', { n: Math.floor(seconds / 60) });
+    if (seconds < 86400) return t('utils.timeAgo.hours', { n: Math.floor(seconds / 3600) });
+    return t('utils.timeAgo.days', { n: Math.floor(seconds / 86400) });
 }
 
 /**
@@ -86,7 +86,7 @@ function copyToClipboard(btn) {
 
     navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
-        btn.textContent = '✅ Copied';
+        btn.textContent = '✅ ' + t('common.copied');
         btn.style.background = '#28a745';
         btn.style.borderColor = '#28a745';
 
@@ -97,7 +97,7 @@ function copyToClipboard(btn) {
         }, 2000);
     }).catch(err => {
         console.error('Copy failed:', err);
-        alert('Copy failed');
+        alert(t('common.copyFailed'));
     });
 }
 
@@ -128,8 +128,8 @@ function getAlertIcon(importance) {
  * @returns {string} The corresponding text
  */
 function getImportanceText(importance) {
-    const texts = { high: 'High', medium: 'Medium', low: 'Low' };
-    return texts[importance] || 'Low';
+    const texts = { high: t('common.high'), medium: t('common.medium'), low: t('common.low') };
+    return texts[importance] || t('common.low');
 }
 
 /**
@@ -145,7 +145,7 @@ function renderJSONBlock(data, title = 'JSON') {
     let html = '<div class="code-wrapper">';
     html += '<div class="code-header">';
     html += '<span class="code-lang">' + title + '</span>';
-    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 Copy</button>';
+    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 ' + t('utils.copy') + '</button>';
     html += '</div>';
     html += '<div class="code-block">';
     html += '<pre>' + highlighted + '</pre>';
@@ -161,8 +161,8 @@ function renderJSONBlock(data, title = 'JSON') {
  */
 function showError(message) {
     document.getElementById('alertList').innerHTML =
-        '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Failed to load</div><div class="empty-text">' +
-        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">Retry</button></div>';
+        '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' +
+        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">' + t('common.retry') + '</button></div>';
 }
 
 /**
@@ -203,13 +203,13 @@ function renderLoadMorePagination(container, options) {
 
     var totalText = total || (hasMore ? (loaded + '+') : loaded);
     var buttonHtml = hasMore
-        ? '<button data-action="load-more"' + (isLoading ? ' disabled' : '') + '>' + (isLoading ? 'Loading...' : ('Load ' + batchSize + ' more')) + '</button>'
+        ? '<button data-action="load-more"' + (isLoading ? ' disabled' : '') + '>' + (isLoading ? t('common.loading') : t('utils.loadMore', { n: batchSize })) + '</button>'
         : '';
 
     container.innerHTML =
         '<div class="pagination compact-pagination">' +
             '<div class="pagination-info">' +
-                'Loaded <strong>' + loaded + '</strong> / <strong>' + totalText + '</strong>' +
+                t('utils.loadedOf', { loaded: '<strong>' + loaded + '</strong>', total: '<strong>' + totalText + '</strong>' }) +
             '</div>' +
             '<div class="pagination-buttons">' + buttonHtml + '</div>' +
         '</div>';

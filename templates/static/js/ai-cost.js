@@ -140,41 +140,41 @@ const AICostModule = {
 
         let html = `
             <!-- Core data dashboard -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Core Billing (USD)</div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">${t('aicost.section.coreBilling')}</div>
             <div class="stats-grid" style="margin-bottom: 2.5rem;">
                 <div class="stat-card" style="border-left: 4px solid var(--primary);">
-                    <div class="stat-label">Total Budget Spent (Estimated)</div>
+                    <div class="stat-label">${t('aicost.card.totalSpent')}</div>
                     <div class="stat-value" style="color: var(--primary); font-size: 2.5rem;">${this.formatCurrency(costTotal)}</div>
                     <div class="stat-trend" style="display: flex; justify-content: space-between;">
-                        <span>Tokens: ${formatNumber(tokensTotal)}</span>
-                        <span>API Call: ${formatNumber(totalCalls)}</span>
+                        <span>${t('aicost.card.tokensLabel', { n: formatNumber(tokensTotal) })}</span>
+                        <span>${t('aicost.card.apiCallLabel', { n: formatNumber(totalCalls) })}</span>
                     </div>
                 </div>
                 <div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">
-                    <div class="stat-label" style="color: #059669;">Total Saved (Saved)</div>
+                    <div class="stat-label" style="color: #059669;">${t('aicost.card.totalSaved')}</div>
                     <div class="stat-value" style="color: var(--success); font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
-                    <div class="stat-trend" style="color: #059669;">Via noise-reduction strategy and cache reuse</div>
+                    <div class="stat-trend" style="color: #059669;">${t('aicost.card.totalSavedTrend')}</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Input Throughput (Prompt)</div>
+                    <div class="stat-label">${t('aicost.card.inputThroughput')}</div>
                     <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensInput)}</div>
-                    <div class="stat-trend">Tokens sent</div>
+                    <div class="stat-trend">${t('aicost.card.tokensSent')}</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Output Generated (Completion)</div>
+                    <div class="stat-label">${t('aicost.card.outputGenerated')}</div>
                     <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensOutput)}</div>
-                    <div class="stat-trend">Tokens received</div>
+                    <div class="stat-trend">${t('aicost.card.tokensReceived')}</div>
                 </div>
             </div>
 
             <!-- Analysis route distribution -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Processing Route Funnel (Traffic Routing)</div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">${t('aicost.section.routeFunnel')}</div>
             <div style="background: var(--bg-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 2.5rem;">
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--primary);">🤖 Native LLM Analysis (AI Engine)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeAi)} calls (${this.formatPercent(percentAi)})</span>
+                        <span style="font-weight: 500; color: var(--primary);">🤖 ${t('aicost.route.ai')}</span>
+                        <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeAi), pct: this.formatPercent(percentAi) })}</span>
                     </div>
                     <div style="height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--primary); width: ${percentAi}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -183,8 +183,8 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--success);">💾 Semantic Cache Interception (Cache Hit)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeCache)} calls (${this.formatPercent(percentCache)})</span>
+                        <span style="font-weight: 500; color: var(--success);">💾 ${t('aicost.route.cache')}</span>
+                        <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeCache), pct: this.formatPercent(percentCache) })}</span>
                     </div>
                     <div style="height: 8px; background: #d1fae5; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--success); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -193,8 +193,8 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--warning);">🔄 Derived Noise-Reduction Merge (Deduplication)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeReuse)} calls (${this.formatPercent(percentReuse)})</span>
+                        <span style="font-weight: 500; color: var(--warning);">🔄 ${t('aicost.route.reuse')}</span>
+                        <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeReuse), pct: this.formatPercent(percentReuse) })}</span>
                     </div>
                     <div style="height: 8px; background: #fef3c7; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--warning); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -203,8 +203,8 @@ const AICostModule = {
 
                 <div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--text-muted);">📋 Rule Downgrade (Rule Fallback)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeRule)} calls (${this.formatPercent(percentRule)})</span>
+                        <span style="font-weight: 500; color: var(--text-muted);">📋 ${t('aicost.route.rule')}</span>
+                        <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeRule), pct: this.formatPercent(percentRule) })}</span>
                     </div>
                     <div style="height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: #94a3b8; width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -214,27 +214,27 @@ const AICostModule = {
             </div>
 
             <!-- Cache efficiency area -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Cost-Efficiency Radar (Efficiency Radar)</div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">${t('aicost.section.efficiencyRadar')}</div>
             <div class="stats-grid">
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">Active Semantic Fingerprints</div>
+                    <div class="stat-label">${t('aicost.card.activeFingerprints')}</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheEntries)}</div>
-                    <div class="stat-trend">Active Redis keys</div>
+                    <div class="stat-trend">${t('aicost.card.activeRedisKeys')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">Cache Anti-Penetration Count</div>
+                    <div class="stat-label">${t('aicost.card.antiPenetration')}</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheSavedCalls)}</div>
-                    <div class="stat-trend">AI calls successfully intercepted</div>
+                    <div class="stat-trend">${t('aicost.card.antiPenetrationTrend')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">Average Utilization per Fingerprint</div>
+                    <div class="stat-label">${t('aicost.card.avgUtilization')}</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${cacheAvgHits.toFixed(1)} <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">x</span></div>
-                    <div class="stat-trend">Usage frequency per cache entry</div>
+                    <div class="stat-trend">${t('aicost.card.avgUtilizationTrend')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem; border-left: 3px solid var(--success);">
-                    <div class="stat-label">Global Cache Hit Rate</div>
+                    <div class="stat-label">${t('aicost.card.hitRate')}</div>
                     <div class="stat-value" style="font-size: 1.75rem; color: var(--success);">${this.formatPercent(cacheHitRate)}</div>
-                    <div class="stat-trend">Cache / (Cache + Penetration)</div>
+                    <div class="stat-trend">${t('aicost.card.hitRateTrend')}</div>
                 </div>
             </div>
         `;
@@ -249,6 +249,6 @@ const AICostModule = {
         const container = document.getElementById('aiCostStats');
         if (!container) return;
 
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No data</div><div class="empty-text">No AI usage statistics yet</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('aicost.empty.title') + '</div><div class="empty-text">' + t('aicost.empty.text') + '</div></div>';
     }
 };

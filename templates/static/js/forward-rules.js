@@ -17,7 +17,7 @@ async function loadForwardRules() {
         container.innerHTML = `
             <div class="loading">
                 <div class="spinner"></div>
-                <p>Loading...</p>
+                <p>${t('common.loading')}</p>
             </div>
         `;
 
@@ -31,8 +31,8 @@ async function loadForwardRules() {
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    <p>❌ Load failed: ${escapeHtml(result.error || 'Unknown error')}</p>
-                    <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">Retry</button>
+                    <p>❌ ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
+                    <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
         }
@@ -40,8 +40,8 @@ async function loadForwardRules() {
         console.error('❌ Failed to load forward rules:', error);
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                <p>❌ Load failed: ${escapeHtml(error.message || String(error))}</p>
-                <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">Retry</button>
+                <p>❌ ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
+                <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
     }
@@ -58,8 +58,8 @@ function renderForwardRules(rules) {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">
                 <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
-                <p style="font-size: 16px; margin-bottom: 10px;">No forward rules</p>
-                <p style="font-size: 14px;">Click the "New Rule" button to create your first forward rule</p>
+                <p style="font-size: 16px; margin-bottom: 10px;">${t('rules.empty.title')}</p>
+                <p style="font-size: 14px;">${t('rules.empty.text')}</p>
             </div>
         `;
         return;
@@ -85,10 +85,10 @@ function renderForwardRules(rules) {
 function renderRuleCard(rule) {
     const importanceText = escapeHtml(formatImportance(rule.match_importance));
     const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
-    const sourceText = escapeHtml(rule.match_source || 'All');
-    const projectText = escapeHtml(rule.match_project || 'All');
-    const regionText = escapeHtml(rule.match_region || 'All');
-    const environmentText = escapeHtml(rule.match_environment || 'All');
+    const sourceText = escapeHtml(rule.match_source || t('common.all'));
+    const projectText = escapeHtml(rule.match_project || t('common.all'));
+    const regionText = escapeHtml(rule.match_region || t('common.all'));
+    const environmentText = escapeHtml(rule.match_environment || t('common.all'));
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
 
     const isEnabled = rule.enabled;
@@ -136,7 +136,7 @@ function renderRuleCard(rule) {
                         </span>
                     </label>
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
-                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">Disabled</span>' : ''}
+                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">' + t('rules.card.disabled') + '</span>' : ''}
                 </div>
                 <span style="
                     background: #f1f5f9;
@@ -146,46 +146,46 @@ function renderRuleCard(rule) {
                     font-weight: 600;
                     color: #475569;
                     border: 1px solid #cbd5e1;
-                ">⬆️ Priority: ${rule.priority || 0}</span>
+                ">⬆️ ${t('rules.card.priority', { n: rule.priority || 0 })}</span>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                 <!-- Match conditions area -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 Match Conditions</div>
-                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>Event Type:</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(t) { var m = { webhook_forward: 'Alert Forward', manual_forward: 'Manual Forward', ai_error: 'AI Error', ai_degraded: 'AI Degraded', deep_analysis: 'Deep Analysis', outbox_exhausted: 'Forward Exhausted', rule_test: 'Test' }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[t.trim()] || t.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
-                    <div style="margin-bottom: 0.5rem;"><strong>Importance:</strong> ${importanceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Alert Status:</strong> ${duplicateText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Source:</strong> ${sourceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Project:</strong> ${projectText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Region:</strong> ${regionText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Environment:</strong> ${environmentText}</div>
-                    ${rule.match_payload ? '<div><strong>Payload:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('rules.card.matchConditions')}</div>
+                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>' + t('rules.card.eventType') + ':</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(et) { var m = { webhook_forward: t('rules.evtType.webhook_forward'), manual_forward: t('rules.evtType.manual_forward'), ai_error: t('rules.evtType.ai_error'), ai_degraded: t('rules.evtType.ai_degraded'), deep_analysis: t('rules.evtType.deep_analysis'), outbox_exhausted: t('rules.evtType.outbox_exhausted'), rule_test: t('rules.evtType.rule_test') }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[et.trim()] || et.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.importance')}:</strong> ${importanceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.alertStatus')}:</strong> ${duplicateText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.source')}:</strong> ${sourceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.project')}:</strong> ${projectText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.region')}:</strong> ${regionText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.environment')}:</strong> ${environmentText}</div>
+                    ${rule.match_payload ? '<div><strong>' + t('rules.card.payload') + ':</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
                 </div>
 
                 <!-- Forward target area -->
                 <div class="rule-target" style="font-size: 0.95rem; color: #334155; background: #f0fdf4; padding: 1.25rem; border-radius: 8px; border: 1px dashed #86efac;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 Action</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
-                        <strong>Push to:</strong> ${targetTypeText}
+                        <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
                     </div>
                     <div style="word-break: break-all; color: #0f172a; font-family: 'Fira Code', monospace; font-size: 0.85rem; background: #ffffff; padding: 0.75rem; border-radius: 6px; border: 1px solid #d1fae5; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> After matching this rule, stop matching subsequent rules</div>' : ''}
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                 </div>
             </div>
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
-                    🧪 Test Channel
+                    🧪 ${t('rules.action.test')}
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
-                    ✏️ Edit
+                    ✏️ ${t('rules.action.edit')}
                 </button>
                 <button class="btn" onclick="deleteRule(${rule.id})" style="color: #dc2626; border-color: #fecaca; background: #fef2f2; font-weight: 600;">
-                    🗑️ Delete
+                    🗑️ ${t('rules.action.delete')}
                 </button>
             </div>
         </div>
@@ -195,9 +195,9 @@ function renderRuleCard(rule) {
  * Format importance display
  */
 function formatImportance(importance) {
-    if (!importance) return 'All';
-    const map = { 'high': 'High', 'medium': 'Medium', 'low': 'Low' };
-    return importance.split(',').map(i => map[i.trim()] || i.trim()).join(',') || 'All';
+    if (!importance) return t('common.all');
+    const map = { 'high': t('common.high'), 'medium': t('common.medium'), 'low': t('common.low') };
+    return importance.split(',').map(i => map[i.trim()] || i.trim()).join(',') || t('common.all');
 }
 
 /**
@@ -205,11 +205,11 @@ function formatImportance(importance) {
  */
 function formatDuplicateStatus(status) {
     const map = {
-        'all': 'All',
-        'new': 'New alerts only',
-        'duplicate': 'Duplicate alerts only'
+        'all': t('common.all'),
+        'new': t('rules.dup.new'),
+        'duplicate': t('rules.dup.duplicate')
     };
-    return map[status] || status || 'All';
+    return map[status] || status || t('common.all');
 }
 
 /**
@@ -217,11 +217,11 @@ function formatDuplicateStatus(status) {
  */
 function formatTargetType(type) {
     const map = {
-        'feishu': 'Feishu',
-        'openclaw': 'OpenClaw',
-        'webhook': 'Webhook'
+        'feishu': t('rules.targetType.feishu'),
+        'openclaw': t('rules.targetType.openclaw'),
+        'webhook': t('rules.targetType.webhook')
     };
-    return map[type] || type || 'Unknown';
+    return map[type] || type || t('rules.targetType.unknown');
 }
 
 /**
@@ -270,11 +270,11 @@ function showRuleForm(ruleId) {
 
     if (ruleId) {
         // Edit mode
-        title.textContent = 'Edit Forward Rule';
+        title.textContent = t('rule.editTitle');
         const rule = forwardRules.find(r => r.id === ruleId);
         if (rule) {
             if (rule.target_url_sensitive === false) {
-                alert('Editing a forward rule requires saving the ADMIN_WRITE_KEY first, so the full target URL can be loaded.');
+                alert(t('rules.alert.editNeedsWriteKey'));
                 if (typeof openAuthModal === 'function') {
                     openAuthModal();
                 }
@@ -324,7 +324,7 @@ function showRuleForm(ruleId) {
         }
     } else {
         // Create mode
-        title.textContent = 'New Forward Rule';
+        title.textContent = t('rule.addTitle');
     }
 
     modal.classList.add('active');
@@ -366,12 +366,12 @@ async function saveRule() {
 
     // Validate required fields
     if (!name) {
-        alert('Please enter a rule name');
+        alert(t('rules.alert.nameRequired'));
         return;
     }
 
     if (targetType !== 'openclaw' && !targetUrl) {
-        alert('Please enter a target address');
+        alert(t('rules.alert.targetUrlRequired'));
         return;
     }
 
@@ -417,15 +417,15 @@ async function saveRule() {
         }
 
         if (result.success) {
-            alert(ruleId ? '✅ Rule updated successfully' : '✅ Rule created successfully');
+            alert(ruleId ? '✅ ' + t('rules.alert.updateSuccess') : '✅ ' + t('rules.alert.createSuccess'));
             closeRuleForm();
             loadForwardRules();
         } else {
-            alert('❌ Save failed: ' + (result.error || 'Unknown error'));
+            alert('❌ ' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
         console.error('❌ Failed to save rule:', error);
-        alert('❌ Save failed: ' + error.message);
+        alert('❌ ' + t('rules.alert.saveFailed') + ': ' + error.message);
     }
 }
 
@@ -448,12 +448,12 @@ async function toggleRule(id, enabled) {
             // Re-render
             renderForwardRules(forwardRules);
         } else {
-            alert('❌ Operation failed: ' + (result.error || 'Unknown error'));
+            alert('❌ ' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')));
             loadForwardRules(); // Reload to restore state
         }
     } catch (error) {
         console.error('❌ Failed to toggle rule state:', error);
-        alert('❌ Operation failed: ' + error.message);
+        alert('❌ ' + t('rules.alert.operationFailed') + ': ' + error.message);
         loadForwardRules();
     }
 }
@@ -464,9 +464,9 @@ async function toggleRule(id, enabled) {
  */
 async function deleteRule(id) {
     const rule = forwardRules.find(r => r.id === id);
-    const ruleName = rule ? rule.name : 'this rule';
+    const ruleName = rule ? rule.name : t('rules.thisRule');
 
-    if (!confirm(`Are you sure you want to delete the rule "${ruleName}"?\n\nThis action cannot be undone.`)) {
+    if (!confirm(t('rules.confirm.delete', { name: ruleName }))) {
         return;
     }
 
@@ -475,14 +475,14 @@ async function deleteRule(id) {
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
-            alert('✅ Rule deleted');
+            alert('✅ ' + t('rules.alert.deleteSuccess'));
             loadForwardRules();
         } else {
-            alert('❌ Delete failed: ' + (result.error || 'Unknown error'));
+            alert('❌ ' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
         console.error('❌ Failed to delete rule:', error);
-        alert('❌ Delete failed: ' + error.message);
+        alert('❌ ' + t('rules.alert.deleteFailed') + ': ' + error.message);
     }
 }
 
@@ -492,9 +492,9 @@ async function deleteRule(id) {
  */
 async function testRule(id) {
     const rule = forwardRules.find(r => r.id === id);
-    const ruleName = rule ? rule.name : 'this rule';
+    const ruleName = rule ? rule.name : t('rules.thisRule');
 
-    if (!confirm(`Are you sure you want to test the rule "${ruleName}"?\n\nA test message will be sent to the target address.`)) {
+    if (!confirm(t('rules.confirm.test', { name: ruleName }))) {
         return;
     }
 
@@ -503,13 +503,13 @@ async function testRule(id) {
         const result = await API.testForwardRule(id);
 
         if (result.success) {
-            alert('✅ Test successful!\n\n' + (result.message || 'Test message sent'));
+            alert('✅ ' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')));
         } else {
-            alert('❌ Test failed: ' + (result.error || 'Unknown error'));
+            alert('❌ ' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
         console.error('❌ Failed to test rule:', error);
-        alert('❌ Test failed: ' + error.message);
+        alert('❌ ' + t('rules.alert.testFailed') + ': ' + error.message);
     }
 }
 
