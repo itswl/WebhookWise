@@ -637,7 +637,7 @@ async def test_poll_timeout_missing_session_exception_and_dispatch_paths(
     )
     assert timed_out is not None
     assert timed_out["status"] == DeepAnalysisStatus.FAILED
-    assert notified[-1] == "超时失败"
+    assert notified[-1] == "Timeout failure"
 
     early_missing = await openclaw._handle_missing_session_key(
         _record(openclaw_session_key="", created_at=utcnow()),
@@ -653,7 +653,7 @@ async def test_poll_timeout_missing_session_exception_and_dispatch_paths(
     )
     assert late_missing is not None
     assert late_missing["status"] == DeepAnalysisStatus.FAILED
-    assert notified[-1] == "无 session_key - OpenClaw 触发失败"
+    assert notified[-1] == "No session_key - OpenClaw trigger failed"
 
     pending = await openclaw._handle_poll_result(
         _record(),
@@ -862,7 +862,7 @@ async def test_analyze_with_openclaw_retry_degrade_raise_and_parse_error_paths(
     assert all_fail["status"] == "degraded"
     assert "permanent" in all_fail["_degraded_reason"]
 
-    with pytest.raises(Exception, match="Openclaw 请求失败: permanent"):
+    with pytest.raises(Exception, match="Openclaw request failed: permanent"):
         await openclaw.analyze_with_openclaw(
             webhook_data_from_mapping({"source": "prometheus", "parsed_data": {"RuleName": "Fail"}}),
             policy=_trigger_policy(max_retries=1, enable_degradation=False),

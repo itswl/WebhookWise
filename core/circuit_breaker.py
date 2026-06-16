@@ -1,4 +1,4 @@
-"""Redis 共享状态熔断器 — 防止级联故障。"""
+"""Circuit breaker with Redis-shared state — prevents cascading failures."""
 
 import time
 from collections.abc import Awaitable, Callable
@@ -39,7 +39,7 @@ class CircuitBreakerOpenException(RuntimeError):
 
 class CircuitBreaker:
     """
-    Redis 共享状态熔断器。
+    Circuit breaker with Redis-shared state.
     """
 
     def __init__(
@@ -69,7 +69,7 @@ class CircuitBreaker:
         from core.redis_health import ensure_redis_available, mark_redis_failure
 
         if not await ensure_redis_available(f"circuit_breaker:{self.name}:check_state"):
-            logger.warning("CircuitBreaker [%s] Redis 不可用，降级放行", self.name)
+            logger.warning("CircuitBreaker [%s] Redis unavailable; degrading to allow", self.name)
             state = CircuitState.CLOSED
             self._record_state_metric(state)
             return state
@@ -83,7 +83,7 @@ class CircuitBreaker:
             state = CircuitState(state_str) if state_str else CircuitState.CLOSED
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:check_state", e)
-            logger.warning("CircuitBreaker [%s] Redis 检查状态失败，降级放行: %s", self.name, e)
+            logger.warning("CircuitBreaker [%s] Redis state check failed; degrading to allow: %s", self.name, e)
             state = CircuitState.CLOSED
         self._record_state_metric(state)
         return state
@@ -113,7 +113,7 @@ class CircuitBreaker:
             return tripped == 1
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:record_failure", e)
-            logger.warning("CircuitBreaker [%s] Redis 记录失败异常: %s", self.name, e)
+            logger.warning("CircuitBreaker [%s] Error recording failure to Redis: %s", self.name, e)
             return True
 
     async def _record_success(self) -> None:
@@ -128,7 +128,7 @@ class CircuitBreaker:
             await redis_eval_int(_CB_RECORD_SUCCESS_LUA, 3, self._failures_key, self._state_key, self._open_until_key)
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
             mark_redis_failure(f"circuit_breaker:{self.name}:record_success", e)
-            logger.warning("CircuitBreaker [%s] Redis 记录成功异常: %s", self.name, e)
+            logger.warning("CircuitBreaker [%s] Error recording success to Redis: %s", self.name, e)
 
     _P = ParamSpec("_P")
     _R = TypeVar("_R")
@@ -139,7 +139,7 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
                 return result
             except self.expected_exceptions as e:
-                logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
+                logger.warning("CircuitBreaker [%s] Request error: %s", self.name, e)
                 raise
 
         current_state = await self._check_state_async()
@@ -149,7 +149,7 @@ class CircuitBreaker:
                 "circuit_breaker.open",
                 {"circuit_breaker.name": self.name, "circuit_breaker.state": current_state.value},
             )
-            logger.warning("CircuitBreaker [%s] OPEN — 请求被拒绝", self.name)
+            logger.warning("CircuitBreaker [%s] OPEN — request rejected", self.name)
             raise CircuitBreakerOpenException(self.name)
 
         try:
@@ -171,10 +171,10 @@ class CircuitBreaker:
                     },
                 )
                 logger.error(
-                    "CircuitBreaker [%s] 触发熔断: 达到阈值 %d 次, 将在 %.1fs 后恢复",
+                    "CircuitBreaker [%s] Tripped: reached the threshold of %d failures, will recover after %.1fs",
                     self.name,
                     self.failure_threshold,
                     self.recovery_timeout,
                 )
-            logger.warning("CircuitBreaker [%s] 请求异常: %s", self.name, e)
+            logger.warning("CircuitBreaker [%s] Request error: %s", self.name, e)
             raise

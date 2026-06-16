@@ -85,7 +85,7 @@ def _resolve_instructor_mode(mode_name: str) -> instructor.Mode:
     try:
         return instructor.Mode[mode_name.strip().upper()]
     except (KeyError, AttributeError):
-        logger.warning("[AI] 未知 instructor 模式 %r,回退到 JSON", mode_name)
+        logger.warning("[AI] Unknown instructor mode %r, falling back to JSON", mode_name)
         return instructor.Mode.JSON
 
 
@@ -109,7 +109,7 @@ async def initialize_openai_client(
         if _instructor_client is None:
             if _openai_client is None:
                 logger.info(
-                    "[AI] 初始化 OpenAI 客户端 model=%s api_url=%s injected_http_client=%s",
+                    "[AI] Initializing OpenAI client model=%s api_url=%s injected_http_client=%s",
                     policy.model,
                     mask_url(policy.api_url),
                     http_client is not None,
@@ -121,14 +121,14 @@ async def initialize_openai_client(
                     timeout=httpx.Timeout(policy.http_timeout_seconds, connect=policy.http_connect_timeout_seconds),
                 )
             _instructor_client = instructor.from_openai(_openai_client, mode=_resolve_instructor_mode(policy.instructor_mode))
-            logger.info("[AI] OpenAI 客户端初始化完成 model=%s", policy.model)
+            logger.info("[AI] OpenAI client initialization complete model=%s", policy.model)
 
 
 async def reset_openai_client() -> None:
     global _openai_client, _instructor_client
     async with _openai_client_lock:
         if _openai_client is not None or _instructor_client is not None:
-            logger.info("[AI] 重置 OpenAI 客户端")
+            logger.info("[AI] Resetting OpenAI client")
         _openai_client = _instructor_client = None
 
 
@@ -176,7 +176,7 @@ async def _analyze_with_openai_tracked(
         data_json=data_yaml,
     )
     logger.info(
-        "[AI] 开始 LLM 分析 source=%s model=%s sanitized_fields=%s identity_fields=%s prompt_bytes=%s prompt_source=%s",
+        "[AI] Starting LLM analysis source=%s model=%s sanitized_fields=%s identity_fields=%s prompt_bytes=%s prompt_source=%s",
         source,
         policy.model,
         len(cleaned_data),
@@ -223,7 +223,7 @@ async def _analyze_with_openai_tracked(
             s.set_attribute("gen_ai.usage.input_tokens", t_in)
             s.set_attribute("gen_ai.usage.output_tokens", t_out)
     logger.info(
-        "[AI] LLM 分析完成 source=%s model=%s tokens_in=%s tokens_out=%s cost_usd=%.6f",
+        "[AI] LLM analysis complete source=%s model=%s tokens_in=%s tokens_out=%s cost_usd=%.6f",
         source,
         policy.model,
         t_in,
@@ -257,7 +257,7 @@ async def _call_ai_with_retry(
             raise
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "error").inc()
         OPENAI_ERRORS_TOTAL.labels(type=type(e).__name__.lower()).inc()
-        logger.warning("[AI] LLM 调用失败 source=%s error_type=%s", source, type(e).__name__)
+        logger.warning("[AI] LLM call failed source=%s error_type=%s", source, type(e).__name__)
         raise
 
 

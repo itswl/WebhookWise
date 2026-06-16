@@ -57,7 +57,7 @@ async def resolve_forward_decision(
     try:
         rules = await get_cached_forward_rules(session=session)
     except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
-        logger.warning("[Forward] 匹配转发规则失败: %s", e)
+        logger.warning("[Forward] Failed to match forwarding rules: %s", e)
 
     decision = decide_forwarding(
         event_type=event_type,
@@ -73,7 +73,7 @@ async def resolve_forward_decision(
 
     if decision.should_forward:
         logger.info(
-            "[Forward] 决策=转发 source=%s importance=%s duplicate=%s is_periodic=%s matched_rules=%d",
+            "[Forward] decision=forward source=%s importance=%s duplicate=%s is_periodic=%s matched_rules=%d",
             source,
             importance,
             is_duplicate,
@@ -82,7 +82,7 @@ async def resolve_forward_decision(
         )
     else:
         logger.info(
-            "[Forward] 决策=跳过 source=%s importance=%s duplicate=%s reason=%s",
+            "[Forward] decision=skip source=%s importance=%s duplicate=%s reason=%s",
             source,
             importance,
             is_duplicate,
@@ -105,7 +105,7 @@ async def finalize_analysis_transaction(
     Forwarding intents are persisted in the same transaction as the processed
     webhook state. The network side effect happens later in an outbox worker.
     """
-    # resolve_dedup 已经是权威结果（Redis + DB fallback），直接信任
+    # resolve_dedup is already the authoritative result (Redis + DB fallback), so trust it directly
     if analysis_res.is_rechain:
         is_dup_for_save = False
         original_id_for_save = None
@@ -158,7 +158,7 @@ async def finalize_analysis_transaction(
                 policy=forwarding_policy,
             )
 
-            # 更新告警事件的转发状态
+            # Update the forward status of the alert event
             evt = await session.get(WebhookEvent, save_res.webhook_id)
             if evt:
                 evt.forward_status = "queued" if fwd_dec.should_forward else "skipped"

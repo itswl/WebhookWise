@@ -1,5 +1,5 @@
 """
-数据库模型定义
+Database model definitions
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""系统指标刷新逻辑"""
+"""System metrics refresh logic."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _default_mq_names() -> tuple[str, str]:
 
 
 async def refresh_all_metrics(*, mq_queue: str | None = None, mq_consumer_group: str | None = None) -> None:
-    """刷新系统指标。"""
+    """Refresh system metrics."""
     await _refresh_db_status_counts()
     await _refresh_mq_stats(mq_queue=mq_queue, mq_consumer_group=mq_consumer_group)
     await _refresh_db_event_count()
@@ -42,7 +42,7 @@ async def _refresh_db_event_count() -> None:
                 return
         DATABASE_EVENTS_COUNT.set(count)
     except SQLAlchemyError as e:
-        logger.debug("[Metrics] 刷新 DB 事件总数失败: %s", e)
+        logger.debug("[Metrics] Failed to refresh total DB event count: %s", e)
 
 
 async def _refresh_db_status_counts() -> None:
@@ -63,7 +63,7 @@ async def _refresh_db_status_counts() -> None:
 
 
 async def _refresh_mq_stats(*, mq_queue: str | None = None, mq_consumer_group: str | None = None) -> None:
-    """MQ 指标刷新 — TaskIQ 使用 Redis Stream (RedisStreamBroker)。"""
+    """Refresh MQ metrics — TaskIQ uses a Redis Stream (RedisStreamBroker)."""
     from core.taskiq_broker import broker
 
     default_queue, default_group = _default_mq_names()
@@ -74,7 +74,7 @@ async def _refresh_mq_stats(*, mq_queue: str | None = None, mq_consumer_group: s
         stream_len = await redis_xlen(queue_name)
         WEBHOOK_MQ_STREAM_LENGTH.labels(stream=queue_name).set(stream_len)
     except RedisError as e:
-        logger.debug("[Metrics] 刷新 MQ 队列长度失败: %s", e)
+        logger.debug("[Metrics] Failed to refresh MQ queue length: %s", e)
 
     try:
         pending = await redis_xpending_pending(queue_name, group_name)
@@ -83,4 +83,4 @@ async def _refresh_mq_stats(*, mq_queue: str | None = None, mq_consumer_group: s
         lag = await redis_xinfo_group_lag(queue_name, group_name)
         WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group=group_name).set(lag)
     except RedisError as e:
-        logger.debug("[Metrics] 刷新 MQ group 指标失败: %s", e)
+        logger.debug("[Metrics] Failed to refresh MQ group metrics: %s", e)

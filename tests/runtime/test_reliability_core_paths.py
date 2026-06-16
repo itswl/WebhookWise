@@ -205,7 +205,7 @@ async def test_deep_analysis_success_notification_records_enqueue_failure(
             "webhook_event_id": 42,
             "target_url": "https://example.com/hook",
             "failure_reason": "feishu_notification_failed",
-            "error_message": "深度分析飞书通知发送失败",
+            "error_message": "Failed to send deep-analysis Feishu notification",
             "analysis_type": "deep_analysis",
         }
     ]

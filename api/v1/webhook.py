@@ -92,7 +92,7 @@ async def _receive_and_enqueue_webhook(
         client_ip = get_client_ip(request)
     except _CLIENT_IP_CONTEXT_ERRORS:
         logger.warning(
-            "[Webhook] 获取来源 IP 失败 request_id=%s source=%s error fallback_to_unknown",
+            "[Webhook] Failed to get source IP request_id=%s source=%s error fallback_to_unknown",
             request_id,
             source_hint,
             exc_info=True,
@@ -105,7 +105,7 @@ async def _receive_and_enqueue_webhook(
     method = str(getattr(request, "method", ""))
     path = str(getattr(getattr(request, "url", None), "path", ""))
     logger.info(
-        "[Webhook] 收到告警 request_id=%s source=%s method=%s path=%s ip=%s content_length=%s body_size=%d content_type=%s",
+        "[Webhook] Alert received request_id=%s source=%s method=%s path=%s ip=%s content_length=%s body_size=%d content_type=%s",
         request_id,
         source_hint,
         method,
@@ -117,7 +117,7 @@ async def _receive_and_enqueue_webhook(
     )
     if too_large_response := _payload_too_large_response(raw_body, source_hint):
         logger.warning(
-            "[Webhook] 拒绝超大 payload request_id=%s source=%s ip=%s body_size=%d",
+            "[Webhook] Rejected oversized payload request_id=%s source=%s ip=%s body_size=%d",
             request_id,
             source_hint,
             client_ip,
@@ -131,7 +131,7 @@ async def _receive_and_enqueue_webhook(
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
         WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="ingress_suppressed").observe(len(raw_body))
         logger.warning(
-            "[Webhook] ingress 背压抑制 request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s reason=%s",
+            "[Webhook] ingress backpressure suppressed request_id=%s source=%s ip=%s body_size=%d count=%s threshold=%s key=%s reason=%s",
             request_id,
             source_hint,
             client_ip,
@@ -176,13 +176,13 @@ async def _receive_and_enqueue_webhook(
             len(raw_body)
         )
         logger.exception(
-            "[Webhook] 告警入队失败 request_id=%s source=%s ip=%s body_size=%d",
+            "[Webhook] Alert enqueue failed request_id=%s source=%s ip=%s body_size=%d",
             request_id,
             source_hint,
             client_ip,
             len(raw_body),
         )
-        logger.debug("[Webhook] 入队异常 request_id=%s source=%s error=%s", request_id, source_hint, e)
+        logger.debug("[Webhook] Enqueue exception request_id=%s source=%s error=%s", request_id, source_hint, e)
         raise
     finally:
         QUEUE_OPERATIONS_TOTAL.labels("webhook_process_task", "enqueue", enqueue_status).inc()
@@ -190,7 +190,7 @@ async def _receive_and_enqueue_webhook(
             time.perf_counter() - enqueue_started
         )
     logger.info(
-        "[Webhook] 告警已入队 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
+        "[Webhook] Alert enqueued request_id=%s source=%s ip=%s body_size=%d received_at=%s",
         request_id,
         source_hint,
         client_ip,
@@ -207,7 +207,7 @@ async def _receive_and_enqueue_webhook(
     }
 
 
-# ── Webhook 接收 ───────────────────────────────────────────────────────────────
+# ── Webhook ingress ───────────────────────────────────────────────────────────────
 
 
 @webhook_router.post(
@@ -226,7 +226,7 @@ async def receive_webhook(
     request: Request,
     source: str | None = None,
 ) -> JSONDict | JSONResponse:
-    """Webhook 接收入口（支持 /v1/webhook 和 /v1/webhook/{source}）。"""
+    """Webhook ingress entry point (supports /v1/webhook and /v1/webhook/{source})."""
     ingress_outcome = "accepted"
     request_id = request.headers.get("x-request-id") or getattr(request.state, "request_id", "") or generate_trace_id()
     token = set_fallback_trace_id(
@@ -265,14 +265,14 @@ async def receive_webhook(
             return result
     except (HTTPException, OSError, RuntimeError, TypeError, ValueError) as exc:
         ingress_outcome = "error"
-        logger.warning("[Webhook] 入库请求异常 request_id=%s source=%s error=%s", request_id, source_hint, exc, exc_info=True)
+        logger.warning("[Webhook] Ingest request exception request_id=%s source=%s error=%s", request_id, source_hint, exc, exc_info=True)
         raise
     finally:
         WEBHOOK_INGRESS_REQUESTS_TOTAL.labels(metric_source, ingress_outcome).inc()
         reset_fallback_trace_id(token)
 
 
-# ── 查询路由 ───────────────────────────────────────────────────────────────────
+# ── Query routes ───────────────────────────────────────────────────────────────────
 
 
 @webhook_router.get(
@@ -288,7 +288,7 @@ async def get_webhooks_endpoint(
     source: str = Query(""),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
-    """获取所有 webhook 事件的摘要列表。"""
+    """Get the summary list of all webhook events."""
     items, has_more, next_cursor = await list_webhook_summaries(
         session, cursor=cursor, importance=importance, source=source, page=page, page_size=page_size
     )
@@ -308,7 +308,7 @@ async def get_webhook_by_request_id_endpoint(
     request_id: str = Path(..., min_length=1, max_length=64),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
-    """按异步接收 request_id 查询最终持久化事件。"""
+    """Query the final persisted event by the async-receive request_id."""
     stmt = select(WebhookEvent).where(WebhookEvent.request_id == request_id)
     event = (await session.execute(stmt)).scalar_one_or_none()
     if not event:
@@ -325,7 +325,7 @@ async def get_webhook_by_request_id_endpoint(
 async def get_webhook_detail_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
-    """获取单个 webhook 事件的详细信息。"""
+    """Get the details of a single webhook event."""
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})

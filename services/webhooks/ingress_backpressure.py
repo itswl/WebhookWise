@@ -49,7 +49,7 @@ def _ingress_identity(source_hint: str, raw_body: bytes) -> str:
         normalized = normalize_webhook_event(payload, source_hint)
         return f"alert:{generate_alert_hash(dict(normalized.data), normalized.source)}"
     except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
-        logger.debug("[IngressBackpressure] 无法解析 ingress identity，使用 body hash: %s", e)
+        logger.debug("[IngressBackpressure] Unable to parse ingress identity, falling back to body hash: %s", e)
         return _fallback_body_hash(source_hint, raw_body)
 
 
@@ -76,10 +76,10 @@ async def check_ingress_backpressure(
             if not await ensure_redis_available("ingress_backpressure:counter"):
                 if policy.ingress_backpressure_fail_open_on_redis_error:
                     REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "allowed").inc()
-                    logger.warning("[IngressBackpressure] Redis 不可用，ingress 降级放行 key=%s", key)
+                    logger.warning("[IngressBackpressure] Redis unavailable, ingress degraded to allow key=%s", key)
                     return IngressBackpressureResult(False, key, 0, threshold, reason="redis_unavailable_fail_open")
                 REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "suppressed").inc()
-                logger.warning("[IngressBackpressure] Redis 不可用，ingress 按背压抑制 key=%s", key)
+                logger.warning("[IngressBackpressure] Redis unavailable, ingress suppressed as backpressure key=%s", key)
                 return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
             redis_eval_int_func = redis_eval_int
@@ -93,10 +93,10 @@ async def check_ingress_backpressure(
         mark_redis_failure("ingress_backpressure:counter", e)
         if policy.ingress_backpressure_fail_open_on_redis_error:
             REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "allowed").inc()
-            logger.warning("[IngressBackpressure] Redis 计数失败，ingress 降级放行: %s", e)
+            logger.warning("[IngressBackpressure] Redis counting failed, ingress degraded to allow: %s", e)
             return IngressBackpressureResult(False, key, 0, threshold, reason="redis_unavailable_fail_open")
         REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "suppressed").inc()
-        logger.warning("[IngressBackpressure] Redis 计数失败，ingress 按背压抑制: %s", e)
+        logger.warning("[IngressBackpressure] Redis counting failed, ingress suppressed as backpressure: %s", e)
         return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
     suppressed = count > threshold

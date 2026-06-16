@@ -54,10 +54,10 @@ async def resolve_and_forward(
     orig_id: int | None = None,
     policy: ForwardDeliveryPolicy | None = None,
 ) -> ForwardResult:
-    """Pipeline 路径：在已有事务中创建 outbox 记录，调用方负责提交和调度。"""
+    """Pipeline path: create outbox records within an existing transaction; the caller is responsible for commit and scheduling."""
     matched = list(decision.matched_rules)
     if not matched:
-        return {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
+        return {"status": "skipped", "reason": "no matching forward rule", "outbox_ids": []}
 
     outbox_ids = await outbox_records.create_outbox_records(
         session,
@@ -91,9 +91,9 @@ async def forward_notification(
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
 ) -> ForwardResult:
-    """独立路径：匹配规则 → 创建 outbox → 调度投递（或同步送达如 wait=True）。
+    """Standalone path: match rules -> create outbox -> schedule delivery (or deliver synchronously if wait=True).
 
-    当 target_url 非空时跳过规则匹配，直接投递到该 URL。
+    When target_url is non-empty, rule matching is skipped and delivery goes directly to that URL.
     """
     policy = policy or ForwardDeliveryPolicy.from_config()
 
@@ -129,7 +129,7 @@ async def forward_notification(
 
 
 async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> ForwardResult:
-    """同步送达一条 outbox 记录并更新状态。"""
+    """Synchronously deliver a single outbox record and update its status."""
     record = await _claim_outbox(outbox_id, policy=policy)
     if record is None:
         return {"status": "not_claimed", "outbox_id": outbox_id}

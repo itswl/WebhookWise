@@ -1,8 +1,8 @@
-"""TaskIQ 异步任务定义。
+"""TaskIQ async task definitions.
 
-包括：
-- webhook_process_task：消费 webhook 队列
-- 定时轮询任务：由 TaskIQ Scheduler 触发入队，由 Worker 执行
+Includes:
+- webhook_process_task: consumes the webhook queue
+- scheduled polling tasks: enqueued by the TaskIQ Scheduler, executed by the Worker
 """
 
 import contextlib
@@ -139,7 +139,7 @@ async def _handle_raw_webhook_failure(
             )
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
             logger.error(
-                "[Tasks] raw webhook 处理失败，已调度重试 request_id=%s source=%s retry=%s/%s delay=%ss error=%s",
+                "[Tasks] raw webhook processing failed, retry scheduled request_id=%s source=%s retry=%s/%s delay=%ss error=%s",
                 request_id,
                 source,
                 next_retry_count,
@@ -152,7 +152,7 @@ async def _handle_raw_webhook_failure(
         except _SCHEDULING_ERRORS as schedule_err:
             err = RuntimeError(f"raw ingest retry schedule failed: {schedule_err}; process_error={err}")
             logger.critical(
-                "[Tasks] raw webhook 重试调度失败，将写入 dead-letter request_id=%s source=%s error=%s",
+                "[Tasks] raw webhook retry scheduling failed, will write to dead-letter request_id=%s source=%s error=%s",
                 request_id,
                 source,
                 schedule_err,
@@ -173,7 +173,7 @@ async def _handle_raw_webhook_failure(
     WEBHOOK_DEAD_LETTER_TOTAL.inc()
     WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="dead_letter").inc()
     logger.error(
-        "[Tasks] raw webhook 处理失败，已进入 dead-letter event_id=%s request_id=%s source=%s retryable=%s error=%s",
+        "[Tasks] raw webhook processing failed, moved to dead-letter event_id=%s request_id=%s source=%s retryable=%s error=%s",
         event_id,
         request_id,
         source,
@@ -192,7 +192,7 @@ async def _scheduled_task_leader(
     token = f"{(policy or TaskRuntimePolicy.from_config()).worker_id}:{uuid.uuid4().hex}"
     ttl = max(30, int(interval_seconds) * 2)
     if not await redis_health.ensure_redis_available(f"scheduled_task:{name}:leader"):
-        logger.warning("[ScheduledTask] Redis 单实例锁不可用，跳过调度 name=%s", name)
+        logger.warning("[ScheduledTask] Redis single-instance lock unavailable, skipping scheduling name=%s", name)
         yield False
         return
 
@@ -200,7 +200,7 @@ async def _scheduled_task_leader(
         acquired = await redis_client.redis_set_nx_ex(key, token, ttl)
     except _SCHEDULING_ERRORS as e:
         redis_health.mark_redis_failure(f"scheduled_task:{name}:leader", e)
-        logger.warning("[ScheduledTask] 单实例锁异常，跳过调度 name=%s error=%s", name, e)
+        logger.warning("[ScheduledTask] Single-instance lock error, skipping scheduling name=%s error=%s", name, e)
         yield False
         return
 
@@ -215,7 +215,7 @@ async def _scheduled_task_leader(
 async def _run_scheduled(name: str, interval_seconds: int, fn: Awaitable[object]) -> None:
     async with _scheduled_task_leader(name, interval_seconds) as is_leader:
         if not is_leader:
-            logger.debug("[ScheduledTask] 跳过重复执行 name=%s interval=%ss", name, interval_seconds)
+            logger.debug("[ScheduledTask] Skipping duplicate execution name=%s interval=%ss", name, interval_seconds)
             if inspect.iscoroutine(fn):
                 fn.close()
             return
@@ -233,7 +233,7 @@ async def _run_scheduled_locked(
     start = time.time()
     status = "success"
     lag = 0.0
-    logger.debug("[ScheduledTask] 周期任务开始 name=%s interval=%ss", name, interval_seconds)
+    logger.debug("[ScheduledTask] Periodic task started name=%s interval=%ss", name, interval_seconds)
     with otel_span("scheduler.run", {"scheduler.task.name": name}) as scheduler_span:
         try:
             await fn
@@ -248,7 +248,7 @@ async def _run_scheduled_locked(
                 lag = error_lag
                 SCHEDULED_TASK_LAG_SECONDS.labels(name=name).set(lag)
             logger.exception(
-                "[ScheduledTask] 周期任务失败 name=%s interval=%ss lag=%.3fs",
+                "[ScheduledTask] Periodic task failed name=%s interval=%ss lag=%.3fs",
                 name,
                 interval_seconds,
                 lag,
@@ -262,7 +262,7 @@ async def _run_scheduled_locked(
             SCHEDULED_TASK_DURATION_SECONDS.labels(name=name).observe(duration)
             if status == "success":
                 logger.debug(
-                    "[ScheduledTask] 周期任务成功 name=%s interval=%ss duration=%.3fs lag=%.3fs",
+                    "[ScheduledTask] Periodic task succeeded name=%s interval=%ss duration=%.3fs lag=%.3fs",
                     name,
                     interval_seconds,
                     duration,
@@ -304,7 +304,7 @@ def _start_webhook_task(ctx: _WebhookTaskContext) -> None:
     clear_log_context()
     set_log_context(request_id=ctx.request_id, webhook_source=ctx.source)
     logger.debug(
-        "[Tasks] Webhook 任务开始 request_id=%s source=%s retry=%s",
+        "[Tasks] Webhook task started request_id=%s source=%s retry=%s",
         ctx.request_id,
         ctx.source,
         ctx.ingest_retry_count,
@@ -337,7 +337,7 @@ def _reset_webhook_task_fallback_trace(token: Token[str] | None) -> None:
 def _finish_webhook_task(ctx: _WebhookTaskContext, outcome: str, task_start: float) -> None:
     duration_ms = int((time.perf_counter() - task_start) * 1000)
     logger.info(
-        "[Tasks] Webhook 任务结束 request_id=%s source=%s outcome=%s duration=%dms",
+        "[Tasks] Webhook task finished request_id=%s source=%s outcome=%s duration=%dms",
         ctx.request_id,
         ctx.source,
         outcome,
@@ -428,7 +428,7 @@ async def process_webhook_task(
     except BaseException:
         outcome = "error"
         logger.exception(
-            "[Tasks] Webhook 任务异常退出 request_id=%s source=%s",
+            "[Tasks] Webhook task exited with an exception request_id=%s source=%s",
             ctx.request_id,
             ctx.source,
         )

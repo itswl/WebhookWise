@@ -69,7 +69,7 @@ async def get_cached_analysis(
         return res
     except (RedisError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as e:
         result = "error"
-        logger.warning("读取缓存失败: %s", e)
+        logger.warning("Failed to read cache: %s", e)
         return None
     finally:
         AI_CACHE_REQUESTS_TOTAL.labels("get", result).inc()
@@ -97,7 +97,7 @@ async def save_to_cache(
         return True
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         result = "error"
-        logger.warning("保存缓存失败: %s", e)
+        logger.warning("Failed to save cache: %s", e)
         return False
     finally:
         AI_CACHE_REQUESTS_TOTAL.labels("set", result).inc()

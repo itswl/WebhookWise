@@ -58,7 +58,7 @@ def test_startup_rejects_empty_webhook_secret_when_auth_required(temp_config) ->
     temp_config.security.ADMIN_WRITE_KEY = "a-sufficiently-long-admin-key-value"
     temp_config.security.REQUIRE_WEBHOOK_AUTH = True
     temp_config.security.WEBHOOK_SECRET = ""
-    with pytest.raises(RuntimeError, match="WEBHOOK_SECRET 为空"):
+    with pytest.raises(RuntimeError, match="WEBHOOK_SECRET is empty"):
         validate_startup_security(temp_config, app_env="production")
 
 

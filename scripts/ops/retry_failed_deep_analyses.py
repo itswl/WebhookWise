@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-批量重试失败的深度分析记录
+Batch retry failed deep-analysis records
 
-用法:
+Usage:
     python -m scripts.ops.retry_failed_deep_analyses [OPTIONS]
 
-示例:
-    # 重试所有失败记录
+Examples:
+    # Retry all failed records
     python -m scripts.ops.retry_failed_deep_analyses
 
-    # 只列出待重试的记录，不实际执行
+    # Only list the records pending retry, without actually executing
     python -m scripts.ops.retry_failed_deep_analyses --list
 
-    # 只重试指定 webhook_event_id 关联的记录
+    # Only retry records associated with the given webhook_event_id
     python -m scripts.ops.retry_failed_deep_analyses --webhook-id 20177
 
-    # 重试最近 N 条失败记录
+    # Retry the most recent N failed records
     python -m scripts.ops.retry_failed_deep_analyses --limit 50
 """
 
@@ -24,7 +24,7 @@ import asyncio
 import os
 import sys
 
-# 添加项目根目录到 path
+# Add the project root directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import select
@@ -42,7 +42,7 @@ logger = get_logger("scripts.retry_failed_deep_analyses")
 
 
 async def find_failed_records(webhook_id=None, limit=None):
-    """查询待重试的失败记录"""
+    """Query failed records pending retry"""
     async with session_scope() as session:
         stmt = select(DeepAnalysis).where(DeepAnalysis.status == "failed")
         if webhook_id is not None:
@@ -58,29 +58,29 @@ async def find_failed_records(webhook_id=None, limit=None):
 
 
 async def retry_record(record_id: int) -> tuple[bool, str]:
-    """重试单条记录"""
+    """Retry a single record"""
     async with session_scope() as session:
         record = await session.get(DeepAnalysis, record_id)
         if not record:
-            return False, "记录不存在"
+            return False, "Record does not exist"
 
         if record.status not in ("failed", "completed"):
-            return False, f"状态非 failed/completed: {record.status}"
+            return False, f"Status is not failed/completed: {record.status}"
 
         if not record.openclaw_session_key:
-            return False, "缺少 session key"
+            return False, "Missing session key"
 
         config = get_settings()
         if not config.openclaw.OPENCLAW_HTTP_API_URL:
-            return False, "未配置 OPENCLAW_HTTP_API_URL，无法重试"
+            return False, "OPENCLAW_HTTP_API_URL not configured, cannot retry"
 
         result = await poll_openclaw_result_via_http(record.openclaw_session_key, retry_count=3)
 
         if result.get("status") == "error":
-            return False, f"API 错误: {result.get('error')}"
+            return False, f"API error: {result.get('error')}"
 
         if result.get("status") != "completed":
-            return False, f"未完成: {result.get('status')}"
+            return False, f"Not completed: {result.get('status')}"
 
         text = result.get("text", "")
         import re
@@ -92,24 +92,24 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
                 parsed = json.loads(json_match.group())
                 record.analysis_result = parsed
                 record.status = "completed"
-                logger.info("深度分析 #%d 重试成功", record_id)
-                return True, "成功"
+                logger.info("Deep analysis #%d retried successfully", record_id)
+                return True, "Success"
             except json.JSONDecodeError:
                 record.analysis_result = {"text": text}
                 record.status = "completed"
-                return True, "成功（JSON解析失败，已存原文）"
+                return True, "Success (JSON parsing failed, raw text stored)"
         else:
             record.analysis_result = {"text": text}
             record.status = "completed"
-            return True, "成功（无 JSON）"
+            return True, "Success (no JSON)"
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="批量重试失败的深度分析记录")
-    parser.add_argument("--list", action="store_true", help="只列出记录，不执行重试")
-    parser.add_argument("--webhook-id", type=int, metavar="ID", help="限定 webhook_event_id")
-    parser.add_argument("--limit", type=int, metavar="N", help="最多处理 N 条")
-    parser.add_argument("--dry-run", action="store_true", help="模拟执行（仅 --list 时有效）")
+    parser = argparse.ArgumentParser(description="Batch retry failed deep-analysis records")
+    parser.add_argument("--list", action="store_true", help="Only list records, do not perform retries")
+    parser.add_argument("--webhook-id", type=int, metavar="ID", help="Limit to a specific webhook_event_id")
+    parser.add_argument("--limit", type=int, metavar="N", help="Process at most N records")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate execution (only effective with --list)")
     args = parser.parse_args()
 
     init_default_app_context(get_settings())
@@ -118,25 +118,25 @@ async def main():
     records = await find_failed_records(webhook_id=args.webhook_id, limit=args.limit)
 
     if not records:
-        print("没有找到待重试的失败记录")
+        print("No failed records pending retry were found")
         return
 
-    print(f"找到 {len(records)} 条失败记录：")
-    print(f"{'ID':<10} {'webhook_event_id':<20} {'session_key':<40} {'当前状态'}")
+    print(f"Found {len(records)} failed records:")
+    print(f"{'ID':<10} {'webhook_event_id':<20} {'session_key':<40} {'current status'}")
     print("-" * 90)
     for rec in records:
         print(f"{rec[0]:<10} {rec[1]:<20} {rec[2] or '':<40} {rec[3]}")
 
     if args.list:
-        print(f"\n共 {len(records)} 条，使用 --list 跳过实际执行")
+        print(f"\n{len(records)} records total; --list skips actual execution")
         return
 
     config = get_config_manager()
     if not config.openclaw.OPENCLAW_HTTP_API_URL:
-        print("\n错误：未配置 OPENCLAW_HTTP_API_URL，无法重试")
+        print("\nError: OPENCLAW_HTTP_API_URL not configured, cannot retry")
         sys.exit(1)
 
-    print(f"\n开始重试 {len(records)} 条记录...\n")
+    print(f"\nStarting retry of {len(records)} records...\n")
     success, failed = 0, []
 
     for record_id, webhook_event_id, _session_key, _ in records:
@@ -148,9 +148,9 @@ async def main():
         else:
             failed.append((record_id, msg))
 
-    print(f"\n完成：成功 {success}，失败 {len(failed)}")
+    print(f"\nDone: {success} succeeded, {len(failed)} failed")
     if failed:
-        print("\n失败列表：")
+        print("\nFailure list:")
         for rid, msg in failed:
             print(f"  #{rid}: {msg}")
         sys.exit(1)

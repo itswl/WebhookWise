@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-告警数据查询脚本
-用法:
+Alert data query script
+Usage:
     python -m scripts.ops.query_alerts --id 5
     python -m scripts.ops.query_alerts --list
     python -m scripts.ops.query_alerts --hash <hash>
@@ -14,7 +14,7 @@
 import argparse
 import asyncio
 
-# 确保项目根目录在 path 中
+# Ensure the project root directory is on the path
 import os
 import sys
 
@@ -38,10 +38,10 @@ async def query_by_id(event_id: int):
         result = await session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
         event = result.scalar_one_or_none()
         if event:
-            print(f"\n=== 告警 ID {event_id} ===")
+            print(f"\n=== Alert ID {event_id} ===")
             print_json(webhook_event_to_full_dict(event))
         else:
-            print(f"未找到 ID={event_id} 的告警")
+            print(f"No alert found with ID={event_id}")
         return event
 
 
@@ -61,7 +61,7 @@ async def query_list(
         stmt = stmt.limit(limit)
         result = await session.execute(stmt)
         events = result.scalars().all()
-        print(f"\n=== 最近 {len(events)} 条告警 ===")
+        print(f"\n=== Most recent {len(events)} alerts ===")
         for e in events:
             d = webhook_event_to_full_dict(e)
             ts = d.get("timestamp", "")[:19]
@@ -81,7 +81,7 @@ async def query_by_hash(alert_hash: str):
         )
         events = result.scalars().all()
 
-        print(f"\n=== Hash={alert_hash[:16]}... 的 {len(events)} 条告警 ===")
+        print(f"\n=== {len(events)} alerts with Hash={alert_hash[:16]}... ===")
         for e in events:
             d = webhook_event_to_full_dict(e)
             ts = d.get("timestamp", "")[:19]
@@ -115,25 +115,25 @@ async def query_stats():
         )
         dup = result.scalar()
 
-        print("\n=== 统计概览 ===")
-        print(f"  总告警数: {total}")
+        print("\n=== Statistics overview ===")
+        print(f"  Total alerts: {total}")
         print(f"  high:     {high}")
         print(f"  medium:   {medium}")
         print(f"  low:      {low}")
-        print(f"  重复告警: {dup}")
+        print(f"  Duplicate alerts: {dup}")
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="告警数据查询")
-    parser.add_argument("--id", type=int, help="按 ID 查询")
-    parser.add_argument("--list", action="store_true", help="列出最近告警")
-    parser.add_argument("--hash", type=str, help="按 alert_hash 查询")
-    parser.add_argument("--source", type=str, help="按来源筛选")
-    parser.add_argument("--importance", type=str, choices=["high", "medium", "low"], help="按重要性筛选")
-    parser.add_argument("--duplicate", action="store_true", help="仅显示重复告警")
-    parser.add_argument("--stats", action="store_true", help="显示统计信息")
-    parser.add_argument("--limit", type=int, default=20, help="列出数量 (默认20)")
-    parser.add_argument("--json", action="store_true", help="输出完整 JSON (仅限 --id)")
+    parser = argparse.ArgumentParser(description="Alert data query")
+    parser.add_argument("--id", type=int, help="Query by ID")
+    parser.add_argument("--list", action="store_true", help="List recent alerts")
+    parser.add_argument("--hash", type=str, help="Query by alert_hash")
+    parser.add_argument("--source", type=str, help="Filter by source")
+    parser.add_argument("--importance", type=str, choices=["high", "medium", "low"], help="Filter by importance")
+    parser.add_argument("--duplicate", action="store_true", help="Show only duplicate alerts")
+    parser.add_argument("--stats", action="store_true", help="Show statistics")
+    parser.add_argument("--limit", type=int, default=20, help="Number to list (default 20)")
+    parser.add_argument("--json", action="store_true", help="Output full JSON (only with --id)")
 
     args = parser.parse_args()
 

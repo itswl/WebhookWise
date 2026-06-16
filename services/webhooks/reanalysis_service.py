@@ -97,13 +97,13 @@ async def reanalyze_webhook_event(session: AsyncSession, webhook_id: int) -> Rea
         )
         outbox_ids = list(fwd_result.get("outbox_ids") or [])
     else:
-        logger.info("[Reanalysis] 根据规则跳过转发 webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
+        logger.info("[Reanalysis] Skipping forward per rules webhook_id=%s reason=%s", webhook_id, decision.skip_reason)
 
     source = event.source
     await session.commit()
     await schedule_forward_outbox_many(outbox_ids)
     logger.info(
-        "[Reanalysis] 重新分析完成 webhook_id=%s source=%s old_importance=%s new_importance=%s "
+        "[Reanalysis] Reanalysis completed webhook_id=%s source=%s old_importance=%s new_importance=%s "
         "updated_duplicates=%s outboxes=%s",
         webhook_id,
         source,

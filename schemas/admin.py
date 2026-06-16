@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class DeadLetterItem(BaseModel):
-    """Dead letter 单条记录"""
+    """Single dead letter record"""
 
     id: int
     source: str | None = None
@@ -25,7 +25,7 @@ class DeadLetterPagination(BaseModel):
 
 
 class DeadLetterListResponse(BaseModel):
-    """Dead letter 列表响应"""
+    """Dead letter list response"""
 
     success: bool
     data: list[DeadLetterItem]
@@ -33,7 +33,7 @@ class DeadLetterListResponse(BaseModel):
 
 
 class ReplayResponse(BaseModel):
-    """单条 dead letter 重放响应"""
+    """Single dead letter replay response"""
 
     success: bool
     message: str
@@ -41,7 +41,7 @@ class ReplayResponse(BaseModel):
 
 
 class ReplayAllResponse(BaseModel):
-    """批量重放响应"""
+    """Batch replay response"""
 
     success: bool
     message: str
@@ -51,13 +51,13 @@ class ReplayAllResponse(BaseModel):
 
 
 class ReplayBatchRequest(BaseModel):
-    """指定 dead letter 批量重放请求"""
+    """Request to batch replay specified dead letters"""
 
     event_ids: list[int] = Field(min_length=1, max_length=500)
 
 
 class PromptGetResponse(BaseModel):
-    """获取 Prompt 模板响应"""
+    """Get prompt template response"""
 
     success: bool
     kind: str = "user"
@@ -66,7 +66,7 @@ class PromptGetResponse(BaseModel):
 
 
 class PromptReloadResponse(BaseModel):
-    """重载 Prompt 模板响应"""
+    """Reload prompt template response"""
 
     success: bool
     message: str

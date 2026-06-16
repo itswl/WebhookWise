@@ -142,12 +142,12 @@ def links_for_panel(panel: dict[str, Any]) -> list[dict[str, Any]]:
     labels = dashboard_labels(panel)
     links = [
         {
-            "title": "查看相关日志",
+            "title": "View related logs",
             "url": explore_url("loki", "expr", log_query(labels), "range"),
             "targetBlank": True,
         },
         {
-            "title": "查看相关 Trace",
+            "title": "View related Trace",
             "url": explore_url("tempo", "query", trace_query(labels), "traceql"),
             "targetBlank": True,
         },
@@ -156,7 +156,7 @@ def links_for_panel(panel: dict[str, Any]) -> list[dict[str, Any]]:
     if profile_selector:
         links.append(
             {
-                "title": "查看 Profile",
+                "title": "View Profile",
                 "url": explore_url(
                     "pyroscope",
                     "query",

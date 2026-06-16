@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     set_default_app_context(context)
     config = context.config
     logger.info(
-        "[App] 启动中 env=%s debug=%s run_mode=%s ai_enabled=%s",
+        "[App] Starting up env=%s debug=%s run_mode=%s ai_enabled=%s",
         config.server.APP_ENV,
         config.server.DEBUG,
         config.server.RUN_MODE,
@@ -61,12 +61,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from services.forwarding.rules import start_rules_invalidation_listener
 
     await start_rules_invalidation_listener()
-    logger.info("[App] 启动完成 port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
+    logger.info("[App] Startup complete port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
     try:
         yield
     finally:
-        logger.info("[App] 正在关闭 worker_id=%s", _WORKER_ID)
+        logger.info("[App] Shutting down worker_id=%s", _WORKER_ID)
         await stop_runtime_services(
             config,
             context=context,
@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             reset_ai_client=True,
             reset_ai_client_hook=reset_openai_client,
         )
-        logger.info("[App] 关闭完成 worker_id=%s", _WORKER_ID)
+        logger.info("[App] Shutdown complete worker_id=%s", _WORKER_ID)
         shutdown_observability()
         stop_log_listener()
 
@@ -86,7 +86,7 @@ app.state.app_context = get_default_app_context() or init_default_app_context()
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error("[App] 未处理异常 path=%s error=%s", request.url.path, exc, exc_info=True)
+    logger.error("[App] Unhandled exception path=%s error=%s", request.url.path, exc, exc_info=True)
     return internal_error_response()
 
 

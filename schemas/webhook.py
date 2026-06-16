@@ -14,7 +14,7 @@ DuplicateType = Literal["new", "within_window"]
 
 
 class WebhookEventSummary(BaseModel):
-    """Webhook 事件摘要"""
+    """Webhook event summary"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,7 +55,7 @@ class WebhookEventSummary(BaseModel):
 
 
 class WebhookEventFull(WebhookEventSummary):
-    """Webhook 事件详情"""
+    """Webhook event details"""
 
     ai_analysis: dict[str, Any] | None = None
     raw_payload: str | None = None
@@ -79,7 +79,7 @@ class WebhookEventFull(WebhookEventSummary):
 
 
 class WebhookReceiveResponse(BaseModel):
-    """Webhook 接收响应"""
+    """Webhook receive response"""
 
     success: bool
     message: str
@@ -88,7 +88,7 @@ class WebhookReceiveResponse(BaseModel):
 
 
 class WebhookListResponse(BaseModel):
-    """Webhook 列表响应"""
+    """Webhook list response"""
 
     success: bool
     data: list[WebhookEventSummary]

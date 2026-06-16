@@ -58,8 +58,8 @@ async def create_forward_notification_outbox_records(
             parsed_data=parsed_data,
         )
     if not matched:
-        logger.info("[ForwardNotify] 无匹配规则 event_type=%s source=%s", event_type, source)
-        return [], "未匹配转发规则" if not target_url else "目标 URL 为空"
+        logger.info("[ForwardNotify] No matching rule event_type=%s source=%s", event_type, source)
+        return [], "no matching forward rule" if not target_url else "target URL is empty"
 
     async with session_scope() as sess:
         outbox_ids = await create_outbox_records(

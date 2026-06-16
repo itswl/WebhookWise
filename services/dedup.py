@@ -44,7 +44,7 @@ async def get_dedup_state(dedup_key: str) -> DedupState | None:
     except (RedisError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as e:
         REDIS_UNAVAILABLE_TOTAL.labels("dedup", "read_allowed").inc()
         logger.warning(
-            "[Dedup] Redis 读取失败，继续走 DB fallback dedup_key=%s error_type=%s error=%s",
+            "[Dedup] Redis read failed, falling back to DB dedup_key=%s error_type=%s error=%s",
             dedup_key[:32] if dedup_key else "-",
             type(e).__name__,
             e,
@@ -97,7 +97,7 @@ async def remember_dedup_state(
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         REDIS_UNAVAILABLE_TOTAL.labels("dedup", "write_failed").inc()
         logger.warning(
-            "[Dedup] Redis 写入失败，事件已继续处理但滑动窗口可能缺失 dedup_key=%s event_id=%s error_type=%s error=%s",
+            "[Dedup] Redis write failed; event still processed but the sliding window may be missing dedup_key=%s event_id=%s error_type=%s error=%s",
             dedup_key[:32] if dedup_key else "-",
             original_event_id,
             type(e).__name__,
@@ -133,7 +133,7 @@ class DedupResult:
 
 
 def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]:
-    """一次提取 identity 同时生成 alert_hash 和 dedup_key。"""
+    """Extract identity once and generate both alert_hash and dedup_key."""
     from adapters.normalized import extract_alert_identity
 
     identity = extract_alert_identity(data)
@@ -166,7 +166,7 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
         )
         return alert_hash, dedup_key
 
-    logger.debug("缺少 adapter 产出的告警 identity，使用完整 payload hash 兜底 source=%s", source)
+    logger.debug("No alert identity produced by the adapter; falling back to a full-payload hash source=%s", source)
     fallback_key_fields: dict[str, object] = {"source": source.strip().lower(), "payload": data}
     fallback_hash = hashlib.sha256(json.dumps_bytes(fallback_key_fields, sort_keys=True)).hexdigest()
     return fallback_hash, fallback_hash
@@ -231,14 +231,15 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
         first_seen_elapsed = now - state.first_seen_at
         last_seen_elapsed = now - state.last_seen_at
 
-        # RECHAIN: dedup 窗口过期但 AI 分析仍在复用窗口内 → 创建新告警但复用分析
+        # RECHAIN: the dedup window expired but the AI analysis is still within the
+        # reuse window → create a new alert but reuse the analysis.
         if (
             first_seen_elapsed > dedup_window
             and last_seen_elapsed <= dedup_window
             and first_seen_elapsed <= analysis_reuse_window
         ):
             logger.info(
-                "[Dedup] 告警链超窗口，重建链 dedup_key=%s orig_id=%s first_seen_elapsed=%ds dedup_window=%ds analysis_window=%ds count=%d",
+                "[Dedup] Alert chain exceeded the window, rebuilding chain dedup_key=%s orig_id=%s first_seen_elapsed=%ds dedup_window=%ds analysis_window=%ds count=%d",
                 dedup_key[:32] if dedup_key else "-",
                 state.original_event_id,
                 int(first_seen_elapsed),
@@ -254,10 +255,10 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
                 reset_chain=True,
             )
 
-        # REUSE: 常规去重窗口命中
+        # REUSE: hit within the normal dedup window
         if state.is_active(now, dedup_window):
             logger.debug(
-                "[Dedup] Redis 滑动窗口命中 dedup_key=%s orig_id=%s count=%d",
+                "[Dedup] Redis sliding-window hit dedup_key=%s orig_id=%s count=%d",
                 dedup_key[:32] if dedup_key else "-",
                 state.original_event_id,
                 state.count,
@@ -272,7 +273,7 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
     db_result = await _find_original_by_dedup_key(dedup_key, dedup_window)
     if db_result:
         logger.debug(
-            "[Dedup] DB fallback 命中 dedup_key=%s orig_id=%s",
+            "[Dedup] DB fallback hit dedup_key=%s orig_id=%s",
             dedup_key[:32] if dedup_key else "-",
             db_result["original_event_id"],
         )
@@ -285,7 +286,7 @@ async def resolve_dedup(dedup_key: str) -> DedupResult:
 
     if reset_chain_on_new:
         logger.info(
-            "[Dedup] 过期链未命中 DB fallback，创建新链 dedup_key=%s previous_orig_id=%s",
+            "[Dedup] Expired chain missed the DB fallback, creating a new chain dedup_key=%s previous_orig_id=%s",
             dedup_key[:32] if dedup_key else "-",
             state.original_event_id if state else "-",
         )

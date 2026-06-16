@@ -33,11 +33,11 @@ async def reanalyze_webhook(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
     try:
-        logger.info("[Reanalysis] 重新分析请求 webhook_id=%s", webhook_id)
+        logger.info("[Reanalysis] Reanalysis request webhook_id=%s", webhook_id)
         try:
             result = await reanalyze_webhook_event(session, webhook_id)
         except WebhookEventNotFoundError:
-            logger.warning("[Reanalysis] 重新分析失败，事件不存在 webhook_id=%s", webhook_id)
+            logger.warning("[Reanalysis] Reanalysis failed, event does not exist webhook_id=%s", webhook_id)
             raise HTTPException(404, "Webhook not found") from None
 
         return {
@@ -49,12 +49,12 @@ async def reanalyze_webhook(
             "updated_duplicates": result.updated_duplicates,
             "forward_status": result.forward_status,
             "forward_outbox_ids": result.outbox_ids,
-            "message": "重新分析完成",
+            "message": "Reanalysis complete",
         }
     except HTTPException:
         raise
     except _REANALYSIS_RUNTIME_ERRORS as e:
-        logger.error("[Reanalysis] 重新分析异常 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
+        logger.error("[Reanalysis] Reanalysis exception webhook_id=%s error=%s", webhook_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -70,22 +70,22 @@ async def manual_forward_webhook(
         data = data or {}
         target_url = str(data.get("target_url", "")).strip() if data.get("target_url") else ""
         logger.info(
-            "[Reanalysis] 手动转发请求 webhook_id=%s target=%s",
+            "[Reanalysis] Manual forward request webhook_id=%s target=%s",
             webhook_id,
             mask_url(target_url) if target_url else "(rule-based)",
         )
         event = await session.get(WebhookEvent, webhook_id)
         if not event:
-            logger.warning("[Reanalysis] 手动转发失败，事件不存在 webhook_id=%s", webhook_id)
+            logger.warning("[Reanalysis] Manual forward failed, event does not exist webhook_id=%s", webhook_id)
             raise HTTPException(404, "Webhook not found")
 
         if target_url:
             if not target_url.startswith(("http://", "https://")):
-                return JSONResponse(status_code=400, content={"success": False, "error": "URL 格式无效"})
+                return JSONResponse(status_code=400, content={"success": False, "error": "Invalid URL format"})
             try:
                 target_url = await validate_outbound_url(target_url)
             except UnsafeTargetUrlError as e:
-                logger.warning("[Reanalysis] 手动转发目标 URL 被拒绝 webhook_id=%s error=%s", webhook_id, e)
+                logger.warning("[Reanalysis] Manual forward target URL rejected webhook_id=%s error=%s", webhook_id, e)
                 return JSONResponse(
                     status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE}
                 )
@@ -109,7 +109,7 @@ async def manual_forward_webhook(
         status = str(fwd_res.get("status", "unknown"))
         if status != "success":
             logger.warning(
-                "[Reanalysis] 手动转发失败 webhook_id=%s status=%s message=%s reason=%s",
+                "[Reanalysis] Manual forward failed webhook_id=%s status=%s message=%s reason=%s",
                 webhook_id,
                 status,
                 fwd_res.get("message"),
@@ -118,13 +118,13 @@ async def manual_forward_webhook(
             http_status = 400 if status == "skipped" else 502
             return JSONResponse(
                 status_code=http_status,
-                content={"success": False, "error": "转发已跳过" if status == "skipped" else DELIVERY_ERROR_MESSAGE},
+                content={"success": False, "error": "Forwarding skipped" if status == "skipped" else DELIVERY_ERROR_MESSAGE},
             )
 
-        logger.info("[Reanalysis] 手动转发完成 webhook_id=%s result=%s", webhook_id, fwd_res.get("status"))
-        return {"success": True, "data": fwd_res, "message": "转发完成"}
+        logger.info("[Reanalysis] Manual forward complete webhook_id=%s result=%s", webhook_id, fwd_res.get("status"))
+        return {"success": True, "data": fwd_res, "message": "Forwarding complete"}
     except HTTPException:
         raise
     except _REANALYSIS_RUNTIME_ERRORS as e:
-        logger.error("[Reanalysis] 手动转发异常 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
+        logger.error("[Reanalysis] Manual forward exception webhook_id=%s error=%s", webhook_id, e, exc_info=True)
         return internal_error_response()
