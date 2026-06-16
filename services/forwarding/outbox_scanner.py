@@ -1,4 +1,4 @@
-"""Outbox scanner — 定时过期、僵死恢复、backlog 指标。
+"""Outbox scanner — scheduled expiration, stale recovery, backlog metrics.
 
 Called by the scheduled task in services/operations/tasks.py.
 """
@@ -58,7 +58,7 @@ async def _expire_due_outboxes(
     if expired_records:
         for record in expired_records:
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "expired").inc()
-        logger.warning("[OutboxScanner] 批量过期转发意图 count=%s", len(expired_records))
+        logger.warning("[OutboxScanner] Batch-expired forward intents count=%s", len(expired_records))
     return len(expired_records)
 
 

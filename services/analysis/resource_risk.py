@@ -92,26 +92,26 @@ def _assess_gpu_risk(data: Mapping[str, Any]) -> ResourceRiskAssessment | None:
     if max_gpu_used is not None and max_gpu_used >= GPU_USED_HIGH_THRESHOLD:
         return ResourceRiskAssessment(
             "gpu_high",
-            f"GPU使用率{max_gpu_used:g}%达到高风险阈值{GPU_USED_HIGH_THRESHOLD:g}%",
+            f"GPU utilization {max_gpu_used:g}% reached the high-risk threshold {GPU_USED_HIGH_THRESHOLD:g}%",
         )
     if max_gpu_memory is not None and max_gpu_memory >= GPU_MEMORY_HIGH_THRESHOLD:
         return ResourceRiskAssessment(
             "gpu_high",
-            f"GPU显存使用率{max_gpu_memory:g}%达到高风险阈值{GPU_MEMORY_HIGH_THRESHOLD:g}%",
+            f"GPU memory utilization {max_gpu_memory:g}% reached the high-risk threshold {GPU_MEMORY_HIGH_THRESHOLD:g}%",
         )
     if max_gpu_used is not None and max_gpu_used >= GPU_USED_WARNING_THRESHOLD:
         return ResourceRiskAssessment(
             "gpu_warning",
-            f"GPU使用率{max_gpu_used:g}%超过预警阈值{GPU_USED_WARNING_THRESHOLD:g}%",
+            f"GPU utilization {max_gpu_used:g}% exceeded the warning threshold {GPU_USED_WARNING_THRESHOLD:g}%",
         )
     if max_gpu_memory is not None and max_gpu_memory >= GPU_MEMORY_WARNING_THRESHOLD:
         return ResourceRiskAssessment(
             "gpu_warning",
-            f"GPU显存使用率{max_gpu_memory:g}%超过预警阈值{GPU_MEMORY_WARNING_THRESHOLD:g}%",
+            f"GPU memory utilization {max_gpu_memory:g}% exceeded the warning threshold {GPU_MEMORY_WARNING_THRESHOLD:g}%",
         )
     if max_gpu_used is not None or max_gpu_memory is not None:
-        return ResourceRiskAssessment("gpu_normal", "GPU指标未达到预警阈值")
-    return ResourceRiskAssessment("gpu_unknown", "GPU告警未提供可解析指标值")
+        return ResourceRiskAssessment("gpu_normal", "GPU metrics did not reach the warning threshold")
+    return ResourceRiskAssessment("gpu_unknown", "GPU alert did not provide a parseable metric value")
 
 
 def assess_resource_risk(data: Mapping[str, Any]) -> ResourceRiskAssessment | None:

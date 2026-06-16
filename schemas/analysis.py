@@ -17,27 +17,27 @@ class Importance(StrEnum):
 
 
 class WebhookAnalysisResult(BaseModel):
-    """AI 分析结果模型"""
+    """AI analysis result model"""
 
-    source: str = Field(description="来源系统名称")
-    event_type: str = Field(description="详细的事件类型/名称")
-    importance: Importance = Field(description="事件重要程度", default=Importance.MEDIUM)
-    summary: str = Field(description="事件摘要（中文，50字内，包含关键指标或报错信息）")
+    source: str = Field(description="Source system name")
+    event_type: str = Field(description="Detailed event type/name")
+    importance: Importance = Field(description="Event importance level", default=Importance.MEDIUM)
+    summary: str = Field(description="Event summary (in Chinese, within 50 characters, including key metrics or error information)")
     alert_identity: dict[str, Any] = Field(
         default_factory=dict,
-        description="用于区分告警归属和实例的关键字段，例如项目、区域、命名空间、服务、资源、规则和指标",
+        description="Key fields used to distinguish alert attribution and instances, e.g. project, region, namespace, service, resource, rule, and metric",
     )
-    impact_scope: str | None = Field(None, description="影响范围评估")
-    actions: list[str] = Field(default_factory=list, description="建议的响应操作列表")
-    risks: list[str] = Field(default_factory=list, description="潜在的关联风险列表")
-    monitoring_suggestions: list[str] = Field(default_factory=list, description="后续的监控优化建议")
+    impact_scope: str | None = Field(None, description="Impact scope assessment")
+    actions: list[str] = Field(default_factory=list, description="List of recommended response actions")
+    risks: list[str] = Field(default_factory=list, description="List of potential related risks")
+    monitoring_suggestions: list[str] = Field(default_factory=list, description="Follow-up monitoring optimization suggestions")
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
 
 
 class DeepAnalysisRecord(BaseModel):
-    """深度分析记录 —— 对应 DeepAnalysis"""
+    """Deep analysis record -- corresponds to DeepAnalysis"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,11 +60,12 @@ class DeepAnalysisRecord(BaseModel):
 
 
 class DeepAnalysisSummary(BaseModel):
-    """深度分析列表项（轻量）。
+    """Deep analysis list item (lightweight).
 
-    列表视图只需渲染元信息 + 一句预览,不需要完整 normalized_report,更不需要
-    原始 analysis_result(含 _openclaw_text 大 blob)。完整内容在展开时经详情
-    接口按需获取。
+    The list view only needs to render metadata plus a one-line preview; it does
+    not need the full normalized_report, much less the raw analysis_result (which
+    contains the large _openclaw_text blob). The full content is fetched on demand
+    via the detail endpoint when expanded.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -85,7 +86,7 @@ class DeepAnalysisSummary(BaseModel):
 
 
 class DeepAnalysisListData(BaseModel):
-    """深度分析列表数据（含分页）"""
+    """Deep analysis list data (with pagination)"""
 
     total: int | None = None
     total_pages: int | None = None
@@ -97,14 +98,14 @@ class DeepAnalysisListData(BaseModel):
 
 
 class DeepAnalysisListResponse(BaseModel):
-    """深度分析列表响应"""
+    """Deep analysis list response"""
 
     success: bool
     data: DeepAnalysisListData
 
 
 class ReanalysisResponse(BaseModel):
-    """重新分析响应"""
+    """Re-analysis response"""
 
     success: bool
     status: str | None = None

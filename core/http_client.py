@@ -49,5 +49,5 @@ def get_http_client() -> httpx.AsyncClient:
         raise RuntimeError("default AppContext is not initialized")
     if context.http_client is None or context.http_client.is_closed:
         context.http_client = build_http_client(context.config)
-        logger.info("[HTTP] 成功初始化上下文异步客户端")
+        logger.info("[HTTP] Context async client initialized successfully")
     return context.http_client

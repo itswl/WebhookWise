@@ -72,11 +72,11 @@ async def send_ai_error_alert(
             return
 
         event_type = "ai_degraded" if is_degraded else "ai_error"
-        logger.info("[AIErrorNotify] 发送 AI 错误通知 degraded=%s", is_degraded)
+        logger.info("[AIErrorNotify] Sending AI error notification degraded=%s", is_degraded)
         result = await forward_notification(
             event_type=event_type,
             formatted_payload=build_ai_error_card(webhook_data, error_reason, is_degraded=is_degraded),
         )
-        logger.info("[AIErrorNotify] AI 错误通知已入队 outbox_ids=%s", result.get("outbox_ids"))
+        logger.info("[AIErrorNotify] AI error notification enqueued outbox_ids=%s", result.get("outbox_ids"))
     except (RedisError, RuntimeError, OSError, ValueError) as e:
-        logger.error("[AIErrorNotify] 发送 AI 错误通知失败: %s", e)
+        logger.error("[AIErrorNotify] Failed to send AI error notification: %s", e)

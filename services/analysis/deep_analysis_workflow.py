@@ -90,7 +90,7 @@ async def run_openclaw_deep_analysis(
     except (OSError, RuntimeError, TimeoutError, ValueError) as e:
         raise DeepAnalysisExecutionError("OpenClaw analysis failed") from e
     if is_analysis_degraded(result):
-        logger.warning("[DeepAnalysis] OpenClaw 降级，回退本地 AI: %s", analysis_degraded_reason(result))
+        logger.warning("[DeepAnalysis] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result))
         try:
             return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
         except (OSError, RuntimeError, TimeoutError, ValueError) as e:
@@ -128,7 +128,7 @@ async def notify_completed_deep_analysis_best_effort(session: AsyncSession, reco
         await notify_completed_deep_analysis(session, record)
     except _BEST_EFFORT_ERRORS as e:
         logger.error(
-            "[DeepAnalysis] 完成通知发送失败 analysis_id=%s webhook_id=%s error=%s",
+            "[DeepAnalysis] Failed to send completion notification analysis_id=%s webhook_id=%s error=%s",
             record.id,
             record.webhook_event_id,
             e,
@@ -143,7 +143,7 @@ async def clear_openclaw_poll_state_best_effort(analysis_id: int) -> None:
         await clear_openclaw_poll_state(analysis_id)
     except _BEST_EFFORT_ERRORS as e:
         logger.error(
-            "[DeepAnalysis] 清理 OpenClaw poll 状态失败 analysis_id=%s error=%s", analysis_id, e, exc_info=True
+            "[DeepAnalysis] Failed to clear OpenClaw poll state analysis_id=%s error=%s", analysis_id, e, exc_info=True
         )
 
 
@@ -167,25 +167,25 @@ def reset_deep_analysis_for_background_poll(record: DeepAnalysis, now: datetime)
 
 
 async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) -> DeepAnalysisRetryOutcome:
-    logger.info("[DeepAnalysis] 重试请求 analysis_id=%s", analysis_id)
+    logger.info("[DeepAnalysis] Retry request analysis_id=%s", analysis_id)
     record = await session.get(DeepAnalysis, analysis_id)
     if not record:
-        logger.warning("[DeepAnalysis] 重试失败，记录不存在 analysis_id=%s", analysis_id)
-        raise DeepAnalysisWorkflowError("分析记录不存在", status_code=404)
+        logger.warning("[DeepAnalysis] Retry failed, record does not exist analysis_id=%s", analysis_id)
+        raise DeepAnalysisWorkflowError("Analysis record does not exist", status_code=404)
 
     if record.status not in RETRYABLE_DEEP_ANALYSIS_STATUSES:
-        logger.warning("[DeepAnalysis] 重试失败，状态不可重试 analysis_id=%s status=%s", analysis_id, record.status)
-        raise DeepAnalysisWorkflowError(f"当前状态不可重试: {record.status}", status_code=400)
+        logger.warning("[DeepAnalysis] Retry failed, status is not retryable analysis_id=%s status=%s", analysis_id, record.status)
+        raise DeepAnalysisWorkflowError(f"Current status is not retryable: {record.status}", status_code=400)
 
     if not record.openclaw_session_key:
         event = await session.get(WebhookEvent, record.webhook_event_id)
         if not event:
             logger.warning(
-                "[DeepAnalysis] 重试失败，关联 webhook 不存在 analysis_id=%s webhook_id=%s",
+                "[DeepAnalysis] Retry failed, associated webhook does not exist analysis_id=%s webhook_id=%s",
                 analysis_id,
                 record.webhook_event_id,
             )
-            raise DeepAnalysisWorkflowError("关联的 webhook 事件不存在", status_code=404)
+            raise DeepAnalysisWorkflowError("The associated webhook event does not exist", status_code=404)
 
         ctx = await build_deep_analysis_context(event)
         new_result, engine_name = await run_openclaw_deep_analysis(ctx, event.headers or {}, record.user_question or "")
@@ -203,8 +203,8 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
             await session.commit()
             if poll_delay is not None:
                 await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(record.id, poll_delay)
-            logger.info("[DeepAnalysis] 已重新发起后台分析 analysis_id=%s poll_delay=%s", record.id, poll_delay)
-            return DeepAnalysisRetryOutcome(message="已重新发起分析任务，请等待结果")
+            logger.info("[DeepAnalysis] Re-initiated background analysis analysis_id=%s poll_delay=%s", record.id, poll_delay)
+            return DeepAnalysisRetryOutcome(message="Analysis task re-initiated, please wait for the result")
 
         record.status = DeepAnalysisStatus.COMPLETED
         record.engine = engine_name
@@ -213,16 +213,16 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
         await session.flush()
         await notify_completed_deep_analysis_best_effort(session, record)
         await session.commit()
-        logger.info("[DeepAnalysis] 重试后同步完成 analysis_id=%s engine=%s", record.id, engine_name)
-        return DeepAnalysisRetryOutcome(message="分析已完成")
+        logger.info("[DeepAnalysis] Synchronous completion after retry analysis_id=%s engine=%s", record.id, engine_name)
+        return DeepAnalysisRetryOutcome(message="Analysis complete")
 
     reset_deep_analysis_for_background_poll(record, utcnow())
     await session.flush()
     await session.commit()
     await clear_openclaw_poll_state_best_effort(int(record.id))
     await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(int(record.id), 0)
-    logger.info("[DeepAnalysis] 已提交后台拉取 analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id)
-    return DeepAnalysisRetryOutcome(message="已提交后台拉取，请稍后刷新查看结果", record=record)
+    logger.info("[DeepAnalysis] Background fetch submitted analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id)
+    return DeepAnalysisRetryOutcome(message="Background fetch submitted, please refresh later to view the result", record=record)
 
 
 async def forward_deep_analysis_record(
@@ -230,24 +230,24 @@ async def forward_deep_analysis_record(
     analysis_id: int,
     target_url: str,
 ) -> DeepAnalysisForwardOutcome:
-    logger.info("[DeepAnalysis] 手动转发请求 analysis_id=%s target=%s", analysis_id, mask_url(target_url))
+    logger.info("[DeepAnalysis] Manual forward request analysis_id=%s target=%s", analysis_id, mask_url(target_url))
     if not target_url:
-        raise DeepAnalysisWorkflowError("转发 URL 不能为空", status_code=400)
+        raise DeepAnalysisWorkflowError("Forward URL must not be empty", status_code=400)
     if not target_url.startswith(("http://", "https://")):
-        raise DeepAnalysisWorkflowError("URL 格式无效", status_code=400)
+        raise DeepAnalysisWorkflowError("Invalid URL format", status_code=400)
     try:
         target_url = await validate_outbound_url(target_url)
     except UnsafeTargetUrlError as e:
-        logger.warning("[DeepAnalysis] 手动转发目标 URL 被拒绝 analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[DeepAnalysis] Manual forward target URL rejected analysis_id=%s error=%s", analysis_id, e)
         raise
 
     analysis = await session.get(DeepAnalysis, analysis_id)
     if not analysis:
-        logger.warning("[DeepAnalysis] 手动转发失败，记录不存在 analysis_id=%s", analysis_id)
-        raise DeepAnalysisWorkflowError("分析记录不存在", status_code=404)
+        logger.warning("[DeepAnalysis] Manual forward failed, record does not exist analysis_id=%s", analysis_id)
+        raise DeepAnalysisWorkflowError("Analysis record does not exist", status_code=404)
     if analysis.status != DeepAnalysisStatus.COMPLETED:
-        logger.warning("[DeepAnalysis] 手动转发失败，分析未完成 analysis_id=%s status=%s", analysis_id, analysis.status)
-        raise DeepAnalysisWorkflowError("分析尚未完成", status_code=400)
+        logger.warning("[DeepAnalysis] Manual forward failed, analysis not complete analysis_id=%s status=%s", analysis_id, analysis.status)
+        raise DeepAnalysisWorkflowError("Analysis is not yet complete", status_code=400)
 
     source = "unknown"
     if analysis.webhook_event_id:
@@ -296,16 +296,16 @@ async def forward_deep_analysis_record(
     outbox_id = result.get("outbox_id")
     status = result.get("status", "")
     if status == "skipped":
-        reason = result.get("reason", "未知")
+        reason = result.get("reason", "unknown")
         logger.warning(
-            "[DeepAnalysis] 手动转发被跳过 analysis_id=%s target=%s reason=%s",
+            "[DeepAnalysis] Manual forward skipped analysis_id=%s target=%s reason=%s",
             analysis_id,
             mask_url(target_url),
             reason,
         )
-        raise DeepAnalysisWorkflowError("转发未送达", status_code=400)
+        raise DeepAnalysisWorkflowError("Forward was not delivered", status_code=400)
     logger.info(
-        "[DeepAnalysis] 手动转发已入队 analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
+        "[DeepAnalysis] Manual forward enqueued analysis_id=%s webhook_id=%s outbox_id=%s target=%s",
         analysis_id,
         analysis.webhook_event_id,
         outbox_id,

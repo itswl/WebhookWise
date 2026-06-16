@@ -39,4 +39,4 @@ async def log_ai_usage(
                 )
             )
     except (SQLAlchemyError, RuntimeError) as e:
-        logger.warning("记录 AI 使用日志失败: %s", e)
+        logger.warning("Failed to record AI usage log: %s", e)

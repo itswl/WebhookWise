@@ -1,4 +1,4 @@
-"""AI 分析前的 Payload 清洗管道。"""
+"""Payload sanitization pipeline run before AI analysis."""
 
 from __future__ import annotations
 
@@ -72,12 +72,12 @@ def sanitize_for_ai(
     truncate: bool = True,
     policy: PayloadPolicy | None = None,
 ) -> dict[str, Any]:
-    """清洗 parsed_data，移除噪音字段并截断过大内容。
+    """Sanitize parsed_data, removing noise fields and truncating oversized content.
 
-    1. 递归移除 AI_PAYLOAD_STRIP_KEYS 指定的键
-    2. 序列化后超过 AI_PAYLOAD_MAX_BYTES 则截断大值字段
+    1. Recursively remove the keys listed in AI_PAYLOAD_STRIP_KEYS
+    2. If the serialized size exceeds AI_PAYLOAD_MAX_BYTES, truncate large-value fields
 
-    OpenClaw 深度分析可关闭 strip/truncate，仅保留敏感字段脱敏。
+    OpenClaw deep analysis can disable strip/truncate, keeping only sensitive-field redaction.
     """
     if not parsed_data:
         return parsed_data
@@ -85,11 +85,12 @@ def sanitize_for_ai(
     policy = policy or PayloadPolicy.from_config()
     strip_keys = set(policy.strip_keys) if strip_configured_keys else set()
 
-    # Phase 1: 递归移除噪音字段（_strip_keys_recursive 本身非破坏性，无需 deepcopy）
+    # Phase 1: recursively remove noise fields (_strip_keys_recursive is itself
+    # non-destructive, so no deepcopy is needed)
     cleaned_obj = redact_nested(_strip_keys_recursive(parsed_data, strip_keys))
     cleaned: dict[str, Any] = cleaned_obj if isinstance(cleaned_obj, dict) else parsed_data
 
-    # Phase 2: 检查大小，超限则截断
+    # Phase 2: check the size, truncate if it exceeds the limit
     if not truncate:
         return cleaned
 
@@ -97,7 +98,7 @@ def sanitize_for_ai(
     serialized = json.dumps_bytes(cleaned)
     if max_bytes > 0 and len(serialized) > max_bytes:
         logger.info(
-            "Payload 超过 AI 输入限制 (%d > %d bytes)，执行截断",
+            "Payload exceeds the AI input limit (%d > %d bytes), truncating",
             len(serialized),
             max_bytes,
         )
@@ -109,9 +110,9 @@ def sanitize_for_ai(
 
 
 def _strip_keys_recursive(data: object, strip_keys: set[str], max_depth: int = 20, _depth: int = 0) -> object:
-    """递归移除指定的键。"""
+    """Recursively remove the specified keys."""
     if _depth >= max_depth:
-        # 超过最大深度，直接截断返回
+        # Exceeded the max depth; truncate and return directly
         if isinstance(data, (dict, list)):
             return {"_truncated": True, "_reason": f"max recursion depth {max_depth}"}
         return data
@@ -190,13 +191,15 @@ def _summarize_large_string(value: str) -> str:
 
 
 def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> object:
-    """按值大小降序截断，直到总大小低于限制。截断时做结构感知摘要而非盲砍前缀。"""
+    """Truncate by value size in descending order until the total is under the
+    limit. When truncating, produce a structure-aware summary instead of blindly
+    cutting the prefix."""
     if depth > 5:
-        # 超过递归深度直接返回摘要
+        # Exceeded the recursion depth; return a summary directly
         return {"_truncated": True, "_reason": "max depth exceeded"}
 
     if isinstance(data, dict):
-        # 按值的序列化大小降序排列
+        # Sort by the serialized size of each value in descending order
         items_with_size = []
         for k, v in data.items():
             size = len(json.dumps_bytes(v))
@@ -212,8 +215,10 @@ def _truncate_large_values(data: object, max_bytes: int, depth: int = 0) -> obje
             # that on its own is larger than the budget is also summarized.
             over_budget = current_size + size + len(k) + 4 > max_bytes
             if over_budget and (result or size + len(k) + 4 > max_bytes):
-                # 截断此字段：长字符串保留 头+尾+错误行；大 dict 递归做同样的智能摘要
-                # （保留嵌套日志里的错误行），大 list 保留头尾。
+                # Truncate this field: for long strings keep head + tail + error
+                # lines; for large dicts recurse with the same smart summary
+                # (preserving error lines in nested logs); for large lists keep
+                # head and tail.
                 if isinstance(v, str) and len(v) > _STRING_TRUNCATE_THRESHOLD:
                     result[k] = _summarize_large_string(v)
                 elif isinstance(v, dict):

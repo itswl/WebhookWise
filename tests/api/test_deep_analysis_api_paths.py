@@ -345,7 +345,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         4,
         session=Session(completed_record),  # type: ignore[arg-type]
     )
-    assert completed_response["message"] == "分析已完成"
+    assert completed_response["message"] == "Analysis complete"
     assert completed_record.status == DeepAnalysisStatus.COMPLETED
     assert completed_record.analysis_result == {"summary": "done", "importance": "high"}
 

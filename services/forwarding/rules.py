@@ -163,7 +163,7 @@ async def publish_rules_invalidation() -> None:
 
         await redis_publish(_RULES_INVALIDATION_CHANNEL, "invalidate")
     except Exception as e:
-        logger.warning("[ForwardRules] 发布缓存失效通知失败: %s", e)
+        logger.warning("[ForwardRules] Failed to publish cache invalidation notification: %s", e)
 
 
 async def get_cached_forward_rules(session: AsyncSession | None = None) -> list[ForwardRuleSnapshot]:
@@ -198,9 +198,9 @@ async def start_rules_invalidation_listener() -> None:
             async for message in pubsub.listen():
                 if message.get("type") == "message":
                     invalidate_forward_rules_cache()
-                    logger.debug("[ForwardRules] 收到跨进程缓存失效通知")
+                    logger.debug("[ForwardRules] Received cross-process cache invalidation notification")
         except (RedisError, OSError, RuntimeError) as e:
-            logger.warning("[ForwardRules] Pub/Sub 监听中断: %s", e)
+            logger.warning("[ForwardRules] Pub/Sub listener interrupted: %s", e)
         finally:
             with contextlib.suppress(Exception):
                 await pubsub.unsubscribe(_RULES_INVALIDATION_CHANNEL)

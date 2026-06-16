@@ -84,7 +84,7 @@ async def _reserve_processing_slot(dedup_key: str) -> _QueueSlotReservation:
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(dedup_key)
     if not await redis_health.ensure_redis_available("alert_concurrency:reserve_processing_slot"):
-        logger.warning("[Concurrency] Redis 不可用，告警处理槽按背压抑制 dedup_key=%s", dedup_key)
+        logger.warning("[Concurrency] Redis unavailable; alert processing slot suppressed via backpressure dedup_key=%s", dedup_key)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     try:
@@ -97,11 +97,11 @@ async def _reserve_processing_slot(dedup_key: str) -> _QueueSlotReservation:
         )
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         redis_health.mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
-        logger.warning("[Concurrency] 告警风暴处理槽预占失败，按背压抑制: %s", e)
+        logger.warning("[Concurrency] Failed to reserve alert-storm processing slot; suppressing via backpressure: %s", e)
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     if queue_size is None:
-        logger.warning("[Concurrency] 告警风暴处理槽预占返回空结果")
+        logger.warning("[Concurrency] Alert-storm processing slot reservation returned an empty result")
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     if queue_size < 0:
@@ -116,7 +116,7 @@ async def _release_processing_slot(dedup_key: str) -> None:
     try:
         await redis_client.redis_eval_int(_RELEASE_QUEUE_SLOT_LUA, 1, queue_key, window_seconds)
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
-        logger.warning("[Concurrency] 告警风暴处理槽释放失败: %s", e)
+        logger.warning("[Concurrency] Failed to release alert-storm processing slot: %s", e)
 
 
 def _lock_key(dedup_key: str) -> str:
@@ -137,7 +137,7 @@ async def _acquire_distributed_lock(dedup_key: str) -> tuple[str, str] | None:
     deadline = loop.time() + timeout_seconds
 
     if not await redis_health.ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
-        logger.warning("[Concurrency] Redis 不可用，拒绝降级为本进程锁 dedup_key=%s", dedup_key)
+        logger.warning("[Concurrency] Redis unavailable; refusing to fall back to an in-process lock dedup_key=%s", dedup_key)
         return "", "redis_unavailable"
 
     while True:
@@ -146,7 +146,7 @@ async def _acquire_distributed_lock(dedup_key: str) -> tuple[str, str] | None:
                 return key, token
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
             redis_health.mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
-            logger.warning("[Concurrency] Redis 分布式锁获取失败，按 Redis 不可用抑制: %s", e)
+            logger.warning("[Concurrency] Failed to acquire Redis distributed lock; suppressing as Redis-unavailable: %s", e)
             return "", "redis_unavailable"
 
         if loop.time() >= deadline:
@@ -160,7 +160,7 @@ async def _release_distributed_lock(key: str, token: str) -> None:
     try:
         await redis_client.redis_eval_int(_RELEASE_IF_OWNER_LUA, 1, key, token)
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
-        logger.warning("[Concurrency] Redis 分布式锁释放失败: %s", e)
+        logger.warning("[Concurrency] Failed to release Redis distributed lock: %s", e)
 
 
 async def _refresh_distributed_lock(
@@ -172,12 +172,12 @@ async def _refresh_distributed_lock(
         try:
             refreshed = await redis_client.redis_eval_int(_REFRESH_IF_OWNER_LUA, 1, key, token, ttl_seconds)
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
-            logger.warning("[Concurrency] Redis 分布式锁续期失败，标记锁可能丢失: %s", e)
+            logger.warning("[Concurrency] Failed to renew Redis distributed lock; marking lock as possibly lost: %s", e)
             if lock_lost is not None:
                 lock_lost.set()
             return
         if not refreshed:
-            logger.warning("[Concurrency] Redis 分布式锁已失去所有权 key=%s", key)
+            logger.warning("[Concurrency] Redis distributed lock ownership was lost key=%s", key)
             if lock_lost is not None:
                 lock_lost.set()
             return

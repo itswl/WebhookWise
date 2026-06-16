@@ -50,7 +50,7 @@ def display_log_level(level_name: str) -> str:
 
 
 def mask_url(url: str) -> str:
-    """安全脱敏 URL，移除用户名、密码、query 以及可能包含 token 的 path 尾部。"""
+    """Safely redact a URL by removing the username, password, query, and the trailing path segments that may contain a token."""
     try:
         parsed = urlparse(url)
         if parsed.hostname:
@@ -162,7 +162,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logger(config: AppConfig | None = None) -> logging.Logger:
-    """初始化全局日志系统"""
+    """Initialize the global logging system."""
     global _log_listener, _logger_pid
     if config is None:
         from core.app_context import get_config_manager
@@ -175,35 +175,36 @@ def setup_logger(config: AppConfig | None = None) -> logging.Logger:
         current_pid = os.getpid()
         if _logger_pid == current_pid:
             return logger
-        # TaskIQ/worker 子进程会继承父进程的 QueueHandler，但 QueueListener
-        # 线程不会跨 fork 存活。必须在当前 PID 重新安装 handler/listener，
-        # 否则 webhook_service.* 业务日志会被写入无人消费的队列。
+        # TaskIQ/worker child processes inherit the parent's QueueHandler, but the
+        # QueueListener thread does not survive a fork. We must reinstall the
+        # handler/listener under the current PID, otherwise webhook_service.*
+        # business logs are written to a queue that no one consumes.
         for handler in list(logger.handlers):
             logger.removeHandler(handler)
         _log_listener = None
 
     logger.propagate = False
 
-    # 1. JSON 格式化器
-    # 强制包含基础字段，其他字段通过 extra 传入
+    # 1. JSON formatter
+    # Always includes the base fields; other fields are passed in via extra.
     formatter: logging.Formatter = JsonFormatter()
 
-    # 2. 处理器：stdout。OTLP logs are installed by core.observability.logging.
+    # 2. Handler: stdout. OTLP logs are installed by core.observability.logging.
     handlers: list[logging.Handler] = []
 
     stdout_h = logging.StreamHandler(sys.stdout)
     stdout_h.setFormatter(formatter)
     handlers.append(stdout_h)
 
-    # 3. 异步处理：使用 QueueListener 避免日志 I/O 阻塞主线程
+    # 3. Async handling: use a QueueListener so log I/O does not block the main thread
     log_queue: queue.Queue[logging.LogRecord] = queue.Queue(-1)
     queue_handler = QueueHandler(log_queue)
     logger.addHandler(queue_handler)
 
-    # 注册过滤器
+    # Register the filter
     queue_handler.addFilter(TraceIdFilter())
 
-    # 启动后台监听线程
+    # Start the background listener thread
     _log_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
     _log_listener.start()
     _logger_pid = os.getpid()
@@ -217,7 +218,7 @@ _root_logger: logging.Logger | None = None
 
 
 def stop_log_listener() -> None:
-    """停止日志后台线程（供应用关闭时调用）"""
+    """Stop the background logging thread (called during application shutdown)."""
     global _log_listener, _logger_pid
     if _log_listener:
         _log_listener.stop()
@@ -226,13 +227,13 @@ def stop_log_listener() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """获取子模块 logger，继承主 logger 配置"""
+    """Get a submodule logger that inherits the main logger's configuration."""
     global _root_logger
     _root_logger = setup_logger()
     if name == "webhook_service":
         return _root_logger
 
-    # 创建子 logger
+    # Create the child logger
     child_logger = logging.getLogger(f"webhook_service.{name}")
     return child_logger
 

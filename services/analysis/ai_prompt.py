@@ -63,7 +63,7 @@ async def _load_prompt_template(kind: str, policy: PromptPolicy) -> str:
                     _prompt_templates[kind] = template
                     return template
                 except OSError as e:
-                    logger.warning("从文件加载 prompt 模板失败 kind=%s path=%s error=%s", kind, file_path, e)
+                    logger.warning("Failed to load prompt template from file kind=%s path=%s error=%s", kind, file_path, e)
 
         _prompt_sources[kind] = policy.builtin_source
         _prompt_templates[kind] = policy.builtin_prompt

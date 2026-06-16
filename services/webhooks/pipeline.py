@@ -1,4 +1,4 @@
-"""Webhook 处理主管线。
+"""Main webhook processing pipeline.
 
 Coordinates raw webhook envelopes through parsing, analysis, noise reduction,
 final persistence and forwarding intent creation.
@@ -96,7 +96,7 @@ def _default_pipeline_dependencies() -> pipeline_runtime.WebhookPipelineDependen
         dedup_window_seconds=int(config.retry.DEDUP_WINDOW_SECONDS),
     )
 
-# ── 主入口 ───────────────────────────────────────────────────────────────────
+# ── Main entry point ─────────────────────────────────────────────────────────
 
 
 async def handle_webhook_ingest(
@@ -117,7 +117,7 @@ async def handle_webhook_ingest(
     set_log_context(request_id=request_context_id, webhook_source=source)
     try:
         logger.info(
-            "[Pipeline] raw ingest 开始 request_id=%s source=%s ip=%s body_size=%d received_at=%s",
+            "[Pipeline] raw ingest started request_id=%s source=%s ip=%s body_size=%d received_at=%s",
             request_id,
             source,
             client_ip,
@@ -166,7 +166,7 @@ def _log_completed_processing(
     if ctx.event_id is None:
         set_log_context(event_id=save_res.webhook_id)
     logger.info(
-        "[Pipeline] 告警已持久化 event_id=%s request_id=%s duplicate=%s original_id=%s",
+        "[Pipeline] Alert persisted event_id=%s request_id=%s duplicate=%s original_id=%s",
         save_res.webhook_id,
         request_id,
         save_res.is_duplicate,
@@ -192,7 +192,7 @@ def _log_completed_processing(
             fwd_info += "(periodic)"
 
     logger.info(
-        "[Pipeline] 处理完成 event_id=%s request_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
+        "[Pipeline] Processing completed event_id=%s request_id=%s type=%s importance=%s route=%s noise=%s%s duration=%dms",
         save_res.webhook_id,
         request_id,
         event_type,
@@ -255,7 +255,7 @@ async def _handle_raw_ingest(
                 dedup_key=dedup_key,
             )
             logger.info(
-                "[Pipeline] 开始处理 request_id=%s source=%s adapter=%s body_size=%d",
+                "[Pipeline] Started processing request_id=%s source=%s adapter=%s body_size=%d",
                 request_id,
                 req_ctx.source,
                 req_ctx.parsed_data.get(WEBHOOK_ADAPTER, req_ctx.source),

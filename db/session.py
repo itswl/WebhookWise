@@ -81,10 +81,12 @@ async def _ensure_session_factory(request: "Request | None" = None) -> async_ses
 
 
 async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """FastAPI Depends 异步生成器：只管理 session 生命周期。
+    """FastAPI Depends async generator: only manages the session lifecycle.
 
-    HTTP 写接口需要显式提交。这样路由可以在提交成功后再触发 TaskIQ
-    或外部通知，避免依赖退出时才提交导致的事务/副作用顺序不清。
+    HTTP write endpoints must commit explicitly. This way a route can trigger
+    TaskIQ or external notifications only after a successful commit, avoiding the
+    unclear transaction/side-effect ordering caused by committing only on
+    dependency teardown.
     """
     session_factory = await _ensure_session_factory(request)
     start = time.perf_counter()
@@ -107,11 +109,12 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 @asynccontextmanager
 async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIterator[AsyncSession]:
-    """异步数据库事务上下文管理器。
+    """Async database transaction context manager.
 
-    新建 session 时使用 SQLAlchemy 2.0 的 ``async_sessionmaker.begin()``，
-    由框架负责提交、回滚和关闭。传入 existing_session 时不接管事务边界，
-    由外层调用方负责提交或回滚。
+    When creating a new session, uses SQLAlchemy 2.0's
+    ``async_sessionmaker.begin()``, letting the framework handle commit, rollback
+    and close. When an existing_session is passed in, the transaction boundary is
+    not taken over; the outer caller is responsible for committing or rolling back.
     """
     start = time.perf_counter()
     operation = "existing_session" if existing_session else "transaction"
@@ -141,10 +144,11 @@ async def count_with_timeout(
     stmt: Any,
     timeout_ms: int = 2000,
 ) -> int | None:
-    """带 statement_timeout 兜底的 COUNT 查询（PostgreSQL-only）。
+    """COUNT query with a statement_timeout safeguard (PostgreSQL-only).
 
-    超时返回 None，调用方应适配 None 场景。
-    使用 SAVEPOINT 隔离超时查询，避免 rollback 摧毁调用者事务。
+    Returns None on timeout; callers should handle the None case.
+    Uses a SAVEPOINT to isolate the timed-out query, preventing a rollback from
+    destroying the caller's transaction.
     """
     start = time.perf_counter()
     status = "success"

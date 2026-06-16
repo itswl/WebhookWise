@@ -41,7 +41,7 @@ async def forward_to_remote(
     policy: ForwardDeliveryPolicy | None = None,
     dependencies: RemoteForwardDependencies | None = None,
 ) -> ForwardResult:
-    """转发分析结果到远程 Webhook URL — 构建 payload 后委托给 post_json_to_remote。"""
+    """Forward the analysis result to a remote Webhook URL — builds the payload then delegates to post_json_to_remote."""
     from services.notifications.feishu import build_feishu_card, is_feishu_url
 
     if not target_url:
@@ -80,7 +80,7 @@ async def send_forward_rule_test(
     from services.notifications.feishu import build_feishu_card, is_feishu_url, send_to_feishu
 
     test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule_name}}
-    test_analysis: AnalysisResult = {"summary": f"测试规则: {rule_name}", "importance": "low", "event_type": "test"}
+    test_analysis: AnalysisResult = {"summary": f"Test rule: {rule_name}", "importance": "low", "event_type": "test"}
 
     if is_feishu_url(target_url):
         payload: JsonObject = build_feishu_card(test_webhook, test_analysis)
@@ -126,7 +126,7 @@ async def post_json_to_remote(
         try:
             url = await dependencies.validate_url(url)
         except UnsafeTargetUrlError as e:
-            logger.warning("[Forward] 目标 URL 安全校验失败 target=%s error=%s", mask_url(url), e)
+            logger.warning("[Forward] Target URL security validation failed target=%s error=%s", mask_url(url), e)
             status = "invalid_target"
             FORWARD_DELIVERY_TOTAL.labels(target_type_label, status).inc()
             FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)
@@ -136,7 +136,7 @@ async def post_json_to_remote(
 
     async def _do_post() -> httpx.Response:
         final_url = await dependencies.validate_url(url) if validate_target else url
-        logger.info("[Forward] 开始 raw-json 转发 target=%s", mask_url(final_url))
+        logger.info("[Forward] Starting raw-json forward target=%s", mask_url(final_url))
         resp = cast(
             httpx.Response,
             await dependencies.http_client.post(
@@ -151,26 +151,26 @@ async def post_json_to_remote(
         if target_type_label == "feishu":
             business_error = _feishu_business_error(response)
             if business_error:
-                logger.warning("[Forward] 飞书业务响应失败 target=%s error=%s", mask_url(url), business_error)
+                logger.warning("[Forward] Feishu business response failed target=%s error=%s", mask_url(url), business_error)
                 status = "failed"
                 return {
                     "status": "failed",
                     "status_code": response.status_code,
                     "message": business_error,
                 }
-        logger.info("[Forward] raw-json 转发完成 target=%s status_code=%s", mask_url(url), response.status_code)
+        logger.info("[Forward] raw-json forward completed target=%s status_code=%s", mask_url(url), response.status_code)
         status = "success"
         return {"status": "success", "status_code": response.status_code}
     except UnsafeTargetUrlError as e:
-        logger.warning("[Forward] 目标 URL 发送前安全校验失败 target=%s error=%s", mask_url(url), e)
+        logger.warning("[Forward] Target URL security validation failed before sending target=%s error=%s", mask_url(url), e)
         status = "invalid_target"
         return {"status": "invalid_target", "message": str(e)}
     except CircuitBreakerOpenException:
-        logger.warning("[Forward] 熔断器已开启，转发被拦截 target=%s", mask_url(url))
+        logger.warning("[Forward] Circuit breaker is open, forward intercepted target=%s", mask_url(url))
         status = "circuit_broken"
-        return {"status": "circuit_broken", "message": "熔断器已开启"}
+        return {"status": "circuit_broken", "message": "circuit breaker is open"}
     except (httpx.RequestError, OSError, TimeoutError, ValueError) as e:
-        logger.error("[Forward] raw-json 转发失败 target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
+        logger.error("[Forward] raw-json forward failed target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
         status = "failed"
         return {"status": "failed", "message": str(e)}
     finally:

@@ -51,7 +51,7 @@ async def _handle_reused_analysis(
     set_log_context(webhook_route=route_type)
     await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
     logger.debug(
-        "[Pipeline] 分析结果复用 event_id=%s request_id=%s importance=%s route=%s",
+        "[Pipeline] Analysis result reused event_id=%s request_id=%s importance=%s route=%s",
         ctx.event_id,
         ctx.request_id,
         importance,
@@ -68,7 +68,7 @@ async def _handle_reused_analysis(
     )
     return (
         analysis,
-        NoiseReductionContext("standalone", None, 0.0, False, "缓存复用路径", 0, ()),
+        NoiseReductionContext("standalone", None, 0.0, False, "Cache reuse path", 0, ()),
         dedup_result,
     )
 
@@ -100,7 +100,7 @@ def _record_analysis_completed(ctx: WebhookProcessContext, analysis_result: Anal
     importance = normalize_importance(analysis_result.get("importance", "unknown"))
     set_log_context(webhook_route=route_type)
     logger.info(
-        "[Pipeline] 分析完成 event_id=%s request_id=%s route=%s importance=%s degraded=%s",
+        "[Pipeline] Analysis completed event_id=%s request_id=%s route=%s importance=%s degraded=%s",
         ctx.event_id,
         ctx.request_id,
         route_type,
@@ -163,7 +163,7 @@ def _suppression_attrs(ctx: WebhookProcessContext, gate_res: Any) -> dict[str, A
 
 def _record_suppressed(ctx: WebhookProcessContext, gate_res: Any) -> None:
     logger.info(
-        "[Pipeline] 告警风暴背压抑制 event_id=%s request_id=%s queue_size=%s reason=%s",
+        "[Pipeline] Alert storm backpressure suppression event_id=%s request_id=%s queue_size=%s reason=%s",
         ctx.event_id,
         ctx.request_id,
         getattr(gate_res, "queue_size", 0),
@@ -192,7 +192,7 @@ async def validate_backpressure(
             outcome["value"] = "redis_unavailable"
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="redis_unavailable_requeue").inc()
             logger.warning(
-                "[Pipeline] Redis 不可用导致背压抑制，改为重排而非丢弃 request_id=%s dedup_key=%s",
+                "[Pipeline] Redis unavailable caused backpressure suppression; requeueing instead of dropping request_id=%s dedup_key=%s",
                 ctx.request_id,
                 ctx.dedup_key[:12],
             )
@@ -219,7 +219,7 @@ async def persist_and_schedule(
     if lock_lost is not None and lock_lost.is_set():
         WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="lock_lost").inc()
         logger.warning(
-            "[Pipeline] 处理锁中途丢失，放弃提交并重试 request_id=%s dedup_key=%s",
+            "[Pipeline] Processing lock lost mid-flight; abandoning commit and retrying request_id=%s dedup_key=%s",
             ctx.request_id,
             ctx.dedup_key[:12],
         )
