@@ -1,6 +1,6 @@
 # Docker E2E
 
-这一层测试验证核心业务链路，而不是单个函数：
+This layer of tests verifies the core business path rather than individual functions:
 
 ```text
 HTTP /v1/webhook/prometheus
@@ -15,37 +15,37 @@ HTTP /v1/webhook/prometheus
   -> fake Feishu HTTP server
 ```
 
-运行：
+Run:
 
 ```bash
 tests/e2e/run_webhook_to_feishu.sh
 ```
 
-脚本会启动一次性 Docker Compose 环境：
+The script starts a one-off Docker Compose environment:
 
-- `postgres`: 干净 PostgreSQL 15
-- `migrate`: 一次性 Alembic 迁移任务
-- `redis`: 真 Redis 7
-- `webhook-service`: API 容器
-- `worker`: TaskIQ Worker 容器
-- `scheduler`: TaskIQ Scheduler 容器
-- `fake-openai`: 本地 OpenAI-compatible chat completions server
-- `fake-feishu`: 本地 HTTP server，记录收到的 webhook payload
+- `postgres`: a clean PostgreSQL 15
+- `migrate`: a one-off Alembic migration task
+- `redis`: a real Redis 7
+- `webhook-service`: the API container
+- `worker`: the TaskIQ Worker container
+- `scheduler`: the TaskIQ Scheduler container
+- `fake-openai`: a local OpenAI-compatible chat completions server
+- `fake-feishu`: a local HTTP server that records the webhook payloads it receives
 
-通过条件：
+Pass conditions:
 
-- API `/ready` 可用；
-- migrate 任务成功退出；
-- scheduler 容器保持 running；
-- webhook 请求返回 `200`;
-- worker 从 Redis 消费并完成处理；
-- fake OpenAI 收到 `/v1/chat/completions` 请求；
-- fake Feishu 收到 `msg_type=interactive` 的卡片 payload。
+- API `/ready` is available;
+- the migrate task exits successfully;
+- the scheduler container stays running;
+- the webhook request returns `200`;
+- the worker consumes from Redis and completes processing;
+- fake OpenAI receives a `/v1/chat/completions` request;
+- fake Feishu receives a card payload with `msg_type=interactive`.
 
-失败时脚本会打印 `docker compose ps` 和最近容器日志，并自动执行：
+On failure, the script prints `docker compose ps` and the most recent container logs, and automatically runs:
 
 ```bash
 docker compose -f tests/e2e/docker-compose.yml down -v --remove-orphans
 ```
 
-这条测试依赖 Docker，运行时间明显长于普通 `pytest`。默认 CI 可以不跑；改动 Alembic、TaskIQ、Redis、pipeline 或转发逻辑时必须跑。
+This test depends on Docker and takes noticeably longer to run than a normal `pytest`. CI does not need to run it by default; you must run it when changing Alembic, TaskIQ, Redis, the pipeline, or the forwarding logic.

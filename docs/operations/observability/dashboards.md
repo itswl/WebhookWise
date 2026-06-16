@@ -2,8 +2,8 @@
 
 WebhookWise ships two provisioned Grafana dashboards:
 
-- `deploy/observability/grafana/dashboards/dashboard.json`: 基础大盘，面向日常值班和 SLO 观察。
-- `deploy/observability/grafana/dashboards/dashboard-diagnostics.json`: 深度诊断大盘，面向链路、RUM、Beyla、k6、payload、AI cache、outbox 等细节排查。
+- `deploy/observability/grafana/dashboards/dashboard.json`: the base dashboard, aimed at day-to-day on-call and SLO observation.
+- `deploy/observability/grafana/dashboards/dashboard-diagnostics.json`: the deep diagnostic dashboard, aimed at detailed investigation of traces, RUM, Beyla, k6, payloads, AI cache, outbox, and more.
 
 The dashboards are intentionally aligned to the OpenTelemetry metric names emitted by
 `core.observability.metrics` and transformed by Alloy into Prometheus series.
@@ -42,22 +42,22 @@ when available, such as `webhook_source`, `service_name`, `worker_task_name`,
 
 | Row | Panels | Primary question |
 | --- | --- | --- |
-| 系统入口与 HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
-| 队列、Worker 与 Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
-| 数据库与 Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
-| Scheduler 与后台任务 | Scheduler runs, duration, lag, time since last success | Are periodic poll/outbox/maintenance jobs running on time? |
-| AIOps、AI 与转发 | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, circuit breaker state, outbox oldest backlog age, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
-| SLO、告警与链路闭环 | API availability, webhook completion, AI degradation, forward success, Prometheus alert state, event/trace correlation | Are user-facing SLOs healthy, and can I jump from alert to logs/traces quickly? |
+| System ingress and HTTP | Webhook QPS, active DB records, API request rate, HTTP status distribution, API latency, API 5xx rate, security checks | Is traffic entering the API, and is the HTTP layer healthy? |
+| Queue, Worker, and Pipeline | Queue pending/lag, retained stream length, queue operation rate, worker runs, worker duration, webhook processing duration, pipeline step rate, running tasks, dead letters, storm suppression | Did the webhook enter the async pipeline, and can workers keep up? |
+| Database and Redis | DB pool usage, DB session rate/latency, Redis operation rate/latency | Are persistence or broker calls slow or failing? |
+| Scheduler and background tasks | Scheduler runs, duration, lag, time since last success | Are periodic poll/outbox/maintenance jobs running on time? |
+| AIOps, AI, and forwarding | Noise reduction, suppression rate, AI cost, AI latency, forward delivery, forward latency, circuit breaker state, outbox oldest backlog age, events/signals | Are AIOps decisions, AI calls, and delivery outcomes healthy? |
+| SLOs, alerts, and end-to-end trace correlation | API availability, webhook completion, AI degradation, forward success, Prometheus alert state, event/trace correlation | Are user-facing SLOs healthy, and can I jump from alert to logs/traces quickly? |
 
 Deep diagnostic dashboard rows:
 
 | Row | Panels | Primary question |
 | --- | --- | --- |
-| 可观测后端、RUM、Beyla 与压测 | Faro receiver, Beyla span metrics, process CPU, k6 smoke results, Alloy/Loki write health | Are telemetry collection, frontend RUM, eBPF, and synthetic checks working? |
-| 环境与容量 | Current environment/service inventory, process memory, active HTTP requests and request-body P95 | Am I looking at the expected environment, and are service resources normal? |
-| Webhook 与 Pipeline 深度诊断 | Processing status, pipeline step P95, queue operation P95, payload P95, status-transition rate | Where is webhook processing slow? |
-| AI、降噪与转发补充 | AI tokens, AI cache, deep analysis, noise evaluation rate/latency, outbox lifecycle/latency, cost by model | What drives AI cost and delivery behavior? |
-| 采集链路与服务拓扑补充 | Service graph calls/failures, process IO, OTel exporter queue, Loki write latency/retries, Faro limiter | Is the telemetry pipeline itself healthy? |
+| Observability backends, RUM, Beyla, and load testing | Faro receiver, Beyla span metrics, process CPU, k6 smoke results, Alloy/Loki write health | Are telemetry collection, frontend RUM, eBPF, and synthetic checks working? |
+| Environment and capacity | Current environment/service inventory, process memory, active HTTP requests and request-body P95 | Am I looking at the expected environment, and are service resources normal? |
+| Webhook and Pipeline deep diagnostics | Processing status, pipeline step P95, queue operation P95, payload P95, status-transition rate | Where is webhook processing slow? |
+| AI, noise reduction, and forwarding supplements | AI tokens, AI cache, deep analysis, noise evaluation rate/latency, outbox lifecycle/latency, cost by model | What drives AI cost and delivery behavior? |
+| Collection pipeline and service topology supplements | Service graph calls/failures, process IO, OTel exporter queue, Loki write latency/retries, Faro limiter | Is the telemetry pipeline itself healthy? |
 
 ## No Data Rules
 

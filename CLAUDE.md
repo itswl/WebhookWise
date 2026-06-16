@@ -37,7 +37,17 @@ shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
 
 ## Working Rules
 
-- Preserve Chinese user-facing copy unless the task is explicitly localization.
+- Write all code, comments, docstrings, logs, exception/HTTP-error messages,
+  API response messages, docs, and config comments in English.
+- Keep the AI prompts in `prompts/` (and the `AI_SYSTEM_PROMPT` / user-prompt
+  defaults in `core/config/defaults.py`) in Chinese — they steer the model's
+  Chinese output and are a product decision, not display copy.
+- Keep Chinese strings that are behavioral, not display: severity/cleanup
+  keyword sets matched against incoming Chinese alert text (`RULE_*_KEYWORDS`,
+  `CLEANUP_KEYWORDS`, `_ERROR_KEYWORDS`, the `"恢复"`-style normalizer keywords),
+  the Feishu-card field-label match-keys for inbound Chinese cards, and the
+  `deep_analysis_report.v1` section titles rendered into the Chinese report.
+  Translating any of these silently breaks classification/parsing.
 - Prefer explicit policy/config objects over module import side effects.
 - Keep metrics labels stable and machine-readable; do not derive metric dimensions by parsing log text or localized strings.
 - Add targeted tests for core delivery channels, especially Feishu, OpenClaw, forwarding, persistence, and dashboard static contracts.

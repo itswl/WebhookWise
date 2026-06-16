@@ -125,17 +125,17 @@ def test_tempo_enables_traceql_metrics_generator() -> None:
 def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     dashboard = json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard.json").read_text())
     diagnostics = json.loads((ROOT / "deploy/observability/grafana/dashboards/dashboard-diagnostics.json").read_text())
-    assert dashboard["title"] == "WebhookWise AIOps 基础大盘"
-    assert diagnostics["title"] == "WebhookWise AIOps 深度诊断大盘"
+    assert dashboard["title"] == "WebhookWise AIOps Overview Dashboard"
+    assert diagnostics["title"] == "WebhookWise AIOps Deep Diagnostics Dashboard"
     assert dashboard["timezone"] == "browser"
     assert diagnostics["timezone"] == "browser"
     titles = {panel["title"] for panel in dashboard["panels"]}
-    assert "SLO、告警与链路闭环 (SLO / Alerts / Correlation)" in titles
-    assert "API 可用性 SLO 5m" in titles
+    assert "SLO / Alerts / Correlation" in titles
+    assert "API Availability SLO 5m" in titles
     assert "SLO Burn Rate (Error Budget)" in titles
-    assert "告警触发状态 (Prometheus Alerts)" in titles
-    assert "Webhook 与 Pipeline 深度诊断 (Webhook / Pipeline Deep Dive)" not in titles
-    assert "Webhook 与 Pipeline 深度诊断 (Webhook / Pipeline Deep Dive)" in {
+    assert "Alert Firing Status (Prometheus Alerts)" in titles
+    assert "Webhook / Pipeline Deep Dive" not in titles
+    assert "Webhook / Pipeline Deep Dive" in {
         panel["title"] for panel in diagnostics["panels"]
     }
 
@@ -174,7 +174,7 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
     linked_panels = [
         panel
         for panel in metric_panels
-        if {"查看相关日志", "查看相关 Trace"}
+        if {"View related logs", "View related traces"}
         <= {link.get("title") for link in panel.get("fieldConfig", {}).get("defaults", {}).get("links", [])}
     ]
     assert len(metric_panels) >= 64
@@ -200,7 +200,7 @@ def test_dashboard_metric_panels_have_trace_and_log_links() -> None:
     profile_linked_panels = [
         panel
         for panel in metric_panels
-        if "查看 Profile"
+        if "View profile"
         in {link.get("title") for link in panel.get("fieldConfig", {}).get("defaults", {}).get("links", [])}
     ]
     assert len(profile_linked_panels) >= 30

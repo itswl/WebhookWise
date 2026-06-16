@@ -1,10 +1,10 @@
-# 本地可观测实验手册：指标
+# Local Observability Lab Handbook: Metrics
 
-[返回总览](README.md)
+[Back to overview](README.md)
 
-## 看业务服务指标
+## Viewing Business Service Metrics
 
-Grafana -> Explore -> datasource 选择 `Prometheus`。
+Grafana -> Explore -> select the `Prometheus` datasource.
 
 ### API
 
@@ -90,10 +90,10 @@ or queue_lag
 queue_depth
 ```
 
-`queue_depth` 是 Redis Stream 的 `XLEN`。TaskIQ 消费后会 `XACK`，
-但 `XACK` 不删除 stream entry，因此它可能随历史消息增长到
-`WEBHOOK_MQ_STREAM_MAXLEN` 附近；判断消费是否堵住，应优先看
-`queue_pending` 和 `queue_lag`。
+`queue_depth` is the Redis Stream's `XLEN`. TaskIQ runs `XACK` after consuming,
+but `XACK` does not delete the stream entry, so it can grow toward
+`WEBHOOK_MQ_STREAM_MAXLEN` as historical messages accumulate; to judge whether
+consumption is stuck, look first at `queue_pending` and `queue_lag`.
 
 ```promql
 sum by (queue_name, queue_operation, queue_status) (
@@ -105,7 +105,7 @@ sum by (queue_name, queue_operation, queue_status) (
 
 ### Database Client And Pool
 
-这些是应用侧 DB client/pool 指标，不是 Postgres server exporter 指标。连接池 Gauge 由 OTel 导出回调直接读取 SQLAlchemy pool 当前状态，不再通过 checkout/checkin 事件计数推算。
+These are application-side DB client/pool metrics, not Postgres server exporter metrics. The connection pool gauges are read directly from the current SQLAlchemy pool state by the OTel export callback, rather than being inferred from checkout/checkin event counts.
 
 ```promql
 sum by (db_operation, db_status) (
@@ -129,7 +129,7 @@ histogram_quantile(
 
 ### Redis Client
 
-这些是应用侧 Redis client 指标，不是 Redis server exporter 指标。
+These are application-side Redis client metrics, not Redis server exporter metrics.
 
 ```promql
 sum by (redis_operation, redis_status) (
@@ -179,51 +179,51 @@ sum by (event_name) (
 
 ![AI, forwarding, and domain event metrics](assets/ai-forward-events-prometheus.jpg)
 
-## 指标解释速查
+## Metric Interpretation Cheat Sheet
 
-先记住 Prometheus 里的几个后缀规则：
+First, remember a few suffix rules in Prometheus:
 
-| 后缀 / 类型 | 怎么读 | 常用 PromQL | 适合回答的问题 |
+| Suffix / Type | How to read it | Common PromQL | Questions it answers |
 | --- | --- | --- | --- |
-| `_total` / Counter | 只增不减的累计值 | `rate(x_total[5m])`、`increase(x_total[30m])` | 发生频率、吞吐、错误次数 |
-| `_bucket` / Histogram | 分桶计数 | `histogram_quantile(0.95, sum by (le, ...) (rate(x_bucket[5m])))` | p95/p99 延迟、请求体大小分布 |
-| `_sum` / Histogram | 观测值总和 | `rate(x_sum[5m]) / rate(x_count[5m])` | 平均耗时或平均大小 |
-| `_count` / Histogram | 观测次数 | `rate(x_count[5m])` | 样本吞吐 |
-| Gauge | 当前状态值 | 直接查询，或 `max_over_time(x[30m])` | 当前积压、连接数、运行中任务 |
+| `_total` / Counter | A monotonically increasing cumulative value | `rate(x_total[5m])`, `increase(x_total[30m])` | Frequency, throughput, error counts |
+| `_bucket` / Histogram | Bucketed counts | `histogram_quantile(0.95, sum by (le, ...) (rate(x_bucket[5m])))` | p95/p99 latency, request-body size distribution |
+| `_sum` / Histogram | Sum of observed values | `rate(x_sum[5m]) / rate(x_count[5m])` | Average duration or average size |
+| `_count` / Histogram | Number of observations | `rate(x_count[5m])` | Sample throughput |
+| Gauge | A current state value | Query directly, or `max_over_time(x[30m])` | Current backlog, connection count, running tasks |
 
-代码里使用 OpenTelemetry 点号命名，例如 `http.server.request.duration`。进 Prometheus 后通常会变成下划线命名，例如 `http_server_request_duration_seconds_bucket` / `_count`。本地 Prometheus 里有些应用指标也会出现 `webhookwise_` 前缀版本；日常排查优先用无前缀业务名，查不到时再试前缀版本。
+The code uses OpenTelemetry dot-notation names, for example `http.server.request.duration`. Once in Prometheus, they usually become underscore names, for example `http_server_request_duration_seconds_bucket` / `_count`. In the local Prometheus, some application metrics also appear with a `webhookwise_` prefix version; for everyday troubleshooting, prefer the unprefixed business name and try the prefixed version when you cannot find it.
 
-本地栈固定使用 OTel semantic conventions schema
-`https://opentelemetry.io/schemas/1.41.0`。升级 schema 时先改
-`OTEL_SCHEMA_URL` / `OTEL_SEMCONV_VERSION`，再更新指标、日志字段、Trace
-属性和大盘契约测试。Histogram exemplars 已启用，Grafana 中带 exemplar 的
-延迟样本可以直接跳 Tempo trace。
+The local stack pins the OTel semantic conventions schema to
+`https://opentelemetry.io/schemas/1.41.0`. When upgrading the schema, first change
+`OTEL_SCHEMA_URL` / `OTEL_SEMCONV_VERSION`, then update the metrics, log fields, trace
+attributes, and dashboard contract tests. Histogram exemplars are enabled, and in Grafana a
+latency sample with an exemplar can jump directly to the Tempo trace.
 
-### SLO / RED / USE 快速入口
+### SLO / RED / USE Quick Entry
 
-| 目标 | Recording rule | 读法 |
+| Goal | Recording rule | How to read it |
 | --- | --- | --- |
-| API 成功率 | `webhookwise:http_request_success_ratio_5m` | 低于 0.99 时先查 HTTP 5xx、Loki error、Tempo 慢 trace |
-| API 请求率 | `webhookwise:http_request_rate_5m` | 业务入口吞吐，和错误率/延迟一起看 |
-| API p95 | `webhookwise:http_request_duration_p95_5m` | RED latency，升高时继续拆 DB、Redis、AI、Forwarding |
-| Ingress 入队成功率 | `webhookwise:webhook_ingress_success_ratio_5m` | 低于 0.99 时查限流、payload、TaskIQ 入队 |
-| Pipeline 完成率 | `webhookwise:webhook_processing_success_ratio_5m` | 低于 0.98 时查 pipeline step、dead-letter、依赖健康 |
-| Forward 成功率 | `webhookwise:forward_delivery_success_ratio_5m` | 低于 0.95 时查 target/circuit breaker/outbox |
-| AI 降级率 | `webhookwise:ai_degradation_ratio_5m` | 高于 0.1 时查 provider error、cache、模型延迟 |
-| DB pool 使用率 | `webhookwise:db_pool_utilization_ratio` | 接近 1 时查慢事务、连接等待、worker 并发 |
-| 队列积压 | `webhookwise:queue_backlog` | 结合 worker task p95 和 Redis latency 判断是否扩容 |
-| Redis 不可用 | `webhookwise:redis_unavailable_rate_5m` | 大于 0 表示系统已经进入 Redis 降级路径 |
+| API success rate | `webhookwise:http_request_success_ratio_5m` | When below 0.99, first check HTTP 5xx, Loki errors, and slow Tempo traces |
+| API request rate | `webhookwise:http_request_rate_5m` | Business ingress throughput; look at it together with error rate/latency |
+| API p95 | `webhookwise:http_request_duration_p95_5m` | RED latency; when it rises, continue breaking it down by DB, Redis, AI, and Forwarding |
+| Ingress enqueue success rate | `webhookwise:webhook_ingress_success_ratio_5m` | When below 0.99, check rate limiting, payload, and TaskIQ enqueue |
+| Pipeline completion rate | `webhookwise:webhook_processing_success_ratio_5m` | When below 0.98, check pipeline steps, dead-letter, and dependency health |
+| Forward success rate | `webhookwise:forward_delivery_success_ratio_5m` | When below 0.95, check target/circuit breaker/outbox |
+| AI degradation rate | `webhookwise:ai_degradation_ratio_5m` | When above 0.1, check provider errors, cache, and model latency |
+| DB pool utilization | `webhookwise:db_pool_utilization_ratio` | When near 1, check slow transactions, connection waits, and worker concurrency |
+| Queue backlog | `webhookwise:queue_backlog` | Combine with worker task p95 and Redis latency to decide whether to scale out |
+| Redis unavailable | `webhookwise:redis_unavailable_rate_5m` | Greater than 0 means the system has already entered the Redis degradation path |
 
-### HTTP / API 指标
+### HTTP / API Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `http_server_request_duration_seconds_count` | Histogram count | `http_request_method`、`http_route`、`http_response_status_code`、`service_name` | API 请求总数 | 5xx 升高说明服务端错误；4xx 升高多半是参数、认证、路由或调用方问题 |
-| `http_server_request_duration_seconds_bucket` | Histogram | `http_request_method`、`http_route`、`http_response_status_code` | API 请求耗时分布 | p95/p99 升高时，继续看 Trace、DB、Redis、AI 和 Forwarding 指标 |
-| `http_server_request_body_size_bytes_bucket` | Histogram | `http_request_method`、`http_route` | 请求体大小 | Webhook payload 突然变大时，可能导致解析、入库、AI 分析变慢 |
-| `http_server_active_requests` | Gauge | `service_name` | 当前正在处理的 HTTP 请求数 | 持续升高通常表示下游慢、请求堆积或进程处理能力不足 |
+| `http_server_request_duration_seconds_count` | Histogram count | `http_request_method`, `http_route`, `http_response_status_code`, `service_name` | Total number of API requests | A rise in 5xx indicates server-side errors; a rise in 4xx is usually a parameter, authentication, routing, or caller problem |
+| `http_server_request_duration_seconds_bucket` | Histogram | `http_request_method`, `http_route`, `http_response_status_code` | API request duration distribution | When p95/p99 rise, continue to look at traces, DB, Redis, AI, and Forwarding metrics |
+| `http_server_request_body_size_bytes_bucket` | Histogram | `http_request_method`, `http_route` | Request body size | When the Webhook payload suddenly grows, it can slow down parsing, persistence, and AI analysis |
+| `http_server_active_requests` | Gauge | `service_name` | Number of HTTP requests currently being processed | A sustained rise usually indicates slow downstream, request pile-up, or insufficient process capacity |
 
-常用读法：
+Common reading:
 
 ```promql
 sum by (http_route, http_response_status_code) (
@@ -240,209 +240,209 @@ histogram_quantile(
 )
 ```
 
-### Webhook 入口指标
+### Webhook Ingress Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `webhook_received_total` | Counter | `webhook_source`、`webhook_status` | 接收到的 webhook 数量 | 某个 source 暴涨说明外部告警激增；失败状态升高说明入口校验、解析或入队有问题 |
-| `webhook_ingress_payload_size_bytes_bucket` | Histogram | `webhook_source`、`webhook_outcome` | webhook payload 大小分布 | 大 payload 会放大解析、DB、AI 和转发压力 |
-| `security_checks_total` | Counter | `security_check`、`security_result` | 安全检查结果计数 | `denied`、`failed` 升高时先查签名、token、来源 IP、限流配置 |
+| `webhook_received_total` | Counter | `webhook_source`, `webhook_status` | Number of webhooks received | A spike in a particular source indicates a surge in external alerts; a rise in failure status indicates a problem in ingress validation, parsing, or enqueue |
+| `webhook_ingress_payload_size_bytes_bucket` | Histogram | `webhook_source`, `webhook_outcome` | Webhook payload size distribution | Large payloads amplify parsing, DB, AI, and forwarding pressure |
+| `security_checks_total` | Counter | `security_check`, `security_result` | Security check result counts | When `denied` and `failed` rise, first check the signature, token, source IP, and rate-limit configuration |
 
-`webhook_received_total` 是入口吞吐，`http_server_request_duration_seconds_count` 是 HTTP 层吞吐。两者不一定完全相等，因为 HTTP 层还包含 ready、dashboard、静态资源或其他接口。
+`webhook_received_total` is ingress throughput, while `http_server_request_duration_seconds_count` is HTTP-layer throughput. The two are not necessarily exactly equal, because the HTTP layer also includes ready, dashboard, static assets, and other endpoints.
 
-### Webhook Pipeline 指标
+### Webhook Pipeline Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `webhook_pipeline_steps_total` | Counter | `pipeline_step`、`webhook_source`、`webhook_outcome` | pipeline 每个步骤的执行次数 | 某一步 `error` 变多，说明问题集中在该处理阶段 |
-| `webhook_pipeline_step_duration_seconds_bucket` | Histogram | `pipeline_step`、`webhook_source`、`webhook_outcome` | pipeline 单步骤耗时 | 用它定位慢在解析、降噪、AI、写库、转发还是其他步骤 |
-| `webhook_processing_duration_seconds_bucket` | Histogram | `webhook_source`、`webhook_outcome` | webhook 端到端处理耗时 | p95/p99 升高代表整体处理链路变慢 |
-| `webhook_processed_total` | Counter | `webhook_status` | webhook 状态流转计数 | `error`、`failed`、`suppressed` 升高时结合日志和事件查原因 |
-| `webhook_running_tasks` | Gauge | 通常无业务标签 | 当前运行中的 webhook 任务数 | 持续高位说明 worker 忙；高位叠加 queue lag 是处理能力不足信号 |
+| `webhook_pipeline_steps_total` | Counter | `pipeline_step`, `webhook_source`, `webhook_outcome` | Execution count for each pipeline step | More `error` at a particular step means the problem is concentrated in that processing stage |
+| `webhook_pipeline_step_duration_seconds_bucket` | Histogram | `pipeline_step`, `webhook_source`, `webhook_outcome` | Per-step pipeline duration | Use it to locate whether the slowness is in parsing, noise reduction, AI, persistence, forwarding, or another step |
+| `webhook_processing_duration_seconds_bucket` | Histogram | `webhook_source`, `webhook_outcome` | End-to-end webhook processing duration | A rise in p95/p99 means the overall processing path has slowed down |
+| `webhook_processed_total` | Counter | `webhook_status` | Webhook status-transition counts | When `error`, `failed`, or `suppressed` rise, check the cause together with logs and events |
+| `webhook_running_tasks` | Gauge | Usually no business labels | Number of currently running webhook tasks | A sustained high value means the worker is busy; a high value combined with queue lag is a signal of insufficient processing capacity |
 
-注意：本地 recording rules 会把 OTel 原始 gauge 记录为更直观的项目指标名，
-Dashboard 和查询脚本统一使用 `webhook_running_tasks` 等 recording rule 名称。
+Note: the local recording rules record the raw OTel gauges under more intuitive project metric names,
+and the dashboard and query scripts uniformly use recording rule names such as `webhook_running_tasks`.
 
-### 降噪 / 抑制指标
+### Noise Reduction / Suppression Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `webhook_noise_evaluations_total` | Counter | `webhook_source`、`webhook_relation`、`webhook_suppressed` | 降噪判断次数 | 数量升高通常跟入口告警量升高一致 |
-| `webhook_noise_evaluation_duration_seconds_bucket` | Histogram | `webhook_source`、`webhook_relation`、`webhook_suppressed` | 降噪判断耗时 | 变慢时检查关联查询、缓存、规则复杂度 |
-| `webhook_noise_evaluations_total{webhook_suppressed="true"}` | Counter query | `webhook_source`、`webhook_relation`、`webhook_suppressed` | 被降噪抑制的数量 | 抑制比例异常升高可能是告警风暴，也可能是规则过严 |
-| `webhook_storm_suppressed_total` | Counter | `webhook_source` | 告警风暴快速抑制次数 | 升高说明某来源短时间内噪声很大，需要看上游告警策略 |
+| `webhook_noise_evaluations_total` | Counter | `webhook_source`, `webhook_relation`, `webhook_suppressed` | Number of noise-reduction evaluations | A rise usually tracks a rise in ingress alert volume |
+| `webhook_noise_evaluation_duration_seconds_bucket` | Histogram | `webhook_source`, `webhook_relation`, `webhook_suppressed` | Noise-reduction evaluation duration | When it slows down, check correlation queries, caching, and rule complexity |
+| `webhook_noise_evaluations_total{webhook_suppressed="true"}` | Counter query | `webhook_source`, `webhook_relation`, `webhook_suppressed` | The number suppressed by noise reduction | An abnormal rise in suppression ratio may be an alert storm, or it may be overly strict rules |
+| `webhook_storm_suppressed_total` | Counter | `webhook_source` | Number of fast alert-storm suppressions | A rise means a source is producing a lot of noise in a short time, so check the upstream alert policy |
 
-### Queue 指标
+### Queue Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `queue_operations_total` | Counter | `queue_name`、`queue_operation`、`queue_status` | 队列操作次数 | `error` 升高时看 Redis 连接、stream/group 是否正常 |
-| `queue_operation_duration_seconds_bucket` | Histogram | `queue_name`、`queue_operation`、`queue_status` | 队列操作耗时 | 慢在 enqueue/read/ack 哪一步，可以从 `queue_operation` 分辨 |
-| `queue_depth` | Gauge | `queue_stream` | Redis Stream 保留长度，即 `XLEN` | 会随历史消息保留增长到 `WEBHOOK_MQ_STREAM_MAXLEN` 附近；单独升高不代表消费积压 |
-| `queue_pending` | Gauge | `queue_stream`、`queue_group` | 已投递但未 ack 的消息数 | 升高说明 worker 拿到了任务但处理或 ack 没跟上 |
-| `queue_lag` | Gauge | `queue_stream`、`queue_group` | consumer group 尚未消费到的滞后量 | 持续升高是 worker 处理不过来的直接信号 |
+| `queue_operations_total` | Counter | `queue_name`, `queue_operation`, `queue_status` | Number of queue operations | When `error` rises, check whether the Redis connection and stream/group are healthy |
+| `queue_operation_duration_seconds_bucket` | Histogram | `queue_name`, `queue_operation`, `queue_status` | Queue operation duration | Whether the slowness is in enqueue/read/ack can be distinguished by `queue_operation` |
+| `queue_depth` | Gauge | `queue_stream` | Redis Stream retained length, i.e. `XLEN` | Grows toward `WEBHOOK_MQ_STREAM_MAXLEN` as historical messages are retained; a rise on its own does not indicate a consumption backlog |
+| `queue_pending` | Gauge | `queue_stream`, `queue_group` | Number of delivered but un-acked messages | A rise means the worker picked up tasks but processing or acking has not kept up |
+| `queue_lag` | Gauge | `queue_stream`, `queue_group` | The lag the consumer group has not yet consumed | A sustained rise is a direct signal that the worker cannot keep up |
 
-常见组合判断：
+Common combined judgments:
 
-| 现象 | 可能原因 |
+| Phenomenon | Possible cause |
 | --- | --- |
-| `queue_depth` 升高，`queue_pending` 和 `queue_lag` 不高 | Redis Stream 在保留历史消息，通常不是消费堵塞 |
-| `queue_lag` 升高 | worker 尚未读到新任务，可能是消费能力不足或 worker 没在正常读取 |
-| `queue_pending` 升高 | worker 已取到任务，但处理慢、失败重试或 ack 异常 |
-| `queue_operation_duration_seconds_bucket` p95 升高 | Redis 慢、网络慢或 stream 操作阻塞 |
+| `queue_depth` rises while `queue_pending` and `queue_lag` stay low | The Redis Stream is retaining historical messages; usually not a consumption blockage |
+| `queue_lag` rises | The worker has not yet read new tasks; possibly insufficient consumption capacity or the worker is not reading normally |
+| `queue_pending` rises | The worker has taken tasks but processing is slow, failing with retries, or acking abnormally |
+| `queue_operation_duration_seconds_bucket` p95 rises | Redis is slow, the network is slow, or stream operations are blocked |
 
-### Worker 指标
+### Worker Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `worker_task_runs_total` | Counter | `worker_task_name`、`worker_task_status` | worker 任务执行次数 | `error` 或 `failed` 升高时按任务名查 Loki 日志 |
-| `worker_task_duration_seconds_bucket` | Histogram | `worker_task_name`、`worker_task_status` | worker 任务耗时 | p95 高说明任务处理慢，继续拆 DB、Redis、AI、Forwarding |
-| `webhook_dead_letter_total` | Counter | 通常无业务标签 | 不再重试的死信数量 | 这是高优先级异常，需要查具体 event 和错误原因 |
+| `worker_task_runs_total` | Counter | `worker_task_name`, `worker_task_status` | Number of worker task executions | When `error` or `failed` rise, check the Loki logs by task name |
+| `worker_task_duration_seconds_bucket` | Histogram | `worker_task_name`, `worker_task_status` | Worker task duration | A high p95 means task processing is slow; continue breaking it down by DB, Redis, AI, and Forwarding |
+| `webhook_dead_letter_total` | Counter | Usually no business labels | Number of dead letters that are no longer retried | This is a high-priority anomaly; you need to check the specific event and error cause |
 
-Worker 指标主要回答“任务有没有被消费、执行是否成功、耗时是否稳定”。它和 Queue 指标一起看最有价值。
+Worker metrics mainly answer "whether tasks are being consumed, whether execution succeeds, and whether duration is stable". They are most valuable when viewed together with the Queue metrics.
 
-### Scheduler 指标
+### Scheduler Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `scheduler_task_runs_total` | Counter | `scheduler_task_name`、`scheduler_task_status` | 周期任务执行次数 | 某任务长时间没有 success 或 error 升高，需要查 scheduler/worker 日志 |
-| `scheduler_task_duration_seconds_bucket` | Histogram | `scheduler_task_name` | 周期任务耗时 | 耗时变长说明扫描范围、DB 查询或下游处理变慢 |
-| `scheduler_task_lag_seconds` | Gauge | `scheduler_task_name` | 周期任务相对预期执行时间的滞后 | lag 持续变大说明任务没有按时跑完或调度阻塞 |
-| `scheduler_task_last_success_unixtime_seconds` | Gauge | `scheduler_task_name` | 最近一次成功执行的 Unix 时间 | 用 `time() - ...` 看距离上次成功过去多久 |
+| `scheduler_task_runs_total` | Counter | `scheduler_task_name`, `scheduler_task_status` | Number of periodic task executions | If a task has no success for a long time or error rises, check the scheduler/worker logs |
+| `scheduler_task_duration_seconds_bucket` | Histogram | `scheduler_task_name` | Periodic task duration | A longer duration means the scan range, DB query, or downstream processing has slowed down |
+| `scheduler_task_lag_seconds` | Gauge | `scheduler_task_name` | The periodic task's lag relative to its expected execution time | A continuously growing lag means the task is not finishing on time or scheduling is blocked |
+| `scheduler_task_last_success_unixtime_seconds` | Gauge | `scheduler_task_name` | The Unix time of the last successful execution | Use `time() - ...` to see how long it has been since the last success |
 
-常用读法：
+Common reading:
 
 ```promql
 time() - scheduler_task_last_success_unixtime_seconds
 ```
 
-这个值越大，代表该任务越久没有成功执行。对恢复扫描、数据维护这类任务尤其重要。
+The larger this value, the longer the task has gone without a successful execution. This is especially important for tasks like recovery scans and data maintenance.
 
-### Database Client / Pool 指标
+### Database Client / Pool Metrics
 
-这些是应用侧 DB client/pool 指标，不是 Postgres server exporter 指标。`db_pool_connections_checked_out` 与 `db_pool_connections_max` 来自 SQLAlchemy pool 的实时状态回调。
+These are application-side DB client/pool metrics, not Postgres server exporter metrics. `db_pool_connections_checked_out` and `db_pool_connections_max` come from real-time state callbacks of the SQLAlchemy pool.
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `db_sessions_total` | Counter | `db_operation`、`db_status` | DB session/transaction 生命周期计数 | `error` 升高时查 SQLAlchemy、连接、事务回滚日志 |
-| `db_session_duration_seconds_bucket` | Histogram | `db_operation`、`db_status` | DB session/transaction 耗时 | p95 高说明查询慢、事务长、连接等待或锁竞争 |
-| `db_pool_connections_checked_out` | Gauge | 通常无业务标签 | 当前借出的 DB 连接数 | 长期接近连接池上限，说明 DB pool 压力大 |
-| `db_pool_connections_max` | Gauge | 通常无业务标签 | DB 连接池容量 | 和 checked_out 一起看连接池是否打满 |
+| `db_sessions_total` | Counter | `db_operation`, `db_status` | DB session/transaction lifecycle counts | When `error` rises, check SQLAlchemy, connection, and transaction-rollback logs |
+| `db_session_duration_seconds_bucket` | Histogram | `db_operation`, `db_status` | DB session/transaction duration | A high p95 means slow queries, long transactions, connection waits, or lock contention |
+| `db_pool_connections_checked_out` | Gauge | Usually no business labels | Number of currently checked-out DB connections | Staying near the pool limit for a long time means the DB pool is under pressure |
+| `db_pool_connections_max` | Gauge | Usually no business labels | DB connection pool capacity | View it together with checked_out to see whether the pool is saturated |
 
-注意：`checked_out / max` 才是连接池占用比例。单看 `checked_out` 高不一定异常，要结合 `max`、API p95、DB session p95 一起看。
+Note: `checked_out / max` is the actual pool utilization ratio. A high `checked_out` alone is not necessarily abnormal; look at it together with `max`, API p95, and DB session p95.
 
-### Redis Client 指标
+### Redis Client Metrics
 
-这些是应用侧 Redis client 指标，不是 Redis server exporter 指标。
+These are application-side Redis client metrics, not Redis server exporter metrics.
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `redis_operations_total` | Counter | `redis_operation`、`redis_status` | Redis 操作次数 | `error` 升高时看 Redis 连接、超时、命令参数 |
-| `redis_operation_duration_seconds_bucket` | Histogram | `redis_operation`、`redis_status` | Redis 操作耗时 | `xlen`、`xpending`、`eval` 等变慢会影响队列和限流 |
+| `redis_operations_total` | Counter | `redis_operation`, `redis_status` | Number of Redis operations | When `error` rises, check the Redis connection, timeouts, and command parameters |
+| `redis_operation_duration_seconds_bucket` | Histogram | `redis_operation`, `redis_status` | Redis operation duration | When `xlen`, `xpending`, `eval`, etc. slow down, they affect the queue and rate limiting |
 
-Redis 指标要和 Queue 一起看。Queue lag 升高且 Redis p95 也升高时，瓶颈可能在 Redis 或其调用方式；Queue lag 升高但 Redis 不慢时，瓶颈更可能在 worker 业务处理。
+Redis metrics should be viewed together with the Queue. When queue lag rises and Redis p95 also rises, the bottleneck may be in Redis or how it is called; when queue lag rises but Redis is not slow, the bottleneck is more likely in the worker's business processing.
 
-### AI 指标
+### AI Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `ai_request_duration_seconds_bucket` | Histogram | `webhook_source`、`ai_engine` | AI 分析耗时 | p95/p99 高说明模型调用、网络或 fallback 变慢 |
-| `ai_request_errors_total` | Counter | `error_type` | AI provider 调用错误 | 超时、限流、鉴权、响应格式错误会在这里体现 |
-| `ai_tokens_total` | Counter | `ai_model`、`ai_token_type` | token 消耗 | completion 或 prompt token 暴涨会直接影响成本和耗时 |
-| `ai_cost_USD_total` | Counter | `ai_model` | 估算 AI 成本 | 成本异常时按模型和来源拆分 |
-| `ai_cache_requests_total` | Counter | `ai_cache_operation`、`ai_cache_result` | AI cache 请求和命中情况 | miss 增多会增加模型调用量 |
-| `ai_cache_operation_duration_seconds_bucket` | Histogram | `ai_cache_operation`、`ai_cache_result` | AI cache 操作耗时 | cache 慢会拖累整体分析 |
-| `ai_degradations_total` | Counter | `ai_degradation_reason` | AI 降级次数 | 升高说明主路径不稳定，系统在使用 fallback 或简化逻辑 |
-| `ai_deep_analysis_total` | Counter | `webhook_status`、`ai_engine` | 深度分析任务结果计数 | failed 升高时看 deep analysis 日志和外部服务状态 |
+| `ai_request_duration_seconds_bucket` | Histogram | `webhook_source`, `ai_engine` | AI analysis duration | A high p95/p99 means the model call, network, or fallback has slowed down |
+| `ai_request_errors_total` | Counter | `error_type` | AI provider call errors | Timeouts, rate limiting, authentication, and response-format errors show up here |
+| `ai_tokens_total` | Counter | `ai_model`, `ai_token_type` | Token consumption | A spike in completion or prompt tokens directly affects cost and latency |
+| `ai_cost_USD_total` | Counter | `ai_model` | Estimated AI cost | When cost is abnormal, break it down by model and source |
+| `ai_cache_requests_total` | Counter | `ai_cache_operation`, `ai_cache_result` | AI cache requests and hit/miss | More misses increase the number of model calls |
+| `ai_cache_operation_duration_seconds_bucket` | Histogram | `ai_cache_operation`, `ai_cache_result` | AI cache operation duration | A slow cache drags down the overall analysis |
+| `ai_degradations_total` | Counter | `ai_degradation_reason` | Number of AI degradations | A rise means the main path is unstable and the system is using fallback or simplified logic |
+| `ai_deep_analysis_total` | Counter | `webhook_status`, `ai_engine` | Deep-analysis task result counts | When failed rises, check the deep analysis logs and external service status |
 
-AI 指标通常和 `webhook_processing_duration_seconds_bucket` 一起看。如果整体处理慢但 AI 不慢，说明瓶颈可能在 DB、Redis、转发或队列。
+AI metrics are usually viewed together with `webhook_processing_duration_seconds_bucket`. If overall processing is slow but AI is not, the bottleneck may be in DB, Redis, forwarding, or the queue.
 
-### Forwarding 指标
+### Forwarding Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `forward_delivery_total` | Counter | `forward_target_type`、`forward_status` | 转发尝试次数 | failed 升高说明目标地址、网络、鉴权或 payload 有问题 |
-| `forward_delivery_duration_seconds_bucket` | Histogram | `forward_target_type`、`forward_status` | 转发请求耗时 | p95 高说明下游目标慢或网络慢 |
-| `forward_outbox_records_total` | Counter | `forward_target_type`、`forward_status` | outbox 记录生命周期计数 | pending/failed 异常说明异步补偿链路有压力 |
-| `forward_outbox_process_duration_seconds_bucket` | Histogram | `forward_target_type`、`forward_status` | outbox 处理耗时 | 变慢时检查目标服务和 DB 查询 |
-| `forward_outbox_backlog_age_seconds` | Gauge | `forward_target_type`、`forward_status` | 最老未完成 outbox 记录年龄 | 持续升高说明异步转发链路正在积压，即使请求量不高也要排查 |
-| `circuit_breaker_state` | Gauge | `circuit_breaker_name`、`circuit_breaker_state` | 熔断器当前状态，当前状态为 1 | open 为 1 说明依赖被保护性切断，应立刻看下游日志和错误率 |
+| `forward_delivery_total` | Counter | `forward_target_type`, `forward_status` | Number of forwarding attempts | A rise in failed means a problem with the target address, network, authentication, or payload |
+| `forward_delivery_duration_seconds_bucket` | Histogram | `forward_target_type`, `forward_status` | Forwarding request duration | A high p95 means the downstream target is slow or the network is slow |
+| `forward_outbox_records_total` | Counter | `forward_target_type`, `forward_status` | Outbox record lifecycle counts | Abnormal pending/failed means the async compensation path is under pressure |
+| `forward_outbox_process_duration_seconds_bucket` | Histogram | `forward_target_type`, `forward_status` | Outbox processing duration | When it slows down, check the target service and DB queries |
+| `forward_outbox_backlog_age_seconds` | Gauge | `forward_target_type`, `forward_status` | Age of the oldest uncompleted outbox record | A sustained rise means the async forwarding path is backing up; investigate even when request volume is low |
+| `circuit_breaker_state` | Gauge | `circuit_breaker_name`, `circuit_breaker_state` | Current circuit breaker state, where the current state is 1 | open = 1 means the dependency has been protectively cut off; immediately look at downstream logs and error rates |
 
-### 新增阶段性指标
+### Newly Added Phase Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `webhook_ingress_requests_total` | Counter | `webhook_source`、`webhook_outcome` | API 入口接收、抑制、拒绝、入队结果 | rejected/error 增多先查鉴权、限流、body size 和 TaskIQ 入队 |
-| `ai_requests_total` | Counter | `webhook_source`、`ai_engine`、`ai_status` | AI / rule / cache 请求结果 | openai error、cache hit、rule success 能区分模型失败和主动降级 |
-| `db_health_state` | Gauge | `db_state` | 数据库健康状态 | unhealthy=1 时先查 DB 连接、迁移、statement timeout |
+| `webhook_ingress_requests_total` | Counter | `webhook_source`, `webhook_outcome` | API ingress receive, suppress, reject, and enqueue outcomes | When rejected/error rise, first check authentication, rate limiting, body size, and TaskIQ enqueue |
+| `ai_requests_total` | Counter | `webhook_source`, `ai_engine`, `ai_status` | AI / rule / cache request outcomes | openai error, cache hit, and rule success can distinguish a model failure from a deliberate degradation |
+| `db_health_state` | Gauge | `db_state` | Database health state | When unhealthy=1, first check DB connections, migrations, and statement timeouts |
 
-### Domain Events / Signals 指标
+### Domain Events / Signals Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `observability_events_total` | Counter | OTel `event.name`，Prometheus 中为 `event_name` | 结构化业务事件计数 | 用来确认关键业务里程碑是否发生，例如任务开始、分析完成、风暴抑制 |
-| `observability_signals_total` | Counter | OTel `signal.name`、`signal.state`，Prometheus 中为 `signal_name`、`signal_state` | 领域状态转换计数 | 适合看系统进入了 completed、error、suppressed 等状态的频率 |
+| `observability_events_total` | Counter | OTel `event.name`, `event_name` in Prometheus | Structured business event counts | Used to confirm whether key business milestones occurred, for example task started, analysis completed, storm suppressed |
+| `observability_signals_total` | Counter | OTel `signal.name`, `signal.state`, `signal_name`, `signal_state` in Prometheus | Domain state-transition counts | Good for seeing how often the system enters states such as completed, error, and suppressed |
 
-事件和信号的指标只适合看“发生了多少次”。具体是哪一个 event、request 或 alert，要去 Loki 里按 `event.name`、`trace_id`、`span_id` 查。
+Event and signal metrics are only good for seeing "how many times something happened". For exactly which event, request, or alert, go to Loki and query by `event.name`, `trace_id`, and `span_id`.
 
-### Faro 前端 RUM 指标
+### Faro Frontend RUM Metrics
 
-| 指标 | 类型 | 含义 | 异常解读 |
+| Metric | Type | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- |
-| `faro_receiver_events_total` | Counter | Faro browser event 数量，例如 `session_start` | 为 0 通常说明没有打开 Dashboard，或 SDK/collector 没通 |
-| `faro_receiver_measurements_total` | Counter | 前端性能 measurement 数量，例如 Web Vitals、navigation、resource | 为 0 说明浏览器性能数据没有进入 Alloy |
-| `faro_receiver_exceptions_total` | Counter | 前端异常数量 | 升高时去 Loki 查 `{app="webhookwise-dashboard", kind="exception"} | json` |
-| `faro_receiver_logs_total` | Counter | 前端日志数量 | 用于确认浏览器日志是否进入 Loki |
-| `faro_receiver_request_duration_seconds_bucket` | Histogram | Alloy Faro receiver 接收请求耗时 | 变高说明 collector 处理或网络有压力 |
-| `faro_receiver_rate_limiter_requests_total` | Counter | Faro receiver 限流请求计数 | 升高说明前端上报量过大或限流配置过紧 |
+| `faro_receiver_events_total` | Counter | Number of Faro browser events, for example `session_start` | 0 usually means the Dashboard was not opened, or the SDK/collector is not connected |
+| `faro_receiver_measurements_total` | Counter | Number of frontend performance measurements, for example Web Vitals, navigation, resource | 0 means browser performance data did not reach Alloy |
+| `faro_receiver_exceptions_total` | Counter | Number of frontend exceptions | When it rises, go to Loki and query `{app="webhookwise-dashboard", kind="exception"} | json` |
+| `faro_receiver_logs_total` | Counter | Number of frontend logs | Used to confirm whether browser logs reached Loki |
+| `faro_receiver_request_duration_seconds_bucket` | Histogram | Duration of requests received by the Alloy Faro receiver | A rise means the collector processing or the network is under pressure |
+| `faro_receiver_rate_limiter_requests_total` | Counter | Faro receiver rate-limited request counts | A rise means the frontend reporting volume is too high or the rate-limit configuration is too strict |
 
-Prometheus 只能看 Faro 接收量和 collector 状态。具体浏览器事件内容在 Loki 里看：
+Prometheus can only show Faro receive volume and collector state. View the specific browser event content in Loki:
 
 ```logql
 {app="webhookwise-dashboard"} | json
 ```
 
-### Beyla 自动采集指标
+### Beyla Auto-instrumentation Metrics
 
-| 指标 | 类型 | 关键标签 | 含义 | 异常解读 |
+| Metric | Type | Key labels | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- | --- |
-| `traces_span_metrics_calls_total{source="beyla"}` | Counter | `service_name`、`span_name`、`span_kind` | Beyla eBPF 自动识别到的 span 调用次数 | 能看到值说明 eBPF 自动采集链路在工作 |
-| `traces_span_metrics_duration_seconds_bucket{source="beyla"}` | Histogram | `service_name`、`span_name`、`span_kind` | Beyla 自动采集到的 HTTP/SQL/Redis span 耗时 | 用来从进程视角补充应用 SDK 指标 |
-| `process_cpu_utilization_ratio` | Gauge | `service_name`、`cpu_mode` | 进程 CPU 使用率 | CPU 高但请求不多时，去 Pyroscope 看热点函数 |
-| `process_memory_usage_bytes` | Gauge | `service_name` | 进程内存使用 | 持续上升可能是缓存膨胀或泄漏，需要结合 profile 和容器内存 |
-| `process_network_io_bytes_total` | Counter | `service_name`、方向标签 | 进程网络 IO | 转发或外部调用异常时可辅助判断流量变化 |
+| `traces_span_metrics_calls_total{source="beyla"}` | Counter | `service_name`, `span_name`, `span_kind` | Number of span calls automatically identified by Beyla eBPF | Seeing values means the eBPF auto-instrumentation path is working |
+| `traces_span_metrics_duration_seconds_bucket{source="beyla"}` | Histogram | `service_name`, `span_name`, `span_kind` | Duration of HTTP/SQL/Redis spans auto-collected by Beyla | Used to supplement the application SDK metrics from a process perspective |
+| `process_cpu_utilization_ratio` | Gauge | `service_name`, `cpu_mode` | Process CPU utilization | When CPU is high but requests are few, go to Pyroscope to look at hot functions |
+| `process_memory_usage_bytes` | Gauge | `service_name` | Process memory usage | A continuous rise may be cache bloat or a leak; investigate together with profiles and container memory |
+| `process_network_io_bytes_total` | Counter | `service_name`, direction label | Process network IO | Helps judge traffic changes when forwarding or external calls are abnormal |
 
-Beyla 是零侵入补充视角。应用 SDK 指标更懂业务语义，Beyla 更贴近真实进程、HTTP、SQL、Redis 调用。
+Beyla is a zero-intrusion supplementary perspective. Application SDK metrics understand the business semantics better, while Beyla is closer to the real process, HTTP, SQL, and Redis calls.
 
-### k6 压测指标
+### k6 Load-Testing Metrics
 
-| 指标 | 类型 | 含义 | 异常解读 |
+| Metric | Type | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- |
-| `k6_http_reqs_total` | Counter | 压测总请求数 | 用来确认本轮压测是否真的打到了服务 |
-| `k6_http_req_failed_rate` | Gauge | 请求失败率 | smoke 场景应接近 0；升高时看 API 5xx、Loki 错误日志 |
-| `k6_http_req_duration_p95` / `k6_http_req_duration_p99` | Gauge | k6 观察到的请求 p95/p99 | 代表客户端视角端到端耗时 |
-| `k6_http_req_waiting_p95` / `k6_http_req_waiting_p99` | Gauge | 等待服务端响应首字节的耗时 | 最接近后端处理时间，排查慢请求时优先看 |
-| `k6_http_req_blocked_p95` | Gauge | 请求在客户端等待连接槽、DNS、TCP 前的阻塞时间 | 本地异常升高多半是客户端或连接复用问题 |
-| `k6_http_req_connecting_p95` | Gauge | TCP 建连耗时 | 本地通常很低，升高时看网络或服务监听 |
-| `k6_http_req_sending_p95` | Gauge | 发送请求体耗时 | payload 变大或网络慢时会升高 |
-| `k6_http_req_receiving_p95` | Gauge | 接收响应体耗时 | 大响应或网络慢时升高 |
-| `k6_checks_rate` | Gauge | k6 脚本断言成功率 | 应接近 1；下降说明脚本里的 status/body 检查失败 |
-| `k6_vus` / `k6_vus_max` | Gauge | 当前和最大虚拟用户数 | 用来对齐压测阶段和服务指标变化 |
-| `k6_data_sent_total` / `k6_data_received_total` | Counter | 压测发送和接收的数据量 | 辅助判断 payload 或响应体变化 |
+| `k6_http_reqs_total` | Counter | Total number of load-test requests | Used to confirm whether this load-test run actually reached the service |
+| `k6_http_req_failed_rate` | Gauge | Request failure rate | Should be near 0 for smoke scenarios; when it rises, look at API 5xx and Loki error logs |
+| `k6_http_req_duration_p95` / `k6_http_req_duration_p99` | Gauge | Request p95/p99 as observed by k6 | Represents end-to-end duration from the client perspective |
+| `k6_http_req_waiting_p95` / `k6_http_req_waiting_p99` | Gauge | Time waiting for the first byte of the server response | Closest to the backend processing time; look at it first when troubleshooting slow requests |
+| `k6_http_req_blocked_p95` | Gauge | Time the request is blocked on the client waiting for a connection slot, DNS, and TCP | A local abnormal rise is usually a client or connection-reuse problem |
+| `k6_http_req_connecting_p95` | Gauge | TCP connection establishment duration | Usually very low locally; when it rises, look at the network or service listener |
+| `k6_http_req_sending_p95` | Gauge | Time to send the request body | Rises when the payload grows or the network is slow |
+| `k6_http_req_receiving_p95` | Gauge | Time to receive the response body | Rises with large responses or a slow network |
+| `k6_checks_rate` | Gauge | k6 script assertion success rate | Should be near 1; a drop means the status/body checks in the script failed |
+| `k6_vus` / `k6_vus_max` | Gauge | Current and maximum virtual users | Used to align load-test phases with service metric changes |
+| `k6_data_sent_total` / `k6_data_received_total` | Counter | Amount of data sent and received by the load test | Helps judge payload or response-body changes |
 
-k6 结束后会写 stale markers，Grafana instant query 可能为空。查询刚跑完的一轮时用：
+k6 writes stale markers after it finishes, so a Grafana instant query may be empty. When querying the run you just completed, use:
 
 ```promql
 max_over_time(k6_http_req_duration_p95[30m])
 ```
 
-### 可观测后端自身指标
+### Observability Backend Self Metrics
 
-| 指标 | 组件 | 含义 | 异常解读 |
+| Metric | Component | Meaning | Interpreting anomalies |
 | --- | --- | --- | --- |
-| `alloy_config_last_load_successful` | Alloy | Alloy 配置最后一次加载是否成功 | 为 0 说明配置加载失败 |
-| `alloy_component_controller_running_components` | Alloy | 正在运行的 Alloy 组件数 | 数量异常下降说明某些 receiver/exporter 没跑起来 |
-| `loki_write_dropped_entries_total` | Alloy/Loki write | 被丢弃的日志条数 | 升高说明 Loki 写入失败、限流或 pipeline 配置问题 |
-| `up` | Prometheus | scrape target 是否可用 | 为 0 表示对应 target 抓取失败 |
-| `prometheus_tsdb_wal_writes_failed_total` | Prometheus | WAL 写入失败次数 | 升高说明 Prometheus 本地存储有问题 |
-| `prometheus_tsdb_wal_storage_size_bytes` | Prometheus | WAL 占用空间 | 持续膨胀时检查磁盘和采样量 |
+| `alloy_config_last_load_successful` | Alloy | Whether the last Alloy config load succeeded | 0 means the config load failed |
+| `alloy_component_controller_running_components` | Alloy | Number of running Alloy components | An abnormal drop means some receivers/exporters did not start |
+| `loki_write_dropped_entries_total` | Alloy/Loki write | Number of dropped log entries | A rise means Loki write failures, rate limiting, or a pipeline configuration problem |
+| `up` | Prometheus | Whether the scrape target is available | 0 means the corresponding target failed to be scraped |
+| `prometheus_tsdb_wal_writes_failed_total` | Prometheus | Number of WAL write failures | A rise means a problem with Prometheus local storage |
+| `prometheus_tsdb_wal_storage_size_bytes` | Prometheus | WAL space usage | When it keeps growing, check disk and sample volume |

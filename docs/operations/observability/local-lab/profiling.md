@@ -1,32 +1,32 @@
-# 本地可观测实验手册：Profile
+# Local Observability Lab Handbook: Profiles
 
-[返回总览](README.md)
+[Back to overview](README.md)
 
-## 看 Profile
+## Viewing Profiles
 
-Pyroscope 直接入口：
+Direct Pyroscope entry:
 
 ```text
 http://localhost:4040
 ```
 
-Grafana 里也可以用 Profiles / Pyroscope datasource。Pyroscope 回答的是：
+You can also use the Profiles / Pyroscope datasource in Grafana. What Pyroscope answers is:
 
 ```text
-这段时间内，进程 CPU 主要花在哪些函数调用栈上？
+During this time, which function call stacks did the process CPU mostly spend time on?
 ```
 
-它不是日志，也不是单个请求 trace。它是连续采样，把一段时间内的调用栈聚合成 top table 和 flamegraph。Metrics / Trace 告诉你哪里慢，Pyroscope 帮你看慢是不是 CPU 热点，以及热点具体落在哪些函数。
+It is not logs, and it is not a single request trace. It is continuous sampling that aggregates the call stacks over a time period into a top table and a flamegraph. Metrics / traces tell you where it is slow; Pyroscope helps you see whether the slowness is a CPU hot spot and exactly which functions the hot spot falls in.
 
-当前本地栈为三个 Python 进程打开 profile：
+The current local stack enables profiling for three Python processes:
 
 - `webhookwise-api`
 - `webhookwise-worker`
 - `webhookwise-scheduler`
 
-Pyroscope 页面左上角应用下拉里要选这些业务服务。不要误选 `pyroscope`，否则看到的是 Pyroscope 后端自己。比如 `internal/runtime/syscall.Syscall6` 是 Go runtime 的系统调用 wrapper，表示 Pyroscope 后端在跟操作系统交互，不是 WebhookWise 业务热点。
+In the application dropdown at the top-left of the Pyroscope page, select these business services. Do not accidentally select `pyroscope`, or you will see the Pyroscope backend itself. For example, `internal/runtime/syscall.Syscall6` is the Go runtime's syscall wrapper, indicating that the Pyroscope backend is interacting with the operating system, not a WebhookWise business hot spot.
 
-常用查询形态：
+Common query forms:
 
 ```text
 {service_name="webhookwise-api", profile_type="process_cpu:cpu:nanoseconds:cpu:nanoseconds"}
@@ -34,57 +34,57 @@ Pyroscope 页面左上角应用下拉里要选这些业务服务。不要误选 
 {service_name="webhookwise-scheduler", profile_type="process_cpu:cpu:nanoseconds:cpu:nanoseconds"}
 ```
 
-优先在以下场景看 profile：
+Prefer looking at profiles in the following scenarios:
 
-- API p95/p99 变高，但 DB/Redis/AI 没明显慢调用。
-- worker 队列积压，同时 CPU 明显升高。
-- scheduler 任务 duration 变长，但日志里没有错误。
+- API p95/p99 rises, but there is no obvious slow DB/Redis/AI call.
+- The worker queue is backed up while CPU rises noticeably.
+- Scheduler task duration grows longer, but there are no errors in the logs.
 
-### Pyroscope 页面怎么读
+### How to Read the Pyroscope Page
 
-| 区域 | 怎么读 | 说明 |
+| Area | How to read it | Notes |
 | --- | --- | --- |
-| `CPU CORES` 折线 | 进程 CPU 使用量 | `250m` 是 0.25 core，`500m` 是 0.5 core，`1` 是 1 core |
-| query 输入框 | 当前 profile selector | 重点确认 `service_name` 是否是业务服务 |
-| 时间范围 | profile 聚合窗口 | 跑压测或复现问题后，优先切到对应的 5m/15m 窗口 |
-| Top Table | 函数排行榜 | 可按 `Self` 或 `Total` 排序 |
-| Flamegraph | 调用栈宽度图 | 横向越宽代表累计采样越多，颜色不代表严重程度 |
+| `CPU CORES` line | Process CPU usage | `250m` is 0.25 core, `500m` is 0.5 core, `1` is 1 core |
+| query input box | The current profile selector | Mainly confirm whether `service_name` is a business service |
+| Time range | The profile aggregation window | After running a load test or reproducing a problem, switch to the corresponding 5m/15m window |
+| Top Table | A ranking of functions | Can be sorted by `Self` or `Total` |
+| Flamegraph | A call-stack width chart | The wider it is horizontally, the more cumulative samples; color does not indicate severity |
 
-Top Table 的两个时间列很关键：
+The two time columns in the Top Table are key:
 
-| 列 | 含义 | 排查用法 |
+| Column | Meaning | Troubleshooting use |
 | --- | --- | --- |
-| `Self` | 函数自己消耗的 CPU 时间，不含子调用 | 适合找真正自己在烧 CPU 的函数 |
-| `Total` | 函数自己加所有子调用的 CPU 时间 | 适合找热点所在的大分支 |
+| `Self` | The CPU time the function itself consumes, excluding child calls | Good for finding functions that are really burning CPU themselves |
+| `Total` | The function's own CPU time plus that of all child calls | Good for finding the large branch where the hot spot lives |
 
-如果一个函数 `Self=0` 但 `Total` 很大，它通常只是父级调用链，例如进程启动、worker 框架、线程入口，不代表它自己慢。需要继续往下钻子函数。
+If a function has `Self=0` but a large `Total`, it is usually just a parent call chain, for example process startup, the worker framework, or a thread entry point, and does not mean it is slow itself. You need to keep drilling down into child functions.
 
-Flamegraph 的读法：
+How to read the flamegraph:
 
-- 最上面的 `total` 是当前时间窗口内采样聚合到的 CPU 时间，不是进程运行总时长。
-- 横向越宽，表示这个函数及其子调用占用的 CPU 样本越多。
-- 纵向表示调用深度，下面是入口，上面是更深的函数。
-- 颜色只用于区分块，不表示红色就是异常。
-- 无流量时 profile 很容易被后台线程、采集线程、sleep 循环占据。
+- The `total` at the very top is the CPU time aggregated from samples within the current time window, not the total process runtime.
+- The wider it is horizontally, the more CPU samples this function and its child calls take.
+- The vertical axis represents call depth: the entry point is at the bottom and deeper functions are at the top.
+- Color is only used to distinguish blocks; red does not mean it is abnormal.
+- When there is no traffic, the profile is easily dominated by background threads, collection threads, and sleep loops.
 
-### 常见函数名怎么理解
+### How to Understand Common Function Names
 
-| 函数 / 前缀 | 通常含义 | 是否业务热点 |
+| Function / Prefix | Typical meaning | Business hot spot? |
 | --- | --- | --- |
-| `internal/runtime/*`、`runtime.*` | Go 或语言 runtime 底层函数 | 通常不是 WebhookWise 业务代码 |
-| `Runner.run`、`sleep` | Pyroscope Python agent 的采样/上传后台循环，或常驻等待 | 通常不是业务热点 |
-| `MetricReaderStorage.collect`、`PeriodicExportingMetricReader.collect` | OpenTelemetry metrics 定期采集 | 可观测自身开销 |
-| `OTLPMetricExporter`、`encode_metric`、`_encode_*` | OTel metrics 编码和导出到 Alloy | 可观测自身开销 |
-| `Session.prepare_request`、`parse_url`、`get_netrc_auth` | Python HTTP client 为 exporter 准备请求 | 多数是 OTel/Pyroscope 上报链路 |
-| `BaseProcess.run`、`ForkProcess`、`ProcessManager.*` | worker 进程管理和启动框架 | 父级调用链，不直接代表业务慢 |
-| `RedisStreamBroker.listen` | worker 监听 Redis Stream 任务 | 和队列消费有关，值得结合 queue 指标看 |
-| `BatchProcessor.worker` | OTel batch processor 后台导出线程 | 可观测自身开销 |
-| `_async_traced_execute_factory...` | 被 tracing 包装后的异步任务执行入口 | 值得继续往下钻业务函数 |
-| `services/...`、`api/...`、`core/...`、`db/...` | WebhookWise 业务代码 | 重点关注 |
+| `internal/runtime/*`, `runtime.*` | Low-level Go or language runtime functions | Usually not WebhookWise business code |
+| `Runner.run`, `sleep` | The Pyroscope Python agent's sampling/upload background loop, or a resident wait | Usually not a business hot spot |
+| `MetricReaderStorage.collect`, `PeriodicExportingMetricReader.collect` | Periodic OpenTelemetry metrics collection | Observability's own overhead |
+| `OTLPMetricExporter`, `encode_metric`, `_encode_*` | OTel metrics encoding and export to Alloy | Observability's own overhead |
+| `Session.prepare_request`, `parse_url`, `get_netrc_auth` | The Python HTTP client preparing requests for the exporter | Mostly the OTel/Pyroscope reporting path |
+| `BaseProcess.run`, `ForkProcess`, `ProcessManager.*` | The worker process management and startup framework | A parent call chain that does not directly indicate slow business code |
+| `RedisStreamBroker.listen` | The worker listening for Redis Stream tasks | Related to queue consumption; worth viewing together with queue metrics |
+| `BatchProcessor.worker` | The OTel batch processor background export thread | Observability's own overhead |
+| `_async_traced_execute_factory...` | The tracing-wrapped async task execution entry point | Worth drilling further down into business functions |
+| `services/...`, `api/...`, `core/...`, `db/...` | WebhookWise business code | Focus here |
 
-### API profile 示例怎么判断
+### How to Judge an API Profile Example
 
-如果选择 `webhookwise-api` 后，看到类似：
+If, after selecting `webhookwise-api`, you see something like:
 
 ```text
 Runner.run
@@ -97,17 +97,17 @@ OTLPMetricExporter
 encode_metric
 ```
 
-通常说明当前 API 没有明显业务 CPU 热点，页面主要采到了：
+it usually means the API currently has no obvious business CPU hot spot, and the page mainly sampled:
 
-- Pyroscope agent 自己的采样/上传循环。
-- OpenTelemetry metrics 定时导出。
-- 服务运行循环。
+- The Pyroscope agent's own sampling/upload loop.
+- Periodic OpenTelemetry metrics export.
+- The service run loop.
 
-这类图在本地空闲或轻流量时很常见，不代表 API 有业务性能问题。要看真实业务热点，先跑 k6 或手动打 webhook 流量，再把时间范围切到压测那几分钟。
+This kind of graph is very common when local traffic is idle or light, and it does not mean the API has a business performance problem. To see real business hot spots, first run k6 or manually send webhook traffic, then switch the time range to those few minutes of the load test.
 
-### Worker profile 示例怎么判断
+### How to Judge a Worker Profile Example
 
-如果选择 `webhookwise-worker` 后，`CPU CORES` 偶尔冲高，比如接近 2 cores，但 Top Table 主要是：
+If, after selecting `webhookwise-worker`, `CPU CORES` occasionally spikes, for example close to 2 cores, but the Top Table is mainly:
 
 ```text
 start_listen
@@ -119,14 +119,14 @@ BatchProcessor.worker
 _async_traced_execute_factory...
 ```
 
-可以这样读：
+you can read it this way:
 
-- `BaseProcess.*`、`ProcessManager.*`、`run_worker` 是 worker 框架和父级调用链，`Total` 大不等于它们自己慢。
-- `start_listen`、`RedisStreamBroker.listen` 表示 worker 正在监听和分发 Redis Stream 任务。
-- `BatchProcessor.worker` 多半是 OTel 后台导出，不是业务处理。
-- `_async_traced_execute_factory...` 更接近任务执行入口，需要点进去或搜索业务模块名。
+- `BaseProcess.*`, `ProcessManager.*`, and `run_worker` are the worker framework and parent call chain; a large `Total` does not mean they are slow themselves.
+- `start_listen` and `RedisStreamBroker.listen` mean the worker is listening for and dispatching Redis Stream tasks.
+- `BatchProcessor.worker` is mostly OTel background export, not business processing.
+- `_async_traced_execute_factory...` is closer to the task execution entry point; you need to click into it or search for business module names.
 
-继续在搜索框里搜：
+Continue searching in the search box:
 
 ```text
 services
@@ -139,18 +139,18 @@ sqlalchemy
 json
 ```
 
-如果能搜到 `services/operations/tasks.py`、`services/webhooks/...`、`services/forwarding/...` 且块很宽，才说明热点落在业务代码。若 worker queue lag 高但业务函数不宽，瓶颈可能在 DB、Redis、AI、HTTP 转发等等待型 IO，此时应回到 Trace 和 duration 指标。
+Only when you can find `services/operations/tasks.py`, `services/webhooks/...`, or `services/forwarding/...` and the blocks are wide does it mean the hot spot is in business code. If worker queue lag is high but the business functions are not wide, the bottleneck may be in wait-type IO such as DB, Redis, AI, and HTTP forwarding, in which case you should go back to traces and duration metrics.
 
-### Profile 和其他信号一起用
+### Using Profiles Together with Other Signals
 
-| 现象 | Pyroscope 里看到 | 下一步 |
+| Phenomenon | What you see in Pyroscope | Next step |
 | --- | --- | --- |
-| API p95 高，profile 里业务函数很宽 | CPU 热点 | 优化对应函数、减少解析/计算、缓存结果 |
-| API p95 高，profile 里业务函数不宽 | 可能是 IO 等待 | 看 Tempo、DB/Redis/AI/Forwarding duration |
-| worker queue lag 高，worker CPU 也高 | worker 计算忙 | 找宽的 `services/...` 分支，优化或扩 worker |
-| worker queue lag 高，worker profile 不宽 | worker 在等外部依赖或拿不到任务 | 看 Redis、DB、AI、Forwarding、worker 日志 |
-| scheduler duration 高，profile 不宽 | 多半是扫描查询或外部等待 | 看 scheduler trace、DB session duration、日志 |
-| Top Table 主要是 OTel/Pyroscope 函数 | 可观测后台成本占主导 | 增加业务流量后再看，或调大采样/导出间隔 |
+| API p95 high, business functions wide in the profile | CPU hot spot | Optimize the function, reduce parsing/computation, cache results |
+| API p95 high, business functions not wide in the profile | Possibly IO waiting | Look at Tempo and DB/Redis/AI/Forwarding duration |
+| Worker queue lag high, worker CPU also high | Worker is compute-busy | Find the wide `services/...` branch and optimize or scale out the worker |
+| Worker queue lag high, worker profile not wide | The worker is waiting on external dependencies or cannot get tasks | Look at Redis, DB, AI, Forwarding, and worker logs |
+| Scheduler duration high, profile not wide | Mostly scan queries or external waits | Look at scheduler traces, DB session duration, and logs |
+| Top Table is mainly OTel/Pyroscope functions | Observability background cost dominates | Look again after adding business traffic, or increase the sampling/export interval |
 
 ![Pyroscope flamegraph](assets/pyroscope-ui.jpg)
 

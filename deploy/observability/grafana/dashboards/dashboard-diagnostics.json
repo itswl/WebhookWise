@@ -37,7 +37,7 @@
       },
       "id": 150,
       "panels": [],
-      "title": "数据新鲜度与覆盖率 (Freshness / Coverage)",
+      "title": "Freshness / Coverage",
       "type": "row"
     },
     {
@@ -45,7 +45,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "核心遥测最后一次样本距现在的秒数。正常情况下 API/worker/scheduler 应在分钟级内更新；Beyla 取决于最近流量。",
+      "description": "Seconds since the last sample of core telemetry. Normally API/worker/scheduler should update within minutes; Beyla depends on recent traffic.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -72,12 +72,12 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -152,7 +152,7 @@
           "refId": "D"
         }
       ],
-      "title": "核心遥测新鲜度 (Seconds Since Last Sample)",
+      "title": "Core Telemetry Freshness (Seconds Since Last Sample)",
       "type": "stat"
     },
     {
@@ -160,7 +160,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "展示容易被误认为“缺数据”的可选信号。Faro/k6 为 0 代表当前时间范围没有对应事件或压测运行；recording rules 和 Alloy 为采集链路健康信号。",
+      "description": "Shows optional signals that are easily mistaken for \"missing data\". Faro/k6 at 0 means there are no matching events or load-test runs in the current time range; recording rules and Alloy are collection-pipeline health signals.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -179,12 +179,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -284,11 +284,11 @@
           "refId": "D"
         }
       ],
-      "title": "可选信号覆盖 (Optional Signal Coverage)",
+      "title": "Optional Signal Coverage",
       "type": "stat"
     },
     {
-      "description": "线上数据覆盖说明",
+      "description": "Production data coverage notes",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -301,11 +301,11 @@
       },
       "id": 153,
       "options": {
-        "content": "### 读数说明\n\n- Prometheus 只直接抓取 Alloy 和 Prometheus；API、worker、scheduler 指标通过 OTLP/Alloy remote write 进入。\n- Faro = 0 表示当前时间范围没有浏览器 RUM 事件，需要从前端初始化或真实浏览器访问量排查。\n- k6 missing = 1 表示当前 Prometheus 没有近期 k6 smoke/load 指标，运行压测后会自动出现。\n- scheduler_task_runs_total 目前在生产标签里可能归到 webhookwise-worker，面板用任务指标本身判断新鲜度。",
+        "content": "### How to read these\n\n- Prometheus only scrapes Alloy and Prometheus directly; API, worker, and scheduler metrics arrive via OTLP/Alloy remote write.\n- Faro = 0 means there are no browser RUM events in the current time range; investigate frontend initialization or actual browser traffic.\n- k6 missing = 1 means Prometheus currently has no recent k6 smoke/load metrics; they appear automatically after running a load test.\n- scheduler_task_runs_total may currently be labeled under webhookwise-worker in production, so the panel judges freshness from the task metric itself.",
         "mode": "markdown"
       },
       "pluginVersion": "13.0.1",
-      "title": "No data / 0 如何解读",
+      "title": "How to Interpret No data / 0",
       "type": "text"
     },
     {
@@ -318,7 +318,7 @@
       },
       "id": 160,
       "panels": [],
-      "title": "可观测后端、RUM、Beyla 与压测 (Telemetry Backends / RUM / eBPF / k6)",
+      "title": "Telemetry Backends / RUM / eBPF / k6",
       "type": "row"
     },
     {
@@ -326,7 +326,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Faro RUM 数据来自前端浏览器埋点。当前生产如果显示 0，表示所选时间范围内没有 RUM 事件进入 Grafana Faro，不代表 API/worker 指标断采。",
+      "description": "Faro RUM data comes from frontend browser instrumentation. If production shows 0, it means no RUM events reached Grafana Faro in the selected time range; it does not mean API/worker metrics have stopped being collected.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -377,12 +377,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -456,7 +456,7 @@
           "refId": "D"
         }
       ],
-      "title": "Faro 前端 RUM 接收量",
+      "title": "Faro Frontend RUM Receive Volume",
       "type": "timeseries"
     },
     {
@@ -515,12 +515,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -561,7 +561,7 @@
           "refId": "A"
         }
       ],
-      "title": "Beyla 自动采集调用量",
+      "title": "Beyla Auto-Instrumented Call Volume",
       "type": "timeseries"
     },
     {
@@ -620,12 +620,12 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -666,7 +666,7 @@
           "refId": "A"
         }
       ],
-      "title": "Beyla 自动采集耗时 P95",
+      "title": "Beyla Auto-Instrumented Duration P95",
       "type": "timeseries"
     },
     {
@@ -725,17 +725,17 @@
           "unit": "percentunit",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"${__field.labels.service_name}\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name = \\\"${__field.labels.service_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=\\\"${__field.labels.service_name}\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -776,7 +776,7 @@
           "refId": "A"
         }
       ],
-      "title": "进程 CPU 使用率 (Beyla Process CPU)",
+      "title": "Process CPU Utilization (Beyla Process CPU)",
       "type": "timeseries"
     },
     {
@@ -784,7 +784,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "k6 指标只在压测运行后出现；No data 或 0 通常表示所选时间范围内没有执行 smoke/load profile。这里故意使用 range 函数读取最近一次样本，避免 stale marker 误导。",
+      "description": "k6 metrics only appear after a load test runs; No data or 0 usually means no smoke/load profile was executed in the selected time range. This intentionally uses range functions to read the most recent sample, avoiding misleading stale markers.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -834,12 +834,12 @@
           },
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -902,7 +902,7 @@
           "refId": "C"
         }
       ],
-      "title": "k6 Smoke 压测结果（最近一次运行）",
+      "title": "k6 Smoke Test Results (Most Recent Run)",
       "type": "timeseries"
     },
     {
@@ -960,12 +960,12 @@
           },
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1028,7 +1028,7 @@
           "refId": "C"
         }
       ],
-      "title": "采集层健康 (Alloy / Loki Write)",
+      "title": "Collection Layer Health (Alloy / Loki Write)",
       "type": "timeseries"
     },
     {
@@ -1041,7 +1041,7 @@
       },
       "id": 170,
       "panels": [],
-      "title": "环境与容量 (Environment / Capacity)",
+      "title": "Environment / Capacity",
       "type": "row"
     },
     {
@@ -1074,17 +1074,17 @@
           },
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"${__field.labels.service_name}\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name = \\\"${__field.labels.service_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=\\\"${__field.labels.service_name}\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1126,7 +1126,7 @@
           "refId": "A"
         }
       ],
-      "title": "当前采集环境与服务 (Environment / Services)",
+      "title": "Current Collection Environment & Services (Environment / Services)",
       "type": "table"
     },
     {
@@ -1185,17 +1185,17 @@
           "unit": "bytes",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"${__field.labels.service_name}\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name = \\\"${__field.labels.service_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=\\\"${__field.labels.service_name}\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1236,7 +1236,7 @@
           "refId": "A"
         }
       ],
-      "title": "进程内存使用 (Process Memory)",
+      "title": "Process Memory Usage (Process Memory)",
       "type": "timeseries"
     },
     {
@@ -1244,7 +1244,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Current active HTTP requests by route. Payload sizes are tracked separately in Webhook Payload 大小 P95.",
+      "description": "Current active HTTP requests by route. Payload sizes are tracked separately in Webhook Payload Size P95.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1295,17 +1295,17 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.http_route}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.http.route = \\\"${__field.labels.http_route}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1346,7 +1346,7 @@
           "refId": "A"
         }
       ],
-      "title": "HTTP 活跃请求 (Active Requests)",
+      "title": "HTTP Active Requests (Active Requests)",
       "type": "timeseries"
     },
     {
@@ -1359,7 +1359,7 @@
       },
       "id": 180,
       "panels": [],
-      "title": "Webhook 与 Pipeline 深度诊断 (Webhook / Pipeline Deep Dive)",
+      "title": "Webhook / Pipeline Deep Dive",
       "type": "row"
     },
     {
@@ -1418,12 +1418,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_status}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.status = \\\"${__field.labels.webhook_status}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1464,7 +1464,7 @@
           "refId": "A"
         }
       ],
-      "title": "Webhook 状态分布 (Processing Status)",
+      "title": "Webhook Status Distribution (Processing Status)",
       "type": "timeseries"
     },
     {
@@ -1523,12 +1523,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_status}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.status = \\\"${__field.labels.webhook_status}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1569,7 +1569,7 @@
           "refId": "A"
         }
       ],
-      "title": "处理状态分布 (Processing Status)",
+      "title": "Processing Status Distribution (Processing Status)",
       "type": "timeseries"
     },
     {
@@ -1628,17 +1628,17 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.pipeline_step}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.pipeline.step = \\\"${__field.labels.pipeline_step}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1679,7 +1679,7 @@
           "refId": "A"
         }
       ],
-      "title": "Pipeline 步骤耗时 P95",
+      "title": "Pipeline Step Duration P95",
       "type": "timeseries"
     },
     {
@@ -1738,17 +1738,17 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.queue_operation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.db.operation = \\\"${__field.labels.queue_operation}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1789,7 +1789,7 @@
           "refId": "A"
         }
       ],
-      "title": "队列操作耗时 P95 (Queue Operation Duration)",
+      "title": "Queue Operation Duration P95 (Queue Operation Duration)",
       "type": "timeseries"
     },
     {
@@ -1848,17 +1848,17 @@
           "unit": "bytes",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -1899,7 +1899,7 @@
           "refId": "A"
         }
       ],
-      "title": "Webhook Payload 大小 P95",
+      "title": "Webhook Payload Size P95",
       "type": "timeseries"
     },
     {
@@ -1958,12 +1958,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_status}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.status = \\\"${__field.labels.webhook_status}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2004,7 +2004,7 @@
           "refId": "A"
         }
       ],
-      "title": "Webhook 处理状态变更速率",
+      "title": "Webhook Processing Status Change Rate",
       "type": "timeseries"
     },
     {
@@ -2017,7 +2017,7 @@
       },
       "id": 190,
       "panels": [],
-      "title": "AI、降噪与转发补充 (AI / Noise / Forwarding Deep Dive)",
+      "title": "AI / Noise / Forwarding Deep Dive",
       "type": "row"
     },
     {
@@ -2076,17 +2076,17 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.ai_model}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.ai.model = \\\"${__field.labels.ai_model}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2127,7 +2127,7 @@
           "refId": "A"
         }
       ],
-      "title": "AI Token 消耗 (Tokens by Model)",
+      "title": "AI Token Consumption (Tokens by Model)",
       "type": "timeseries"
     },
     {
@@ -2186,12 +2186,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2232,7 +2232,7 @@
           "refId": "A"
         }
       ],
-      "title": "AI Cache 请求速率",
+      "title": "AI Cache Request Rate",
       "type": "timeseries"
     },
     {
@@ -2291,17 +2291,17 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.ai_engine}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.ai.engine = \\\"${__field.labels.ai_engine}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2342,7 +2342,7 @@
           "refId": "A"
         }
       ],
-      "title": "Deep Analysis 任务速率",
+      "title": "Deep Analysis Task Rate",
       "type": "timeseries"
     },
     {
@@ -2401,17 +2401,17 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2452,7 +2452,7 @@
           "refId": "A"
         }
       ],
-      "title": "降噪评估速率 (Noise Evaluations)",
+      "title": "Noise Evaluation Rate (Noise Evaluations)",
       "type": "timeseries"
     },
     {
@@ -2511,12 +2511,12 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_relation}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.relation = \\\"${__field.labels.webhook_relation}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2557,7 +2557,7 @@
           "refId": "A"
         }
       ],
-      "title": "降噪评估耗时 P95",
+      "title": "Noise Evaluation Duration P95",
       "type": "timeseries"
     },
     {
@@ -2616,17 +2616,17 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.forward_target_type}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.forward.target_type = \\\"${__field.labels.forward_target_type}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2667,7 +2667,7 @@
           "refId": "A"
         }
       ],
-      "title": "Outbox 生命周期速率",
+      "title": "Outbox Lifecycle Rate",
       "type": "timeseries"
     },
     {
@@ -2726,17 +2726,17 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.forward_target_type}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.forward.target_type = \\\"${__field.labels.forward_target_type}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2777,7 +2777,7 @@
           "refId": "A"
         }
       ],
-      "title": "Outbox 处理耗时 P95",
+      "title": "Outbox Processing Duration P95",
       "type": "timeseries"
     },
     {
@@ -2809,17 +2809,17 @@
           "unit": "currencyUSD",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.ai_model}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.ai.model = \\\"${__field.labels.ai_model}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2862,7 +2862,7 @@
           "refId": "A"
         }
       ],
-      "title": "AI 成本按模型 (Cost by Model)",
+      "title": "AI Cost by Model (Cost by Model)",
       "type": "stat"
     },
     {
@@ -2921,12 +2921,12 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -2967,7 +2967,7 @@
           "refId": "A"
         }
       ],
-      "title": "AI Cache 耗时 P95",
+      "title": "AI Cache Duration P95",
       "type": "timeseries"
     },
     {
@@ -2980,7 +2980,7 @@
       },
       "id": 210,
       "panels": [],
-      "title": "采集链路与服务拓扑补充 (Telemetry / Service Graph Deep Dive)",
+      "title": "Telemetry / Service Graph Deep Dive",
       "type": "row"
     },
     {
@@ -3039,12 +3039,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3085,7 +3085,7 @@
           "refId": "A"
         }
       ],
-      "title": "服务拓扑调用速率 (Service Graph)",
+      "title": "Service Graph Call Rate (Service Graph)",
       "type": "timeseries"
     },
     {
@@ -3144,12 +3144,12 @@
           "unit": "ops",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3190,7 +3190,7 @@
           "refId": "A"
         }
       ],
-      "title": "服务拓扑失败速率",
+      "title": "Service Graph Failure Rate",
       "type": "timeseries"
     },
     {
@@ -3249,17 +3249,17 @@
           "unit": "Bps",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"${__field.labels.service_name}\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name = \\\"${__field.labels.service_name}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看 Profile",
+              "title": "View profile",
               "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=\\\"${__field.labels.service_name}\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3311,7 +3311,7 @@
           "refId": "B"
         }
       ],
-      "title": "进程 IO (Network / Disk)",
+      "title": "Process IO (Network / Disk)",
       "type": "timeseries"
     },
     {
@@ -3370,12 +3370,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3486,12 +3486,12 @@
           "unit": "s",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3532,7 +3532,7 @@
           "refId": "A"
         }
       ],
-      "title": "Loki 写入延迟 P95",
+      "title": "Loki Write Latency P95",
       "type": "timeseries"
     },
     {
@@ -3591,12 +3591,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3637,7 +3637,7 @@
           "refId": "A"
         }
       ],
-      "title": "Faro 限流活跃应用",
+      "title": "Faro Rate-Limited Active Apps",
       "type": "timeseries"
     },
     {
@@ -3696,12 +3696,12 @@
           "unit": "short",
           "links": [
             {
-              "title": "查看相关日志",
+              "title": "View related logs",
               "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             },
             {
-              "title": "查看相关 Trace",
+              "title": "View related traces",
               "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
               "targetBlank": true
             }
@@ -3764,7 +3764,7 @@
           "refId": "C"
         }
       ],
-      "title": "Loki 重试与丢弃 (Retries / Drops)",
+      "title": "Loki Retries & Drops (Retries / Drops)",
       "type": "timeseries"
     }
   ],
@@ -3802,7 +3802,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "WebhookWise AIOps 深度诊断大盘",
+  "title": "WebhookWise AIOps Deep Diagnostics Dashboard",
   "uid": "webhook-wise-aiops-diagnostics",
   "version": 2,
   "id": null

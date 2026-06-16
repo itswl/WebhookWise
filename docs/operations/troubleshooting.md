@@ -1,70 +1,70 @@
-# 故障排查指南
+# Troubleshooting Guide
 
-## 🔍 快速诊断
+## 🔍 Quick Diagnosis
 
-### 健康检查
+### Health check
 
 ```bash
 curl http://localhost:8000/ready
 ```
 
-正常响应：
+Normal response:
 ```json
 {"success": true, "data": {"status": "ready", "database": "ok", "redis": "ok", "queue": "redis_stream"}}
 ```
 
-如果 HTTP 状态为 `503`，按 `data.database` / `data.redis` 判断失败依赖；`queue` 固定为 `redis_stream`。
+If the HTTP status is `503`, use `data.database` / `data.redis` to identify the failing dependency; `queue` is always `redis_stream`.
 
-### 查看日志
+### View logs
 
 ```bash
-# Docker 模式
+# Docker mode
 docker compose logs webhook-service -f
 docker compose logs worker -f
 
-# 本地模式：查看启动 uvicorn/gunicorn/taskiq 的终端 stdout
+# Local mode: view the stdout of the terminal that started uvicorn/gunicorn/taskiq
 ```
 
-日常排障从仓库根目录执行 `docker compose ...` 即可；根目录 `compose.yaml` 只管理 PostgreSQL、Redis、API、Worker、Scheduler 等业务容器。观测栈使用独立 project `webhookwise-observability`，需要查看 Grafana、Prometheus、Loki、Tempo、Alloy 等容器时再显式指定它。
+For everyday troubleshooting, just run `docker compose ...` from the repository root; the root `compose.yaml` only manages the business containers such as PostgreSQL, Redis, API, Worker, and Scheduler. The observability stack uses the separate project `webhookwise-observability`, which you specify explicitly when you need to view containers such as Grafana, Prometheus, Loki, Tempo, and Alloy.
 
-日志输出到 stdout；启用观测栈时通过 OTLP logs 进入 Loki。每条日志含 `trace_id`、`span_id`、`request.id`、`webhook.event_id`（若有上下文）。
+Logs are written to stdout; when the observability stack is enabled, they enter Loki through OTLP logs. Each log contains `trace_id`, `span_id`, `request.id`, and `webhook.event_id` (when context is available).
 
 ---
 
-## ❗ 常见问题
+## ❗ Common Issues
 
-### 1. Webhook 接收后无分析结果
+### 1. No analysis result after a webhook is received
 
-**症状：** POST `/v1/webhook` 返回 200，但按 `request_id` 查不到最终事件。
+**Symptom:** POST `/v1/webhook` returns 200, but the final event cannot be found by `request_id`.
 
-**排查步骤：**
+**Troubleshooting steps:**
 
-1. 先确认 API 就绪状态：
+1. First confirm the API readiness status:
    ```bash
    curl http://localhost:8000/ready
    ```
 
-2. 确认 Worker 进程是否在运行：
+2. Confirm whether the Worker process is running:
    ```bash
    docker compose ps worker
    ```
 
-3. 检查 Worker 日志是否有报错：
+3. Check whether there are errors in the Worker logs:
    ```bash
    docker compose logs worker --tail 50
    ```
 
-4. 检查 Redis 连接：
+4. Check the Redis connection:
    ```bash
-   docker compose exec redis redis-cli ping  # 应返回 PONG
+   docker compose exec redis redis-cli ping  # should return PONG
    ```
 
-5. 确认任务是否入队（TaskIQ 使用 Redis Stream）：
+5. Confirm whether the task was enqueued (TaskIQ uses Redis Stream):
    ```bash
    docker compose exec redis redis-cli xinfo stream webhook:queue
    ```
 
-6. 如果处理失败已进入 dead-letter，可按原 raw payload 重放：
+6. If processing failed and already went to dead-letter, you can replay it by the original raw payload:
    ```bash
    curl http://localhost:8000/v1/admin/dead-letters \
      -H "Authorization: Bearer $API_KEY"
@@ -75,34 +75,34 @@ docker compose logs worker -f
 
 ---
 
-### 2. AI 分析未执行（事件重要性为空或走规则降级）
+### 2. AI analysis did not run (event importance is empty or it falls back to rules)
 
-**症状：** 事件完成处理但 `ai_analysis` 为规则分析结果，日志中出现 "AI 分析降级"。
+**Symptom:** The event finished processing but `ai_analysis` is a rule-based analysis result, and the logs show that AI analysis was degraded.
 
-**排查步骤：**
+**Troubleshooting steps:**
 
-1. 检查进程环境中的 `ENABLE_AI_ANALYSIS` 和 `OPENAI_API_KEY` 是否已配置。
+1. Check whether `ENABLE_AI_ANALYSIS` and `OPENAI_API_KEY` are configured in the process environment.
    ```bash
    docker compose exec webhook-service sh -lc 'printf "ENABLE_AI_ANALYSIS=%s\nOPENAI_API_KEY=%s\n" "$ENABLE_AI_ANALYSIS" "${OPENAI_API_KEY:+configured}"'
    ```
 
-2. 检查 AI API 连通性（Worker 日志会有 HTTP 错误详情）。
+2. Check AI API connectivity (the Worker logs will have HTTP error details).
 
-3. 如果使用 OpenRouter，确认 `OPENAI_API_URL` 正确（默认 `https://openrouter.ai/api/v1`）。
+3. If you use OpenRouter, confirm that `OPENAI_API_URL` is correct (default `https://openrouter.ai/api/v1`).
 
-4. 检查 `ENABLE_AI_DEGRADATION` 是否为 `true`（开启时 AI 失败会静默降级到规则分析）。
+4. Check whether `ENABLE_AI_DEGRADATION` is `true` (when enabled, AI failures silently fall back to rule-based analysis).
 
 ---
 
-### 3. 配置修改后不生效
+### 3. Configuration changes do not take effect
 
-**症状：** 修改了 `.env`、环境变量、ConfigMap 或 Secret，但行为未变化。
+**Symptom:** You changed `.env`, environment variables, ConfigMap, or Secret, but the behavior did not change.
 
-**说明：**
-- 所有应用配置都只在服务启动时读取，修改后必须重启本地进程或滚动发布容器。
-- 应用不再从数据库读取配置，也不提供在线配置读写入口。
+**Explanation:**
+- All application configuration is read only at service startup; after changes you must restart the local process or perform a rolling release of the container.
+- The application no longer reads configuration from the database and does not provide an online configuration read/write entry point.
 
-**排查：**
+**Troubleshooting:**
 ```bash
 docker compose config
 docker compose exec webhook-service env | sort
@@ -110,21 +110,21 @@ docker compose exec webhook-service env | sort
 
 ---
 
-### 4. 深度分析结果一直处于「分析中」
+### 4. Deep analysis result stays in "analyzing"
 
-**症状：** OpenClaw 深度分析记录状态为 `pending`，长时间未完成。
+**Symptom:** The OpenClaw deep analysis record stays in the `pending` state and does not complete for a long time.
 
-**排查步骤：**
+**Troubleshooting steps:**
 
-1. 检查 `OPENCLAW_ENABLED` 是否为 `true`，`OPENCLAW_GATEWAY_URL` 是否可访问。
+1. Check whether `OPENCLAW_ENABLED` is `true` and whether `OPENCLAW_GATEWAY_URL` is reachable.
 
-2. 通过手动重拉确认 OpenClaw 是否已有结果：
+2. Confirm whether OpenClaw already has a result by manually re-fetching:
    ```bash
    curl -X POST http://localhost:8000/v1/deep-analyses/{id}/retry \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-3. 如果返回超时错误（已超过 `OPENCLAW_TIMEOUT_SECONDS`），说明分析超时，需重新发起：
+3. If it returns a timeout error (already exceeded `OPENCLAW_TIMEOUT_SECONDS`), the analysis timed out and you need to re-initiate it:
    ```bash
    curl -X POST http://localhost:8000/v1/deep-analyze/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
@@ -132,72 +132,72 @@ docker compose exec webhook-service env | sort
      -d '{"engine": "openclaw"}'
    ```
 
-4. 当前手动深度分析入口只接受 `auto` / `openclaw`。OpenClaw 不可用时，接口会按配置降级到本地 AI 或返回 `No engine available`；不要传 `engine: "local"`。
+4. The current manual deep-analysis entry point only accepts `auto` / `openclaw`. When OpenClaw is unavailable, the endpoint falls back to local AI per configuration or returns `No engine available`; do not pass `engine: "local"`.
 
 ---
 
-### 5. 深度分析完成后飞书未收到通知
+### 5. Feishu did not receive a notification after deep analysis completed
 
-**症状：** 手动重拉成功，但飞书群未收到消息。
+**Symptom:** The manual re-fetch succeeded, but the Feishu group did not receive a message.
 
-**排查步骤：**
+**Troubleshooting steps:**
 
-1. 确认 `DEEP_ANALYSIS_FEISHU_WEBHOOK` 已配置：
+1. Confirm that `DEEP_ANALYSIS_FEISHU_WEBHOOK` is configured:
    ```bash
    docker compose exec webhook-service sh -lc 'test -n "$DEEP_ANALYSIS_FEISHU_WEBHOOK" && echo configured'
    ```
 
-2. 手动测试飞书 Webhook 连通性：
+2. Manually test Feishu Webhook connectivity:
    ```bash
    curl -X POST "$DEEP_ANALYSIS_FEISHU_WEBHOOK" \
      -H "Content-Type: application/json" \
      -d '{"msg_type": "text", "content": {"text": "test"}}'
    ```
 
-3. 检查 Worker 日志中是否有 `飞书深度分析通知` 相关日志（INFO 或 WARNING 级别）。
+3. Check the Worker logs for logs related to the Feishu deep-analysis notification (INFO or WARNING level).
 
-4. 飞书 Webhook 熔断器（Circuit Breaker）在连续失败后会打开一段时间。当前通知会先进入 outbox，投递失败会记录失败原因并按策略重试；检查 outbox 状态和 Worker 日志能看到是否是熔断、URL 安全校验、HTTP 错误或飞书业务错误码。
+4. The Feishu Webhook circuit breaker opens for a while after consecutive failures. Notifications now go into the outbox first; a failed delivery records the failure reason and retries per policy. Checking the outbox status and the Worker logs shows whether it is a circuit-breaker trip, URL safety check, HTTP error, or a Feishu business error code.
 
 ---
 
-### 6. 转发失败，事件未推送到目标系统
+### 6. Forwarding failed and the event was not pushed to the target system
 
-**症状：** 事件处理完成，但目标系统未收到通知。
+**Symptom:** The event finished processing, but the target system did not receive a notification.
 
-**排查步骤：**
+**Troubleshooting steps:**
 
-1. 检查转发规则是否正确配置（重要性匹配、目标 URL 非空）：
+1. Check whether the forwarding rules are configured correctly (importance match, non-empty target URL):
    ```bash
    curl http://localhost:8000/v1/forward-rules \
      -H "Authorization: Bearer $API_KEY"
    ```
 
-2. 手动触发转发（写操作需要 `ADMIN_WRITE_KEY`）：
+2. Manually trigger forwarding (write operations require `ADMIN_WRITE_KEY`):
    ```bash
    curl -X POST http://localhost:8000/v1/forward/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-3. 检查 Worker 日志中是否有 `ForwardOutbox` 或转发相关的 HTTP 错误。
+3. Check the Worker logs for `ForwardOutbox` or forwarding-related HTTP errors.
 
-4. 如果 outbox 记录进入 `expired`，表示已超过 `FORWARD_MAX_DELIVERY_AGE_SECONDS`，系统为避免过期告警误发而停止自动投递。确认仍需发送后，使用手动转发接口重新发送当前事件。
+4. If an outbox record enters `expired`, it has exceeded `FORWARD_MAX_DELIVERY_AGE_SECONDS`, and the system stops automatic delivery to avoid mistakenly sending stale alerts. After confirming it still needs to be sent, use the manual forwarding endpoint to resend the current event.
 
 ---
 
-### 7. 告警被标记为重复但预期不是
+### 7. An alert is marked as a duplicate when it is not expected to be
 
-**症状：** 新告警被归入已有告警的重复项，`is_duplicate=true`。
+**Symptom:** A new alert is grouped as a duplicate of an existing alert, `is_duplicate=true`.
 
-**排查：**
+**Troubleshooting:**
 
-1. 检查 `DUPLICATE_ALERT_TIME_WINDOW`（默认 24 小时）。如需缩短去重窗口，修改配置文件后重启或滚动发布：
+1. Check `DUPLICATE_ALERT_TIME_WINDOW` (default 24 hours). To shorten the deduplication window, change the configuration file and then restart or perform a rolling release:
    ```bash
    DUPLICATE_ALERT_TIME_WINDOW=1
    ```
 
-2. 告警 hash 优先由 adapter 产出的 `_alert_identity` 生成。如果两条告警 hash 相同但内容有差异，优先检查对应 adapter 是否把关键身份字段写进了 `_alert_identity`；未知来源缺少 identity 时会退回完整 payload hash 并记录 warning。
+2. The alert hash is preferentially generated from the `_alert_identity` produced by the adapter. If two alerts have the same hash but differ in content, first check whether the corresponding adapter wrote the key identity fields into `_alert_identity`; when an unknown source lacks an identity, it falls back to the full payload hash and logs a warning.
 
-3. 对于已被错误标记的事件，可强制重新分析：
+3. For an event that was mismarked, you can force re-analysis:
    ```bash
    curl -X POST http://localhost:8000/v1/reanalyze/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
@@ -205,56 +205,56 @@ docker compose exec webhook-service env | sort
 
 ---
 
-### 8. 数据库语句超时（`statement timeout`）
+### 8. Database statement timeout (`statement timeout`)
 
-**症状：** 日志出现 `canceling statement due to statement timeout` 或 `asyncpg.exceptions.QueryCanceledError`。
+**Symptom:** The logs show `canceling statement due to statement timeout` or `asyncpg.exceptions.QueryCanceledError`.
 
-**原因：** SQL 查询或行锁等待超过了 `DB_STATEMENT_TIMEOUT_MS`（默认 30000ms）。
+**Cause:** A SQL query or row-lock wait exceeded `DB_STATEMENT_TIMEOUT_MS` (default 30000ms).
 
-**处理：**
+**What to do:**
 
-- 如果是偶发的行锁超时，TaskIQ 重试和后台补扫会自动重新投递。
-- 如果频繁出现，可适当增大超时：`.env` 中调整 `DB_STATEMENT_TIMEOUT_MS=60000`，然后重启服务。
-- 检查是否有长事务未提交（通过 PostgreSQL `pg_stat_activity` 视图排查）。
+- If it is an occasional row-lock timeout, TaskIQ retries and background re-scans will automatically redeliver.
+- If it happens frequently, you can increase the timeout appropriately: set `DB_STATEMENT_TIMEOUT_MS=60000` in `.env` and then restart the service.
+- Check whether there is a long, uncommitted transaction (investigate via the PostgreSQL `pg_stat_activity` view).
 
 ---
 
-### 9. 服务内存持续增长
+### 9. Service memory keeps growing
 
-**症状：** 容器内存用量随时间缓慢上升。
+**Symptom:** Container memory usage rises slowly over time.
 
-**排查：**
+**Troubleshooting:**
 
-1. 在 Grafana/Prometheus-compatible backend 中检查 `queue.pending`、`queue.lag`、`webhook.running_tasks` 是否持续增长。`queue.depth` 是 Redis Stream 保留长度，单独增长不代表消费积压。
+1. In Grafana/a Prometheus-compatible backend, check whether `queue.pending`, `queue.lag`, and `webhook.running_tasks` keep growing. `queue.depth` is the Redis Stream retained length, and growth on its own does not indicate a consumption backlog.
 
-2. 检查 Redis 内存：
+2. Check Redis memory:
    ```bash
    docker compose exec redis redis-cli info memory | grep used_memory_human
    ```
 
-3. 检查主表 `webhook_events` 行数：如果很大，说明过期数据清理未正常执行。清理由 `scheduled_data_maintenance` 周期任务执行，优先检查 scheduler/worker 日志和 `scheduler.task.*` 指标。
+3. Check the row count of the main table `webhook_events`: if it is very large, it means expired-data cleanup is not running normally. Cleanup is performed by the `scheduled_data_maintenance` periodic task; first check the scheduler/worker logs and the `scheduler.task.*` metrics.
 
-4. Docker 内存问题：`deploy/compose/docker-compose.yml` 中 API 服务默认限制 1GB，Worker 512MB。可按需调整。
+4. Docker memory problems: in `deploy/compose/docker-compose.yml`, the API service defaults to a 1GB limit and the Worker to 512MB. Adjust as needed.
 
 ---
 
-## 🪲 开启 DEBUG 日志
+## 🪲 Enabling DEBUG Logging
 
-排查 AI 分析内容或 Webhook 解析问题时，开启 DEBUG 级别：
+When troubleshooting AI analysis content or Webhook parsing problems, enable the DEBUG level:
 
 ```bash
-# 修改配置文件后重启或滚动发布
+# Change the configuration file, then restart or perform a rolling release
 LOG_LEVEL=DEBUG
 ```
 
-排查完成后记得改回 `INFO`。
+Remember to change it back to `INFO` after troubleshooting.
 
 ---
 
-## 📞 寻求帮助
+## 📞 Getting Help
 
-提供以下信息有助于快速定位问题：
-1. 相关的 `trace_id`（从日志中获取）
-2. 对应事件的 `event_id`
-3. Worker 和 API 日志中的完整错误堆栈
-4. 相关容器的环境变量和最近一次滚动/重启时间
+Providing the following information helps locate the problem quickly:
+1. The relevant `trace_id` (obtained from the logs)
+2. The `event_id` of the corresponding event
+3. The full error stack from the Worker and API logs
+4. The environment variables of the relevant containers and the time of the last rollout/restart
