@@ -83,7 +83,7 @@ async def test_resolve_and_forward_is_idempotent(
     first_ids = list(first.get("outbox_ids") or [])
     second_ids = list(second.get("outbox_ids") or [])
     assert len(first_ids) == 1
-    assert second_ids == first_ids  # 幂等返回相同 id
+    assert second_ids == first_ids  # idempotent: returns the same ids
     assert len(rows) == 1
     assert rows[0].status == "pending"
 

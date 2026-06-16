@@ -1,8 +1,8 @@
 """
 tests/forwarding/test_forwarding_decision.py
 =============================================
-测试 forwarding_stage.resolve_forward_decision() 转发决策逻辑。
-这些是核心业务规则：哪些告警需要转发、哪些要跳过、为什么。
+Tests the forwarding decision logic in forwarding_stage.resolve_forward_decision().
+These are core business rules: which alerts get forwarded, which are skipped, and why.
 """
 
 from datetime import timedelta
@@ -16,14 +16,14 @@ from services.webhooks.forwarding_stage import resolve_forward_decision
 
 
 class _Event:
-    """模拟 WebhookEvent 的最小对象。"""
+    """Minimal object that simulates a WebhookEvent."""
 
     def __init__(self, last_notified_at=None):
         self.last_notified_at = last_notified_at
 
 
 class _Noise:
-    """模拟 NoiseReductionContext。"""
+    """Simulates a NoiseReductionContext."""
 
     def __init__(self, suppress=False, reason=""):
         self.suppress_forward = suppress
@@ -55,12 +55,12 @@ def _set_config(key: str, value: object) -> None:
     setattr(getattr(config, config_info["sub"]), key, value)
 
 
-# ── 新告警（非重复、非超窗）────────────────────────────────────────────────────
+# ── New alerts (not duplicates, not outside the window) ─────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_high_importance_with_matched_rule_forwards():
-    """高重要性 + 匹配规则应转发。"""
+    """High importance plus a matching rule should forward."""
     rule = _FakeRule(1, importance="high")
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("high", False, None, None, "prometheus")
@@ -69,7 +69,7 @@ async def test_high_importance_with_matched_rule_forwards():
 
 @pytest.mark.asyncio
 async def test_medium_importance_no_rules_does_not_forward():
-    """无规则、medium 重要性不自动转发。"""
+    """No rules and medium importance does not auto-forward."""
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     assert decision.should_forward is False
@@ -91,12 +91,12 @@ async def test_unknown_importance_does_not_forward():
     assert decision.should_forward is False
 
 
-# ── 噪声抑制优先级最高 ─────────────────────────────────────────────────────────
+# ── Noise suppression has the highest priority ──────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_noise_suppression_overrides_high_importance():
-    """降噪决策抑制转发时，即使是 high 重要性也不转发。"""
+    """When the noise-reduction decision suppresses forwarding, even high importance is not forwarded."""
     noise = _Noise(suppress=True, reason="衍生告警")
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", NO_RULES):
         decision = await resolve_forward_decision("high", False, noise, None, "prometheus")
@@ -107,7 +107,7 @@ async def test_noise_suppression_overrides_high_importance():
 
 @pytest.mark.asyncio
 async def test_noise_no_suppress_allows_forward():
-    """降噪不抑制时，high 告警 + 匹配规则正常转发。"""
+    """When noise reduction does not suppress, a high alert plus a matching rule forwards normally."""
     noise = _Noise(suppress=False)
     rule = _FakeRule(1, importance="high")
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
@@ -115,12 +115,12 @@ async def test_noise_no_suppress_allows_forward():
     assert decision.should_forward is True
 
 
-# ── 窗口内重复告警 ─────────────────────────────────────────────────────────────
+# ── Duplicate alerts within the window ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_duplicate_in_cooldown_skips():
-    """重复告警在冷却期内不转发。"""
+    """A duplicate alert is not forwarded while within the cooldown period."""
     context = get_default_app_context()
     assert context is not None
     orig = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
@@ -138,7 +138,7 @@ async def test_duplicate_in_cooldown_skips():
 
 @pytest.mark.asyncio
 async def test_duplicate_no_matched_rules_skips():
-    """无规则匹配的重复告警不转发。"""
+    """A duplicate alert with no matching rule is not forwarded."""
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
@@ -157,7 +157,7 @@ async def test_duplicate_no_matched_rules_skips():
 
 @pytest.mark.asyncio
 async def test_duplicate_with_matched_rules_forwards():
-    """有规则匹配且不在冷却期，重复告警应转发。"""
+    """When a rule matches and it is not within the cooldown period, a duplicate alert should forward."""
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
@@ -176,7 +176,7 @@ async def test_duplicate_with_matched_rules_forwards():
 
 @pytest.mark.asyncio
 async def test_duplicate_periodic_reminder_triggers_forward():
-    """周期提醒间隔已到，应转发并标记 is_periodic_reminder=True。"""
+    """When the periodic-reminder interval has elapsed, it should forward and set is_periodic_reminder=True."""
     context = get_default_app_context()
     assert context is not None
     orig_cooldown = context.config.retry.NOTIFICATION_COOLDOWN_SECONDS
@@ -197,7 +197,7 @@ async def test_duplicate_periodic_reminder_triggers_forward():
         _set_config("REMINDER_INTERVAL_HOURS", orig_interval)
 
 
-# ── 转发规则匹配 ──────────────────────────────────────────────────────────────
+# ── Forwarding rule matching ────────────────────────────────────────────────────
 
 
 class _FakeRule:
@@ -224,7 +224,7 @@ class _FakeRule:
 
 @pytest.mark.asyncio
 async def test_matched_rule_enables_medium_forward():
-    """有匹配规则时，即使是 medium 重要性也应转发。"""
+    """When a rule matches, even medium importance should forward."""
     rule = _FakeRule(1, importance="medium")
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
@@ -234,7 +234,7 @@ async def test_matched_rule_enables_medium_forward():
 
 @pytest.mark.asyncio
 async def test_stop_on_match_limits_rules():
-    """stop_on_match=True 时只取第一条规则。"""
+    """With stop_on_match=True, only the first rule is taken."""
     rule1 = _FakeRule(1, importance="high", target_url="https://a.com", stop=True)
     rule2 = _FakeRule(2, importance="high", target_url="https://b.com", stop=False)
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule1, rule2])):
@@ -246,9 +246,9 @@ async def test_stop_on_match_limits_rules():
 
 @pytest.mark.asyncio
 async def test_source_filter_excludes_non_matching_source():
-    """规则限定 source 时，不匹配的来源不触发规则。"""
+    """When a rule restricts the source, a non-matching source does not trigger the rule."""
     rule = _FakeRule(1, importance="medium", source="grafana")
     with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
-    # prometheus 来源不匹配 grafana 规则，medium 无规则命中，不转发
+    # The prometheus source does not match the grafana rule; with no rule hit for medium, it does not forward
     assert decision.should_forward is False
