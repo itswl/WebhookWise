@@ -24,9 +24,11 @@ class ForwardRule(Base):
     match_importance: Mapped[str] = mapped_column(String(50), default="")
     match_duplicate: Mapped[str] = mapped_column(String(20), default="all")
     match_source: Mapped[str] = mapped_column(String(200), default="")
-    match_project: Mapped[str] = mapped_column(String(200), default="")
-    match_region: Mapped[str] = mapped_column(String(200), default="")
-    match_environment: Mapped[str] = mapped_column(String(200), default="")
+    # These three carry a DB-level server_default ('') so the consolidated schema
+    # baseline reproduces production exactly (they were backfilled with one).
+    match_project: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    match_region: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    match_environment: Mapped[str] = mapped_column(String(200), default="", server_default="")
     match_payload: Mapped[str] = mapped_column(String(512), default="")
 
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)
