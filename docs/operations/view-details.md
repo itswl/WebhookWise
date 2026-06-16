@@ -1,27 +1,27 @@
-# 查看事件详情
+# Viewing Event Details
 
-Dashboard 列表接口只返回摘要字段，用于快速渲染事件列表；展开某条事件时，前端会按需调用详情接口加载脱敏后的原始数据和完整分析结果。
+The Dashboard list endpoint returns only summary fields for quickly rendering the event list; when you expand a specific event, the frontend calls the detail endpoint on demand to load the redacted raw data and the full analysis result.
 
 ## Dashboard
 
-1. 打开 `http://localhost:8000`。
-2. 点击任意告警项展开详情。
-3. 在 `概览`、`原始数据`、`AI 分析`、`深度分析` 标签页之间切换。
+1. Open `http://localhost:8000`.
+2. Click any alert item to expand its details.
+3. Switch between the `Overview`, `Raw Data`, `AI Analysis`, and `Deep Analysis` tabs.
 
 ## API
 
-列表摘要：
+List summary:
 
 ```bash
 curl "http://localhost:8000/v1/webhooks?page=1&page_size=100" \
   -H "Authorization: Bearer $API_KEY" | jq .
 ```
 
-单条详情：
+Single detail:
 
 ```bash
 curl "http://localhost:8000/v1/webhooks/8265" \
   -H "Authorization: Bearer $API_KEY" | jq .
 ```
 
-详情响应包含 `raw_payload`、`headers`、`parsed_data`、`alert_hash`、`ai_analysis`、`processing_status` 等排查字段。常见敏感 header 和 secret/token/password 字段会被脱敏。
+The detail response includes troubleshooting fields such as `raw_payload`, `headers`, `parsed_data`, `alert_hash`, `ai_analysis`, and `processing_status`. Common sensitive headers and secret/token/password fields are redacted.

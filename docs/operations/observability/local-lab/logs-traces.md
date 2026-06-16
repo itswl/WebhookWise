@@ -1,18 +1,18 @@
-# 本地可观测实验手册：日志、Trace、Smoke 与告警
+# Local Observability Lab Handbook: Logs, Traces, Smoke, and Alerts
 
-[返回总览](README.md)
+[Back to overview](README.md)
 
-## 看日志
+## Viewing Logs
 
-Grafana -> Explore -> datasource 选择 `Loki`。
+Grafana -> Explore -> select the `Loki` datasource.
 
-全部应用聚合日志：
+All aggregated application logs:
 
 ```logql
 {service_name="webhookwise"}
 ```
 
-按服务看：
+By service:
 
 ```logql
 {service_name="webhookwise-api"}
@@ -20,27 +20,27 @@ Grafana -> Explore -> datasource 选择 `Loki`。
 {service_name="webhookwise-scheduler"}
 ```
 
-按级别筛选：
+By level:
 
 ```logql
 {service_name="webhookwise-api", severity="error"}
 ```
 
-约定：结构化字段 `severity` 固定使用小写 `trace/debug/info/warn/error/fatal`，便于 Loki 查询和告警；日志内容里同时保留 `severity_text`，值为大写 `TRACE/DEBUG/INFO/WARN/ERROR/FATAL`，便于 Grafana line format 或滚动日志里快速扫级别。
+Convention: the structured field `severity` always uses lowercase `trace/debug/info/warn/error/fatal`, which makes Loki querying and alerting easier; the log content also keeps `severity_text` with the uppercase value `TRACE/DEBUG/INFO/WARN/ERROR/FATAL`, which makes it easy to scan the level quickly in a Grafana line format or scrolling logs.
 
-应用日志通过 OTLP logs 进入 Alloy。Alloy 会把 `severity`、`severity_text`、`event.name`、`signal.name`、`signal.state`、`webhook.source`、`webhook.status` 放进 Loki label；Loki 侧会使用安全化后的 label 名（例如 `event_name`、`webhook_source`）。`trace_id` / `span_id` 只作为日志字段和 derived field 跳转线索，不作为 label，避免高基数压垮索引。
+Application logs enter Alloy as OTLP logs. Alloy puts `severity`, `severity_text`, `event.name`, `signal.name`, `signal.state`, `webhook.source`, and `webhook.status` into Loki labels; the Loki side uses sanitized label names (for example `event_name`, `webhook_source`). `trace_id` / `span_id` are only used as log fields and derived-field jump hints, not as labels, to avoid high cardinality overwhelming the index.
 
-按结构化事件筛选：
+By structured event:
 
 ```logql
 {service_name="webhookwise-api", event_name!=""}
 ```
 
-日志里通常能看到 `trace_id` / `span_id`，可以用这些字段跳到 Tempo 查链路。
+Logs usually contain `trace_id` / `span_id`, which you can use to jump to Tempo to inspect the trace.
 
 ![Service logs in Loki](assets/service-logs-loki.jpg)
 
-基础设施容器日志目前没有统一采进 Loki，用 Compose service logs 看：
+Infrastructure container logs are currently not collected into Loki in a unified way; view them with Compose service logs:
 
 ```bash
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml logs --tail=100 alloy
@@ -53,11 +53,11 @@ docker compose logs --tail=100 postgres
 docker compose logs --tail=100 redis
 ```
 
-## 看 Trace
+## Viewing Traces
 
-Grafana -> Explore -> datasource 选择 `Tempo`。
+Grafana -> Explore -> select the `Tempo` datasource.
 
-常用搜索：
+Common searches:
 
 ```text
 service.name = webhookwise-api
@@ -65,51 +65,51 @@ service.name = webhookwise-worker
 service.name = webhookwise-scheduler
 ```
 
-如果日志中有 `trace_id`，可以在 Tempo 里直接按 trace id 打开。Grafana datasource 已配置 `tracesToLogsV2` 和 `tracesToProfiles`，可从 trace 跳到 Loki 日志和 Pyroscope profile。
+If a log contains a `trace_id`, you can open it directly by trace id in Tempo. The Grafana datasource is configured with `tracesToLogsV2` and `tracesToProfiles`, so you can jump from a trace to Loki logs and Pyroscope profiles.
 
-从 Loki 反跳 Tempo：Loki datasource 已配置 derived field，会从 JSON 日志的
-`trace_id` 里提取 32 位 trace id，点击 `View Trace` 直接打开 Tempo。
+Jumping back from Loki to Tempo: the Loki datasource is configured with a derived field that extracts the 32-character trace id from the JSON log's
+`trace_id`; click `View Trace` to open Tempo directly.
 
-从 Tempo 跳 Loki：Tempo datasource 的 `tracesToLogsV2` 会把
-`service.name -> service_name`、`webhook.source -> webhook_source`、
-`webhook.status -> webhook_status` 映射到 Loki label，并启用 trace id 过滤。
+Jumping from Tempo to Loki: the Tempo datasource's `tracesToLogsV2` maps
+`service.name -> service_name`, `webhook.source -> webhook_source`, and
+`webhook.status -> webhook_status` to Loki labels and enables trace id filtering.
 
-Tempo API 也可快速确认数据：
+The Tempo API can also quickly confirm data:
 
 ```bash
 curl -fsS 'http://localhost:3200/api/search?tags=service.name%3Dwebhookwise-api&limit=5'
 ```
 
-## Smoke 与告警
+## Smoke and Alerts
 
-改完可观测配置后，优先跑一条端到端 smoke：
+After changing the observability configuration, run an end-to-end smoke first:
 
 ```bash
 python scripts/observability/webhookwise_observe.py smoke
 ```
 
-它会检查健康状态，打一条 `observability-smoke` webhook，然后确认 Prometheus、
-Loki、Tempo 和 Prometheus alert rules 都有基本响应。线上只查询不造流量：
+It checks health status, sends one `observability-smoke` webhook, and then confirms that Prometheus,
+Loki, Tempo, and the Prometheus alert rules all respond at a basic level. In production, only query without generating traffic:
 
 ```bash
 python scripts/observability/webhookwise_observe.py smoke --skip-webhook
 ```
 
-本地 Prometheus 会加载 `deploy/observability/prometheus/alerts.yml`。这份规则包含：
+The local Prometheus loads `deploy/observability/prometheus/alerts.yml`. This rule set includes:
 
-- API / ingress / processing / forward 的 SLO recording rules 和 5m+1h / 30m+6h burn-rate 告警
-- API 5xx 比例
+- SLO recording rules for API / ingress / processing / forward and 5m+1h / 30m+6h burn-rate alerts
+- API 5xx ratio
 - webhook dead letter
-- queue pending / lag 积压
-- Redis Stream retained depth 持续增长
-- DB pool 接近容量
-- AI 错误和高延迟
-- Alloy exporter queue 堵塞
-- Loki 写入丢弃
-- Alloy 配置加载失败
+- queue pending / lag backlog
+- continued growth of Redis Stream retained depth
+- DB pool approaching capacity
+- AI errors and high latency
+- Alloy exporter queue congestion
+- Loki write drops
+- Alloy config load failures
 
-同一个规则文件也提供 recording rules，把容易误解的 `_ratio` gauge 名称记录成
-更直接的名字，例如 `queue_pending`、`queue_lag`、`queue_depth`、
-`webhook_events_active`、`db_pool_connections_checked_out`。
-排障时可以用 `python scripts/observability/webhookwise_observe.py runbook <alert_name>`
-自动收集告警状态、相关 SLO/RED/USE 查询、错误日志、Trace 和 Profile 链接。
+The same rule file also provides recording rules that record the easily misunderstood `_ratio` gauge names as
+more direct names, for example `queue_pending`, `queue_lag`, `queue_depth`,
+`webhook_events_active`, and `db_pool_connections_checked_out`.
+When troubleshooting, you can use `python scripts/observability/webhookwise_observe.py runbook <alert_name>`
+to automatically collect the alert state, related SLO/RED/USE queries, error logs, and trace and profile links.

@@ -117,7 +117,7 @@ requests = []
 while time.time() < deadline:
     requests = wait_json("http://localhost:19090/requests", timeout=5)
     serialized = json.dumps(requests, ensure_ascii=False)
-    if "interactive" in serialized and "Webhook 事件通知" in serialized and "AI E2E 摘要" in serialized:
+    if "interactive" in serialized and "Webhook Event Notification" in serialized and "AI E2E 摘要" in serialized:
         openai_requests = wait_json("http://localhost:19091/requests", timeout=5)
         if not any(req.get("path") == "/v1/chat/completions" for req in openai_requests):
             raise SystemExit("fake OpenAI did not receive a chat completion request")
