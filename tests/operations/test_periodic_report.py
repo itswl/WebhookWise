@@ -30,7 +30,7 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 @pytest.mark.asyncio
 async def test_collect_report_stats_aggregates_noise_sources_and_cost(session: AsyncSession) -> None:
-    from services.operations.weekly_report import collect_report_stats
+    from services.operations.periodic_report import collect_report_stats
 
     now = utcnow()
     # 10 events: 3 duplicates; sources prometheus x6, grafana x4; mixed importance.
@@ -65,7 +65,7 @@ async def test_collect_report_stats_aggregates_noise_sources_and_cost(session: A
 async def test_top_rules_breaks_down_noisiest_source_by_rule(session: AsyncSession) -> None:
     """'source' (e.g. volcengine) is too coarse — the report must break the
     noisiest source down by its alert rule name."""
-    from services.operations.weekly_report import collect_report_stats
+    from services.operations.periodic_report import collect_report_stats
 
     now = utcnow()
     # volcengine is noisiest (5), dominated by one rule (4x GPU vs 1x storage).
@@ -90,7 +90,7 @@ async def test_top_rules_breaks_down_noisiest_source_by_rule(session: AsyncSessi
 async def test_collect_report_stats_excludes_events_outside_window(session: AsyncSession) -> None:
     from datetime import timedelta
 
-    from services.operations.weekly_report import collect_report_stats
+    from services.operations.periodic_report import collect_report_stats
 
     now = utcnow()
     session.add(WebhookEvent(source="s", timestamp=now, duplicate_count=1))
@@ -103,7 +103,7 @@ async def test_collect_report_stats_excludes_events_outside_window(session: Asyn
 
 @pytest.mark.asyncio
 async def test_weekly_report_no_op_when_disabled(temp_config) -> None:
-    from services.operations.weekly_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_weekly_report
 
     temp_config.notifications.WEEKLY_REPORT_ENABLED = False
     result = await generate_and_send_weekly_report()
@@ -112,7 +112,7 @@ async def test_weekly_report_no_op_when_disabled(temp_config) -> None:
 
 @pytest.mark.asyncio
 async def test_weekly_report_skips_when_no_webhook(temp_config) -> None:
-    from services.operations.weekly_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_weekly_report
 
     temp_config.notifications.WEEKLY_REPORT_ENABLED = True
     temp_config.notifications.WEEKLY_REPORT_FEISHU_WEBHOOK = ""
@@ -122,7 +122,7 @@ async def test_weekly_report_skips_when_no_webhook(temp_config) -> None:
 
 
 def test_build_summary_is_deterministic_and_human_readable() -> None:
-    from services.operations.weekly_report import _build_summary
+    from services.operations.periodic_report import _build_summary
 
     stats = {
         "window_days": 7,
@@ -148,7 +148,7 @@ def test_build_summary_is_deterministic_and_human_readable() -> None:
     ],
 )
 def test_report_periods_registry_matches_config(period_key, enabled_attr, window_attr, webhook_attr, title_word) -> None:
-    from services.operations.weekly_report import REPORT_PERIODS
+    from services.operations.periodic_report import REPORT_PERIODS
 
     period = REPORT_PERIODS[period_key]
     assert period.enabled_attr == enabled_attr
@@ -160,7 +160,7 @@ def test_report_periods_registry_matches_config(period_key, enabled_attr, window
 @pytest.mark.asyncio
 @pytest.mark.parametrize("period_key", ["daily", "weekly", "monthly"])
 async def test_report_no_op_when_disabled(temp_config, period_key) -> None:
-    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+    from services.operations.periodic_report import REPORT_PERIODS, generate_and_send_report
 
     setattr(temp_config.notifications, REPORT_PERIODS[period_key].enabled_attr, False)
     result = await generate_and_send_report(period_key)
@@ -170,7 +170,7 @@ async def test_report_no_op_when_disabled(temp_config, period_key) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("period_key", ["daily", "weekly", "monthly"])
 async def test_report_skips_when_no_webhook(temp_config, period_key) -> None:
-    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+    from services.operations.periodic_report import REPORT_PERIODS, generate_and_send_report
 
     notif = temp_config.notifications
     setattr(notif, REPORT_PERIODS[period_key].enabled_attr, True)
@@ -188,8 +188,8 @@ async def test_report_skips_when_no_webhook(temp_config, period_key) -> None:
 )
 async def test_report_sends_card_with_period_title(temp_config, monkeypatch, period_key, title_word) -> None:
     """Each cadence sends a card titled for its period, using its window + webhook."""
-    import services.operations.weekly_report as wr
-    from services.operations.weekly_report import REPORT_PERIODS, generate_and_send_report
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import REPORT_PERIODS, generate_and_send_report
 
     notif = temp_config.notifications
     setattr(notif, REPORT_PERIODS[period_key].enabled_attr, True)
@@ -231,8 +231,8 @@ async def test_report_sends_card_with_period_title(temp_config, monkeypatch, per
 @pytest.mark.asyncio
 async def test_report_webhook_falls_back_to_weekly_then_deep_analysis(temp_config, monkeypatch) -> None:
     """Daily report with no dedicated webhook falls back to the weekly webhook."""
-    import services.operations.weekly_report as wr
-    from services.operations.weekly_report import generate_and_send_report
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import generate_and_send_report
 
     notif = temp_config.notifications
     notif.DAILY_REPORT_ENABLED = True
@@ -259,3 +259,83 @@ async def test_report_webhook_falls_back_to_weekly_then_deep_analysis(temp_confi
 
     await generate_and_send_report("daily")
     assert captured["url"] == "https://example.com/weekly-hook"
+
+
+# ── Missed-fire catch-up ──────────────────────────────────────────────────────
+
+from datetime import datetime  # noqa: E402
+
+
+def test_most_recent_fire_finds_last_daily_match() -> None:
+    from services.operations.periodic_report import _most_recent_fire
+
+    # Tuesday 14:30; daily 09:00 → most recent fire is today 09:00.
+    now = datetime(2026, 6, 16, 14, 30)
+    fire = _most_recent_fire("0 9 * * *", now, 24 * 60 + 60)
+    assert fire == datetime(2026, 6, 16, 9, 0)
+
+
+def test_most_recent_fire_weekly_walks_back_to_monday() -> None:
+    from services.operations.periodic_report import _most_recent_fire
+
+    # Wednesday 2026-06-17 10:00; weekly Mon 09:00 → Monday 2026-06-15 09:00.
+    now = datetime(2026, 6, 17, 10, 0)
+    fire = _most_recent_fire("0 9 * * 1", now, 7 * 24 * 60 + 60)
+    assert fire == datetime(2026, 6, 15, 9, 0)
+
+
+def test_most_recent_fire_none_when_outside_lookback() -> None:
+    from services.operations.periodic_report import _most_recent_fire
+
+    # Monthly 1st 09:00, now is the 16th, but a tiny 10-minute lookback can't reach it.
+    now = datetime(2026, 6, 16, 14, 30)
+    assert _most_recent_fire("0 9 1 * *", now, 10) is None
+
+
+@pytest.mark.asyncio
+async def test_catchup_sends_when_missed_and_skips_when_already_sent(temp_config, monkeypatch) -> None:
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import run_report_catchup
+
+    notif = temp_config.notifications
+    # Only daily enabled, with a webhook.
+    notif.DAILY_REPORT_ENABLED = True
+    notif.WEEKLY_REPORT_ENABLED = False
+    notif.MONTHLY_REPORT_ENABLED = False
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = "https://example.com/hook"
+
+    sends: list[str] = []
+    marker: dict[str, datetime] = {}
+
+    async def fake_collect(_session, window_days):
+        return {
+            "window_days": window_days, "total_events": 0, "duplicate_events": 0,
+            "noise_pct": 0.0, "importance_breakdown": {}, "top_sources": [],
+            "top_rules": [], "ai_cost_usd": 0.0, "ai_calls": 0, "cache_hit_pct": 0.0,
+        }
+
+    async def fake_send(url, card):
+        sends.append(url)
+        return {"status": "success"}
+
+    async def fake_record(period_key, fire_ts):
+        marker[period_key] = fire_ts
+
+    async def fake_last_sent(period_key):
+        return marker.get(period_key)
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr(wr, "_record_report_sent", fake_record)
+    monkeypatch.setattr(wr, "_last_sent_fire", fake_last_sent)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+
+    # First run: nothing sent yet → catch-up fires once.
+    out1 = await run_report_catchup()
+    assert out1["daily"] == "sent"
+    assert len(sends) == 1
+
+    # Second run (e.g. another restart same day): already sent → no duplicate.
+    out2 = await run_report_catchup()
+    assert out2["daily"] == "already_sent"
+    assert len(sends) == 1
