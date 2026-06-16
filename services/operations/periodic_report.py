@@ -9,9 +9,10 @@ over existing data — no new instruments, no hot-path impact. Each cadence
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
+import pycron
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +22,7 @@ from core.logger import get_logger
 from db.session import session_scope
 from models import AIUsageLog, WebhookEvent
 
-logger = get_logger("weekly_report")
+logger = get_logger("periodic_report")
 
 _TOP_SOURCES = 5
 _TOP_RULES = 5
@@ -34,8 +35,12 @@ class ReportPeriod:
     key: str  # "daily" | "weekly" | "monthly"
     title: str  # Feishu card header
     enabled_attr: str
+    cron_attr: str
     window_attr: str
     webhook_attr: str
+    # How far back catch-up scans for a missed fire (minutes). Bounds the worst
+    # case at startup; comfortably covers each cadence's natural gap.
+    catchup_lookback_minutes: int
 
 
 REPORT_PERIODS: dict[str, ReportPeriod] = {
@@ -43,22 +48,28 @@ REPORT_PERIODS: dict[str, ReportPeriod] = {
         key="daily",
         title="📊 WebhookWise Alert Health Daily Report",
         enabled_attr="DAILY_REPORT_ENABLED",
+        cron_attr="DAILY_REPORT_CRON",
         window_attr="DAILY_REPORT_WINDOW_DAYS",
         webhook_attr="DAILY_REPORT_FEISHU_WEBHOOK",
+        catchup_lookback_minutes=24 * 60 + 60,  # ~1 day + slack
     ),
     "weekly": ReportPeriod(
         key="weekly",
         title="📊 WebhookWise Alert Health Weekly Report",
         enabled_attr="WEEKLY_REPORT_ENABLED",
+        cron_attr="WEEKLY_REPORT_CRON",
         window_attr="WEEKLY_REPORT_WINDOW_DAYS",
         webhook_attr="WEEKLY_REPORT_FEISHU_WEBHOOK",
+        catchup_lookback_minutes=7 * 24 * 60 + 60,  # ~1 week + slack
     ),
     "monthly": ReportPeriod(
         key="monthly",
         title="📊 WebhookWise Alert Health Monthly Report",
         enabled_attr="MONTHLY_REPORT_ENABLED",
+        cron_attr="MONTHLY_REPORT_CRON",
         window_attr="MONTHLY_REPORT_WINDOW_DAYS",
         webhook_attr="MONTHLY_REPORT_FEISHU_WEBHOOK",
+        catchup_lookback_minutes=31 * 24 * 60 + 60,  # ~1 month + slack
     ),
 }
 
@@ -186,12 +197,68 @@ def _build_card(stats: dict[str, Any], title: str = "📊 WebhookWise Alert Heal
     }
 
 
-async def generate_and_send_report(period_key: str) -> dict[str, Any]:
+async def _record_report_sent(period_key: str, fire_ts: datetime) -> None:
+    """Persist the fire-time this cadence was last sent for (catch-up idempotency).
+
+    Best-effort: a Redis miss only risks a duplicate catch-up send, never a lost
+    report, so failures are swallowed (the report itself already went out).
+    """
+    from contextlib import suppress
+
+    from redis.exceptions import RedisError
+
+    from core.redis_client import redis_setex_str
+    from core.redis_health import periodic_report_last_sent
+
+    # Keep the marker well beyond the longest cadence gap so it never expires
+    # between two legitimate fires.
+    ttl_seconds = 45 * 24 * 3600
+    with suppress(RedisError, RuntimeError, TypeError, ValueError):
+        await redis_setex_str(periodic_report_last_sent(period_key), ttl_seconds, fire_ts.isoformat())
+
+
+async def _last_sent_fire(period_key: str) -> datetime | None:
+    from contextlib import suppress
+
+    from redis.exceptions import RedisError
+
+    from core.redis_client import redis_get_str
+    from core.redis_health import periodic_report_last_sent
+
+    with suppress(RedisError, RuntimeError, TypeError, ValueError):
+        raw = await redis_get_str(periodic_report_last_sent(period_key))
+        if raw:
+            return datetime.fromisoformat(raw)
+    return None
+
+
+def _most_recent_fire(cron: str, now: datetime, lookback_minutes: int) -> datetime | None:
+    """Most recent minute at/before ``now`` (within lookback) that ``cron`` matched.
+
+    Returns None if the cron never matched in the window. Scans minute-by-minute
+    backwards from now and short-circuits on the first match; the lookback bound
+    keeps the worst case cheap even for the monthly cadence.
+    """
+    cursor = now.replace(second=0, microsecond=0)
+    for _ in range(max(1, lookback_minutes) + 1):
+        try:
+            if pycron.is_now(cron, cursor):
+                return cursor
+        except ValueError:
+            logger.warning("[PeriodicReport] invalid cron %r; skipping catch-up", cron)
+            return None
+        cursor -= timedelta(minutes=1)
+    return None
+
+
+async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None = None) -> dict[str, Any]:
     """Generate and send one cadence's report. Returns the stats (for tests/logs).
 
     Each cadence has its own enable flag, window, and (optional) dedicated
     webhook; the webhook falls back to the weekly webhook, then the deep-analysis
     webhook. Returns a ``{"skipped": ...}`` marker when not enabled / unconfigured.
+    ``fire_ts`` records which scheduled occurrence this send satisfies, for
+    catch-up idempotency; defaults to now (a regular on-time scheduled run).
     """
     period = REPORT_PERIODS[period_key]
     notif = get_config_manager().notifications
@@ -221,6 +288,7 @@ async def generate_and_send_report(period_key: str) -> dict[str, Any]:
     from services.notifications.feishu import send_to_feishu
 
     result = await send_to_feishu(webhook_url, card)
+    await _record_report_sent(period_key, fire_ts or utcnow())
     logger.info(
         "[PeriodicReport] %s sent events=%s noise=%s%% ai_cost=$%s status=%s",
         period.key,
@@ -230,6 +298,37 @@ async def generate_and_send_report(period_key: str) -> dict[str, Any]:
         result.get("status"),
     )
     return stats
+
+
+async def run_report_catchup() -> dict[str, str]:
+    """Send any enabled cadence whose most recent scheduled fire was missed.
+
+    Called on worker startup. For each enabled cadence it finds the most recent
+    fire time at/before now; if no report has been sent for that occurrence (the
+    scheduler was down at that minute), it sends one catch-up now. Idempotent via
+    the Redis last-sent marker, so repeated restarts don't re-send.
+    """
+    now = utcnow()
+    notif = get_config_manager().notifications
+    outcomes: dict[str, str] = {}
+    for period_key, period in REPORT_PERIODS.items():
+        if not getattr(notif, period.enabled_attr):
+            continue
+        cron = str(getattr(notif, period.cron_attr))
+        fire = _most_recent_fire(cron, now, period.catchup_lookback_minutes)
+        if fire is None:
+            outcomes[period_key] = "no_recent_fire"
+            continue
+        last_sent = await _last_sent_fire(period_key)
+        if last_sent is not None and last_sent >= fire:
+            outcomes[period_key] = "already_sent"
+            continue
+        logger.info(
+            "[PeriodicReport] catch-up: %s missed its %s fire; sending now", period.key, fire.isoformat()
+        )
+        result = await generate_and_send_report(period_key, fire_ts=fire)
+        outcomes[period_key] = "skipped" if "skipped" in result else "sent"
+    return outcomes
 
 
 async def generate_and_send_daily_report() -> dict[str, Any]:

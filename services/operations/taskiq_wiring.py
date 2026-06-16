@@ -81,6 +81,19 @@ async def worker_startup_event(state: object) -> None:
         initialize_ai_client_hook=initialize_openai_client,
     )
 
+    # Catch-up: send any enabled periodic report whose most recent scheduled fire
+    # was missed while no scheduler was alive (deploy/restart landing on the cron
+    # minute). Idempotent via a Redis last-sent marker. Best-effort — a failure
+    # here must not block worker startup.
+    try:
+        from services.operations.periodic_report import run_report_catchup
+
+        outcomes = await run_report_catchup()
+        if any(v == "sent" for v in outcomes.values()):
+            logger.info("[TaskIQ] periodic-report catch-up outcomes=%s", outcomes)
+    except Exception:  # noqa: BLE001 - never let catch-up break worker startup
+        logger.warning("[TaskIQ] periodic-report catch-up failed", exc_info=True)
+
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:

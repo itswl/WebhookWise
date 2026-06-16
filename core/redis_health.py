@@ -177,3 +177,8 @@ def scheduled_task_lock(name: str) -> str:
 
 def openclaw_poller_stability(record_id: int) -> str:
     return f"openclaw:poller:stability:{record_id}"
+
+
+def periodic_report_last_sent(period_key: str) -> str:
+    """Marker of the last fire-time a periodic report was sent for (catch-up idempotency)."""
+    return f"periodic-report:last-sent:{period_key}"

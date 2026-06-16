@@ -216,7 +216,9 @@ psycopg2-binary==2.9.10
 pycparser==3.0
     # via cffi
 pycron==3.2.0
-    # via taskiq
+    # via
+    #   -r requirements.txt
+    #   taskiq
 pydantic==2.13.4
     # via
     #   fastapi
