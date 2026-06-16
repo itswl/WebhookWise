@@ -15,42 +15,43 @@
         <div class="navbar-content">
             <div class="logo">
                 <span>🔔</span>
-                <span>Webhook Monitor</span>
+                <span data-i18n="nav.title">Webhook Monitor</span>
             </div>
             <div class="nav-tabs">
-                <button class="nav-tab active" data-tab="alerts" type="button" aria-label="Switch to Alerts">
-                    <span>🔔</span> Alerts
+                <button class="nav-tab active" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
+                    <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
                 </button>
-                <button class="nav-tab" data-tab="ai-cost" type="button" aria-label="Switch to AI Cost">
-                    <span>💰</span> AI Cost
+                <button class="nav-tab" data-tab="ai-cost" type="button" data-i18n-aria-label="nav.aria.aicost" aria-label="Switch to AI Cost">
+                    <span>💰</span> <span data-i18n="nav.tab.aicost">AI Cost</span>
                 </button>
-                <button class="nav-tab" data-tab="deep-analyses" type="button" aria-label="Switch to Deep Analysis">
-                    <span>🔬</span> Deep Analysis
+                <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
+                    <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
                 </button>
-                <button class="nav-tab" data-tab="outbox" type="button" aria-label="Switch to Forward Queue">
-                    <span>📤</span> Forward Queue
+                <button class="nav-tab" data-tab="outbox" type="button" data-i18n-aria-label="nav.aria.outbox" aria-label="Switch to Forward Queue">
+                    <span>📤</span> <span data-i18n="nav.tab.outbox">Forward Queue</span>
                 </button>
-                <button class="nav-tab" data-tab="forward-rules" type="button" aria-label="Switch to Forward Rules">
-                    <span>⚙️</span> Forward Rules
+                <button class="nav-tab" data-tab="forward-rules" type="button" data-i18n-aria-label="nav.aria.rules" aria-label="Switch to Forward Rules">
+                    <span>⚙️</span> <span data-i18n="nav.tab.rules">Forward Rules</span>
                 </button>
             </div>
             <div class="nav-actions">
                 <div class="nav-status">
                     <span class="status-dot"></span>
-                    <span>Service running</span>
+                    <span data-i18n="nav.status.running">Service running</span>
                 </div>
                 <button class="btn" id="autoRefreshBtn" type="button">
                     <span id="autoRefreshIcon">⏸️</span>
-                    <span id="autoRefreshText">Auto-refresh</span>
+                    <span id="autoRefreshText" data-i18n="nav.autoRefresh">Auto-refresh</span>
                 </button>
                 <button class="btn" id="refreshBtn" type="button">
                     <span>🔄</span>
-                    <span>Refresh</span>
+                    <span data-i18n="nav.refresh">Refresh</span>
                 </button>
                 <button class="btn" id="authBtn" onclick="openAuthModal()">
                     <span>🔐</span>
-                    <span id="authBtnText">Credentials</span>
+                    <span id="authBtnText" data-i18n="nav.credentials">Credentials</span>
                 </button>
+                <button class="btn" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
             </div>
         </div>
     </nav>
@@ -61,27 +62,27 @@
         <div id="alertsTab" class="tab-content active">
             <!-- Stat cards -->
             <div class="stats-section">
-                <div class="section-title">Live Statistics</div>
+                <div class="section-title" data-i18n="alerts.stats.title">Live Statistics</div>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-label">Alerts Loaded</div>
+                        <div class="stat-label" data-i18n="alerts.stats.loaded">Alerts Loaded</div>
                         <div class="stat-value" id="totalCount">0</div>
-                        <div class="stat-trend">Last updated: <span id="lastUpdate">-</span></div>
+                        <div class="stat-trend"><span data-i18n="alerts.stats.lastUpdated">Last updated:</span> <span id="lastUpdate">-</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">High Priority</div>
+                        <div class="stat-label" data-i18n="alerts.stats.high">High Priority</div>
                         <div class="stat-value" id="highCount">0</div>
-                        <div class="stat-trend">Needs immediate action</div>
+                        <div class="stat-trend" data-i18n="alerts.stats.highTrend">Needs immediate action</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Medium Priority</div>
+                        <div class="stat-label" data-i18n="alerts.stats.medium">Medium Priority</div>
                         <div class="stat-value" id="mediumCount">0</div>
-                        <div class="stat-trend">Address soon</div>
+                        <div class="stat-trend" data-i18n="alerts.stats.mediumTrend">Address soon</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Duplicate Alerts</div>
+                        <div class="stat-label" data-i18n="alerts.stats.duplicate">Duplicate Alerts</div>
                         <div class="stat-value" id="duplicateCount">0</div>
-                        <div class="stat-trend">Automatically deduplicated</div>
+                        <div class="stat-trend" data-i18n="alerts.stats.duplicateTrend">Automatically deduplicated</div>
                     </div>
                 </div>
             </div>
@@ -90,33 +91,33 @@
             <div class="filter-section">
                 <div class="filter-grid">
                     <div class="filter-item">
-                        <label class="filter-label">Search</label>
-                        <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="Search alert content, source..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
+                        <label class="filter-label" data-i18n="alerts.filter.search">Search</label>
+                        <input type="search" class="filter-input" id="searchInput" name="search-field" data-i18n-placeholder="alerts.filter.searchPlaceholder" placeholder="Search alert content, source..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">Priority</label>
+                        <label class="filter-label" data-i18n="alerts.filter.priority">Priority</label>
                         <select class="filter-input" id="importanceFilter" onchange="filterAlerts()">
-                            <option value="">All</option>
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
+                            <option value="" data-i18n="common.all">All</option>
+                            <option value="high" data-i18n="common.high">High</option>
+                            <option value="medium" data-i18n="common.medium">Medium</option>
+                            <option value="low" data-i18n="common.low">Low</option>
                         </select>
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">Source</label>
+                        <label class="filter-label" data-i18n="alerts.filter.source">Source</label>
                         <select class="filter-input" id="sourceFilter" onchange="filterAlerts()">
-                            <option value="">All</option>
-                            <option value="volcengine">Volcengine</option>
-                            <option value="aliyun">Alibaba Cloud</option>
-                            <option value="prometheus">Prometheus</option>
+                            <option value="" data-i18n="common.all">All</option>
+                            <option value="volcengine" data-i18n="source.volcengine">Volcengine</option>
+                            <option value="aliyun" data-i18n="source.aliyun">Alibaba Cloud</option>
+                            <option value="prometheus" data-i18n="source.prometheus">Prometheus</option>
                         </select>
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">Status</label>
+                        <label class="filter-label" data-i18n="alerts.filter.status">Status</label>
                         <select class="filter-input" id="duplicateFilter" onchange="filterAlerts()">
-                            <option value="">All</option>
-                            <option value="original">Original</option>
-                            <option value="duplicate">Duplicate</option>
+                            <option value="" data-i18n="common.all">All</option>
+                            <option value="original" data-i18n="alerts.filter.original">Original</option>
+                            <option value="duplicate" data-i18n="alerts.filter.duplicate">Duplicate</option>
                         </select>
                     </div>
                 </div>
@@ -126,26 +127,26 @@
             <div class="alerts-section" id="alertList">
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>Loading...</p>
+                    <p data-i18n="common.loading">Loading...</p>
                 </div>
             </div>
 
             <!-- Pagination -->
             <div class="pagination" id="pagination" style="display: none;">
                 <div class="pagination-info">
-                    Page <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong>, <strong id="totalCount2">0</strong> total
+                    <span data-i18n="alerts.page.label">Page</span> <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong>, <strong id="totalCount2">0</strong> <span data-i18n="alerts.page.totalSuffix">total</span>
                 </div>
                 <div class="pagination-buttons">
-                    <button id="firstPage" onclick="goToPage(1)">First</button>
-                    <button id="prevPage" onclick="goToPage('prev')">Previous</button>
-                    <button id="nextPage" onclick="goToPage('next')">Next</button>
-                    <button id="lastPage" onclick="goToPage('last')">Last</button>
-                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;">Load 200 more</button>
+                    <button id="firstPage" onclick="goToPage(1)" data-i18n="alerts.page.first">First</button>
+                    <button id="prevPage" onclick="goToPage('prev')" data-i18n="alerts.page.prev">Previous</button>
+                    <button id="nextPage" onclick="goToPage('next')" data-i18n="alerts.page.next">Next</button>
+                    <button id="lastPage" onclick="goToPage('last')" data-i18n="alerts.page.last">Last</button>
+                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;" data-i18n="alerts.page.loadMore">Load 200 more</button>
                 </div>
                 <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
-                    <option value="10">10 / page</option>
-                    <option value="20" selected>20 / page</option>
-                    <option value="50">50 / page</option>
+                    <option value="10" data-i18n="alerts.page.perPage10">10 / page</option>
+                    <option value="20" selected data-i18n="alerts.page.perPage20">20 / page</option>
+                    <option value="50" data-i18n="alerts.page.perPage50">50 / page</option>
                 </select>
             </div>
         </div>
@@ -153,16 +154,16 @@
         <!-- AI Cost Tab -->
         <div id="aiCostTab" class="tab-content" style="display: none;">
             <div class="ai-cost-section">
-                <div class="section-title">AI Cost Monitoring</div>
+                <div class="section-title" data-i18n="aicost.title">AI Cost Monitoring</div>
                 <div class="ai-period-selector" style="margin-bottom: 20px;">
-                    <button class="btn" data-ai-period="day">Day</button>
-                    <button class="btn" data-ai-period="week">Week</button>
-                    <button class="btn" data-ai-period="month">Month</button>
+                    <button class="btn" data-ai-period="day" data-i18n="aicost.period.day">Day</button>
+                    <button class="btn" data-ai-period="week" data-i18n="aicost.period.week">Week</button>
+                    <button class="btn" data-ai-period="month" data-i18n="aicost.period.month">Month</button>
                 </div>
                 <div id="aiCostStats">
                     <div class="loading">
                         <div class="spinner"></div>
-                        <p>Loading...</p>
+                        <p data-i18n="common.loading">Loading...</p>
                     </div>
                 </div>
             </div>
@@ -172,24 +173,24 @@
         <div id="deepAnalysesTab" class="tab-content" style="display: none;">
             <div class="deep-analyses-section">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div class="section-title">Deep Analysis Records</div>
+                    <div class="section-title" data-i18n="deep.title">Deep Analysis Records</div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <select id="daStatusFilter" class="form-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">All statuses</option>
-                            <option value="pending">Analyzing</option>
-                            <option value="completed">Completed</option>
-                            <option value="failed">Failed</option>
+                            <option value="" data-i18n="deep.status.all">All statuses</option>
+                            <option value="pending" data-i18n="deep.status.pending">Analyzing</option>
+                            <option value="completed" data-i18n="deep.status.completed">Completed</option>
+                            <option value="failed" data-i18n="deep.status.failed">Failed</option>
                         </select>
                         <select id="daEngineFilter" class="form-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">All engines</option>
-                            <option value="openclaw">OpenClaw</option>
-                            <option value="local">Local AI</option>
+                            <option value="" data-i18n="deep.engine.all">All engines</option>
+                            <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
+                            <option value="local" data-i18n="deep.engine.local">Local AI</option>
                         </select>
-                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 Refresh</button>
+                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="deepAnalysesList">
-                    <div style="text-align: center; padding: 40px; color: #888;">Click the "Deep Analysis" tab to load data...</div>
+                    <div style="text-align: center; padding: 40px; color: #888;" data-i18n="deep.empty.hint">Click the "Deep Analysis" tab to load data...</div>
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
@@ -199,22 +200,22 @@
         <div id="outboxTab" class="tab-content" style="display: none;">
             <div class="outbox-section" style="padding: 20px 0;">
                 <div class="section-header">
-                    <div class="section-title">Forward Queue</div>
+                    <div class="section-title" data-i18n="outbox.title">Forward Queue</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="outboxStatusFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">All statuses</option>
-                            <option value="pending">Pending</option>
-                            <option value="processing">Delivering</option>
-                            <option value="retrying">Retrying</option>
-                            <option value="sent">Delivered</option>
-                            <option value="exhausted">Exhausted</option>
-                            <option value="expired">Expired</option>
+                            <option value="" data-i18n="outbox.status.all">All statuses</option>
+                            <option value="pending" data-i18n="outbox.status.pending">Pending</option>
+                            <option value="processing" data-i18n="outbox.status.processing">Delivering</option>
+                            <option value="retrying" data-i18n="outbox.status.retrying">Retrying</option>
+                            <option value="sent" data-i18n="outbox.status.sent">Delivered</option>
+                            <option value="exhausted" data-i18n="outbox.status.exhausted">Exhausted</option>
+                            <option value="expired" data-i18n="outbox.status.expired">Expired</option>
                         </select>
-                        <button class="btn" onclick="OutboxModule.load()">🔄 Refresh</button>
+                        <button class="btn" onclick="OutboxModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="outboxList">
-                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">Click the "Forward Queue" tab to load data...</div>
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="outbox.empty.hint">Click the "Forward Queue" tab to load data...</div>
                 </div>
                 <div id="outboxPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
@@ -224,15 +225,15 @@
         <div id="forwardRulesTab" class="tab-content" style="display: none;">
             <div class="forward-rules-section">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div class="section-title">Forward Rule Configuration</div>
+                    <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
                     <button class="btn btn-primary" onclick="showRuleForm()">
-                        <span>➕</span> Add Rule
+                        <span>➕</span> <span data-i18n="rules.add">Add Rule</span>
                     </button>
                 </div>
                 <div id="forwardRulesList">
                     <div class="loading">
                         <div class="spinner"></div>
-                        <p>Loading...</p>
+                        <p data-i18n="common.loading">Loading...</p>
                     </div>
                 </div>
             </div>
@@ -244,35 +245,35 @@
     <div class="modal" id="authModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Dashboard Credentials</h2>
+                <h2 class="modal-title" data-i18n="auth.title">Dashboard Credentials</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">API_KEY (read-only)</label>
-                    <input type="password" class="form-input" id="authApiKey" placeholder="Used for GET queries; leave blank to keep unchanged">
-                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                    <label class="form-label" data-i18n="auth.apiKeyLabel">API_KEY (read-only)</label>
+                    <input type="password" class="form-input" id="authApiKey" data-i18n-placeholder="auth.apiKeyPlaceholder" placeholder="Used for GET queries; leave blank to keep unchanged">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.apiKeyHelp">
                         Used for read-only requests such as the alert list, AI cost, and forward rule list.
                     </p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">ADMIN_WRITE_KEY (write operations)</label>
-                    <input type="password" class="form-input" id="authAdminWriteKey" placeholder="Used for POST / PUT / DELETE; leave blank to keep unchanged">
-                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                    <label class="form-label" data-i18n="auth.adminKeyLabel">ADMIN_WRITE_KEY (write operations)</label>
+                    <input type="password" class="form-input" id="authAdminWriteKey" data-i18n-placeholder="auth.adminKeyPlaceholder" placeholder="Used for POST / PUT / DELETE; leave blank to keep unchanged">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.adminKeyHelp">
                         Used for write requests such as re-analysis, manual forwarding, retries, and saving/deleting forward rules.
                     </p>
                 </div>
                 <div style="display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem;">
-                    <span id="authReadStatus">API_KEY: not saved</span>
-                    <span id="authWriteStatus">ADMIN_WRITE_KEY: not saved</span>
+                    <span id="authReadStatus" data-i18n="auth.readNotSaved">API_KEY: not saved</span>
+                    <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
-                <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
+                <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
                     Credentials are encrypted with the browser's Web Crypto API and stored in this machine's localStorage; the encryption key is kept in IndexedDB and never written to the server config.
                 </p>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="clearAuthKeys()">Clear local credentials</button>
-                <button class="btn" onclick="closeAuthModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveAuthKeys()">Save</button>
+                <button class="btn" onclick="clearAuthKeys()" data-i18n="auth.clear">Clear local credentials</button>
+                <button class="btn" onclick="closeAuthModal()" data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" onclick="saveAuthKeys()" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
@@ -281,17 +282,17 @@
     <div class="modal" id="forwardModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Forward Alert</h2>
+                <h2 class="modal-title" data-i18n="forward.title">Forward Alert</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Forward URL</label>
+                    <label class="form-label" data-i18n="forward.urlLabel">Forward URL</label>
                     <input type="text" class="form-input" id="forwardUrl" placeholder="https://example.com/webhook">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeForwardModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="confirmForward()">Confirm Forward</button>
+                <button class="btn" onclick="closeForwardModal()" data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmForward()" data-i18n="forward.confirm">Confirm Forward</button>
             </div>
         </div>
     </div>
@@ -300,149 +301,150 @@
     <div class="modal" id="ruleFormModal">
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
-                <h2 class="modal-title" id="ruleFormTitle">Add Forward Rule</h2>
+                <h2 class="modal-title" id="ruleFormTitle" data-i18n="rule.addTitle">Add Forward Rule</h2>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="ruleFormId">
 
                 <!-- Basic info -->
                 <div class="form-group">
-                    <label class="form-label">Rule Name *</label>
-                    <input type="text" class="form-input" id="ruleFormName" placeholder="e.g. Route high-priority alerts to the Feishu ops group" autocomplete="off">
+                    <label class="form-label" data-i18n="rule.nameLabel">Rule Name *</label>
+                    <input type="text" class="form-input" id="ruleFormName" data-i18n-placeholder="rule.namePlaceholder" placeholder="e.g. Route high-priority alerts to the Feishu ops group" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">Priority</label>
+                        <label class="form-label" data-i18n="rule.priorityLabel">Priority</label>
                         <input type="number" class="form-input" id="ruleFormPriority" value="10" min="-1000000" max="1000000">
-                        <small style="color: var(--text-muted); font-size: 0.75rem;">Higher values match first</small>
+                        <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="rule.priorityHint">Higher values match first</small>
                     </div>
                 </div>
 
                 <!-- Event types -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Match Scope — Event Type</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">None selected = match all types</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.scopeEventType">Match Scope — Event Type</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.scopeEventTypeHint">None selected = match all types</span>
                 </div>
                 <div class="event-type-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
-                    <label class="event-type-check" title="Automatic forwarding after the normal webhook processing pipeline completes">
-                        <input type="checkbox" id="ruleFormEvtForward" value="webhook_forward"> webhook_forward · Automatic alert forwarding
+                    <label class="event-type-check" data-i18n-title="rule.evt.forwardTitle" title="Automatic forwarding after the normal webhook processing pipeline completes">
+                        <input type="checkbox" id="ruleFormEvtForward" value="webhook_forward"> <span data-i18n="rule.evt.forward">webhook_forward · Automatic alert forwarding</span>
                     </label>
-                    <label class="event-type-check" title="Clicking the forward button in the dashboard">
-                        <input type="checkbox" id="ruleFormEvtManual" value="manual_forward"> manual_forward · Manual forwarding
+                    <label class="event-type-check" data-i18n-title="rule.evt.manualTitle" title="Clicking the forward button in the dashboard">
+                        <input type="checkbox" id="ruleFormEvtManual" value="manual_forward"> <span data-i18n="rule.evt.manual">manual_forward · Manual forwarding</span>
                     </label>
-                    <label class="event-type-check" title="Error notification when an AI call fails (subject to a cooldown period)">
-                        <input type="checkbox" id="ruleFormEvtAIError" value="ai_error"> ai_error · AI call failure notification
+                    <label class="event-type-check" data-i18n-title="rule.evt.aiErrorTitle" title="Error notification when an AI call fails (subject to a cooldown period)">
+                        <input type="checkbox" id="ruleFormEvtAIError" value="ai_error"> <span data-i18n="rule.evt.aiError">ai_error · AI call failure notification</span>
                     </label>
-                    <label class="event-type-check" title="Notification when AI falls back to rule-based analysis">
-                        <input type="checkbox" id="ruleFormEvtAIDegraded" value="ai_degraded"> ai_degraded · AI degradation notification
+                    <label class="event-type-check" data-i18n-title="rule.evt.aiDegradedTitle" title="Notification when AI falls back to rule-based analysis">
+                        <input type="checkbox" id="ruleFormEvtAIDegraded" value="ai_degraded"> <span data-i18n="rule.evt.aiDegraded">ai_degraded · AI degradation notification</span>
                     </label>
-                    <label class="event-type-check" title="Notification sent after deep analysis completes">
-                        <input type="checkbox" id="ruleFormEvtDeep" value="deep_analysis"> deep_analysis · Deep analysis completed
+                    <label class="event-type-check" data-i18n-title="rule.evt.deepTitle" title="Notification sent after deep analysis completes">
+                        <input type="checkbox" id="ruleFormEvtDeep" value="deep_analysis"> <span data-i18n="rule.evt.deep">deep_analysis · Deep analysis completed</span>
                     </label>
-                    <label class="event-type-check" title="Alert sent after all forwarding retries have failed">
-                        <input type="checkbox" id="ruleFormEvtExhausted" value="outbox_exhausted"> outbox_exhausted · Forwarding exhausted
+                    <label class="event-type-check" data-i18n-title="rule.evt.exhaustedTitle" title="Alert sent after all forwarding retries have failed">
+                        <input type="checkbox" id="ruleFormEvtExhausted" value="outbox_exhausted"> <span data-i18n="rule.evt.exhausted">outbox_exhausted · Forwarding exhausted</span>
                     </label>
                 </div>
 
                 <!-- Match conditions -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Fine-Grained Filters</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">Optional; applies only to webhook alert events</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.fineFilters">Fine-Grained Filters</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.fineFiltersHint">Optional; applies only to webhook alert events</span>
                 </div>
                 <div class="form-group" style="margin-bottom: 0.75rem;">
-                    <label class="form-label">Importance</label>
+                    <label class="form-label" data-i18n="rule.importanceLabel">Importance</label>
                     <div style="display: flex; gap: 12px; padding-top: 2px;">
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceHigh" value="high"> High
+                            <input type="checkbox" id="ruleFormImportanceHigh" value="high"> <span data-i18n="common.high">High</span>
                         </label>
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> Medium
+                            <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> <span data-i18n="common.medium">Medium</span>
                         </label>
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceLow" value="low"> Low
+                            <input type="checkbox" id="ruleFormImportanceLow" value="low"> <span data-i18n="common.low">Low</span>
                         </label>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Alert Status</label>
+                    <label class="form-label" data-i18n="rule.statusLabel">Alert Status</label>
                     <select class="form-input" id="ruleFormDuplicate">
-                        <option value="all">All (new alerts + duplicates)</option>
-                        <option value="new">New alerts only</option>
-                        <option value="duplicate">Duplicate alerts only</option>
+                        <option value="all" data-i18n="rule.status.all">All (new alerts + duplicates)</option>
+                        <option value="new" data-i18n="rule.status.new">New alerts only</option>
+                        <option value="duplicate" data-i18n="rule.status.duplicate">Duplicate alerts only</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Source</label>
-                    <input type="text" class="form-input" id="ruleFormSource" placeholder="Comma-separated; empty = all sources" autocomplete="off">
+                    <label class="form-label" data-i18n="rule.sourceLabel">Source</label>
+                    <input type="text" class="form-input" id="ruleFormSource" data-i18n-placeholder="rule.sourcePlaceholder" placeholder="Comma-separated; empty = all sources" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">Project</label>
-                        <input type="text" class="form-input" id="ruleFormProject" placeholder="e.g. eve-cn" autocomplete="off">
+                        <label class="form-label" data-i18n="rule.projectLabel">Project</label>
+                        <input type="text" class="form-input" id="ruleFormProject" data-i18n-placeholder="rule.projectPlaceholder" placeholder="e.g. eve-cn" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Region</label>
-                        <input type="text" class="form-input" id="ruleFormRegion" placeholder="e.g. cn-shanghai" autocomplete="off">
+                        <label class="form-label" data-i18n="rule.regionLabel">Region</label>
+                        <input type="text" class="form-input" id="ruleFormRegion" data-i18n-placeholder="rule.regionPlaceholder" placeholder="e.g. cn-shanghai" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Environment</label>
-                        <input type="text" class="form-input" id="ruleFormEnvironment" placeholder="e.g. prod,dev" autocomplete="off">
+                        <label class="form-label" data-i18n="rule.envLabel">Environment</label>
+                        <input type="text" class="form-input" id="ruleFormEnvironment" data-i18n-placeholder="rule.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
-                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;">Project, region, and environment support comma-separated values; use !prod / !eve-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
+                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;" data-i18n="rule.geoHint">Project, region, and environment support comma-separated values; use !prod / !eve-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
                 <div class="form-group">
-                    <label class="form-label">Payload Field Match</label>
-                    <input type="text" class="form-input" id="ruleFormPayload" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 0.75rem;">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
+                    <label class="form-label" data-i18n="rule.payloadLabel">Payload Field Match</label>
+                    <input type="text" class="form-input" id="ruleFormPayload" data-i18n-placeholder="rule.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="rule.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
 
                 <!-- Forward target -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Forward Target</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.targetSection">Forward Target</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">Target Type *</label>
+                        <label class="form-label" data-i18n="rule.targetTypeLabel">Target Type *</label>
                         <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
-                            <option value="feishu">Feishu</option>
-                            <option value="openclaw">OpenClaw</option>
-                            <option value="webhook">Webhook</option>
+                            <option value="feishu" data-i18n="rule.targetType.feishu">Feishu</option>
+                            <option value="openclaw" data-i18n="rule.targetType.openclaw">OpenClaw</option>
+                            <option value="webhook" data-i18n="rule.targetType.webhook">Webhook</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Target Name</label>
-                        <input type="text" class="form-input" id="ruleFormTargetName" placeholder="e.g. Ops Feishu group" autocomplete="off">
+                        <label class="form-label" data-i18n="rule.targetNameLabel">Target Name</label>
+                        <input type="text" class="form-input" id="ruleFormTargetName" data-i18n-placeholder="rule.targetNamePlaceholder" placeholder="e.g. Ops Feishu group" autocomplete="off">
                     </div>
                 </div>
                 <div class="form-group" id="ruleFormTargetUrlGroup">
-                    <label class="form-label">Target URL *</label>
+                    <label class="form-label" data-i18n="rule.targetUrlLabel">Target URL *</label>
                     <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" autocomplete="off">
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormStopOnMatch">
-                    <label for="ruleFormStopOnMatch">Stop matching subsequent rules on hit</label>
+                    <label for="ruleFormStopOnMatch" data-i18n="rule.stopOnMatch">Stop matching subsequent rules on hit</label>
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormEnabled" checked>
-                    <label for="ruleFormEnabled">Enable rule</label>
+                    <label for="ruleFormEnabled" data-i18n="rule.enable">Enable rule</label>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeRuleForm()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveRule()">Save</button>
+                <button class="btn" onclick="closeRuleForm()" data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRule()" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
+    <script src="/static/js/i18n.js?v=20260616-i18n"></script>
     <script src="/static/js/faro.js"></script>
-    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/utils.js?v=20260616-i18n"></script>
     <script src="/static/js/api.js"></script>
-    <script src="/static/js/alerts.js"></script>
-    <script src="/static/js/ai-cost.js?v=20260528-ui"></script>
-    <script src="/static/js/forward-rules.js"></script>
-    <script src="/static/js/deep-analyses.js?v=20260612-da-lazy-detail"></script>
-    <script src="/static/js/outbox.js"></script>
-    <script src="/static/js/dashboard.js?v=20260528-ui"></script>
+    <script src="/static/js/alerts.js?v=20260616-i18n"></script>
+    <script src="/static/js/ai-cost.js?v=20260616-i18n"></script>
+    <script src="/static/js/forward-rules.js?v=20260616-i18n"></script>
+    <script src="/static/js/deep-analyses.js?v=20260616-i18n"></script>
+    <script src="/static/js/outbox.js?v=20260616-i18n"></script>
+    <script src="/static/js/dashboard.js?v=20260616-i18n"></script>
 </body>
 </html>
