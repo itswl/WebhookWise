@@ -1,8 +1,8 @@
 """
 tests/runtime/test_log_context.py
 =================================
-测试结构化日志上下文的设置、获取和清除。
-关键：空值不应出现在日志输出中（避免噪音日志）。
+Tests setting, getting, and clearing the structured logging context.
+Key point: empty values must not appear in log output (to avoid noisy logs).
 """
 
 from core.log_context import (
@@ -21,14 +21,14 @@ from core.observability.attributes import (
 
 
 def setup_function():
-    """每个测试前清除上下文。"""
+    """Clear the context before each test."""
     clear_log_context()
 
 
 def test_empty_context_returns_no_keys():
-    """未设置上下文时，get_log_context 不应返回任何空字段。"""
+    """When no context is set, get_log_context must not return any empty fields."""
     ctx = get_log_context()
-    # 空字段不应出现（会造成日志噪音）
+    # Empty fields must not appear (they would create log noise)
     assert WEBHOOK_ALERT_HASH not in ctx or ctx[WEBHOOK_ALERT_HASH]
     assert WEBHOOK_SOURCE not in ctx or ctx[WEBHOOK_SOURCE]
     assert WEBHOOK_STATUS not in ctx or ctx[WEBHOOK_STATUS]
@@ -70,7 +70,7 @@ def test_set_multiple_fields():
 
 
 def test_partial_update_preserves_other_fields():
-    """set_log_context 应只更新传入的字段，不清除已有字段。"""
+    """set_log_context should only update the fields passed in, not clear existing ones."""
     set_log_context(event_id=99, webhook_source="datadog")
     set_log_context(webhook_status="completed")
     ctx = get_log_context()
@@ -90,18 +90,18 @@ def test_clear_removes_all_fields():
 
 
 def test_empty_string_not_included_in_context():
-    """空字符串值不应出现在 get_log_context 返回值中。"""
+    """Empty-string values must not appear in the value returned by get_log_context."""
     set_log_context(webhook_source="prometheus")
     clear_log_context()
-    set_log_context(event_id=5)  # 不设置 source
+    set_log_context(event_id=5)  # do not set source
     ctx = get_log_context()
-    # source 为空时不应包含在返回字典中
+    # When source is empty it must not be included in the returned dict
     assert ctx.get(WEBHOOK_SOURCE, "") == ""
     assert WEBHOOK_EVENT_ID in ctx
 
 
 def test_none_event_id_not_included():
-    """event_id=None 时不应包含在返回字典中。"""
+    """When event_id is None it must not be included in the returned dict."""
     ctx = get_log_context()
     assert WEBHOOK_EVENT_ID not in ctx
 

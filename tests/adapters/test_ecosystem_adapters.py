@@ -1,8 +1,8 @@
 """
 tests/adapters/test_ecosystem_adapters.py
 =========================================
-测试 normalize_webhook_event() 对各平台 Webhook 的格式归一化。
-确保适配器正确识别来源、提取关键字段。
+Tests how normalize_webhook_event() normalizes webhook formats from various platforms.
+Ensures the adapters correctly identify the source and extract key fields.
 """
 
 import pytest
@@ -226,7 +226,7 @@ def test_pagerduty_from_event_data():
 
 
 def test_unknown_payload_passes_through():
-    """无法识别的 payload 原样透传。"""
+    """An unrecognized payload is passed through unchanged."""
     unknown = {"custom_field": "value", "some_data": 123}
     result = normalize_webhook_event(unknown, "my-custom-system")
     assert result.source == "my-custom-system"
@@ -243,7 +243,7 @@ def test_custom_source_passthrough():
 
 
 def test_non_dict_payload_wraps_in_raw():
-    """非字典 payload 包装在 raw 字段中。"""
+    """A non-dict payload is wrapped in a raw field."""
     result = normalize_webhook_event("plain text payload", None)
     assert "raw" in result.data
     assert result.data["raw"] == "plain text payload"

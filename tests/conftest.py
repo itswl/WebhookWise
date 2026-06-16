@@ -1,7 +1,7 @@
 """
 tests/conftest.py
 =================
-pytest 全局 fixtures：外部服务 mock、测试数据库 session。
+Global pytest fixtures: external-service mocks and the test database session.
 """
 
 import os
@@ -42,7 +42,7 @@ def disable_otel_for_tests():
 
 @pytest.fixture(scope="session", autouse=True)
 def initialize_adapter_registry():
-    """测试进程启动时注册 adapter，避免请求路径做动态注册。"""
+    """Register adapters when the test process starts so the request path doesn't register them dynamically."""
     from adapters.ecosystem_adapters import initialize_adapters
 
     initialize_adapters()
@@ -70,7 +70,7 @@ def reset_default_app_context():
     invalidate_forward_rules_cache()
 
 
-# ── 外部服务 Mock ─────────────────────────────────────────────────────────────
+# ── External Service Mocks ────────────────────────────────────────────────────
 
 
 def _has_marker(request: pytest.FixtureRequest, *names: str) -> bool:
@@ -79,7 +79,7 @@ def _has_marker(request: pytest.FixtureRequest, *names: str) -> bool:
 
 @pytest.fixture(autouse=True)
 def mock_httpx(request: pytest.FixtureRequest):
-    """Mock httpx async client，阻止所有真实 HTTP 请求。"""
+    """Mock the httpx async client to block all real HTTP requests."""
     if _has_marker(request, "real_httpx", "real_network", "real_services"):
         yield None
         return
@@ -99,7 +99,7 @@ def mock_httpx(request: pytest.FixtureRequest):
 
 @pytest.fixture(autouse=True)
 def mock_redis(request: pytest.FixtureRequest):
-    """Mock Redis 客户端，避免连接真实 Redis。"""
+    """Mock the Redis client to avoid connecting to a real Redis."""
     if _has_marker(request, "real_redis", "real_services"):
         yield None
         return
