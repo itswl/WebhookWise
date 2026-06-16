@@ -17,11 +17,22 @@ var DeadLettersModule = (function() {
         time_to: ''
     };
 
-    var failureLabels = {
-        retry_exhausted: { label: 'Retries Exhausted', cls: 'badge-high' },
-        fat_err: { label: 'Fatal Error', cls: 'badge-high' },
-        processing_error: { label: 'Processing Error', cls: 'badge-medium' }
-    };
+    function failureLabel(reason) {
+        var clsMap = {
+            retry_exhausted: 'badge-high',
+            fat_err: 'badge-high',
+            processing_error: 'badge-medium'
+        };
+        var keyMap = {
+            retry_exhausted: 'deadletter.failure.retry_exhausted',
+            fat_err: 'deadletter.failure.fat_err',
+            processing_error: 'deadletter.failure.processing_error'
+        };
+        if (clsMap[reason]) {
+            return { label: t(keyMap[reason]), cls: clsMap[reason] };
+        }
+        return { label: reason || t('deadletter.failure.unknown'), cls: 'badge-new' };
+    }
 
     function load() {
         currentPage = 1;
@@ -59,7 +70,7 @@ var DeadLettersModule = (function() {
     function fetchPage() {
         var container = document.getElementById('deadLettersList');
         if (!container) return;
-        container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
 
         API.getDeadLetters({
             page: currentPage,
@@ -70,7 +81,7 @@ var DeadLettersModule = (function() {
             time_to: filters.time_to
         }).then(function(res) {
             if (!res.success) {
-                renderError(res.error || 'Load failed');
+                renderError(res.error || t('common.loadFailed'));
                 return;
             }
             loadedEvents = res.data || [];
@@ -80,14 +91,14 @@ var DeadLettersModule = (function() {
             renderPagination();
             updateReplaySelectedButton();
         }).catch(function(error) {
-            renderError(error.message || 'Request failed');
+            renderError(error.message || t('common.requestFailed'));
         });
     }
 
     function renderError(message) {
         var container = document.getElementById('deadLettersList');
         if (!container) return;
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">!</div><div class="empty-title">Load failed</div><div class="empty-text">' + escapeHtml(message) + '</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">!</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + escapeHtml(message) + '</div></div>';
     }
 
     function render() {
@@ -95,17 +106,17 @@ var DeadLettersModule = (function() {
         if (!container) return;
 
         if (!loadedEvents.length) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No dead letters</div><div class="empty-text">No dead-letter events match the current filters</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">' + t('deadletter.empty.title') + '</div><div class="empty-text">' + t('deadletter.empty.text') + '</div></div>';
             return;
         }
 
         var allSelected = loadedEvents.every(function(item) { return selectedIds[item.id]; });
         var html = '<div class="outbox-table-wrap"><table class="outbox-table dead-letters-table"><thead><tr>' +
             '<th class="col-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="DeadLettersModule.toggleSelectAll(this.checked)"></th>' +
-            '<th>ID</th><th>Source</th><th>Failure Reason</th><th>Importance</th><th>Retries</th><th>Time</th><th></th></tr></thead><tbody>';
+            '<th>' + t('deadletter.col.id') + '</th><th>' + t('deadletter.col.source') + '</th><th>' + t('deadletter.col.failureReason') + '</th><th>' + t('deadletter.col.importance') + '</th><th>' + t('deadletter.col.retries') + '</th><th>' + t('deadletter.col.time') + '</th><th></th></tr></thead><tbody>';
 
         loadedEvents.forEach(function(item) {
-            var failure = failureLabels[item.failure_reason] || { label: item.failure_reason || 'Unknown', cls: 'badge-new' };
+            var failure = failureLabel(item.failure_reason);
             var timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '-';
             var checked = selectedIds[item.id] ? 'checked' : '';
             var errorTitle = item.error_message || item.failure_reason || '';
@@ -117,8 +128,8 @@ var DeadLettersModule = (function() {
             html += '<td>' + escapeHtml(item.importance || '-') + '</td>';
             html += '<td>' + (item.retry_count != null ? item.retry_count : 0) + '</td>';
             html += '<td class="text-sm">' + escapeHtml(timestamp) + '</td>';
-            html += '<td><button class="btn btn-sm" onclick="DeadLettersModule.showDetail(' + item.id + ')">Details</button> ';
-            html += '<button class="btn btn-sm" onclick="DeadLettersModule.replay(' + item.id + ')">Replay</button></td>';
+            html += '<td><button class="btn btn-sm" onclick="DeadLettersModule.showDetail(' + item.id + ')">' + t('deadletter.action.details') + '</button> ';
+            html += '<button class="btn btn-sm" onclick="DeadLettersModule.replay(' + item.id + ')">' + t('deadletter.action.replay') + '</button></td>';
             html += '</tr>';
         });
         html += '</tbody></table></div>';
@@ -129,15 +140,15 @@ var DeadLettersModule = (function() {
         var container = document.getElementById('deadLettersPagination');
         if (!container) return;
         if (totalEvents <= pageSize) {
-            container.innerHTML = '<div class="pagination-info"><strong>' + totalEvents + '</strong> total</div>';
+            container.innerHTML = '<div class="pagination-info">' + t('deadletter.page.total', { n: '<strong>' + totalEvents + '</strong>' }) + '</div>';
             return;
         }
-        var html = '<div class="pagination"><div class="pagination-info">Page <strong>' + currentPage + '</strong> / <strong>' + totalPages + '</strong>, <strong>' + totalEvents + '</strong> total</div>';
+        var html = '<div class="pagination"><div class="pagination-info">' + t('deadletter.page.summary', { page: '<strong>' + currentPage + '</strong>', pages: '<strong>' + totalPages + '</strong>', n: '<strong>' + totalEvents + '</strong>' }) + '</div>';
         html += '<div class="pagination-buttons">';
-        html += '<button ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(1)">First</button>';
-        html += '<button ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + (currentPage - 1) + ')">Previous</button>';
-        html += '<button ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + (currentPage + 1) + ')">Next</button>';
-        html += '<button ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + totalPages + ')">Last</button>';
+        html += '<button ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(1)">' + t('deadletter.page.first') + '</button>';
+        html += '<button ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + (currentPage - 1) + ')">' + t('deadletter.page.prev') + '</button>';
+        html += '<button ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + (currentPage + 1) + ')">' + t('deadletter.page.next') + '</button>';
+        html += '<button ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="DeadLettersModule.goToPage(' + totalPages + ')">' + t('deadletter.page.last') + '</button>';
         html += '</div></div>';
         container.innerHTML = html;
     }
@@ -174,36 +185,36 @@ var DeadLettersModule = (function() {
         if (!btn) return;
         var count = selectedEventIds().length;
         btn.disabled = count === 0;
-        btn.textContent = count ? '🔄 Replay Selected (' + count + ')' : '🔄 Replay Selected';
+        btn.textContent = count ? '🔄 ' + t('deadletter.replaySelected.count', { n: count }) : '🔄 ' + t('deadletter.replaySelected');
     }
 
     function replay(id) {
-        if (!confirm('Confirm replay of dead-letter event #' + id + '?')) return;
+        if (!confirm(t('deadletter.confirm.replay', { id: id }))) return;
         API.replayDeadLetter(id).then(function(res) {
             if (res.success) {
-                showToast(res.message || 'Replayed and re-enqueued', 'success');
+                showToast(res.message || t('deadletter.toast.replayed'), 'success');
                 load();
             } else {
-                showToast(res.error || 'Replay failed', 'error');
+                showToast(res.error || t('deadletter.toast.replayFailed'), 'error');
             }
         }).catch(function(error) {
-            showToast('Request failed: ' + error.message, 'error');
+            showToast(t('common.requestFailed') + ': ' + error.message, 'error');
         });
     }
 
     function replaySelected() {
         var ids = selectedEventIds();
         if (!ids.length) return;
-        if (!confirm('Confirm replay of the ' + ids.length + ' selected dead-letter events?')) return;
+        if (!confirm(t('deadletter.confirm.replaySelected', { n: ids.length }))) return;
         API.replayDeadLettersByIds(ids).then(function(res) {
             if (res.success) {
-                showToast(res.message || 'Batch replay done', 'success');
+                showToast(res.message || t('deadletter.toast.batchReplayed'), 'success');
                 load();
             } else {
-                showToast(res.error || 'Batch replay failed', 'error');
+                showToast(res.error || t('deadletter.toast.batchReplayFailed'), 'error');
             }
         }).catch(function(error) {
-            showToast('Request failed: ' + error.message, 'error');
+            showToast(t('common.requestFailed') + ': ' + error.message, 'error');
         });
     }
 
@@ -212,45 +223,45 @@ var DeadLettersModule = (function() {
         var modal = document.getElementById('deadLetterDetailModal');
         var body = document.getElementById('deadLetterDetailBody');
         if (!modal || !body) return;
-        body.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
+        body.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
         modal.classList.add('active');
         API.getDeadLetterDetail(id).then(function(res) {
             if (!res.success || !res.data) {
-                body.innerHTML = '<div class="empty-state"><div class="empty-title">Load failed</div><div class="empty-text">' + escapeHtml(res.error || 'Unknown error') + '</div></div>';
+                body.innerHTML = '<div class="empty-state"><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + escapeHtml(res.error || t('common.unknownError')) + '</div></div>';
                 return;
             }
             body.innerHTML = renderDetail(res.data);
         }).catch(function(error) {
-            body.innerHTML = '<div class="empty-state"><div class="empty-title">Load error</div><div class="empty-text">' + escapeHtml(error.message) + '</div></div>';
+            body.innerHTML = '<div class="empty-state"><div class="empty-title">' + t('deadletter.detail.loadError') + '</div><div class="empty-text">' + escapeHtml(error.message) + '</div></div>';
         });
     }
 
     function renderDetail(item) {
         var html = '<div class="detail-table-wrap"><table class="detail-table"><tbody>';
         [
-            ['Event ID', '#' + item.id],
-            ['Source', item.source || '-'],
+            [t('deadletter.detail.eventId'), '#' + item.id],
+            [t('deadletter.detail.source'), item.source || '-'],
             ['request_id', item.request_id || '-'],
             ['client_ip', item.client_ip || '-'],
-            ['Status', item.processing_status || '-'],
-            ['Failure Reason', item.failure_reason || '-'],
-            ['Retry Count', item.retry_count != null ? String(item.retry_count) : '0'],
-            ['Importance', item.importance || '-'],
-            ['Time', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '-']
+            [t('deadletter.detail.status'), item.processing_status || '-'],
+            [t('deadletter.detail.failureReason'), item.failure_reason || '-'],
+            [t('deadletter.detail.retryCount'), item.retry_count != null ? String(item.retry_count) : '0'],
+            [t('deadletter.detail.importance'), item.importance || '-'],
+            [t('deadletter.detail.time'), item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '-']
         ].forEach(function(row) {
             html += '<tr><th>' + escapeHtml(row[0]) + '</th><td>' + escapeHtml(row[1]) + '</td></tr>';
         });
         if (item.error_message) {
-            html += '<tr><th>Error Details</th><td><pre class="json-preview">' + escapeHtml(item.error_message) + '</pre></td></tr>';
+            html += '<tr><th>' + t('deadletter.detail.errorDetails') + '</th><td><pre class="json-preview">' + escapeHtml(item.error_message) + '</pre></td></tr>';
         }
         html += '</tbody></table></div>';
         if (item.parsed_data) {
-            html += '<h4>Parsed Data</h4><pre class="json-preview">' + escapeHtml(JSON.stringify(item.parsed_data, null, 2)) + '</pre>';
+            html += '<h4>' + t('deadletter.detail.parsedData') + '</h4><pre class="json-preview">' + escapeHtml(JSON.stringify(item.parsed_data, null, 2)) + '</pre>';
         }
         if (item.raw_body) {
-            html += '<h4>Raw Payload</h4><pre class="json-preview">' + escapeHtml(item.raw_body) + '</pre>';
+            html += '<h4>' + t('deadletter.detail.rawPayload') + '</h4><pre class="json-preview">' + escapeHtml(item.raw_body) + '</pre>';
         }
-        html += '<div class="modal-footer"><button class="btn btn-primary" onclick="DeadLettersModule.replay(' + item.id + ')">Replay This Event</button><button class="btn" onclick="DeadLettersModule.closeDetail()">Close</button></div>';
+        html += '<div class="modal-footer"><button class="btn btn-primary" onclick="DeadLettersModule.replay(' + item.id + ')">' + t('deadletter.detail.replayThis') + '</button><button class="btn" onclick="DeadLettersModule.closeDetail()">' + t('deadletter.detail.close') + '</button></div>';
         return html;
     }
 
@@ -259,7 +270,7 @@ var DeadLettersModule = (function() {
         var modal = document.createElement('div');
         modal.id = 'deadLetterDetailModal';
         modal.className = 'modal';
-        modal.innerHTML = '<div class="modal-content modal-content-wide"><div class="modal-header"><h2 class="modal-title">Dead Letter Details</h2></div><div class="modal-body" id="deadLetterDetailBody"></div></div>';
+        modal.innerHTML = '<div class="modal-content modal-content-wide"><div class="modal-header"><h2 class="modal-title">' + t('deadletter.detail.title') + '</h2></div><div class="modal-body" id="deadLetterDetailBody"></div></div>';
         modal.addEventListener('click', function(event) {
             if (event.target === modal) closeDetail();
         });

@@ -23,6 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initDashboard() {
     console.log('🚀 Initializing Dashboard...');
 
+    // Apply static translations to the markup and re-render the active tab on
+    // language change so dynamically-rendered content also switches language.
+    if (typeof I18N !== 'undefined') {
+        I18N.apply();
+        I18N.onChange(() => {
+            updateAuthButtonState();
+            updateAutoRefreshLabel();
+            refreshCurrentTab();
+        });
+    }
+
     if (typeof API !== 'undefined') {
         await API.initAuthStorage();
     }
@@ -230,26 +241,31 @@ function startAutoRefresh() {
 }
 
 /**
+ * Update the auto-refresh button label to match the current state + language.
+ */
+function updateAutoRefreshLabel() {
+    const icon = document.getElementById('autoRefreshIcon');
+    const text = document.getElementById('autoRefreshText');
+    const on = !!autoRefreshInterval;
+    if (icon) icon.textContent = on ? '⏵️' : '⏸️';
+    if (text) text.textContent = on ? t('nav.autoRefreshOn') : t('nav.autoRefresh');
+}
+
+/**
  * Toggle the auto-refresh state
  */
 function toggleAutoRefresh() {
-    const icon = document.getElementById('autoRefreshIcon');
-    const text = document.getElementById('autoRefreshText');
-
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
-        if (icon) icon.textContent = '⏸️';
-        if (text) text.textContent = 'Auto-refresh';
         console.log('⏸️ Auto-refresh stopped');
     } else {
         autoRefreshInterval = setInterval(() => {
             refreshCurrentTab();
         }, DASHBOARD_AUTO_REFRESH_INTERVAL_MS);
-        if (icon) icon.textContent = '⏵️';
-        if (text) text.textContent = 'Refreshing...';
         console.log('⏵️ Auto-refresh started (every 1 minute)');
     }
+    updateAutoRefreshLabel();
 }
 
 function openAuthModal() {
@@ -278,7 +294,7 @@ async function saveAuthKeys() {
         }
     } catch (error) {
         console.error('Failed to encrypt and save credentials', error);
-        alert(error.message || 'Failed to encrypt and save credentials. Please make sure your browser supports Web Crypto.');
+        alert(error.message || t('auth.saveFailed'));
         return;
     }
 
@@ -303,13 +319,13 @@ function updateAuthButtonState() {
     const authBtnText = document.getElementById('authBtnText');
 
     if (readStatus) {
-        readStatus.textContent = `API_KEY: ${status.read ? 'saved' : 'not saved'}`;
+        readStatus.textContent = t(status.read ? 'auth.readSaved' : 'auth.readNotSaved');
     }
     if (writeStatus) {
-        writeStatus.textContent = `ADMIN_WRITE_KEY: ${status.write ? 'saved' : 'not saved'}`;
+        writeStatus.textContent = t(status.write ? 'auth.writeSaved' : 'auth.writeNotSaved');
     }
     if (authBtnText) {
-        authBtnText.textContent = status.read && status.write ? 'Credentials saved' : 'Credentials';
+        authBtnText.textContent = status.read && status.write ? t('nav.credentialsSaved') : t('nav.credentials');
     }
 }
 

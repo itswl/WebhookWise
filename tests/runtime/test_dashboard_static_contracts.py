@@ -38,8 +38,11 @@ def test_dashboard_references_existing_static_assets_in_order() -> None:
 
     static_assets = [asset for asset in parser.assets if asset.startswith("/static/")]
     assert static_assets
-    assert static_assets.index("/static/js/utils.js") < static_assets.index("/static/js/api.js")
-    assert static_assets.index("/static/js/api.js") < static_assets.index("/static/js/alerts.js")
+    # Compare on the path component so cache-busting query strings (?v=...) don't
+    # break the load-order contract.
+    asset_paths = [urlsplit(asset).path for asset in static_assets]
+    assert asset_paths.index("/static/js/utils.js") < asset_paths.index("/static/js/api.js")
+    assert asset_paths.index("/static/js/api.js") < asset_paths.index("/static/js/alerts.js")
 
     missing = []
     for asset in static_assets:
