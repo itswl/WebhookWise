@@ -1,6 +1,6 @@
 /**
- * API 调用封装模块
- * 统一封装所有后端 API 调用，提供统一的错误处理和响应解析
+ * API call wrapper module
+ * Unifies all backend API calls, providing consistent error handling and response parsing
  */
 
 const READ_TOKEN_KEY = 'webhook_api_key';
@@ -19,7 +19,7 @@ const API = {
     _cryptoKeyPromise: null,
 
     /**
-     * 获取只读 API Token
+     * Get the read-only API Token
      */
     getToken() {
         return this.getReadToken();
@@ -55,7 +55,7 @@ const API = {
         try {
             await this.deleteStoredCryptoKey();
         } catch (error) {
-            console.warn('清理本机凭证加密 key 失败', error);
+            console.warn('Failed to clear the local credential encryption key', error);
         }
     },
 
@@ -93,7 +93,7 @@ const API = {
             const record = JSON.parse(storedValue);
             return await this.decryptToken(record);
         } catch (error) {
-            console.warn('读取本机加密凭证失败，已清除失效凭证', error);
+            console.warn('Failed to read the local encrypted credentials; the invalid credentials have been cleared', error);
             localStorage.removeItem(storageKey);
             return '';
         }
@@ -169,7 +169,7 @@ const API = {
 
     assertCryptoStorageAvailable() {
         if (!window.crypto?.subtle || !window.indexedDB) {
-            throw new Error('当前浏览器不支持 Web Crypto / IndexedDB，无法加密保存凭证');
+            throw new Error('The current browser does not support Web Crypto / IndexedDB; credentials cannot be saved encrypted');
         }
     },
 
@@ -252,20 +252,20 @@ const API = {
         return mode === 'write' ? this.getWriteToken() : this.getReadToken();
     },
 
-    // 全局鉴权锁，防止并发请求时弹出多个输入框
+    // Global auth lock, prevents multiple input prompts from appearing on concurrent requests
     _authPromises: {
         read: null,
         write: null
     },
 
     /**
-     * 包装 fetch，自动添加 Auth 头和处理 401
+     * Wraps fetch, automatically adding the Auth header and handling 401
      */
     async authenticatedFetch(url, options = {}, retryState = {}) {
         const authMode = this.getAuthMode(options);
         await this.initAuthStorage();
 
-        // 如果有正在进行的鉴权弹窗，则等待它完成
+        // If an auth prompt is already in progress, wait for it to finish
         if (this._authPromises[authMode]) {
             await this._authPromises[authMode];
         }
@@ -289,10 +289,10 @@ const API = {
         const response = await fetch(url, { ...fetchOptions, headers });
 
         if (await this.shouldPromptForAuth(response, authMode)) {
-            // 在弹窗前再次检查是否已经被其他并发请求处理过了
+            // Before prompting, check once more whether another concurrent request already handled it
             const currentToken = this.getTokenForMode(authMode);
             if (currentToken && currentToken !== token) {
-                // Token 已被更新，直接使用新 Token 重试
+                // Token has been updated; retry directly with the new Token
                 return this.authenticatedFetch(url, options, retryState);
             }
 
@@ -301,9 +301,9 @@ const API = {
             }
 
             if (!this._authPromises[authMode]) {
-                // 创建一个 Promise 锁，并阻塞其他并发请求
+                // Create a Promise lock and block other concurrent requests
                 this._authPromises[authMode] = new Promise((resolve) => {
-                    // 使用 setTimeout 确保 UI 线程不被死锁，并给浏览器渲染机会
+                    // Use setTimeout to avoid deadlocking the UI thread and give the browser a chance to render
                     setTimeout(async () => {
                         const key = prompt(this.authPromptText(authMode));
                         if (key) {
@@ -317,7 +317,7 @@ const API = {
                                     updateAuthButtonState();
                                 }
                             } catch (error) {
-                                console.error('凭证加密保存失败', error);
+                                console.error('Failed to save the encrypted credentials', error);
                                 resolve(null);
                                 this._authPromises[authMode] = null;
                                 return;
@@ -331,7 +331,7 @@ const API = {
 
             const newKey = await this._authPromises[authMode];
             if (newKey) {
-                // 有了新 Token，递归重试该请求
+                // Now that we have a new Token, recursively retry this request
                 return this.authenticatedFetch(url, options, { ...retryState, [authMode]: true });
             }
         }
@@ -341,9 +341,9 @@ const API = {
 
     authPromptText(mode) {
         if (mode === 'write') {
-            return '请输入 WebhookWise 的 ADMIN_WRITE_KEY（用于保存、转发、重试等写操作）:';
+            return 'Enter the WebhookWise ADMIN_WRITE_KEY (used for write operations such as save, forward, and retry):';
         }
-        return '请输入 WebhookWise 的 API_KEY（用于 Dashboard 只读查询）:';
+        return 'Enter the WebhookWise API_KEY (used for read-only Dashboard queries):';
     },
 
     async shouldPromptForAuth(response, mode) {
@@ -364,15 +364,15 @@ const API = {
         ].includes(body?.detail);
     },
 
-    // ========== 告警相关 API ==========
+    // ========== Alert-related API ==========
 
     /**
-     * 获取告警列表
-     * @param {object} params - 查询参数
-     * @param {number} params.page - 页码
-     * @param {number} params.page_size - 每页数量
-     * @param {number} params.cursor - 下一页游标
-     * @returns {Promise<object>} 告警列表数据
+     * Get the alert list
+     * @param {object} params - Query parameters
+     * @param {number} params.page - Page number
+     * @param {number} params.page_size - Items per page
+     * @param {number} params.cursor - Cursor for the next page
+     * @returns {Promise<object>} Alert list data
      */
     async getWebhooks(params = {}) {
         const queryParams = new URLSearchParams();
@@ -388,9 +388,9 @@ const API = {
     },
 
     /**
-     * 获取单个告警详情
-     * @param {number} id - 告警 ID
-     * @returns {Promise<object>} 告警详情数据
+     * Get the details of a single alert
+     * @param {number} id - Alert ID
+     * @returns {Promise<object>} Alert detail data
      */
     async getWebhook(id) {
         const response = await this.authenticatedFetch('/v1/webhooks/' + id);
@@ -399,9 +399,9 @@ const API = {
     },
 
     /**
-     * 重新分析告警
-     * @param {number} id - 告警 ID
-     * @returns {Promise<object>} 分析结果
+     * Re-analyze an alert
+     * @param {number} id - Alert ID
+     * @returns {Promise<object>} Analysis result
      */
     async reanalyze(id) {
         const response = await this.authenticatedFetch('/v1/reanalyze/' + id, { method: 'POST' });
@@ -410,10 +410,10 @@ const API = {
     },
 
     /**
-     * 转发告警
-     * @param {number} id - 告警 ID
-     * @param {string} url - 转发目标 URL
-     * @returns {Promise<object>} 转发结果
+     * Forward an alert
+     * @param {number} id - Alert ID
+     * @param {string} url - Forwarding target URL
+     * @returns {Promise<object>} Forwarding result
      */
     async forward(id, url) {
         const response = await this.authenticatedFetch('/v1/forward/' + id, {
@@ -425,12 +425,12 @@ const API = {
         return await response.json();
     },
 
-    // ========== AI 相关 API ==========
+    // ========== AI-related API ==========
 
     /**
-     * 获取 AI 使用统计
-     * @param {string} period - 统计周期（day/week/month）
-     * @returns {Promise<object>} AI 使用统计数据
+     * Get AI usage statistics
+     * @param {string} period - Statistics period (day/week/month)
+     * @returns {Promise<object>} AI usage statistics data
      */
     async getAIUsage(period = 'day') {
         const response = await this.authenticatedFetch('/v1/ai-usage?period=' + period);
@@ -439,8 +439,8 @@ const API = {
     },
 
     /**
-     * 获取当前 Prompt 配置
-     * @returns {Promise<object>} Prompt 配置
+     * Get the current Prompt configuration
+     * @returns {Promise<object>} Prompt configuration
      */
     async getPrompt() {
         const response = await this.authenticatedFetch('/v1/prompt');
@@ -449,8 +449,8 @@ const API = {
     },
 
     /**
-     * 重新加载 Prompt 配置
-     * @returns {Promise<object>} 重载结果
+     * Reload the Prompt configuration
+     * @returns {Promise<object>} Reload result
      */
     async reloadPrompt() {
         const response = await this.authenticatedFetch('/v1/prompt/reload', { method: 'POST' });
@@ -458,10 +458,10 @@ const API = {
         return await response.json();
     },
 
-    // ========== 深度分析 API ==========
+    // ========== Deep Analysis API ==========
 
     /**
-     * 获取所有深度分析记录（分页+筛选）
+     * Get all deep analysis records (paginated + filtered)
      */
     async getAllDeepAnalyses(page = 1, perPage = 20, status = '', engine = '', cursor = null) {
         const params = new URLSearchParams({ page: page, per_page: perPage });
@@ -474,9 +474,9 @@ const API = {
     },
 
     /**
-     * 获取单条深度分析的完整内容（含 normalized_report + 原始 analysis_result）
-     * 列表只返回轻量摘要，展开某条时按需调用此接口。
-     * @param {number} analysisId - 深度分析记录 ID
+     * Get the full content of a single deep analysis (includes normalized_report + the raw analysis_result)
+     * The list only returns a lightweight summary; this endpoint is called on demand when expanding an entry.
+     * @param {number} analysisId - Deep analysis record ID
      */
     async getDeepAnalysisDetail(analysisId) {
         const response = await this.authenticatedFetch('/v1/deep-analyses/detail/' + analysisId);
@@ -485,9 +485,9 @@ const API = {
     },
 
     /**
-     * 获取深度分析历史记录
-     * @param {number} webhookId - 告警 ID
-     * @returns {Promise<object>} 深度分析历史记录列表
+     * Get deep analysis history records
+     * @param {number} webhookId - Alert ID
+     * @returns {Promise<object>} List of deep analysis history records
      */
     async getDeepAnalyses(webhookId) {
         const response = await this.authenticatedFetch('/v1/deep-analyses/' + webhookId);
@@ -496,11 +496,11 @@ const API = {
     },
 
     /**
-     * 执行深度分析
-     * @param {number} id - 告警 ID
-     * @param {string} question - 分析问题
-     * @param {string} engine - 分析引擎（'openclaw'/'auto'）
-     * @returns {Promise<object>} 分析结果
+     * Run a deep analysis
+     * @param {number} id - Alert ID
+     * @param {string} question - Analysis question
+     * @param {string} engine - Analysis engine ('openclaw'/'auto')
+     * @returns {Promise<object>} Analysis result
      */
     async deepAnalyze(id, question, engine = 'auto') {
         const response = await this.authenticatedFetch('/v1/deep-analyze/' + id, {
@@ -516,10 +516,10 @@ const API = {
     },
 
     /**
-     * 转发深度分析结果
-     * @param {number} analysisId - 深度分析记录 ID
-     * @param {string} targetUrl - 转发目标 URL
-     * @returns {Promise<object>} 转发结果
+     * Forward a deep analysis result
+     * @param {number} analysisId - Deep analysis record ID
+     * @param {string} targetUrl - Forwarding target URL
+     * @returns {Promise<object>} Forwarding result
      */
     async forwardDeepAnalysis(analysisId, targetUrl) {
         const response = await this.authenticatedFetch('/v1/deep-analyses/' + analysisId + '/forward', {
@@ -531,9 +531,9 @@ const API = {
     },
 
     /**
-     * 重新拉取失败的深度分析结果
-     * @param {number} analysisId - 深度分析记录 ID
-     * @returns {Promise<object>} 重试结果
+     * Re-fetch a failed deep analysis result
+     * @param {number} analysisId - Deep analysis record ID
+     * @returns {Promise<object>} Retry result
      */
     async retryDeepAnalysis(analysisId) {
         const response = await this.authenticatedFetch('/v1/deep-analyses/' + analysisId + '/retry', {
@@ -543,11 +543,11 @@ const API = {
         return await response.json();
     },
 
-    // ========== 转发规则 API ==========
+    // ========== Forwarding Rules API ==========
 
     /**
-     * 获取转发规则列表
-     * @returns {Promise<object>} 规则列表
+     * Get the forwarding rules list
+     * @returns {Promise<object>} Rules list
      */
     async getForwardRules(options = {}) {
         const includeSensitive = !!options.includeSensitive;
@@ -560,9 +560,9 @@ const API = {
     },
 
     /**
-     * 创建转发规则
-     * @param {object} ruleData - 规则数据
-     * @returns {Promise<object>} 创建结果
+     * Create a forwarding rule
+     * @param {object} ruleData - Rule data
+     * @returns {Promise<object>} Creation result
      */
     async createForwardRule(ruleData) {
         const response = await this.authenticatedFetch('/v1/forward-rules', {
@@ -575,10 +575,10 @@ const API = {
     },
 
     /**
-     * 更新转发规则
-     * @param {number} id - 规则 ID
-     * @param {object} ruleData - 规则数据
-     * @returns {Promise<object>} 更新结果
+     * Update a forwarding rule
+     * @param {number} id - Rule ID
+     * @param {object} ruleData - Rule data
+     * @returns {Promise<object>} Update result
      */
     async updateForwardRule(id, ruleData) {
         const response = await this.authenticatedFetch('/v1/forward-rules/' + id, {
@@ -591,9 +591,9 @@ const API = {
     },
 
     /**
-     * 删除转发规则
-     * @param {number} id - 规则 ID
-     * @returns {Promise<object>} 删除结果
+     * Delete a forwarding rule
+     * @param {number} id - Rule ID
+     * @returns {Promise<object>} Deletion result
      */
     async deleteForwardRule(id) {
         const response = await this.authenticatedFetch('/v1/forward-rules/' + id, {
@@ -604,9 +604,9 @@ const API = {
     },
 
     /**
-     * 测试转发规则
-     * @param {number} id - 规则 ID
-     * @returns {Promise<object>} 测试结果
+     * Test a forwarding rule
+     * @param {number} id - Rule ID
+     * @returns {Promise<object>} Test result
      */
     async testForwardRule(id) {
         const response = await this.authenticatedFetch('/v1/forward-rules/' + id + '/test', {
@@ -616,10 +616,10 @@ const API = {
         return await response.json();
     },
 
-    // ========== 转发队列 API ==========
+    // ========== Forwarding Queue API ==========
 
     /**
-     * 获取转发队列记录
+     * Get forwarding queue records
      */
     async getOutbox(params = {}) {
         const q = new URLSearchParams();
@@ -634,7 +634,7 @@ const API = {
     },
 
     /**
-     * 重试失败的转发记录
+     * Retry a failed forwarding record
      */
     async retryOutbox(id) {
         const response = await this.authenticatedFetch('/v1/admin/outbox/' + id + '/retry', { method: 'POST' });
@@ -642,7 +642,7 @@ const API = {
         return await response.json();
     },
 
-    // ========== 死信队列 API ==========
+    // ========== Dead Letter Queue API ==========
 
     async getDeadLetters(params = {}) {
         const q = new URLSearchParams();

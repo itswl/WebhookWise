@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webhook 监控中心</title>
+    <title>Webhook Monitor</title>
 
-    <!-- 外部样式表 -->
+    <!-- External stylesheets -->
     <link rel="stylesheet" href="/static/css/dashboard.css?v=20260612-refined-light">
     <link rel="stylesheet" href="/static/css/components.css?v=20260612-refined-light">
 </head>
 <body>
-    <!-- 顶部导航栏 -->
+    <!-- Top navigation bar -->
     <nav class="navbar">
         <div class="navbar-content">
             <div class="logo">
@@ -18,221 +18,221 @@
                 <span>Webhook Monitor</span>
             </div>
             <div class="nav-tabs">
-                <button class="nav-tab active" data-tab="alerts" type="button" aria-label="切换到告警管理">
-                    <span>🔔</span> 告警管理
+                <button class="nav-tab active" data-tab="alerts" type="button" aria-label="Switch to Alerts">
+                    <span>🔔</span> Alerts
                 </button>
-                <button class="nav-tab" data-tab="ai-cost" type="button" aria-label="切换到 AI 成本">
-                    <span>💰</span> AI 成本
+                <button class="nav-tab" data-tab="ai-cost" type="button" aria-label="Switch to AI Cost">
+                    <span>💰</span> AI Cost
                 </button>
-                <button class="nav-tab" data-tab="deep-analyses" type="button" aria-label="切换到深度分析">
-                    <span>🔬</span> 深度分析
+                <button class="nav-tab" data-tab="deep-analyses" type="button" aria-label="Switch to Deep Analysis">
+                    <span>🔬</span> Deep Analysis
                 </button>
-                <button class="nav-tab" data-tab="outbox" type="button" aria-label="切换到转发队列">
-                    <span>📤</span> 转发队列
+                <button class="nav-tab" data-tab="outbox" type="button" aria-label="Switch to Forward Queue">
+                    <span>📤</span> Forward Queue
                 </button>
-                <button class="nav-tab" data-tab="forward-rules" type="button" aria-label="切换到转发规则">
-                    <span>⚙️</span> 转发规则
+                <button class="nav-tab" data-tab="forward-rules" type="button" aria-label="Switch to Forward Rules">
+                    <span>⚙️</span> Forward Rules
                 </button>
             </div>
             <div class="nav-actions">
                 <div class="nav-status">
                     <span class="status-dot"></span>
-                    <span>服务运行中</span>
+                    <span>Service running</span>
                 </div>
                 <button class="btn" id="autoRefreshBtn" type="button">
                     <span id="autoRefreshIcon">⏸️</span>
-                    <span id="autoRefreshText">自动刷新</span>
+                    <span id="autoRefreshText">Auto-refresh</span>
                 </button>
                 <button class="btn" id="refreshBtn" type="button">
                     <span>🔄</span>
-                    <span>刷新</span>
+                    <span>Refresh</span>
                 </button>
                 <button class="btn" id="authBtn" onclick="openAuthModal()">
                     <span>🔐</span>
-                    <span id="authBtnText">凭证</span>
+                    <span id="authBtnText">Credentials</span>
                 </button>
             </div>
         </div>
     </nav>
 
-    <!-- 主容器 -->
+    <!-- Main container -->
     <div class="container">
-        <!-- 告警管理 Tab -->
+        <!-- Alerts Tab -->
         <div id="alertsTab" class="tab-content active">
-            <!-- 统计卡片 -->
+            <!-- Stat cards -->
             <div class="stats-section">
-                <div class="section-title">实时统计</div>
+                <div class="section-title">Live Statistics</div>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-label">加载告警数</div>
+                        <div class="stat-label">Alerts Loaded</div>
                         <div class="stat-value" id="totalCount">0</div>
-                        <div class="stat-trend">最后更新: <span id="lastUpdate">-</span></div>
+                        <div class="stat-trend">Last updated: <span id="lastUpdate">-</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">高优先级</div>
+                        <div class="stat-label">High Priority</div>
                         <div class="stat-value" id="highCount">0</div>
-                        <div class="stat-trend">需要立即处理</div>
+                        <div class="stat-trend">Needs immediate action</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">中优先级</div>
+                        <div class="stat-label">Medium Priority</div>
                         <div class="stat-value" id="mediumCount">0</div>
-                        <div class="stat-trend">建议尽快处理</div>
+                        <div class="stat-trend">Address soon</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">重复告警</div>
+                        <div class="stat-label">Duplicate Alerts</div>
                         <div class="stat-value" id="duplicateCount">0</div>
-                        <div class="stat-trend">已自动去重</div>
+                        <div class="stat-trend">Automatically deduplicated</div>
                     </div>
                 </div>
             </div>
 
-            <!-- 筛选栏 -->
+            <!-- Filter bar -->
             <div class="filter-section">
                 <div class="filter-grid">
                     <div class="filter-item">
-                        <label class="filter-label">搜索</label>
-                        <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="搜索告警内容、来源..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
+                        <label class="filter-label">Search</label>
+                        <input type="search" class="filter-input" id="searchInput" name="search-field" placeholder="Search alert content, source..." onkeyup="filterAlerts()" autocomplete="off" autocorrect="off" spellcheck="false">
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">优先级</label>
+                        <label class="filter-label">Priority</label>
                         <select class="filter-input" id="importanceFilter" onchange="filterAlerts()">
-                            <option value="">全部</option>
-                            <option value="high">高</option>
-                            <option value="medium">中</option>
-                            <option value="low">低</option>
+                            <option value="">All</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
                         </select>
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">来源</label>
+                        <label class="filter-label">Source</label>
                         <select class="filter-input" id="sourceFilter" onchange="filterAlerts()">
-                            <option value="">全部</option>
-                            <option value="volcengine">火山引擎</option>
-                            <option value="aliyun">阿里云</option>
+                            <option value="">All</option>
+                            <option value="volcengine">Volcengine</option>
+                            <option value="aliyun">Alibaba Cloud</option>
                             <option value="prometheus">Prometheus</option>
                         </select>
                     </div>
                     <div class="filter-item">
-                        <label class="filter-label">状态</label>
+                        <label class="filter-label">Status</label>
                         <select class="filter-input" id="duplicateFilter" onchange="filterAlerts()">
-                            <option value="">全部</option>
-                            <option value="original">原始</option>
-                            <option value="duplicate">重复</option>
+                            <option value="">All</option>
+                            <option value="original">Original</option>
+                            <option value="duplicate">Duplicate</option>
                         </select>
                     </div>
                 </div>
             </div>
 
-            <!-- 告警列表 -->
+            <!-- Alert list -->
             <div class="alerts-section" id="alertList">
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>加载中...</p>
+                    <p>Loading...</p>
                 </div>
             </div>
 
-            <!-- 分页 -->
+            <!-- Pagination -->
             <div class="pagination" id="pagination" style="display: none;">
                 <div class="pagination-info">
-                    第 <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong> 页，共 <strong id="totalCount2">0</strong> 条
+                    Page <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong>, <strong id="totalCount2">0</strong> total
                 </div>
                 <div class="pagination-buttons">
-                    <button id="firstPage" onclick="goToPage(1)">首页</button>
-                    <button id="prevPage" onclick="goToPage('prev')">上一页</button>
-                    <button id="nextPage" onclick="goToPage('next')">下一页</button>
-                    <button id="lastPage" onclick="goToPage('last')">末页</button>
-                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;">加载更多 200 条</button>
+                    <button id="firstPage" onclick="goToPage(1)">First</button>
+                    <button id="prevPage" onclick="goToPage('prev')">Previous</button>
+                    <button id="nextPage" onclick="goToPage('next')">Next</button>
+                    <button id="lastPage" onclick="goToPage('last')">Last</button>
+                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;">Load 200 more</button>
                 </div>
                 <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
-                    <option value="10">10 条/页</option>
-                    <option value="20" selected>20 条/页</option>
-                    <option value="50">50 条/页</option>
+                    <option value="10">10 / page</option>
+                    <option value="20" selected>20 / page</option>
+                    <option value="50">50 / page</option>
                 </select>
             </div>
         </div>
 
-        <!-- AI 成本 Tab -->
+        <!-- AI Cost Tab -->
         <div id="aiCostTab" class="tab-content" style="display: none;">
             <div class="ai-cost-section">
-                <div class="section-title">AI 成本监控</div>
+                <div class="section-title">AI Cost Monitoring</div>
                 <div class="ai-period-selector" style="margin-bottom: 20px;">
-                    <button class="btn" data-ai-period="day">日</button>
-                    <button class="btn" data-ai-period="week">周</button>
-                    <button class="btn" data-ai-period="month">月</button>
+                    <button class="btn" data-ai-period="day">Day</button>
+                    <button class="btn" data-ai-period="week">Week</button>
+                    <button class="btn" data-ai-period="month">Month</button>
                 </div>
                 <div id="aiCostStats">
                     <div class="loading">
                         <div class="spinner"></div>
-                        <p>加载中...</p>
+                        <p>Loading...</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 深度分析 Tab -->
+        <!-- Deep Analysis Tab -->
         <div id="deepAnalysesTab" class="tab-content" style="display: none;">
             <div class="deep-analyses-section">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div class="section-title">深度分析记录</div>
+                    <div class="section-title">Deep Analysis Records</div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <select id="daStatusFilter" class="form-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">全部状态</option>
-                            <option value="pending">分析中</option>
-                            <option value="completed">已完成</option>
-                            <option value="failed">失败</option>
+                            <option value="">All statuses</option>
+                            <option value="pending">Analyzing</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
                         </select>
                         <select id="daEngineFilter" class="form-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">全部引擎</option>
+                            <option value="">All engines</option>
                             <option value="openclaw">OpenClaw</option>
-                            <option value="local">本地 AI</option>
+                            <option value="local">Local AI</option>
                         </select>
-                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 刷新</button>
+                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 Refresh</button>
                     </div>
                 </div>
                 <div id="deepAnalysesList">
-                    <div style="text-align: center; padding: 40px; color: #888;">点击「深度分析」标签加载数据...</div>
+                    <div style="text-align: center; padding: 40px; color: #888;">Click the "Deep Analysis" tab to load data...</div>
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
-        <!-- 转发队列 Tab -->
+        <!-- Forward Queue Tab -->
         <div id="outboxTab" class="tab-content" style="display: none;">
             <div class="outbox-section" style="padding: 20px 0;">
                 <div class="section-header">
-                    <div class="section-title">转发队列</div>
+                    <div class="section-title">Forward Queue</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="outboxStatusFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
-                            <option value="">全部状态</option>
-                            <option value="pending">待投递</option>
-                            <option value="processing">投递中</option>
-                            <option value="retrying">重试中</option>
-                            <option value="sent">已送达</option>
-                            <option value="exhausted">已耗尽</option>
-                            <option value="expired">已过期</option>
+                            <option value="">All statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Delivering</option>
+                            <option value="retrying">Retrying</option>
+                            <option value="sent">Delivered</option>
+                            <option value="exhausted">Exhausted</option>
+                            <option value="expired">Expired</option>
                         </select>
-                        <button class="btn" onclick="OutboxModule.load()">🔄 刷新</button>
+                        <button class="btn" onclick="OutboxModule.load()">🔄 Refresh</button>
                     </div>
                 </div>
                 <div id="outboxList">
-                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">点击「转发队列」标签加载数据...</div>
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">Click the "Forward Queue" tab to load data...</div>
                 </div>
                 <div id="outboxPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
-        <!-- 转发规则 Tab -->
+        <!-- Forward Rules Tab -->
         <div id="forwardRulesTab" class="tab-content" style="display: none;">
             <div class="forward-rules-section">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div class="section-title">转发规则配置</div>
+                    <div class="section-title">Forward Rule Configuration</div>
                     <button class="btn btn-primary" onclick="showRuleForm()">
-                        <span>➕</span> 新增规则
+                        <span>➕</span> Add Rule
                     </button>
                 </div>
                 <div id="forwardRulesList">
                     <div class="loading">
                         <div class="spinner"></div>
-                        <p>加载中...</p>
+                        <p>Loading...</p>
                     </div>
                 </div>
             </div>
@@ -240,201 +240,201 @@
 
     </div>
 
-    <!-- 凭证模态框 -->
+    <!-- Credentials modal -->
     <div class="modal" id="authModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Dashboard 凭证</h2>
+                <h2 class="modal-title">Dashboard Credentials</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">API_KEY（只读）</label>
-                    <input type="password" class="form-input" id="authApiKey" placeholder="用于 GET 查询，留空表示不修改">
+                    <label class="form-label">API_KEY (read-only)</label>
+                    <input type="password" class="form-input" id="authApiKey" placeholder="Used for GET queries; leave blank to keep unchanged">
                     <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
-                        告警列表、AI 成本、转发规则列表等只读请求使用此 key。
+                        Used for read-only requests such as the alert list, AI cost, and forward rule list.
                     </p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">ADMIN_WRITE_KEY（写操作）</label>
-                    <input type="password" class="form-input" id="authAdminWriteKey" placeholder="用于 POST / PUT / DELETE，留空表示不修改">
+                    <label class="form-label">ADMIN_WRITE_KEY (write operations)</label>
+                    <input type="password" class="form-input" id="authAdminWriteKey" placeholder="Used for POST / PUT / DELETE; leave blank to keep unchanged">
                     <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
-                        重新分析、手动转发、重试、保存/删除转发规则等写请求使用此 key。
+                        Used for write requests such as re-analysis, manual forwarding, retries, and saving/deleting forward rules.
                     </p>
                 </div>
                 <div style="display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem;">
-                    <span id="authReadStatus">API_KEY：未保存</span>
-                    <span id="authWriteStatus">ADMIN_WRITE_KEY：未保存</span>
+                    <span id="authReadStatus">API_KEY: not saved</span>
+                    <span id="authWriteStatus">ADMIN_WRITE_KEY: not saved</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;">
-                    凭证会使用浏览器 Web Crypto 加密后保存在本机 localStorage，加密 key 保存在 IndexedDB，不会写入服务端配置。
+                    Credentials are encrypted with the browser's Web Crypto API and stored in this machine's localStorage; the encryption key is kept in IndexedDB and never written to the server config.
                 </p>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="clearAuthKeys()">清除本机凭证</button>
-                <button class="btn" onclick="closeAuthModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveAuthKeys()">保存</button>
+                <button class="btn" onclick="clearAuthKeys()">Clear local credentials</button>
+                <button class="btn" onclick="closeAuthModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveAuthKeys()">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- 转发模态框 -->
+    <!-- Forward modal -->
     <div class="modal" id="forwardModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">转发告警</h2>
+                <h2 class="modal-title">Forward Alert</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">转发地址</label>
+                    <label class="form-label">Forward URL</label>
                     <input type="text" class="form-input" id="forwardUrl" placeholder="https://example.com/webhook">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeForwardModal()">取消</button>
-                <button class="btn btn-primary" onclick="confirmForward()">确认转发</button>
+                <button class="btn" onclick="closeForwardModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmForward()">Confirm Forward</button>
             </div>
         </div>
     </div>
 
-    <!-- 转发规则模态框 -->
+    <!-- Forward rule modal -->
     <div class="modal" id="ruleFormModal">
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
-                <h2 class="modal-title" id="ruleFormTitle">新增转发规则</h2>
+                <h2 class="modal-title" id="ruleFormTitle">Add Forward Rule</h2>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="ruleFormId">
 
-                <!-- 基本信息 -->
+                <!-- Basic info -->
                 <div class="form-group">
-                    <label class="form-label">规则名称 *</label>
-                    <input type="text" class="form-input" id="ruleFormName" placeholder="例如：高优告警转飞书运维群" autocomplete="off">
+                    <label class="form-label">Rule Name *</label>
+                    <input type="text" class="form-input" id="ruleFormName" placeholder="e.g. Route high-priority alerts to the Feishu ops group" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">优先级</label>
+                        <label class="form-label">Priority</label>
                         <input type="number" class="form-input" id="ruleFormPriority" value="10" min="-1000000" max="1000000">
-                        <small style="color: var(--text-muted); font-size: 0.75rem;">越大越优先匹配</small>
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">Higher values match first</small>
                     </div>
                 </div>
 
-                <!-- 事件类型 -->
+                <!-- Event types -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">匹配范围 — 事件类型</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">不选 = 匹配所有类型</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Match Scope — Event Type</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">None selected = match all types</span>
                 </div>
                 <div class="event-type-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
-                    <label class="event-type-check" title="正常 webhook 处理流水线完成后的自动转发">
-                        <input type="checkbox" id="ruleFormEvtForward" value="webhook_forward"> webhook_forward · 告警自动转发
+                    <label class="event-type-check" title="Automatic forwarding after the normal webhook processing pipeline completes">
+                        <input type="checkbox" id="ruleFormEvtForward" value="webhook_forward"> webhook_forward · Automatic alert forwarding
                     </label>
-                    <label class="event-type-check" title="Dashboard 中点击转发按钮">
-                        <input type="checkbox" id="ruleFormEvtManual" value="manual_forward"> manual_forward · 手动转发
+                    <label class="event-type-check" title="Clicking the forward button in the dashboard">
+                        <input type="checkbox" id="ruleFormEvtManual" value="manual_forward"> manual_forward · Manual forwarding
                     </label>
-                    <label class="event-type-check" title="AI 调用失败时的错误通知（有冷却期限制）">
-                        <input type="checkbox" id="ruleFormEvtAIError" value="ai_error"> ai_error · AI 调用失败通知
+                    <label class="event-type-check" title="Error notification when an AI call fails (subject to a cooldown period)">
+                        <input type="checkbox" id="ruleFormEvtAIError" value="ai_error"> ai_error · AI call failure notification
                     </label>
-                    <label class="event-type-check" title="AI 降级为规则分析时的通知">
-                        <input type="checkbox" id="ruleFormEvtAIDegraded" value="ai_degraded"> ai_degraded · AI 降级通知
+                    <label class="event-type-check" title="Notification when AI falls back to rule-based analysis">
+                        <input type="checkbox" id="ruleFormEvtAIDegraded" value="ai_degraded"> ai_degraded · AI degradation notification
                     </label>
-                    <label class="event-type-check" title="深度分析完成后发出的通知">
-                        <input type="checkbox" id="ruleFormEvtDeep" value="deep_analysis"> deep_analysis · 深度分析完成
+                    <label class="event-type-check" title="Notification sent after deep analysis completes">
+                        <input type="checkbox" id="ruleFormEvtDeep" value="deep_analysis"> deep_analysis · Deep analysis completed
                     </label>
-                    <label class="event-type-check" title="转发重试全部失败后发出的告警">
-                        <input type="checkbox" id="ruleFormEvtExhausted" value="outbox_exhausted"> outbox_exhausted · 转发耗尽
+                    <label class="event-type-check" title="Alert sent after all forwarding retries have failed">
+                        <input type="checkbox" id="ruleFormEvtExhausted" value="outbox_exhausted"> outbox_exhausted · Forwarding exhausted
                     </label>
                 </div>
 
-                <!-- 匹配条件 -->
+                <!-- Match conditions -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">精细筛选</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">可选，仅对 webhook 告警事件生效</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Fine-Grained Filters</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">Optional; applies only to webhook alert events</span>
                 </div>
                 <div class="form-group" style="margin-bottom: 0.75rem;">
-                    <label class="form-label">重要性</label>
+                    <label class="form-label">Importance</label>
                     <div style="display: flex; gap: 12px; padding-top: 2px;">
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceHigh" value="high"> 高
+                            <input type="checkbox" id="ruleFormImportanceHigh" value="high"> High
                         </label>
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> 中
+                            <input type="checkbox" id="ruleFormImportanceMedium" value="medium"> Medium
                         </label>
                         <label class="importance-check">
-                            <input type="checkbox" id="ruleFormImportanceLow" value="low"> 低
+                            <input type="checkbox" id="ruleFormImportanceLow" value="low"> Low
                         </label>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">告警状态</label>
+                    <label class="form-label">Alert Status</label>
                     <select class="form-input" id="ruleFormDuplicate">
-                        <option value="all">全部（新告警 + 重复）</option>
-                        <option value="new">仅新告警</option>
-                        <option value="duplicate">仅重复告警</option>
+                        <option value="all">All (new alerts + duplicates)</option>
+                        <option value="new">New alerts only</option>
+                        <option value="duplicate">Duplicate alerts only</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">来源</label>
-                    <input type="text" class="form-input" id="ruleFormSource" placeholder="逗号分隔，空=全部来源" autocomplete="off">
+                    <label class="form-label">Source</label>
+                    <input type="text" class="form-input" id="ruleFormSource" placeholder="Comma-separated; empty = all sources" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">项目</label>
-                        <input type="text" class="form-input" id="ruleFormProject" placeholder="如 eve-cn" autocomplete="off">
+                        <label class="form-label">Project</label>
+                        <input type="text" class="form-input" id="ruleFormProject" placeholder="e.g. eve-cn" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">区域</label>
-                        <input type="text" class="form-input" id="ruleFormRegion" placeholder="如 cn-shanghai" autocomplete="off">
+                        <label class="form-label">Region</label>
+                        <input type="text" class="form-input" id="ruleFormRegion" placeholder="e.g. cn-shanghai" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">环境</label>
-                        <input type="text" class="form-input" id="ruleFormEnvironment" placeholder="如 prod,dev" autocomplete="off">
+                        <label class="form-label">Environment</label>
+                        <input type="text" class="form-input" id="ruleFormEnvironment" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
-                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;">项目、区域、环境支持逗号分隔；可用 !prod / !eve-cn 排除；环境会从 env/environment/stage 字段或资源名里的 dev/prod/test 等片段识别。</small>
+                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;">Project, region, and environment support comma-separated values; use !prod / !eve-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
                 <div class="form-group">
-                    <label class="form-label">Payload 字段匹配</label>
-                    <input type="text" class="form-input" id="ruleFormPayload" placeholder='例如：status=firing,severity=critical' autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 0.75rem;">key=value 逗号分隔，多个条件为 AND 关系。支持嵌套路径如 alert.labels.severity=critical</small>
+                    <label class="form-label">Payload Field Match</label>
+                    <input type="text" class="form-input" id="ruleFormPayload" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
 
-                <!-- 转发目标 -->
+                <!-- Forward target -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">转发目标</span>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Forward Target</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label">目标类型 *</label>
+                        <label class="form-label">Target Type *</label>
                         <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
-                            <option value="feishu">飞书</option>
+                            <option value="feishu">Feishu</option>
                             <option value="openclaw">OpenClaw</option>
                             <option value="webhook">Webhook</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">目标名称</label>
-                        <input type="text" class="form-input" id="ruleFormTargetName" placeholder="例如：运维飞书群" autocomplete="off">
+                        <label class="form-label">Target Name</label>
+                        <input type="text" class="form-input" id="ruleFormTargetName" placeholder="e.g. Ops Feishu group" autocomplete="off">
                     </div>
                 </div>
                 <div class="form-group" id="ruleFormTargetUrlGroup">
-                    <label class="form-label">目标地址 *</label>
+                    <label class="form-label">Target URL *</label>
                     <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" autocomplete="off">
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormStopOnMatch">
-                    <label for="ruleFormStopOnMatch">命中后停止匹配后续规则</label>
+                    <label for="ruleFormStopOnMatch">Stop matching subsequent rules on hit</label>
                 </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormEnabled" checked>
-                    <label for="ruleFormEnabled">启用规则</label>
+                    <label for="ruleFormEnabled">Enable rule</label>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeRuleForm()">取消</button>
-                <button class="btn btn-primary" onclick="saveRule()">保存</button>
+                <button class="btn" onclick="closeRuleForm()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRule()">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- 外部脚本（按依赖顺序加载） -->
+    <!-- External scripts (loaded in dependency order) -->
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/api.js"></script>

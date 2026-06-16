@@ -1,37 +1,37 @@
 /**
- * Dashboard 核心逻辑模块
- * 负责初始化所有模块、全局事件绑定和自动刷新
+ * Dashboard core logic module
+ * Handles initializing all modules, global event binding, and auto-refresh
  */
 
-// 全局变量
+// Global variables
 let autoRefreshInterval = null;
 let currentTab = 'alerts';
 const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
 
 /**
- * 初始化 Dashboard
+ * Initialize the Dashboard
  */
 document.addEventListener('DOMContentLoaded', () => {
     initDashboard().catch((error) => {
-        console.error('Dashboard 初始化失败', error);
+        console.error('Dashboard initialization failed', error);
     });
 });
 
 /**
- * Dashboard 初始化函数
+ * Dashboard initialization function
  */
 async function initDashboard() {
-    console.log('🚀 初始化 Dashboard...');
+    console.log('🚀 Initializing Dashboard...');
 
     if (typeof API !== 'undefined') {
         await API.initAuthStorage();
     }
     updateAuthButtonState();
 
-    // 初始化各模块
+    // Initialize each module
     if (typeof AlertsModule !== 'undefined') {
         AlertsModule.init();
-        // 设置全局引用，供 onclick 回调使用
+        // Set a global reference for use by onclick callbacks
         window.alertsModule = AlertsModule;
     }
     if (typeof AICostModule !== 'undefined') {
@@ -41,30 +41,30 @@ async function initDashboard() {
         ForwardRulesModule.init();
     }
 
-    // 绑定全局事件
+    // Bind global events
     bindGlobalEvents();
 
-    // 启动自动刷新
+    // Start auto-refresh
     startAutoRefresh();
 
-    // 强制清空搜索框（防止浏览器自动填充）
+    // Force-clear the search box (to prevent browser autofill)
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
         searchInput.value = '';
-        // 延迟再清一次，确保浏览器自动填充后也能清空
+        // Clear again after a delay to also catch browser autofill
         setTimeout(() => {
             searchInput.value = '';
         }, 100);
     }
 
-    console.log('✅ Dashboard 初始化完成');
+    console.log('✅ Dashboard initialization complete');
 }
 
 /**
- * 绑定全局事件
+ * Bind global events
  */
 function bindGlobalEvents() {
-    // Tab 切换
+    // Tab switching
     document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
             const navTab = e.target.closest('.nav-tab');
@@ -75,35 +75,35 @@ function bindGlobalEvents() {
         });
     });
 
-    // 自动刷新按钮
+    // Auto-refresh button
     const autoRefreshBtn = document.getElementById('autoRefreshBtn');
     if (autoRefreshBtn) {
         autoRefreshBtn.addEventListener('click', toggleAutoRefresh);
     }
 
-    // 刷新按钮
+    // Refresh button
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', refreshCurrentTab);
     }
 
-    // 模态框外部点击关闭
+    // Close modal when clicking outside it
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
             e.target.classList.remove('active');
         }
     });
 
-    // 键盘快捷键
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // ESC 关闭模态框
+        // ESC closes the modal
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal.active').forEach(modal => {
                 modal.classList.remove('active');
             });
         }
 
-        // Ctrl/Cmd + R 刷新
+        // Ctrl/Cmd + R to refresh
         if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
             e.preventDefault();
             if (typeof AlertsModule !== 'undefined') {
@@ -112,18 +112,18 @@ function bindGlobalEvents() {
         }
     });
 
-    // 移除了重复的分页按钮监听器，因为在 HTML 中已经绑定了 onclick 事件
+    // Removed the duplicate pagination button listeners, since onclick events are already bound in the HTML
 }
 
 /**
- * 切换主 Tab
+ * Switch the main Tab
  * @param {string} tabId - Tab ID
  */
 function switchMainTab(tabId) {
-    console.log('切换 Tab:', tabId);
+    console.log('Switching tab:', tabId);
     currentTab = tabId;
 
-    // 更新导航栏激活状态
+    // Update the navbar active state
     document.querySelectorAll('.nav-tab').forEach(tab => {
         if (tab.getAttribute('data-tab') === tabId) {
             tab.classList.add('active');
@@ -132,7 +132,7 @@ function switchMainTab(tabId) {
         }
     });
 
-    // 显示/隐藏内容区域
+    // Show/hide content areas
     const tabContents = {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
@@ -150,10 +150,10 @@ function switchMainTab(tabId) {
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // 触发 Tab 特定的初始化
+    // Trigger Tab-specific initialization
     switch (tabId) {
         case 'alerts':
-            // 切换到告警 Tab 时停止深度分析自动刷新
+            // Stop deep-analysis auto-refresh when switching to the Alerts Tab
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
             }
@@ -222,15 +222,15 @@ function refreshCurrentTab() {
 }
 
 /**
- * 启动自动刷新
+ * Start auto-refresh
  */
 function startAutoRefresh() {
-    // 默认不启动自动刷新，等待用户手动开启
-    console.log('⏸️ 自动刷新已就绪（点击刷新按钮启动）');
+    // Auto-refresh is off by default, waiting for the user to enable it manually
+    console.log('⏸️ Auto-refresh ready (click the refresh button to start)');
 }
 
 /**
- * 切换自动刷新状态
+ * Toggle the auto-refresh state
  */
 function toggleAutoRefresh() {
     const icon = document.getElementById('autoRefreshIcon');
@@ -240,15 +240,15 @@ function toggleAutoRefresh() {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
         if (icon) icon.textContent = '⏸️';
-        if (text) text.textContent = '自动刷新';
-        console.log('⏸️ 自动刷新已停止');
+        if (text) text.textContent = 'Auto-refresh';
+        console.log('⏸️ Auto-refresh stopped');
     } else {
         autoRefreshInterval = setInterval(() => {
             refreshCurrentTab();
         }, DASHBOARD_AUTO_REFRESH_INTERVAL_MS);
         if (icon) icon.textContent = '⏵️';
-        if (text) text.textContent = '刷新中...';
-        console.log('⏵️ 自动刷新已启动（每1分钟）');
+        if (text) text.textContent = 'Refreshing...';
+        console.log('⏵️ Auto-refresh started (every 1 minute)');
     }
 }
 
@@ -277,8 +277,8 @@ async function saveAuthKeys() {
             await API.setWriteToken(adminWriteKey);
         }
     } catch (error) {
-        console.error('凭证加密保存失败', error);
-        alert(error.message || '凭证加密保存失败，请确认当前浏览器支持 Web Crypto。');
+        console.error('Failed to encrypt and save credentials', error);
+        alert(error.message || 'Failed to encrypt and save credentials. Please make sure your browser supports Web Crypto.');
         return;
     }
 
@@ -303,18 +303,18 @@ function updateAuthButtonState() {
     const authBtnText = document.getElementById('authBtnText');
 
     if (readStatus) {
-        readStatus.textContent = `API_KEY：${status.read ? '已保存' : '未保存'}`;
+        readStatus.textContent = `API_KEY: ${status.read ? 'saved' : 'not saved'}`;
     }
     if (writeStatus) {
-        writeStatus.textContent = `ADMIN_WRITE_KEY：${status.write ? '已保存' : '未保存'}`;
+        writeStatus.textContent = `ADMIN_WRITE_KEY: ${status.write ? 'saved' : 'not saved'}`;
     }
     if (authBtnText) {
-        authBtnText.textContent = status.read && status.write ? '凭证已保存' : '凭证';
+        authBtnText.textContent = status.read && status.write ? 'Credentials saved' : 'Credentials';
     }
 }
 
 /**
- * 确认转发（由转发模态框调用）
+ * Confirm forward (called by the forward modal)
  */
 async function confirmForward() {
     if (typeof AlertsModule !== 'undefined') {
@@ -323,7 +323,7 @@ async function confirmForward() {
 }
 
 /**
- * 关闭转发模态框
+ * Close the forward modal
  */
 function closeForwardModal() {
     if (typeof AlertsModule !== 'undefined') {
@@ -331,10 +331,10 @@ function closeForwardModal() {
     }
 }
 
-// ========== 全局函数包装器 ==========
-// 用于 HTML onclick 事件调用模块方法
+// ========== Global function wrappers ==========
+// Used by HTML onclick events to call module methods
 
-// 告警模块
+// Alerts module
 function loadWebhooks() {
     if (typeof AlertsModule !== 'undefined') AlertsModule.loadAlerts();
 }
@@ -353,7 +353,7 @@ function changePageSize() {
 
 function goToPage(page) {
     if (typeof AlertsModule !== 'undefined') {
-        // 支持特殊值
+        // Support special values
         if (page === 'prev') {
             AlertsModule.goToPage(AlertsModule.currentPage - 1);
         } else if (page === 'next') {
