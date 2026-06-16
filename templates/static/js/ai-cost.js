@@ -1,13 +1,13 @@
 /**
- * AI 成本监控模块
- * 显示 AI 分析的使用统计和成本信息
+ * AI Cost monitoring module
+ * Displays usage statistics and cost information for AI analysis
  */
 
 const AICostModule = {
     currentPeriod: 'day',
 
     /**
-     * 初始化模块
+     * Initialize the module
      */
     init() {
         this.loadStats('day');
@@ -15,10 +15,10 @@ const AICostModule = {
     },
 
     /**
-     * 绑定事件
+     * Bind events
      */
     bindEvents() {
-        // 周期切换按钮
+        // Period toggle buttons
         const periodButtons = document.querySelectorAll('[data-ai-period]');
         periodButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -38,8 +38,8 @@ const AICostModule = {
     },
 
     /**
-     * 加载统计数据
-     * @param {string} period - 统计周期（day/week/month）
+     * Load statistics data
+     * @param {string} period - Statistics period (day/week/month)
      */
     async loadStats(period = 'day') {
         this.currentPeriod = period;
@@ -51,21 +51,21 @@ const AICostModule = {
             if (result.success && result.data) {
                 this.renderStats(result.data);
             } else {
-                console.warn('AI 统计数据为空或加载失败');
+                console.warn('AI statistics data is empty or failed to load');
                 this.renderEmptyStats();
             }
         } catch (error) {
-            console.error('加载 AI 统计失败:', error);
+            console.error('Failed to load AI statistics:', error);
             this.renderEmptyStats();
         }
     },
 
     /**
-     * 安全获取嵌套属性值
-     * @param {object} obj - 对象
-     * @param {string} path - 属性路径（如 'tokens.total'）
-     * @param {*} defaultValue - 默认值
-     * @returns {*} 属性值或默认值
+     * Safely get a nested property value
+     * @param {object} obj - The object
+     * @param {string} path - Property path (e.g. 'tokens.total')
+     * @param {*} defaultValue - Default value
+     * @returns {*} The property value or the default value
      */
     safeGet(obj, path, defaultValue = 0) {
         if (!obj) return defaultValue;
@@ -79,9 +79,9 @@ const AICostModule = {
     },
 
     /**
-     * 格式化美元金额
-     * @param {number} amount - 金额
-     * @returns {string} 格式化后的金额
+     * Format a USD amount
+     * @param {number} amount - The amount
+     * @returns {string} The formatted amount
      */
     formatCurrency(amount) {
         const value = parseFloat(amount) || 0;
@@ -89,9 +89,9 @@ const AICostModule = {
     },
 
     /**
-     * 格式化百分比
-     * @param {number} value - 百分比值
-     * @returns {string} 格式化后的百分比
+     * Format a percentage
+     * @param {number} value - The percentage value
+     * @returns {string} The formatted percentage
      */
     formatPercent(value) {
         const num = parseFloat(value) || 0;
@@ -107,8 +107,8 @@ const AICostModule = {
     },
 
     /**
-     * 渲染统计数据
-     * @param {object} data - 统计数据（API 返回的 result.data）
+     * Render statistics data
+     * @param {object} data - Statistics data (result.data returned by the API)
      */
     renderStats(data) {
         const container = document.getElementById('aiCostStats');
@@ -139,11 +139,11 @@ const AICostModule = {
         const cacheSavedCalls = this.safeGet(cacheStats, 'saved_calls', 0);
 
         let html = `
-            <!-- 核心数据看板 -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">核心账单 (USD)</div>
+            <!-- Core data dashboard -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Core Billing (USD)</div>
             <div class="stats-grid" style="margin-bottom: 2.5rem;">
                 <div class="stat-card" style="border-left: 4px solid var(--primary);">
-                    <div class="stat-label">总消耗预算 (Estimated)</div>
+                    <div class="stat-label">Total Budget Spent (Estimated)</div>
                     <div class="stat-value" style="color: var(--primary); font-size: 2.5rem;">${this.formatCurrency(costTotal)}</div>
                     <div class="stat-trend" style="display: flex; justify-content: space-between;">
                         <span>Tokens: ${formatNumber(tokensTotal)}</span>
@@ -151,30 +151,30 @@ const AICostModule = {
                     </div>
                 </div>
                 <div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">
-                    <div class="stat-label" style="color: #059669;">累计节省 (Saved)</div>
+                    <div class="stat-label" style="color: #059669;">Total Saved (Saved)</div>
                     <div class="stat-value" style="color: var(--success); font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
-                    <div class="stat-trend" style="color: #059669;">通过降噪策略与缓存重用</div>
+                    <div class="stat-trend" style="color: #059669;">Via noise-reduction strategy and cache reuse</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">输入吞吐量 (Prompt)</div>
+                    <div class="stat-label">Input Throughput (Prompt)</div>
                     <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensInput)}</div>
-                    <div class="stat-trend">Tokens 发送</div>
+                    <div class="stat-trend">Tokens sent</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">输出生成量 (Completion)</div>
+                    <div class="stat-label">Output Generated (Completion)</div>
                     <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensOutput)}</div>
-                    <div class="stat-trend">Tokens 接收</div>
+                    <div class="stat-trend">Tokens received</div>
                 </div>
             </div>
 
-            <!-- 分析路由分布 -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">处理路由漏斗 (Traffic Routing)</div>
+            <!-- Analysis route distribution -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Processing Route Funnel (Traffic Routing)</div>
             <div style="background: var(--bg-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 2.5rem;">
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--primary);">🤖 原生大模型分析 (AI Engine)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeAi)} 次 (${this.formatPercent(percentAi)})</span>
+                        <span style="font-weight: 500; color: var(--primary);">🤖 Native LLM Analysis (AI Engine)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeAi)} calls (${this.formatPercent(percentAi)})</span>
                     </div>
                     <div style="height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--primary); width: ${percentAi}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -183,8 +183,8 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--success);">💾 语义缓存拦截 (Cache Hit)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeCache)} 次 (${this.formatPercent(percentCache)})</span>
+                        <span style="font-weight: 500; color: var(--success);">💾 Semantic Cache Interception (Cache Hit)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeCache)} calls (${this.formatPercent(percentCache)})</span>
                     </div>
                     <div style="height: 8px; background: #d1fae5; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--success); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -193,8 +193,8 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--warning);">🔄 衍生降噪合并 (Deduplication)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeReuse)} 次 (${this.formatPercent(percentReuse)})</span>
+                        <span style="font-weight: 500; color: var(--warning);">🔄 Derived Noise-Reduction Merge (Deduplication)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeReuse)} calls (${this.formatPercent(percentReuse)})</span>
                     </div>
                     <div style="height: 8px; background: #fef3c7; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--warning); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -203,8 +203,8 @@ const AICostModule = {
 
                 <div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--text-muted);">📋 规则降级 (Rule Fallback)</span>
-                        <span style="color: var(--text-muted);">${formatNumber(routeRule)} 次 (${this.formatPercent(percentRule)})</span>
+                        <span style="font-weight: 500; color: var(--text-muted);">📋 Rule Downgrade (Rule Fallback)</span>
+                        <span style="color: var(--text-muted);">${formatNumber(routeRule)} calls (${this.formatPercent(percentRule)})</span>
                     </div>
                     <div style="height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: #94a3b8; width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
@@ -213,28 +213,28 @@ const AICostModule = {
 
             </div>
 
-            <!-- 缓存效能区域 -->
-            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">降本增效雷达 (Efficiency Radar)</div>
+            <!-- Cache efficiency area -->
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">Cost-Efficiency Radar (Efficiency Radar)</div>
             <div class="stats-grid">
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">活跃语义指纹</div>
+                    <div class="stat-label">Active Semantic Fingerprints</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheEntries)}</div>
-                    <div class="stat-trend">Redis 活跃键值</div>
+                    <div class="stat-trend">Active Redis keys</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">缓存防穿透次数</div>
+                    <div class="stat-label">Cache Anti-Penetration Count</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheSavedCalls)}</div>
-                    <div class="stat-trend">成功拦截 AI 调用</div>
+                    <div class="stat-trend">AI calls successfully intercepted</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
-                    <div class="stat-label">单条指纹平均利用率</div>
+                    <div class="stat-label">Average Utilization per Fingerprint</div>
                     <div class="stat-value" style="font-size: 1.75rem;">${cacheAvgHits.toFixed(1)} <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">x</span></div>
-                    <div class="stat-trend">每条缓存使用频次</div>
+                    <div class="stat-trend">Usage frequency per cache entry</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem; border-left: 3px solid var(--success);">
-                    <div class="stat-label">全局缓存命中率</div>
+                    <div class="stat-label">Global Cache Hit Rate</div>
                     <div class="stat-value" style="font-size: 1.75rem; color: var(--success);">${this.formatPercent(cacheHitRate)}</div>
-                    <div class="stat-trend">缓存 / (缓存+穿透)</div>
+                    <div class="stat-trend">Cache / (Cache + Penetration)</div>
                 </div>
             </div>
         `;
@@ -243,12 +243,12 @@ const AICostModule = {
     },
 
     /**
-     * 渲染空状态
+     * Render the empty state
      */
     renderEmptyStats() {
         const container = document.getElementById('aiCostStats');
         if (!container) return;
 
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">暂无数据</div><div class="empty-text">暂无 AI 使用统计数据</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No data</div><div class="empty-text">No AI usage statistics yet</div></div>';
     }
 };

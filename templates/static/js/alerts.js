@@ -1,6 +1,6 @@
 /**
- * 告警列表模块
- * 处理告警的加载、筛选、分页、展示和交互
+ * Alert List Module
+ * Handles loading, filtering, pagination, display, and interaction of alerts
  */
 
 const AlertsModule = {
@@ -22,7 +22,7 @@ const AlertsModule = {
     },
 
     /**
-     * 初始化告警模块
+     * Initialize the alert module
      */
     init() {
         this.loadAlerts();
@@ -30,10 +30,10 @@ const AlertsModule = {
     },
 
     /**
-     * 绑定事件处理
+     * Bind event handlers
      */
     bindEvents() {
-        // 搜索和筛选事件
+        // Search and filter events
         const searchInput = document.getElementById('searchInput');
         const importanceFilter = document.getElementById('importanceFilter');
         const sourceFilter = document.getElementById('sourceFilter');
@@ -56,21 +56,21 @@ const AlertsModule = {
             pageSizeSelect.addEventListener('change', () => this.changePageSize());
         }
 
-        // 事件委托处理告警项交互
+        // Event delegation for alert item interactions
         document.addEventListener('click', (e) => this.handleAlertClick(e));
     },
 
     /**
-     * 处理告警相关的点击事件
+     * Handle alert-related click events
      */
     handleAlertClick(e) {
-        // 优先处理按钮操作
+        // Handle button actions first
         const btn = e.target.closest('button[data-action]');
         if (btn) {
             e.stopPropagation();
             const action = btn.getAttribute('data-action');
             const id = btn.getAttribute('data-id');
-            console.log('按钮点击:', action, id);
+            console.log('Button click:', action, id);
 
             if (action === 'reanalyze') {
                 this.reanalyzeAlert(id);
@@ -82,20 +82,20 @@ const AlertsModule = {
             return;
         }
 
-        // Tab 切换
+        // Tab switching
         if (e.target.closest('.tab')) {
             const tab = e.target.closest('.tab');
             const tabName = tab.getAttribute('data-tab');
             const alertItem = tab.closest('.alert-item');
             const webhookId = tab.getAttribute('data-id');
 
-            // 切换 tab 激活状态
+            // Toggle tab active state
             alertItem.querySelectorAll('.tab').forEach(function(t) {
                 t.classList.remove('active');
             });
             tab.classList.add('active');
 
-            // 切换内容显示
+            // Toggle content display
             alertItem.querySelectorAll('.tab-content').forEach(function(content) {
                 const contentTab = content.getAttribute('data-tab-content');
                 if (contentTab === tabName) {
@@ -105,29 +105,29 @@ const AlertsModule = {
                 }
             });
 
-            // 如果切换到深度分析标签，加载数据
+            // If switching to the deep analysis tab, load data
             if (tabName === 'deep-analysis' && webhookId) {
                 this.loadDeepAnalyses(webhookId);
             }
             return;
         }
 
-        // 告警展开/收起
+        // Expand/collapse alert
         if (e.target.closest('.alert-header')) {
             const header = e.target.closest('.alert-header');
-            // 如果点击的是按钮或按钮内的元素，不处理
+            // If a button or an element inside a button was clicked, do nothing
             if (e.target.closest('button')) return;
 
             const alertItem = header.closest('.alert-item');
             const isExpanding = !alertItem.classList.contains('expanded');
             alertItem.classList.toggle('expanded');
 
-            // 如果是展开操作，且数据是摘要模式，加载完整数据
+            // If expanding and data is in summary mode, load full data
             if (isExpanding) {
                 const webhookId = alertItem.getAttribute('data-id');
                 const webhook = this.alerts.find(w => w.id == webhookId);
 
-                // 检查是否需要加载完整数据
+                // Check whether full data needs to be loaded
                 if (webhook && !webhook.parsed_data && !webhook.ai_analysis) {
                     this.loadFullAlertData(webhookId, alertItem);
                 }
@@ -136,18 +136,18 @@ const AlertsModule = {
     },
 
     /**
-     * 加载告警数据
+     * Load alert data
      */
     async loadAlerts() {
         try {
-            // 显示加载提示
+            // Show loading indicator
             const alertList = document.getElementById('alertList');
-            alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在加载数据...</p></div>';
+            alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading data...</p></div>';
 
             const result = await API.getWebhooks({ page_size: 200, cursor: null });
 
             if (!result.success || !result.data) {
-                throw new Error('数据格式错误');
+                throw new Error('Invalid data format');
             }
 
             this.alerts = result.data;
@@ -156,7 +156,7 @@ const AlertsModule = {
             this.hasMore = meta.hasMore;
             this.totalCount = null;
 
-            console.log('✅ 数据加载完成:', this.alerts.length, '条（总共', this.totalCount, '条）');
+            console.log('✅ Data loaded:', this.alerts.length, 'items (total', this.totalCount, 'items)');
 
             this.updateStats();
             this.currentPage = 1;
@@ -164,8 +164,8 @@ const AlertsModule = {
 
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
         } catch (error) {
-            console.error('加载失败:', error);
-            showError('加载失败: ' + error.message);
+            console.error('Load failed:', error);
+            showError('Load failed: ' + error.message);
         }
     },
 
@@ -176,12 +176,12 @@ const AlertsModule = {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
                 btn.disabled = true;
-                btn.textContent = '加载中...';
+                btn.textContent = 'Loading...';
             }
 
             const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
             if (!result.success || !result.data) {
-                throw new Error('数据格式错误');
+                throw new Error('Invalid data format');
             }
 
             this.alerts = this.alerts.concat(result.data);
@@ -192,20 +192,20 @@ const AlertsModule = {
             this.updateStats();
             this.filterAlerts(false);
         } catch (error) {
-            console.error('加载更多失败:', error);
-            alert('加载更多失败: ' + error.message);
+            console.error('Load more failed:', error);
+            alert('Load more failed: ' + error.message);
         } finally {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = '加载更多 200 条';
+                btn.textContent = 'Load 200 more';
             }
             this._loadingMore = false;
         }
     },
 
     /**
-     * 更新统计信息
+     * Update statistics
      */
     updateStats() {
         const totalEl = document.getElementById('totalCount');
@@ -233,7 +233,7 @@ const AlertsModule = {
     },
 
     /**
-     * 筛选告警
+     * Filter alerts
      */
     filterAlerts(resetPage = true) {
         const searchTerm = document.getElementById('searchInput').value.toLowerCase();
@@ -241,7 +241,7 @@ const AlertsModule = {
         const sourceFilter = document.getElementById('sourceFilter').value;
         const duplicateFilter = document.getElementById('duplicateFilter').value;
 
-        // 筛选数据
+        // Filter data
         this.filteredAlerts = this.alerts.filter(function(webhook) {
             const matchSearch = !searchTerm || JSON.stringify(webhook).toLowerCase().indexOf(searchTerm) > -1;
 
@@ -263,53 +263,53 @@ const AlertsModule = {
             return matchSearch && matchImportance && matchSource && matchDuplicate;
         });
 
-        console.log('筛选结果:', this.filteredAlerts.length, '条（共', this.alerts.length, '条）');
+        console.log('Filter results:', this.filteredAlerts.length, 'items (of', this.alerts.length, 'items)');
 
         if (resetPage) {
             this.currentPage = 1;
         }
 
-        // 显示当前页数据
+        // Display current page data
         this.displayCurrentPage();
     },
 
     /**
-     * 显示当前页数据（前端分页）
+     * Display current page data (client-side pagination)
      */
     displayCurrentPage() {
         const totalFiltered = this.filteredAlerts.length;
         const totalPagesFiltered = Math.ceil(totalFiltered / this.pageSize);
 
-        // 确保当前页在有效范围内
+        // Ensure the current page is within the valid range
         if (this.currentPage > totalPagesFiltered && totalPagesFiltered > 0) {
-            console.warn('⚠️  当前页码超出范围，重置到最后一页');
+            console.warn('⚠️  Current page number out of range, resetting to last page');
             this.currentPage = totalPagesFiltered;
         }
 
-        // 计算当前页的数据范围
+        // Calculate the data range for the current page
         const startIndex = (this.currentPage - 1) * this.pageSize;
         const endIndex = Math.min(startIndex + this.pageSize, totalFiltered);
         const currentPageData = this.filteredAlerts.slice(startIndex, endIndex);
 
-        console.log('📄 显示第', this.currentPage, '页，共', totalPagesFiltered, '页');
-        console.log('📊 数据范围:', startIndex, '-', endIndex, '，显示', currentPageData.length, '条');
-        console.log('📈 筛选后总数:', totalFiltered, '条（原始数据', this.alerts.length, '条）');
+        console.log('📄 Showing page', this.currentPage, 'of', totalPagesFiltered, 'pages');
+        console.log('📊 Data range:', startIndex, '-', endIndex, ', showing', currentPageData.length, 'items');
+        console.log('📈 Total after filtering:', totalFiltered, 'items (original data', this.alerts.length, 'items)');
 
-        // 更新分页信息
+        // Update pagination info
         this.updatePagination(totalFiltered, totalPagesFiltered);
 
-        // 显示数据
+        // Display data
         this.renderAlerts(currentPageData);
     },
 
     /**
-     * 渲染告警列表
+     * Render the alert list
      */
     renderAlerts(webhooks) {
         const container = document.getElementById('alertList');
 
         if (webhooks.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">暂无告警</div><div class="empty-text">没有符合筛选条件的告警</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No alerts</div><div class="empty-text">No alerts match the filter criteria</div></div>';
             return;
         }
 
@@ -326,25 +326,25 @@ const AlertsModule = {
             html += '<div class="alert-left">';
             html += '<div class="alert-title-row">';
             html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || ('告警 #' + webhook.id))) + '</span>';
+            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || ('Alert #' + webhook.id))) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
             html += '<span class="alert-meta-item">🆔 #' + escapeHtml(String(webhook.id)) + '</span>';
             html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
-            // 始终显示客户端 IP
+            // Always show the client IP
             if (webhook.client_ip) {
                 html += '<span class="alert-meta-item">🌐 ' + escapeHtml(String(webhook.client_ip)) + '</span>';
             }
 
             html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
 
-            // 显示重复信息
+            // Show duplicate information
             if (isDuplicate) {
-                html += '<span class="alert-meta-item">🔗 原始 #' + webhook.duplicate_of + '</span>';
-                // 显示上次告警 ID 和时间
+                html += '<span class="alert-meta-item">🔗 Original #' + webhook.duplicate_of + '</span>';
+                // Show previous alert ID and time
                 if (webhook.prev_alert_id) {
-                    let prevText = '⏮️ 上次 #' + webhook.prev_alert_id;
+                    let prevText = '⏮️ Previous #' + webhook.prev_alert_id;
                     if (webhook.prev_alert_timestamp) {
                         prevText += ' (' + timeAgo(webhook.prev_alert_timestamp) + ')';
                     }
@@ -355,35 +355,35 @@ const AlertsModule = {
             html += '<div class="alert-right">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
             if (isDuplicate) {
-                html += '<span class="badge badge-duplicate" title="重复告警">重复告警</span>';
+                html += '<span class="badge badge-duplicate" title="Duplicate alert">Duplicate alert</span>';
             } else {
-                html += '<span class="badge badge-new">新告警</span>';
+                html += '<span class="badge badge-new">New alert</span>';
             }
-            // 转发状态徽章
+            // Forward status badge
             if (webhook.forward_status) {
-                var fwdLabels = { 'pending': '待转发', 'queued': '已入队', 'skipped': '已跳过', 'forwarded': '已转发', 'sent': '已送达', 'failed': '转发失败', 'success': '已送达' };
+                var fwdLabels = { 'pending': 'Pending forward', 'queued': 'Queued', 'skipped': 'Skipped', 'forwarded': 'Forwarded', 'sent': 'Delivered', 'failed': 'Forward failed', 'success': 'Delivered' };
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
-                html += '<span class="badge ' + fwdClass + '" title="转发状态">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
+                html += '<span class="badge ' + fwdClass + '" title="Forward status">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
-            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 重新分析</button>';
-            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 深度分析</button>';
-            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 转发</button>';
+            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 Reanalyze</button>';
+            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 Deep Analysis</button>';
+            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 Forward</button>';
             html += '</div></div></div>';
 
             html += '<div class="alert-details">';
             html += '<div class="details-tabs">';
-            html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">概览</div>';
-            html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">原始数据</div>';
-            // AI 分析标签页
+            html += '<div class="tab active" data-tab="overview" data-id="' + webhook.id + '">Overview</div>';
+            html += '<div class="tab" data-tab="data" data-id="' + webhook.id + '">Raw Data</div>';
+            // AI Analysis tab
             if (analysis && Object.keys(analysis).length > 0) {
-                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
+                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI Analysis</div>';
             } else if (summary || webhook.importance) {
-                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI 分析</div>';
+                html += '<div class="tab" data-tab="ai" data-id="' + webhook.id + '">AI Analysis</div>';
             }
-            // 深度分析标签页
-            html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">深度分析</div>';
+            // Deep Analysis tab
+            html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">Deep Analysis</div>';
             html += '</div>';
 
             html += '<div class="tab-content active" data-tab-content="overview">';
@@ -392,13 +392,13 @@ const AlertsModule = {
 
             html += '<div class="tab-content" data-tab-content="data">';
             if (webhook.parsed_data) {
-                html += renderJSONBlock(webhook.parsed_data, '原始数据');
+                html += renderJSONBlock(webhook.parsed_data, 'Raw Data');
             } else {
-                html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
+                html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No data</div>';
             }
             html += '</div>';
 
-            // AI 分析内容
+            // AI analysis content
             if (analysis && Object.keys(analysis).length > 0) {
                 html += '<div class="tab-content" data-tab-content="ai">';
                 html += this.renderAIAnalysis(analysis);
@@ -406,24 +406,24 @@ const AlertsModule = {
             } else if (summary || webhook.importance) {
                 html += '<div class="tab-content" data-tab-content="ai">';
                 html += '<div class="ai-section">';
-                html += '<div class="ai-header">🤖 智能分析结果</div>';
+                html += '<div class="ai-header">🤖 AI Analysis Results</div>';
                 html += '<div class="ai-content">';
                 if (summary) {
-                    html += '<div class="ai-item"><div class="ai-label">摘要</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
+                    html += '<div class="ai-item"><div class="ai-label">Summary</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
                 }
                 if (webhook.importance) {
-                    html += '<div class="ai-item"><div class="ai-label">重要性</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
+                    html += '<div class="ai-item"><div class="ai-label">Importance</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
                 }
                 html += '</div></div>';
                 html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 首次展开时会自动加载完整 AI 分析结果</p>';
+                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 The full AI analysis results will load automatically when first expanded</p>';
                 html += '</div>';
                 html += '</div>';
             }
 
-            // 深度分析内容面板
+            // Deep analysis content panel
             html += '<div class="tab-content" data-tab-content="deep-analysis">';
-            html += '<div id="deep-analysis-container-' + webhook.id + '">点击标签加载深度分析历史...</div>';
+            html += '<div id="deep-analysis-container-' + webhook.id + '">Click the tab to load deep analysis history...</div>';
             html += '</div>';
 
             html += '</div></div>';
@@ -433,66 +433,66 @@ const AlertsModule = {
     },
 
     /**
-     * 渲染概览信息
+     * Render overview information
      */
     renderOverview(webhook) {
         let html = '<div class="info-grid">';
-        html += '<div class="info-item"><div class="info-label">告警 ID</div><div class="info-value">#' + webhook.id + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">来源</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Alert ID</div><div class="info-value">#' + webhook.id + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Source</div><div class="info-value">' + escapeHtml(String(webhook.source || '-')) + '</div></div>';
         if (webhook.request_id) {
-            html += '<div class="info-item"><div class="info-label">请求 ID</div><div class="info-value" style="font-size:0.75rem;word-break:break-all;">' + escapeHtml(String(webhook.request_id)) + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">Request ID</div><div class="info-value" style="font-size:0.75rem;word-break:break-all;">' + escapeHtml(String(webhook.request_id)) + '</div></div>';
         }
         if (webhook.alert_hash) {
-            html += '<div class="info-item"><div class="info-label">告警指纹</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">Alert Fingerprint</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
         }
-        html += '<div class="info-item"><div class="info-label">客户端 IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">接收时间</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
-        const statusMap = { received: '已接收', analyzing: '分析中', completed: '已完成', failed: '失败', dead_letter: '死信' };
+        html += '<div class="info-item"><div class="info-label">Client IP</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Received At</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
+        const statusMap = { received: 'Received', analyzing: 'Analyzing', completed: 'Completed', failed: 'Failed', dead_letter: 'Dead Letter' };
         const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
-        html += '<div class="info-item"><div class="info-label">处理状态</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Processing Status</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
         if (webhook.updated_at) {
-            html += '<div class="info-item"><div class="info-label">最后更新</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">Last Updated</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
         }
         if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
             const failure = webhook.failure_reason || webhook.error_message || '-';
-            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">失败原因</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
+            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">Failure Reason</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
         }
         if (webhook.is_duplicate) {
-            html += '<div class="info-item"><div class="info-label">原始告警</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">Original Alert</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
             if (webhook.prev_alert_id) {
                 let prevValue = '#' + webhook.prev_alert_id;
                 if (webhook.prev_alert_timestamp) {
                     prevValue += ' (' + new Date(webhook.prev_alert_timestamp).toLocaleString('zh-CN') + ')';
                 }
-                html += '<div class="info-item"><div class="info-label">上次告警</div><div class="info-value">' + prevValue + '</div></div>';
+                html += '<div class="info-item"><div class="info-label">Previous Alert</div><div class="info-value">' + prevValue + '</div></div>';
             }
-            html += '<div class="info-item"><div class="info-label">重复次数</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">Duplicate Count</div><div class="info-value">' + (webhook.duplicate_count || 1) + '</div></div>';
 
-            html += '<div class="info-item"><div class="info-label">重复类型</div><div class="info-value">重复告警</div></div>';
+            html += '<div class="info-item"><div class="info-label">Duplicate Type</div><div class="info-value">Duplicate alert</div></div>';
         }
         html += '</div>';
         return html;
     },
 
     /**
-     * 渲染 AI 分析结果
+     * Render AI analysis results
      */
     renderAIAnalysis(analysis) {
         if (!analysis || Object.keys(analysis).length === 0) {
-            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无 AI 分析数据</div>';
+            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No AI analysis data</div>';
         }
 
         let html = `
             <div class="ai-analysis" style="border-left: 4px solid #4f46e5; background: #ffffff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 1rem;">
                 <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: #4f46e5; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                    <span>🤖</span> AIOps 智能诊断报告
+                    <span>🤖</span> AIOps Diagnostic Report
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
-                        ${escapeHtml(String(analysis._degraded ? '本地规则降级' : (analysis._route_type || '智能路由')))}
+                        ${escapeHtml(String(analysis._degraded ? 'Local rule fallback' : (analysis._route_type || 'Smart routing')))}
                     </span>
                 </div>
 
                 <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
-                    ${escapeHtml(String(analysis.summary || '无分析摘要'))}
+                    ${escapeHtml(String(analysis.summary || 'No analysis summary'))}
                 </div>
 
                 <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
@@ -501,14 +501,14 @@ const AlertsModule = {
         if (analysis.root_cause) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 根因定位</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 Root Cause</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
                 </div>
             `;
         } else if (analysis.event_type) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ 事件类型</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ Event Type</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
                 </div>
             `;
@@ -518,7 +518,7 @@ const AlertsModule = {
             const impact = analysis.impact || analysis.impact_scope;
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 影响评估</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 Impact Assessment</h4>
                     <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
                 </div>
             `;
@@ -528,7 +528,7 @@ const AlertsModule = {
         if (actions && actions.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ 修复建议与操作</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ Recommendations & Actions</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -539,7 +539,7 @@ const AlertsModule = {
         if (analysis.risks && analysis.risks.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ 潜在风险</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ Potential Risks</h4>
                     <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -552,23 +552,23 @@ const AlertsModule = {
         // Metadata footer
         html += `
             <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span>⚡ 重要性: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || '未知'))}</strong></span>
+                <span>⚡ Importance: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || 'Unknown'))}</strong></span>
         `;
 
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
-            const relationMap = { root_cause: '根因告警', derived: '衍生告警', standalone: '独立告警' };
-            const relation = relationMap[nr.relation] || nr.relation || '未知';
-            html += `<span>🛡️ 降噪判定: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (置信度: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
+            const relationMap = { root_cause: 'Root cause alert', derived: 'Derived alert', standalone: 'Standalone alert' };
+            const relation = relationMap[nr.relation] || nr.relation || 'Unknown';
+            html += `<span>🛡️ Noise reduction: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (confidence: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += `<span>🔗 关联根因: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
+                html += `<span>🔗 Related root cause: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
 
-        html += `<span>🔀 路由通道: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || '未知'))}</strong></span>`;
+        html += `<span>🔀 Route channel: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || 'Unknown'))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
-            html += `<span title="命中次数: ${escapeHtml(String(hitCount))}" style="color: #10b981; font-weight: 600;">🎯 缓存命中 (${escapeHtml(String(hitCount))}次)</span>`;
+            html += `<span title="Hit count: ${escapeHtml(String(hitCount))}" style="color: #10b981; font-weight: 600;">🎯 Cache hit (${escapeHtml(String(hitCount))} times)</span>`;
         }
 
         html += `
@@ -578,14 +578,14 @@ const AlertsModule = {
 
         // Render Raw JSON analysis below it for debugging
         if (typeof renderJSONBlock === 'function') {
-            html += renderJSONBlock(analysis, '原始分析数据');
+            html += renderJSONBlock(analysis, 'Raw Analysis Data');
         }
 
         return html;
     },
 
     /**
-     * 更新分页信息
+     * Update pagination info
      */
     updatePagination(totalFiltered, totalPagesFiltered) {
         const paginationDiv = document.getElementById('pagination');
@@ -614,18 +614,18 @@ const AlertsModule = {
     },
 
     /**
-     * 跳转到指定页
+     * Jump to a specific page
      */
     async goToPage(page) {
         const totalPagesFiltered = Math.ceil(this.filteredAlerts.length / this.pageSize);
 
-        console.log('🔄 请求跳转到第', page, '页');
-        console.log('   当前筛选数据:', this.filteredAlerts.length, '条');
-        console.log('   每页显示:', this.pageSize, '条');
-        console.log('   总页数:', totalPagesFiltered, '页');
+        console.log('🔄 Requested jump to page', page);
+        console.log('   Current filtered data:', this.filteredAlerts.length, 'items');
+        console.log('   Per page:', this.pageSize, 'items');
+        console.log('   Total pages:', totalPagesFiltered, 'pages');
 
         if (page < 1) {
-            console.warn('❌ 页码小于1，忽略');
+            console.warn('❌ Page number less than 1, ignoring');
             return;
         }
 
@@ -634,22 +634,22 @@ const AlertsModule = {
                 await this.loadMoreAlerts();
                 const updatedTotalPages = Math.ceil(this.filteredAlerts.length / this.pageSize);
                 if (page > updatedTotalPages) {
-                    console.warn('❌ 页码超出范围（最大', updatedTotalPages, '页），忽略');
+                    console.warn('❌ Page number out of range (max', updatedTotalPages, 'pages), ignoring');
                     return;
                 }
             } else {
-                console.warn('❌ 页码超出范围（最大', totalPagesFiltered, '页），忽略');
+                console.warn('❌ Page number out of range (max', totalPagesFiltered, 'pages), ignoring');
                 return;
             }
         }
 
         this.currentPage = page;
-        console.log('✅ 跳转到第', page, '页');
+        console.log('✅ Jumped to page', page);
         this.displayCurrentPage();
     },
 
     /**
-     * 改变每页显示数量
+     * Change the number of items shown per page
      */
     changePageSize() {
         this.pageSize = parseInt(document.getElementById('pageSize').value);
@@ -709,14 +709,14 @@ const AlertsModule = {
                     this.updateStats();
                 }
             } catch (error) {
-                console.error('定位告警失败:', error);
-                showError('定位告警失败: ' + error.message);
+                console.error('Failed to locate alert:', error);
+                showError('Failed to locate alert: ' + error.message);
                 return false;
             }
         }
 
         if (index === -1) {
-            showError('未找到告警 #' + id);
+            showError('Alert #' + id + ' not found');
             return false;
         }
 
@@ -727,17 +727,17 @@ const AlertsModule = {
     },
 
     /**
-     * 加载单条告警的完整数据
+     * Load the full data for a single alert
      */
     async loadFullAlertData(webhookId, alertItem) {
-        console.log('🔄 加载完整数据:', webhookId);
+        console.log('🔄 Loading full data:', webhookId);
 
-        // 显示加载状态
+        // Show loading state
         const dataTab = alertItem.querySelector('[data-tab-content="data"]');
         const aiTab = alertItem.querySelector('[data-tab-content="ai"]');
 
         if (dataTab) {
-            dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>正在加载完整数据...</p></div>';
+            dataTab.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>Loading full data...</p></div>';
         }
 
         try {
@@ -746,98 +746,98 @@ const AlertsModule = {
             if (result.success && result.data) {
                 const fullData = result.data;
 
-                // 更新 alerts 中的数据（合并）
+                // Update the data in alerts (merge)
                 const index = this.alerts.findIndex(w => w.id == webhookId);
                 if (index !== -1) {
                     this.alerts[index] = { ...this.alerts[index], ...fullData };
                 }
 
-                // 更新概览标签页
+                // Update the overview tab
                 const overviewTab = alertItem.querySelector('[data-tab-content="overview"]');
                 if (overviewTab && index !== -1) {
                     overviewTab.innerHTML = this.renderOverview(this.alerts[index]);
                 }
 
-                // 更新原始数据标签页
+                // Update the raw data tab
                 if (dataTab) {
                     if (fullData.parsed_data) {
-                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, '原始数据');
+                        dataTab.innerHTML = renderJSONBlock(fullData.parsed_data, 'Raw Data');
                     } else if (fullData.raw_payload) {
-                        // parsed_data 为 null（零解析模式），使用解压后的 raw_payload
+                        // parsed_data is null (zero-parse mode), use the decompressed raw_payload
                         let rawData;
                         try {
                             rawData = JSON.parse(fullData.raw_payload);
                         } catch (e) {
                             rawData = fullData.raw_payload;
                         }
-                        dataTab.innerHTML = renderJSONBlock(rawData, '原始数据');
+                        dataTab.innerHTML = renderJSONBlock(rawData, 'Raw Data');
                     } else {
-                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无数据</div>';
+                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No data</div>';
                     }
                 }
 
-                // 追加请求头显示
+                // Append request headers display
                 if (dataTab && fullData.headers && Object.keys(fullData.headers).length > 0) {
                     var filteredHeaders = {};
                     Object.keys(fullData.headers).forEach(function(k) {
                         if (!k.startsWith('x-forwarded') && k !== 'traceparent') filteredHeaders[k] = fullData.headers[k];
                     });
                     if (Object.keys(filteredHeaders).length > 0) {
-                        dataTab.innerHTML += '<div style="margin-top:1rem;">' + renderJSONBlock(filteredHeaders, '请求头') + '</div>';
+                        dataTab.innerHTML += '<div style="margin-top:1rem;">' + renderJSONBlock(filteredHeaders, 'Request Headers') + '</div>';
                     }
                 }
 
-                // 更新 AI 分析标签页
+                // Update the AI analysis tab
                 if (aiTab && fullData.ai_analysis) {
                     aiTab.innerHTML = this.renderAIAnalysis(fullData.ai_analysis);
                 } else if (aiTab) {
-                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">暂无 AI 分析数据</div>';
+                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">No AI analysis data</div>';
                 }
 
-                console.log('✅ 完整数据加载成功');
+                console.log('✅ Full data loaded successfully');
             } else {
-                throw new Error(result.error || '加载失败');
+                throw new Error(result.error || 'Load failed');
             }
         } catch (error) {
-            console.error('❌ 加载完整数据失败:', error);
+            console.error('❌ Failed to load full data:', error);
             if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ 加载失败: ' + escapeHtml(String(error.message || error)) + '</div>';
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ Load failed: ' + escapeHtml(String(error.message || error)) + '</div>';
             }
         }
     },
 
     /**
-     * 重新分析告警
+     * Reanalyze an alert
      */
     async reanalyzeAlert(id) {
-        console.log('开始重新分析 webhook:', id);
+        console.log('Starting reanalysis of webhook:', id);
 
-        if (!confirm('确认要重新分析这条告警吗？')) {
+        if (!confirm('Are you sure you want to reanalyze this alert?')) {
             return;
         }
 
         try {
             const result = await API.reanalyze(id);
 
-            console.log('重新分析结果:', result);
+            console.log('Reanalysis result:', result);
 
             if (result.success) {
-                alert('✅ 重新分析成功！');
+                alert('✅ Reanalysis successful!');
                 this.loadAlerts();
             } else {
-                alert('❌ 分析失败: ' + (result.error || '未知错误'));
+                alert('❌ Analysis failed: ' + (result.error || 'Unknown error'));
             }
         } catch (error) {
-            console.error('重新分析错误:', error);
-            alert('❌ 请求失败: ' + error.message);
+            console.error('Reanalysis error:', error);
+            alert('❌ Request failed: ' + error.message);
         }
     },
 
     /**
-     * 打开转发模态框
+     * Open the forward modal
      */
     openForwardModal(id) {
-        console.log('打开转发模态框, webhook ID:', id);
+        console.log('Opening forward modal, webhook ID:', id);
         this.currentForwardId = id;
 
         const forwardUrlInput = document.getElementById('forwardUrl');
@@ -848,14 +848,14 @@ const AlertsModule = {
         const modal = document.getElementById('forwardModal');
         if (modal) {
             modal.classList.add('active');
-            console.log('转发模态框已打开');
+            console.log('Forward modal opened');
         } else {
-            console.error('找不到转发模态框元素');
+            console.error('Forward modal element not found');
         }
     },
 
     /**
-     * 关闭转发模态框
+     * Close the forward modal
      */
     closeForwardModal() {
         document.getElementById('forwardModal').classList.remove('active');
@@ -863,34 +863,34 @@ const AlertsModule = {
     },
 
     /**
-     * 确认转发
+     * Confirm forward
      */
     async confirmForward() {
         const url = document.getElementById('forwardUrl').value;
-        if (!url) return alert('请输入转发地址');
+        if (!url) return alert('Please enter a forward address');
 
         try {
             const result = await API.forward(this.currentForwardId, url);
 
             if (result.success) {
-                alert('✅ 转发成功！');
+                alert('✅ Forward successful!');
                 this.closeForwardModal();
             } else {
-                alert('❌ 转发失败: ' + (result.error || '未知错误'));
+                alert('❌ Forward failed: ' + (result.error || 'Unknown error'));
             }
         } catch (error) {
-            alert('❌ 请求失败: ' + error.message);
+            alert('❌ Request failed: ' + error.message);
         }
     },
 
     /**
-     * 加载深度分析历史记录
+     * Load deep analysis history records
      */
     async loadDeepAnalyses(webhookId) {
         const container = document.getElementById('deep-analysis-container-' + webhookId);
         if (!container) return;
 
-        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>正在加载深度分析历史...</p></div>';
+        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>Loading deep analysis history...</p></div>';
 
         try {
             const result = await API.getDeepAnalyses(webhookId);
@@ -898,8 +898,8 @@ const AlertsModule = {
 
             if (records.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' +
-                    '<p>暂无深度分析记录</p>' +
-                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c 立即分析</button>' +
+                    '<p>No deep analysis records</p>' +
+                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c Analyze now</button>' +
                     '</div>';
                 return;
             }
@@ -907,56 +907,56 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 \u672c\u5730 AI';
+                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 Local AI';
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
                 html += '<div style="border:1px solid #e0e0e0; border-radius:8px; padding:16px; margin-bottom:12px; background:#fafafa;">';
 
-                // \u5934\u90e8\uff1a\u5f15\u64ce\u3001\u65f6\u95f4\u3001\u8017\u65f6
+                // Header: engine, time, duration
                 html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #eee;">';
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
-                html += '<span style="color:#888; font-size:0.85em;">' + time + ' | \u8017\u65f6 ' + duration + '</span>';
+                html += '<span style="color:#888; font-size:0.85em;">' + time + ' | Duration ' + duration + '</span>';
                 html += '</div>';
 
-                // \u7528\u6237\u95ee\u9898\uff08\u5982\u679c\u6709\uff09
+                // User question (if any)
                 if (record.user_question) {
                     html += '<div style="margin-bottom:10px; padding:8px 12px; background:#e8f4fd; border-radius:4px; font-size:0.9em;">';
-                    html += '<strong>\u7528\u6237\u95ee\u9898\uff1a</strong>' + escapeHtml(String(record.user_question));
+                    html += '<strong>User question: </strong>' + escapeHtml(String(record.user_question));
                     html += '</div>';
                 }
 
-                // 检查是否为 pending 状态（OpenClaw 异步等待结果）
+                // Check whether the status is pending (OpenClaw asynchronously waiting for results)
                 if (record.status === 'pending') {
-                    // 分析中状态卡片
+                    // Analyzing-state card
                     html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid #bae6fd; border-radius:8px; color:var(--info);">';
                     html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw 正在分析中...</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">OpenClaw is analyzing...</div>';
                     if (record.openclaw_run_id) {
                         html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">Run ID: ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
                     }
-                    html += '<div style="font-size:0.9em; opacity:0.85;">结果将自动更新，请稍后刷新页面</div>';
+                    html += '<div style="font-size:0.9em; opacity:0.85;">Results will update automatically, please refresh the page later</div>';
                     html += '</div>';
                 } else {
-                    // \u6b63\u5e38\u5206\u6790\u7ed3\u679c\u6e32\u67d3
-                    // 如果有完整的 OpenClaw 文本，优先渲染 markdown
+                    // Normal analysis result rendering
+                    // If there is full OpenClaw text, render the markdown first
                     if (analysis._openclaw_text) {
                         html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + escapeHtml(String(analysis._openclaw_text)) + '</pre>';
-                        // 如果有置信度，单独显示
+                        // If there is a confidence score, display it separately
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">Confidence: ' + pct + '%</div>';
                         }
                     } else {
-                        // 原有的 JSON 字段渲染逻辑
+                        // Original JSON field rendering logic
                         if (analysis.root_cause) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d \u6839\u56e0\u5206\u6790\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d Root Cause Analysis: </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
                         }
                         if (analysis.impact) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 \u5f71\u54cd\u8303\u56f4\uff1a</strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 Impact Scope: </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
                         }
                         if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-                            html += '<div style="margin-bottom:8px;"><strong>\u2705 \u4fee\u590d\u5efa\u8bae\uff1a</strong><ul style="margin:4px 0; padding-left:20px;">';
+                            html += '<div style="margin-bottom:8px;"><strong>\u2705 Recommendations: </strong><ul style="margin:4px 0; padding-left:20px;">';
                             analysis.recommendations.forEach(function(rec) {
                                 if (typeof rec === 'object' && rec !== null) {
                                     var label = (rec.priority ? '<strong>' + escapeHtml(String(rec.priority)) + '</strong>: ' : '') + escapeHtml(String(rec.action || JSON.stringify(rec)));
@@ -969,10 +969,10 @@ const AlertsModule = {
                         }
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">\u7f6e\u4fe1\u5ea6: ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">Confidence: ' + pct + '%</div>';
                         }
 
-                        // 如果没有结构化字段，直接显示原始 JSON
+                        // If there are no structured fields, display the raw JSON directly
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
                             html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }
@@ -982,23 +982,23 @@ const AlertsModule = {
                 html += '</div>';
             });
 
-            // 底部：再次分析按钮
+            // Footer: re-analyze button
             html += '<div style="text-align:center; margin-top:12px;">';
-            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c 再次分析</button>';
+            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c Analyze again</button>';
             html += '</div>';
 
             container.innerHTML = html;
         } catch (e) {
-            container.innerHTML = '<div style="color:red; padding:20px;">加载失败: ' + escapeHtml(String(e.message || e)) + '</div>';
+            container.innerHTML = '<div style="color:red; padding:20px;">Load failed: ' + escapeHtml(String(e.message || e)) + '</div>';
         }
     },
 
     /**
-     * 深度分析告警
+     * Deep-analyze an alert
      */
     async deepAnalyzeAlert(id) {
-        const question = prompt('请输入您想问的问题（可选）:', '');
-        if (question === null) return;  // 用户取消
+        const question = prompt('Enter the question you want to ask (optional):', '');
+        if (question === null) return;  // User cancelled
 
         try {
             const result = await API.deepAnalyze(id, question, 'openclaw');
@@ -1006,20 +1006,20 @@ const AlertsModule = {
                 const record = result.data;
                 const analysisResult = record.analysis_result || {};
 
-                // 检查是否为 pending 状态（OpenClaw 异步等待结果）
+                // Check whether the status is pending (OpenClaw asynchronously waiting for results)
                 if (record.status === 'pending' || analysisResult._pending) {
                     this.showTriggeredNotification(analysisResult._openclaw_run_id || record.openclaw_run_id);
                 }
 
-                // 分析完成，切换到深度分析标签页并刷新数据
+                // Analysis complete, switch to the deep analysis tab and refresh data
                 const alertItem = document.querySelector('.alert-item[data-id="' + id + '"]');
                 if (alertItem) {
-                    // 确保详情展开
+                    // Ensure details are expanded
                     if (!alertItem.classList.contains('expanded')) {
                         alertItem.classList.add('expanded');
                     }
 
-                    // 切换到深度分析 tab
+                    // Switch to the deep analysis tab
                     const tabs = alertItem.querySelectorAll('.tab');
                     const contents = alertItem.querySelectorAll('.tab-content');
                     tabs.forEach(function(t) { t.classList.remove('active'); });
@@ -1030,25 +1030,25 @@ const AlertsModule = {
                     if (deepTab) deepTab.classList.add('active');
                     if (deepContent) deepContent.classList.add('active');
 
-                    // 加载深度分析历史记录
+                    // Load deep analysis history records
                     this.loadDeepAnalyses(id);
                 } else {
-                    // 如果告警项不在当前页面，显示简单提示
-                    alert('✅ 分析完成！请展开告警详情查看深度分析结果。');
+                    // If the alert item is not on the current page, show a simple notice
+                    alert('✅ Analysis complete! Expand the alert details to view the deep analysis results.');
                 }
             } else {
-                alert('分析失败: ' + (result.error || '未知错误'));
+                alert('Analysis failed: ' + (result.error || 'Unknown error'));
             }
         } catch (error) {
-            alert('请求失败: ' + error.message);
+            alert('Request failed: ' + error.message);
         }
     },
 
     /**
-     * 显示 OpenClaw 分析已触发的友好提示
+     * Show a friendly notification that OpenClaw analysis has been triggered
      */
     showTriggeredNotification(runId) {
-        // 创建浮层提示
+        // Create the overlay notification
         const notification = document.createElement('div');
         notification.style.cssText = `
             position: fixed;
@@ -1066,15 +1066,15 @@ const AlertsModule = {
         notification.innerHTML = `
             <div style="display:flex; align-items:center; margin-bottom:8px;">
                 <span style="font-size:1.5em; margin-right:10px;">\ud83d\ude80</span>
-                <strong style="font-size:1.1em;">已触发 OpenClaw 分析</strong>
+                <strong style="font-size:1.1em;">OpenClaw analysis triggered</strong>
             </div>
             <div style="font-size:0.9em; color:rgba(255,255,255,0.9); margin-bottom:8px;">
-                分析请求已发送，结果将在 OpenClaw 控制台展示
+                The analysis request has been sent; results will appear in the OpenClaw console
             </div>
             ${runId ? `<div style="font-size:0.8em; color:rgba(255,255,255,0.7);">Run ID: ${escapeHtml(String(runId))}</div>` : ''}
         `;
 
-        // 添加动画样式
+        // Add animation styles
         if (!document.getElementById('triggered-notification-style')) {
             const style = document.createElement('style');
             style.id = 'triggered-notification-style';
@@ -1093,7 +1093,7 @@ const AlertsModule = {
 
         document.body.appendChild(notification);
 
-        // 4秒后自动消失
+        // Auto-dismiss after 4 seconds
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease-in forwards';
             setTimeout(() => notification.remove(), 300);

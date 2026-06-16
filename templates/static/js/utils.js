@@ -1,12 +1,12 @@
 /**
- * 工具函数模块
- * 提供时间格式化、数字格式化、JSON 高亮、剪贴板操作等通用工具函数
+ * Utility functions module
+ * Provides common utility functions such as time formatting, number formatting, JSON highlighting, and clipboard operations
  */
 
 /**
- * 格式化时间戳为本地时间字符串
- * @param {number} timestamp - 时间戳（毫秒）
- * @returns {string} 格式化后的时间字符串 (MM/DD HH:mm)
+ * Format a timestamp into a local time string
+ * @param {number} timestamp - Timestamp (milliseconds)
+ * @returns {string} The formatted time string (MM/DD HH:mm)
  */
 function formatTime(timestamp) {
     if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
@@ -21,9 +21,9 @@ function formatTime(timestamp) {
 }
 
 /**
- * 计算相对时间（多久前）
- * @param {number} timestamp - 时间戳（毫秒）
- * @returns {string} 相对时间字符串（如：5分钟前、2小时前）
+ * Calculate relative time (how long ago)
+ * @param {number} timestamp - Timestamp (milliseconds)
+ * @returns {string} Relative time string (e.g.: 5 minutes ago, 2 hours ago)
  */
 function timeAgo(timestamp) {
     if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
@@ -32,25 +32,25 @@ function timeAgo(timestamp) {
     if (Number.isNaN(past.getTime())) return '-';
     const seconds = Math.floor((now - past) / 1000);
 
-    if (seconds < 60) return seconds + '秒前';
-    if (seconds < 3600) return Math.floor(seconds / 60) + '分钟前';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + '小时前';
-    return Math.floor(seconds / 86400) + '天前';
+    if (seconds < 60) return seconds + ' seconds ago';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' minutes ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' hours ago';
+    return Math.floor(seconds / 86400) + ' days ago';
 }
 
 /**
- * 格式化数字（添加千分位分隔符）
- * @param {number} num - 数字
- * @returns {string} 格式化后的数字字符串
+ * Format a number (add thousands separators)
+ * @param {number} num - Number
+ * @returns {string} The formatted number string
  */
 function formatNumber(num) {
     return num.toLocaleString('zh-CN');
 }
 
 /**
- * JSON 语法高亮
- * @param {object|string} json - JSON 对象或字符串
- * @returns {string} 带有语法高亮 HTML 的字符串
+ * JSON syntax highlighting
+ * @param {object|string} json - JSON object or string
+ * @returns {string} A string with syntax-highlighting HTML
  */
 function syntaxHighlightJSON(json) {
     if (typeof json !== 'string') {
@@ -77,8 +77,8 @@ function syntaxHighlightJSON(json) {
 }
 
 /**
- * 复制代码块内容到剪贴板
- * @param {HTMLElement} btn - 点击的复制按钮元素
+ * Copy code block content to the clipboard
+ * @param {HTMLElement} btn - The clicked copy button element
  */
 function copyToClipboard(btn) {
     const codeBlock = btn.closest('.code-wrapper').querySelector('pre');
@@ -86,7 +86,7 @@ function copyToClipboard(btn) {
 
     navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
-        btn.textContent = '✅ 已复制';
+        btn.textContent = '✅ Copied';
         btn.style.background = '#28a745';
         btn.style.borderColor = '#28a745';
 
@@ -96,15 +96,15 @@ function copyToClipboard(btn) {
             btn.style.borderColor = '';
         }, 2000);
     }).catch(err => {
-        console.error('复制失败:', err);
-        alert('复制失败');
+        console.error('Copy failed:', err);
+        alert('Copy failed');
     });
 }
 
 /**
- * HTML 转义，防止 XSS 攻击
- * @param {string} text - 原始文本
- * @returns {string} 转义后的 HTML 安全文本
+ * Escape HTML to prevent XSS attacks
+ * @param {string} text - Raw text
+ * @returns {string} The escaped, HTML-safe text
  */
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -113,9 +113,9 @@ function escapeHtml(text) {
 }
 
 /**
- * 获取告警图标
- * @param {string} importance - 重要性级别（high/medium/low）
- * @returns {string} 对应的 emoji 图标
+ * Get the alert icon
+ * @param {string} importance - Importance level (high/medium/low)
+ * @returns {string} The corresponding emoji icon
  */
 function getAlertIcon(importance) {
     const icons = { high: '🔴', medium: '🟡', low: '🟢' };
@@ -123,20 +123,20 @@ function getAlertIcon(importance) {
 }
 
 /**
- * 获取重要性文本
- * @param {string} importance - 重要性级别（high/medium/low）
- * @returns {string} 对应的中文文本
+ * Get the importance text
+ * @param {string} importance - Importance level (high/medium/low)
+ * @returns {string} The corresponding text
  */
 function getImportanceText(importance) {
-    const texts = { high: '高', medium: '中', low: '低' };
-    return texts[importance] || '低';
+    const texts = { high: 'High', medium: 'Medium', low: 'Low' };
+    return texts[importance] || 'Low';
 }
 
 /**
- * 渲染格式化的 JSON 代码块
- * @param {object} data - 要渲染的数据
- * @param {string} title - 代码块标题
- * @returns {string} HTML 字符串
+ * Render a formatted JSON code block
+ * @param {object} data - The data to render
+ * @param {string} title - Code block title
+ * @returns {string} HTML string
  */
 function renderJSONBlock(data, title = 'JSON') {
     const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
@@ -145,7 +145,7 @@ function renderJSONBlock(data, title = 'JSON') {
     let html = '<div class="code-wrapper">';
     html += '<div class="code-header">';
     html += '<span class="code-lang">' + title + '</span>';
-    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 复制</button>';
+    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 Copy</button>';
     html += '</div>';
     html += '<div class="code-block">';
     html += '<pre>' + highlighted + '</pre>';
@@ -156,19 +156,19 @@ function renderJSONBlock(data, title = 'JSON') {
 }
 
 /**
- * 显示错误信息
- * @param {string} message - 错误消息
+ * Show an error message
+ * @param {string} message - Error message
  */
 function showError(message) {
     document.getElementById('alertList').innerHTML =
-        '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">加载失败</div><div class="empty-text">' +
-        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">重试</button></div>';
+        '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Failed to load</div><div class="empty-text">' +
+        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">Retry</button></div>';
 }
 
 /**
- * 显示 Toast 通知
- * @param {string} message - 通知消息
- * @param {string} type - 类型：'success' | 'error' | 'info'
+ * Show a Toast notification
+ * @param {string} message - Notification message
+ * @param {string} type - Type: 'success' | 'error' | 'info'
  */
 function showToast(message, type) {
     type = type || 'info';
@@ -183,7 +183,7 @@ function showToast(message, type) {
 }
 
 /**
- * 渲染与告警管理一致的“加载更多”分页控件。
+ * Render a "Load more" pagination control consistent with the alert management view.
  */
 function renderLoadMorePagination(container, options) {
     if (!container) return;
@@ -203,13 +203,13 @@ function renderLoadMorePagination(container, options) {
 
     var totalText = total || (hasMore ? (loaded + '+') : loaded);
     var buttonHtml = hasMore
-        ? '<button data-action="load-more"' + (isLoading ? ' disabled' : '') + '>' + (isLoading ? '加载中...' : ('加载更多 ' + batchSize + ' 条')) + '</button>'
+        ? '<button data-action="load-more"' + (isLoading ? ' disabled' : '') + '>' + (isLoading ? 'Loading...' : ('Load ' + batchSize + ' more')) + '</button>'
         : '';
 
     container.innerHTML =
         '<div class="pagination compact-pagination">' +
             '<div class="pagination-info">' +
-                '已加载 <strong>' + loaded + '</strong> / <strong>' + totalText + '</strong> 条' +
+                'Loaded <strong>' + loaded + '</strong> / <strong>' + totalText + '</strong>' +
             '</div>' +
             '<div class="pagination-buttons">' + buttonHtml + '</div>' +
         '</div>';
