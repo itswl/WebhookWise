@@ -66,5 +66,6 @@ module = [
   "instructor",
   "uvloop",
   "gunicorn.*",
+  "pycron",
 ]
 ignore_missing_imports = true

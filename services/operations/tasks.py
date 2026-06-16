@@ -529,7 +529,7 @@ def _monthly_report_cron() -> str:
 
 @broker.task(task_name="scheduled_daily_report", schedule=[{"cron": _daily_report_cron()}])
 async def scheduled_daily_report() -> None:
-    from services.operations.weekly_report import generate_and_send_daily_report
+    from services.operations.periodic_report import generate_and_send_daily_report
 
     # Internally a no-op unless DAILY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
@@ -538,7 +538,7 @@ async def scheduled_daily_report() -> None:
 
 @broker.task(task_name="scheduled_weekly_report", schedule=[{"cron": _weekly_report_cron()}])
 async def scheduled_weekly_report() -> None:
-    from services.operations.weekly_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_weekly_report
 
     # Internally a no-op unless WEEKLY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
@@ -547,7 +547,7 @@ async def scheduled_weekly_report() -> None:
 
 @broker.task(task_name="scheduled_monthly_report", schedule=[{"cron": _monthly_report_cron()}])
 async def scheduled_monthly_report() -> None:
-    from services.operations.weekly_report import generate_and_send_monthly_report
+    from services.operations.periodic_report import generate_and_send_monthly_report
 
     # Internally a no-op unless MONTHLY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
