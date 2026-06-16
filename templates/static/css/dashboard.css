@@ -213,36 +213,57 @@ body {
 
 .nav-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.4rem;
   align-items: center;
 }
 
-.nav-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-md);
-  font-size: 0.875rem;
-}
-
-.nav-status {
-  border: 1px solid var(--border);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
+/* Compact health indicator: just a pulsing dot, with the full status in a
+   tooltip — replaces the verbose "Service running" pill to declutter the bar. */
+.nav-status-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.14);
   animation: pulse 2s infinite;
+  margin: 0 0.35rem;
+  flex: 0 0 auto;
+  cursor: default;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Visually-hidden but exposed to assistive tech (icon buttons keep their label
+   for screen readers while showing only the icon). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Square icon-only buttons for the nav utility actions. */
+.btn-icon {
+  padding: 0;
+  width: 38px;
+  height: 38px;
+  justify-content: center;
+  gap: 0;
+  font-size: 1rem;
+}
+
+.btn-icon.btn-lang {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -739,16 +760,12 @@ body {
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: 0.5rem;
+    align-items: center;
   }
 
-  .nav-status { display: none; }
-
-  .nav-actions .btn {
-    flex: 1;
-    justify-content: center;
-    min-width: 0;
-    padding: 0.5rem;
-    font-size: 0.8rem;
+  /* Icon buttons keep their square size on mobile rather than stretching. */
+  .nav-actions .btn-icon {
+    flex: 0 0 auto;
   }
 
   .stats-grid {

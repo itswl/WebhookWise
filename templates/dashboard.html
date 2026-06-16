@@ -6,8 +6,8 @@
     <title>Webhook Monitor</title>
 
     <!-- External stylesheets -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260612-refined-light">
-    <link rel="stylesheet" href="/static/css/components.css?v=20260612-refined-light">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
+    <link rel="stylesheet" href="/static/css/components.css?v=20260616-navbar">
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -35,23 +35,19 @@
                 </button>
             </div>
             <div class="nav-actions">
-                <div class="nav-status">
-                    <span class="status-dot"></span>
-                    <span data-i18n="nav.status.running">Service running</span>
-                </div>
-                <button class="btn" id="autoRefreshBtn" type="button">
+                <span class="nav-status-dot" data-i18n-title="nav.status.running" title="Service running" aria-label="Service running" role="img"></span>
+                <button class="btn btn-icon" id="autoRefreshBtn" type="button" data-i18n-title="nav.autoRefresh" title="Auto-refresh" data-i18n-aria-label="nav.autoRefresh" aria-label="Auto-refresh">
                     <span id="autoRefreshIcon">⏸️</span>
-                    <span id="autoRefreshText" data-i18n="nav.autoRefresh">Auto-refresh</span>
+                    <span id="autoRefreshText" class="sr-only" data-i18n="nav.autoRefresh">Auto-refresh</span>
                 </button>
-                <button class="btn" id="refreshBtn" type="button">
+                <button class="btn btn-icon" id="refreshBtn" type="button" data-i18n-title="nav.refresh" title="Refresh" data-i18n-aria-label="nav.refresh" aria-label="Refresh">
                     <span>🔄</span>
-                    <span data-i18n="nav.refresh">Refresh</span>
                 </button>
-                <button class="btn" id="authBtn" onclick="openAuthModal()">
+                <button class="btn btn-icon" id="authBtn" onclick="openAuthModal()" data-i18n-title="nav.credentials" title="Credentials" data-i18n-aria-label="nav.credentials" aria-label="Credentials">
                     <span>🔐</span>
-                    <span id="authBtnText" data-i18n="nav.credentials">Credentials</span>
+                    <span id="authBtnText" class="sr-only" data-i18n="nav.credentials">Credentials</span>
                 </button>
-                <button class="btn" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
+                <button class="btn btn-icon btn-lang" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-title="nav.langToggleAria" title="Switch language to Chinese" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
             </div>
         </div>
     </nav>
