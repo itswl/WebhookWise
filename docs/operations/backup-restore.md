@@ -1,74 +1,81 @@
-# 数据库备份与恢复
+# Database Backup and Restore
 
-WebhookWise 用 PostgreSQL custom-format 备份(`pg_dump -Fc`),每个 `.dump` 旁
-写一个同名 `.dump.sha256` 校验文件。备份与恢复脚本都依赖镜像内的
-`postgresql-client`(pg_dump/pg_restore)。
+WebhookWise uses PostgreSQL custom-format backups (`pg_dump -Fc`), writing a
+matching `.dump.sha256` checksum file next to each `.dump`. Both the backup and
+restore scripts depend on the `postgresql-client` (pg_dump/pg_restore) inside the
+image.
 
-## 备份
+## Backup
 
-### 手动一次性备份
+### Manual one-off backup
 
 ```bash
-python -m scripts.ops.backup_db --verbose          # 生成一份备份并清理过期备份
-python -m scripts.ops.backup_db --verify backups   # 校验目录内所有备份
-python -m scripts.ops.backup_db --cleanup-only     # 只按保留期清理
+python -m scripts.ops.backup_db --verbose          # Create a backup and clean up expired backups
+python -m scripts.ops.backup_db --verify backups   # Verify all backups in the directory
+python -m scripts.ops.backup_db --cleanup-only     # Only clean up by retention period
 ```
 
-配置见 `.env.example.all` 的 DB Backup 区段(`BACKUP_DIR` / `BACKUP_RETENTION_DAYS`
-/ `BACKUP_COMPRESS`;配置 `AWS_BUCKET` 后会上传到 S3 兼容存储)。
+For configuration, see the DB Backup section of `.env.example.all` (`BACKUP_DIR` / `BACKUP_RETENTION_DAYS`
+/ `BACKUP_COMPRESS`; setting `AWS_BUCKET` uploads to S3-compatible storage).
 
-### 定时备份(Docker Compose)
+### Scheduled backups (Docker Compose)
 
-`deploy/compose/docker-compose.yml` 提供一个 `backup` 服务(profile=backup),
-按 `BACKUP_INTERVAL_SECONDS`(默认 86400=每天)循环跑备份,写到宿主机
-`BACKUP_HOST_DIR`(默认 `./backups`,挂载到容器 `/backups`)。
+`deploy/compose/docker-compose.yml` provides a `backup` service (profile=backup)
+that runs backups in a loop on `BACKUP_INTERVAL_SECONDS` (default 86400 = daily),
+writing to the host `BACKUP_HOST_DIR` (default `./backups`, mounted into the
+container at `/backups`).
 
 ```bash
-# 启用定时备份服务(默认不启动,需显式带 profile)
+# Enable the scheduled backup service (not started by default; requires the profile explicitly)
 docker compose --profile backup up -d backup
-docker compose logs -f backup        # 看备份运行日志
-ls -lh backups/                      # 宿主机上的备份文件
+docker compose logs -f backup        # View the backup run logs
+ls -lh backups/                      # Backup files on the host
 ```
 
-> Kubernetes 部署请改用 CronJob 调度 `python -m scripts.ops.backup_db`(镜像已含
-> pg client);单机 compose 用上面的常驻服务即可。
+> For Kubernetes deployments, use a CronJob to schedule `python -m scripts.ops.backup_db`
+> (the image already includes the pg client); for single-host compose, the
+> long-running service above is enough.
 
-## 恢复
+## Restore
 
-恢复会 **DROP 并重建** 目标库对象(`pg_restore --clean --if-exists`),因此需要
-显式确认(交互式 y/N,或 `--yes`)。
+The restore will **DROP and recreate** the target database objects
+(`pg_restore --clean --if-exists`), so it requires explicit confirmation
+(interactive y/N, or `--yes`).
 
 ```bash
-# 在能连到数据库的环境里(DATABASE_URL 指向目标库)
+# In an environment that can connect to the database (DATABASE_URL points at the target database)
 python -m scripts.ops.restore_db --file backups/<name>.dump --verbose
-# 跳过交互确认(自动化场景):
+# Skip the interactive confirmation (for automation):
 python -m scripts.ops.restore_db --file backups/<name>.dump --yes
-# 跳过 checksum 校验(不建议):--no-verify
+# Skip the checksum verification (not recommended): --no-verify
 ```
 
-在 compose 线上环境里可在任一应用容器内执行:
+In a compose production environment, you can run it inside any application container:
 
 ```bash
 docker compose exec webhook-service python3 -m scripts.ops.restore_db \
   --file /backups/<name>.dump --yes --verbose
 ```
 
-## 恢复演练(建议每季度做一次)
+## Restore Drill (recommended quarterly)
 
-定期演练才能保证备份真的可恢复。推荐流程(在**非生产**库上做):
+Only regular drills can guarantee that a backup is truly recoverable. Recommended
+process (on a **non-production** database):
 
-1. 取最新备份并核对 checksum:
+1. Take the latest backup and check the checksum:
    `python -m scripts.ops.backup_db --verify backups`
-2. 准备一个空的演练库(单独的 `DATABASE_URL`,**绝不要指向生产**)。
-3. 恢复:`python -m scripts.ops.restore_db --file backups/<name>.dump --yes --verbose`
-4. 验证:连上演练库,确认关键表行数合理、`alembic_version` 为最新版本、
-   `SELECT count(*) FROM webhook_events;` 等返回预期数量。
-5. 记录演练时间与结果(恢复耗时、数据完整性),作为 RTO/RPO 依据。
+2. Prepare an empty drill database (a separate `DATABASE_URL`, **never point it at production**).
+3. Restore: `python -m scripts.ops.restore_db --file backups/<name>.dump --yes --verbose`
+4. Verify: connect to the drill database and confirm that key table row counts are
+   reasonable, `alembic_version` is at the latest revision, and
+   `SELECT count(*) FROM webhook_events;` and similar return the expected counts.
+5. Record the drill time and results (restore duration, data integrity) as the
+   basis for RTO/RPO.
 
-## 注意事项
+## Notes
 
-- 备份是 custom-format,只能用 `pg_restore`(不是 `psql < file`)恢复。
-- 恢复是破坏性操作:务必确认 `DATABASE_URL` 指向正确的目标库。
-- 生产恢复前先停写(停 api/worker)或在维护窗口进行,避免恢复期间的写入冲突。
-- 备份未上云时,宿主机磁盘故障会同时丢失数据库和备份;配置 `AWS_BUCKET`
-  把备份外发到对象存储是真正的容灾。
+- Backups are custom-format and can only be restored with `pg_restore` (not `psql < file`).
+- Restore is a destructive operation: always confirm that `DATABASE_URL` points at the correct target database.
+- Before a production restore, stop writes first (stop api/worker) or perform it during a maintenance window to avoid write conflicts during the restore.
+- When backups are not in the cloud, a host disk failure loses both the database and the backups; configuring `AWS_BUCKET`
+  to send backups out to object storage is true disaster recovery.

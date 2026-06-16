@@ -1,42 +1,42 @@
 # WebhookWise
 
-WebhookWise 是一个面向生产运维的智能 Webhook 接收、分析和转发服务。它把 Prometheus、Grafana、Alertmanager、飞书或任意第三方系统发来的事件统一归一化，异步写入队列和数据库，再通过 AI 分析、降噪去重、事务性转发和可观测性能力，把告警变成可以追踪、可以审计、可以行动的运维事件。
+WebhookWise is an intelligent Webhook receive, analysis, and forwarding service built for production operations. It normalizes events from Prometheus, Grafana, Alertmanager, Feishu, or any third-party system into a unified shape, writes them asynchronously to a queue and database, and then uses AI analysis, noise reduction and deduplication, transactional forwarding, and observability to turn alerts into operational events that can be tracked, audited, and acted on.
 
-它不是一个简单的 Webhook relay，而是一个小型 AIOps 控制面：
+It is not a simple Webhook relay, but a small AIOps control plane:
 
-- API 快速返回 `200 OK` 并完成入队，耗时处理进入 TaskIQ/Redis Stream。入队是耐久性边界，详见 [投递语义](#投递语义)。
-- Worker pipeline 负责归一化、持久化、去重、AI/rule 分析、降噪和转发决策。
-- Forward Outbox 让业务状态和外部 HTTP/飞书/OpenClaw 副作用解耦。
-- OTel-first 可观测性把 metrics、traces、logs、events、signals、profiles 串起来。
+- The API quickly returns `200 OK` once the request is enqueued, while time-consuming processing moves into TaskIQ/Redis Stream. Enqueueing is the durability boundary; see [Delivery Semantics](#delivery-semantics).
+- The Worker pipeline handles normalization, persistence, deduplication, AI/rule analysis, noise reduction, and forwarding decisions.
+- The Forward Outbox decouples business state from external HTTP/Feishu/OpenClaw side effects.
+- OTel-first observability ties together metrics, traces, logs, events, signals, and profiles.
 
-## 快速入口
+## Quick Links
 
-| 你想做什么 | 去哪里 |
+| What you want to do | Where to go |
 | --- | --- |
-| 启动本地环境 | [快速开始](#快速开始) |
-| 查看 API | 启动后访问 `http://localhost:8000/docs`，导出说明见 [docs/reference/api.md](docs/reference/api.md) |
-| 理解模块边界 | [docs/architecture/boundaries.md](docs/architecture/boundaries.md) |
-| 打开观测栈 | [docs/operations/observability/local-lab/README.md](docs/operations/observability/local-lab/README.md) |
-| 查询观测数据 | [docs/operations/observability/query-tools.md](docs/operations/observability/query-tools.md) |
-| 排查问题 | [docs/operations/troubleshooting.md](docs/operations/troubleshooting.md) |
-| 部署到 Kubernetes | [deploy/k8s/README.md](deploy/k8s/README.md) |
-| 参与开发 | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| 看版本变化 | [CHANGELOG.md](CHANGELOG.md) |
+| Start the local environment | [Quick Start](#quick-start) |
+| View the API | After startup, visit `http://localhost:8000/docs`; for export notes see [docs/reference/api.md](docs/reference/api.md) |
+| Understand module boundaries | [docs/architecture/boundaries.md](docs/architecture/boundaries.md) |
+| Open the observability stack | [docs/operations/observability/local-lab/README.md](docs/operations/observability/local-lab/README.md) |
+| Query observability data | [docs/operations/observability/query-tools.md](docs/operations/observability/query-tools.md) |
+| Troubleshoot issues | [docs/operations/troubleshooting.md](docs/operations/troubleshooting.md) |
+| Deploy to Kubernetes | [deploy/k8s/README.md](deploy/k8s/README.md) |
+| Contribute to development | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| See version changes | [CHANGELOG.md](CHANGELOG.md) |
 
-## 核心能力
+## Core Capabilities
 
-| 能力 | 说明 |
+| Capability | Description |
 | --- | --- |
-| 异步 Webhook 接收 | API 只做鉴权、限流、入队和基础落库，快速释放上游请求。 |
-| 多来源归一化 | Adapter 将不同生态 payload 规范成统一内部结构。 |
-| AI + rule 双分析 | 首选 LLM 结构化分析，外部异常时自动降级为规则分析。 |
-| OpenClaw 深度分析 | 可选接入 OpenClaw，通过 TaskIQ 延迟任务轮询分析结果。 |
-| 去重与降噪 | 基于 alert hash、时间窗口、相似度和可选语义信号识别重复与衍生告警。 |
-| 规则化转发 | 支持通用 Webhook、飞书卡片和 OpenClaw 目标。 |
-| 事务性 Outbox | 处理结果和转发意图同事务写库，再由 Worker 异步投递和重试。 |
-| OTel-first 可观测性 | 应用通过 OTLP 输出遥测，本地栈接入 Alloy、Prometheus、Tempo、Loki、Pyroscope。 |
+| Asynchronous Webhook receiving | The API only handles authentication, rate limiting, enqueueing, and basic persistence, releasing the upstream request quickly. |
+| Multi-source normalization | Adapters normalize payloads from different ecosystems into a unified internal structure. |
+| AI + rule dual analysis | Structured LLM analysis is preferred; it automatically falls back to rule-based analysis when the external service has problems. |
+| OpenClaw deep analysis | Optionally integrate OpenClaw and poll for analysis results via TaskIQ delayed tasks. |
+| Deduplication and noise reduction | Identifies duplicate and derived alerts based on alert hash, time window, similarity, and optional semantic signals. |
+| Rule-based forwarding | Supports generic Webhook, Feishu card, and OpenClaw targets. |
+| Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
+| OTel-first observability | The application emits telemetry over OTLP; the local stack integrates Alloy, Prometheus, Tempo, Loki, and Pyroscope. |
 
-## 系统流向
+## System Flow
 
 ```mermaid
 flowchart LR
@@ -56,37 +56,37 @@ flowchart LR
     otel --> obs["Alloy / Prometheus / Tempo / Loki / Pyroscope"]
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 准备配置
+### 1. Prepare configuration
 
 ```bash
 cp .env.example .env
 ```
 
-最少需要替换：
+At a minimum you need to replace:
 
-| 变量 | 用途 |
+| Variable | Purpose |
 | --- | --- |
-| `API_KEY` | 管理 API 读权限 Token。 |
-| `ADMIN_WRITE_KEY` | 写操作、重放、转发、重新分析等管理动作 Token。 |
-| `WEBHOOK_SECRET` | Webhook HMAC-SHA256 签名密钥。 |
-| `OPENAI_API_KEY` | 可选；开启 AI 分析时填写。 |
+| `API_KEY` | Token for read access to the management API. |
+| `ADMIN_WRITE_KEY` | Token for management actions such as writes, replays, forwarding, and re-analysis. |
+| `WEBHOOK_SECRET` | Webhook HMAC-SHA256 signing key. |
+| `OPENAI_API_KEY` | Optional; fill in when enabling AI analysis. |
 
-完整配置参考 [.env.example.all](.env.example.all)。配置只在进程启动时读取，修改后需要重启进程或滚动发布。
+For the complete configuration, see [.env.example.all](.env.example.all). Configuration is read only at process startup; after changes you must restart the process or perform a rolling release.
 
-### 2. 启动本地完整栈
+### 2. Start the full local stack
 
 ```bash
 docker compose up -d --build
 curl http://localhost:8000/ready
 ```
 
-Compose 会先启动 PostgreSQL 和 Redis，再运行 `migrate`，迁移成功后启动 API、Worker 和 Scheduler。使用云数据库或托管 Redis 时，可以只运行 `docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.yml up -d --build`，并在 `.env` 中把 `DATABASE_URL` / `REDIS_URL` 指向外部实例。
+Compose first starts PostgreSQL and Redis, then runs `migrate`, and after the migration succeeds it starts the API, Worker, and Scheduler. When using a cloud database or managed Redis, you can run only `docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.yml up -d --build` and point `DATABASE_URL` / `REDIS_URL` in `.env` at the external instances.
 
-根目录的 `compose.yaml` 是日常入口，只 include PostgreSQL、Redis、API、Worker、Scheduler 等业务栈；`docker compose ps/logs/exec` 默认也只看这组容器。完整 Compose 片段仍放在 `deploy/compose/`，观测栈使用独立 Compose project 启动。
+The root `compose.yaml` is the everyday entry point; it only includes the business stack such as PostgreSQL, Redis, API, Worker, and Scheduler, so `docker compose ps/logs/exec` by default only sees this set of containers. The full Compose fragments still live in `deploy/compose/`, and the observability stack is started as a separate Compose project.
 
-### 3. 发送测试事件
+### 3. Send a test event
 
 ```bash
 curl -X POST http://localhost:8000/v1/webhook \
@@ -94,20 +94,20 @@ curl -X POST http://localhost:8000/v1/webhook \
   -d '{"alertname":"TestAlert","severity":"critical","host":"prod-01"}'
 ```
 
-业务 API 只在 `/v1` 下暴露；如果启用了 Webhook 鉴权，需要按当前配置补充签名或 Token。
+The business API is only exposed under `/v1`; if Webhook authentication is enabled, you need to add a signature or Token according to the current configuration.
 
-### 4. 打开入口
+### 4. Open the entry points
 
-| 入口 | 地址 |
+| Entry point | Address |
 | --- | --- |
-| Dashboard | `http://localhost:8000/` 或 `http://localhost:8000/dashboard` |
+| Dashboard | `http://localhost:8000/` or `http://localhost:8000/dashboard` |
 | Swagger UI | `http://localhost:8000/docs` |
 | ReDoc | `http://localhost:8000/redoc` |
 | Health | `http://localhost:8000/live` / `http://localhost:8000/ready` |
 
-## 本地开发
+## Local Development
 
-如果 API/Worker 直接跑在宿主机，而 PostgreSQL/Redis 仍由 `deploy/compose/docker-compose.infra.yml` 提供，请在本机环境或 `.env` 中把 `DATABASE_URL` 的 host 改为 `localhost`，并把 `REDIS_URL` 改为 `redis://localhost:6379/0`。
+If the API/Worker run directly on the host while PostgreSQL/Redis are still provided by `deploy/compose/docker-compose.infra.yml`, change the host in `DATABASE_URL` to `localhost` and set `REDIS_URL` to `redis://localhost:6379/0` in your local environment or `.env`.
 
 ```bash
 pip install -r requirements.lock
@@ -116,44 +116,44 @@ pip install -r requirements-dev.lock
 uvicorn api.app:app --reload --port 8000
 ```
 
-另开一个终端启动 Worker：
+In another terminal, start the Worker:
 
 ```bash
 taskiq worker services.operations.taskiq_wiring:broker
 ```
 
-Scheduler 入口：
+Scheduler entry point:
 
 ```bash
 taskiq scheduler services.operations.taskiq_wiring:scheduler
 ```
 
-依赖策略：
+Dependency policy:
 
-- `requirements.txt` / `requirements-dev.txt` 是人工维护的直接依赖，统一表达最低支持版本。
-- `requirements.lock` / `requirements-dev.lock` 精确锁定解析结果，是本地安装、CI、Docker 构建和部署的准绳；不要用 `requirements.txt` 作为可复现安装入口。
-- 锁文件由 uv 生成，项目当前不是 `[project]` 风格 uv 工程，因此不维护 `uv.lock`。
-- GitHub Actions 使用 lock 文件安装，Dockerfile 只安装 `requirements.lock`，`scripts/check_requirements_locks.py` 会检查这些路径没有漂移。
-- Dependabot 每周扫描根目录 pip 依赖；依赖升级 PR 需要同时更新直接依赖声明和对应 lock 文件。
+- `requirements.txt` / `requirements-dev.txt` are the manually maintained direct dependencies and uniformly express the minimum supported versions.
+- `requirements.lock` / `requirements-dev.lock` pin the exact resolution result and are the source of truth for local installs, CI, Docker builds, and deployment; do not use `requirements.txt` as a reproducible install entry point.
+- The lock files are generated by uv. The project is currently not a `[project]`-style uv project, so it does not maintain `uv.lock`.
+- GitHub Actions installs from the lock files, the Dockerfile installs only `requirements.lock`, and `scripts/check_requirements_locks.py` checks that these paths have not drifted.
+- Dependabot scans the root pip dependencies weekly; a dependency upgrade PR needs to update both the direct dependency declarations and the corresponding lock files.
 
-更新锁文件：
+Update the lock files:
 
 ```bash
 uv pip compile requirements.txt -o requirements.lock --python-version 3.12
 uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.12
 ```
 
-## 常用验证
+## Common Verification
 
-| 层级 | 命令 | 覆盖内容 |
+| Level | Command | Coverage |
 | --- | --- | --- |
-| 静态检查 | `ruff check .` / `mypy` | 代码风格、类型边界。 |
-| 单元和进程内集成 | `pytest` | 纯函数、核心服务、FastAPI 到 pipeline 的进程内链路。 |
-| Docker E2E | `tests/e2e/run_webhook_to_feishu.sh` | PostgreSQL、Redis、API、Worker、Scheduler、fake Feishu 完整链路。 |
+| Static checks | `ruff check .` / `mypy` | Code style, type boundaries. |
+| Unit and in-process integration | `pytest` | Pure functions, core services, the in-process path from FastAPI to the pipeline. |
+| Docker E2E | `tests/e2e/run_webhook_to_feishu.sh` | The full path across PostgreSQL, Redis, API, Worker, Scheduler, and fake Feishu. |
 
-发版前或改动迁移、队列、转发链路时建议跑 Docker E2E。
+It is recommended to run the Docker E2E before a release or when changing migrations, the queue, or the forwarding path.
 
-## 部署
+## Deployment
 
 ### Docker Compose
 
@@ -162,7 +162,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-观测栈单独使用 `webhookwise-observability` project：
+The observability stack uses the separate `webhookwise-observability` project:
 
 ```bash
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
@@ -170,7 +170,7 @@ docker compose -p webhookwise-observability --env-file .env -f deploy/compose/do
 
 ### Database Backups
 
-`scripts.ops.backup_db` 使用 `pg_dump` 生成 PostgreSQL custom-format 备份，并为每个 `.dump` 写入同名 `.dump.sha256` 校验文件。
+`scripts.ops.backup_db` uses `pg_dump` to generate PostgreSQL custom-format backups and writes a matching `.dump.sha256` checksum file for each `.dump`.
 
 ```bash
 python -m scripts.ops.backup_db --verbose
@@ -178,11 +178,11 @@ python -m scripts.ops.backup_db --verify backups
 python -m scripts.ops.backup_db --cleanup-only
 ```
 
-配置项见 `.env.example.all` 的 `DB Backup` 区段。设置 `AWS_BUCKET` 后会上传备份和 checksum；对象存储上传失败时命令返回非 0。
+For configuration options, see the `DB Backup` section of `.env.example.all`. Setting `AWS_BUCKET` uploads the backup and checksum; the command returns non-zero when the object-storage upload fails.
 
 ### Kubernetes
 
-`deploy/k8s/` 提供基础清单：API、Worker、Scheduler、迁移 Job、Redis、PostgreSQL、ConfigMap、Secret 示例与 ServiceAccount。
+`deploy/k8s/` provides base manifests: API, Worker, Scheduler, migration Job, Redis, PostgreSQL, ConfigMap, Secret example, and ServiceAccount.
 
 ```bash
 cp deploy/k8s/secret.example.yaml /tmp/webhookwise-secret.yaml
@@ -191,77 +191,77 @@ kubectl apply -f /tmp/webhookwise-secret.yaml
 kubectl apply -k deploy/k8s
 ```
 
-应用镜像必须使用 release tag 或 digest，避免使用 `latest`。更多细节见 [deploy/k8s/README.md](deploy/k8s/README.md)。
+Application images must use a release tag or digest; avoid using `latest`. For more details, see [deploy/k8s/README.md](deploy/k8s/README.md).
 
-## 项目结构
+## Project Structure
 
 ```text
 .
-├── api/                  # FastAPI 路由、请求响应绑定和鉴权依赖
-├── adapters/             # 外部 Webhook payload 归一化和插件注册
-├── alembic/              # 数据库迁移
-├── core/                 # 配置、日志、鉴权、Redis、OTel、HTTP client 等运行时基础设施
-├── db/                   # SQLAlchemy engine/session 生命周期
-├── deploy/               # Compose、Kubernetes 与可观测性部署资源
-├── docs/                 # 架构、运维、参考文档
-├── models/               # SQLAlchemy ORM 模型
-├── prompts/              # AI 和深度分析 Prompt 模板
+├── api/                  # FastAPI routes, request/response binding, and auth dependencies
+├── adapters/             # External Webhook payload normalization and plugin registration
+├── alembic/              # Database migrations
+├── core/                 # Runtime infrastructure such as config, logging, auth, Redis, OTel, and HTTP client
+├── db/                   # SQLAlchemy engine/session lifecycle
+├── deploy/               # Compose, Kubernetes, and observability deployment resources
+├── docs/                 # Architecture, operations, and reference docs
+├── models/               # SQLAlchemy ORM models
+├── prompts/              # AI and deep-analysis prompt templates
 ├── schemas/              # Pydantic API schema
-├── scripts/              # 运维、导出、观测查询脚本
+├── scripts/              # Operations, export, and observability query scripts
 ├── services/
-│   ├── analysis/         # AI/rule/OpenClaw 分析、缓存、用量
-│   ├── forwarding/       # 转发规则、Outbox、远端投递、重试
-│   ├── notifications/    # 通知渠道和消息格式化
-│   ├── operations/       # TaskIQ 任务、调度、恢复、维护
-│   └── webhooks/         # Webhook ingest、pipeline、查询与命令
-├── templates/            # Dashboard HTML 和静态资源
+│   ├── analysis/         # AI/rule/OpenClaw analysis, caching, and usage
+│   ├── forwarding/       # Forwarding rules, Outbox, remote delivery, and retries
+│   ├── notifications/    # Notification channels and message formatting
+│   ├── operations/       # TaskIQ tasks, scheduling, recovery, and maintenance
+│   └── webhooks/         # Webhook ingest, pipeline, queries, and commands
+├── templates/            # Dashboard HTML and static assets
 └── tests/
-    ├── adapters/         # 外部 payload 适配器测试
-    ├── analysis/         # AI、OpenClaw、降噪和分析策略测试
-    ├── api/              # FastAPI 路由和 API contract 测试
-    ├── forwarding/       # 转发规则、Outbox、重试和 URL 安全测试
-    ├── integration/      # 进程内业务链路集成测试
-    ├── observability/    # 可观测性、文档和运维契约测试
-    ├── runtime/          # 配置、日志、Redis、迁移和运行时基础设施测试
-    ├── webhooks/         # Webhook 解析、pipeline、去重和抑制测试
+    ├── adapters/         # External payload adapter tests
+    ├── analysis/         # AI, OpenClaw, noise reduction, and analysis strategy tests
+    ├── api/              # FastAPI routes and API contract tests
+    ├── forwarding/       # Forwarding rules, Outbox, retries, and URL safety tests
+    ├── integration/      # In-process business path integration tests
+    ├── observability/    # Observability, documentation, and operations contract tests
+    ├── runtime/          # Config, logging, Redis, migration, and runtime infrastructure tests
+    ├── webhooks/         # Webhook parsing, pipeline, deduplication, and suppression tests
     ├── e2e/              # Docker E2E
-    ├── helpers/          # pytest helper
-    └── k6/               # 压测脚本
+    ├── helpers/          # pytest helpers
+    └── k6/               # Load-testing scripts
 ```
 
-更严格的 ownership 规则见 [docs/architecture/boundaries.md](docs/architecture/boundaries.md)。
+For stricter ownership rules, see [docs/architecture/boundaries.md](docs/architecture/boundaries.md).
 
-## 投递语义
+## Delivery Semantics
 
-理解这条链路的耐久性边界，才能正确评估丢失与重复风险：
+Understanding the durability boundaries of this path is what lets you correctly assess the risk of loss and duplication:
 
-- **接收 → 入队：accepted（非持久承诺）。** API 在把请求写入 Redis Stream（`XADD`）成功后即返回 `200 OK`，DB 落库发生在 Worker 端。因此 `200 OK` 表示"已接受入队"，不表示"已持久化"。Redis `XADD` 失败时 API 返回 5xx，上游应重试。
-- **`WEBHOOK_MQ_STREAM_MAXLEN` 是数据丢失旋钮，不只是内存旋钮。** Stream 按近似上限（`MAXLEN ~`）裁剪：当持续突发超过 Worker 消费速度、积压超过该上限时，最老的*未 ack* 条目会被裁掉，对应的已返回 `200` 的 webhook 会静默丢失。容量规划时按峰值积压设置该值，并配合队列积压告警（`queue.pending` / `queue.lag`）。
-- **Redis 持久化决定崩溃边界。** 仓库默认未配置 AOF/fsync；Redis 崩溃会丢失在途（已 `200` 但未消费）的 Stream 条目。需要更强保证时，给 Redis 开启 AOF 或使用托管实例。
-- **入队后：at-least-once。** Worker 处理失败按退避重试，耗尽进 dead-letter；转发经事务性 Outbox 投递，stale-recovery 与重试可能重复投递。下游应基于 `Idempotency-Key` 请求头去重（见 [services/forwarding](services/forwarding)）。
+- **Receive → enqueue: accepted (not a durability promise).** The API returns `200 OK` as soon as the request is written to the Redis Stream (`XADD`); DB persistence happens on the Worker side. So `200 OK` means "accepted and enqueued", not "persisted". When the Redis `XADD` fails, the API returns 5xx and the upstream should retry.
+- **`WEBHOOK_MQ_STREAM_MAXLEN` is a data-loss knob, not just a memory knob.** The stream is trimmed by an approximate cap (`MAXLEN ~`): when sustained bursts exceed the Worker consumption rate and the backlog exceeds that cap, the oldest *un-acked* entries are trimmed, and the corresponding webhooks that already returned `200` are silently lost. During capacity planning, set this value based on peak backlog and pair it with queue backlog alerts (`queue.pending` / `queue.lag`).
+- **Redis persistence determines the crash boundary.** The repository does not configure AOF/fsync by default; a Redis crash loses in-flight Stream entries (already `200` but not yet consumed). When you need stronger guarantees, enable AOF for Redis or use a managed instance.
+- **After enqueue: at-least-once.** Failed Worker processing retries with backoff and goes to dead-letter once exhausted; forwarding is delivered through the transactional Outbox, and stale-recovery plus retries may deliver duplicates. Downstream should deduplicate based on the `Idempotency-Key` request header (see [services/forwarding](services/forwarding)).
 
-需要"入口零丢失"时，应在上游补充重试/确认，或在 API 前置持久化队列；当前实现以低入口延迟换取这一权衡。
+When you need "zero loss at ingress", you should add retries/acknowledgements upstream or place a durable queue in front of the API; the current implementation trades this off for low ingress latency.
 
-## 运行契约
+## Runtime Contract
 
-- API 接收层不做长耗时分析，不直接执行外部转发副作用。
-- 接收层是 at-most-once-until-consumed：`200 OK` 表示已入队（accepted），未表示已持久化；`WEBHOOK_MQ_STREAM_MAXLEN` 与 Redis 持久化共同决定丢失边界（详见[投递语义](#投递语义)）。
-- Worker 是业务 pipeline 的主执行面，Scheduler 只投递周期任务。
-- Forward Outbox 是外部投递的审计边界，重试和过期状态必须落库。
-- 配置是静态进程配置，不从数据库或 Redis 动态覆盖。
-- 应用只通过 OTLP 输出遥测，不直接暴露 `/metrics`。
-- 新增 Webhook 来源优先新增 adapter 和测试，再复用现有 pipeline。
-- 新增业务能力优先放入最近的 `services/*` 领域包，避免把业务逻辑塞进 `core/`。
+- The API receive layer does not do long-running analysis and does not directly execute external forwarding side effects.
+- The receive layer is at-most-once-until-consumed: `200 OK` means accepted (enqueued), not persisted; `WEBHOOK_MQ_STREAM_MAXLEN` and Redis persistence together determine the loss boundary (see [Delivery Semantics](#delivery-semantics)).
+- The Worker is the main execution surface of the business pipeline; the Scheduler only dispatches periodic tasks.
+- The Forward Outbox is the audit boundary for external delivery; retries and expired states must be persisted to the database.
+- Configuration is static process configuration and is not dynamically overridden from the database or Redis.
+- The application emits telemetry only over OTLP and does not directly expose `/metrics`.
+- For a new Webhook source, prefer adding an adapter and tests first, then reusing the existing pipeline.
+- For a new business capability, prefer placing it in the nearest `services/*` domain package and avoid stuffing business logic into `core/`.
 
-## 文档地图
+## Documentation Map
 
-完整文档入口见 [docs/README.md](docs/README.md)。
+For the complete documentation entry point, see [docs/README.md](docs/README.md).
 
-| 分类 | 文档 |
+| Category | Documents |
 | --- | --- |
-| 架构 | [模块边界](docs/architecture/boundaries.md) |
-| 运维 | [可观测性](docs/operations/observability/overview.md)、[Grafana 大盘](docs/operations/observability/dashboards.md)、[查询工具](docs/operations/observability/query-tools.md)、[排障](docs/operations/troubleshooting.md) |
-| 参考 | [API 文档](docs/reference/api.md)、[Kubernetes](deploy/k8s/README.md)、[贡献指南](CONTRIBUTING.md)、[变更记录](CHANGELOG.md) |
+| Architecture | [Module Boundaries](docs/architecture/boundaries.md) |
+| Operations | [Observability](docs/operations/observability/overview.md), [Grafana Dashboards](docs/operations/observability/dashboards.md), [Query Tools](docs/operations/observability/query-tools.md), [Troubleshooting](docs/operations/troubleshooting.md) |
+| Reference | [API Docs](docs/reference/api.md), [Kubernetes](deploy/k8s/README.md), [Contributing Guide](CONTRIBUTING.md), [Changelog](CHANGELOG.md) |
 
 ## License
 

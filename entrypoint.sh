@@ -1,9 +1,9 @@
 #!/bin/bash
-# 容器进程入口：只负责运行时初始化和 RUN_MODE 分发。
+# Container process entrypoint: only handles runtime initialization and RUN_MODE dispatch.
 
 set -e
 
-# 动态加载 jemalloc（适配 x86_64/aarch64）
+# Dynamically load jemalloc (works for x86_64/aarch64)
 JEMALLOC_PATH=$(find /usr/lib -name "libjemalloc.so.2" -print -quit 2>/dev/null)
 if [ -n "$JEMALLOC_PATH" ]; then
     if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
