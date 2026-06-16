@@ -1,10 +1,10 @@
 """
 tests/analysis/test_orchestrator.py
 ===================================
-测试 webhook command/query services 的纯函数逻辑：
-- get_client_ip()：IP 提取
-- _resolve_analysis_for_duplicate()：重复告警的分析结果解析
-- _row_to_summary_dict()：行数据序列化
+Tests for the pure-function logic of the webhook command/query services:
+- get_client_ip(): IP extraction
+- _resolve_analysis_for_duplicate(): resolving the analysis result for duplicate alerts
+- _row_to_summary_dict(): row data serialization
 """
 
 from datetime import datetime
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 
 def _make_request(headers: dict, client_host: str | None = "127.0.0.1"):
-    """构造最小 Request mock。"""
+    """Build a minimal Request mock."""
     req = MagicMock()
     req.headers = headers
     req.client = MagicMock()
@@ -126,7 +126,7 @@ def test_resolve_analysis_returns_unknown_contract_if_both_missing():
 
 
 def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing():
-    """重新分析后，若原始告警无分析，应更新原始告警的 ai_analysis。"""
+    """After re-analysis, if the original alert has no analysis, the original alert's ai_analysis should be updated."""
     from services.webhooks.command_service import _resolve_analysis_for_duplicate
 
     ai = {"summary": "Root cause found", "importance": "high"}
@@ -137,13 +137,13 @@ def test_resolve_analysis_updates_original_when_reanalyzed_and_original_missing(
 
 
 def test_resolve_analysis_does_not_overwrite_original_when_not_reanalyzed():
-    """非重分析时，不应修改原始告警的 ai_analysis。"""
+    """When not re-analyzing, the original alert's ai_analysis should not be modified."""
     from services.webhooks.command_service import _resolve_analysis_for_duplicate
 
     ai = {"summary": "New analysis", "importance": "medium"}
     original = _make_original(ai_analysis={"summary": "Original"}, importance="low")
     _resolve_analysis_for_duplicate(ai, original, reanalyzed=False)
-    # 原始的 ai_analysis 不应被覆盖（reanalyzed=False 且原始已有分析）
+    # The original ai_analysis should not be overwritten (reanalyzed=False and the original already has analysis)
     assert original.ai_analysis["summary"] == "Original"
 
 
@@ -183,7 +183,7 @@ def _make_row(
     row.parsed_data = parsed_data or {}
     row.created_at = created_at or datetime(2025, 1, 1, 11, 59, 0)
     row.prev_alert_id = prev_alert_id
-    # prev_alert_timestamp 是子查询列
+    # prev_alert_timestamp is a subquery column
     row.prev_alert_timestamp = None
     return row
 
@@ -205,7 +205,7 @@ def test_row_to_summary_dict_timestamps_are_isoformat():
 
     row = _make_row()
     d = _row_to_summary_dict(row)
-    # timestamp 和 created_at 应为 ISO 格式字符串（可被 JSON 序列化）
+    # timestamp and created_at should be ISO-format strings (JSON-serializable)
     assert isinstance(d["timestamp"], str)
     assert "T" in d["timestamp"]
     assert d["timestamp"].endswith("Z")

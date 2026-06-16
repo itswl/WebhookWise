@@ -148,10 +148,10 @@ async def test_circuit_breaker_lua_transitions_open_closed(real_redis: redis.Red
         == 1
     )
     assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "1000") == "open"
-    # timeout 后直接恢复为 closed（已去掉 HALF_OPEN 状态）
+    # after the timeout it recovers directly to closed (the HALF_OPEN state has been removed)
     assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "2000") == "closed"
 
-    # record_success 在 closed 状态下是 no-op，但 state_key 已被 check_state 置为 closed
+    # record_success is a no-op in the closed state, but state_key was already set to closed by check_state
     await real_redis.set(state_key, "open")
     assert await real_redis.eval(CIRCUIT_BREAKER_RECORD_SUCCESS, 3, failures_key, state_key, open_until_key) == 0
     assert await real_redis.eval(CIRCUIT_BREAKER_CHECK_STATE, 2, state_key, open_until_key, "2001") == "closed"

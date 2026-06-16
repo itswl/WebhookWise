@@ -1,8 +1,9 @@
 """
 tests/analysis/test_noise_reduction_core.py
 =============================================
-测试告警降噪核心算法：特征提取、Jaccard 相似度、评分逻辑、根因判定。
-这些是纯函数，不依赖数据库或外部服务。
+Tests for the alert noise-reduction core algorithms: feature extraction,
+Jaccard similarity, scoring logic, and root-cause determination.
+These are pure functions that do not depend on a database or external services.
 """
 
 from datetime import datetime, timedelta
@@ -70,7 +71,7 @@ def test_tokenize_extracts_english_tokens():
 
 
 def test_tokenize_short_tokens_excluded():
-    """小于 3 个字符的 token 不包含。"""
+    """Tokens shorter than 3 characters are excluded."""
     tokens = _tokenize_text("a bb ccc dddd")
     assert "a" not in tokens
     assert "bb" not in tokens
@@ -81,7 +82,7 @@ def test_tokenize_short_tokens_excluded():
 def test_tokenize_extracts_chinese_tokens():
     # regex [一-鿿]{2,} splits on non-CJK chars (，), so we get segments
     tokens = _tokenize_text("数据库连接失败，请检查配置")
-    # 确保至少有一个包含中文字符的 token 被提取出来
+    # Ensure at least one token containing Chinese characters is extracted
     assert any(len(t) >= 2 for t in tokens)
 
 
@@ -116,7 +117,7 @@ def test_extract_resource_ids_labels_dict():
 
 
 def test_extract_resource_ids_nested_alerts():
-    """Prometheus alertmanager 格式：alerts[0].labels.instance"""
+    """Prometheus alertmanager format: alerts[0].labels.instance"""
     data = {"alerts": [{"labels": {"instance": "web-01", "alertname": "HighCPU"}}]}
     ids = _extract_resource_ids(data)
     assert "web-01" in ids
@@ -130,7 +131,7 @@ def test_extract_resource_ids_empty_data():
 
 
 def test_score_same_source_and_resources_high_score():
-    """来源相同、资源相同的告警应该得高分。"""
+    """Alerts with the same source and same resources should score high."""
     current = _make_ctx(
         event_id=2,
         source="prometheus",
@@ -142,14 +143,14 @@ def test_score_same_source_and_resources_high_score():
         source="prometheus",
         importance="high",
         parsed_data={"host": "prod-01", "alertname": "HighCPU"},
-        offset_seconds=60,  # 1 分钟前
+        offset_seconds=60,  # 1 minute ago
     )
     score = score_candidate(current, candidate, window_minutes=5)
     assert score > 0.7
 
 
 def test_score_different_source_lower_score():
-    """来源不同时，相比来源相同得分应更低。"""
+    """A different source should score lower than the same source."""
     base_data = {"host": "prod-01", "alertname": "HighCPU"}
     current = _make_ctx(event_id=2, source="grafana", parsed_data=base_data)
     same_src = _make_ctx(event_id=1, source="grafana", parsed_data=base_data, offset_seconds=60)
@@ -161,25 +162,25 @@ def test_score_different_source_lower_score():
 
 
 def test_score_time_decay_for_older_candidates():
-    """时间越久远得分越低（时间窗口过滤由调用方负责）。"""
+    """The older the candidate, the lower the score (time-window filtering is the caller's responsibility)."""
     current = _make_ctx(event_id=2)
-    candidate = _make_ctx(event_id=1, offset_seconds=600)  # 10 分钟前
+    candidate = _make_ctx(event_id=1, offset_seconds=600)  # 10 minutes ago
     score_old = score_candidate(current, candidate, window_minutes=5)
-    candidate_recent = _make_ctx(event_id=1, offset_seconds=30)  # 30 秒前
+    candidate_recent = _make_ctx(event_id=1, offset_seconds=30)  # 30 seconds ago
     score_recent = score_candidate(current, candidate_recent, window_minutes=5)
     assert score_old < score_recent
 
 
 def test_score_future_candidate_returns_zero():
-    """候选时间戳比当前更新（未来），应得 0 分。"""
-    current = _make_ctx(event_id=2, offset_seconds=120)  # 2 分钟前
-    candidate = _make_ctx(event_id=1, offset_seconds=0)  # 更新（"未来"）
+    """A candidate timestamp newer than the current one (in the future) should score 0."""
+    current = _make_ctx(event_id=2, offset_seconds=120)  # 2 minutes ago
+    candidate = _make_ctx(event_id=1, offset_seconds=0)  # newer (in the "future")
     score = score_candidate(current, candidate, window_minutes=5)
     assert score == 0.0
 
 
 def test_score_completely_different_alerts_low_score():
-    """完全不同的告警得分接近 0。"""
+    """Completely different alerts score close to 0."""
     current = _make_ctx(
         event_id=2,
         source="github",
@@ -230,7 +231,7 @@ def test_score_uses_embedding_similarity_when_available():
 
 
 def test_analyze_standalone_no_related_alerts():
-    """无历史告警时，结果应为 standalone，不抑制转发。"""
+    """With no historical alerts, the result should be standalone and forwarding should not be suppressed."""
     current = _make_ctx(
         event_id=10, source="prometheus", importance="high", parsed_data={"host": "prod-01", "alertname": "HighCPU"}
     )
@@ -241,7 +242,7 @@ def test_analyze_standalone_no_related_alerts():
 
 
 def test_analyze_marks_derived_when_confidence_high():
-    """高置信度相关告警应被标记为衍生告警，抑制转发。"""
+    """A high-confidence related alert should be marked as derived and have forwarding suppressed."""
     base_data = {"host": "prod-01", "alertname": "HighCPU", "labels": {"instance": "prod-01"}}
 
     current = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data)
@@ -257,7 +258,7 @@ def test_analyze_marks_derived_when_confidence_high():
 
 
 def test_analyze_suppress_derived_false_allows_forward():
-    """suppress_derived=False 时，即使衍生也不抑制转发。"""
+    """When suppress_derived=False, forwarding is not suppressed even for derived alerts."""
     base_data = {"host": "prod-01", "alertname": "MemoryLeak"}
     current = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data)
     root = _make_ctx(event_id=1, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=10)
@@ -268,7 +269,7 @@ def test_analyze_suppress_derived_false_allows_forward():
 
 
 def test_analyze_related_alert_detected():
-    """相同来源和资源的告警应被检测为相关（时间衰减由调用方预过滤保障）。"""
+    """Alerts with the same source and resources should be detected as related (time decay is guaranteed by the caller's pre-filtering)."""
     current = _make_ctx(event_id=2, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"})
     related = _make_ctx(
         event_id=1, source="prometheus", parsed_data={"host": "prod-01", "alertname": "HighCPU"}, offset_seconds=120
@@ -279,25 +280,25 @@ def test_analyze_related_alert_detected():
 
 
 def test_analyze_alert_storm_detected():
-    """高重要性告警有 >=2 个相关告警时，标记为 root_cause（告警风暴）。"""
+    """A high-importance alert with >=2 related alerts is marked as root_cause (alert storm)."""
     base_data = {"host": "prod-01", "alertname": "DBTimeout"}
     current = _make_ctx(event_id=10, source="prometheus", importance="high", parsed_data=base_data)
     related_a = _make_ctx(event_id=1, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=30)
     related_b = _make_ctx(event_id=2, source="prometheus", importance="high", parsed_data=base_data, offset_seconds=60)
 
-    # 置信度设高 → 两个都是衍生 → 但当前是 high 且有 >=2 关联 → 触发 root_cause
-    # 注意：root_cause 分支要求 best_score < min_confidence 但 related_ids >= 2
+    # Confidence set high -> both are derived -> but current is high and has >=2 related -> triggers root_cause
+    # Note: the root_cause branch requires best_score < min_confidence but related_ids >= 2
     decision = analyze_noise_reduction(
         current, [related_a, related_b], window_minutes=5, min_confidence=0.99, suppress_derived=True
     )
-    # 当 best_score 不够高时触发 root_cause 分支
+    # The root_cause branch triggers when best_score is not high enough
     if decision.relation == "root_cause":
         assert decision.suppress_forward is False
         assert decision.related_alert_count >= 2
 
 
 def test_analyze_multiple_candidates_picks_highest_score():
-    """多个候选时，应选择得分最高的作为根因。"""
+    """With multiple candidates, the highest-scoring one should be chosen as the root cause."""
     base_data = {"host": "prod-01", "alertname": "HighCPU"}
     current = _make_ctx(event_id=5, source="prometheus", importance="high", parsed_data=base_data)
 

@@ -1,8 +1,9 @@
 """
 tests/webhooks/test_pipeline_parse.py
 =====================================
-测试 request_parser.parse_request() 和 load_event_payload() 纯逻辑。
-这两个函数处理进入系统的第一道数据解析，错误会导致事件完全丢失。
+Tests the pure logic of request_parser.parse_request() and load_event_payload().
+These two functions handle the first stage of data parsing as events enter the
+system; an error here causes the event to be lost entirely.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,8 +32,8 @@ def test_parse_request_infers_source_from_header():
         "alerts": [{"labels": {"alertname": "Test", "severity": "critical", "instance": "h1"}, "annotations": {}}]
     }
     ctx = parse_request("1.2.3.4", {"x-webhook-source": "grafana"}, payload, b"", None, None)
-    # grafana 格式不匹配 prometheus payload → fallback 到 header 提示
-    # 实际取决于适配器检测，header source 作为 hint
+    # grafana format does not match the prometheus payload -> fall back to the header hint
+    # The actual result depends on adapter detection, with the header source used as a hint
     assert ctx.source is not None
 
 
@@ -81,7 +82,7 @@ def test_parse_request_timestamp_passed_through():
 
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_parsed_data_when_present():
-    """parsed_data 已存在时直接返回，无需解压。"""
+    """When parsed_data already exists, return it directly without decompressing."""
     from services.webhooks.repository import load_event_payload
 
     event = MagicMock()
@@ -96,7 +97,7 @@ async def test_load_event_payload_returns_parsed_data_when_present():
 
 @pytest.mark.asyncio
 async def test_load_event_payload_decompresses_when_parsed_data_none():
-    """parsed_data 为 None 时，从 raw_payload 解压并解析 JSON。"""
+    """When parsed_data is None, decompress raw_payload and parse the JSON."""
     from services.webhooks.repository import load_event_payload
 
     data = {"alerts": [{"labels": {"alertname": "DiskFull"}}]}
@@ -116,7 +117,7 @@ async def test_load_event_payload_decompresses_when_parsed_data_none():
 
 @pytest.mark.asyncio
 async def test_load_event_payload_returns_none_on_invalid_json():
-    """解压后内容不是有效 JSON 时，parsed_data 应为 None（不抛异常）。"""
+    """When the decompressed content is not valid JSON, parsed_data should be None (no exception raised)."""
     from services.webhooks.repository import load_event_payload
 
     event = MagicMock()
@@ -132,7 +133,7 @@ async def test_load_event_payload_returns_none_on_invalid_json():
 
 @pytest.mark.asyncio
 async def test_load_event_payload_handles_none_raw_payload():
-    """raw_payload 为 None 时不崩溃，返回 None, ''。"""
+    """When raw_payload is None, do not crash; return None, ''."""
     from services.webhooks.repository import load_event_payload
 
     event = MagicMock()

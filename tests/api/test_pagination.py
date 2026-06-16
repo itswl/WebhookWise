@@ -1,5 +1,5 @@
 """
-测试分页查询功能
+Tests for paginated query functionality.
 """
 
 from collections.abc import AsyncIterator
@@ -22,7 +22,7 @@ async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]
 
     Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-    # 插入一些测试数据
+    # Insert some test data
     async with Session() as session:
         for _i in range(1, 16):
             event = WebhookEvent(
@@ -42,28 +42,28 @@ async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]
 async def test_list_webhook_summaries_pagination(
     mock_session_scope: async_sessionmaker[AsyncSession],
 ) -> None:
-    # 测试第一页
+    # Test the first page
     async with mock_session_scope() as session:
         webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=None, page_size=5)
     assert len(webhooks) == 5
     assert has_more is True
     assert next_cursor == 11
 
-    # 测试第二页
+    # Test the second page
     async with mock_session_scope() as session:
         webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=11, page_size=5)
     assert len(webhooks) == 5
     assert has_more is True
     assert next_cursor == 6
 
-    # 测试第三页
+    # Test the third page
     async with mock_session_scope() as session:
         webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=6, page_size=5)
     assert len(webhooks) == 5
     assert has_more is False
-    assert next_cursor is None  # 5, 4, 3, 2, 1 (没有更多了)
+    assert next_cursor is None  # 5, 4, 3, 2, 1 (no more left)
 
-    # 验证最后一页
+    # Verify the last page
     async with mock_session_scope() as session:
         webhooks, has_more, next_cursor = await list_webhook_summaries(session, cursor=1, page_size=5)
     assert len(webhooks) == 0
