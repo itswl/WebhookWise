@@ -573,7 +573,7 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
-    assert "Web Crypto 加密后保存在本机 localStorage" in dashboard_html
+    assert "encrypted with the browser's Web Crypto API and stored in this machine's localStorage" in dashboard_html
 
 
 def test_dashboard_token_storage_encrypts_and_decrypts_with_webcrypto() -> None:

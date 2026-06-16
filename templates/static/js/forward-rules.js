@@ -1,23 +1,23 @@
 /**
- * 转发规则管理模块
- * 实现转发规则的增删改查和测试功能
+ * Forward Rule Management Module
+ * Implements create, read, update, delete, and test functionality for forward rules
  */
 
-// 存储当前规则列表
+// Stores the current list of rules
 let forwardRules = [];
 
 /**
- * 加载转发规则列表
+ * Load the list of forward rules
  */
 async function loadForwardRules() {
-    console.log('📋 加载转发规则...');
+    console.log('📋 Loading forward rules...');
     const container = document.getElementById('forwardRulesList');
 
     try {
         container.innerHTML = `
             <div class="loading">
                 <div class="spinner"></div>
-                <p>加载中...</p>
+                <p>Loading...</p>
             </div>
         `;
 
@@ -27,29 +27,29 @@ async function loadForwardRules() {
         if (result.success) {
             forwardRules = result.data || [];
             renderForwardRules(forwardRules);
-            console.log('✅ 加载了', forwardRules.length, '条规则');
+            console.log('✅ Loaded', forwardRules.length, 'rules');
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    <p>❌ 加载失败: ${escapeHtml(result.error || '未知错误')}</p>
-                    <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">重试</button>
+                    <p>❌ Load failed: ${escapeHtml(result.error || 'Unknown error')}</p>
+                    <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">Retry</button>
                 </div>
             `;
         }
     } catch (error) {
-        console.error('❌ 加载转发规则失败:', error);
+        console.error('❌ Failed to load forward rules:', error);
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                <p>❌ 加载失败: ${escapeHtml(error.message || String(error))}</p>
-                <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">重试</button>
+                <p>❌ Load failed: ${escapeHtml(error.message || String(error))}</p>
+                <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">Retry</button>
             </div>
         `;
     }
 }
 
 /**
- * 渲染规则列表
- * @param {Array} rules - 规则数组
+ * Render the rule list
+ * @param {Array} rules - array of rules
  */
 function renderForwardRules(rules) {
     const container = document.getElementById('forwardRulesList');
@@ -58,14 +58,14 @@ function renderForwardRules(rules) {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">
                 <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
-                <p style="font-size: 16px; margin-bottom: 10px;">暂无转发规则</p>
-                <p style="font-size: 14px;">点击"新增规则"按钮创建第一条转发规则</p>
+                <p style="font-size: 16px; margin-bottom: 10px;">No forward rules</p>
+                <p style="font-size: 14px;">Click the "New Rule" button to create your first forward rule</p>
             </div>
         `;
         return;
     }
 
-    // 按优先级排序（高优先级在前）
+    // Sort by priority (higher priority first)
     const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     let html = '<div class="rules-list" style="display: flex; flex-direction: column; gap: 15px;">';
@@ -79,16 +79,16 @@ function renderForwardRules(rules) {
 }
 
 /**
- * 渲染单条规则卡片
- * @param {Object} rule - 规则对象
+ * Render a single rule card
+ * @param {Object} rule - rule object
  */
 function renderRuleCard(rule) {
     const importanceText = escapeHtml(formatImportance(rule.match_importance));
     const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
-    const sourceText = escapeHtml(rule.match_source || '全部');
-    const projectText = escapeHtml(rule.match_project || '全部');
-    const regionText = escapeHtml(rule.match_region || '全部');
-    const environmentText = escapeHtml(rule.match_environment || '全部');
+    const sourceText = escapeHtml(rule.match_source || 'All');
+    const projectText = escapeHtml(rule.match_project || 'All');
+    const regionText = escapeHtml(rule.match_region || 'All');
+    const environmentText = escapeHtml(rule.match_environment || 'All');
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
 
     const isEnabled = rule.enabled;
@@ -136,7 +136,7 @@ function renderRuleCard(rule) {
                         </span>
                     </label>
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
-                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">已停用</span>' : ''}
+                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">Disabled</span>' : ''}
                 </div>
                 <span style="
                     background: #f1f5f9;
@@ -146,86 +146,86 @@ function renderRuleCard(rule) {
                     font-weight: 600;
                     color: #475569;
                     border: 1px solid #cbd5e1;
-                ">⬆️ 优先级: ${rule.priority || 0}</span>
+                ">⬆️ Priority: ${rule.priority || 0}</span>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
-                <!-- 匹配条件区 -->
+                <!-- Match conditions area -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 命中条件</div>
-                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>事件类型:</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(t) { var m = { webhook_forward: '告警转发', manual_forward: '手动转发', ai_error: 'AI错误', ai_degraded: 'AI降级', deep_analysis: '深度分析', outbox_exhausted: '转发耗尽', rule_test: '测试' }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[t.trim()] || t.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
-                    <div style="margin-bottom: 0.5rem;"><strong>重要性:</strong> ${importanceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>告警状态:</strong> ${duplicateText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>来源:</strong> ${sourceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>项目:</strong> ${projectText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>区域:</strong> ${regionText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>环境:</strong> ${environmentText}</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 Match Conditions</div>
+                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>Event Type:</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(t) { var m = { webhook_forward: 'Alert Forward', manual_forward: 'Manual Forward', ai_error: 'AI Error', ai_degraded: 'AI Degraded', deep_analysis: 'Deep Analysis', outbox_exhausted: 'Forward Exhausted', rule_test: 'Test' }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[t.trim()] || t.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
+                    <div style="margin-bottom: 0.5rem;"><strong>Importance:</strong> ${importanceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Alert Status:</strong> ${duplicateText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Source:</strong> ${sourceText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Project:</strong> ${projectText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Region:</strong> ${regionText}</div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Environment:</strong> ${environmentText}</div>
                     ${rule.match_payload ? '<div><strong>Payload:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
                 </div>
 
-                <!-- 转发目标区 -->
+                <!-- Forward target area -->
                 <div class="rule-target" style="font-size: 0.95rem; color: #334155; background: #f0fdf4; padding: 1.25rem; border-radius: 8px; border: 1px dashed #86efac;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 动作执行</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 Action</div>
                     <div style="margin-bottom: 0.75rem;">
-                        <strong>推送到:</strong> ${targetTypeText}
+                        <strong>Push to:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
                     </div>
                     <div style="word-break: break-all; color: #0f172a; font-family: 'Fira Code', monospace; font-size: 0.85rem; background: #ffffff; padding: 0.75rem; border-radius: 6px; border: 1px solid #d1fae5; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> 命中此规则后，停止匹配后续规则</div>' : ''}
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> After matching this rule, stop matching subsequent rules</div>' : ''}
                 </div>
             </div>
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
-                    🧪 测试通道
+                    🧪 Test Channel
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
-                    ✏️ 编辑
+                    ✏️ Edit
                 </button>
                 <button class="btn" onclick="deleteRule(${rule.id})" style="color: #dc2626; border-color: #fecaca; background: #fef2f2; font-weight: 600;">
-                    🗑️ 删除
+                    🗑️ Delete
                 </button>
             </div>
         </div>
     `;
 }
 /**
- * 格式化重要性显示
+ * Format importance display
  */
 function formatImportance(importance) {
-    if (!importance) return '全部';
-    const map = { 'high': '高', 'medium': '中', 'low': '低' };
-    return importance.split(',').map(i => map[i.trim()] || i.trim()).join(',') || '全部';
+    if (!importance) return 'All';
+    const map = { 'high': 'High', 'medium': 'Medium', 'low': 'Low' };
+    return importance.split(',').map(i => map[i.trim()] || i.trim()).join(',') || 'All';
 }
 
 /**
- * 格式化重复状态显示
+ * Format duplicate-status display
  */
 function formatDuplicateStatus(status) {
     const map = {
-        'all': '全部',
-        'new': '仅新告警',
-        'duplicate': '仅重复告警'
+        'all': 'All',
+        'new': 'New alerts only',
+        'duplicate': 'Duplicate alerts only'
     };
-    return map[status] || status || '全部';
+    return map[status] || status || 'All';
 }
 
 /**
- * 格式化目标类型显示
+ * Format target-type display
  */
 function formatTargetType(type) {
     const map = {
-        'feishu': '飞书',
+        'feishu': 'Feishu',
         'openclaw': 'OpenClaw',
         'webhook': 'Webhook'
     };
-    return map[type] || type || '未知';
+    return map[type] || type || 'Unknown';
 }
 
 /**
- * HTML 转义
+ * HTML escape
  */
 function escapeHtml(text) {
     if (!text) return '';
@@ -235,18 +235,18 @@ function escapeHtml(text) {
 }
 
 /**
- * 显示规则表单（新增或编辑）
- * @param {number} ruleId - 规则 ID，不传表示新增
+ * Show the rule form (create or edit)
+ * @param {number} ruleId - rule ID; omit for create
  */
 function showRuleForm(ruleId) {
     const modal = document.getElementById('ruleFormModal');
     const title = document.getElementById('ruleFormTitle');
 
-    // 重置表单
+    // Reset the form
     document.getElementById('ruleFormId').value = '';
     document.getElementById('ruleFormName').value = '';
     document.getElementById('ruleFormPriority').value = '10';
-    // 重置事件类型复选框
+    // Reset event-type checkboxes
     ['ruleFormEvtForward', 'ruleFormEvtManual', 'ruleFormEvtAIError', 'ruleFormEvtAIDegraded', 'ruleFormEvtDeep', 'ruleFormEvtExhausted'].forEach(function(id) {
         document.getElementById(id).checked = false;
     });
@@ -265,16 +265,16 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormStopOnMatch').checked = false;
     document.getElementById('ruleFormEnabled').checked = true;
 
-    // 显示目标地址输入框
+    // Show the target address input field
     document.getElementById('ruleFormTargetUrlGroup').style.display = 'block';
 
     if (ruleId) {
-        // 编辑模式
-        title.textContent = '编辑转发规则';
+        // Edit mode
+        title.textContent = 'Edit Forward Rule';
         const rule = forwardRules.find(r => r.id === ruleId);
         if (rule) {
             if (rule.target_url_sensitive === false) {
-                alert('编辑转发规则需要先保存 ADMIN_WRITE_KEY，以便加载完整目标 URL。');
+                alert('Editing a forward rule requires saving the ADMIN_WRITE_KEY first, so the full target URL can be loaded.');
                 if (typeof openAuthModal === 'function') {
                     openAuthModal();
                 }
@@ -284,7 +284,7 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormName').value = rule.name || '';
             document.getElementById('ruleFormPriority').value = rule.priority || 10;
 
-            // 设置事件类型复选框
+            // Set event-type checkboxes
             var eventTypes = (rule.match_event_type || '').split(',').map(function(s) { return s.trim(); });
             var evtCheckIds = {
                 'webhook_forward': 'ruleFormEvtForward',
@@ -299,7 +299,7 @@ function showRuleForm(ruleId) {
                 if (id) document.getElementById(id).checked = true;
             });
 
-            // 设置重要性复选框
+            // Set importance checkboxes
             if (rule.match_importance) {
                 const importances = rule.match_importance.split(',').map(s => s.trim());
                 document.getElementById('ruleFormImportanceHigh').checked = importances.includes('high');
@@ -319,32 +319,32 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormStopOnMatch').checked = rule.stop_on_match || false;
             document.getElementById('ruleFormEnabled').checked = rule.enabled !== false;
 
-            // 根据目标类型显示/隐藏地址输入框
+            // Show/hide the address input field based on the target type
             onTargetTypeChange();
         }
     } else {
-        // 新增模式
-        title.textContent = '新增转发规则';
+        // Create mode
+        title.textContent = 'New Forward Rule';
     }
 
     modal.classList.add('active');
 }
 
 /**
- * 关闭规则表单
+ * Close the rule form
  */
 function closeRuleForm() {
     document.getElementById('ruleFormModal').classList.remove('active');
 }
 
 /**
- * 目标类型改变时的处理
+ * Handle target-type changes
  */
 function onTargetTypeChange() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
 
-    // OpenClaw 类型不需要填写地址
+    // The OpenClaw type does not require an address
     if (targetType === 'openclaw') {
         urlGroup.style.display = 'none';
     } else {
@@ -353,10 +353,10 @@ function onTargetTypeChange() {
 }
 
 /**
- * 保存规则
+ * Save the rule
  */
 async function saveRule() {
-    // 获取表单数据
+    // Get form data
     const ruleId = document.getElementById('ruleFormId').value;
     const name = document.getElementById('ruleFormName').value.trim();
     const priority = parseInt(document.getElementById('ruleFormPriority').value) || 10;
@@ -364,24 +364,24 @@ async function saveRule() {
     const targetUrl = document.getElementById('ruleFormTargetUrl').value.trim();
     const targetName = document.getElementById('ruleFormTargetName').value.trim();
 
-    // 验证必填字段
+    // Validate required fields
     if (!name) {
-        alert('请输入规则名称');
+        alert('Please enter a rule name');
         return;
     }
 
     if (targetType !== 'openclaw' && !targetUrl) {
-        alert('请输入目标地址');
+        alert('Please enter a target address');
         return;
     }
 
-    // 收集重要性选项
+    // Collect importance options
     const importances = [];
     if (document.getElementById('ruleFormImportanceHigh').checked) importances.push('high');
     if (document.getElementById('ruleFormImportanceMedium').checked) importances.push('medium');
     if (document.getElementById('ruleFormImportanceLow').checked) importances.push('low');
 
-    // 构建规则数据
+    // Build rule data
     const ruleData = {
         name: name,
         enabled: document.getElementById('ruleFormEnabled').checked,
@@ -407,116 +407,116 @@ async function saveRule() {
     try {
         let result;
         if (ruleId) {
-            // 更新规则
-            console.log('📝 更新规则:', ruleId, ruleData);
+            // Update rule
+            console.log('📝 Updating rule:', ruleId, ruleData);
             result = await API.updateForwardRule(ruleId, ruleData);
         } else {
-            // 创建规则
-            console.log('➕ 创建规则:', ruleData);
+            // Create rule
+            console.log('➕ Creating rule:', ruleData);
             result = await API.createForwardRule(ruleData);
         }
 
         if (result.success) {
-            alert(ruleId ? '✅ 规则更新成功' : '✅ 规则创建成功');
+            alert(ruleId ? '✅ Rule updated successfully' : '✅ Rule created successfully');
             closeRuleForm();
             loadForwardRules();
         } else {
-            alert('❌ 保存失败: ' + (result.error || '未知错误'));
+            alert('❌ Save failed: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('❌ 保存规则失败:', error);
-        alert('❌ 保存失败: ' + error.message);
+        console.error('❌ Failed to save rule:', error);
+        alert('❌ Save failed: ' + error.message);
     }
 }
 
 /**
- * 启用/禁用规则
- * @param {number} id - 规则 ID
- * @param {boolean} enabled - 是否启用
+ * Enable/disable a rule
+ * @param {number} id - rule ID
+ * @param {boolean} enabled - whether to enable
  */
 async function toggleRule(id, enabled) {
     try {
-        console.log(enabled ? '✅ 启用规则:' : '⏸️ 禁用规则:', id);
+        console.log(enabled ? '✅ Enabling rule:' : '⏸️ Disabling rule:', id);
         const result = await API.updateForwardRule(id, { enabled: enabled });
 
         if (result.success) {
-            // 更新本地数据
+            // Update local data
             const rule = forwardRules.find(r => r.id === id);
             if (rule) {
                 rule.enabled = enabled;
             }
-            // 重新渲染
+            // Re-render
             renderForwardRules(forwardRules);
         } else {
-            alert('❌ 操作失败: ' + (result.error || '未知错误'));
-            loadForwardRules(); // 重新加载以恢复状态
+            alert('❌ Operation failed: ' + (result.error || 'Unknown error'));
+            loadForwardRules(); // Reload to restore state
         }
     } catch (error) {
-        console.error('❌ 切换规则状态失败:', error);
-        alert('❌ 操作失败: ' + error.message);
+        console.error('❌ Failed to toggle rule state:', error);
+        alert('❌ Operation failed: ' + error.message);
         loadForwardRules();
     }
 }
 
 /**
- * 删除规则
- * @param {number} id - 规则 ID
+ * Delete a rule
+ * @param {number} id - rule ID
  */
 async function deleteRule(id) {
     const rule = forwardRules.find(r => r.id === id);
-    const ruleName = rule ? rule.name : '该规则';
+    const ruleName = rule ? rule.name : 'this rule';
 
-    if (!confirm(`确定要删除规则"${ruleName}"吗？\n\n此操作不可撤销。`)) {
+    if (!confirm(`Are you sure you want to delete the rule "${ruleName}"?\n\nThis action cannot be undone.`)) {
         return;
     }
 
     try {
-        console.log('🗑️ 删除规则:', id);
+        console.log('🗑️ Deleting rule:', id);
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
-            alert('✅ 规则已删除');
+            alert('✅ Rule deleted');
             loadForwardRules();
         } else {
-            alert('❌ 删除失败: ' + (result.error || '未知错误'));
+            alert('❌ Delete failed: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('❌ 删除规则失败:', error);
-        alert('❌ 删除失败: ' + error.message);
+        console.error('❌ Failed to delete rule:', error);
+        alert('❌ Delete failed: ' + error.message);
     }
 }
 
 /**
- * 测试规则
- * @param {number} id - 规则 ID
+ * Test a rule
+ * @param {number} id - rule ID
  */
 async function testRule(id) {
     const rule = forwardRules.find(r => r.id === id);
-    const ruleName = rule ? rule.name : '该规则';
+    const ruleName = rule ? rule.name : 'this rule';
 
-    if (!confirm(`确定要测试规则"${ruleName}"吗？\n\n将发送测试消息到目标地址。`)) {
+    if (!confirm(`Are you sure you want to test the rule "${ruleName}"?\n\nA test message will be sent to the target address.`)) {
         return;
     }
 
     try {
-        console.log('🧪 测试规则:', id);
+        console.log('🧪 Testing rule:', id);
         const result = await API.testForwardRule(id);
 
         if (result.success) {
-            alert('✅ 测试成功！\n\n' + (result.message || '测试消息已发送'));
+            alert('✅ Test successful!\n\n' + (result.message || 'Test message sent'));
         } else {
-            alert('❌ 测试失败: ' + (result.error || '未知错误'));
+            alert('❌ Test failed: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('❌ 测试规则失败:', error);
-        alert('❌ 测试失败: ' + error.message);
+        console.error('❌ Failed to test rule:', error);
+        alert('❌ Test failed: ' + error.message);
     }
 }
 
-// 导出模块（用于 dashboard.js 初始化检测）
+// Export the module (used by dashboard.js for initialization detection)
 const ForwardRulesModule = {
     init: function() {
-        console.log('📋 转发规则模块初始化');
+        console.log('📋 Forward rule module initialized');
     },
     loadRules: loadForwardRules
 };
