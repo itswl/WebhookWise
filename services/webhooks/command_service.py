@@ -1,4 +1,4 @@
-"""Webhook 命令服务：接收、保存与状态重放。"""
+"""Webhook command service: ingestion, persistence, and status replay."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -78,7 +78,7 @@ def _resolve_analysis_for_duplicate(
         final_analysis, final_importance = unknown_analysis_result(), None
 
     if ai_analysis and reanalyzed and (not original.ai_analysis or not original.ai_analysis.get("summary")):
-        logger.info("更新原始告警 ID=%d 的AI分析结果（之前缺失）", original.id)
+        logger.info("Updating AI analysis result for original alert ID=%d (previously missing)", original.id)
         original.ai_analysis = dict(ai_analysis)
         original.importance = ai_analysis.get("importance")
 
@@ -261,7 +261,7 @@ async def _resolve_request_id(
 
     if existing.processing_status == WebhookProcessingStatus.COMPLETED:
         logger.info(
-            "[WebhookSave] request_id 已完成，跳过重复保存 request_id=%s event_id=%s",
+            "[WebhookSave] request_id already completed, skipping duplicate save request_id=%s event_id=%s",
             request_id,
             existing.id,
         )
@@ -276,7 +276,7 @@ async def _resolve_request_id(
         )
 
     logger.info(
-        "[WebhookSave] request_id 已存在，复用事件继续保存 request_id=%s event_id=%s status=%s",
+        "[WebhookSave] request_id already exists, reusing the event to continue saving request_id=%s event_id=%s status=%s",
         request_id,
         existing.id,
         existing.processing_status,
@@ -316,7 +316,7 @@ async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
         async with session_scope() as session:
             return await save_webhook_data_in_session(session, input=input)
     except sqlalchemy.exc.SQLAlchemyError:
-        logger.exception("保存 webhook 事件失败")
+        logger.exception("Failed to save webhook event")
         raise
 
 

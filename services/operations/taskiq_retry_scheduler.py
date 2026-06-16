@@ -103,4 +103,4 @@ async def schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: in
             delay_seconds = compute_openclaw_poll_delay(0)
         await schedule_openclaw_poll(analysis_id, delay_seconds)
     except _SCHEDULING_ERRORS as e:
-        logger.warning("[OpenClaw] poll 调度失败 analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[OpenClaw] Failed to schedule poll analysis_id=%s error=%s", analysis_id, e)

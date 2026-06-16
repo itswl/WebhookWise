@@ -39,7 +39,7 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
     if target_type == "openclaw":
         return str(target_url or "").strip()
     if not isinstance(target_url, str) or not target_url.strip():
-        raise UnsafeTargetUrlError("目标 URL 不能为空")
+        raise UnsafeTargetUrlError("Target URL cannot be empty")
     return await validate_outbound_url(target_url)
 
 
@@ -81,7 +81,7 @@ async def create_forward_rule_endpoint(
     try:
         target_url = await _validated_target_url(target_type, data["target_url"])
     except UnsafeTargetUrlError as e:
-        logger.warning("[ForwardAPI] 创建转发规则被拒绝 name=%s target_type=%s error=%s", name, target_type, e)
+        logger.warning("[ForwardAPI] Create forward rule rejected name=%s target_type=%s error=%s", name, target_type, e)
         return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
 
     rule = await create_forward_rule(
@@ -104,14 +104,14 @@ async def create_forward_rule_endpoint(
     )
     await session.commit()
     logger.info(
-        "[ForwardAPI] 转发规则已创建 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
+        "[ForwardAPI] Forward rule created rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
         rule.name,
         rule.target_type,
         rule.enabled,
         mask_url(rule.target_url) if rule.target_url else "",
     )
-    return {"success": True, "data": forward_rule_to_dict(rule), "message": "规则创建成功"}
+    return {"success": True, "data": forward_rule_to_dict(rule), "message": "Rule created successfully"}
 
 
 @forwarding_router.put(
@@ -125,29 +125,29 @@ async def update_forward_rule_endpoint(
     data = payload.to_update_payload()
     existing = await get_forward_rule(session=session, rule_id=rule_id)
     if not existing:
-        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+        return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
     target_type = data.get("target_type", existing.target_type)
     if "target_url" in data or "target_type" in data:
         try:
             data["target_url"] = await _validated_target_url(target_type, data.get("target_url", existing.target_url))
         except UnsafeTargetUrlError as e:
             logger.warning(
-                "[ForwardAPI] 更新转发规则被拒绝 rule_id=%s target_type=%s error=%s", rule_id, target_type, e
+                "[ForwardAPI] Update forward rule rejected rule_id=%s target_type=%s error=%s", rule_id, target_type, e
             )
             return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=data)
     if rule is None:
-        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+        return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
     await session.commit()
     logger.info(
-        "[ForwardAPI] 转发规则已更新 rule_id=%s name=%s target_type=%s enabled=%s target=%s",
+        "[ForwardAPI] Forward rule updated rule_id=%s name=%s target_type=%s enabled=%s target=%s",
         rule.id,
         rule.name,
         rule.target_type,
         rule.enabled,
         mask_url(rule.target_url) if rule.target_url else "",
     )
-    return {"success": True, "data": forward_rule_to_dict(rule), "message": "规则更新成功"}
+    return {"success": True, "data": forward_rule_to_dict(rule), "message": "Rule updated successfully"}
 
 
 @forwarding_router.delete(
@@ -159,10 +159,10 @@ async def delete_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
     if not await delete_forward_rule(session=session, rule_id=rule_id):
-        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+        return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
     await session.commit()
-    logger.info("[ForwardAPI] 转发规则已删除 rule_id=%s", rule_id)
-    return {"success": True, "message": "规则已删除"}
+    logger.info("[ForwardAPI] Forward rule deleted rule_id=%s", rule_id)
+    return {"success": True, "message": "Rule deleted"}
 
 
 @forwarding_router.post(
@@ -175,14 +175,14 @@ async def test_forward_rule_endpoint(
 ) -> JSONDict | JSONResponse:
     rule = await get_forward_rule(session, rule_id)
     if not rule:
-        return JSONResponse(status_code=404, content={"success": False, "error": "规则不存在"})
+        return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
 
     target_url = str(rule.target_url or "").strip()
     if not target_url:
-        return JSONResponse(status_code=400, content={"success": False, "error": "规则未配置目标 URL"})
+        return JSONResponse(status_code=400, content={"success": False, "error": "Rule has no target URL configured"})
 
     logger.info(
-        "[ForwardAPI] 测试转发规则 rule_id=%s name=%s target_type=%s target=%s",
+        "[ForwardAPI] Test forward rule rule_id=%s name=%s target_type=%s target=%s",
         rule.id,
         rule.name,
         rule.target_type,
@@ -200,13 +200,13 @@ async def test_forward_rule_endpoint(
             target_type=rule.target_type,
         )
     except _FORWARDING_RUNTIME_ERRORS as e:
-        logger.warning("[ForwardAPI] 测试转发请求失败 rule_id=%s error=%s", rule_id, e)
+        logger.warning("[ForwardAPI] Test forward request failed rule_id=%s error=%s", rule_id, e)
         return JSONResponse(status_code=502, content={"success": False, "error": DELIVERY_ERROR_MESSAGE})
 
     if result.get("status") == "success":
-        return {"success": True, "message": "测试消息已送达", "detail": result}
+        return {"success": True, "message": "Test message delivered", "detail": result}
     logger.warning(
-        "[ForwardAPI] 测试转发未送达 rule_id=%s status=%s message=%s reason=%s",
+        "[ForwardAPI] Test forward not delivered rule_id=%s status=%s message=%s reason=%s",
         rule_id,
         result.get("status"),
         result.get("message"),
@@ -233,7 +233,7 @@ async def list_outbox_endpoint(
     status: str = Query(""),
     event_type: str = Query(""),
 ) -> JSONDict | JSONResponse:
-    """查询转发队列记录。"""
+    """Query forwarding queue records."""
     from services.forwarding.outbox import list_outbox_records
 
     try:
@@ -242,5 +242,5 @@ async def list_outbox_endpoint(
         )
         return {"success": True, "data": data}
     except _FORWARDING_RUNTIME_ERRORS as e:
-        logger.error("查询 outbox 列表失败: %s", e, exc_info=True)
+        logger.error("Failed to query outbox list: %s", e, exc_info=True)
         return internal_error_response()

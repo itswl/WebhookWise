@@ -363,11 +363,12 @@ def _decide_duplicate_alert(
     policy: ForwardingPolicy,
     matched_rules: list[ForwardRuleSnapshot],
 ) -> ForwardDecision:
-    # 冷却期（60s）：刚刚通知过不再重复发，防止短时间通知风暴
+    # Cooldown period (60s): if we just notified, do not send again, to prevent a
+    # short-term notification storm
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
-        return ForwardDecision(False, "刚已通知，冷却中", False, skip_code="cooldown")
+        return ForwardDecision(False, "Just notified, in cooldown", False, skip_code="cooldown")
 
-    # 周期提醒（6h）：同一告警持续存在，定时重通知
+    # Periodic reminder (6h): the same alert persists, re-notify on a schedule
     if (
         policy.enable_periodic_reminder
         and seconds_since_notify is not None
@@ -375,18 +376,19 @@ def _decide_duplicate_alert(
     ):
         return ForwardDecision(
             base_should_forward,
-            None if base_should_forward else "定期提醒：未匹配转发规则",
+            None if base_should_forward else "Periodic reminder: no matching forwarding rule",
             True,
             matched_rules=matched_rules,
             skip_code="none" if base_should_forward else "periodic_no_rule",
         )
 
-    # 规则已经通过 match_duplicate 决定了是否匹配重复告警，
-    # 不需要额外全局开关来覆盖规则匹配结果。
+    # The rule has already decided whether to match duplicate alerts via
+    # match_duplicate; no extra global switch is needed to override the rule
+    # matching result.
     if base_should_forward:
         return ForwardDecision(True, None, False, matched_rules=matched_rules)
 
-    return ForwardDecision(False, "重复告警：未匹配转发规则", False, skip_code="duplicate_no_rule")
+    return ForwardDecision(False, "Duplicate alert: no matching forwarding rule", False, skip_code="duplicate_no_rule")
 
 
 def decide_forwarding(
@@ -403,7 +405,7 @@ def decide_forwarding(
     now: datetime | None = None,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
-        return ForwardDecision(False, f"智能降噪抑制转发: {noise.reason}", False, skip_code="noise_suppressed")
+        return ForwardDecision(False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed")
 
     matched_rules = select_forward_rules(
         rules,
@@ -430,7 +432,7 @@ def decide_forwarding(
 
     return ForwardDecision(
         base_should_fwd,
-        None if base_should_fwd else "未匹配转发规则",
+        None if base_should_fwd else "No matching forwarding rule",
         False,
         matched_rules=matched_rules,
         skip_code="none" if base_should_fwd else "no_match",

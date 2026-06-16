@@ -253,7 +253,7 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
 
     monkeypatch.setattr(admin, "requeue_forward_outbox", requeue_ok)
     retry_ok = _body(await admin.retry_outbox_endpoint(10))
-    assert retry_ok["message"] == "outbox 已重新入队"
+    assert retry_ok["message"] == "outbox re-enqueued"
     assert retry_ok["data"] == {"outbox_id": 10}
 
     async def requeue_missing(_outbox_id: int) -> bool:
@@ -459,7 +459,7 @@ async def test_manual_forward_webhook_handles_success_skipped_delivery_and_url_v
     forward_results.append({"status": "skipped", "reason": "rule"})
     skipped = await reanalysis.manual_forward_webhook(7, data={}, session=session)  # type: ignore[arg-type]
     assert skipped.status_code == 400
-    assert _body(skipped)["error"] == "转发已跳过"
+    assert _body(skipped)["error"] == "Forwarding skipped"
 
     forward_results.append({"status": "failed", "message": "boom"})
     failed = await reanalysis.manual_forward_webhook(7, data={}, session=session)  # type: ignore[arg-type]
@@ -472,7 +472,7 @@ async def test_manual_forward_webhook_handles_success_skipped_delivery_and_url_v
         session=session,  # type: ignore[arg-type]
     )
     assert invalid.status_code == 400
-    assert _body(invalid)["error"] == "URL 格式无效"
+    assert _body(invalid)["error"] == "Invalid URL format"
 
     unsafe = await reanalysis.manual_forward_webhook(
         7,

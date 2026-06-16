@@ -162,7 +162,7 @@ async def test_resolve_noise_context_reuse_and_fresh_analysis_paths(
     monkeypatch.setattr(pipeline_stages, "log_ai_usage", log_usage)
     analysis, noise, dedup = await pipeline_stages.resolve_noise_context(ctx, _deps())
     assert analysis["_route_type"] == "redis_reuse"
-    assert noise.reason == "缓存复用路径"
+    assert noise.reason == "Cache reuse path"
     assert dedup.is_duplicate
     assert usage_calls[-1][0] == "redis_reuse"
 

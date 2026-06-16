@@ -293,7 +293,7 @@ class TestDecideForwarding:
         noise = _make_noise(suppress=True)
         result = self._decide(importance="high", noise=noise)
         assert not result.should_forward
-        assert "降噪" in (result.skip_reason or "")
+        assert "Smart noise reduction suppressed forwarding" in (result.skip_reason or "")
 
     def test_high_importance_no_rules_skips(self) -> None:
         result = self._decide(importance="high")

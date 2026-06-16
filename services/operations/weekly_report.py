@@ -118,22 +118,22 @@ def _build_summary(stats: dict[str, Any]) -> str:
     no LLM call (keeps the report a pure read over existing data, always works
     even if AI is degraded). An LLM narrative could be layered on later."""
     top = stats["top_sources"][0] if stats["top_sources"] else None
-    top_txt = f"{top['source']}（{top['count']} 条）" if top else "无"
+    top_txt = f"{top['source']} ({top['count']} alerts)" if top else "none"
     imp = stats["importance_breakdown"]
-    imp_txt = "、".join(f"{k}:{v}" for k, v in sorted(imp.items(), key=lambda kv: -kv[1])) or "无"
+    imp_txt = ", ".join(f"{k}:{v}" for k, v in sorted(imp.items(), key=lambda kv: -kv[1])) or "none"
     lines = [
-        f"过去 {stats['window_days']} 天：告警 {stats['total_events']} 条，"
-        f"其中去重/重复 {stats['duplicate_events']} 条（噪声率 {stats['noise_pct']}%）。",
-        f"重要度分布：{imp_txt}。",
-        f"最吵的来源：{top_txt}。",
+        f"Past {stats['window_days']} days: {stats['total_events']} alerts, "
+        f"of which {stats['duplicate_events']} were deduplicated/duplicates (noise rate {stats['noise_pct']}%).",
+        f"Importance breakdown: {imp_txt}.",
+        f"Noisiest source: {top_txt}.",
     ]
     # Break the noisiest source down by rule so the report says WHAT is noisy.
     rules = stats.get("top_rules") or []
     if rules:
-        rule_lines = "\n".join(f"  · {r['rule']}：{r['count']} 条" for r in rules)
-        lines.append(f"其中 {rules[0]['source']} 按告警规则细分（Top{len(rules)}）：\n{rule_lines}")
+        rule_lines = "\n".join(f"  · {r['rule']}: {r['count']} alerts" for r in rules)
+        lines.append(f"Where {rules[0]['source']} broken down by alert rule (Top {len(rules)}):\n{rule_lines}")
     lines.append(
-        f"AI：调用 {stats['ai_calls']} 次，缓存命中 {stats['cache_hit_pct']}%，花费 ${stats['ai_cost_usd']}。"
+        f"AI: {stats['ai_calls']} calls, cache hit rate {stats['cache_hit_pct']}%, cost ${stats['ai_cost_usd']}."
     )
     return "\n".join(lines)
 
@@ -143,7 +143,7 @@ def _build_card(stats: dict[str, Any]) -> dict[str, Any]:
     return {
         "msg_type": "interactive",
         "card": {
-            "header": {"title": {"tag": "plain_text", "content": "📊 WebhookWise 告警健康周报"}},
+            "header": {"title": {"tag": "plain_text", "content": "📊 WebhookWise Alert Health Weekly Report"}},
             "elements": [{"tag": "markdown", "content": body}],
         },
     }
@@ -154,12 +154,12 @@ async def generate_and_send_weekly_report() -> dict[str, Any]:
     cfg = get_config_manager()
     notif = cfg.notifications
     if not notif.WEEKLY_REPORT_ENABLED:
-        logger.debug("[WeeklyReport] 未启用，跳过")
+        logger.debug("[WeeklyReport] Not enabled, skipping")
         return {"skipped": "disabled"}
 
     webhook_url = notif.WEEKLY_REPORT_FEISHU_WEBHOOK or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
     if not webhook_url:
-        logger.warning("[WeeklyReport] 已启用但未配置 webhook（WEEKLY_REPORT_FEISHU_WEBHOOK / DEEP_ANALYSIS_FEISHU_WEBHOOK）")
+        logger.warning("[WeeklyReport] Enabled but no webhook configured (WEEKLY_REPORT_FEISHU_WEBHOOK / DEEP_ANALYSIS_FEISHU_WEBHOOK)")
         return {"skipped": "no_webhook"}
 
     async with session_scope() as session:
@@ -171,7 +171,7 @@ async def generate_and_send_weekly_report() -> dict[str, Any]:
 
     result = await send_to_feishu(webhook_url, card)
     logger.info(
-        "[WeeklyReport] 已发送 events=%s noise=%s%% ai_cost=$%s status=%s",
+        "[WeeklyReport] Sent events=%s noise=%s%% ai_cost=$%s status=%s",
         stats["total_events"],
         stats["noise_pct"],
         stats["ai_cost_usd"],

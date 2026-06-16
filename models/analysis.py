@@ -21,7 +21,7 @@ from db.session import Base
 
 
 class AIUsageLog(Base):
-    """AI 调用成本追踪"""
+    """AI call cost tracking"""
 
     __tablename__ = "ai_usage_logs"
 
@@ -40,7 +40,7 @@ class AIUsageLog(Base):
 
 
 class DeepAnalysis(Base):
-    """深度分析历史记录"""
+    """Deep analysis history records"""
 
     __tablename__ = "deep_analyses"
 

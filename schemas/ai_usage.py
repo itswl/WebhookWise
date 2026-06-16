@@ -34,7 +34,7 @@ class TrendPoint(BaseModel):
 
 
 class AIUsageData(BaseModel):
-    """AI 使用统计数据"""
+    """AI usage statistics data"""
 
     total_calls: int
     route_breakdown: dict[str, int]
@@ -46,4 +46,4 @@ class AIUsageData(BaseModel):
 
 
 class AIUsageResponse(APIResponse[AIUsageData]):
-    """AI 使用统计响应"""
+    """AI usage statistics response"""

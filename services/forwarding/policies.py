@@ -7,7 +7,7 @@ from core.app_context import get_config_manager
 
 @dataclass(frozen=True, slots=True)
 class ForwardDeliveryPolicy:
-    """投递行为配置：超时、重试、过期。所有外发路径共用。"""
+    """Delivery behavior configuration: timeout, retry, expiration. Shared by all outbound paths."""
 
     timeout_seconds: int
     max_attempts: int

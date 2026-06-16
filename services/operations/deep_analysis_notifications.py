@@ -44,7 +44,7 @@ async def send_feishu_deep_analysis(
         )
         return True
     except _NOTIFICATION_ERRORS as e:
-        logger.warning("深度分析通知入队失败: %s", e)
+        logger.warning("Failed to enqueue deep-analysis notification: %s", e)
         return False
 
 
@@ -65,7 +65,7 @@ async def send_deep_analysis_success_notification(
     try:
         event_id = int(record_dict["webhook_event_id"])
         logger.info(
-            "[DeepAnalysisNotify] 准备发送成功通知 id=%s event_id=%s target=%s",
+            "[DeepAnalysisNotify] Preparing to send success notification id=%s event_id=%s target=%s",
             record_dict.get("id"),
             event_id,
             mask_url(webhook_url),
@@ -88,7 +88,7 @@ async def send_deep_analysis_success_notification(
         )
         if success:
             logger.info(
-                "[DeepAnalysisNotify] 通知已发送: id=%s event_id=%s",
+                "[DeepAnalysisNotify] Notification sent: id=%s event_id=%s",
                 record_dict.get("id"),
                 event_id,
             )
@@ -98,17 +98,17 @@ async def send_deep_analysis_success_notification(
             event_id,
             webhook_url,
             failure_reason="feishu_notification_failed",
-            error_message="深度分析飞书通知发送失败",
+            error_message="Failed to send deep-analysis Feishu notification",
             analysis_type="deep_analysis",
         )
         logger.warning(
-            "[DeepAnalysisNotify] 成功通知发送失败 id=%s event_id=%s target=%s",
+            "[DeepAnalysisNotify] Failed to send success notification id=%s event_id=%s target=%s",
             record_dict.get("id"),
             event_id,
             mask_url(webhook_url),
         )
     except _NOTIFICATION_ERRORS as e:
-        logger.warning("深度分析通知失败: %s", e)
+        logger.warning("Deep-analysis notification failed: %s", e)
 
 
 async def send_deep_analysis_failure_notification(
@@ -128,7 +128,7 @@ async def send_deep_analysis_failure_notification(
     try:
         event_id = int(record_dict["webhook_event_id"])
         logger.info(
-            "[DeepAnalysisNotify] 准备发送失败通知 id=%s event_id=%s target=%s",
+            "[DeepAnalysisNotify] Preparing to send failure notification id=%s event_id=%s target=%s",
             record_dict.get("id"),
             event_id,
             mask_url(webhook_url),
@@ -154,24 +154,24 @@ async def send_deep_analysis_failure_notification(
             else None,
         )
         if success:
-            logger.info("[DeepAnalysisNotify] 失败通知已发送: id=%s reason=%s", record_dict["id"], reason)
+            logger.info("[DeepAnalysisNotify] Failure notification sent: id=%s reason=%s", record_dict["id"], reason)
             return
 
         await _record_notification_failure(
             event_id,
             webhook_url,
             failure_reason="feishu_failure_notification_failed",
-            error_message=f"深度分析失败飞书通知发送失败: {reason}",
+            error_message=f"Failed to send deep-analysis failure Feishu notification: {reason}",
             analysis_type="deep_analysis_failed",
         )
         logger.warning(
-            "[DeepAnalysisNotify] 失败通知发送失败 id=%s event_id=%s target=%s",
+            "[DeepAnalysisNotify] Failed to send failure notification id=%s event_id=%s target=%s",
             record_dict.get("id"),
             event_id,
             mask_url(webhook_url),
         )
     except _NOTIFICATION_ERRORS as e:
-        logger.warning("[DeepAnalysisNotify] 失败通知异常: %s", e)
+        logger.warning("[DeepAnalysisNotify] Failure notification error: %s", e)
 
 
 async def _record_notification_failure(
@@ -183,7 +183,7 @@ async def _record_notification_failure(
     analysis_type: str,
 ) -> None:
     logger.warning(
-        "[DeepAnalysisNotify] 通知失败 event_id=%s target=%s reason=%s error=%s analysis_type=%s",
+        "[DeepAnalysisNotify] Notification failed event_id=%s target=%s reason=%s error=%s analysis_type=%s",
         webhook_event_id,
         mask_url(target_url),
         failure_reason,

@@ -75,7 +75,7 @@ async def _expire_outbox_if_old(
         return False
     FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(expired.target_type or "unknown"), "expired").inc()
     logger.warning(
-        "[OutboxScanner] 转发意图已过期 id=%s event_id=%s age_limit=%ss",
+        "[OutboxScanner] Forward intent expired id=%s event_id=%s age_limit=%ss",
         expired.id,
         expired.webhook_event_id,
         policy.max_delivery_age_seconds,
@@ -164,7 +164,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             )
 
         logger.info(
-            "[ForwardOutbox] 转发成功 id=%s event_id=%s target_type=%s",
+            "[ForwardOutbox] Forward succeeded id=%s event_id=%s target_type=%s",
             current.id,
             current.webhook_event_id,
             current.target_type,
@@ -194,7 +194,7 @@ async def _finalize_outbox_failure(
             record.status = ForwardOutboxStatus.EXHAUSTED
             record.next_attempt_at = None
             logger.warning(
-                "[ForwardOutbox] 转发耗尽 id=%s attempts=%s/%s error=%s",
+                "[ForwardOutbox] Forward exhausted id=%s attempts=%s/%s error=%s",
                 record.id,
                 record.attempts,
                 record.max_attempts,
@@ -214,7 +214,7 @@ async def _finalize_outbox_failure(
             retry_outbox_id = record.id
             retry_delay = delay
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "retrying").inc()
-            logger.info("[ForwardOutbox] 转发失败 id=%s delay=%ss error=%s", record.id, delay, error_msg)
+            logger.info("[ForwardOutbox] Forward failed id=%s delay=%ss error=%s", record.id, delay, error_msg)
 
     if exhausted_record is not None:
         try:
@@ -227,7 +227,7 @@ async def _finalize_outbox_failure(
                 )
         except _OUTBOX_NOTIFICATION_ERRORS as exc:
             logger.warning(
-                "[ForwardOutbox] EXHAUSTED 通知入队失败 id=%s error=%s",
+                "[ForwardOutbox] Failed to enqueue EXHAUSTED notification id=%s error=%s",
                 outbox_id,
                 exc,
             )

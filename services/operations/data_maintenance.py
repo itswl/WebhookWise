@@ -60,7 +60,7 @@ def _keyword_cleanup_filter(policy: DataMaintenancePolicy) -> sa.ColumnElement[b
             elif field == "parsed_data":
                 conditions.append(WebhookEvent.parsed_data.cast(sa.Text).like(f"%{keyword}%"))
             else:
-                logger.warning("[Maintenance] 忽略未知清理关键字字段: %s", field)
+                logger.warning("[Maintenance] Ignoring unknown cleanup keyword field: %s", field)
     if not conditions:
         return None
     return or_(*conditions)
@@ -125,11 +125,11 @@ def _cleanup_filter(policy: DataMaintenancePolicy, now: datetime) -> sa.ColumnEl
 
 async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
-    根据数据保留策略归档并清理过期 webhook 记录。
+    Archive and clean up expired webhook records according to the data retention policy.
     """
     policy = policy or DataMaintenancePolicy.from_config()
     if not policy.enabled:
-        logger.info("[Maintenance] 数据清理已禁用，跳过。")
+        logger.info("[Maintenance] Data cleanup is disabled, skipping.")
         return 0
 
     total_archived = 0
@@ -142,7 +142,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
         while True:
             deleted_this_round = 0
             async with session_scope() as session:
-                # 找出待处理的 ID
+                # Find the IDs to process
                 target_ids = list(
                     (
                         await session.scalars(
@@ -156,7 +156,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                 if not target_ids:
                     break
 
-                # 分块处理 (避免过大的 IN 查询)
+                # Process in chunks (to avoid an overly large IN query)
                 for chunk_start in range(0, len(target_ids), 1000):
                     chunk_ids = target_ids[chunk_start : chunk_start + 1000]
                     events = list(
@@ -179,17 +179,17 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                     deleted_this_round += len(events)
                     total_archived += len(events)
 
-            logger.info("[Maintenance] 已转存并清理 %d 条记录...", total_archived)
+            logger.info("[Maintenance] Archived and cleaned up %d records...", total_archived)
             if deleted_this_round < batch_limit:
                 break
             await asyncio.sleep(0.5)
 
         if total_archived:
-            logger.info("[Maintenance] 转存清理任务完成！共处理 %d 条记录。", total_archived)
+            logger.info("[Maintenance] Archive cleanup task complete! Processed %d records in total.", total_archived)
         else:
-            logger.info("[Maintenance] 没有需要清理的数据。")
+            logger.info("[Maintenance] No data needs to be cleaned up.")
         return total_archived
 
     except (RuntimeError, SQLAlchemyError, ValueError, TypeError) as e:
-        logger.error("[Maintenance] 清理任务失败: %s", e, exc_info=True)
+        logger.error("[Maintenance] Cleanup task failed: %s", e, exc_info=True)
         return total_archived

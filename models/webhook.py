@@ -52,7 +52,7 @@ class WebhookEventInput:
 
 
 class WebhookEvent(Base):
-    """Webhook 事件模型"""
+    """Webhook event model"""
 
     __tablename__ = "webhook_events"
 
@@ -134,7 +134,7 @@ class WebhookEvent(Base):
 
 
 class ArchivedWebhookEvent(Base):
-    """归档后的 Webhook 事件，保留线上表删除前的完整快照。"""
+    """Archived webhook event, preserving a complete snapshot before deletion from the live table."""
 
     __tablename__ = "archived_webhook_events"
 

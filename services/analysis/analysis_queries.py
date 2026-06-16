@@ -52,7 +52,7 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
     )
     cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
 
-    # 汇总所有能避免再次调用大模型的路径；保留旧 route 名兼容历史数据。
+    # Sum all routes that avoid re-calling the LLM; keep the legacy route name for backward compatibility with historical data.
     reuses = (
         route_breakdown.get("reuse", 0)
         + route_breakdown.get("redis_reuse", 0)

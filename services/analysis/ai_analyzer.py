@@ -72,10 +72,10 @@ def analyze_with_rules(
         "source": source,
         "event_type": "unknown",
         "importance": "medium",
-        "summary": "规则分析（AI 降级）",
+        "summary": "Rule-based analysis (AI degraded)",
         "alert_identity": build_alert_identity_context(source, data).get("identity", {}),
-        "actions": ["查看告警详情"],
-        "risks": ["分析可能不准"],
+        "actions": ["View alert details"],
+        "risks": ["Analysis may be inaccurate"],
     }
 
     rule_name = str(data.get("RuleName") or data.get("alert_name") or data.get("AlertName") or "unknown")
@@ -107,7 +107,7 @@ def analyze_with_rules(
 
     def _record_numeric_parse_failure(field: str, value: Any, reason: str) -> None:
         logger.debug(
-            "[AI] 规则分析数值字段解析失败 source=%s field=%s reason=%s value=%r",
+            "[AI] Rule analysis failed to parse numeric field source=%s field=%s reason=%s value=%r",
             source,
             field,
             reason,
@@ -150,16 +150,16 @@ def analyze_with_rules(
     res["importance"] = importance
     prefix = _IMPORTANCE_EMOJI.get(importance, _IMPORTANCE_EMOJI_DEFAULT)
     if cur_f is not None and thr_f is not None:
-        res["summary"] = f"{prefix} {rule_name}: 当前值 {cur_f:g} / 阈值 {thr_f:g}"
+        res["summary"] = f"{prefix} {rule_name}: current {cur_f:g} / threshold {thr_f:g}"
     else:
         res["summary"] = f"{prefix} {rule_name}"
 
     if importance == "high":
-        res["actions"] = ["立即确认影响范围", "检查近 5 分钟指标/日志", "按 Runbook 执行处置"]
-        res["risks"] = ["可能导致服务不可用或核心能力下降", "可能影响用户或业务数据"]
+        res["actions"] = ["Immediately confirm the scope of impact", "Check metrics/logs from the last 5 minutes", "Follow the runbook to remediate"]
+        res["risks"] = ["May cause service unavailability or degradation of core capabilities", "May affect users or business data"]
     elif importance == "low":
-        res["actions"] = ["确认是否为预期事件", "必要时补充告警规则"]
-        res["risks"] = ["告警可能噪声偏多"]
+        res["actions"] = ["Confirm whether this is an expected event", "Supplement alerting rules if necessary"]
+        res["risks"] = ["The alert may be largely noise"]
 
     res = apply_resource_importance_override(res, data)
 
@@ -184,7 +184,7 @@ async def _degrade_to_rules(
     *,
     notify: bool,
 ) -> AnalysisResult:
-    logger.info("[AI] 降级为规则分析 source=%s reason=%s", source, reason)
+    logger.info("[AI] Degrading to rule-based analysis source=%s reason=%s", source, reason)
     AI_DEGRADATIONS_TOTAL.labels(str(reason).split(":", 1)[0][:80] or "unknown").inc()
     res = mark_analysis_degraded(analyze_with_rules(parsed, source), reason, route="rule")
     await log_ai_usage("rule", alert_hash, source)
@@ -216,7 +216,7 @@ async def _maybe_route_to_rules(
     importance = str(res.get("importance", "")).lower()
     if importance not in skip:
         return None
-    logger.info("[AI] 分级路由：低价值告警跳过 LLM source=%s importance=%s", source, importance)
+    logger.info("[AI] Tiered routing: low-value alert skips LLM source=%s importance=%s", source, importance)
     await log_ai_usage("rule_routed", alert_hash, source)
     AI_REQUESTS_TOTAL.labels(sanitize_source(source), "rule_routed", "success").inc()
     return set_analysis_route(res, "rule_routed")
@@ -241,7 +241,7 @@ async def analyze_webhook_with_ai(
         cached = await get_cached_analysis(alert_hash, enabled=cache_enabled, ttl_seconds=cache_ttl_seconds)
         if cached:
             hits = cache_hit_count(cached)
-            logger.info("[AI] Redis 缓存命中 source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
+            logger.info("[AI] Redis cache hit source=%s hits=%s hash=%s...", source, hits, alert_hash[:12])
             await log_ai_usage("cache", alert_hash, source, cache_hit=True, policy=provider_policy)
             cached_result = apply_resource_importance_override(cached.copy(), parsed)
             set_analysis_route(cached_result, "cache")
@@ -259,7 +259,7 @@ async def analyze_webhook_with_ai(
         reason = "disabled" if not provider_policy.enabled else "no_api_key"
         notify = provider_policy.degradation_enabled and reason == "no_api_key"
         notify_reason = (
-            "配置了开启 AI 分析，但当前 Worker 进程未能读取到 OPENAI_API_KEY，已自动降级为规则分析。"
+            "AI analysis is enabled in the configuration, but the current Worker process could not read OPENAI_API_KEY, so it has automatically degraded to rule-based analysis."
             if notify
             else reason
         )
@@ -268,14 +268,14 @@ async def analyze_webhook_with_ai(
 
     try:
         logger.debug(
-            "[AI] 发起 OpenAI 请求 source=%s model=%s hash=%s...",
+            "[AI] Sending OpenAI request source=%s model=%s hash=%s...",
             source,
             provider_policy.model,
             alert_hash[:12],
         )
         analysis, t_in, t_out = await _llm_client.call_ai_with_breaker(parsed, source, http_client=http_client)
         logger.info(
-            "[AI] 分析完成 source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
+            "[AI] Analysis complete source=%s model=%s tokens_in=%d tokens_out=%d importance=%s",
             source,
             provider_policy.model,
             t_in,
@@ -303,7 +303,7 @@ async def analyze_webhook_with_ai(
         return analysis_result
     except CircuitBreakerOpenException:
         # Provider is broadly failing; skip the retry budget and degrade now.
-        logger.warning("[AI] LLM 熔断器开启,直接降级为规则分析 source=%s", source)
+        logger.warning("[AI] LLM circuit breaker is open, degrading directly to rule-based analysis source=%s", source)
         return await _degrade_to_rules(
             webhook_data,
             parsed,
@@ -316,7 +316,7 @@ async def analyze_webhook_with_ai(
         if _is_ai_policy_refusal(e):
             error_reason = _extract_ai_error_message(e)
             logger.warning(
-                "[AI] 策略拒绝，降级为规则分析 source=%s error_type=%s error=%s",
+                "[AI] Policy refusal, degrading to rule-based analysis source=%s error_type=%s error=%s",
                 source,
                 type(e).__name__,
                 error_reason,
@@ -334,7 +334,7 @@ async def analyze_webhook_with_ai(
             raise
 
         error_reason = _extract_ai_error_message(e)
-        logger.error("[AI] 分析失败 source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)
+        logger.error("[AI] Analysis failed source=%s error_type=%s error=%s", source, type(e).__name__, error_reason)
         if provider_policy.degradation_enabled:
             return await _degrade_to_rules(
                 webhook_data,

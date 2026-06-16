@@ -79,7 +79,7 @@ async def record_raw_ingest_dead_letter(
             session.add(event)
             await session.flush()
             logger.error(
-                "[WebhookIngestFailure] raw webhook 已进入 dead-letter event_id=%s request_id=%s retry=%s error=%s",
+                "[WebhookIngestFailure] raw webhook moved to dead-letter event_id=%s request_id=%s retry=%s error=%s",
                 event.id,
                 request_id,
                 retry_count,
@@ -123,7 +123,7 @@ async def _update_existing_dead_letter(
             return None
         event_id = int(row[0])
         logger.error(
-            "[WebhookIngestFailure] raw webhook 已更新为 dead-letter event_id=%s request_id=%s retry=%s error=%s",
+            "[WebhookIngestFailure] raw webhook updated to dead-letter event_id=%s request_id=%s retry=%s error=%s",
             event_id,
             request_id,
             retry_count,

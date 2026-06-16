@@ -48,16 +48,16 @@ def _tokenize_text(*values: Any) -> set[str]:
         if not text:
             continue
 
-        # 英文/数字 token
+        # English/numeric token
         for token in re.findall(r"[a-z0-9_.-]{3,}", text):
             tokens.add(token)
 
-        # 简单中文片段 token
+        # Simple Chinese fragment token
         for token in re.findall(r"[\u4e00-\u9fff]{2,}", text):
             tokens.add(token)
 
     if tokens:
-        logger.debug("[Noise] 文本分词结果: count=%d, sample=%r", len(tokens), list(tokens)[:5])
+        logger.debug("[Noise] Text tokenization result: count=%d, sample=%r", len(tokens), list(tokens)[:5])
     return tokens
 
 
@@ -240,35 +240,35 @@ def analyze_noise_reduction(
     scoring_config: NoiseScoringConfig = DEFAULT_SCORING_CONFIG,
 ) -> NoiseReductionContext:
     """
-    分析噪声降低
+    Analyze noise reduction.
 
     Args:
-        current: 当前告警上下文
-        recent_alerts: 近期告警列表
-        window_minutes: 时间窗口（分钟）
-        min_confidence: 最小置信度阈值
-        suppress_derived: 是否抑制衍生告警转发
+        current: Current alert context
+        recent_alerts: List of recent alerts
+        window_minutes: Time window (minutes)
+        min_confidence: Minimum confidence threshold
+        suppress_derived: Whether to suppress forwarding of derived alerts
     """
-    logger.debug("使用固定阈值: %.4f", min_confidence)
+    logger.debug("Using fixed threshold: %.4f", min_confidence)
 
-    # 收集相关告警
+    # Collect related alerts
     recent_alerts_list = list(recent_alerts)
     scored = _collect_related(current, recent_alerts_list, window_minutes, scoring_config)
 
     if not scored:
-        logger.info("[Noise] 降噪决策: relation=standalone")
-        return NoiseReductionContext("standalone", None, 0.0, False, "未发现可关联的告警关系", 0, ())
+        logger.info("[Noise] Noise-reduction decision: relation=standalone")
+        return NoiseReductionContext("standalone", None, 0.0, False, "No correlatable alert relationship found", 0, ())
 
     related = [(alert, score) for alert, score in scored if score >= scoring_config.related_min_confidence]
     related_ids = [alert.event_id for alert, _ in related if alert.event_id is not None]
 
     best_alert, best_score = scored[0]
 
-    # 根因判定
+    # Root-cause determination
     if best_alert.event_id is not None and best_score >= min_confidence:
-        reason = f"与告警#{best_alert.event_id} 高相关（置信度 {best_score:.2f}）"
+        reason = f"Highly correlated with alert #{best_alert.event_id} (confidence {best_score:.2f})"
 
-        logger.info("[Noise] 降噪决策: relation=derived, confidence=%.2f, suppress=%s", best_score, suppress_derived)
+        logger.info("[Noise] Noise-reduction decision: relation=derived, confidence=%.2f, suppress=%s", best_score, suppress_derived)
         return NoiseReductionContext(
             relation="derived",
             root_cause_event_id=best_alert.event_id,
@@ -279,11 +279,11 @@ def analyze_noise_reduction(
             related_alert_ids=tuple(related_ids),
         )
 
-    # 告警风暴检测
+    # Alert-storm detection
     if current.importance == "high" and len(related_ids) >= 2:
-        reason = f"检测到告警风暴，已关联 {len(related_ids)} 条近邻告警"
+        reason = f"Alert storm detected; correlated {len(related_ids)} nearby alerts"
 
-        logger.info("[Noise] 降噪决策: relation=root_cause, count=%d", len(related_ids))
+        logger.info("[Noise] Noise-reduction decision: relation=root_cause, count=%d", len(related_ids))
         return NoiseReductionContext(
             relation="root_cause",
             root_cause_event_id=current.event_id,
@@ -299,7 +299,7 @@ def analyze_noise_reduction(
         root_cause_event_id=None,
         confidence=round(best_score, 4),
         suppress_forward=False,
-        reason="存在弱关联告警，但未达到根因判定阈值",
+        reason="Weakly correlated alerts exist, but the root-cause determination threshold was not reached",
         related_alert_count=len(related_ids),
         related_alert_ids=tuple(related_ids),
     )

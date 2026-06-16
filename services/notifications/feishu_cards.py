@@ -14,10 +14,10 @@ from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
 _IMPORTANCE_LABEL = {
-    "high": "🔴 高",
-    "critical": "🚨 紧急",
-    "medium": "🟡 中",
-    "low": "🟢 低",
+    "high": "🔴 High",
+    "critical": "🚨 Critical",
+    "medium": "🟡 Medium",
+    "low": "🟢 Low",
 }
 _CHINA_TZ = timezone(timedelta(hours=8), "UTC+8")
 
@@ -96,7 +96,7 @@ def build_feishu_card(
     if "." in importance:
         importance = importance.rsplit(".", 1)[-1]
     template = _IMPORTANCE_TEMPLATE.get(importance, "orange")
-    importance_label = _IMPORTANCE_LABEL.get(importance, "🟡 中")
+    importance_label = _IMPORTANCE_LABEL.get(importance, "🟡 Medium")
 
     parsed_obj = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
     parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
@@ -109,38 +109,38 @@ def build_feishu_card(
 
     summary = analysis_result.get("summary", "")
     impact = analysis_result.get("impact_scope", "")
-    prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
-    title = f"{prefix}📡 Webhook 事件通知"
+    prefix = "🔁 [Periodic Reminder] " if is_periodic_reminder else ""
+    title = f"{prefix}📡 Webhook Event Notification"
 
     elements: list[JsonObject] = []
 
     fields = [
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{source or '—'}"}},
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**重要性**\n{importance_label}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**Source**\n{source or '—'}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**Importance**\n{importance_label}"}},
         {
             "is_short": True,
-            "text": {"tag": "lark_md", "content": f"**事件类型**\n{event_type_display or '—'}"},
+            "text": {"tag": "lark_md", "content": f"**Event Type**\n{event_type_display or '—'}"},
         },
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{timestamp or '—'}"}},
+        {"is_short": True, "text": {"tag": "lark_md", "content": f"**Time**\n{timestamp or '—'}"}},
     ]
     elements.append({"tag": "div", "fields": fields})
     elements.append({"tag": "hr"})
 
     identity_content = _build_identity_content(analysis_result, parsed)
     if identity_content:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ Alert Identity**\n{identity_content}"}})
         elements.append({"tag": "hr"})
 
     if summary:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 事件摘要**\n{summary[:800]}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 Event Summary**\n{summary[:800]}"}})
         elements.append({"tag": "hr"})
 
     if impact:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 Impact Scope**\n{impact[:600]}"}})
         elements.append({"tag": "hr"})
 
     if not elements:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "（暂无详情）"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "(No details available)"}})
 
     return {
         "msg_type": "interactive",
@@ -152,7 +152,7 @@ def build_feishu_card(
 
 
 def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degraded: bool = False) -> JsonObject:
-    title = "⚠️ AI 分析降级通知" if is_degraded else "❌ AI 分析失败通知"
+    title = "⚠️ AI Analysis Degraded Notification" if is_degraded else "❌ AI Analysis Failed Notification"
     template = "orange" if is_degraded else "red"
     return {
         "msg_type": "interactive",
@@ -163,7 +163,7 @@ def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degr
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**来源**: {webhook_data.get('source', 'uk')}\n**原因**: {error_reason}",
+                        "content": f"**Source**: {webhook_data.get('source', 'uk')}\n**Reason**: {error_reason}",
                     },
                 }
             ],
@@ -195,12 +195,12 @@ def build_deep_analysis_card(
         {
             "tag": "div",
             "fields": [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**来源**\n{display_source or '—'}"}},
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**告警 ID**\n{webhook_event_id or '—'}"}},
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**引擎**\n{engine or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**Source**\n{display_source or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**Alert ID**\n{webhook_event_id or '—'}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**Engine**\n{engine or '—'}"}},
                 {
                     "is_short": True,
-                    "text": {"tag": "lark_md", "content": f"**耗时**\n{_float_or_zero(duration):.1f}s"},
+                    "text": {"tag": "lark_md", "content": f"**Duration**\n{_float_or_zero(duration):.1f}s"},
                 },
             ],
         },
@@ -208,35 +208,35 @@ def build_deep_analysis_card(
     ]
 
     if summary:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 分析摘要**\n{summary}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 Analysis Summary**\n{summary}"}})
         elements.append({"tag": "hr"})
 
-    _add_md_section(elements, "🔍 根因定位", root_cause, 1000)
-    _add_md_section(elements, "💥 影响评估", impact, 800)
+    _add_md_section(elements, "🔍 Root Cause", root_cause, 1000)
+    _add_md_section(elements, "💥 Impact Assessment", impact, 800)
 
     recommendation_md = _markdown_list(recommendations, max_items=4, max_item_len=240)
     if recommendation_md:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🛠️ 修复建议**\n{recommendation_md}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🛠️ Recommendations**\n{recommendation_md}"}})
         elements.append({"tag": "hr"})
 
     evidence_md = _markdown_list(evidence, max_items=4, max_item_len=220)
     if evidence_md:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 关键证据**\n{evidence_md}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 Key Evidence**\n{evidence_md}"}})
         elements.append({"tag": "hr"})
 
     next_checks_md = _markdown_list(next_checks, max_items=4, max_item_len=220)
     if next_checks_md:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ 后续检查**\n{next_checks_md}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**✅ Next Checks**\n{next_checks_md}"}})
         elements.append({"tag": "hr"})
 
     identity_content = _build_identity_content({"alert_identity": identity}, {})
     if identity_content:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警定位**\n{identity_content}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ Alert Identity**\n{identity_content}"}})
         elements.append({"tag": "hr"})
 
     if len(elements) == 2:
-        fallback = _truncate_section_text(report.get("primary_text") or report.get("raw_text"), 1200) or "无"
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 分析内容**\n{fallback}"}})
+        fallback = _truncate_section_text(report.get("primary_text") or report.get("raw_text"), 1200) or "None"
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 Analysis Content**\n{fallback}"}})
         elements.append({"tag": "hr"})
 
     elements.append(
@@ -246,8 +246,8 @@ def build_deep_analysis_card(
                 {
                     "tag": "plain_text",
                     "content": (
-                        f"引擎: {engine} | 置信度: {confidence_percent}% | "
-                        f"耗时: {_float_or_zero(duration):.1f}s | ID: {webhook_event_id}"
+                        f"Engine: {engine} | Confidence: {confidence_percent}% | "
+                        f"Duration: {_float_or_zero(duration):.1f}s | ID: {webhook_event_id}"
                     ),
                 }
             ],
@@ -261,13 +261,13 @@ def build_deep_analysis_card(
                 "title": {
                     "tag": "plain_text",
                     "content": (
-                        f"❌ [{display_source}] 深度分析失败"
+                        f"❌ [{display_source}] Deep Analysis Failed"
                         if display_source and analysis_failed
-                        else "❌ 深度分析失败"
+                        else "❌ Deep Analysis Failed"
                         if analysis_failed
-                        else f"🔬 [{display_source}] 深度分析完成"
+                        else f"🔬 [{display_source}] Deep Analysis Complete"
                         if display_source
-                        else "🔬 深度分析完成"
+                        else "🔬 Deep Analysis Complete"
                     ),
                 },
                 "template": "red" if analysis_failed else "blue",
@@ -285,7 +285,7 @@ def build_delivery_exhausted_card(outbox: Any) -> JsonObject:
     attempts = getattr(outbox, "attempts", 0)
     max_attempts = getattr(outbox, "max_attempts", 0)
     last_error = str(getattr(outbox, "last_error", "") or "")[:500]
-    title = "🚨 转发重试耗尽"
+    title = "🚨 Forward Retries Exhausted"
     return {
         "msg_type": "interactive",
         "card": {

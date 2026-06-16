@@ -11,7 +11,7 @@ from db.session import Base
 
 
 class ForwardRule(Base):
-    """转发规则配置"""
+    """Forwarding rule configuration"""
 
     __tablename__ = "forward_rules"
 

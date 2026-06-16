@@ -183,9 +183,9 @@ async def test_run_scheduled_locked_records_success_lag_and_error_metrics(
         for call in metric_calls
     )
     assert any(call[0] == "SCHEDULED_TASK_LAST_SUCCESS_UNIXTIME" and call[3] == "set" for call in metric_calls)
-    assert any(level == "debug" and "周期任务开始" in message for level, message, _args in logs)
-    assert any(level == "debug" and "周期任务成功" in message for level, message, _args in logs)
-    assert any(level == "exception" and "周期任务失败" in message for level, message, _args in logs)
+    assert any(level == "debug" and "Periodic task started" in message for level, message, _args in logs)
+    assert any(level == "debug" and "Periodic task succeeded" in message for level, message, _args in logs)
+    assert any(level == "exception" and "Periodic task failed" in message for level, message, _args in logs)
 
 
 def test_webhook_task_context_start_fallback_and_finish_emit_events(

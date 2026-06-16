@@ -28,26 +28,26 @@ def looks_like_default_database_url(value: str) -> bool:
 def validate_startup_security(config: AppConfig, *, app_env: str | None = None) -> None:
     env = app_env or config.server.APP_ENV
     if env == "production" and looks_like_default_database_url(config.db.DATABASE_URL):
-        raise RuntimeError("DATABASE_URL 仍是本地默认连接串，请配置生产数据库连接")
+        raise RuntimeError("DATABASE_URL is still the local default connection string; please configure a production database connection")
     if not config.security.API_KEY:
-        raise RuntimeError("API_KEY 未配置，请设置 API_KEY")
+        raise RuntimeError("API_KEY is not configured; please set API_KEY")
     if not config.security.ADMIN_WRITE_KEY:
-        raise RuntimeError("ADMIN_WRITE_KEY 未配置，请设置 ADMIN_WRITE_KEY")
+        raise RuntimeError("ADMIN_WRITE_KEY is not configured; please set ADMIN_WRITE_KEY")
     if env == "production" and looks_like_placeholder_secret(config.security.API_KEY):
-        raise RuntimeError("API_KEY 仍是示例占位值，请替换为真实随机密钥")
+        raise RuntimeError("API_KEY is still an example placeholder value; please replace it with a real random key")
     if env == "production" and looks_like_placeholder_secret(config.security.ADMIN_WRITE_KEY):
-        raise RuntimeError("ADMIN_WRITE_KEY 仍是示例占位值，请替换为真实随机密钥")
+        raise RuntimeError("ADMIN_WRITE_KEY is still an example placeholder value; please replace it with a real random key")
     if env == "production":
         _warn_if_short_secret("API_KEY", config.security.API_KEY)
         _warn_if_short_secret("ADMIN_WRITE_KEY", config.security.ADMIN_WRITE_KEY)
     if env == "production" and not config.security.REQUIRE_WEBHOOK_AUTH:
-        raise RuntimeError("生产环境未开启 Webhook 鉴权。请设置 REQUIRE_WEBHOOK_AUTH=true 和 WEBHOOK_SECRET")
+        raise RuntimeError("Webhook authentication is not enabled in production. Please set REQUIRE_WEBHOOK_AUTH=true and WEBHOOK_SECRET")
     if env == "production" and config.security.REQUIRE_WEBHOOK_AUTH:
         webhook_secret = config.security.WEBHOOK_SECRET.strip()
         if not webhook_secret:
-            raise RuntimeError("已开启 Webhook 鉴权但 WEBHOOK_SECRET 为空，请设置 WEBHOOK_SECRET")
+            raise RuntimeError("Webhook authentication is enabled but WEBHOOK_SECRET is empty; please set WEBHOOK_SECRET")
         if looks_like_placeholder_secret(config.security.WEBHOOK_SECRET):
-            raise RuntimeError("WEBHOOK_SECRET 仍是示例占位值，请替换为真实随机密钥")
+            raise RuntimeError("WEBHOOK_SECRET is still an example placeholder value; please replace it with a real random key")
         _warn_if_short_secret("WEBHOOK_SECRET", webhook_secret)
 
 
@@ -59,7 +59,7 @@ def _warn_if_short_secret(name: str, value: str) -> None:
     """
     if 0 < len(value.strip()) < _MIN_SECRET_LENGTH:
         logger.warning(
-            "[Security] %s 长度仅 %d，低于推荐的 %d 字符，建议轮换为更强的随机密钥",
+            "[Security] %s is only %d characters, below the recommended %d; consider rotating to a stronger random key",
             name,
             len(value.strip()),
             _MIN_SECRET_LENGTH,

@@ -8,7 +8,7 @@ from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
-# 将项目根目录加入 sys.path，以便导入项目模块
+# Add the project root to sys.path so project modules can be imported.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv  # noqa: E402
@@ -29,18 +29,18 @@ from models import (  # noqa: E402, F401
 config = context.config
 app_config = get_settings()
 
-# 设置日志
+# Configure logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 设置 target_metadata 供 autogenerate 使用
+# Set target_metadata for autogenerate.
 target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    """获取同步数据库 URL（Alembic 使用同步引擎）"""
+    """Return the synchronous database URL (Alembic uses a synchronous engine)."""
     url = app_config.db.DATABASE_URL
-    # 将异步驱动替换为同步驱动
+    # Swap the async driver for the synchronous driver.
     url = url.replace("postgresql+asyncpg://", "postgresql://")
     return url
 
@@ -68,7 +68,7 @@ def run_migrations_online() -> None:
 
     Creates an Engine and associates a connection with the context.
     """
-    # 覆盖 ini 中的 sqlalchemy.url
+    # Override the sqlalchemy.url from the ini file.
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_url()
 

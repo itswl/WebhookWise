@@ -19,11 +19,11 @@ class AdapterRegistry:
         self._aliases: dict[str, str] = {}
 
     def register(self, source_name: str, *, aliases: set[str] | None = None) -> Callable[[_FNorm], _FNorm]:
-        """装饰器：注册一个生态适配器，可选提供别名集合。"""
+        """Decorator: register an ecosystem adapter, optionally providing a set of aliases."""
 
         def wrapper(func: _FNorm) -> _FNorm:
             self._normalizers[source_name] = func
-            # 注册别名映射
+            # Register alias mappings
             normalized_key = source_name.lower().replace(" ", "")
             self._aliases[normalized_key] = source_name
             if aliases:
@@ -35,7 +35,7 @@ class AdapterRegistry:
         return wrapper
 
     def register_detector(self, source_name: str) -> Callable[[_FDet], _FDet]:
-        """装饰器：注册一个生态适配器探测器。"""
+        """Decorator: register an ecosystem adapter detector."""
 
         def wrapper(func: _FDet) -> _FDet:
             self._detectors.append((source_name, func))
@@ -45,7 +45,7 @@ class AdapterRegistry:
         return wrapper
 
     def find_adapter_by_payload(self, data: JsonObject) -> str | None:
-        """根据 Payload 特征匹配适配器。"""
+        """Match an adapter based on payload characteristics."""
         for source_name, detector in self._detectors:
             try:
                 if detector(data):
@@ -55,21 +55,21 @@ class AdapterRegistry:
         return None
 
     def find_adapter_by_source(self, source: str) -> str | None:
-        """通过来源名称或别名查找适配器名。
+        """Look up an adapter name by source name or alias.
 
-        将 source 小写化并去除空格后在别名映射中查找。
+        Lowercases the source and strips spaces before looking it up in the alias map.
         """
         key = source.lower().replace(" ", "")
         return self._aliases.get(key)
 
     def get_normalizer(self, source_name: str) -> Callable[[JsonObject], WebhookData] | None:
-        """获取特定适配器的归一化函数。"""
+        """Get the normalization function for a specific adapter."""
         return self._normalizers.get(source_name)
 
     def normalize(self, adapter_name: str, data: JsonObject) -> WebhookData:
-        """便捷方法：获取 normalizer 并对数据执行归一化。
+        """Convenience method: get the normalizer and normalize the data.
 
-        若适配器不存在则原样返回数据。
+        Returns the data unchanged if the adapter does not exist.
         """
         normalizer = self.get_normalizer(adapter_name)
         if normalizer is None:

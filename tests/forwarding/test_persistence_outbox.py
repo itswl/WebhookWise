@@ -334,7 +334,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             log_tag="test",
         )
 
-    assert skipped == {"status": "skipped", "reason": "未匹配转发规则", "outbox_ids": []}
+    assert skipped == {"status": "skipped", "reason": "no matching forward rule", "outbox_ids": []}
     assert len(ids) == 2
     assert duplicate_ids == [ids[0]]
     assert len(manual_retry_ids) == 1

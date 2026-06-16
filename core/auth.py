@@ -69,7 +69,7 @@ async def verify_api_key(
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
     config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> bool:
-    """验证管理 API Bearer Token。"""
+    """Verify the management API Bearer token."""
     api_key = config.security.API_KEY
     if not api_key:
         raise HTTPException(
@@ -92,7 +92,7 @@ async def verify_api_key(
                 body_bytes = b""
 
             logger.warning(
-                "[Auth] 未授权的 API 访问尝试: IP=%s, URL=%s, Method=%s, Headers=%s, Body=%s",
+                "[Auth] Unauthorized API access attempt: IP=%s, URL=%s, Method=%s, Headers=%s, Body=%s",
                 client_ip,
                 request.url.path,
                 request.method,
@@ -113,7 +113,7 @@ async def verify_admin_write(
     auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
     config: AppConfig = _CONFIG_DEPENDENCY,
 ) -> bool:
-    """验证 Admin 写操作 Bearer Token。"""
+    """Verify the Admin write-operation Bearer token."""
     admin_write_key = config.security.ADMIN_WRITE_KEY
     api_key = config.security.API_KEY
     if not admin_write_key:
@@ -159,7 +159,7 @@ async def verify_admin_write(
 
     client_ip = request.client.host if request.client else "unknown"
     logger.warning(
-        "[Auth] Admin 写操作权限不足: IP=%s, URL=%s",
+        "[Auth] Insufficient permission for Admin write operation: IP=%s, URL=%s",
         client_ip,
         request.url.path,
     )

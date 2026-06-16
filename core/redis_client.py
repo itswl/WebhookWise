@@ -71,7 +71,7 @@ def build_redis_client(config: AppConfig | None = None) -> RedisClient:
         health_check_interval=config.redis.REDIS_HEALTH_CHECK_INTERVAL,
     )
     client = redis.Redis(connection_pool=pool)
-    logger.info("[Redis] 成功初始化连接池: %s", mask_url(config.redis.REDIS_URL))
+    logger.info("[Redis] Connection pool initialized successfully: %s", mask_url(config.redis.REDIS_URL))
     return client
 
 
@@ -92,7 +92,7 @@ async def dispose_redis() -> None:
         client = context.redis_client
         context.redis_client = None
         await close_redis_client(client)
-        logger.info("[Redis] 当前上下文连接池已关闭")
+        logger.info("[Redis] Connection pool for the current context has been closed")
 
 
 async def close_redis_client(client: RedisClient) -> None:
@@ -226,7 +226,7 @@ async def redis_ping() -> bool:
         raw = await record_redis_operation("ping", cast(Awaitable[object], get_redis().ping()))
         return bool(raw)
     except (RedisError, OSError, TimeoutError, RuntimeError) as e:
-        logger.warning("[Redis] ping 失败: %s", e)
+        logger.warning("[Redis] ping failed: %s", e)
         return False
 
 

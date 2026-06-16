@@ -54,7 +54,7 @@ async def _safe_notify(coro: Any) -> None:
     try:
         await coro
     except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
-        logger.warning("[Poller] 后台通知失败: %s", e)
+        logger.warning("[Poller] Background notification failed: %s", e)
 
 
 def _seconds_until(target: datetime) -> int:
@@ -178,10 +178,10 @@ async def _handle_poll_timeout(
     timeout_seconds = policy.timeout_seconds
     if elapsed_total <= timeout_seconds:
         return None
-    logger.info("[Poller] 分析超时: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds)
+    logger.info("[Poller] Analysis timed out: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds)
     DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
-    update: JsonObject = {"status": DeepAnalysisStatus.FAILED, "analysis_result": {"root_cause": "OpenClaw 分析超时"}}
-    return await _failure_update_with_notification(rec, update, "超时失败", policy=policy)
+    update: JsonObject = {"status": DeepAnalysisStatus.FAILED, "analysis_result": {"root_cause": "OpenClaw analysis timed out"}}
+    return await _failure_update_with_notification(rec, update, "Timeout failure", policy=policy)
 
 
 async def _handle_missing_session_key(
@@ -197,17 +197,17 @@ async def _handle_missing_session_key(
     elapsed = _elapsed_since(timeout_started_at, default=float(policy.timeout_seconds))
     if elapsed < compute_openclaw_poll_delay(0, policy=policy):
         return _poll_skip(record_id)
-    logger.warning("[Poller] 缺少 session_key，标记失败: id=%s elapsed=%.0fs", record_id, elapsed)
+    logger.warning("[Poller] Missing session_key, marking as failed: id=%s elapsed=%.0fs", record_id, elapsed)
     DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
     update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
         "analysis_result": {
-            "root_cause": "无法获取分析会话，OpenClaw 触发失败",
+            "root_cause": "Could not obtain an analysis session; OpenClaw trigger failed",
             "error": "missing_session_key",
-            "failure_reason": "未能获取到分析会话密钥",
+            "failure_reason": "Could not obtain the analysis session key",
         },
     }
-    return await _failure_update_with_notification(rec, update, "无 session_key - OpenClaw 触发失败", policy=policy)
+    return await _failure_update_with_notification(rec, update, "No session_key - OpenClaw trigger failed", policy=policy)
 
 
 async def _fetch_poll_result(rec: JsonObject, *, policy: OpenClawPollPolicy) -> JsonObject:
@@ -308,7 +308,7 @@ async def _handle_completed_poll_result(
     required_hits = 1 if result.get("is_final") is True else policy.stability_required_hits
 
     if required_hits <= 1:
-        logger.info("[Poller] 分析完成，稳定命中阈值为 1，直接写库: id=%s", record_id)
+        logger.info("[Poller] Analysis complete, stability hit threshold is 1, writing to DB directly: id=%s", record_id)
         await _clear_poll_stability(record_id)
         return _completed_update(rec, text, timeout_started_at)
 
@@ -318,7 +318,7 @@ async def _handle_completed_poll_result(
     if _is_same_poll_snapshot(prev_snapshot, current_snapshot):
         hit_count = int(prev_snapshot.get("hit_count", 1) if prev_snapshot else 1) + 1
         logger.info(
-            "[Poller] 结果稳定检查: id=%s hit=%s/%s msg_count=%s text_len=%s",
+            "[Poller] Result stability check: id=%s hit=%s/%s msg_count=%s text_len=%s",
             record_id,
             hit_count,
             required_hits,
@@ -328,11 +328,11 @@ async def _handle_completed_poll_result(
         if hit_count < required_hits:
             await _set_poll_stability(record_id, {**current_snapshot, "hit_count": hit_count}, policy=policy)
             return _poll_skip(record_id)
-        logger.info("[Poller] 分析稳定确认，准备写库: id=%s", record_id)
+        logger.info("[Poller] Analysis stability confirmed, preparing to write to DB: id=%s", record_id)
         await _clear_poll_stability(record_id)
         return _completed_update(rec, text, timeout_started_at)
 
-    logger.info("[Poller] 首次或结果变化，等待稳定: id=%s msg_count=%s text_len=%s", record_id, msg_count, len(text))
+    logger.info("[Poller] First result or result changed, waiting for stability: id=%s msg_count=%s text_len=%s", record_id, msg_count, len(text))
     await _set_poll_stability(
         record_id, {**current_snapshot, "hit_count": 1, "first_result": {"text": text}}, policy=policy
     )
@@ -352,7 +352,7 @@ async def _handle_error_poll_result(
         if error_count >= policy.max_consecutive_errors and policy.enable_degradation:
             first_result = prev_snapshot.get("first_result", {})
             text = str(first_result.get("text", "")) if isinstance(first_result, dict) else ""
-            logger.warning("[Poller] 连续错误达阈值，降级使用首次结果: id=%s error_count=%d", record_id, error_count)
+            logger.warning("[Poller] Consecutive errors reached threshold, degrading to use the first result: id=%s error_count=%d", record_id, error_count)
             await _clear_poll_stability(record_id)
             DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=rec.get("engine", "openclaw")).inc()
             return _poll_update(
@@ -363,10 +363,10 @@ async def _handle_error_poll_result(
         await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count}, policy=policy)
         return _poll_skip(record_id)
 
-    error_msg = str(result.get("error", "OpenClaw 返回错误"))
+    error_msg = str(result.get("error", "OpenClaw returned an error"))
     if bool(result.get("retryable")) or _is_transient_poll_error(error_msg):
         logger.warning(
-            "[Poller] OpenClaw 轮询遇到临时错误，保留 pending 等待下轮重试: id=%s error=%s", record_id, error_msg
+            "[Poller] OpenClaw polling hit a transient error, keeping pending to retry next round: id=%s error=%s", record_id, error_msg
         )
         return _poll_skip(record_id)
 
@@ -391,7 +391,7 @@ async def _handle_poll_result(
     if status == "error":
         return await _handle_error_poll_result(rec, result, policy=policy)
     logger.info(
-        "[Poller] 分析仍在进行中: id=%s elapsed=%.0fs status=%s",
+        "[Poller] Analysis still in progress: id=%s elapsed=%.0fs status=%s",
         rec["id"],
         _elapsed_since(timeout_started_at),
         status or "unknown",
@@ -414,15 +414,15 @@ async def _poll_single_record(rec: JsonObject, *, policy: OpenClawPollPolicy | N
         result = await _fetch_poll_result(rec, policy=policy)
         return await _handle_poll_result(rec, result, timeout_started_at, policy=policy)
     except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
-        logger.error("轮询记录 id=%s 失败: %s", record_id, e, exc_info=True)
+        logger.error("Failed to poll record id=%s: %s", record_id, e, exc_info=True)
         return {
             "id": record_id,
             "action": "update",
             "status": DeepAnalysisStatus.FAILED,
             "analysis_result": {
-                "root_cause": f"分析任务崩溃: {e}",
+                "root_cause": f"Analysis task crashed: {e}",
                 "error": str(e),
-                "failure_reason": f"轮询异常: {e}",
+                "failure_reason": f"Polling error: {e}",
             },
         }
 
@@ -477,7 +477,7 @@ async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> 
     try:
         await schedule_openclaw_poll(analysis_id, delay_seconds)
     except (OSError, RuntimeError, TimeoutError) as e:
-        logger.warning("[Poller] OpenClaw 下次轮询调度失败 analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[Poller] Failed to schedule next OpenClaw poll analysis_id=%s error=%s", analysis_id, e)
 
 
 async def _schedule_next_openclaw_poll(
@@ -497,7 +497,7 @@ async def _schedule_next_openclaw_poll(
             return
         record.next_poll_at = next_poll_at
     await _schedule_openclaw_poll_task(analysis_id, delay)
-    logger.info("[Poller] 已调度下次 OpenClaw 轮询 analysis_id=%s delay=%ss", analysis_id, delay)
+    logger.info("[Poller] Scheduled next OpenClaw poll analysis_id=%s delay=%ss", analysis_id, delay)
 
 
 async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolicy | None = None) -> None:
@@ -506,16 +506,16 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
         record_dict, early_reschedule_delay = await _claim_openclaw_poll(analysis_id, policy=policy)
         if early_reschedule_delay is not None:
             logger.debug(
-                "[Poller] OpenClaw poll 任务提前触发，重新调度: id=%s delay=%ss", analysis_id, early_reschedule_delay
+                "[Poller] OpenClaw poll task triggered early, rescheduling: id=%s delay=%ss", analysis_id, early_reschedule_delay
             )
             await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
             return
         if record_dict is None:
-            logger.debug("[Poller] 没有可领取的 pending 分析: id=%s", analysis_id)
+            logger.debug("[Poller] No claimable pending analysis: id=%s", analysis_id)
             return
 
         logger.info(
-            "[Poller] 轮询 OpenClaw 分析: id=%s webhook_id=%s attempt=%s",
+            "[Poller] Polling OpenClaw analysis: id=%s webhook_id=%s attempt=%s",
             analysis_id,
             record_dict.get("webhook_event_id"),
             record_dict.get("poll_attempts"),
@@ -574,7 +574,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             notify_dict, source = notify_payload
             await _safe_notify(send_deep_analysis_success_notification(notify_dict, source, policy=policy))
     except (OSError, RuntimeError, SQLAlchemyError, ValueError) as e:
-        logger.error("[Poller] 轮询任务异常 analysis_id=%s error=%s", analysis_id, e, exc_info=True)
+        logger.error("[Poller] Polling task error analysis_id=%s error=%s", analysis_id, e, exc_info=True)
 
 
 async def run_openclaw_poll_scan(limit: int = 100) -> int:
@@ -592,7 +592,7 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
     for analysis_id in ids:
         await _schedule_openclaw_poll_task(analysis_id, 0)
     if ids:
-        logger.info("[Poller] 扫描调度 pending OpenClaw 分析 count=%s ids=%s", len(ids), ids)
+        logger.info("[Poller] Scan-scheduled pending OpenClaw analyses count=%s ids=%s", len(ids), ids)
     else:
-        logger.debug("[Poller] 扫描未发现待调度 OpenClaw 分析")
+        logger.debug("[Poller] Scan found no OpenClaw analyses to schedule")
     return len(ids)

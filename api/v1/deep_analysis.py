@@ -45,19 +45,19 @@ async def deep_analyze_webhook(
     webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONResponse | JSONDict:
     payload = payload or {}
-    logger.info("[DeepAnalysis] 手动分析请求 webhook_id=%s engine=%s", webhook_id, payload.get("engine", "auto"))
+    logger.info("[DeepAnalysis] Manual analysis request webhook_id=%s engine=%s", webhook_id, payload.get("engine", "auto"))
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
-        logger.warning("[DeepAnalysis] 手动分析失败，事件不存在 webhook_id=%s", webhook_id)
+        logger.warning("[DeepAnalysis] Manual analysis failed, event does not exist webhook_id=%s", webhook_id)
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     ctx = await _build_deep_analysis_context(event)
     requested_engine = str(payload.get("engine", "auto")).strip().lower()
     if not _is_supported_deep_analysis_engine(requested_engine):
-        logger.warning("[DeepAnalysis] 不支持的分析引擎 webhook_id=%s engine=%s", webhook_id, requested_engine)
+        logger.warning("[DeepAnalysis] Unsupported analysis engine webhook_id=%s engine=%s", webhook_id, requested_engine)
         return JSONResponse(status_code=400, content={"success": False, "error": "Unsupported engine"})
     if not OpenClawTriggerPolicy.from_config().enabled:
-        logger.warning("[DeepAnalysis] OpenClaw 未启用 webhook_id=%s", webhook_id)
+        logger.warning("[DeepAnalysis] OpenClaw not enabled webhook_id=%s", webhook_id)
         return JSONResponse(status_code=503, content={"success": False, "error": "No engine available"})
 
     try:
@@ -65,7 +65,7 @@ async def deep_analyze_webhook(
             ctx, event.headers or {}, str(payload.get("user_question", ""))
         )
     except deep_analysis_workflow.DeepAnalysisExecutionError as e:
-        logger.error("[DeepAnalysis] 手动分析触发失败 webhook_id=%s error=%s", webhook_id, e, exc_info=True)
+        logger.error("[DeepAnalysis] Manual analysis trigger failed webhook_id=%s error=%s", webhook_id, e, exc_info=True)
         return internal_error_response()
 
     record = DeepAnalysis(
@@ -86,7 +86,7 @@ async def deep_analyze_webhook(
     if poll_delay is not None:
         await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(analysis_id, poll_delay)
     logger.info(
-        "[DeepAnalysis] 手动分析记录已创建 analysis_id=%s webhook_id=%s status=%s engine=%s poll_delay=%s",
+        "[DeepAnalysis] Manual analysis record created analysis_id=%s webhook_id=%s status=%s engine=%s poll_delay=%s",
         analysis_id,
         webhook_id,
         record.status,
@@ -151,11 +151,11 @@ async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get
 async def retry_deep_analysis(
     analysis_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONResponse | JSONDict:
-    """重新拉取或重新发起 OpenClaw 深度分析结果。"""
+    """Re-fetch or re-trigger the OpenClaw deep analysis result."""
     try:
         outcome = await _retry_deep_analysis_record(session, analysis_id)
     except deep_analysis_workflow.DeepAnalysisExecutionError as e:
-        logger.error("[DeepAnalysis] 重试触发失败 analysis_id=%s error=%s", analysis_id, e, exc_info=True)
+        logger.error("[DeepAnalysis] Retry trigger failed analysis_id=%s error=%s", analysis_id, e, exc_info=True)
         return internal_error_response()
     except deep_analysis_workflow.DeepAnalysisWorkflowError as e:
         return JSONResponse(status_code=e.status_code, content={"success": False, "error": e.message})
@@ -176,23 +176,23 @@ async def forward_deep_analysis(
     payload: dict[str, Any] | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse | JSONDict:
-    """转发深度分析结果到指定 URL（飞书卡片或通用 Webhook）"""
+    """Forward the deep analysis result to a given URL (Feishu card or generic Webhook)."""
     payload = payload or {}
     target_url = (payload.get("target_url") or "").strip()
     try:
         outcome = await _forward_deep_analysis_record(session, analysis_id, target_url)
     except UnsafeTargetUrlError as e:
-        logger.warning("[DeepAnalysis] 手动转发目标 URL 被拒绝 analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[DeepAnalysis] Manual forward target URL rejected analysis_id=%s error=%s", analysis_id, e)
         return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
     except deep_analysis_workflow.DeepAnalysisWorkflowError as e:
-        error = DELIVERY_ERROR_MESSAGE if e.message == "转发未送达" else e.message
+        error = DELIVERY_ERROR_MESSAGE if e.message == "Forward was not delivered" else e.message
         return JSONResponse(status_code=e.status_code, content={"success": False, "error": error})
     except deep_analysis_workflow.DeepAnalysisDeliveryError as e:
         logger.error(
-            "[DeepAnalysis] 转发深度分析入队失败 analysis_id=%s target=%s error=%s",
+            "[DeepAnalysis] Deep analysis forward enqueue failed analysis_id=%s target=%s error=%s",
             analysis_id,
             mask_url(target_url),
             e,
         )
         return internal_error_response()
-    return {"success": True, "message": "已入队转发", "outbox_id": outcome.outbox_id}
+    return {"success": True, "message": "Forward enqueued", "outbox_id": outcome.outbox_id}

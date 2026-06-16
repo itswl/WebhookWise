@@ -110,4 +110,4 @@ def harden_transport_against_rebinding(transport: httpx.AsyncBaseTransport) -> N
     if isinstance(backend, _PinningBackend):
         return
     pool._network_backend = _PinningBackend(backend)
-    logger.info("[HTTP] 已启用 DNS pinning 出网防护（防 SSRF rebinding）")
+    logger.info("[HTTP] DNS pinning outbound protection enabled (anti-SSRF rebinding)")

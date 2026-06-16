@@ -19,7 +19,7 @@ class StaticSettings(BaseSettings):
 
 
 class ServerConfig(StaticSettings):
-    """服务器 / 运行模式 / 日志"""
+    """Server / run mode / logging."""
 
     APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
@@ -40,7 +40,7 @@ class TaskConfig(StaticSettings):
 
     BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
-    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300, description="Outbox 记录认领后超时秒数; 需大于 FORWARD_TIMEOUT + 退避上限，否则正常重试的记录会被误判为过期")
+    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300, description="Timeout in seconds after an outbox record is claimed; must be greater than FORWARD_TIMEOUT + the backoff ceiling, otherwise records under normal retry are wrongly treated as stale")
     WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0)
 
 
@@ -56,7 +56,7 @@ class MQConfig(StaticSettings):
 
 
 class SecurityConfig(StaticSettings):
-    """认证 / 签名 / 限流"""
+    """Authentication / signing / rate limiting."""
 
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
@@ -68,15 +68,15 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
     ADMIN_API_RATE_LIMIT_PER_MINUTE: int = Field(
         default=0,
-        description="认证管理/读 API 的 per-IP 每分钟限流; 0(默认)关闭。开启后可抑制 API Key 暴力破解和负载; 需高于 Dashboard 单次加载请求数(每 60s 自动刷新一次)",
+        description="Per-IP per-minute rate limit for the authenticated admin/read API; 0 (default) disables it. When enabled, it throttles API Key brute force and load; must be higher than the number of requests in a single Dashboard load (which auto-refreshes every 60s)",
     )
-    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: Redis 不可用时降级放行; false(默认): 拒绝请求返回 503。生产环境面向公网时建议 false 以防止限流失效")
+    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: degrade to allow when Redis is unavailable; false (default): reject the request with 503. For public-facing production, false is recommended to prevent rate limiting from being bypassed")
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
     WEBHOOK_REPLAY_PROTECTION_ENABLED: bool = Field(
         default=False,
-        description="true: 对带签名的 webhook 强制校验时间戳+nonce 防重放(需上游发送 x-webhook-timestamp)。默认 false 保持向后兼容",
+        description="true: enforce timestamp + nonce replay protection for signed webhooks (requires the upstream to send x-webhook-timestamp). Defaults to false to preserve backward compatibility",
     )
-    WEBHOOK_REPLAY_MAX_SKEW_SECONDS: int = Field(default=300, description="签名时间戳允许的最大时钟偏差(秒)")
+    WEBHOOK_REPLAY_MAX_SKEW_SECONDS: int = Field(default=300, description="Maximum allowed clock skew for the signature timestamp (seconds)")
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
     ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)
@@ -84,17 +84,17 @@ class SecurityConfig(StaticSettings):
 
 
 class DBConfig(StaticSettings):
-    """PostgreSQL 连接池"""
+    """PostgreSQL connection pool."""
 
     DATABASE_URL: str
     # Per-process pool. Total Postgres connections ≈ (API workers + worker
     # procs) × (DB_POOL_SIZE + DB_MAX_OVERFLOW). Size deliberately against
     # Postgres max_connections and expected per-request concurrency; consider
     # pgbouncer when scaling out. Defaults suit a small single-node deployment.
-    DB_POOL_SIZE: int = Field(default=5, description="每进程连接池常驻连接数")
-    DB_MAX_OVERFLOW: int = Field(default=5, description="每进程连接池可临时超出的连接数")
+    DB_POOL_SIZE: int = Field(default=5, description="Number of persistent connections in the per-process pool")
+    DB_MAX_OVERFLOW: int = Field(default=5, description="Number of connections the per-process pool may temporarily exceed by")
     DB_POOL_RECYCLE: int = Field(default=3600)
-    DB_POOL_TIMEOUT: int = Field(default=30, description="等待空闲连接的超时(秒);超时请求会报错")
+    DB_POOL_TIMEOUT: int = Field(default=30, description="Timeout (seconds) for waiting on an idle connection; requests that time out raise an error")
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
     DB_SYNC_COMMIT: str = Field(default="on")
 
@@ -104,7 +104,7 @@ def _db_config_factory() -> DBConfig:
 
 
 class RedisConfig(StaticSettings):
-    """Redis 连接"""
+    """Redis connection."""
 
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     REDIS_SOCKET_CONNECT_TIMEOUT: int = Field(default=5)
@@ -113,7 +113,7 @@ class RedisConfig(StaticSettings):
 
 
 class NoiseConfig(StaticSettings):
-    """告警降噪参数"""
+    """Alert noise-reduction parameters."""
 
     ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
     NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
@@ -129,7 +129,7 @@ class NoiseConfig(StaticSettings):
 
 
 class AIConfig(StaticSettings):
-    """OpenAI + AI 分析"""
+    """OpenAI + AI analysis."""
 
     ENABLE_AI_ANALYSIS: bool = Field(default=True)
     OPENAI_API_KEY: str = Field(default="")
@@ -140,7 +140,7 @@ class AIConfig(StaticSettings):
     # supports it for fewer malformed outputs at the source — e.g.
     # "openrouter_structured_outputs" (OpenRouter), "tools_strict"/"json_schema"
     # (OpenAI). Unknown/unsupported names fall back to JSON at client init.
-    AI_INSTRUCTOR_MODE: str = Field(default="json", description="instructor 结构化输出模式名(不区分大小写)")
+    AI_INSTRUCTOR_MODE: str = Field(default="json", description="instructor structured-output mode name (case-insensitive)")
     AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
     AI_HTTP_TIMEOUT_SECONDS: float = Field(default=60.0)
     AI_HTTP_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0)
@@ -191,7 +191,7 @@ class NotificationConfig(StaticSettings):
 
 
 class OpenClawConfig(StaticSettings):
-    """OpenClaw 深度分析引擎"""
+    """OpenClaw deep-analysis engine."""
 
     OPENCLAW_ENABLED: bool = Field(default=False)
     OPENCLAW_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
@@ -216,7 +216,7 @@ class OpenClawConfig(StaticSettings):
 
 
 class CircuitBreakerConfig(StaticSettings):
-    """熔断器"""
+    """Circuit breaker."""
 
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT: float = Field(default=30.0)
@@ -232,7 +232,7 @@ class CircuitBreakerConfig(StaticSettings):
 
 
 class MaintenanceConfig(StaticSettings):
-    """数据清理 / 保留策略 / 维护"""
+    """Data cleanup / retention policy / maintenance."""
 
     ENABLE_DATA_CLEANUP: bool = Field(default=True)
     DATA_RETENTION_DAYS_DEFAULT: int = Field(default=30)
@@ -245,7 +245,7 @@ class MaintenanceConfig(StaticSettings):
 
 
 class RetryConfig(StaticSettings):
-    """重试 + 去重 + 周期提醒"""
+    """Retries + deduplication + periodic reminders."""
 
     DEDUP_WINDOW_SECONDS: int = Field(default=14400)
     ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200)
@@ -258,7 +258,7 @@ class RetryConfig(StaticSettings):
     PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100)
     PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
     PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
-    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="Redis 不可用时背压检查是否放行; true: 降级放行, false: 拒绝请求")
+    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="Whether the backpressure check allows requests when Redis is unavailable; true: degrade to allow, false: reject the request")
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
     WEBHOOK_RETRY_INITIAL_DELAY: int = Field(default=30)
@@ -273,7 +273,7 @@ class RetryConfig(StaticSettings):
 
 
 class AppConfig(StaticSettings):
-    """应用配置类 — 组合所有领域子配置"""
+    """Application configuration class — composes all domain sub-configs."""
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     tasks: TaskConfig = Field(default_factory=TaskConfig)

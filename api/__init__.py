@@ -1,18 +1,18 @@
 """
 api/__init__.py
 =======================
-共享响应工具和异常类，所有 route 模块共用。
+Shared response helpers and exception classes used by all route modules.
 """
 
 from typing import Any
 
 from fastapi.responses import JSONResponse
 
-INTERNAL_ERROR_MESSAGE = "内部服务错误"
-DELIVERY_ERROR_MESSAGE = "发送失败，请稍后重试或查看服务端日志"
-TARGET_URL_UNAVAILABLE_MESSAGE = "目标 URL 不可用"
+INTERNAL_ERROR_MESSAGE = "Internal server error"
+DELIVERY_ERROR_MESSAGE = "Delivery failed, please retry later or check the server logs"
+TARGET_URL_UNAVAILABLE_MESSAGE = "Target URL unavailable"
 
-# ── 响应工具 ─────────────────────────────────────────────────────────────────
+# ── Response helpers ─────────────────────────────────────────────────────────
 
 
 def ok_response(data: Any = None, http_status: int = 200, **extra: Any) -> JSONResponse:

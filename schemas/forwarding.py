@@ -124,10 +124,10 @@ class ForwardRuleUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def _reject_empty_or_null_update(self) -> ForwardRuleUpdateRequest:
         if not self.model_fields_set:
-            raise ValueError("至少提供一个更新字段")
+            raise ValueError("At least one field to update must be provided")
         null_fields = [field for field in self.model_fields_set if getattr(self, field) is None]
         if null_fields:
-            raise ValueError(f"字段不允许为 null: {', '.join(sorted(null_fields))}")
+            raise ValueError(f"Fields are not allowed to be null: {', '.join(sorted(null_fields))}")
         return self
 
     def to_update_payload(self) -> ForwardRuleUpdateData:
@@ -135,7 +135,7 @@ class ForwardRuleUpdateRequest(BaseModel):
 
 
 class ForwardRuleSchema(BaseModel):
-    """转发规则"""
+    """Forwarding rule"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,11 +161,11 @@ class ForwardRuleSchema(BaseModel):
 
 
 class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):
-    """转发规则列表响应"""
+    """Forwarding rule list response"""
 
 
 class ForwardRuleDetailResponse(APIResponse[ForwardRuleSchema]):
-    """转发规则详情响应"""
+    """Forwarding rule detail response"""
 
 
 def forward_rule_to_dict(rule: Any, *, mask_target_url: bool = False) -> dict[str, Any]:

@@ -28,7 +28,7 @@ class NoiseReductionPolicy:
 
 @dataclass(frozen=True, slots=True)
 class IngressPolicy:
-    """入口策略：body 大小限制 + 背压参数。"""
+    """Ingress policy: body size limit + backpressure parameters."""
 
     max_body_bytes: int
     ingress_backpressure_threshold: int
@@ -48,7 +48,7 @@ class IngressPolicy:
 
 @dataclass(frozen=True, slots=True)
 class PayloadPolicy:
-    """Payload 处理策略：offload 阈值 + AI strip keys + AI max bytes。"""
+    """Payload processing policy: offload threshold + AI strip keys + AI max bytes."""
 
     offload_threshold_bytes: int = 512 * 1024
     strip_keys: frozenset[str] = frozenset()
@@ -72,7 +72,7 @@ class PayloadPolicy:
 
 @dataclass(frozen=True, slots=True)
 class WebhookRetryPolicy:
-    """Webhook 重试策略。"""
+    """Webhook retry policy."""
 
     max_retries: int = 0
     initial_delay: int = 5

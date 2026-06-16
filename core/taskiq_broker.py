@@ -1,8 +1,8 @@
-"""TaskIQ Broker 配置
+"""TaskIQ Broker configuration.
 
-定义：
-- Broker：供 Worker 消费队列
-- Scheduler：独立进程定时投递任务（只负责入队，不执行）
+Defines:
+- Broker: the queue that Workers consume from.
+- Scheduler: a standalone process that periodically dispatches tasks (it only enqueues, it does not execute).
 """
 
 from __future__ import annotations
@@ -63,12 +63,12 @@ def load_taskiq_broker_settings() -> TaskiqBrokerSettings:
 _settings = load_taskiq_broker_settings()
 apply_log_levels(_settings.log_level, _settings.third_party_log_level)
 
-# 1. 结果后端
+# 1. Result backend
 result_backend: RedisAsyncResultBackend[object] = RedisAsyncResultBackend(
     redis_url=_settings.redis_url,
 )
 
-# 2. 异步任务代理
+# 2. Async task broker
 # RedisStreamBroker uses XREADGROUP with noack=False and exposes XACK to TaskIQ.
 # With TaskIQ's default WHEN_SAVED ACK policy, a hard worker crash before result
 # persistence leaves the message pending for xautoclaim redelivery. Python task
@@ -86,12 +86,12 @@ broker: AsyncBroker = RedisStreamBroker(
     maxlen=_settings.stream_maxlen,
 ).with_result_backend(result_backend)
 
-# 在测试环境下可以切换为 InMemoryBroker
+# In test environments we can switch to InMemoryBroker
 if _settings.debug and not _settings.redis_url.startswith("redis"):
     broker = InMemoryBroker()
-    logger.info("[TaskIQ] 使用 InMemoryBroker (DEBUG 模式)")
+    logger.info("[TaskIQ] Using InMemoryBroker (DEBUG mode)")
 else:
-    logger.info("[TaskIQ] 已初始化 Redis Broker: %s", mask_url(_settings.redis_url))
+    logger.info("[TaskIQ] Redis Broker initialized: %s", mask_url(_settings.redis_url))
 
 dynamic_schedule_source = ListRedisScheduleSource(
     url=_settings.redis_url,

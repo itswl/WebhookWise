@@ -55,7 +55,7 @@ def initialize_adapters() -> None:
     before = registry.status()["normalizers"]
     register_simple_adapters()
     if registry.status()["normalizers"] != before:
-        logger.info("[Adapter] 适配器注册完成")
+        logger.info("[Adapter] Adapter registration complete")
 
 
 def normalize_webhook_event(
@@ -63,7 +63,7 @@ def normalize_webhook_event(
     source: str | None,
     headers: HeadersLike | None = None,
 ) -> NormalizedWebhook:
-    """根据 source 或 payload 特征选择适配器，并输出标准化数据。"""
+    """Select an adapter based on the source or payload characteristics and output normalized data."""
     from adapters.registry import registry
 
     if not isinstance(data, dict):
@@ -86,5 +86,5 @@ def normalize_webhook_event(
     source_is_alias = registry.find_adapter_by_source(s_hint) == adapter_name if s_hint else False
     final_source = s_hint if (s_hint and not source_is_alias and s_hint not in placeholder_sources) else adapter_name
 
-    logger.info("[Adapter] 成功匹配适配器: name=%s, final_source=%s", adapter_name, final_source)
+    logger.info("[Adapter] Successfully matched adapter: name=%s, final_source=%s", adapter_name, final_source)
     return NormalizedWebhook(final_source, normalized, adapter_name)

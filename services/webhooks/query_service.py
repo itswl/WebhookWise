@@ -1,4 +1,4 @@
-"""Webhook 查询服务：列表投影、分页与死信视图。"""
+"""Webhook query service: list projections, pagination, and dead-letter views."""
 
 from datetime import datetime
 from typing import Any

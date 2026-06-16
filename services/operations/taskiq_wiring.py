@@ -29,7 +29,7 @@ _jitter_rng = secrets.SystemRandom()
 async def scheduler_startup_event(state: object) -> None:
     """Scheduler process startup hook."""
     if _settings.run_mode != "scheduler":
-        logger.debug("[TaskIQ] 跳过 scheduler runtime 初始化 run_mode=%s", _settings.run_mode)
+        logger.debug("[TaskIQ] Skipping scheduler runtime initialization run_mode=%s", _settings.run_mode)
         return
 
     from core.observability import setup_observability
@@ -43,7 +43,7 @@ async def scheduler_startup_event(state: object) -> None:
 async def scheduler_shutdown_event(state: object) -> None:
     """Scheduler process shutdown hook."""
     if _settings.run_mode != "scheduler":
-        logger.debug("[TaskIQ] 跳过 scheduler runtime 关闭 run_mode=%s", _settings.run_mode)
+        logger.debug("[TaskIQ] Skipping scheduler runtime shutdown run_mode=%s", _settings.run_mode)
         return
 
     from core.observability import shutdown_observability
@@ -53,9 +53,9 @@ async def scheduler_shutdown_event(state: object) -> None:
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def worker_startup_event(state: object) -> None:
-    """Worker 进程启动时的生命周期事件"""
+    """Lifecycle event fired when the worker process starts."""
     if _settings.run_mode != "worker":
-        logger.debug("[TaskIQ] 跳过 worker runtime 初始化 run_mode=%s", _settings.run_mode)
+        logger.debug("[TaskIQ] Skipping worker runtime initialization run_mode=%s", _settings.run_mode)
         return
 
     from core.app_context import init_default_app_context
@@ -84,9 +84,9 @@ async def worker_startup_event(state: object) -> None:
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def worker_shutdown_event(state: object) -> None:
-    """Worker 进程关闭时的生命周期事件"""
+    """Lifecycle event fired when the worker process shuts down."""
     if _settings.run_mode != "worker":
-        logger.debug("[TaskIQ] 跳过 worker runtime 关闭 run_mode=%s", _settings.run_mode)
+        logger.debug("[TaskIQ] Skipping worker runtime shutdown run_mode=%s", _settings.run_mode)
         return
 
     from core.app_context import get_default_app_context, init_default_app_context

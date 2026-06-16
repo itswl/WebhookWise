@@ -129,7 +129,7 @@ class OpenClawWsPolicy:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# HTTP 轮询
+# HTTP polling
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -163,22 +163,22 @@ async def poll_openclaw_final(
         started = time.monotonic()
         try:
             url = f"{base_url}/sessions/{session_key}/final"
-            logger.debug("HTTP /final 请求 (尝试 %s/%s): %s", attempt + 1, retry_count, url)
+            logger.debug("HTTP /final request (attempt %s/%s): %s", attempt + 1, retry_count, url)
             response = await http_client.get(url, headers=headers, timeout=timeout)
             elapsed_ms = int((time.monotonic() - started) * 1000)
 
             if response.status_code == 404:
                 last_error = "Session not found"
-                logger.warning("Session 未找到 (尝试 %d/%d elapsed=%sms)", attempt + 1, retry_count, elapsed_ms)
+                logger.warning("Session not found (attempt %d/%d elapsed=%sms)", attempt + 1, retry_count, elapsed_ms)
                 continue
             if response.status_code in (202, 204):
-                last_error = "分析进行中"
-                logger.debug("分析进行中 (尝试 %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms)
+                last_error = "analysis in progress"
+                logger.debug("Analysis in progress (attempt %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms)
                 continue
             if response.status_code != 200:
                 last_error = f"HTTP {response.status_code}"
                 logger.warning(
-                    "HTTP /final 返回非 200 status=%s attempt=%s/%s elapsed=%sms",
+                    "HTTP /final returned non-200 status=%s attempt=%s/%s elapsed=%sms",
                     response.status_code,
                     attempt + 1,
                     retry_count,
@@ -191,7 +191,7 @@ async def poll_openclaw_final(
             except ValueError:
                 last_error = "Invalid JSON response"
                 logger.warning(
-                    "HTTP /final 返回无效 JSON (尝试 %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms
+                    "HTTP /final returned invalid JSON (attempt %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms
                 )
                 continue
             if not isinstance(raw, dict):
@@ -205,7 +205,7 @@ async def poll_openclaw_final(
             msg_count = int(data.get("messageCount", 0) or 0)
 
             if is_processing is True:
-                last_error = "分析进行中"
+                last_error = "analysis in progress"
                 continue
             if text and is_final is not False:
                 result: JsonObject = {"status": "completed", "text": text, "msg_count": msg_count}
@@ -213,13 +213,13 @@ async def poll_openclaw_final(
                     result["is_final"] = True
                 return result
             if is_final is False or not is_final:
-                last_error = "分析进行中"
+                last_error = "analysis in progress"
                 continue
             last_error = "No text content"
         except httpx.ReadTimeout as e:
             last_error = f"ReadTimeout after {policy.http_poll_timeout:g}s"
             logger.info(
-                "HTTP /final 等待超时，按 pending 处理 attempt=%s/%s timeout=%ss error_type=%s error=%s",
+                "HTTP /final wait timed out, treating as pending attempt=%s/%s timeout=%ss error_type=%s error=%s",
                 attempt + 1,
                 retry_count,
                 policy.http_poll_timeout,
@@ -231,7 +231,7 @@ async def poll_openclaw_final(
             transport_error = True
             last_error = _describe_exception(e)
             logger.warning(
-                "HTTP 轮询超时 attempt=%s/%s error_type=%s error=%s",
+                "HTTP polling timed out attempt=%s/%s error_type=%s error=%s",
                 attempt + 1,
                 retry_count,
                 type(e).__name__,
@@ -241,14 +241,14 @@ async def poll_openclaw_final(
             transport_error = True
             last_error = _describe_exception(e)
             logger.warning(
-                "HTTP 轮询异常 attempt=%s/%s error_type=%s error=%s",
+                "HTTP polling error attempt=%s/%s error_type=%s error=%s",
                 attempt + 1,
                 retry_count,
                 type(e).__name__,
                 last_error,
             )
 
-    if last_error == "分析进行中":
+    if last_error == "analysis in progress":
         return {"status": "pending"}
     if transport_error:
         return {"status": "error", "error": last_error or "HTTP transport error", "retryable": True}
@@ -256,7 +256,7 @@ async def poll_openclaw_final(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# WebSocket 客户端
+# WebSocket client
 # ═══════════════════════════════════════════════════════════════════════════════
 
 

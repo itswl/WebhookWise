@@ -77,7 +77,7 @@ def test_deep_analysis_card_formats_openclaw_json_fence() -> None:
     assert "```json" not in rendered
     assert "在线用户数属于正常早晨流量爬坡" in rendered
     assert "1h 基线窗口" in rendered
-    assert "告警定位" in rendered
+    assert "Alert Identity" in rendered
     assert "ID: 46708" in rendered
 
 

@@ -158,7 +158,7 @@ class TraceContextMiddleware:
             duration_ms = int((time.perf_counter() - started_at) * 1000)
             set_current_span_error(exc)
             logger.exception(
-                "[HTTP] 请求异常 method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
+                "[HTTP] Request error method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
                 method,
                 path,
                 status_code,
@@ -180,7 +180,7 @@ class TraceContextMiddleware:
             if path not in {"/live", "/ready"} and not path.startswith("/static/"):
                 duration_ms = int((time.perf_counter() - started_at) * 1000)
                 logger.info(
-                    "[HTTP] 请求完成 method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
+                    "[HTTP] Request completed method=%s path=%s status=%s duration=%dms ip=%s content_length=%s",
                     method,
                     path,
                     status_code,

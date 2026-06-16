@@ -93,7 +93,7 @@ async def deep_health_check(request: Request) -> JSONResponse:
         queue_lag = await redis_xinfo_group_lag(queue_stream, queue_group)
         queue_ok = True
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.warning("[HealthDeep] 读取队列状态失败: %s", e)
+        logger.warning("[HealthDeep] Failed to read queue status: %s", e)
 
     adapter_status = adapter_registry.status()
 
@@ -143,10 +143,10 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
         prompt_kind = _normalize_prompt_kind(kind)
         new_template = await _reload_prompt_by_kind(prompt_kind)
         preview = new_template[:200] + ("..." if len(new_template) > 200 else "")
-        logger.info("[Admin] Prompt 模板已重新加载 kind=%s length=%s", prompt_kind, len(new_template))
+        logger.info("[Admin] Prompt template reloaded kind=%s length=%s", prompt_kind, len(new_template))
         return ok_response(
             status=200,
-            message="Prompt 模板已重新加载",
+            message="Prompt template reloaded",
             kind=prompt_kind,
             source=get_prompt_source(prompt_kind),
             template_length=len(new_template),
@@ -155,7 +155,7 @@ async def reload_prompt(kind: str = Query("user")) -> JSONResponse:
     except ValueError as e:
         return fail_response(str(e), 400)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("重新加载 prompt 模板失败: %s", e, exc_info=True)
+        logger.error("Failed to reload prompt template: %s", e, exc_info=True)
         return internal_error_response()
 
 
@@ -168,7 +168,7 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     except ValueError as e:
         return fail_response(str(e), 400)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("获取 prompt 模板失败: %s", e, exc_info=True)
+        logger.error("Failed to load prompt template: %s", e, exc_info=True)
         return internal_error_response()
 
 
@@ -194,7 +194,7 @@ def _parse_dead_letter_time(value: str, field_name: str) -> datetime | None:
         return None
     parsed = parse_utc_datetime(value)
     if parsed is None:
-        raise ValueError(f"{field_name} 必须是有效 ISO 时间")
+        raise ValueError(f"{field_name} must be a valid ISO timestamp")
     return parsed
 
 
@@ -239,7 +239,7 @@ async def get_dead_letters_endpoint(
     except ValueError as e:
         return fail_response(str(e), 400)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("查询 dead_letter 列表失败: %s", e, exc_info=True)
+        logger.error("Failed to query dead_letter list: %s", e, exc_info=True)
         return internal_error_response()
 
 
@@ -251,10 +251,10 @@ async def get_dead_letter_detail_endpoint(
     try:
         detail = await get_dead_letter_detail(session, event_id)
         if detail is None:
-            return fail_response(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
+            return fail_response(f"Event {event_id} does not exist or its status is not dead_letter", 404)
         return ok_response(http_status=200, data=detail)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("查询 dead_letter 详情失败: event_id=%s, error=%s", event_id, e, exc_info=True)
+        logger.error("Failed to query dead_letter detail: event_id=%s, error=%s", event_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -266,11 +266,11 @@ async def get_dead_letter_detail_endpoint(
 async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
     try:
         if await requeue_forward_outbox(outbox_id):
-            logger.info("[Admin] outbox 已重新入队 id=%s", outbox_id)
-            return ok_response(http_status=200, message="outbox 已重新入队", data={"outbox_id": outbox_id})
-        return fail_response("outbox 不存在或状态不可重试", 400)
+            logger.info("[Admin] outbox re-enqueued id=%s", outbox_id)
+            return ok_response(http_status=200, message="outbox re-enqueued", data={"outbox_id": outbox_id})
+        return fail_response("outbox does not exist or its status is not retryable", 400)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("[Admin] outbox 重新入队失败 id=%s error=%s", outbox_id, e, exc_info=True)
+        logger.error("[Admin] outbox re-enqueue failed id=%s error=%s", outbox_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -285,7 +285,7 @@ async def list_suppressed_endpoint(
         total = await count_suppressed_records(session, since_minutes=minutes)
         return ok_response(http_status=200, data={"total": total, "items": items})
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("查询 suppressed_records 失败: %s", e, exc_info=True)
+        logger.error("Failed to query suppressed_records: %s", e, exc_info=True)
         return internal_error_response()
 
 
@@ -298,13 +298,13 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
     try:
         event = await session.get(WebhookEvent, event_id)
         if not event or event.processing_status != "dead_letter":
-            logger.warning("[Admin] dead_letter 重放失败，状态不匹配或事件不存在 event_id=%s", event_id)
-            return fail_response(f"事件 {event_id} 不存在或状态非 dead_letter", 404)
+            logger.warning("[Admin] dead_letter replay failed, status mismatch or event does not exist event_id=%s", event_id)
+            return fail_response(f"Event {event_id} does not exist or its status is not dead_letter", 404)
         await _enqueue_dead_letter_event(event)
-        logger.info("[Admin] dead_letter 已重放 event_id=%s", event_id)
-        return ok_response(http_status=200, message=f"事件 {event_id} 已重放", event_id=event_id)
+        logger.info("[Admin] dead_letter replayed event_id=%s", event_id)
+        return ok_response(http_status=200, message=f"Event {event_id} replayed", event_id=event_id)
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("重放 dead_letter 失败: event_id=%s, error=%s", event_id, e, exc_info=True)
+        logger.error("Failed to replay dead_letter: event_id=%s, error=%s", event_id, e, exc_info=True)
         return internal_error_response()
 
 
@@ -348,23 +348,23 @@ async def replay_dead_letter_batch(
 ) -> JSONResponse:
     try:
         if not request.event_ids:
-            return fail_response("event_ids 不能为空", 400)
+            return fail_response("event_ids cannot be empty", 400)
         replayed_ids, skipped_ids = await _replay_dead_letter_ids(request.event_ids, session)
         logger.info(
-            "[Admin] 指定重放 dead_letter 完成 replayed=%s skipped=%s event_ids=%s",
+            "[Admin] Targeted dead_letter replay complete replayed=%s skipped=%s event_ids=%s",
             len(replayed_ids),
             len(skipped_ids),
             request.event_ids,
         )
         return ok_response(
             http_status=200,
-            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+            message=f"Replayed {len(replayed_ids)} dead_letter records",
             replayed=len(replayed_ids),
             event_ids=replayed_ids,
             skipped_event_ids=skipped_ids,
         )
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("批量重放指定 dead_letter 失败: %s", e, exc_info=True)
+        logger.error("Failed to batch-replay targeted dead_letter: %s", e, exc_info=True)
         return internal_error_response()
 
 
@@ -379,22 +379,22 @@ async def replay_all_dead_letters(
     try:
         items = await list_dead_letters(session, page=1, page_size=batch_size)
         if not items:
-            logger.info("[Admin] 批量重放 dead_letter：无待处理记录")
-            return ok_response(http_status=200, message="无 dead_letter 需要重放", replayed=0)
+            logger.info("[Admin] Batch dead_letter replay: no pending records")
+            return ok_response(http_status=200, message="No dead_letter records to replay", replayed=0)
         replayed_ids, skipped_ids = await _replay_dead_letter_ids([int(item["id"]) for item in items], session)
         logger.info(
-            "[Admin] 批量重放 dead_letter 完成 replayed=%s skipped=%s event_ids=%s",
+            "[Admin] Batch dead_letter replay complete replayed=%s skipped=%s event_ids=%s",
             len(replayed_ids),
             len(skipped_ids),
             replayed_ids,
         )
         return ok_response(
             http_status=200,
-            message=f"已重放 {len(replayed_ids)} 条 dead_letter",
+            message=f"Replayed {len(replayed_ids)} dead_letter records",
             replayed=len(replayed_ids),
             event_ids=replayed_ids,
             skipped_event_ids=skipped_ids,
         )
     except _ADMIN_RUNTIME_ERRORS as e:
-        logger.error("批量重放 dead_letter 失败: %s", e, exc_info=True)
+        logger.error("Failed to batch-replay dead_letter: %s", e, exc_info=True)
         return internal_error_response()

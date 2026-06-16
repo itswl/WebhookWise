@@ -45,7 +45,7 @@ async def create_outbox_records(
         target_type = str(rule.target_type or "webhook")
         target_url = str(rule.target_url or "")
         if target_type != "openclaw" and not target_url:
-            logger.warning("[%s] 规则 '%s' target_url 为空，跳过", log_tag, rule.name or rule.id)
+            logger.warning("[%s] Rule '%s' has empty target_url, skipping", log_tag, rule.name or rule.id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
             continue
 
@@ -62,7 +62,7 @@ async def create_outbox_records(
             await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
         ).scalar_one_or_none()
         if existing is not None:
-            logger.info("[%s] 幂等命中 key=%s id=%s", log_tag, key, existing)
+            logger.info("[%s] Idempotency hit key=%s id=%s", log_tag, key, existing)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
             outbox_ids.append(int(existing))
             continue
@@ -94,7 +94,7 @@ async def create_outbox_records(
         outbox_ids.append(int(record.id))
         FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
         logger.info(
-            "[%s] 已创建转发意图 id=%s event_id=%s event_type=%s rule=%s target=%s",
+            "[%s] Created forward intent id=%s event_id=%s event_type=%s rule=%s target=%s",
             log_tag,
             record.id,
             webhook_id,
@@ -108,7 +108,7 @@ async def create_outbox_records(
 
 def outbox_result(outbox_ids: list[int]) -> ForwardResult:
     if not outbox_ids:
-        return {"status": "skipped", "reason": "所有匹配规则均已存在或无效", "outbox_ids": []}
+        return {"status": "skipped", "reason": "all matched rules already exist or are invalid", "outbox_ids": []}
     return {"status": "queued", "outbox_ids": outbox_ids, "outbox_id": outbox_ids[0]}
 
 

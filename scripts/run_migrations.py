@@ -24,17 +24,17 @@ async def _wait_for_database(max_retries: int, interval_seconds: float) -> None:
     for attempt in range(1, max_retries + 1):
         await init_engine(config)
         if await test_db_connection():
-            print("数据库连接成功")
+            print("Database connection successful")
             await dispose_engine()
             return
-        print(f"等待数据库... ({attempt}/{max_retries})")
+        print(f"Waiting for database... ({attempt}/{max_retries})")
         await dispose_engine()
         await asyncio.sleep(interval_seconds)
-    raise SystemExit("数据库连接超时，迁移任务失败")
+    raise SystemExit("Database connection timed out, migration task failed")
 
 
 def _run_alembic_upgrade() -> None:
-    print("运行 Alembic 迁移...")
+    print("Running Alembic migrations...")
     subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=PROJECT_ROOT, check=True)  # nosec B603
 
 
@@ -45,7 +45,7 @@ def main() -> int:
     started = time.time()
     asyncio.run(_wait_for_database(max_retries=max_retries, interval_seconds=interval_seconds))
     _run_alembic_upgrade()
-    print(f"数据库迁移完成，用时 {time.time() - started:.1f}s")
+    print(f"Database migration complete, took {time.time() - started:.1f}s")
     return 0
 
 

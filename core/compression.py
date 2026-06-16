@@ -1,4 +1,4 @@
-"""Payload 压缩/解压工具。"""
+"""Payload compression/decompression utilities."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _threshold(attr: str) -> int:
 
 
 def compress_payload(text: str | bytes | None) -> bytes | None:
-    """将文本 payload 使用 Zstandard 压缩为 bytes。小于阈值时直接返回 UTF-8 bytes。"""
+    """Compress a text payload to bytes using Zstandard. Returns the raw UTF-8 bytes directly when below the threshold."""
     if not text:
         return None
     raw = text.encode("utf-8") if isinstance(text, str) else text
@@ -41,10 +41,12 @@ def compress_payload(text: str | bytes | None) -> bytes | None:
 
 
 def decompress_payload(data: bytes | str | None) -> str | None:
-    """解压 bytes 为文本。自动识别 Zstd/原始 UTF-8 数据。
+    """Decompress bytes to text. Automatically detects Zstd vs. raw UTF-8 data.
 
-    对损坏数据做降级处理而不是抛异常：一条损坏记录不应让所有序列化该事件的
-    API 报 500。无法解压的 zstd 返回占位符，非法 UTF-8 用 replace 容错解码。
+    Corrupt data is degraded rather than raising: a single corrupt record should
+    not make every API that serializes that event return 500. Zstd data that
+    cannot be decompressed returns a placeholder, and invalid UTF-8 is decoded
+    leniently using errors="replace".
     """
     if data is None:
         return None
@@ -53,7 +55,7 @@ def decompress_payload(data: bytes | str | None) -> str | None:
             try:
                 data = bytes.fromhex(data[2:])
             except ValueError:
-                logger.warning("[Compression] 十六进制 payload 解析失败，返回占位符")
+                logger.warning("[Compression] Failed to parse hex payload; returning placeholder")
                 return _UNDECODABLE_PLACEHOLDER
         else:
             return data
@@ -61,14 +63,14 @@ def decompress_payload(data: bytes | str | None) -> str | None:
         try:
             decompressed = _decompressor.decompress(data)
         except zstd.ZstdError:
-            logger.warning("[Compression] Zstd 解压失败（数据可能损坏），返回占位符")
+            logger.warning("[Compression] Zstd decompression failed (data may be corrupt); returning placeholder")
             return _UNDECODABLE_PLACEHOLDER
         return decompressed.decode("utf-8", errors="replace")
     return data.decode("utf-8", errors="replace")
 
 
 async def decompress_payload_async(data: bytes | str | None) -> str | None:
-    """异步解压：大 payload 卸载到线程池，与 compress_payload 对称处理。"""
+    """Async decompression: offload large payloads to a thread pool, mirroring compress_payload."""
     if data is None:
         return None
     if isinstance(data, str):

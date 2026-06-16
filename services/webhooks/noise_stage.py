@@ -41,12 +41,12 @@ async def compute_noise(
     policy = policy or NoiseReductionPolicy.from_config()
     try:
         if not policy.enabled:
-            return NoiseReductionContext("standalone", None, 0.0, False, "智能降噪未启用", 0, ())
+            return NoiseReductionContext("standalone", None, 0.0, False, "Smart noise reduction is not enabled", 0, ())
         now = utcnow()
         try:
             recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)
         except _NOISE_CONTEXT_ERRORS as e:
-            logger.warning("[Pipeline] 加载近期告警上下文失败，降噪将跳过: %s", e)
+            logger.warning("[Pipeline] Failed to load recent alert context, noise reduction will be skipped: %s", e)
             recent = []
         curr = AlertContext(
             None,
@@ -72,7 +72,7 @@ async def compute_noise(
         suppressed = str(dec.suppress_forward).lower()
         if dec.suppress_forward:
             logger.info(
-                "[Noise] 抑制转发 relation=%s root_cause_id=%s confidence=%.2f reason=%s",
+                "[Noise] Suppressing forward relation=%s root_cause_id=%s confidence=%.2f reason=%s",
                 dec.relation,
                 dec.root_cause_event_id,
                 dec.confidence,
@@ -93,10 +93,10 @@ async def compute_noise(
                         )
                     )
             except _SUPPRESSED_RECORD_ERRORS as e:
-                logger.warning("[Noise] 写入 suppressed_records 失败: %s", e)
+                logger.warning("[Noise] Failed to write suppressed_records: %s", e)
         elif dec.relation != "standalone":
             logger.debug(
-                "[Noise] 关联但不抑制 relation=%s root_cause_id=%s confidence=%.2f",
+                "[Noise] Correlated but not suppressed relation=%s root_cause_id=%s confidence=%.2f",
                 dec.relation,
                 dec.root_cause_event_id,
                 dec.confidence,
