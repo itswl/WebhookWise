@@ -85,7 +85,9 @@ class WebhookEvent(Base):
     )
 
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
-    duplicate_of: Mapped[int | None] = mapped_column(Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"))
+    duplicate_of: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"), index=True
+    )
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
@@ -97,9 +99,12 @@ class WebhookEvent(Base):
         Index("idx_dedup_key_timestamp", "dedup_key", "timestamp"),
         # Partial index for the dead-letter list/count queries, which filter on
         # processing_status='dead_letter' (otherwise a full sequential scan of a
-        # large events table). Mirrors the pending partial indexes.
+        # large events table). Mirrors the pending partial indexes. Leads with
+        # source so source-filtered dead-letter views also use it, then id for
+        # the id-desc ordering.
         Index(
             "idx_webhook_events_dead_letter",
+            "source",
             "id",
             postgresql_where=text("processing_status = 'dead_letter'"),
         ),

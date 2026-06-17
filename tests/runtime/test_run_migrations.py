@@ -49,13 +49,15 @@ def test_run_alembic_upgrade_uses_project_root(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
-def test_alembic_history_is_single_consolidated_baseline() -> None:
+def test_alembic_history_starts_from_consolidated_baseline() -> None:
     revision_paths = sorted((migrations.PROJECT_ROOT / "alembic/versions").glob("*.py"))
     names = [path.name for path in revision_paths]
 
-    # The incremental chain was squashed into one baseline.
-    assert names == ["0001_baseline.py"]
-    source = revision_paths[0].read_text()
+    # The incremental chain was squashed into one baseline; new migrations chain
+    # off it normally.
+    assert "0001_baseline.py" in names
+    by_name = {p.name: p for p in revision_paths}
+    source = by_name["0001_baseline.py"].read_text()
     # Real DDL, not a metadata.create_all shortcut (keeps it explicit/inspectable).
     assert "Base.metadata.create_all" not in source
     assert "Base.metadata.drop_all" not in source
@@ -63,6 +65,8 @@ def test_alembic_history_is_single_consolidated_baseline() -> None:
     assert "op.create_index" in source
     assert 'revision: str = "0001_baseline"' in source
     assert "down_revision: str | Sequence[str] | None = None" in source
+    # The baseline is the single root; every other migration descends from it.
+    assert sum("down_revision: str | Sequence[str] | None = None" in p.read_text() for p in revision_paths) == 1
 
 
 def test_reconcile_restamps_pre_squash_revisions(monkeypatch: pytest.MonkeyPatch) -> None:

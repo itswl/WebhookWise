@@ -139,6 +139,18 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
         DB_SESSION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
 
 
+def _is_query_timeout(exc: BaseException) -> bool:
+    """True only for a statement_timeout / query cancellation, not arbitrary errors."""
+    import asyncio
+
+    from asyncpg.exceptions import QueryCanceledError
+    from sqlalchemy.exc import DBAPIError
+
+    if isinstance(exc, asyncio.TimeoutError | QueryCanceledError):
+        return True
+    return isinstance(exc, DBAPIError) and isinstance(getattr(exc, "orig", None), QueryCanceledError)
+
+
 async def count_with_timeout(
     session: AsyncSession,
     stmt: Any,
@@ -146,7 +158,10 @@ async def count_with_timeout(
 ) -> int | None:
     """COUNT query with a statement_timeout safeguard (PostgreSQL-only).
 
-    Returns None on timeout; callers should handle the None case.
+    Returns None **only** when the query is cancelled by the timeout; callers
+    should treat None as "count unknown". Any other DB error (connection loss,
+    SQL error) propagates rather than being coerced to None — otherwise a real
+    failure surfaces on the dashboard as a misleading "0" instead of an error.
     Uses a SAVEPOINT to isolate the timed-out query, preventing a rollback from
     destroying the caller's transaction.
     """
@@ -159,9 +174,13 @@ async def count_with_timeout(
             result = await session.execute(stmt)
             return result.scalar() or 0
     except Exception as e:
-        status = "timeout_or_error"
-        _logger.warning("COUNT query timeout (%dms): %s", timeout_ms, e)
-        return None
+        if _is_query_timeout(e):
+            status = "timeout"
+            _logger.warning("COUNT query timed out (%dms): %s", timeout_ms, e)
+            return None
+        status = "error"
+        _logger.error("COUNT query failed (not a timeout): %s", e, exc_info=True)
+        raise
     finally:
         from core.observability.metrics import DB_SESSION_DURATION_SECONDS, DB_SESSION_TOTAL
 

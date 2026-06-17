@@ -75,7 +75,11 @@ async def decompress_payload_async(data: bytes | str | None) -> str | None:
         return None
     if isinstance(data, str):
         if data.startswith("\\x"):
-            data = bytes.fromhex(data[2:])
+            try:
+                data = bytes.fromhex(data[2:])
+            except ValueError:
+                logger.warning("[Compression] Failed to parse hex payload; returning placeholder")
+                return _UNDECODABLE_PLACEHOLDER
         else:
             return data
     if len(data) > _threshold("PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES"):
