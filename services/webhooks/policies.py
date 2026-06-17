@@ -90,7 +90,7 @@ class WebhookRetryPolicy:
         cfg = get_config_manager()
         return cls(
             max_retries=max(0, int(cfg.retry.WEBHOOK_RETRY_MAX_RETRIES)),
-            initial_delay=int(cfg.retry.WEBHOOK_RETRY_INITIAL_DELAY),
-            max_delay=int(cfg.retry.WEBHOOK_RETRY_MAX_DELAY),
+            initial_delay=int(cfg.retry.WEBHOOK_RETRY_INITIAL_DELAY_SECONDS),
+            max_delay=int(cfg.retry.WEBHOOK_RETRY_MAX_DELAY_SECONDS),
             backoff_multiplier=float(cfg.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
         )

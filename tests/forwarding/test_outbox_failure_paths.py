@@ -557,8 +557,8 @@ class TestOpenClawPoller:
                 assert kwargs["headers"]["Connection"] == "close"
                 return _Response()
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_CONNECT_TIMEOUT", 3)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_CONNECT_TIMEOUT_SECONDS", 3)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
 
@@ -599,7 +599,7 @@ class TestOpenClawPoller:
                 raise httpx.ReadTimeout("")
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 7)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
         monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
 
         result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
@@ -635,7 +635,7 @@ class TestOpenClawPoller:
     def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from services.analysis.openclaw_poll import _poll_claim_lease_seconds
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT", 120)
+        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 120)
 
         assert _poll_claim_lease_seconds() == 390
 
