@@ -6,7 +6,7 @@ import os
 import socket
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,22 +15,7 @@ class StaticSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        # Fields whose canonical name now carries a unit suffix (e.g.
-        # FORWARD_TIMEOUT_SECONDS) keep a validation_alias accepting the legacy
-        # unsuffixed env var too; populate_by_name lets the field still be set by
-        # its own (new) name as well as by any alias.
-        populate_by_name=True,
     )
-
-
-def _renamed(new_env: str, legacy_env: str) -> AliasChoices:
-    """Accept both the new (unit-suffixed) env name and the legacy one.
-
-    The Python field name stays the new canonical name, so config introspection
-    and attribute access use the new name; an existing .env that still sets the
-    old name keeps working (no silent fallback to defaults on rename).
-    """
-    return AliasChoices(new_env, legacy_env)
 
 
 class ServerConfig(StaticSettings):
@@ -107,8 +92,8 @@ class DBConfig(StaticSettings):
     # pgbouncer when scaling out. Defaults suit a small single-node deployment.
     DB_POOL_SIZE: int = Field(default=5, description="Number of persistent connections in the per-process pool")
     DB_MAX_OVERFLOW: int = Field(default=5, description="Number of connections the per-process pool may temporarily exceed by")
-    DB_POOL_RECYCLE_SECONDS: int = Field(default=3600, validation_alias=_renamed("DB_POOL_RECYCLE_SECONDS", "DB_POOL_RECYCLE"))
-    DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, validation_alias=_renamed("DB_POOL_TIMEOUT_SECONDS", "DB_POOL_TIMEOUT"), description="Timeout (seconds) for waiting on an idle connection; requests that time out raise an error")
+    DB_POOL_RECYCLE_SECONDS: int = Field(default=3600)
+    DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, description="Timeout (seconds) for waiting on an idle connection; requests that time out raise an error")
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
     DB_SYNC_COMMIT: str = Field(default="on")
 
@@ -121,9 +106,9 @@ class RedisConfig(StaticSettings):
     """Redis connection."""
 
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
-    REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, validation_alias=_renamed("REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS", "REDIS_SOCKET_CONNECT_TIMEOUT"))
-    REDIS_SOCKET_TIMEOUT_SECONDS: int = Field(default=10, validation_alias=_renamed("REDIS_SOCKET_TIMEOUT_SECONDS", "REDIS_SOCKET_TIMEOUT"))
-    REDIS_HEALTH_CHECK_INTERVAL_SECONDS: int = Field(default=30, validation_alias=_renamed("REDIS_HEALTH_CHECK_INTERVAL_SECONDS", "REDIS_HEALTH_CHECK_INTERVAL"))
+    REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS: int = Field(default=5)
+    REDIS_SOCKET_TIMEOUT_SECONDS: int = Field(default=10)
+    REDIS_HEALTH_CHECK_INTERVAL_SECONDS: int = Field(default=30)
 
 
 class NoiseConfig(StaticSettings):
@@ -180,7 +165,7 @@ class AIConfig(StaticSettings):
     DEEP_ANALYSIS_PROMPT: str = Field(default="")
 
     CACHE_ENABLED: bool = Field(default=True)
-    ANALYSIS_CACHE_TTL_SECONDS: int = Field(default=21600, validation_alias=_renamed("ANALYSIS_CACHE_TTL_SECONDS", "ANALYSIS_CACHE_TTL"))
+    ANALYSIS_CACHE_TTL_SECONDS: int = Field(default=21600)
     AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003)
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
 
@@ -191,7 +176,7 @@ class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
 
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
-    FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10, validation_alias=_renamed("FEISHU_WEBHOOK_TIMEOUT_SECONDS", "FEISHU_WEBHOOK_TIMEOUT"))
+    FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
@@ -231,9 +216,9 @@ class OpenClawConfig(StaticSettings):
     OPENCLAW_POLL_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=8)
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
-    OPENCLAW_CONNECT_TIMEOUT_SECONDS: int = Field(default=20, validation_alias=_renamed("OPENCLAW_CONNECT_TIMEOUT_SECONDS", "OPENCLAW_CONNECT_TIMEOUT"))
-    OPENCLAW_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0, validation_alias=_renamed("OPENCLAW_NONCE_TIMEOUT_SECONDS", "OPENCLAW_NONCE_TIMEOUT"))
-    OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180, validation_alias=_renamed("OPENCLAW_POLL_TIMEOUT_SECONDS", "OPENCLAW_POLL_TIMEOUT"))
+    OPENCLAW_CONNECT_TIMEOUT_SECONDS: int = Field(default=20)
+    OPENCLAW_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0)
+    OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180)
     OPENCLAW_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600)
     OPENCLAW_WS_MAX_HISTORY_FRAMES: int = Field(default=50)
     OPENCLAW_DEVICE_ID: str = Field(default="")
@@ -245,16 +230,16 @@ class CircuitBreakerConfig(StaticSettings):
     """Circuit breaker."""
 
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS: float = Field(default=30.0, validation_alias=_renamed("CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS", "CIRCUIT_BREAKER_FEISHU_TIMEOUT"))
+    CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS: float = Field(default=30.0)
     CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS: float = Field(default=30.0, validation_alias=_renamed("CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS", "CIRCUIT_BREAKER_OPENCLAW_TIMEOUT"))
+    CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS: float = Field(default=30.0)
     CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS: float = Field(default=30.0, validation_alias=_renamed("CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS", "CIRCUIT_BREAKER_FORWARD_TIMEOUT"))
+    CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS: float = Field(default=30.0)
     # LLM (main AI analysis) breaker: when the provider is broadly failing, open
     # the breaker so each alert degrades to rule analysis immediately instead of
     # paying the full retry+timeout budget per webhook.
     CIRCUIT_BREAKER_LLM_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS: float = Field(default=30.0, validation_alias=_renamed("CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS", "CIRCUIT_BREAKER_LLM_TIMEOUT"))
+    CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS: float = Field(default=30.0)
 
 
 class MaintenanceConfig(StaticSettings):
@@ -286,15 +271,15 @@ class RetryConfig(StaticSettings):
     INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="Whether the backpressure check allows requests when Redis is unavailable; true: degrade to allow, false: reject the request")
     NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
     WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
-    WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=30, validation_alias=_renamed("WEBHOOK_RETRY_INITIAL_DELAY_SECONDS", "WEBHOOK_RETRY_INITIAL_DELAY"))
-    WEBHOOK_RETRY_MAX_DELAY_SECONDS: int = Field(default=900, validation_alias=_renamed("WEBHOOK_RETRY_MAX_DELAY_SECONDS", "WEBHOOK_RETRY_MAX_DELAY"))
+    WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=30)
+    WEBHOOK_RETRY_MAX_DELAY_SECONDS: int = Field(default=900)
     WEBHOOK_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
-    FORWARD_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=60, validation_alias=_renamed("FORWARD_RETRY_INITIAL_DELAY_SECONDS", "FORWARD_RETRY_INITIAL_DELAY"))
-    FORWARD_RETRY_MAX_DELAY_SECONDS: int = Field(default=3600, validation_alias=_renamed("FORWARD_RETRY_MAX_DELAY_SECONDS", "FORWARD_RETRY_MAX_DELAY"))
+    FORWARD_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=60)
+    FORWARD_RETRY_MAX_DELAY_SECONDS: int = Field(default=3600)
     FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
     FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800)
-    FORWARD_TIMEOUT_SECONDS: int = Field(default=10, validation_alias=_renamed("FORWARD_TIMEOUT_SECONDS", "FORWARD_TIMEOUT"))
+    FORWARD_TIMEOUT_SECONDS: int = Field(default=10)
 
 
 class AppConfig(StaticSettings):
