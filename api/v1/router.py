@@ -7,6 +7,7 @@ from api.v1.ai_usage import ai_usage_router
 from api.v1.deep_analysis import deep_analysis_router
 from api.v1.forwarding import forwarding_router
 from api.v1.reanalysis import reanalysis_router
+from api.v1.silences import silences_router
 from api.v1.webhook import webhook_router
 from core.auth import verify_api_key
 from core.webhook_security import check_admin_rate_limit_dep
@@ -22,5 +23,6 @@ v1_router.include_router(deep_analysis_router, dependencies=_admin_api_deps)
 v1_router.include_router(reanalysis_router, dependencies=_admin_api_deps)
 v1_router.include_router(ai_usage_router, dependencies=_admin_api_deps)
 v1_router.include_router(forwarding_router, dependencies=_admin_api_deps)
+v1_router.include_router(silences_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
 v1_router.include_router(webhook_router)

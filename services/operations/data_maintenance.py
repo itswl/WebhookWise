@@ -40,6 +40,8 @@ def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object
         "duplicate_of": event.duplicate_of,
         "duplicate_count": event.duplicate_count,
         "last_notified_at": event.last_notified_at,
+        "acknowledged_at": event.acknowledged_at,
+        "acknowledged_by": event.acknowledged_by,
         "created_at": event.created_at,
         "updated_at": event.updated_at,
         "archived_at": archived_at,

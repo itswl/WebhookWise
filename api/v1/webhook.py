@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import verify_api_key
+from core.auth import verify_admin_write, verify_api_key
 from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
 from core.logger import get_logger
@@ -38,8 +38,14 @@ from core.sensitive_data import redact_event_dict
 from core.webhook_security import check_admin_rate_limit_dep, check_rate_limit_dep, verify_webhook_auth_dep
 from db.session import get_db_session
 from models import WebhookEvent
-from schemas.webhook import WebhookListResponse, WebhookReceiveResponse, webhook_event_to_full_dict
+from schemas.webhook import (
+    WebhookAckRequest,
+    WebhookListResponse,
+    WebhookReceiveResponse,
+    webhook_event_to_full_dict,
+)
 from services.operations.tasks import process_webhook_task
+from services.webhooks.acknowledgement import acknowledge_webhook, unacknowledge_webhook
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import IngressPolicy
 from services.webhooks.query_service import list_webhook_summaries
@@ -331,3 +337,51 @@ async def get_webhook_detail_endpoint(
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
+
+
+@webhook_router.post(
+    "/webhooks/{webhook_id}/ack",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key), Depends(verify_admin_write)],
+    response_model=None,
+)
+async def acknowledge_webhook_endpoint(
+    webhook_id: int,
+    payload: WebhookAckRequest | None = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict | JSONResponse:
+    """Acknowledge an alert ("I'm on it") to suppress its periodic reminders."""
+    acknowledged_by = payload.acknowledged_by if payload else ""
+    head = await acknowledge_webhook(session, webhook_id, acknowledged_by=acknowledged_by)
+    if head is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
+    await session.commit()
+    return {
+        "success": True,
+        "message": "Alert acknowledged",
+        "data": {
+            "id": head.id,
+            "acknowledged": True,
+            "acknowledged_at": utc_isoformat(head.acknowledged_at),
+            "acknowledged_by": head.acknowledged_by,
+        },
+    }
+
+
+@webhook_router.post(
+    "/webhooks/{webhook_id}/unack",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key), Depends(verify_admin_write)],
+    response_model=None,
+)
+async def unacknowledge_webhook_endpoint(
+    webhook_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
+    """Clear acknowledgement on an alert (re-enable its periodic reminders)."""
+    head = await unacknowledge_webhook(session, webhook_id)
+    if head is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
+    await session.commit()
+    return {
+        "success": True,
+        "message": "Acknowledgement cleared",
+        "data": {"id": head.id, "acknowledged": False},
+    }
