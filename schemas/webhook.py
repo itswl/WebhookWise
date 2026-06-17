@@ -31,13 +31,16 @@ class WebhookEventSummary(BaseModel):
     duplicate_count: int
     duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
+    acknowledged_at: str | None = None
+    acknowledged_by: str | None = None
+    acknowledged: bool = False
     summary: str | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
     prev_alert_timestamp: str | None = None
     is_within_window: bool = False
 
-    @field_validator("timestamp", "created_at", "prev_alert_timestamp", mode="before")
+    @field_validator("timestamp", "created_at", "prev_alert_timestamp", "acknowledged_at", mode="before")
     @classmethod
     def _serialize_datetime(cls, value: object) -> object:
         return utc_isoformat(value) if isinstance(value, datetime) else value
@@ -51,6 +54,7 @@ class WebhookEventSummary(BaseModel):
             self.is_within_window = True
         if self.outbox_forward_status:
             self.forward_status = self.outbox_forward_status
+        self.acknowledged = self.acknowledged_at is not None
         return self
 
 
@@ -76,6 +80,14 @@ class WebhookEventFull(WebhookEventSummary):
     @classmethod
     def _serialize_updated_at(cls, value: object) -> object:
         return utc_isoformat(value) if isinstance(value, datetime) else value
+
+
+class WebhookAckRequest(BaseModel):
+    """Request body for acknowledging an alert."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    acknowledged_by: str = Field(default="", max_length=100)
 
 
 class WebhookReceiveResponse(BaseModel):

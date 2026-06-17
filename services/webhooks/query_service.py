@@ -30,6 +30,8 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.duplicate_of,
     WebhookEvent.duplicate_count,
     WebhookEvent.forward_status,
+    WebhookEvent.acknowledged_at,
+    WebhookEvent.acknowledged_by,
     # Project only ai_analysis->>'summary' instead of loading the whole JSONB
     # blob per row just to read one string (works on PostgreSQL JSONB and the
     # SQLite-JSON test shim alike).
@@ -57,6 +59,9 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "duplicate_count": row.duplicate_count,
         "duplicate_type": "within_window" if is_duplicate else "new",
         "forward_status": row.forward_status,
+        "acknowledged": row.acknowledged_at is not None,
+        "acknowledged_at": utc_isoformat(row.acknowledged_at) if row.acknowledged_at is not None else None,
+        "acknowledged_by": row.acknowledged_by,
         "summary": row.summary,
         "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
         "prev_alert_id": row.prev_alert_id,
