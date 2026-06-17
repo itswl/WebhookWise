@@ -85,8 +85,19 @@ async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None
 
 async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minutes: int) -> list[AlertContext]:
     async with session_scope() as session:
+        # Project only the 6 columns AlertContext needs. Loading the full entity
+        # pulled raw_payload (LargeBinary) + headers (JSONB) for up to 100 rows on
+        # every non-duplicate alert (this runs per-alert on the noise path) — pure
+        # waste, since the scorer only reads these fields.
         stmt = (
-            select(WebhookEvent)
+            select(
+                WebhookEvent.id,
+                WebhookEvent.source,
+                WebhookEvent.importance,
+                WebhookEvent.parsed_data,
+                WebhookEvent.ai_analysis,
+                WebhookEvent.timestamp,
+            )
             .filter(
                 WebhookEvent.timestamp >= now - timedelta(minutes=window_minutes),
                 WebhookEvent.timestamp <= now,
@@ -98,14 +109,14 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
         res = await session.execute(stmt)
         return [
             AlertContext(
-                e.id,
-                e.source,
-                normalize_importance(e.importance or "medium"),
-                cast(dict[str, Any], e.parsed_data or {}),
-                cast(AnalysisResult, e.ai_analysis or {}),
-                e.timestamp or now,
+                row.id,
+                row.source,
+                normalize_importance(row.importance or "medium"),
+                cast(dict[str, Any], row.parsed_data or {}),
+                cast(AnalysisResult, row.ai_analysis or {}),
+                row.timestamp or now,
             )
-            for e in res.scalars().all()
+            for row in res.all()
         ]
 
 

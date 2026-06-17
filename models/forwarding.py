@@ -58,7 +58,7 @@ class ForwardOutbox(Base):
         Integer, ForeignKey("webhook_events.id", ondelete="CASCADE"), nullable=True, index=True
     )
     original_event_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True, index=True
     )
     forward_rule_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("forward_rules.id", ondelete="SET NULL"), nullable=True

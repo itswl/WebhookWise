@@ -172,8 +172,11 @@ def _summarize_large_string(value: str) -> str:
     head_end, tail_start = _STRING_HEAD_CHARS, len(value) - _STRING_TAIL_CHARS
     error_lines: list[str] = []
     pos = 0
-    for line in value.splitlines():
-        line_start, pos = pos, pos + len(line) + 1
+    # keepends=True so each line carries its real terminator: pos stays exact for
+    # multi-char newlines (\r\n) instead of drifting 1 char per line and
+    # misaligning the head/tail dedup against head_end/tail_start.
+    for line in value.splitlines(keepends=True):
+        line_start, pos = pos, pos + len(line)
         if line_start < head_end or (tail and line_start >= tail_start):
             continue  # already represented in head/tail
         low = line.lower()
