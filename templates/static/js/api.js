@@ -438,26 +438,6 @@ const API = {
         return await response.json();
     },
 
-    /**
-     * Get the current Prompt configuration
-     * @returns {Promise<object>} Prompt configuration
-     */
-    async getPrompt() {
-        const response = await this.authenticatedFetch('/v1/prompt');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    /**
-     * Reload the Prompt configuration
-     * @returns {Promise<object>} Reload result
-     */
-    async reloadPrompt() {
-        const response = await this.authenticatedFetch('/v1/prompt/reload', { method: 'POST' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
     // ========== Deep Analysis API ==========
 
     /**
