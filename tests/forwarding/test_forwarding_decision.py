@@ -18,8 +18,9 @@ from services.webhooks.forwarding_stage import resolve_forward_decision
 class _Event:
     """Minimal object that simulates a WebhookEvent."""
 
-    def __init__(self, last_notified_at=None):
+    def __init__(self, last_notified_at=None, acknowledged_at=None):
         self.last_notified_at = last_notified_at
+        self.acknowledged_at = acknowledged_at
 
 
 class _Noise:
@@ -40,9 +41,30 @@ def _make_rules_loader(rules: list):
 NO_RULES = _make_rules_loader([])
 
 
+def _make_silences_loader(silences: list):
+    async def _loader(**_: object):
+        return silences
+
+    return _loader
+
+
+NO_SILENCES = _make_silences_loader([])
+
+
 @pytest.fixture(autouse=True)
 def _restore_static_config(temp_config):
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_silences_by_default():
+    """Default the active-silences load to empty so these rule tests stay pure.
+
+    Silences are an additive suppressor; tests that exercise silence behavior
+    patch get_cached_active_silences explicitly.
+    """
+    with patch("services.webhooks.forwarding_stage.get_cached_active_silences", NO_SILENCES):
+        yield
 
 
 def _set_config(key: str, value: object) -> None:
@@ -252,3 +274,111 @@ async def test_source_filter_excludes_non_matching_source():
         decision = await resolve_forward_decision("medium", False, None, None, "prometheus")
     # The prometheus source does not match the grafana rule; with no rule hit for medium, it does not forward
     assert decision.should_forward is False
+
+
+# ── Manual silence ──────────────────────────────────────────────────────────────
+
+
+class _FakeSilence:
+    """Mirrors SilenceSnapshot's match attributes."""
+
+    def __init__(self, sid=1, source="", importance="", event_type="", project="", region="", environment="", payload=""):
+        self.id = sid
+        self.match_source = source
+        self.match_importance = importance
+        self.match_event_type = event_type
+        self.match_project = project
+        self.match_region = region
+        self.match_environment = environment
+        self.match_payload = payload
+        self.comment = ""
+
+
+@pytest.mark.asyncio
+async def test_silence_matching_source_suppresses_forward():
+    """An active silence on the source mutes an otherwise-forwarded alert."""
+    rule = _FakeRule(1, importance="high")
+    silence = _FakeSilence(source="prometheus")
+    with (
+        patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])),
+        patch("services.webhooks.forwarding_stage.get_cached_active_silences", _make_silences_loader([silence])),
+    ):
+        decision = await resolve_forward_decision("high", False, None, None, "prometheus")
+    assert decision.should_forward is False
+    assert decision.skip_code == "silenced"
+    assert "Silenced" in (decision.skip_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_silence_non_matching_source_does_not_suppress():
+    """A silence scoped to another source leaves the alert forwarded."""
+    rule = _FakeRule(1, importance="high")
+    silence = _FakeSilence(source="grafana")
+    with (
+        patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])),
+        patch("services.webhooks.forwarding_stage.get_cached_active_silences", _make_silences_loader([silence])),
+    ):
+        decision = await resolve_forward_decision("high", False, None, None, "prometheus")
+    assert decision.should_forward is True
+
+
+@pytest.mark.asyncio
+async def test_silence_applies_to_duplicate_occurrences():
+    """A silence mutes duplicate occurrences too (match_duplicate is fixed to 'all')."""
+    rule = _FakeRule(1, importance="high")
+    silence = _FakeSilence(source="prometheus")
+    event = _Event(last_notified_at=utcnow() - timedelta(hours=7))
+    with (
+        patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])),
+        patch("services.webhooks.forwarding_stage.get_cached_active_silences", _make_silences_loader([silence])),
+    ):
+        decision = await resolve_forward_decision("high", True, None, event, "prometheus")
+    assert decision.should_forward is False
+    assert decision.skip_code == "silenced"
+
+
+# ── Acknowledgement suppresses the periodic reminder ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_alert_suppresses_periodic_reminder():
+    """An acknowledged alert mutes the recurring reminder when the flag is on (default)."""
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("ENABLE_PERIODIC_REMINDER", True)
+    _set_config("REMINDER_INTERVAL_HOURS", 6)
+    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
+    rule = _FakeRule(1, importance="high")
+    event = _Event(last_notified_at=utcnow() - timedelta(hours=7), acknowledged_at=utcnow())
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
+        decision = await resolve_forward_decision("high", True, None, event, "prometheus")
+    assert decision.should_forward is False
+    assert decision.skip_code == "acknowledged"
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_alert_still_reminds_when_flag_off():
+    """With suppression disabled, an acknowledged alert still gets periodic reminders."""
+    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
+    _set_config("ENABLE_PERIODIC_REMINDER", True)
+    _set_config("REMINDER_INTERVAL_HOURS", 6)
+    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", False)
+    rule = _FakeRule(1, importance="high")
+    event = _Event(last_notified_at=utcnow() - timedelta(hours=7), acknowledged_at=utcnow())
+    try:
+        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
+            decision = await resolve_forward_decision("high", True, None, event, "prometheus")
+        assert decision.should_forward is True
+        assert decision.is_periodic_reminder is True
+    finally:
+        _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_alert_does_not_block_first_notification():
+    """Acknowledgement only mutes the reminder, not the initial (non-duplicate) forward."""
+    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
+    rule = _FakeRule(1, importance="high")
+    # A brand-new (non-duplicate) alert whose head is somehow already acked still forwards.
+    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
+        decision = await resolve_forward_decision("high", False, None, None, "prometheus", acknowledged=True)
+    assert decision.should_forward is True

@@ -59,8 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.app_context = services.app_context
 
     from services.forwarding.rules import start_rules_invalidation_listener
+    from services.silences.store import start_silences_invalidation_listener
 
     await start_rules_invalidation_listener()
+    await start_silences_invalidation_listener()
     logger.info("[App] Startup complete port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
     try:
