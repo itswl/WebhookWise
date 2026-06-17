@@ -292,11 +292,18 @@ async def get_webhooks_endpoint(
     cursor: int | None = Query(None),
     importance: str = Query(""),
     source: str = Query(""),
+    acknowledged: bool | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """Get the summary list of all webhook events."""
     items, has_more, next_cursor = await list_webhook_summaries(
-        session, cursor=cursor, importance=importance, source=source, page=page, page_size=page_size
+        session,
+        cursor=cursor,
+        importance=importance,
+        source=source,
+        acknowledged=acknowledged,
+        page=page,
+        page_size=page_size,
     )
     return {
         "success": True,
