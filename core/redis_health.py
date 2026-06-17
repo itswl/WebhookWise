@@ -182,3 +182,8 @@ def openclaw_poller_stability(record_id: int) -> str:
 def periodic_report_last_sent(period_key: str) -> str:
     """Marker of the last fire-time a periodic report was sent for (catch-up idempotency)."""
     return f"periodic-report:last-sent:{period_key}"
+
+
+def periodic_report_catchup_claim(period_key: str, fire_iso: str) -> str:
+    """Single-flight claim so only one worker sends a given catch-up occurrence."""
+    return f"periodic-report:catchup-claim:{period_key}:{fire_iso}"
