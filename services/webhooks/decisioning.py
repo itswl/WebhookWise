@@ -428,6 +428,35 @@ def _first_matching_silence(
     return None
 
 
+def match_active_silence(
+    silences: list[SilenceSnapshot],
+    *,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
+) -> SilenceSnapshot | None:
+    """Public wrapper: return the first matching silence (computes identity).
+
+    Used by the analysis stage to decide whether to skip the (paid) AI call for a
+    silenced alert; the forward stage uses the lower-level path with a shared
+    precomputed identity.
+    """
+    if not silences:
+        return None
+    identity = extract_forward_match_fields(parsed_data)
+    return _first_matching_silence(
+        silences,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        identity=identity,
+    )
+
+
 def _decide_duplicate_alert(
     *,
     base_should_forward: bool,
