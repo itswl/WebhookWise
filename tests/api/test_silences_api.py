@@ -1,4 +1,4 @@
-"""Silence + acknowledgement API handler tests (direct calls, in-memory sqlite)."""
+"""Silence API handler tests (direct calls, in-memory sqlite)."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-
-from models import WebhookEvent
 
 
 def _body(response: Any) -> dict[str, Any]:
@@ -123,50 +121,3 @@ async def test_update_silence_make_permanent(session: AsyncSession) -> None:
     )
     assert updated["data"]["expires_at"] is None
     assert updated["data"]["active"] is True
-
-
-# ── Acknowledgement routes ───────────────────────────────────────────────────
-
-
-async def _make_event(session: AsyncSession) -> WebhookEvent:
-    event = WebhookEvent(source="prometheus", is_duplicate=False, duplicate_count=1)
-    session.add(event)
-    await session.flush()
-    return event
-
-
-@pytest.mark.asyncio
-async def test_ack_and_unack_endpoints(session: AsyncSession) -> None:
-    from api.v1 import webhook as api
-    from schemas.webhook import WebhookAckRequest
-
-    event = await _make_event(session)
-
-    acked = await api.acknowledge_webhook_endpoint(
-        event.id, WebhookAckRequest(acknowledged_by="alice"), session=session
-    )
-    assert acked["success"] is True
-    assert acked["data"]["acknowledged"] is True
-    assert acked["data"]["acknowledged_by"] == "alice"
-    assert acked["data"]["acknowledged_at"].endswith("Z")
-
-    unacked = await api.unacknowledge_webhook_endpoint(event.id, session=session)
-    assert unacked["data"]["acknowledged"] is False
-
-
-@pytest.mark.asyncio
-async def test_ack_without_body(session: AsyncSession) -> None:
-    from api.v1 import webhook as api
-
-    event = await _make_event(session)
-    acked = await api.acknowledge_webhook_endpoint(event.id, None, session=session)
-    assert acked["data"]["acknowledged"] is True
-    assert acked["data"]["acknowledged_by"] is None
-
-
-@pytest.mark.asyncio
-async def test_ack_missing_event_returns_404(session: AsyncSession) -> None:
-    from api.v1 import webhook as api
-
-    resp = await api.acknowledge_webhook_endpoint(9999, None, session=session)
-    assert resp.status_code == 404

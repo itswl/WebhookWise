@@ -381,9 +381,6 @@ const API = {
         if (params.page) queryParams.append('page', params.page);
         if (params.importance) queryParams.append('importance', params.importance);
         if (params.source) queryParams.append('source', params.source);
-        if (params.acknowledged !== null && params.acknowledged !== undefined) {
-            queryParams.append('acknowledged', params.acknowledged ? 'true' : 'false');
-        }
 
         const response = await this.authenticatedFetch('/v1/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -667,37 +664,6 @@ const API = {
     async deleteSilence(id) {
         const response = await this.authenticatedFetch('/v1/silences/' + id, {
             method: 'DELETE'
-        });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    // ========== Acknowledgement API ==========
-
-    /**
-     * Acknowledge an alert ("I'm on it"); suppresses its periodic reminders
-     * @param {number} id - Alert ID
-     * @param {string} acknowledgedBy - Optional operator name
-     * @returns {Promise<object>} Ack result
-     */
-    async ackWebhook(id, acknowledgedBy) {
-        const response = await this.authenticatedFetch('/v1/webhooks/' + id + '/ack', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ acknowledged_by: acknowledgedBy || '' })
-        });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-    },
-
-    /**
-     * Clear acknowledgement on an alert (re-enable periodic reminders)
-     * @param {number} id - Alert ID
-     * @returns {Promise<object>} Unack result
-     */
-    async unackWebhook(id) {
-        const response = await this.authenticatedFetch('/v1/webhooks/' + id + '/unack', {
-            method: 'POST'
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();

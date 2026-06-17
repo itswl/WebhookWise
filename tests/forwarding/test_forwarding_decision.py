@@ -18,9 +18,8 @@ from services.webhooks.forwarding_stage import resolve_forward_decision
 class _Event:
     """Minimal object that simulates a WebhookEvent."""
 
-    def __init__(self, last_notified_at=None, acknowledged_at=None):
+    def __init__(self, last_notified_at=None):
         self.last_notified_at = last_notified_at
-        self.acknowledged_at = acknowledged_at
 
 
 class _Noise:
@@ -335,50 +334,3 @@ async def test_silence_applies_to_duplicate_occurrences():
         decision = await resolve_forward_decision("high", True, None, event, "prometheus")
     assert decision.should_forward is False
     assert decision.skip_code == "silenced"
-
-
-# ── Acknowledgement suppresses the periodic reminder ────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_acknowledged_alert_suppresses_periodic_reminder():
-    """An acknowledged alert mutes the recurring reminder when the flag is on (default)."""
-    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config("ENABLE_PERIODIC_REMINDER", True)
-    _set_config("REMINDER_INTERVAL_HOURS", 6)
-    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
-    rule = _FakeRule(1, importance="high")
-    event = _Event(last_notified_at=utcnow() - timedelta(hours=7), acknowledged_at=utcnow())
-    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
-        decision = await resolve_forward_decision("high", True, None, event, "prometheus")
-    assert decision.should_forward is False
-    assert decision.skip_code == "acknowledged"
-
-
-@pytest.mark.asyncio
-async def test_acknowledged_alert_still_reminds_when_flag_off():
-    """With suppression disabled, an acknowledged alert still gets periodic reminders."""
-    _set_config("NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config("ENABLE_PERIODIC_REMINDER", True)
-    _set_config("REMINDER_INTERVAL_HOURS", 6)
-    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", False)
-    rule = _FakeRule(1, importance="high")
-    event = _Event(last_notified_at=utcnow() - timedelta(hours=7), acknowledged_at=utcnow())
-    try:
-        with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
-            decision = await resolve_forward_decision("high", True, None, event, "prometheus")
-        assert decision.should_forward is True
-        assert decision.is_periodic_reminder is True
-    finally:
-        _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
-
-
-@pytest.mark.asyncio
-async def test_acknowledged_alert_does_not_block_first_notification():
-    """Acknowledgement only mutes the reminder, not the initial (non-duplicate) forward."""
-    _set_config("SUPPRESS_REMINDER_WHEN_ACKED", True)
-    rule = _FakeRule(1, importance="high")
-    # A brand-new (non-duplicate) alert whose head is somehow already acked still forwards.
-    with patch("services.webhooks.forwarding_stage.get_cached_forward_rules", _make_rules_loader([rule])):
-        decision = await resolve_forward_decision("high", False, None, None, "prometheus", acknowledged=True)
-    assert decision.should_forward is True

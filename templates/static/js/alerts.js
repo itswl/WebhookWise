@@ -14,9 +14,6 @@ const AlertsModule = {
     _loadingMore: false,
     currentForwardId: null,
     currentTabByAlert: {},
-    // Server-side filters (re-fetched, not client-filtered): the acknowledged
-    // filter must query the whole table, since the page only loads 200 rows.
-    ackFilter: '',
     _extractCursorMeta(result) {
         const pag = result ? (result.cursor || result.pagination) : null;
         const nextCursor = pag ? (pag.next_cursor ?? null) : null;
@@ -81,10 +78,6 @@ const AlertsModule = {
                 this.deepAnalyzeAlert(id);
             } else if (action === 'forward') {
                 this.openForwardModal(id);
-            } else if (action === 'ack') {
-                this.ackAlert(id);
-            } else if (action === 'unack') {
-                this.unackAlert(id);
             }
             return;
         }
@@ -145,24 +138,13 @@ const AlertsModule = {
     /**
      * Load alert data
      */
-    _serverQueryParams(cursor) {
-        const params = { page_size: 200, cursor: cursor };
-        // ackFilter: '' = all, 'acknowledged' = only acked, 'unacknowledged' = only not acked
-        if (this.ackFilter === 'acknowledged') {
-            params.acknowledged = true;
-        } else if (this.ackFilter === 'unacknowledged') {
-            params.acknowledged = false;
-        }
-        return params;
-    },
-
     async loadAlerts() {
         try {
             // Show loading indicator
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
-            const result = await API.getWebhooks(this._serverQueryParams(null));
+            const result = await API.getWebhooks({ page_size: 200, cursor: null });
 
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
@@ -197,7 +179,7 @@ const AlertsModule = {
                 btn.textContent = t('common.loading');
             }
 
-            const result = await API.getWebhooks(this._serverQueryParams(this.nextCursor));
+            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
             }
@@ -248,19 +230,6 @@ const AlertsModule = {
         document.getElementById('highCount').textContent = highCount;
         document.getElementById('mediumCount').textContent = mediumCount;
         document.getElementById('duplicateCount').textContent = duplicateCount;
-    },
-
-    /**
-     * Change the acknowledged filter. Unlike the other filters this re-queries
-     * the server, because ack state must be matched across the whole table (the
-     * page only loads 200 rows, so a buried acked alert wouldn't be found by a
-     * client-side filter).
-     */
-    setAckFilter(value) {
-        this.ackFilter = value || '';
-        this.nextCursor = null;
-        this.hasMore = false;
-        this.loadAlerts();
     },
 
     /**
@@ -396,23 +365,10 @@ const AlertsModule = {
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
                 html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
-            // Acknowledged badge: shows who/when on hover; suppresses the periodic reminder.
-            if (webhook.acknowledged) {
-                var ackTitle = t('alerts.badge.acknowledgedTitle');
-                if (webhook.acknowledged_by) {
-                    ackTitle = t('alerts.badge.acknowledgedBy', { name: webhook.acknowledged_by });
-                }
-                html += '<span class="badge badge-low" title="' + escapeHtml(ackTitle) + '">✅ ' + t('alerts.badge.acknowledged') + '</span>';
-            }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
             html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
-            if (webhook.acknowledged) {
-                html += '<button class="btn btn-sm" data-action="unack" data-id="' + escapeHtml(String(webhook.id)) + '">🔔 ' + t('alerts.action.unack') + '</button>';
-            } else {
-                html += '<button class="btn btn-sm" data-action="ack" data-id="' + escapeHtml(String(webhook.id)) + '">✅ ' + t('alerts.action.ack') + '</button>';
-            }
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
             html += '</div></div></div>';
 
@@ -873,36 +829,6 @@ const AlertsModule = {
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
-            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
-        }
-    },
-
-    async ackAlert(id) {
-        console.log('Acknowledging webhook:', id);
-        try {
-            const result = await API.ackWebhook(id);
-            if (result.success) {
-                this.loadAlerts();
-            } else {
-                alert('❌ ' + t('alerts.msg.ackFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
-            }
-        } catch (error) {
-            console.error('Ack error:', error);
-            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
-        }
-    },
-
-    async unackAlert(id) {
-        console.log('Clearing acknowledgement for webhook:', id);
-        try {
-            const result = await API.unackWebhook(id);
-            if (result.success) {
-                this.loadAlerts();
-            } else {
-                alert('❌ ' + t('alerts.msg.ackFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
-            }
-        } catch (error) {
-            console.error('Unack error:', error);
             alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },

@@ -262,7 +262,6 @@ class RetryConfig(StaticSettings):
     ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
-    SUPPRESS_REMINDER_WHEN_ACKED: bool = Field(default=True)
     PROCESSING_LOCK_DISTRIBUTED_ENABLED: bool = Field(default=True)
     PROCESSING_LOCK_TTL_SECONDS: int = Field(default=180)
     PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS: int = Field(default=15)
