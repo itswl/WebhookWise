@@ -84,6 +84,22 @@ def test_reconcile_restamps_pre_squash_revisions(monkeypatch: pytest.MonkeyPatch
     assert stamped == [("stamp", "0001_baseline", "--purge")]
 
 
+@pytest.mark.parametrize("current", ["0005_ack_columns", "0006_drop_ack_columns"])
+def test_reconcile_restamps_removed_ack_revisions(monkeypatch: pytest.MonkeyPatch, current: str) -> None:
+    """A DB stamped on a removed ack revision is re-stamped onto 0004_silences."""
+    stamped: list[tuple[str, ...]] = []
+
+    async def fake_current() -> str | None:
+        return current
+
+    monkeypatch.setattr(migrations, "_current_alembic_revision", fake_current)
+    monkeypatch.setattr(migrations, "_alembic", lambda *args: stamped.append(args))
+
+    migrations._reconcile_squashed_history()
+
+    assert stamped == [("stamp", "0004_silences", "--purge")]
+
+
 @pytest.mark.parametrize("current", [None, "0001_baseline"])
 def test_reconcile_leaves_fresh_and_baseline_databases_untouched(
     monkeypatch: pytest.MonkeyPatch, current: str | None
