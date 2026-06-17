@@ -380,13 +380,6 @@ function filterAlerts() {
     if (typeof AlertsModule !== 'undefined') AlertsModule.filterAlerts();
 }
 
-function changeAckFilter() {
-    if (typeof AlertsModule !== 'undefined') {
-        const el = document.getElementById('ackFilter');
-        AlertsModule.setAckFilter(el ? el.value : '');
-    }
-}
-
 function changePageSize() {
     if (typeof AlertsModule !== 'undefined') AlertsModule.changePageSize();
 }
