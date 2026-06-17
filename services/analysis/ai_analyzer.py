@@ -231,7 +231,7 @@ async def analyze_webhook_with_ai(
 ) -> AnalysisResult:
     ai_config = get_config_manager().ai
     cache_enabled = bool(ai_config.CACHE_ENABLED)
-    cache_ttl_seconds = int(ai_config.ANALYSIS_CACHE_TTL)
+    cache_ttl_seconds = int(ai_config.ANALYSIS_CACHE_TTL_SECONDS)
     provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:
