@@ -49,8 +49,6 @@ class WebhookEventInput:
     duplicate_of: int | None = None
     duplicate_count: int = 1
     last_notified_at: datetime | None = None
-    acknowledged_at: datetime | None = None
-    acknowledged_by: str | None = None
 
 
 class WebhookEvent(Base):
@@ -92,11 +90,6 @@ class WebhookEvent(Base):
     )
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
-
-    # Acknowledgement ("I'm on it"): mutes the recurring periodic reminder for
-    # this alert chain while leaving the first notification + cooldown intact.
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
-    acknowledged_by: Mapped[str | None] = mapped_column(String(100))
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow(), server_default=func.now())
@@ -141,8 +134,6 @@ class WebhookEvent(Base):
         self.duplicate_of = data.duplicate_of
         self.duplicate_count = data.duplicate_count
         self.last_notified_at = data.last_notified_at
-        self.acknowledged_at = data.acknowledged_at
-        self.acknowledged_by = data.acknowledged_by
         if not self.created_at:
             self.created_at = utcnow()
 
@@ -183,9 +174,6 @@ class ArchivedWebhookEvent(Base):
     duplicate_of: Mapped[int | None] = mapped_column(Integer)
     duplicate_count: Mapped[int | None] = mapped_column(Integer)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
-    # Older archived rows predate these columns and are left NULL.
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
-    acknowledged_by: Mapped[str | None] = mapped_column(String(100))
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
