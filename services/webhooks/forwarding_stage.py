@@ -16,11 +16,13 @@ from models import WebhookEvent
 from services.dedup import DedupResult
 from services.forwarding.outbox import resolve_and_forward
 from services.forwarding.rules import get_cached_forward_rules
+from services.silences.store import get_cached_active_silences
 from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decisioning import (
     ForwardDecision,
     ForwardingPolicy,
     ForwardRuleSnapshot,
+    SilenceSnapshot,
     decide_forwarding,
     forwarding_policy_from_config,
     normalize_importance,
@@ -51,6 +53,7 @@ async def resolve_forward_decision(
     session: AsyncSession | None = None,
     policy: ForwardingPolicy | None = None,
     event_type: str = "webhook_forward",
+    acknowledged: bool | None = None,
 ) -> ForwardDecision:
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
@@ -58,6 +61,18 @@ async def resolve_forward_decision(
         rules = await get_cached_forward_rules(session=session)
     except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
         logger.warning("[Forward] Failed to match forwarding rules: %s", e)
+
+    silences: list[SilenceSnapshot] = []
+    try:
+        silences = await get_cached_active_silences(session=session)
+    except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
+        logger.warning("[Forward] Failed to load active silences: %s", e)
+
+    # The periodic reminder keys off the alert-chain head (orig); acknowledging
+    # that head is what mutes the reminder. Derive it from orig unless a caller
+    # passes an explicit override.
+    if acknowledged is None:
+        acknowledged = bool(orig is not None and orig.acknowledged_at is not None)
 
     decision = decide_forwarding(
         event_type=event_type,
@@ -69,6 +84,8 @@ async def resolve_forward_decision(
         rules=rules,
         policy=policy or forwarding_policy_from_config(),
         parsed_data=parsed_data,
+        silences=silences,
+        acknowledged=acknowledged,
     )
 
     if decision.should_forward:

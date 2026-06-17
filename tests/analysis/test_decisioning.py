@@ -13,6 +13,7 @@ from services.webhooks.decisioning import (
     ForwardDecision,
     ForwardingPolicy,
     ForwardRuleSnapshot,
+    SilenceSnapshot,
     _rule_matches,
     build_final_analysis,
     decide_forwarding,
@@ -82,6 +83,29 @@ def _make_policy(**overrides: object) -> ForwardingPolicy:
     }
     defaults.update(overrides)
     return ForwardingPolicy(**defaults)  # type: ignore[arg-type]
+
+
+def _make_silence(
+    *,
+    silence_id: int | None = 1,
+    match_source: str = "",
+    match_importance: str = "",
+    match_event_type: str = "",
+    match_project: str = "",
+    match_region: str = "",
+    match_environment: str = "",
+    match_payload: str = "",
+) -> SilenceSnapshot:
+    return SilenceSnapshot(
+        id=silence_id,
+        match_source=match_source,
+        match_importance=match_importance,
+        match_event_type=match_event_type,
+        match_project=match_project,
+        match_region=match_region,
+        match_environment=match_environment,
+        match_payload=match_payload,
+    )
 
 
 class _Event:
@@ -276,6 +300,8 @@ class TestDecideForwarding:
         rules: list[ForwardRuleSnapshot] | None = None,
         policy: ForwardingPolicy | None = None,
         now: datetime | None = None,
+        silences: list[SilenceSnapshot] | None = None,
+        acknowledged: bool = False,
     ) -> ForwardDecision:
         return decide_forwarding(
             importance=importance,
@@ -287,6 +313,8 @@ class TestDecideForwarding:
             policy=policy or _make_policy(),
             parsed_data=parsed_data,
             now=now or utcnow(),
+            silences=silences or [],
+            acknowledged=acknowledged,
         )
 
     def test_noise_suppress_overrides_all(self) -> None:
@@ -381,6 +409,115 @@ class TestDecideForwarding:
         )
         assert result.should_forward
         assert result.is_periodic_reminder
+
+    # ── silence ──────────────────────────────────────────────────────
+
+    def test_silence_on_source_suppresses(self) -> None:
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            rules=rules,
+            silences=[_make_silence(match_source="prometheus")],
+        )
+        assert not result.should_forward
+        assert result.skip_code == "silenced"
+        assert "Silenced (id=1)" in (result.skip_reason or "")
+
+    def test_silence_non_matching_source_allows_forward(self) -> None:
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            rules=rules,
+            silences=[_make_silence(match_source="grafana")],
+        )
+        assert result.should_forward
+
+    def test_silence_checked_before_rules(self) -> None:
+        # No matching rule AND a matching silence → reported as silenced, not no_match.
+        result = self._decide(
+            importance="high",
+            rules=[],
+            silences=[_make_silence(match_importance="high")],
+        )
+        assert not result.should_forward
+        assert result.skip_code == "silenced"
+
+    def test_silence_suppresses_duplicate_reminder(self) -> None:
+        old = utcnow() - timedelta(hours=7)
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            is_duplicate=True,
+            original_event=_Event(last_notified_at=old),
+            rules=rules,
+            silences=[_make_silence(match_source="prometheus")],
+        )
+        assert not result.should_forward
+        assert result.skip_code == "silenced"
+
+    def test_noise_suppression_takes_priority_over_silence(self) -> None:
+        # Noise check runs first; the skip_code reflects noise, not silence.
+        result = self._decide(
+            importance="high",
+            noise=_make_noise(suppress=True),
+            silences=[_make_silence(match_source="prometheus")],
+        )
+        assert not result.should_forward
+        assert result.skip_code == "noise_suppressed"
+
+    def test_silence_by_payload_match(self) -> None:
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            rules=rules,
+            parsed_data={"labels": {"severity": "critical"}},
+            silences=[_make_silence(match_payload="labels.severity=critical")],
+        )
+        assert not result.should_forward
+        assert result.skip_code == "silenced"
+
+    # ── acknowledgement ──────────────────────────────────────────────
+
+    def test_acknowledged_suppresses_periodic_reminder(self) -> None:
+        old = utcnow() - timedelta(hours=7)
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            is_duplicate=True,
+            original_event=_Event(last_notified_at=old),
+            rules=rules,
+            policy=_make_policy(suppress_reminder_when_acked=True),
+            acknowledged=True,
+        )
+        assert not result.should_forward
+        assert result.skip_code == "acknowledged"
+
+    def test_acknowledged_does_not_suppress_when_flag_off(self) -> None:
+        old = utcnow() - timedelta(hours=7)
+        rules = [_make_rule(match_importance="high")]
+        result = self._decide(
+            importance="high",
+            is_duplicate=True,
+            original_event=_Event(last_notified_at=old),
+            rules=rules,
+            policy=_make_policy(suppress_reminder_when_acked=False),
+            acknowledged=True,
+        )
+        assert result.should_forward
+        assert result.is_periodic_reminder
+
+    def test_acknowledged_does_not_block_cooldown_first_send(self) -> None:
+        # Within cooldown, ack is irrelevant — cooldown wins and reports cooldown.
+        recent = utcnow() - timedelta(seconds=10)
+        result = self._decide(
+            importance="high",
+            is_duplicate=True,
+            original_event=_Event(last_notified_at=recent),
+            policy=_make_policy(notification_cooldown_seconds=60, suppress_reminder_when_acked=True),
+            acknowledged=True,
+        )
+        assert not result.should_forward
+        assert result.skip_code == "cooldown"
 
 
 # ── build_final_analysis ─────────────────────────────────────────────

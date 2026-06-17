@@ -57,8 +57,8 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     tabs = set(re.findall(r'data-tab="([^"]+)"', html))
     panels = set(re.findall(r'id="([^"]+Tab)"', html))
 
-    assert {"alerts", "ai-cost", "deep-analyses", "outbox", "forward-rules"} <= tabs
-    assert {"alertsTab", "aiCostTab", "deepAnalysesTab", "outboxTab", "forwardRulesTab"} <= panels
+    assert {"alerts", "ai-cost", "deep-analyses", "outbox", "forward-rules", "silences"} <= tabs
+    assert {"alertsTab", "aiCostTab", "deepAnalysesTab", "outboxTab", "forwardRulesTab", "silencesTab"} <= panels
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
