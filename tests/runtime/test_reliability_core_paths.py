@@ -35,16 +35,17 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
         get_calls.append((key, ttl_seconds))
         return 4
 
-    async def redis_setex_bytes(key: str, ttl_seconds: int, value: bytes) -> None:
-        writes[key] = (ttl_seconds, json.loads(value))
-
-    async def redis_setex_str(key: str, ttl_seconds: int, value: str) -> None:
-        writes[f"{key}:str"] = (ttl_seconds, value)
+    async def redis_eval_int(_script: str, _numkeys: int, *args: object) -> int:
+        # AI_CACHE_SAVE: KEYS=[blob, counter], ARGV=[ttl, blob bytes]
+        blob_key, counter_key = str(args[0]), str(args[1])
+        ttl_seconds, blob = int(args[2]), args[3]  # type: ignore[arg-type]
+        writes[blob_key] = (ttl_seconds, json.loads(blob))
+        writes[f"{counter_key}:str"] = (ttl_seconds, "0")
+        return 1
 
     monkeypatch.setattr(redis_client, "redis_get_str", redis_get_str)
     monkeypatch.setattr(redis_client, "redis_incr_with_expire", redis_incr_with_expire)
-    monkeypatch.setattr(redis_client, "redis_setex_bytes", redis_setex_bytes)
-    monkeypatch.setattr(redis_client, "redis_setex_str", redis_setex_str)
+    monkeypatch.setattr(redis_client, "redis_eval_int", redis_eval_int)
 
     cached = await get_cached_analysis("alert-1", ttl_seconds=120)
 
@@ -100,15 +101,11 @@ async def test_ai_cache_redis_errors_are_nonfatal(
     async def redis_get_str(_key: str) -> str:
         raise RuntimeError("redis read down")
 
-    async def redis_setex_bytes(*_: object) -> None:
+    async def redis_eval_int(*_: object) -> int:
         raise RuntimeError("redis write down")
 
-    async def redis_setex_str(*_: object) -> None:
-        raise AssertionError("hit counter should not be written after payload write fails")
-
     monkeypatch.setattr(redis_client, "redis_get_str", redis_get_str)
-    monkeypatch.setattr(redis_client, "redis_setex_bytes", redis_setex_bytes)
-    monkeypatch.setattr(redis_client, "redis_setex_str", redis_setex_str)
+    monkeypatch.setattr(redis_client, "redis_eval_int", redis_eval_int)
 
     assert await get_cached_analysis("read-error", enabled=True) is None
     assert await save_to_cache("write-error", {"summary": "x"}, enabled=True) is False
