@@ -127,11 +127,20 @@ async def test_metrics_poller_refreshes_db_and_mq_metrics(
 async def test_metrics_poller_tolerates_redis_and_event_count_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from sqlalchemy.exc import OperationalError
+
     from services.operations import metrics_poller
 
     class Session:
         async def execute(self, _stmt: object) -> object:
-            raise RuntimeError("database unavailable")
+            # A realistic DB failure (SQLAlchemyError, not a timeout) — the poller
+            # catches it. count_with_timeout now re-raises non-timeout errors, so
+            # the tolerance must live in the poller, which it does.
+            raise OperationalError("SELECT count(*)", {}, Exception("database unavailable"))
+
+        @asynccontextmanager
+        async def begin_nested(self) -> Any:
+            yield self
 
     @asynccontextmanager
     async def session_scope() -> Any:

@@ -92,8 +92,17 @@ _PARSE_ERRORS = (TypeError, ValueError, json.JSONDecodeError)
 
 def _default_pipeline_dependencies() -> pipeline_runtime.WebhookPipelineDependencies:
     config = get_config_manager()
+    # Build the noise/forwarding policies once here rather than letting each
+    # stage fall back to from_config() per webhook on the hot path. The policies
+    # are runtime-constant; the stages keep their from_config() fallback for
+    # callers that don't pass dependencies.
+    from services.webhooks.decisioning import forwarding_policy_from_config
+    from services.webhooks.policies import NoiseReductionPolicy
+
     return pipeline_runtime.WebhookPipelineDependencies(
         dedup_window_seconds=int(config.retry.DEDUP_WINDOW_SECONDS),
+        noise_policy=NoiseReductionPolicy.from_config(),
+        forwarding_policy=forwarding_policy_from_config(),
     )
 
 # ── Main entry point ─────────────────────────────────────────────────────────

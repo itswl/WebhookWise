@@ -513,11 +513,14 @@ async def test_db_session_context_selection_scope_metrics_and_count_timeout(
 
     monkeypatch.setattr("core.observability.tracing.otel_span", span)
 
+    from asyncpg.exceptions import QueryCanceledError
+
     class Session:
         async def execute(self, stmt: object) -> object:
             if "statement_timeout" in str(stmt):
                 return SimpleNamespace(scalar=lambda: 0)
-            raise RuntimeError("count failed")
+            # A genuine statement_timeout cancellation → count_with_timeout maps to None.
+            raise QueryCanceledError("canceling statement due to statement timeout")
 
         @asynccontextmanager
         async def begin_nested(self) -> Any:
@@ -572,7 +575,7 @@ async def test_db_session_context_selection_scope_metrics_and_count_timeout(
     assert any(call[:3] == ("total", ("transaction", "success"), "inc") for call in metric_calls)
     assert any(call[:3] == ("total", ("existing_session", "success"), "inc") for call in metric_calls)
     assert any(call[:3] == ("total", ("request_session", "success"), "inc") for call in metric_calls)
-    assert any(call[:3] == ("total", ("count_query", "timeout_or_error"), "inc") for call in metric_calls)
+    assert any(call[:3] == ("total", ("count_query", "timeout"), "inc") for call in metric_calls)
 
 
 @pytest.mark.asyncio
