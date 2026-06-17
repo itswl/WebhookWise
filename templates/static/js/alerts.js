@@ -14,6 +14,9 @@ const AlertsModule = {
     _loadingMore: false,
     currentForwardId: null,
     currentTabByAlert: {},
+    // Server-side filters (re-fetched, not client-filtered): the acknowledged
+    // filter must query the whole table, since the page only loads 200 rows.
+    ackFilter: '',
     _extractCursorMeta(result) {
         const pag = result ? (result.cursor || result.pagination) : null;
         const nextCursor = pag ? (pag.next_cursor ?? null) : null;
@@ -142,13 +145,24 @@ const AlertsModule = {
     /**
      * Load alert data
      */
+    _serverQueryParams(cursor) {
+        const params = { page_size: 200, cursor: cursor };
+        // ackFilter: '' = all, 'acknowledged' = only acked, 'unacknowledged' = only not acked
+        if (this.ackFilter === 'acknowledged') {
+            params.acknowledged = true;
+        } else if (this.ackFilter === 'unacknowledged') {
+            params.acknowledged = false;
+        }
+        return params;
+    },
+
     async loadAlerts() {
         try {
             // Show loading indicator
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: null });
+            const result = await API.getWebhooks(this._serverQueryParams(null));
 
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
@@ -183,7 +197,7 @@ const AlertsModule = {
                 btn.textContent = t('common.loading');
             }
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
+            const result = await API.getWebhooks(this._serverQueryParams(this.nextCursor));
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
             }
@@ -234,6 +248,19 @@ const AlertsModule = {
         document.getElementById('highCount').textContent = highCount;
         document.getElementById('mediumCount').textContent = mediumCount;
         document.getElementById('duplicateCount').textContent = duplicateCount;
+    },
+
+    /**
+     * Change the acknowledged filter. Unlike the other filters this re-queries
+     * the server, because ack state must be matched across the whole table (the
+     * page only loads 200 rows, so a buried acked alert wouldn't be found by a
+     * client-side filter).
+     */
+    setAckFilter(value) {
+        this.ackFilter = value || '';
+        this.nextCursor = null;
+        this.hasMore = false;
+        this.loadAlerts();
     },
 
     /**
