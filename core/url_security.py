@@ -24,11 +24,29 @@ class UnsafeTargetUrlError(ValueError):
 _BLOCKED_HOSTNAMES = {"localhost", "localhost.localdomain"}
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
 _DNS_CACHE_TTL_SECONDS = 60.0
+_DNS_CACHE_MAX_ENTRIES = 2048
 _DNS_CACHE: dict[
     tuple[str, int | None],
     tuple[float, tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]],
 ] = {}
 _DNS_CACHE_LOCK = asyncio.Lock()
+
+
+def _evict_dns_cache_if_full(now: float) -> None:
+    """Bound the DNS cache so a flood of distinct target hosts can't grow it
+    without limit. Drop expired entries first; if still over, drop the entries
+    closest to expiry. Caller must hold _DNS_CACHE_LOCK."""
+    if len(_DNS_CACHE) < _DNS_CACHE_MAX_ENTRIES:
+        return
+    expired = [k for k, (expires_at, _) in _DNS_CACHE.items() if now >= expires_at]
+    for k in expired:
+        _DNS_CACHE.pop(k, None)
+    if len(_DNS_CACHE) < _DNS_CACHE_MAX_ENTRIES:
+        return
+    # Still full of live entries — evict the soonest-to-expire to make room.
+    overflow = len(_DNS_CACHE) - _DNS_CACHE_MAX_ENTRIES + 1
+    for k, _ in sorted(_DNS_CACHE.items(), key=lambda kv: kv[1][0])[:overflow]:
+        _DNS_CACHE.pop(k, None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +139,7 @@ async def _resolve_ips_cached(host: str, port: int | None) -> list[ipaddress.IPv
             expires_at, cached_ips = cached
             if now < expires_at:
                 return list(cached_ips)
+        _evict_dns_cache_if_full(now)
         _DNS_CACHE[key] = (now + _DNS_CACHE_TTL_SECONDS, tuple(resolved_ips))
     return resolved_ips
 

@@ -24,6 +24,12 @@ from core.redis_lua import (
 logger = get_logger("circuit_breaker")
 
 
+# Upper bound on how long an observed CLOSED state is trusted without re-reading
+# Redis. Kept short so a cross-process trip propagates quickly; also capped per
+# breaker at its recovery_timeout.
+_CLOSED_CACHE_TTL_SECONDS = 3.0
+
+
 class CircuitState(Enum):
     CLOSED = "closed"
     OPEN = "open"
@@ -61,12 +67,27 @@ class CircuitBreaker:
         self._state_key = f"{self._prefix}:state"
         self._open_until_key = f"{self._prefix}:open_until"
 
+        # Short-lived in-memory cache of an observed CLOSED state, to skip the
+        # per-call Redis round-trip on the (overwhelmingly common) healthy path.
+        # ONLY CLOSED is ever cached — OPEN always re-reads Redis so recovery and
+        # cross-process trips stay responsive. Capped at recovery_timeout so a
+        # stale CLOSED can never outlive a recovery window, and invalidated on any
+        # locally-recorded failure. Cross-process trips lag by at most this TTL.
+        self._closed_cache_ttl = min(_CLOSED_CACHE_TTL_SECONDS, float(recovery_timeout))
+        self._closed_cache_until = 0.0
+
     def _record_state_metric(self, state: CircuitState) -> None:
         for candidate in CircuitState:
             CIRCUIT_BREAKER_STATE.labels(self.name, candidate.value).set(1 if candidate == state else 0)
 
     async def _check_state_async(self) -> CircuitState:
         from core.redis_health import ensure_redis_available, mark_redis_failure
+
+        # Fast path: a recently-observed CLOSED is trusted for a short window,
+        # skipping the Redis round-trip on the healthy path. Never cache OPEN.
+        if self._closed_cache_ttl > 0 and time.time() < self._closed_cache_until:
+            self._record_state_metric(CircuitState.CLOSED)
+            return CircuitState.CLOSED
 
         if not await ensure_redis_available(f"circuit_breaker:{self.name}:check_state"):
             logger.warning("CircuitBreaker [%s] Redis unavailable; degrading to allow", self.name)
@@ -85,11 +106,19 @@ class CircuitBreaker:
             mark_redis_failure(f"circuit_breaker:{self.name}:check_state", e)
             logger.warning("CircuitBreaker [%s] Redis state check failed; degrading to allow: %s", self.name, e)
             state = CircuitState.CLOSED
+        # Only cache a genuine CLOSED read from Redis; OPEN (and the degraded
+        # fallbacks above) are left uncached so they re-check every call.
+        if state == CircuitState.CLOSED and self._closed_cache_ttl > 0:
+            self._closed_cache_until = time.time() + self._closed_cache_ttl
         self._record_state_metric(state)
         return state
 
     async def _record_failure(self) -> bool:
         from core.redis_health import ensure_redis_available, mark_redis_failure
+
+        # A local failure moves this breaker toward (or past) the threshold, so
+        # drop any cached CLOSED — the next check must re-read Redis.
+        self._closed_cache_until = 0.0
 
         if not await ensure_redis_available(f"circuit_breaker:{self.name}:record_failure"):
             return True
