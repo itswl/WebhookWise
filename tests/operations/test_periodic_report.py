@@ -263,32 +263,34 @@ async def test_report_webhook_falls_back_to_weekly_then_deep_analysis(temp_confi
 
 # ── Missed-fire catch-up ──────────────────────────────────────────────────────
 
-from datetime import datetime  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 
 
 def test_most_recent_fire_finds_last_daily_match() -> None:
     from services.operations.periodic_report import _most_recent_fire
 
-    # Tuesday 14:30; daily 09:00 → most recent fire is today 09:00.
-    now = datetime(2026, 6, 16, 14, 30)
+    # Crons are evaluated in Asia/Shanghai (UTC+8): "0 9" = 09:00 Beijing = 01:00 UTC.
+    # now = 2026-06-16 14:30 UTC → most recent daily fire is 2026-06-16 01:00 UTC.
+    now = datetime(2026, 6, 16, 14, 30, tzinfo=UTC)
     fire = _most_recent_fire("0 9 * * *", now, 24 * 60 + 60)
-    assert fire == datetime(2026, 6, 16, 9, 0)
+    assert fire == datetime(2026, 6, 16, 1, 0, tzinfo=UTC)
 
 
 def test_most_recent_fire_weekly_walks_back_to_monday() -> None:
     from services.operations.periodic_report import _most_recent_fire
 
-    # Wednesday 2026-06-17 10:00; weekly Mon 09:00 → Monday 2026-06-15 09:00.
-    now = datetime(2026, 6, 17, 10, 0)
+    # Weekly Mon 09:00 Beijing = Mon 01:00 UTC. now = Wed 2026-06-17 10:00 UTC
+    # → most recent is Monday 2026-06-15 01:00 UTC.
+    now = datetime(2026, 6, 17, 10, 0, tzinfo=UTC)
     fire = _most_recent_fire("0 9 * * 1", now, 7 * 24 * 60 + 60)
-    assert fire == datetime(2026, 6, 15, 9, 0)
+    assert fire == datetime(2026, 6, 15, 1, 0, tzinfo=UTC)
 
 
 def test_most_recent_fire_none_when_outside_lookback() -> None:
     from services.operations.periodic_report import _most_recent_fire
 
     # Monthly 1st 09:00, now is the 16th, but a tiny 10-minute lookback can't reach it.
-    now = datetime(2026, 6, 16, 14, 30)
+    now = datetime(2026, 6, 16, 14, 30, tzinfo=UTC)
     assert _most_recent_fire("0 9 1 * *", now, 10) is None
 
 
