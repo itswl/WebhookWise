@@ -80,3 +80,32 @@ async def test_head_self_ack_still_reported(session: AsyncSession) -> None:
 
     items, _, _ = await list_webhook_summaries(session, page_size=50)
     assert _by_id(items, head.id)["acknowledged"] is True
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_filter_matches_chain_head(session: AsyncSession) -> None:
+    # Acked chain: head + duplicate. Unacked standalone event.
+    acked_head = WebhookEvent(source="prometheus", is_duplicate=False, duplicate_count=2, acknowledged_at=utcnow())
+    session.add(acked_head)
+    await session.flush()
+    acked_dup = WebhookEvent(source="prometheus", is_duplicate=True, duplicate_of=acked_head.id, duplicate_count=1)
+    plain = WebhookEvent(source="grafana", is_duplicate=False, duplicate_count=1)
+    session.add_all([acked_dup, plain])
+    await session.commit()
+
+    acked, _, _ = await list_webhook_summaries(session, acknowledged=True, page_size=50)
+    acked_ids = {i["id"] for i in acked}
+    # Both the head AND its duplicate are returned (chain-level); the plain one is not.
+    assert acked_head.id in acked_ids
+    assert acked_dup.id in acked_ids
+    assert plain.id not in acked_ids
+
+    unacked, _, _ = await list_webhook_summaries(session, acknowledged=False, page_size=50)
+    unacked_ids = {i["id"] for i in unacked}
+    assert plain.id in unacked_ids
+    assert acked_head.id not in unacked_ids
+    assert acked_dup.id not in unacked_ids
+
+    # No filter → everything.
+    all_items, _, _ = await list_webhook_summaries(session, page_size=50)
+    assert len(all_items) == 3

@@ -381,6 +381,9 @@ const API = {
         if (params.page) queryParams.append('page', params.page);
         if (params.importance) queryParams.append('importance', params.importance);
         if (params.source) queryParams.append('source', params.source);
+        if (params.acknowledged !== null && params.acknowledged !== undefined) {
+            queryParams.append('acknowledged', params.acknowledged ? 'true' : 'false');
+        }
 
         const response = await this.authenticatedFetch('/v1/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
