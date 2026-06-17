@@ -1,9 +1,20 @@
 """Webhook service policies built from static process configuration."""
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from core.app_context import get_config_manager
 from services.analysis.analysis_policies import NoiseScoringConfig
+
+
+@lru_cache(maxsize=16)
+def _parse_strip_keys(raw: str) -> frozenset[str]:
+    """Parse the AI_PAYLOAD_STRIP_KEYS CSV into a frozenset, memoized on the raw
+    string value so the per-analysis hot path skips the re-parse; a config change
+    is a new key and is picked up immediately."""
+    if not raw:
+        return frozenset()
+    return frozenset(k.strip().lower() for k in raw.split(",") if k.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,14 +69,9 @@ class PayloadPolicy:
     def from_config(cls) -> "PayloadPolicy":
         cfg = get_config_manager()
         threshold = int(cfg.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
-        strip_keys = (
-            frozenset(k.strip().lower() for k in cfg.ai.AI_PAYLOAD_STRIP_KEYS.split(",") if k.strip())
-            if cfg.ai.AI_PAYLOAD_STRIP_KEYS
-            else frozenset()
-        )
         return cls(
             offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
-            strip_keys=strip_keys,
+            strip_keys=_parse_strip_keys(str(cfg.ai.AI_PAYLOAD_STRIP_KEYS or "")),
             max_bytes=int(cfg.ai.AI_PAYLOAD_MAX_BYTES),
         )
 
