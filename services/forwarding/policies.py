@@ -21,10 +21,10 @@ class ForwardDeliveryPolicy:
     def from_config(cls) -> "ForwardDeliveryPolicy":
         cfg = get_config_manager()
         return cls(
-            timeout_seconds=int(cfg.retry.FORWARD_TIMEOUT),
+            timeout_seconds=int(cfg.retry.FORWARD_TIMEOUT_SECONDS),
             max_attempts=max(1, int(cfg.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
-            retry_initial_delay=int(cfg.retry.FORWARD_RETRY_INITIAL_DELAY),
-            retry_max_delay=int(cfg.retry.FORWARD_RETRY_MAX_DELAY),
+            retry_initial_delay=int(cfg.retry.FORWARD_RETRY_INITIAL_DELAY_SECONDS),
+            retry_max_delay=int(cfg.retry.FORWARD_RETRY_MAX_DELAY_SECONDS),
             retry_backoff_multiplier=float(cfg.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
             stale_processing_threshold_seconds=int(cfg.tasks.FORWARD_OUTBOX_STALE_SECONDS),
             max_delivery_age_seconds=max(0, int(cfg.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS)),
@@ -63,7 +63,7 @@ class OpenClawTriggerPolicy:
             platform=str(cfg.ai.DEEP_ANALYSIS_PLATFORM).lower(),
             gateway_url=str(cfg.openclaw.OPENCLAW_GATEWAY_URL),
             hooks_token=str(cfg.openclaw.OPENCLAW_HOOKS_TOKEN or cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            connect_timeout=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT)),
+            connect_timeout=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS)),
             enable_degradation=bool(cfg.ai.ENABLE_AI_DEGRADATION),
             http_api_url=str(cfg.openclaw.OPENCLAW_HTTP_API_URL),
         )

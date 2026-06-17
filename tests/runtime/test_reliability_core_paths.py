@@ -17,7 +17,7 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
     from services.analysis.ai_cache import get_cache_key, get_cached_analysis, save_to_cache
 
     monkeypatch.setattr(temp_config.ai, "CACHE_ENABLED", True)
-    monkeypatch.setattr(temp_config.ai, "ANALYSIS_CACHE_TTL", 300)
+    monkeypatch.setattr(temp_config.ai, "ANALYSIS_CACHE_TTL_SECONDS", 300)
 
     # Key includes a model+prompt fingerprint, so derive expected keys via the
     # public helper rather than hardcoding the literal format.

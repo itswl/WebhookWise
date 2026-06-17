@@ -65,10 +65,10 @@ def build_redis_client(config: AppConfig | None = None) -> RedisClient:
         config.redis.REDIS_URL,
         decode_responses=True,
         max_connections=100,
-        socket_connect_timeout=config.redis.REDIS_SOCKET_CONNECT_TIMEOUT,
-        socket_timeout=config.redis.REDIS_SOCKET_TIMEOUT,
+        socket_connect_timeout=config.redis.REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=config.redis.REDIS_SOCKET_TIMEOUT_SECONDS,
         socket_keepalive=True,
-        health_check_interval=config.redis.REDIS_HEALTH_CHECK_INTERVAL,
+        health_check_interval=config.redis.REDIS_HEALTH_CHECK_INTERVAL_SECONDS,
     )
     client = redis.Redis(connection_pool=pool)
     logger.info("[Redis] Connection pool initialized successfully: %s", mask_url(config.redis.REDIS_URL))

@@ -401,7 +401,7 @@ def test_compression_and_http_client_lazy_context_paths(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(temp_config.server, "PAYLOAD_COMPRESS_THRESHOLD_BYTES", 16)
     monkeypatch.setattr(temp_config.server, "PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES", 16)
-    monkeypatch.setattr(temp_config.retry, "FORWARD_TIMEOUT", 2)
+    monkeypatch.setattr(temp_config.retry, "FORWARD_TIMEOUT_SECONDS", 2)
 
     small = compression.compress_payload("hello")
     large = compression.compress_payload("x" * 64)

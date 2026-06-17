@@ -21,7 +21,7 @@ async def send_to_feishu(
 ) -> ForwardResult:
     from services.forwarding.remote import post_json_to_remote
 
-    timeout_seconds = int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT)
+    timeout_seconds = int(get_config_manager().notifications.FEISHU_WEBHOOK_TIMEOUT_SECONDS)
     policy = replace(ForwardDeliveryPolicy.from_config(), timeout_seconds=timeout_seconds)
     base_dependencies = build_remote_forward_dependencies_fn()
     dependencies = RemoteForwardDependencies(
