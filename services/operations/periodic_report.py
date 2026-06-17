@@ -323,12 +323,37 @@ async def run_report_catchup() -> dict[str, str]:
         if last_sent is not None and last_sent >= fire:
             outcomes[period_key] = "already_sent"
             continue
+        # Single-flight across worker replicas: only the process that wins the
+        # NX claim for this exact (period, fire) sends, so concurrent worker
+        # startups don't each fire a duplicate catch-up.
+        if not await _claim_catchup(period_key, fire):
+            outcomes[period_key] = "claimed_elsewhere"
+            continue
         logger.info(
             "[PeriodicReport] catch-up: %s missed its %s fire; sending now", period.key, fire.isoformat()
         )
         result = await generate_and_send_report(period_key, fire_ts=fire)
         outcomes[period_key] = "skipped" if "skipped" in result else "sent"
     return outcomes
+
+
+async def _claim_catchup(period_key: str, fire: datetime) -> bool:
+    """Atomically claim one catch-up occurrence. True if this process won it.
+
+    On Redis error, return False (skip) — a missed catch-up self-heals on the
+    next restart, whereas sending would risk the duplicate this guards against.
+    """
+    from contextlib import suppress
+
+    from redis.exceptions import RedisError
+
+    from core.redis_client import redis_set_nx_ex
+    from core.redis_health import periodic_report_catchup_claim
+
+    with suppress(RedisError, RuntimeError, TypeError, ValueError):
+        # TTL only needs to outlive concurrent startups; an hour is ample.
+        return await redis_set_nx_ex(periodic_report_catchup_claim(period_key, fire.isoformat()), "1", 3600)
+    return False
 
 
 async def generate_and_send_daily_report() -> dict[str, Any]:
