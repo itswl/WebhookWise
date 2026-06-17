@@ -24,7 +24,6 @@ class ServerConfig(StaticSettings):
     APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
     PORT: int = Field(default=8000)
-    HOST: str = Field(default="127.0.0.1")
     DEBUG: bool = Field(default=False)
     RUN_MODE: str = Field(default="api")
     LOG_LEVEL: str = Field(default="INFO")
@@ -261,7 +260,6 @@ class RetryConfig(StaticSettings):
 
     DEDUP_WINDOW_SECONDS: int = Field(default=14400)
     ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200)
-    FORWARD_DUPLICATE_ALERTS: bool = Field(default=False)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6)
     PROCESSING_LOCK_DISTRIBUTED_ENABLED: bool = Field(default=True)

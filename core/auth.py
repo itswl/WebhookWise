@@ -47,10 +47,6 @@ def _token_candidates(request: Request, auth: HTTPAuthorizationCredentials | Non
     return candidates
 
 
-def _first_token(request: Request, auth: HTTPAuthorizationCredentials | None, *header_keys: str) -> str | None:
-    return next(iter(_token_candidates(request, auth, *header_keys)), None)
-
-
 def _body_meta(body: bytes) -> dict[str, object]:
     if not body:
         return {"size": 0, "sha256": None}

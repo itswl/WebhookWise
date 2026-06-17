@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from typing import Any
 
 OTEL_SEMCONV_VERSION_DEFAULT = "1.41.0"
-OTEL_SCHEMA_URL_DEFAULT = f"https://opentelemetry.io/schemas/{OTEL_SEMCONV_VERSION_DEFAULT}"
 INSTRUMENTATION_SCOPE_NAME = "webhookwise"
 
 SERVICE_NAME = "service.name"
@@ -22,27 +21,17 @@ WEBHOOK_EVENT_ID = "webhook.event_id"
 WEBHOOK_EVENT_TYPE = "webhook.event_type"
 WEBHOOK_ALERT_HASH = "webhook.alert_hash"
 WEBHOOK_IMPORTANCE = "webhook.importance"
-WEBHOOK_RELATION = "webhook.relation"
-WEBHOOK_SUPPRESSED = "webhook.suppressed"
 WEBHOOK_OUTCOME = "webhook.outcome"
 WEBHOOK_STATUS = "webhook.status"
-WEBHOOK_FIELD = "webhook.field"
 WEBHOOK_PROCESSING_DURATION_MS = "webhook.processing.duration_ms"
 WEBHOOK_ROUTE = "webhook.route"
 
-FORWARD_TARGET = "forward.target"
 FORWARD_STATUS = "forward.status"
 FORWARD_TARGET_TYPE = "forward.target_type"
 
 AI_MODEL = "ai.model"
 AI_PROVIDER = "ai.provider"
 AI_ENGINE = "ai.engine"
-# OTel attribute key, not a secret value.
-AI_TOKEN_TYPE = "ai.token_type"  # nosec B105
-
-RETRY_COUNT = "retry.count"
-ERROR_TYPE = "error.type"
-ERROR_REASON = "error.reason"
 
 
 def normalize_attribute_key(key: str) -> str:
