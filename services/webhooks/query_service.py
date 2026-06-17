@@ -128,6 +128,7 @@ async def list_webhook_summaries(
     cursor: int | None = None,
     importance: str = "",
     source: str = "",
+    acknowledged: bool | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
@@ -136,6 +137,17 @@ async def list_webhook_summaries(
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
+    if acknowledged is not None:
+        # Filter on the chain head's ack state (matches what the list displays),
+        # so an acked alert is findable across the whole table — not just the
+        # rows the client happened to load.
+        head_acked = (
+            select(_HeadEvent.c.acknowledged_at)
+            .where(_HeadEvent.c.id == func.coalesce(WebhookEvent.duplicate_of, WebhookEvent.id))
+            .correlate(WebhookEvent.__table__)
+            .scalar_subquery()
+        )
+        query = query.where(head_acked.is_not(None) if acknowledged else head_acked.is_(None))
     query = query.order_by(WebhookEvent.id.desc())
     query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
