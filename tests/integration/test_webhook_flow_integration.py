@@ -511,7 +511,6 @@ async def test_reused_analysis_queues_periodic_forward_outbox(
     _set_config(monkeypatch, config, "ENABLE_PERIODIC_REMINDER", True)
     _set_config(monkeypatch, config, "REMINDER_INTERVAL_HOURS", 1)
     _set_config(monkeypatch, config, "NOTIFICATION_COOLDOWN_SECONDS", 1)
-    _set_config(monkeypatch, config, "FORWARD_DUPLICATE_ALERTS", False)
 
     async with integration_session_factory.begin() as setup_session:
         from models import ForwardRule
