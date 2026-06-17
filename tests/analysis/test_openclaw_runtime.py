@@ -224,7 +224,7 @@ def test_openclaw_policy_helpers_device_auth_and_overview(
     monkeypatch.setattr(monkey_cfg, "OPENCLAW_DEVICE_ID", "device-id")
     monkeypatch.setattr(monkey_cfg, "OPENCLAW_DEVICE_TOKEN", "device-token")
     monkeypatch.setattr(monkey_cfg, "OPENCLAW_GATEWAY_TOKEN", "gateway-token")
-    monkeypatch.setattr(monkey_cfg, "OPENCLAW_NONCE_TIMEOUT", 4.0)
+    monkeypatch.setattr(monkey_cfg, "OPENCLAW_NONCE_TIMEOUT_SECONDS", 4.0)
     monkeypatch.setattr(monkey_cfg, "OPENCLAW_WS_MAX_HISTORY_FRAMES", 0)
     private_key = Ed25519PrivateKey.generate()
     pem = private_key.private_bytes(

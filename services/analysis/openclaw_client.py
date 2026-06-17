@@ -46,7 +46,7 @@ class OpenClawPollPolicy:
         cfg = get_config_manager()
         return cls(
             timeout_seconds=int(cfg.openclaw.OPENCLAW_TIMEOUT_SECONDS),
-            poll_timeout_seconds=max(1, int(cfg.openclaw.OPENCLAW_POLL_TIMEOUT)),
+            poll_timeout_seconds=max(1, int(cfg.openclaw.OPENCLAW_POLL_TIMEOUT_SECONDS)),
             poll_initial_delay_seconds=max(1, int(cfg.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS)),
             poll_max_delay_seconds=max(
                 max(1, int(cfg.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS)),
@@ -57,7 +57,7 @@ class OpenClawPollPolicy:
             gateway_url=str(cfg.openclaw.OPENCLAW_GATEWAY_URL).strip(),
             gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
             hooks_token=str(cfg.openclaw.OPENCLAW_HOOKS_TOKEN or cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            connect_timeout_seconds=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT)),
+            connect_timeout_seconds=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS)),
             stability_required_hits=max(1, int(cfg.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS)),
             stability_ttl_seconds=max(60, int(cfg.openclaw.OPENCLAW_POLL_STABILITY_TTL_SECONDS)),
             max_consecutive_errors=int(cfg.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS),
@@ -123,7 +123,7 @@ class OpenClawWsPolicy:
             device_private_key_b64=str(cfg.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM),
             device_token=str(cfg.openclaw.OPENCLAW_DEVICE_TOKEN),
             gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            nonce_timeout=float(cfg.openclaw.OPENCLAW_NONCE_TIMEOUT),
+            nonce_timeout=float(cfg.openclaw.OPENCLAW_NONCE_TIMEOUT_SECONDS),
             max_history_frames=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_HISTORY_FRAMES)),
         )
 

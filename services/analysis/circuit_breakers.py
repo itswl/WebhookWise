@@ -17,7 +17,7 @@ def _build_llm_breaker() -> CircuitBreaker:
     return CircuitBreaker(
         name="llm",
         failure_threshold=int(cfg.CIRCUIT_BREAKER_LLM_THRESHOLD),
-        recovery_timeout=float(cfg.CIRCUIT_BREAKER_LLM_TIMEOUT),
+        recovery_timeout=float(cfg.CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS),
     )
 
 

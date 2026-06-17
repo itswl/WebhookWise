@@ -152,7 +152,7 @@ async def test_send_to_feishu_uses_feishu_timeout_and_circuit_breaker(
         return url
 
     captured: dict[str, Any] = {}
-    temp_config.notifications.FEISHU_WEBHOOK_TIMEOUT = 23
+    temp_config.notifications.FEISHU_WEBHOOK_TIMEOUT_SECONDS = 23
 
     monkeypatch.setattr(
         feishu,

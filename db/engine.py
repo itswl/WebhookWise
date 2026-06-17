@@ -17,8 +17,8 @@ def _build_engine_kwargs(config: AppConfig) -> dict[str, Any]:
         "pool_pre_ping": True,
         "pool_size": config.db.DB_POOL_SIZE,
         "max_overflow": config.db.DB_MAX_OVERFLOW,
-        "pool_recycle": config.db.DB_POOL_RECYCLE,
-        "pool_timeout": config.db.DB_POOL_TIMEOUT,
+        "pool_recycle": config.db.DB_POOL_RECYCLE_SECONDS,
+        "pool_timeout": config.db.DB_POOL_TIMEOUT_SECONDS,
         "connect_args": {
             "server_settings": {
                 "statement_timeout": str(config.db.DB_STATEMENT_TIMEOUT_MS),
