@@ -78,6 +78,10 @@ const AlertsModule = {
                 this.deepAnalyzeAlert(id);
             } else if (action === 'forward') {
                 this.openForwardModal(id);
+            } else if (action === 'ack') {
+                this.ackAlert(id);
+            } else if (action === 'unack') {
+                this.unackAlert(id);
             }
             return;
         }
@@ -365,10 +369,23 @@ const AlertsModule = {
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
                 html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
+            // Acknowledged badge: shows who/when on hover; suppresses the periodic reminder.
+            if (webhook.acknowledged) {
+                var ackTitle = t('alerts.badge.acknowledgedTitle');
+                if (webhook.acknowledged_by) {
+                    ackTitle = t('alerts.badge.acknowledgedBy', { name: webhook.acknowledged_by });
+                }
+                html += '<span class="badge badge-low" title="' + escapeHtml(ackTitle) + '">✅ ' + t('alerts.badge.acknowledged') + '</span>';
+            }
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
             html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
+            if (webhook.acknowledged) {
+                html += '<button class="btn btn-sm" data-action="unack" data-id="' + escapeHtml(String(webhook.id)) + '">🔔 ' + t('alerts.action.unack') + '</button>';
+            } else {
+                html += '<button class="btn btn-sm" data-action="ack" data-id="' + escapeHtml(String(webhook.id)) + '">✅ ' + t('alerts.action.ack') + '</button>';
+            }
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
             html += '</div></div></div>';
 
@@ -829,6 +846,36 @@ const AlertsModule = {
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
+            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
+        }
+    },
+
+    async ackAlert(id) {
+        console.log('Acknowledging webhook:', id);
+        try {
+            const result = await API.ackWebhook(id);
+            if (result.success) {
+                this.loadAlerts();
+            } else {
+                alert('❌ ' + t('alerts.msg.ackFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+            }
+        } catch (error) {
+            console.error('Ack error:', error);
+            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
+        }
+    },
+
+    async unackAlert(id) {
+        console.log('Clearing acknowledgement for webhook:', id);
+        try {
+            const result = await API.unackWebhook(id);
+            if (result.success) {
+                this.loadAlerts();
+            } else {
+                alert('❌ ' + t('alerts.msg.ackFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+            }
+        } catch (error) {
+            console.error('Unack error:', error);
             alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },

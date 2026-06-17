@@ -596,6 +596,110 @@ const API = {
         return await response.json();
     },
 
+    // ========== Silences API ==========
+
+    /**
+     * Get the silences list
+     * @param {object} params - { activeOnly }
+     * @returns {Promise<object>} Silences list
+     */
+    async getSilences(params = {}) {
+        const q = new URLSearchParams();
+        if (params.activeOnly) q.append('active_only', 'true');
+        const query = q.toString();
+        const response = await this.authenticatedFetch('/v1/silences' + (query ? '?' + query : ''));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Create a silence
+     * @param {object} silenceData - Silence data
+     * @returns {Promise<object>} Creation result
+     */
+    async createSilence(silenceData) {
+        const response = await this.authenticatedFetch('/v1/silences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(silenceData)
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Update a silence
+     * @param {number} id - Silence ID
+     * @param {object} silenceData - Silence data
+     * @returns {Promise<object>} Update result
+     */
+    async updateSilence(id, silenceData) {
+        const response = await this.authenticatedFetch('/v1/silences/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(silenceData)
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Lift (deactivate) a silence
+     * @param {number} id - Silence ID
+     * @returns {Promise<object>} Lift result
+     */
+    async liftSilence(id) {
+        const response = await this.authenticatedFetch('/v1/silences/' + id + '/lift', {
+            method: 'POST'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Delete a silence
+     * @param {number} id - Silence ID
+     * @returns {Promise<object>} Deletion result
+     */
+    async deleteSilence(id) {
+        const response = await this.authenticatedFetch('/v1/silences/' + id, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    // ========== Acknowledgement API ==========
+
+    /**
+     * Acknowledge an alert ("I'm on it"); suppresses its periodic reminders
+     * @param {number} id - Alert ID
+     * @param {string} acknowledgedBy - Optional operator name
+     * @returns {Promise<object>} Ack result
+     */
+    async ackWebhook(id, acknowledgedBy) {
+        const response = await this.authenticatedFetch('/v1/webhooks/' + id + '/ack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ acknowledged_by: acknowledgedBy || '' })
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Clear acknowledgement on an alert (re-enable periodic reminders)
+     * @param {number} id - Alert ID
+     * @returns {Promise<object>} Unack result
+     */
+    async unackWebhook(id) {
+        const response = await this.authenticatedFetch('/v1/webhooks/' + id + '/unack', {
+            method: 'POST'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Forwarding Queue API ==========
 
     /**
