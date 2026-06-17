@@ -146,7 +146,17 @@ async def get_deep_analysis_list(
     }
 
 
-async def get_deep_analyses_for_webhook(session: AsyncSession, webhook_id: int) -> list[DeepAnalysis]:
-    stmt = select(DeepAnalysis).filter_by(webhook_event_id=webhook_id).order_by(DeepAnalysis.created_at.desc())
+async def get_deep_analyses_for_webhook(
+    session: AsyncSession, webhook_id: int, *, limit: int = 50
+) -> list[DeepAnalysis]:
+    # Bound the result + per-row normalization. A webhook normally has only a
+    # few deep analyses, but a runaway re-analysis loop could accumulate many;
+    # cap so this endpoint can't normalize an unbounded set.
+    stmt = (
+        select(DeepAnalysis)
+        .filter_by(webhook_event_id=webhook_id)
+        .order_by(DeepAnalysis.created_at.desc())
+        .limit(max(1, limit))
+    )
     res = await session.execute(stmt)
     return list(res.scalars().all())

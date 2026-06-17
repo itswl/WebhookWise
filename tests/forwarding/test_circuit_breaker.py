@@ -146,6 +146,37 @@ class TestClosedState:
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
 
+class TestClosedStateCache:
+    async def test_closed_state_is_cached_then_served_without_redis(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
+        # First check reads Redis (CLOSED) and primes the cache.
+        assert await breaker._check_state_async() == CircuitState.CLOSED
+        assert breaker._closed_cache_until > 0.0
+
+        # Within the TTL, the cache is served even though Redis now says OPEN —
+        # proving the second check did not hit Redis.
+        fake_state.set_kv(breaker._state_key, "open")
+        fake_state.set_kv(breaker._open_until_key, str(time.time() + 999))
+        assert await breaker._check_state_async() == CircuitState.CLOSED
+
+    async def test_failure_invalidates_closed_cache(
+        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
+    ) -> None:
+        assert await breaker._check_state_async() == CircuitState.CLOSED
+        assert breaker._closed_cache_until > 0.0
+        await breaker._record_failure()
+        assert breaker._closed_cache_until == 0.0
+
+    async def test_open_is_never_cached(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
+        for _ in range(breaker.failure_threshold):
+            with pytest.raises(ConnectionError):
+                await breaker.call_async(_fail)
+        # OPEN observed — must not be cached as CLOSED.
+        assert await breaker._check_state_async() == CircuitState.OPEN
+        assert breaker._closed_cache_until == 0.0
+
+
 class TestOpeningCircuit:
     async def test_opens_after_threshold_failures(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
         for _ in range(breaker.failure_threshold):

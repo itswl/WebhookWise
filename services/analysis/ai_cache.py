@@ -86,14 +86,16 @@ async def save_to_cache(
     start = time.perf_counter()
     result = "success"
     try:
-        from core.redis_client import redis_setex_bytes, redis_setex_str
+        from core.redis_client import redis_eval_int
+        from core.redis_lua import AI_CACHE_SAVE
 
         ck = get_cache_key(alert_hash)
         res_to_cache = {k: v for k, v in analysis_result.items() if not k.startswith("_")}
         cached_bytes = json.dumps_bytes(res_to_cache)
         counter_key = f"{ck}:hits"
-        await redis_setex_bytes(ck, ttl_resolved, cached_bytes)
-        await redis_setex_str(counter_key, ttl_resolved, "0")
+        # Write the blob and its hit-counter in a single round-trip (was two
+        # serial SETEX). KEYS=[blob, counter], ARGV=[ttl, blob bytes].
+        await redis_eval_int(AI_CACHE_SAVE, 2, ck, counter_key, ttl_resolved, cached_bytes)
         return True
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         result = "error"

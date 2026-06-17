@@ -17,8 +17,10 @@ CIRCUIT_BREAKER_RECORD_SUCCESS = _read_script("circuit_breaker_record_success.lu
 SLIDING_WINDOW_RATE_LIMIT = _read_script("sliding_window_rate_limit.lua")
 MULTI_TIER_RATE_LIMIT = _read_script("multi_tier_rate_limit.lua")
 DEDUP_REMEMBER = _read_script("dedup_remember.lua")
+AI_CACHE_SAVE = _read_script("ai_cache_save.lua")
 
 __all__ = [
+    "AI_CACHE_SAVE",
     "ALERT_REFRESH_LOCK_IF_OWNER",
     "ALERT_RELEASE_LOCK_IF_OWNER",
     "ALERT_RELEASE_QUEUE_SLOT",

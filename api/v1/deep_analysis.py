@@ -138,8 +138,12 @@ async def get_deep_analysis_detail(
 
 
 @deep_analysis_router.get("/deep-analyses/{webhook_id}", dependencies=[Depends(verify_api_key)])
-async def get_deep_analyses(webhook_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONDict:
-    records = await get_deep_analyses_for_webhook(session, webhook_id)
+async def get_deep_analyses(
+    webhook_id: int,
+    limit: int = Query(50, ge=1, le=MAX_PAGE),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    records = await get_deep_analyses_for_webhook(session, webhook_id, limit=limit)
     return {"success": True, "data": [deep_analysis_to_dict(record) for record in records]}
 
 

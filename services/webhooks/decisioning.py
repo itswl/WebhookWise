@@ -255,6 +255,7 @@ def _rule_matches(
     source: str = "",
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
+    identity: dict[str, str] | None = None,
 ) -> bool:
     if rule.match_event_type and event_type not in split_csv_lower(rule.match_event_type):
         return False
@@ -262,7 +263,11 @@ def _rule_matches(
         return False
     if rule.match_source and source.lower() not in split_csv_lower(rule.match_source):
         return False
-    identity = extract_forward_match_fields(parsed_data)
+    # identity (project/region/environment) depends only on parsed_data, not the
+    # rule, so select_forward_rules computes it once and passes it in; fall back
+    # to computing it here for direct callers that don't.
+    if identity is None:
+        identity = extract_forward_match_fields(parsed_data)
     if not _csv_value_matches(getattr(rule, "match_project", ""), identity["project"]):
         return False
     if not _csv_value_matches(getattr(rule, "match_region", ""), identity["region"]):
@@ -340,6 +345,9 @@ def select_forward_rules(
     parsed_data: dict[str, Any] | None = None,
 ) -> list[ForwardRuleSnapshot]:
     matched_rules: list[ForwardRuleSnapshot] = []
+    # Compute the payload-derived identity once instead of re-traversing the
+    # payload inside _rule_matches for every rule.
+    identity = extract_forward_match_fields(parsed_data)
     for rule in rules:
         if not _rule_matches(
             rule,
@@ -348,6 +356,7 @@ def select_forward_rules(
             source=source,
             is_duplicate=is_duplicate,
             parsed_data=parsed_data,
+            identity=identity,
         ):
             continue
         matched_rules.append(rule)

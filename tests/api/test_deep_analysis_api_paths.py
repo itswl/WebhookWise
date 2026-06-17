@@ -227,7 +227,7 @@ async def test_deep_analysis_list_and_get_endpoints(
         assert args[1:5] == (1, 200, None, "pending")
         return {"items": [], "per_page": 200, "has_more": False}
 
-    async def get_deep_analyses_for_webhook(_session: object, webhook_id: int) -> list[object]:
+    async def get_deep_analyses_for_webhook(_session: object, webhook_id: int, *, limit: int = 50) -> list[object]:
         return [_record(id=2, webhook_event_id=webhook_id)]
 
     monkeypatch.setattr(deep_analysis, "get_deep_analysis_list", get_deep_analysis_list)
@@ -241,7 +241,7 @@ async def test_deep_analysis_list_and_get_endpoints(
         engine="openclaw",
         session=object(),  # type: ignore[arg-type]
     )
-    records = await deep_analysis.get_deep_analyses(42, session=object())  # type: ignore[arg-type]
+    records = await deep_analysis.get_deep_analyses(42, limit=50, session=object())  # type: ignore[arg-type]
 
     assert listed == {"success": True, "data": {"items": [], "per_page": 200, "has_more": False}}
     assert records["data"][0]["webhook_event_id"] == 42

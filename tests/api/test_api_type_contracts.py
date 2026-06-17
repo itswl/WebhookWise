@@ -353,7 +353,7 @@ async def test_get_deep_analyses_returns_serializable_dicts(session):
     session.add(record)
     await session.commit()
 
-    resp = await get_deep_analyses(webhook_id=event.id, session=session)
+    resp = await get_deep_analyses(webhook_id=event.id, limit=50, session=session)
     assert resp["success"] is True
     assert isinstance(resp["data"][0], dict)
     assert resp["data"][0]["webhook_event_id"] == event.id
