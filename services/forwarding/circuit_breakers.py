@@ -38,17 +38,17 @@ class CircuitBreakerSpec:
 _FEISHU_BREAKER_SPEC = CircuitBreakerSpec(
     name="feishu",
     failure_threshold_attr="CIRCUIT_BREAKER_FEISHU_THRESHOLD",
-    recovery_timeout_attr="CIRCUIT_BREAKER_FEISHU_TIMEOUT",
+    recovery_timeout_attr="CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS",
 )
 _OPENCLAW_BREAKER_SPEC = CircuitBreakerSpec(
     name="openclaw",
     failure_threshold_attr="CIRCUIT_BREAKER_OPENCLAW_THRESHOLD",
-    recovery_timeout_attr="CIRCUIT_BREAKER_OPENCLAW_TIMEOUT",
+    recovery_timeout_attr="CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS",
 )
 _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
     name="forward",
     failure_threshold_attr="CIRCUIT_BREAKER_FORWARD_THRESHOLD",
-    recovery_timeout_attr="CIRCUIT_BREAKER_FORWARD_TIMEOUT",
+    recovery_timeout_attr="CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS",
 )
 
 
