@@ -51,6 +51,11 @@ _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 _SCHEDULING_ERRORS = (OSError, RedisError, RuntimeError, TimeoutError)
 _TASK_PROCESSING_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
+# TaskIQ's scheduler matches cron against UTC, ignoring the container TZ. Anchor
+# the human-facing cron tasks (reports + maintenance) to Beijing time via
+# cron_offset so e.g. "0 9" means 09:00 Beijing, not 09:00 UTC.
+_REPORT_CRON_OFFSET = "Asia/Shanghai"
+
 
 @dataclass(slots=True)
 class _WebhookTaskContext:
@@ -502,7 +507,10 @@ async def scheduled_forward_outbox_scan() -> None:
     await _run_scheduled("forward_outbox_scan", _background_scan_interval_seconds(), run_forward_outbox_scan())
 
 
-@broker.task(task_name="scheduled_data_maintenance", schedule=[{"cron": _maintenance_cron()}])
+@broker.task(
+    task_name="scheduled_data_maintenance",
+    schedule=[{"cron": _maintenance_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
+)
 async def scheduled_data_maintenance() -> None:
     from services.operations.data_maintenance import cleanup_old_data_by_policy
 
@@ -527,7 +535,10 @@ def _monthly_report_cron() -> str:
     return str(get_config_manager().notifications.MONTHLY_REPORT_CRON)
 
 
-@broker.task(task_name="scheduled_daily_report", schedule=[{"cron": _daily_report_cron()}])
+@broker.task(
+    task_name="scheduled_daily_report",
+    schedule=[{"cron": _daily_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
+)
 async def scheduled_daily_report() -> None:
     from services.operations.periodic_report import generate_and_send_daily_report
 
@@ -536,7 +547,10 @@ async def scheduled_daily_report() -> None:
     await _run_scheduled("daily_report", 86400, generate_and_send_daily_report())
 
 
-@broker.task(task_name="scheduled_weekly_report", schedule=[{"cron": _weekly_report_cron()}])
+@broker.task(
+    task_name="scheduled_weekly_report",
+    schedule=[{"cron": _weekly_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
+)
 async def scheduled_weekly_report() -> None:
     from services.operations.periodic_report import generate_and_send_weekly_report
 
@@ -545,7 +559,10 @@ async def scheduled_weekly_report() -> None:
     await _run_scheduled("weekly_report", 86400, generate_and_send_weekly_report())
 
 
-@broker.task(task_name="scheduled_monthly_report", schedule=[{"cron": _monthly_report_cron()}])
+@broker.task(
+    task_name="scheduled_monthly_report",
+    schedule=[{"cron": _monthly_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
+)
 async def scheduled_monthly_report() -> None:
     from services.operations.periodic_report import generate_and_send_monthly_report
 
