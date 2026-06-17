@@ -9,8 +9,9 @@ over existing data — no new instruments, no hot-path impact. Each cadence
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pycron
 from sqlalchemy import func, select
@@ -23,6 +24,11 @@ from db.session import session_scope
 from models import AIUsageLog, WebhookEvent
 
 logger = get_logger("periodic_report")
+
+# Must match the cron_offset on the scheduled report tasks (services/operations/
+# tasks.py): TaskIQ matches cron in this zone, so catch-up must evaluate the same
+# zone to compute the same fire times.
+_REPORT_CRON_TZ = ZoneInfo("Asia/Shanghai")
 
 _TOP_SOURCES = 5
 _TOP_RULES = 5
@@ -239,11 +245,14 @@ def _most_recent_fire(cron: str, now: datetime, lookback_minutes: int) -> dateti
     backwards from now and short-circuits on the first match; the lookback bound
     keeps the worst case cheap even for the monthly cadence.
     """
-    cursor = now.replace(second=0, microsecond=0)
+    # Evaluate the cron in the scheduler's offset zone (Asia/Shanghai) so the
+    # computed fire times match what TaskIQ actually scheduled; return in UTC so
+    # all fire timestamps (and the Redis last-sent marker) share one basis.
+    cursor = now.astimezone(_REPORT_CRON_TZ).replace(second=0, microsecond=0)
     for _ in range(max(1, lookback_minutes) + 1):
         try:
             if pycron.is_now(cron, cursor):
-                return cursor
+                return cursor.astimezone(UTC)
         except ValueError:
             logger.warning("[PeriodicReport] invalid cron %r; skipping catch-up", cron)
             return None
@@ -288,7 +297,9 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     from services.notifications.feishu import send_to_feishu
 
     result = await send_to_feishu(webhook_url, card)
-    await _record_report_sent(period_key, fire_ts or utcnow())
+    # Record a tz-aware UTC marker (matches _most_recent_fire's basis so catch-up
+    # comparisons never mix naive/aware datetimes).
+    await _record_report_sent(period_key, fire_ts or utcnow().replace(tzinfo=UTC))
     logger.info(
         "[PeriodicReport] %s sent events=%s noise=%s%% ai_cost=$%s status=%s",
         period.key,
@@ -308,7 +319,8 @@ async def run_report_catchup() -> dict[str, str]:
     scheduler was down at that minute), it sends one catch-up now. Idempotent via
     the Redis last-sent marker, so repeated restarts don't re-send.
     """
-    now = utcnow()
+    # tz-aware UTC so _most_recent_fire can convert into the cron offset zone.
+    now = utcnow().replace(tzinfo=UTC)
     notif = get_config_manager().notifications
     outcomes: dict[str, str] = {}
     for period_key, period in REPORT_PERIODS.items():
