@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Literal
 
 from json_repair import repair_json
@@ -602,7 +603,10 @@ def _pick(mapping: Mapping[str, Any] | Any, *keys: str) -> Any | None:
     return None
 
 
+@lru_cache(maxsize=4096)
 def _key_id(key: str) -> str:
+    # Pure normalization run once per (key, _pick call); memoized since the same
+    # handful of report field names recur across every record's normalization.
     return re.sub(r"[^a-z0-9]+", "", key.lower())
 
 

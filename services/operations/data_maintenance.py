@@ -26,6 +26,7 @@ def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object
         "headers": event.headers,
         "parsed_data": event.parsed_data,
         "alert_hash": event.alert_hash,
+        "dedup_key": event.dedup_key,
         "ai_analysis": event.ai_analysis,
         "importance": event.importance,
         "processing_status": event.processing_status,

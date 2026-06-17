@@ -154,6 +154,9 @@ class ArchivedWebhookEvent(Base):
     parsed_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Preserved so a dedup chain can be reconstructed from the archive for
+    # forensics; older archived rows predate this column and are left NULL.
+    dedup_key: Mapped[str | None] = mapped_column(String(64))
 
     ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     importance: Mapped[str | None] = mapped_column(String(20))
