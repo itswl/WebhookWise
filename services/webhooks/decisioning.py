@@ -65,7 +65,6 @@ class ForwardingPolicy:
     notification_cooldown_seconds: int
     enable_periodic_reminder: bool
     reminder_interval_hours: int
-    suppress_reminder_when_acked: bool = True
 
 
 def normalize_importance(value: Any) -> str:
@@ -435,17 +434,11 @@ def _decide_duplicate_alert(
     seconds_since_notify: float | None,
     policy: ForwardingPolicy,
     matched_rules: list[ForwardRuleSnapshot],
-    acknowledged: bool = False,
 ) -> ForwardDecision:
     # Cooldown period (60s): if we just notified, do not send again, to prevent a
     # short-term notification storm
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
         return ForwardDecision(False, "Just notified, in cooldown", False, skip_code="cooldown")
-
-    # An acknowledged alert means "I'm on it" — suppress the recurring reminder
-    # (config-gated). The first notification and cooldown are unaffected.
-    if acknowledged and policy.suppress_reminder_when_acked:
-        return ForwardDecision(False, "Acknowledged: periodic reminder suppressed", False, skip_code="acknowledged")
 
     # Periodic reminder (6h): the same alert persists, re-notify on a schedule
     if (
@@ -483,7 +476,6 @@ def decide_forwarding(
     parsed_data: dict[str, Any] | None = None,
     now: datetime | None = None,
     silences: list[SilenceSnapshot] | None = None,
-    acknowledged: bool = False,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
         return ForwardDecision(False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed")
@@ -525,7 +517,6 @@ def decide_forwarding(
             seconds_since_notify=seconds_since_notify,
             policy=policy,
             matched_rules=matched_rules,
-            acknowledged=acknowledged,
         )
 
     return ForwardDecision(
@@ -543,5 +534,4 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         notification_cooldown_seconds=cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
         enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
         reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
-        suppress_reminder_when_acked=cfg.retry.SUPPRESS_REMINDER_WHEN_ACKED,
     )

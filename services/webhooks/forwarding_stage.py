@@ -53,7 +53,6 @@ async def resolve_forward_decision(
     session: AsyncSession | None = None,
     policy: ForwardingPolicy | None = None,
     event_type: str = "webhook_forward",
-    acknowledged: bool | None = None,
 ) -> ForwardDecision:
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
@@ -68,12 +67,6 @@ async def resolve_forward_decision(
     except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
         logger.warning("[Forward] Failed to load active silences: %s", e)
 
-    # The periodic reminder keys off the alert-chain head (orig); acknowledging
-    # that head is what mutes the reminder. Derive it from orig unless a caller
-    # passes an explicit override.
-    if acknowledged is None:
-        acknowledged = bool(orig is not None and orig.acknowledged_at is not None)
-
     decision = decide_forwarding(
         event_type=event_type,
         importance=importance,
@@ -85,7 +78,6 @@ async def resolve_forward_decision(
         policy=policy or forwarding_policy_from_config(),
         parsed_data=parsed_data,
         silences=silences,
-        acknowledged=acknowledged,
     )
 
     if decision.should_forward:
