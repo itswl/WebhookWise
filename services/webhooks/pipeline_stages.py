@@ -23,8 +23,13 @@ from core.observability.metrics import (
 from services.analysis.ai_usage import log_ai_usage
 from services.dedup import DedupResult, remember_dedup_state, resolve_dedup
 from services.forwarding.outbox import schedule_forward_outbox_many
+from services.silences.store import get_cached_active_silences
 from services.webhooks import pipeline_runtime
-from services.webhooks.decisioning import build_final_analysis, normalize_importance
+from services.webhooks.decisioning import (
+    build_final_analysis,
+    match_active_silence,
+    normalize_importance,
+)
 from services.webhooks.forwarding_stage import finalize_analysis_transaction
 from services.webhooks.noise_stage import compute_noise
 from services.webhooks.types import (
@@ -35,6 +40,7 @@ from services.webhooks.types import (
     is_analysis_degraded,
     pending_dedup_placeholder,
     set_analysis_route,
+    unknown_analysis_result,
 )
 
 logger = get_logger("webhooks.pipeline")
@@ -95,6 +101,73 @@ async def _run_fresh_analysis(
         )
 
 
+async def _resolve_silence_skip(ctx: WebhookProcessContext) -> object | None:
+    """Return the matching active silence for this alert, or None.
+
+    Importance is not yet known at this stage (analysis hasn't run), so a silence
+    scoped by importance won't match here — silences are typically scoped by
+    source/project/region/environment/payload, which are all available pre-
+    analysis. Best-effort: a silence-load failure must not block processing.
+    """
+    try:
+        silences = await get_cached_active_silences()
+    except Exception as e:  # noqa: BLE001 - never let a silence-load error drop the alert
+        logger.warning("[Pipeline] Failed to load silences for analysis-skip; analyzing normally: %s", e)
+        return None
+    if not silences:
+        return None
+    return match_active_silence(
+        silences,
+        source=ctx.req_ctx.source,
+        is_duplicate=False,
+        parsed_data=dict(ctx.req_ctx.parsed_data),
+    )
+
+
+async def _handle_silenced_skip(
+    ctx: WebhookProcessContext,
+    dedup_result: DedupResult,
+    silenced: object,
+) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
+    """Skip the paid AI analysis for a silenced alert (option B).
+
+    Reuse a prior analysis if the dedup chain has one; otherwise store an
+    "unknown" placeholder. No LLM call, no AI cost. Forwarding is still
+    independently suppressed by the silence check in the forward stage.
+    """
+    prior = dedup_result.analysis
+    reused = bool(prior)
+    analysis: AnalysisResult = cast(AnalysisResult, dict(prior)) if prior else unknown_analysis_result()
+    set_analysis_route(analysis, "silenced_skip")
+    importance = normalize_importance(analysis.get("importance", "unknown"))
+    set_log_context(webhook_route="silenced_skip")
+    silence_id = getattr(silenced, "id", None)
+    logger.info(
+        "[Pipeline] Silenced alert: skipped AI analysis event_id=%s request_id=%s silence_id=%s reused_prior=%s importance=%s",
+        ctx.event_id,
+        ctx.request_id,
+        silence_id,
+        reused,
+        importance,
+    )
+    emit_event(
+        "webhook.analysis.silenced_skip",
+        {
+            WEBHOOK_EVENT_ID: ctx.event_id or 0,
+            WEBHOOK_SOURCE: ctx.req_ctx.source,
+            WEBHOOK_ALERT_HASH: ctx.alert_hash[:12],
+            WEBHOOK_IMPORTANCE: importance,
+            "silence.id": silence_id if silence_id is not None else 0,
+            "silence.reused_prior_analysis": reused,
+        },
+    )
+    return (
+        analysis,
+        NoiseReductionContext("standalone", None, 0.0, False, "Silenced: analysis skipped", 0, ()),
+        dedup_result,
+    )
+
+
 def _record_analysis_completed(ctx: WebhookProcessContext, analysis_result: AnalysisResult) -> None:
     route_type = analysis_route(analysis_result)
     importance = normalize_importance(analysis_result.get("importance", "unknown"))
@@ -134,6 +207,15 @@ async def resolve_noise_context(
 
     if dedup_result.action in ("reuse", "rechain"):
         return await _handle_reused_analysis(ctx, dedup_result)
+
+    # A silenced alert is not forwarded, so paying for a fresh AI analysis is
+    # wasted spend. Skip the LLM: reuse a prior analysis if the dedup chain has
+    # one, otherwise store an "unknown" placeholder. Checked before the (paid)
+    # fresh-analysis call. The forward stage independently re-checks silences to
+    # suppress delivery; this check only governs whether we pay to analyze.
+    silenced = await _resolve_silence_skip(ctx)
+    if silenced is not None:
+        return await _handle_silenced_skip(ctx, dedup_result, silenced)
 
     analysis_result = await _run_fresh_analysis(ctx, dedup_result, dependencies)
     _record_analysis_completed(ctx, analysis_result)
