@@ -35,6 +35,15 @@ _SQUASHED_LEGACY_REVISIONS = frozenset(
 )
 _BASELINE_REVISION = "0001_baseline"
 
+# The short-lived alert-acknowledgement feature added 0005_ack_columns and then
+# 0006_drop_ack_columns (a net no-op pair). Both were removed; the head is now
+# 0004_silences. A database stamped at either points at a revision Alembic can
+# no longer find, but its schema already equals the 0004 head (the columns were
+# added then dropped), so re-stamp it onto 0004 (metadata only — no schema
+# change). Databases at 0004 or earlier upgrade normally.
+_REMOVED_ACK_REVISIONS = frozenset({"0005_ack_columns", "0006_drop_ack_columns"})
+_ACK_RECONCILE_TARGET = "0004_silences"
+
 
 async def _wait_for_database(max_retries: int, interval_seconds: float) -> None:
     config = get_settings()
@@ -72,21 +81,25 @@ def _alembic(*args: str) -> None:
 
 
 def _reconcile_squashed_history() -> None:
-    """Bridge databases stamped on the pre-squash chain onto the new baseline.
+    """Bridge databases stamped on a removed revision onto an existing one.
 
-    The incremental migrations 0001_current_schema..0006 were squashed into a
-    single 0001_baseline. A database already stamped at one of those revisions
-    has the full schema but points at a revision Alembic can no longer find, so
-    `upgrade head` would fail. Re-stamp it onto the baseline (metadata only — no
-    schema change); empty/fresh databases are left untouched and upgrade normally.
+    Two cleanups left orphaned stamps that Alembic can no longer find:
+      * the pre-squash incremental chain (0001_current_schema..0006) → squashed
+        into 0001_baseline; re-stamp onto the baseline.
+      * the removed ack feature (0005_ack_columns + 0006_drop_ack_columns, a net
+        no-op pair) → re-stamp onto 0004_silences, whose schema the database
+        already matches (columns were added then dropped).
+    Both are metadata-only (--purge: the old revision is gone, so a plain stamp
+    would fail locating it). Fresh/up-to-date databases are left untouched and
+    upgrade normally.
     """
     current = asyncio.run(_current_alembic_revision())
     if current in _SQUASHED_LEGACY_REVISIONS:
         print(f"Detected pre-squash revision '{current}'; re-stamping to '{_BASELINE_REVISION}' (no schema change)")
-        # --purge: the old revision no longer exists in the script history, so a
-        # plain `stamp` would fail trying to locate it. --purge clears the
-        # version table and writes the baseline directly.
         _alembic("stamp", _BASELINE_REVISION, "--purge")
+    elif current in _REMOVED_ACK_REVISIONS:
+        print(f"Detected removed ack revision '{current}'; re-stamping to '{_ACK_RECONCILE_TARGET}' (no schema change)")
+        _alembic("stamp", _ACK_RECONCILE_TARGET, "--purge")
 
 
 def _run_alembic_upgrade() -> None:
