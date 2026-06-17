@@ -324,10 +324,14 @@ async def test_catchup_sends_when_missed_and_skips_when_already_sent(temp_config
     async def fake_last_sent(period_key):
         return marker.get(period_key)
 
+    async def fake_claim(period_key, fire):
+        return True
+
     monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
     monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
     monkeypatch.setattr(wr, "_record_report_sent", fake_record)
     monkeypatch.setattr(wr, "_last_sent_fire", fake_last_sent)
+    monkeypatch.setattr(wr, "_claim_catchup", fake_claim)
     monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
 
     # First run: nothing sent yet → catch-up fires once.
@@ -339,3 +343,37 @@ async def test_catchup_sends_when_missed_and_skips_when_already_sent(temp_config
     out2 = await run_report_catchup()
     assert out2["daily"] == "already_sent"
     assert len(sends) == 1
+
+
+@pytest.mark.asyncio
+async def test_catchup_single_flight_skips_when_claim_lost(temp_config, monkeypatch) -> None:
+    """If another worker already claimed the occurrence, this one does not send."""
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import run_report_catchup
+
+    notif = temp_config.notifications
+    notif.DAILY_REPORT_ENABLED = True
+    notif.WEEKLY_REPORT_ENABLED = False
+    notif.MONTHLY_REPORT_ENABLED = False
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = "https://example.com/hook"
+
+    sends: list[str] = []
+
+    async def fake_send(url, card):
+        sends.append(url)
+        return {"status": "success"}
+
+    async def no_marker(period_key):
+        return None
+
+    async def lost_claim(period_key, fire):
+        return False
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "_last_sent_fire", no_marker)
+    monkeypatch.setattr(wr, "_claim_catchup", lost_claim)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+
+    out = await run_report_catchup()
+    assert out["daily"] == "claimed_elsewhere"
+    assert sends == []
