@@ -19,26 +19,6 @@ _prev_ts_subq = (
     .label("prev_alert_timestamp")
 )
 
-# Acknowledgement is stored on the dedup-chain head (the original event), so a
-# duplicate occurrence must reflect its head's ack state — otherwise acking a
-# duplicate card would leave that card visually unchanged. Resolve the head's
-# ack columns: the head is duplicate_of when set, else the row itself.
-_HeadEvent = WebhookEvent.__table__.alias("head_evt")
-_head_ack_at_subq = (
-    select(_HeadEvent.c.acknowledged_at)
-    .where(_HeadEvent.c.id == func.coalesce(WebhookEvent.duplicate_of, WebhookEvent.id))
-    .correlate(WebhookEvent.__table__)
-    .scalar_subquery()
-    .label("chain_acknowledged_at")
-)
-_head_ack_by_subq = (
-    select(_HeadEvent.c.acknowledged_by)
-    .where(_HeadEvent.c.id == func.coalesce(WebhookEvent.duplicate_of, WebhookEvent.id))
-    .correlate(WebhookEvent.__table__)
-    .scalar_subquery()
-    .label("chain_acknowledged_by")
-)
-
 _SUMMARY_COLUMNS = [
     WebhookEvent.id,
     WebhookEvent.request_id,
@@ -50,8 +30,6 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.duplicate_of,
     WebhookEvent.duplicate_count,
     WebhookEvent.forward_status,
-    _head_ack_at_subq,
-    _head_ack_by_subq,
     # Project only ai_analysis->>'summary' instead of loading the whole JSONB
     # blob per row just to read one string (works on PostgreSQL JSONB and the
     # SQLite-JSON test shim alike).
@@ -79,9 +57,6 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "duplicate_count": row.duplicate_count,
         "duplicate_type": "within_window" if is_duplicate else "new",
         "forward_status": row.forward_status,
-        "acknowledged": row.chain_acknowledged_at is not None,
-        "acknowledged_at": utc_isoformat(row.chain_acknowledged_at) if row.chain_acknowledged_at is not None else None,
-        "acknowledged_by": row.chain_acknowledged_by,
         "summary": row.summary,
         "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
         "prev_alert_id": row.prev_alert_id,
@@ -128,7 +103,6 @@ async def list_webhook_summaries(
     cursor: int | None = None,
     importance: str = "",
     source: str = "",
-    acknowledged: bool | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
@@ -137,17 +111,6 @@ async def list_webhook_summaries(
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
-    if acknowledged is not None:
-        # Filter on the chain head's ack state (matches what the list displays),
-        # so an acked alert is findable across the whole table — not just the
-        # rows the client happened to load.
-        head_acked = (
-            select(_HeadEvent.c.acknowledged_at)
-            .where(_HeadEvent.c.id == func.coalesce(WebhookEvent.duplicate_of, WebhookEvent.id))
-            .correlate(WebhookEvent.__table__)
-            .scalar_subquery()
-        )
-        query = query.where(head_acked.is_not(None) if acknowledged else head_acked.is_(None))
     query = query.order_by(WebhookEvent.id.desc())
     query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
