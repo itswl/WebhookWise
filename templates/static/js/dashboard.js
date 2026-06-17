@@ -51,6 +51,9 @@ async function initDashboard() {
     if (typeof ForwardRulesModule !== 'undefined') {
         ForwardRulesModule.init();
     }
+    if (typeof SilencesModule !== 'undefined') {
+        SilencesModule.init();
+    }
 
     // Bind global events
     bindGlobalEvents();
@@ -149,7 +152,8 @@ function switchMainTab(tabId) {
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
         'outbox': 'outboxTab',
-        'forward-rules': 'forwardRulesTab'
+        'forward-rules': 'forwardRulesTab',
+        'silences': 'silencesTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -198,6 +202,14 @@ function switchMainTab(tabId) {
                 loadForwardRules();
             }
             break;
+        case 'silences':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof loadSilences === 'function') {
+                loadSilences();
+            }
+            break;
     }
 }
 
@@ -221,6 +233,11 @@ function refreshCurrentTab() {
         case 'forward-rules':
             if (typeof loadForwardRules === 'function') {
                 loadForwardRules();
+            }
+            break;
+        case 'silences':
+            if (typeof loadSilences === 'function') {
+                loadSilences();
             }
             break;
         case 'alerts':
