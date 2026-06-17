@@ -46,10 +46,26 @@ class ForwardRuleSnapshot:
 
 
 @dataclass(frozen=True)
+class SilenceSnapshot:
+    """An active silence's match criteria (the deny counterpart to a rule)."""
+
+    id: int | None
+    match_event_type: str = ""
+    match_importance: str = ""
+    match_source: str = ""
+    match_payload: str = ""
+    match_project: str = ""
+    match_region: str = ""
+    match_environment: str = ""
+    comment: str = ""
+
+
+@dataclass(frozen=True)
 class ForwardingPolicy:
     notification_cooldown_seconds: int
     enable_periodic_reminder: bool
     reminder_interval_hours: int
+    suppress_reminder_when_acked: bool = True
 
 
 def normalize_importance(value: Any) -> str:
@@ -343,11 +359,14 @@ def select_forward_rules(
     source: str = "",
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
+    identity: dict[str, str] | None = None,
 ) -> list[ForwardRuleSnapshot]:
     matched_rules: list[ForwardRuleSnapshot] = []
     # Compute the payload-derived identity once instead of re-traversing the
-    # payload inside _rule_matches for every rule.
-    identity = extract_forward_match_fields(parsed_data)
+    # payload inside _rule_matches for every rule (callers that already computed
+    # it, e.g. decide_forwarding, pass it in to avoid a repeat traversal).
+    if identity is None:
+        identity = extract_forward_match_fields(parsed_data)
     for rule in rules:
         if not _rule_matches(
             rule,
@@ -365,17 +384,68 @@ def select_forward_rules(
     return matched_rules
 
 
+def _first_matching_silence(
+    silences: list[SilenceSnapshot],
+    *,
+    event_type: str,
+    importance: str,
+    source: str,
+    is_duplicate: bool,
+    parsed_data: dict[str, Any] | None,
+    identity: dict[str, str],
+) -> SilenceSnapshot | None:
+    """Return the first silence whose criteria match, reusing rule-match logic.
+
+    A silence mutes both new and duplicate occurrences, so match_duplicate is
+    fixed to "all"; the rest of the criteria run through the same _rule_matches
+    path as forward rules (CSV/negation/environment canonicalization included).
+    """
+    for silence in silences:
+        probe = ForwardRuleSnapshot(
+            id=silence.id,
+            name="silence",
+            match_event_type=silence.match_event_type,
+            match_importance=silence.match_importance,
+            match_source=silence.match_source,
+            match_duplicate="all",
+            match_payload=silence.match_payload,
+            match_project=silence.match_project,
+            match_region=silence.match_region,
+            match_environment=silence.match_environment,
+            target_type="silence",
+            target_url="",
+            stop_on_match=False,
+        )
+        if _rule_matches(
+            probe,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
+            identity=identity,
+        ):
+            return silence
+    return None
+
+
 def _decide_duplicate_alert(
     *,
     base_should_forward: bool,
     seconds_since_notify: float | None,
     policy: ForwardingPolicy,
     matched_rules: list[ForwardRuleSnapshot],
+    acknowledged: bool = False,
 ) -> ForwardDecision:
     # Cooldown period (60s): if we just notified, do not send again, to prevent a
     # short-term notification storm
     if seconds_since_notify is not None and seconds_since_notify < policy.notification_cooldown_seconds:
         return ForwardDecision(False, "Just notified, in cooldown", False, skip_code="cooldown")
+
+    # An acknowledged alert means "I'm on it" — suppress the recurring reminder
+    # (config-gated). The first notification and cooldown are unaffected.
+    if acknowledged and policy.suppress_reminder_when_acked:
+        return ForwardDecision(False, "Acknowledged: periodic reminder suppressed", False, skip_code="acknowledged")
 
     # Periodic reminder (6h): the same alert persists, re-notify on a schedule
     if (
@@ -412,9 +482,26 @@ def decide_forwarding(
     policy: ForwardingPolicy,
     parsed_data: dict[str, Any] | None = None,
     now: datetime | None = None,
+    silences: list[SilenceSnapshot] | None = None,
+    acknowledged: bool = False,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
         return ForwardDecision(False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed")
+
+    # An active manual silence mutes forwarding for matching alerts. Checked
+    # after noise (both are suppressors) and before rule routing. The identity is
+    # computed once and reused by both the silence check and rule selection.
+    identity = extract_forward_match_fields(parsed_data)
+    if silences and (silenced := _first_matching_silence(
+        silences,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        identity=identity,
+    )):
+        return ForwardDecision(False, f"Silenced (id={silenced.id})", False, skip_code="silenced")
 
     matched_rules = select_forward_rules(
         rules,
@@ -423,6 +510,7 @@ def decide_forwarding(
         source=source,
         is_duplicate=is_duplicate,
         parsed_data=parsed_data,
+        identity=identity,
     )
     current_time = now or utcnow()
     base_should_fwd = bool(matched_rules)
@@ -437,6 +525,7 @@ def decide_forwarding(
             seconds_since_notify=seconds_since_notify,
             policy=policy,
             matched_rules=matched_rules,
+            acknowledged=acknowledged,
         )
 
     return ForwardDecision(
@@ -454,4 +543,5 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         notification_cooldown_seconds=cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
         enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
         reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
+        suppress_reminder_when_acked=cfg.retry.SUPPRESS_REMINDER_WHEN_ACKED,
     )
