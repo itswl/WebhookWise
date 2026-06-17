@@ -102,13 +102,12 @@ def test_sanitize_for_ai_redacts_sensitive_nested_fields(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_forward_to_remote_rejects_private_target() -> None:
-    from services.forwarding.remote import forward_to_remote
+async def test_post_json_to_remote_rejects_private_target() -> None:
+    from services.forwarding.remote import post_json_to_remote
 
-    result = await forward_to_remote(
-        {"source": "test", "parsed_data": {}},
-        {"summary": "ok"},
-        target_url="http://127.0.0.1:8000/hook",
+    result = await post_json_to_remote(
+        "http://127.0.0.1:8000/hook",
+        {"webhook": {"source": "test", "parsed_data": {}}, "analysis": {"summary": "ok"}},
     )
 
     assert result["status"] == "invalid_target"
@@ -150,7 +149,7 @@ async def test_security_headers_include_hsts() -> None:
 async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import ForwardDeliveryPolicy
-    from services.forwarding.remote import forward_to_remote
+    from services.forwarding.remote import post_json_to_remote
 
     class FakeResponse:
         status_code = 200
@@ -174,10 +173,9 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
         async def call_async(self, fn: Any, *args: Any, **kwargs: Any) -> object:
             return await fn(*args, **kwargs)
 
-    result = await forward_to_remote(
-        {"source": "test", "parsed_data": {}},
-        {"summary": "ok"},
-        target_url="https://example.com/hook",
+    result = await post_json_to_remote(
+        "https://example.com/hook",
+        {"webhook": {"source": "test", "parsed_data": {}}, "analysis": {"summary": "ok"}},
         policy=ForwardDeliveryPolicy(
             timeout_seconds=2,
             max_attempts=3,
@@ -199,7 +197,7 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
     from core.url_security import UnsafeTargetUrlError
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import ForwardDeliveryPolicy
-    from services.forwarding.remote import forward_to_remote
+    from services.forwarding.remote import post_json_to_remote
 
     validate_calls = 0
     posted_urls: list[str] = []
@@ -220,10 +218,9 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
         async def call_async(self, fn: Any, *args: Any, **kwargs: Any) -> object:
             return await fn(*args, **kwargs)
 
-    result = await forward_to_remote(
-        {"source": "test", "parsed_data": {}},
-        {"summary": "ok"},
-        target_url="https://example.com/hook",
+    result = await post_json_to_remote(
+        "https://example.com/hook",
+        {"webhook": {"source": "test", "parsed_data": {}}, "analysis": {"summary": "ok"}},
         policy=ForwardDeliveryPolicy(
             timeout_seconds=2,
             max_attempts=3,

@@ -32,41 +32,6 @@ def _feishu_business_error(response: httpx.Response) -> str:
     return f"feishu business error code={code}: {message}"
 
 
-async def forward_to_remote(
-    webhook_data: WebhookData,
-    analysis_result: AnalysisResult,
-    target_url: str | None = None,
-    is_periodic_reminder: bool = False,
-    http_client: httpx.AsyncClient | None = None,
-    policy: ForwardDeliveryPolicy | None = None,
-    dependencies: RemoteForwardDependencies | None = None,
-) -> ForwardResult:
-    """Forward the analysis result to a remote Webhook URL — builds the payload then delegates to post_json_to_remote."""
-    from services.notifications.feishu import build_feishu_card, is_feishu_url
-
-    if not target_url:
-        return {"status": "skipped", "reason": "no_target_url"}
-    target_type = "feishu" if is_feishu_url(target_url) else "webhook"
-    payload: JsonObject
-    if target_type == "feishu":
-        payload = build_feishu_card(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
-    else:
-        payload = {
-            "webhook": webhook_data,
-            "analysis": analysis_result,
-            "is_periodic_reminder": is_periodic_reminder,
-        }
-    return await post_json_to_remote(
-        target_url,
-        payload,
-        http_client=http_client,
-        policy=policy,
-        validate_target=True,
-        dependencies=dependencies,
-        target_type_label=target_type,
-    )
-
-
 async def send_forward_rule_test(
     *, rule_name: str, target_url: str, target_type: str | None
 ) -> ForwardResult:
