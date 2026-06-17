@@ -301,7 +301,6 @@ class TestDecideForwarding:
         policy: ForwardingPolicy | None = None,
         now: datetime | None = None,
         silences: list[SilenceSnapshot] | None = None,
-        acknowledged: bool = False,
     ) -> ForwardDecision:
         return decide_forwarding(
             importance=importance,
@@ -314,7 +313,6 @@ class TestDecideForwarding:
             parsed_data=parsed_data,
             now=now or utcnow(),
             silences=silences or [],
-            acknowledged=acknowledged,
         )
 
     def test_noise_suppress_overrides_all(self) -> None:
@@ -475,50 +473,6 @@ class TestDecideForwarding:
         )
         assert not result.should_forward
         assert result.skip_code == "silenced"
-
-    # ── acknowledgement ──────────────────────────────────────────────
-
-    def test_acknowledged_suppresses_periodic_reminder(self) -> None:
-        old = utcnow() - timedelta(hours=7)
-        rules = [_make_rule(match_importance="high")]
-        result = self._decide(
-            importance="high",
-            is_duplicate=True,
-            original_event=_Event(last_notified_at=old),
-            rules=rules,
-            policy=_make_policy(suppress_reminder_when_acked=True),
-            acknowledged=True,
-        )
-        assert not result.should_forward
-        assert result.skip_code == "acknowledged"
-
-    def test_acknowledged_does_not_suppress_when_flag_off(self) -> None:
-        old = utcnow() - timedelta(hours=7)
-        rules = [_make_rule(match_importance="high")]
-        result = self._decide(
-            importance="high",
-            is_duplicate=True,
-            original_event=_Event(last_notified_at=old),
-            rules=rules,
-            policy=_make_policy(suppress_reminder_when_acked=False),
-            acknowledged=True,
-        )
-        assert result.should_forward
-        assert result.is_periodic_reminder
-
-    def test_acknowledged_does_not_block_cooldown_first_send(self) -> None:
-        # Within cooldown, ack is irrelevant — cooldown wins and reports cooldown.
-        recent = utcnow() - timedelta(seconds=10)
-        result = self._decide(
-            importance="high",
-            is_duplicate=True,
-            original_event=_Event(last_notified_at=recent),
-            policy=_make_policy(notification_cooldown_seconds=60, suppress_reminder_when_acked=True),
-            acknowledged=True,
-        )
-        assert not result.should_forward
-        assert result.skip_code == "cooldown"
-
 
 # ── build_final_analysis ─────────────────────────────────────────────
 
