@@ -118,14 +118,8 @@ def test_feishu_card_shows_ai_event_type_and_alert_identity():
 
     rendered = str(card)
     assert "云监控GPU资源告警" in rendered
-    # Identity renders as a two-column field grid (**label**\nvalue cells).
-    assert "**项目**\\ncyberclone-cn" in rendered
-    assert "**区域**\\ncn-shanghai" in rendered
-    assert "**服务**\\nGPU计算服务" in rendered
-    assert "**资源**\\ncyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01" in rendered
-    assert "**指标**\\nGpuMemoryUsedUtilization" in rendered
-    # Absent fields (no cloud-product value) don't render an empty cell.
-    assert "云产品" not in rendered
+    # Identity is condensed to one breadcrumb line: project/region · service · resource · metric.
+    assert "🏷️ cyberclone-cn/cn-shanghai · GPU计算服务 · cyberclone-cn-dev-hs-sh-gpu-comfyui-model02-n01 · GpuMemoryUsedUtilization" in rendered
     # The main alert card never carries deep-analysis recommendations.
     assert "处理建议" not in rendered
     assert "这条建议不展示在 Feishu 主通知里" not in rendered
