@@ -9,7 +9,7 @@ from contracts.deep_analysis_report import DEEP_ANALYSIS_REPORT_SCHEMA, normaliz
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
-from services.notifications.feishu_parser import _build_identity_content
+from services.notifications.feishu_parser import _build_identity_content, extract_identity_fields
 from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
@@ -114,33 +114,42 @@ def build_feishu_card(
 
     elements: list[JsonObject] = []
 
-    fields = [
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**🔔 来源**\n{source or '—'}"}},
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**❗ 重要性**\n{importance_label}"}},
-        {
-            "is_short": True,
-            "text": {"tag": "lark_md", "content": f"**📋 事件类型**\n{event_type_display or '—'}"},
-        },
-        {"is_short": True, "text": {"tag": "lark_md", "content": f"**🕐 时间**\n{timestamp or '—'}"}},
-    ]
-    elements.append({"tag": "div", "fields": fields})
-    elements.append({"tag": "hr"})
+    # 1) Lead with what matters: importance tag + the one-line summary. This is
+    #    the first thing the eye lands on, so the reader immediately knows
+    #    "how bad" and "what happened" without scanning a label grid.
+    headline = f"{importance_label}　{summary[:400]}" if summary else importance_label
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{headline}**"}})
 
-    identity_content = _build_identity_content(analysis_result, parsed)
-    if identity_content:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警标识**\n{identity_content}"}})
+    # 2) Identity as a two-column field grid — each item its own cell, far more
+    #    scannable than a dense "a: x | b: y | c: z" line.
+    identity_fields = extract_identity_fields(analysis_result, parsed)
+    if identity_fields:
         elements.append({"tag": "hr"})
+        grid = [
+            {"is_short": True, "text": {"tag": "lark_md", "content": f"**{label}**\n{value}"}}
+            for label, value in identity_fields
+        ]
+        elements.append({"tag": "div", "fields": grid})
 
-    if summary:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 事件摘要**\n{summary[:800]}"}})
-        elements.append({"tag": "hr"})
-
+    # 3) Impact as its own clearly-titled block (secondary to the headline).
     if impact:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
         elements.append({"tag": "hr"})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
 
-    if not elements:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "（暂无详情）"}})
+    # 4) Metadata footer (source · type · time) — de-emphasized in a note so it
+    #    doesn't compete with the alert content above.
+    elements.append({"tag": "hr"})
+    elements.append(
+        {
+            "tag": "note",
+            "elements": [
+                {
+                    "tag": "plain_text",
+                    "content": f"🔔 {source or '—'} ・ 📋 {event_type_display or '—'} ・ 🕐 {timestamp or '—'}",
+                }
+            ],
+        }
+    )
 
     return {
         "msg_type": "interactive",
