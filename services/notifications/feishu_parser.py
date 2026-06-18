@@ -97,16 +97,24 @@ def format_identity_line(
 ) -> str:
     """Summarize the alert identity as one readable line.
 
-    Reads as a breadcrumb of the meaningful values rather than a label grid:
-    "<project>/<region> · <service> · <resource> · <metric> · <severity>".
-    Leads with the location (project/region), then the subject (service /
-    resource), then what tripped (metric / severity). resource_id, rule_name and
-    status are omitted from the concise line — they're noisy or already implied
-    by the summary/title; the full set still lives in the deep-analysis card.
+    Reads as a breadcrumb of the meaningful values rather than a label grid.
+    Order: location (project/region) → cloud product → service → resource
+    (name + id) → rule → metric → severity. ``status`` is omitted from the
+    concise line (usually "firing", already implied); the full labeled set still
+    renders in the deep-analysis card.
     """
     v = extract_identity_values(analysis_result, parsed)
     location = "/".join(p for p in (v.get("project"), v.get("region")) if p)
-    ordered = [location, *(v.get(key, "") for key in ("product_namespace", "service", "resource_name", "metric_name", "severity"))]
+    resource = " ".join(p for p in (v.get("resource_name"), v.get("resource_id")) if p)
+    ordered = [
+        location,
+        v.get("product_namespace", ""),
+        v.get("service", ""),
+        resource,
+        v.get("rule_name", ""),
+        v.get("metric_name", ""),
+        v.get("severity", ""),
+    ]
     return " · ".join(seg for seg in ordered if seg)
 
 
