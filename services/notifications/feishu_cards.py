@@ -50,6 +50,22 @@ def _single_line(value: object) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
+def _strip_redundant_prefix(text: str, *labels: str) -> str:
+    """Drop a leading "<label>:" / "<label>：" the section header already states.
+
+    The AI summary/impact often start with "影响范围：…" / "事件摘要：…", which
+    duplicates the card's section title. Strip that leading label (full-width or
+    half-width colon, optional surrounding space) so it isn't shown twice.
+    """
+    stripped = text.lstrip()
+    for label in labels:
+        for colon in ("：", ":"):
+            prefix = f"{label}{colon}"
+            if stripped.startswith(prefix):
+                return stripped[len(prefix):].lstrip()
+    return text
+
+
 def _string_list(value: object) -> list[str]:
     if not value:
         return []
@@ -107,8 +123,8 @@ def build_feishu_card(
 
     timestamp = _format_card_time(webhook_data.get("timestamp", ""))
 
-    summary = analysis_result.get("summary", "")
-    impact = analysis_result.get("impact_scope", "")
+    summary = _strip_redundant_prefix(str(analysis_result.get("summary", "")), "事件摘要", "摘要")
+    impact = _strip_redundant_prefix(str(analysis_result.get("impact_scope", "")), "影响范围", "影响")
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 告警通知"
 
