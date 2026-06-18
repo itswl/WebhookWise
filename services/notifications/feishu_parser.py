@@ -59,16 +59,16 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
 
 def _build_identity_content(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
     labels = {
-        "project": "Project",
-        "region": "Region",
-        "product_namespace": "Cloud Product",
-        "service": "Service",
-        "resource_name": "Resource",
-        "resource_id": "Resource ID",
-        "rule_name": "Rule",
-        "metric_name": "Metric",
-        "severity": "Severity",
-        "status": "Status",
+        "project": "项目",
+        "region": "区域",
+        "product_namespace": "云产品",
+        "service": "服务",
+        "resource_name": "资源",
+        "resource_id": "资源 ID",
+        "rule_name": "规则",
+        "metric_name": "指标",
+        "severity": "级别",
+        "status": "状态",
     }
     values: dict[str, str] = {}
     seen_values: set[tuple[str, str]] = set()
