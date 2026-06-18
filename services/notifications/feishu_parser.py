@@ -71,28 +71,43 @@ _IDENTITY_LABELS = {
 }
 
 
+def extract_identity_values(
+    analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]
+) -> dict[str, str]:
+    """Return present identity items as an ordered key→value dict (no labels)."""
+    identity = analysis_result.get("alert_identity", {}) if isinstance(analysis_result, dict) else {}
+    values: dict[str, str] = {}
+    for key in _IDENTITY_LABELS:
+        value = scalar_text_or_empty(_identity_value(identity, parsed, key))
+        if value and value not in values.values():
+            values[key] = value
+    return values
+
+
 def extract_identity_fields(
     analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]
 ) -> list[tuple[str, str]]:
-    """Return present identity items as ordered (label, value) pairs.
+    """Return present identity items as ordered (label, value) pairs."""
+    values = extract_identity_values(analysis_result, parsed)
+    return [(_IDENTITY_LABELS[key], value) for key, value in values.items()]
 
-    Structured form so cards can render a scannable two-column grid instead of a
-    dense pipe-joined line. Order follows _IDENTITY_LABELS; duplicates by
-    (label, value) are dropped.
+
+def format_identity_line(
+    analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]
+) -> str:
+    """Summarize the alert identity as one readable line.
+
+    Reads as a breadcrumb of the meaningful values rather than a label grid:
+    "<project>/<region> · <service> · <resource> · <metric> · <severity>".
+    Leads with the location (project/region), then the subject (service /
+    resource), then what tripped (metric / severity). resource_id, rule_name and
+    status are omitted from the concise line — they're noisy or already implied
+    by the summary/title; the full set still lives in the deep-analysis card.
     """
-    identity = analysis_result.get("alert_identity", {}) if isinstance(analysis_result, dict) else {}
-    pairs: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for key, label in _IDENTITY_LABELS.items():
-        value = scalar_text_or_empty(_identity_value(identity, parsed, key))
-        if not value:
-            continue
-        dedupe_key = (label, value)
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        pairs.append((label, value))
-    return pairs
+    v = extract_identity_values(analysis_result, parsed)
+    location = "/".join(p for p in (v.get("project"), v.get("region")) if p)
+    ordered = [location, *(v.get(key, "") for key in ("product_namespace", "service", "resource_name", "metric_name", "severity"))]
+    return " · ".join(seg for seg in ordered if seg)
 
 
 def _build_identity_content(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
