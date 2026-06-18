@@ -185,3 +185,25 @@ async def test_send_to_feishu_uses_feishu_timeout_and_circuit_breaker(
     assert captured["dependencies"].http_client is client
     assert captured["dependencies"].circuit_breaker is feishu.feishu_cb
     assert captured["dependencies"].validate_url is validate_url
+
+
+def test_card_strips_redundant_impact_and_summary_prefix() -> None:
+    """The section header already says 影响范围/事件摘要 — drop a duplicate inline label."""
+    from services.notifications.feishu_cards import build_feishu_card
+
+    card = build_feishu_card(
+        {"source": "volcengine", "timestamp": "2026-06-18T01:00:00Z", "parsed_data": {}},
+        {
+            "importance": "high",
+            "summary": "摘要：桶错误率 36%",
+            "impact_scope": "影响范围：存储桶 volc-flink-meta，可能影响 checkpoint 保存。",
+        },
+    )
+    rendered = str(card)
+    # The leading "影响范围：" / "摘要：" prefix is removed; the content remains.
+    assert "影响范围：存储桶" not in rendered
+    assert "摘要：桶错误率" not in rendered
+    assert "存储桶 volc-flink-meta，可能影响 checkpoint 保存。" in rendered
+    assert "桶错误率 36%" in rendered
+    # The section header itself still reads 影响范围.
+    assert "**🎯 影响范围**" in rendered
