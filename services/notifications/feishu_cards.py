@@ -9,7 +9,7 @@ from contracts.deep_analysis_report import DEEP_ANALYSIS_REPORT_SCHEMA, normaliz
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
-from services.notifications.feishu_parser import _build_identity_content, extract_identity_fields
+from services.notifications.feishu_parser import _build_identity_content, format_identity_line
 from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
@@ -120,16 +120,11 @@ def build_feishu_card(
     headline = f"{importance_label}　{summary[:400]}" if summary else importance_label
     elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{headline}**"}})
 
-    # 2) Identity as a two-column field grid — each item its own cell, far more
-    #    scannable than a dense "a: x | b: y | c: z" line.
-    identity_fields = extract_identity_fields(analysis_result, parsed)
-    if identity_fields:
-        elements.append({"tag": "hr"})
-        grid = [
-            {"is_short": True, "text": {"tag": "lark_md", "content": f"**{label}**\n{value}"}}
-            for label, value in identity_fields
-        ]
-        elements.append({"tag": "div", "fields": grid})
+    # 2) Identity condensed to one readable line (a breadcrumb of the meaningful
+    #    values), instead of a label grid that read as cluttered.
+    identity_line = format_identity_line(analysis_result, parsed)
+    if identity_line:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"🏷️ {identity_line}"}})
 
     # 3) Impact as its own clearly-titled block (secondary to the headline).
     if impact:
