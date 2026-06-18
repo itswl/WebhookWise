@@ -53,11 +53,15 @@ def test_build_feishu_card_formats_identity_and_periodic_reminder() -> None:
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["title"]["content"] == "🔁 [周期提醒] 📡 告警通知"
     assert card["card"]["header"]["template"] == "red"
-    assert "项目: eve-cn" in rendered
-    assert "区域: cn-shanghai" in rendered
-    assert "服务: webhook-api" in rendered
-    assert "资源: api-0" in rendered
-    assert "指标: cpu_usage" in rendered
+    # Identity now renders as a two-column field grid (**label**\nvalue cells).
+    assert "**项目**\\neve-cn" in rendered
+    assert "**区域**\\ncn-shanghai" in rendered
+    assert "**服务**\\nwebhook-api" in rendered
+    assert "**资源**\\napi-0" in rendered
+    assert "**指标**\\ncpu_usage" in rendered
+    # The headline leads with the importance tag + summary.
+    assert "CPU 持续超过阈值" in rendered
+    # source · type · time live in the de-emphasized footer note.
     assert "2026-06-03 09:02:03 UTC+8" in rendered
 
 
