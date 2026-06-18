@@ -57,36 +57,56 @@ def _identity_value(identity: dict[str, Any], parsed: dict[str, Any], key: str) 
     return None
 
 
-def _build_identity_content(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
-    labels = {
-        "project": "项目",
-        "region": "区域",
-        "product_namespace": "云产品",
-        "service": "服务",
-        "resource_name": "资源",
-        "resource_id": "资源 ID",
-        "rule_name": "规则",
-        "metric_name": "指标",
-        "severity": "级别",
-        "status": "状态",
-    }
-    values: dict[str, str] = {}
-    seen_values: set[tuple[str, str]] = set()
-    for key, label in labels.items():
-        raw = _identity_value(analysis_result.get("alert_identity", {}) if isinstance(analysis_result, dict) else {}, parsed, key)
-        value = scalar_text_or_empty(raw)
+_IDENTITY_LABELS = {
+    "project": "项目",
+    "region": "区域",
+    "product_namespace": "云产品",
+    "service": "服务",
+    "resource_name": "资源",
+    "resource_id": "资源 ID",
+    "rule_name": "规则",
+    "metric_name": "指标",
+    "severity": "级别",
+    "status": "状态",
+}
+
+
+def extract_identity_fields(
+    analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]
+) -> list[tuple[str, str]]:
+    """Return present identity items as ordered (label, value) pairs.
+
+    Structured form so cards can render a scannable two-column grid instead of a
+    dense pipe-joined line. Order follows _IDENTITY_LABELS; duplicates by
+    (label, value) are dropped.
+    """
+    identity = analysis_result.get("alert_identity", {}) if isinstance(analysis_result, dict) else {}
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for key, label in _IDENTITY_LABELS.items():
+        value = scalar_text_or_empty(_identity_value(identity, parsed, key))
         if not value:
             continue
         dedupe_key = (label, value)
-        if dedupe_key in seen_values:
+        if dedupe_key in seen:
             continue
-        seen_values.add(dedupe_key)
-        values[key] = value
+        seen.add(dedupe_key)
+        pairs.append((label, value))
+    return pairs
 
-    identity_groups = (("project", "region", "product_namespace", "service"), ("resource_name", "resource_id"), ("rule_name", "metric_name", "severity", "status"))
+
+def _build_identity_content(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
+    """Pipe/newline-joined identity text (kept for the deep-analysis card)."""
+    pairs = extract_identity_fields(analysis_result, parsed)
+    label_to_value = dict(pairs)
+    identity_groups = (
+        ("项目", "区域", "云产品", "服务"),
+        ("资源", "资源 ID"),
+        ("规则", "指标", "级别", "状态"),
+    )
     lines: list[str] = []
     for group in identity_groups:
-        parts = [f"{labels[key]}: {values[key]}" for key in group if key in values]
+        parts = [f"{label}: {label_to_value[label]}" for label in group if label in label_to_value]
         if parts:
             lines.append(" | ".join(parts))
     return "\n".join(lines)
