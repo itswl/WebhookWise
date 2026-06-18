@@ -379,3 +379,94 @@ async def test_catchup_single_flight_skips_when_claim_lost(temp_config, monkeypa
     out = await run_report_catchup()
     assert out["daily"] == "claimed_elsewhere"
     assert sends == []
+
+
+@pytest.mark.asyncio
+async def test_report_send_retries_transient_then_succeeds(temp_config, monkeypatch) -> None:
+    """A transient Feishu failure (e.g. 11232 frequency limited) is retried, not lost."""
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import generate_and_send_report
+
+    notif = temp_config.notifications
+    notif.DAILY_REPORT_ENABLED = True
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = "https://example.com/hook"
+
+    attempts: list[int] = []
+
+    async def flaky_send(url, card):
+        attempts.append(1)
+        if len(attempts) < 3:
+            return {"status": "failed", "message": "feishu business error code=11232: frequency limited"}
+        return {"status": "success"}
+
+    async def fake_collect(_session, window_days):
+        return {
+            "window_days": window_days, "total_events": 0, "duplicate_events": 0, "noise_pct": 0.0,
+            "importance_breakdown": {}, "top_sources": [], "top_rules": [], "ai_cost_usd": 0.0,
+            "ai_calls": 0, "cache_hit_pct": 0.0,
+        }
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr(wr.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", flaky_send)
+
+    await generate_and_send_report("daily")
+
+    # Two failures then success → exactly 3 attempts, report not dropped.
+    assert len(attempts) == 3
+
+
+@pytest.mark.asyncio
+async def test_report_send_does_not_retry_invalid_target(temp_config, monkeypatch) -> None:
+    """A misconfigured URL is not retried (retrying can't fix config)."""
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import generate_and_send_report
+
+    notif = temp_config.notifications
+    notif.DAILY_REPORT_ENABLED = True
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = "https://example.com/hook"
+
+    attempts: list[int] = []
+
+    async def invalid_send(url, card):
+        attempts.append(1)
+        return {"status": "invalid_target", "message": "bad url"}
+
+    async def fake_collect(_session, window_days):
+        return {
+            "window_days": window_days, "total_events": 0, "duplicate_events": 0, "noise_pct": 0.0,
+            "importance_breakdown": {}, "top_sources": [], "top_rules": [], "ai_cost_usd": 0.0,
+            "ai_calls": 0, "cache_hit_pct": 0.0,
+        }
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", invalid_send)
+
+    await generate_and_send_report("daily")
+    assert len(attempts) == 1  # no retry on invalid_target
+
+
+@pytest.mark.asyncio
+async def test_last_sent_fire_coerces_naive_marker_to_utc(monkeypatch) -> None:
+    """A stale naive last-sent marker is read back tz-aware (so catch-up can't crash)."""
+    from datetime import UTC, datetime
+
+    import services.operations.periodic_report as wr
+
+    # A naive isoformat (written by older code) and an aware one must BOTH come
+    # back tz-aware and compare against an aware datetime without raising.
+    for raw in ("2026-06-18T01:00:00", "2026-06-18T01:00:00+00:00"):
+        async def _get(_key, _raw=raw):
+            return _raw
+
+        monkeypatch.setattr("core.redis_client.redis_get_str", _get)
+        result = await wr._last_sent_fire("daily")
+        assert result is not None
+        assert result.tzinfo is not None, f"marker {raw!r} should come back tz-aware"
+        # The comparison that crashed in prod (`last_sent >= fire`) must not raise.
+        assert isinstance(result >= datetime.now(tz=UTC), bool)
