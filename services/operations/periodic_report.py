@@ -8,6 +8,7 @@ over existing data — no new instruments, no hot-path impact. Each cadence
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -22,6 +23,7 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
 from models import AIUsageLog, WebhookEvent
+from services.webhooks.types import ForwardResult
 
 logger = get_logger("periodic_report")
 
@@ -234,7 +236,12 @@ async def _last_sent_fire(period_key: str) -> datetime | None:
     with suppress(RedisError, RuntimeError, TypeError, ValueError):
         raw = await redis_get_str(periodic_report_last_sent(period_key))
         if raw:
-            return datetime.fromisoformat(raw)
+            parsed = datetime.fromisoformat(raw)
+            # Coerce to tz-aware UTC. A marker written by older code (or any
+            # non-offset isoformat) is naive; comparing it against the tz-aware
+            # `fire` in run_report_catchup would raise TypeError and abort the
+            # whole catch-up. Treat naive markers as UTC.
+            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
     return None
 
 
@@ -258,6 +265,55 @@ def _most_recent_fire(cron: str, now: datetime, lookback_minutes: int) -> dateti
             return None
         cursor -= timedelta(minutes=1)
     return None
+
+
+_REPORT_SEND_MAX_ATTEMPTS = 4
+_REPORT_SEND_BACKOFF_SECONDS = (2.0, 5.0, 15.0)
+
+
+async def _send_report_with_retry(webhook_url: str, card: dict[str, Any], period_label: str) -> ForwardResult:
+    """Send the report card, retrying transient/non-success results with backoff.
+
+    Unlike alert forwards (which retry via the outbox), a periodic report is a
+    one-shot send — so a transient Feishu error (notably code 11232 "frequency
+    limited", which collides with the 09:00 alert burst on the shared bot) would
+    permanently drop the report. Retry a few times with backoff so a brief rate
+    limit no longer loses the report. "invalid_target" is not retried (config
+    error, not transient).
+    """
+    from services.notifications.feishu import send_to_feishu
+
+    result: ForwardResult = {"status": "failed", "message": "not attempted"}
+    for attempt in range(1, _REPORT_SEND_MAX_ATTEMPTS + 1):
+        result = await send_to_feishu(webhook_url, card)
+        status = result.get("status")
+        if status == "success":
+            if attempt > 1:
+                logger.info("[PeriodicReport] %s send succeeded on attempt %d", period_label, attempt)
+            return result
+        if status == "invalid_target":
+            # Misconfigured URL — retrying cannot help.
+            return result
+        if attempt < _REPORT_SEND_MAX_ATTEMPTS:
+            delay = _REPORT_SEND_BACKOFF_SECONDS[min(attempt - 1, len(_REPORT_SEND_BACKOFF_SECONDS) - 1)]
+            logger.warning(
+                "[PeriodicReport] %s send failed (attempt %d/%d, status=%s msg=%s); retrying in %.0fs",
+                period_label,
+                attempt,
+                _REPORT_SEND_MAX_ATTEMPTS,
+                status,
+                result.get("message"),
+                delay,
+            )
+            await asyncio.sleep(delay)
+    logger.error(
+        "[PeriodicReport] %s send failed after %d attempts; giving up (last status=%s msg=%s)",
+        period_label,
+        _REPORT_SEND_MAX_ATTEMPTS,
+        result.get("status"),
+        result.get("message"),
+    )
+    return result
 
 
 async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None = None) -> dict[str, Any]:
@@ -294,9 +350,7 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
 
     card = _build_card(stats, period.title)
 
-    from services.notifications.feishu import send_to_feishu
-
-    result = await send_to_feishu(webhook_url, card)
+    result = await _send_report_with_retry(webhook_url, card, period.key)
     # Record a tz-aware UTC marker (matches _most_recent_fire's basis so catch-up
     # comparisons never mix naive/aware datetimes).
     await _record_report_sent(period_key, fire_ts or utcnow().replace(tzinfo=UTC))
