@@ -32,7 +32,7 @@ async def test_feishu_channel_sends_card_through_injected_transport(monkeypatch:
     )
 
     assert card["msg_type"] == "interactive"
-    assert "ID: 42" in card["card"]["elements"][-1]["elements"][0]["content"]
+    assert "ID：42" in card["card"]["elements"][-1]["elements"][0]["content"]
 
 
 def test_deep_analysis_card_formats_openclaw_json_fence() -> None:
@@ -77,8 +77,8 @@ def test_deep_analysis_card_formats_openclaw_json_fence() -> None:
     assert "```json" not in rendered
     assert "在线用户数属于正常早晨流量爬坡" in rendered
     assert "1h 基线窗口" in rendered
-    assert "Alert Identity" in rendered
-    assert "ID: 46708" in rendered
+    assert "告警标识" in rendered
+    assert "ID：46708" in rendered
 
 
 @pytest.mark.asyncio
