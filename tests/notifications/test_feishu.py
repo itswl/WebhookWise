@@ -53,8 +53,8 @@ def test_build_feishu_card_formats_identity_and_periodic_reminder() -> None:
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["title"]["content"] == "🔁 [周期提醒] 📡 告警通知"
     assert card["card"]["header"]["template"] == "red"
-    # Identity is condensed to one breadcrumb line: project/region · service · resource · metric.
-    assert "🏷️ eve-cn/cn-shanghai · webhook-api · api-0 · cpu_usage" in rendered
+    # Identity is one breadcrumb line: location · service · resource(+id) · rule · metric · severity.
+    assert "🏷️ eve-cn/cn-shanghai · webhook-api · api-0 i-001 · HighCPU · cpu_usage · critical" in rendered
     # The headline leads with the importance tag + summary.
     assert "CPU 持续超过阈值" in rendered
     # source · type · time live in the de-emphasized footer note.
