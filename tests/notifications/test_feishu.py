@@ -51,13 +51,13 @@ def test_build_feishu_card_formats_identity_and_periodic_reminder() -> None:
 
     rendered = str(card)
     assert card["msg_type"] == "interactive"
-    assert card["card"]["header"]["title"]["content"] == "🔁 [Periodic Reminder] 📡 Webhook Event Notification"
+    assert card["card"]["header"]["title"]["content"] == "🔁 [周期提醒] 📡 告警通知"
     assert card["card"]["header"]["template"] == "red"
-    assert "Project: eve-cn" in rendered
-    assert "Region: cn-shanghai" in rendered
-    assert "Service: webhook-api" in rendered
-    assert "Resource: api-0" in rendered
-    assert "Metric: cpu_usage" in rendered
+    assert "项目: eve-cn" in rendered
+    assert "区域: cn-shanghai" in rendered
+    assert "服务: webhook-api" in rendered
+    assert "资源: api-0" in rendered
+    assert "指标: cpu_usage" in rendered
     assert "2026-06-03 09:02:03 UTC+8" in rendered
 
 
@@ -86,8 +86,8 @@ def test_build_deep_analysis_card_extracts_openclaw_json_text() -> None:
     assert "在线用户数处于早高峰爬坡" in rendered
     assert "短窗口基线偏低" in rendered
     assert "改用日周期基线" in rendered
-    assert "Confidence: 87%" in rendered
-    assert "ID: 46708" in rendered
+    assert "置信度：87%" in rendered
+    assert "ID：46708" in rendered
 
 
 def test_build_deep_analysis_card_formats_root_cause_json_report() -> None:
@@ -132,10 +132,10 @@ def test_build_deep_analysis_card_formats_root_cause_json_report() -> None:
     assert "数据节点约 12.3 小时前发生重启" in rendered
     assert "副本分片未完全恢复" in rendered
     assert "检查重启节点 JVM/磁盘水位" in rendered
-    assert "Project: eve-cn" in rendered
-    assert "Resource: eve-cn-prod-es" in rendered
-    assert "Metric: InstanceHealthState" in rendered
-    assert "Confidence: 91%" in rendered
+    assert "项目: eve-cn" in rendered
+    assert "资源: eve-cn-prod-es" in rendered
+    assert "指标: InstanceHealthState" in rendered
+    assert "置信度：91%" in rendered
 
 
 @pytest.mark.asyncio
