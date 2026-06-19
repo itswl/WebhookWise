@@ -18,6 +18,7 @@ from services.forwarding.outbox import resolve_and_forward
 from services.forwarding.rules import get_cached_forward_rules
 from services.silences.store import get_cached_active_silences
 from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
+from services.webhooks.decision_trace import record_decision_trace
 from services.webhooks.decisioning import (
     ForwardDecision,
     ForwardingPolicy,
@@ -171,6 +172,18 @@ async def finalize_analysis_transaction(
             evt = await session.get(WebhookEvent, save_res.webhook_id)
             if evt:
                 evt.forward_status = "queued" if fwd_dec.should_forward else "skipped"
+
+            # Record why this alert was forwarded or skipped, in the same
+            # transaction (SAVEPOINT-isolated so it can never block the decision).
+            await record_decision_trace(
+                session,
+                webhook_event_id=save_res.webhook_id,
+                source=ctx.req_ctx.source,
+                dedup=analysis_res,
+                final_analysis=final_analysis,
+                noise=noise,
+                decision=fwd_dec,
+            )
 
             if fwd_dec.should_forward:
                 forward_data = dict(ctx.req_ctx.webhook_full_data)

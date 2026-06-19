@@ -5,6 +5,7 @@ Database model definitions
 from __future__ import annotations
 
 from models.analysis import AIUsageLog, DeepAnalysis
+from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
 from models.silence import Silence
 from models.suppressed_record import SuppressedRecord
@@ -20,4 +21,5 @@ __all__ = [
     "DeepAnalysis",
     "SuppressedRecord",
     "Silence",
+    "DecisionTrace",
 ]
