@@ -25,6 +25,9 @@ class ForwardDecision:
     is_periodic_reminder: bool
     matched_rules: list[ForwardRuleSnapshot] = field(default_factory=list)
     skip_code: str = "none"
+    # Set only when skip_code == "silenced": the active silence that muted this
+    # alert, so the decision trace can link the skip to its silence.
+    silence_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -522,7 +525,9 @@ def decide_forwarding(
         parsed_data=parsed_data,
         identity=identity,
     )):
-        return ForwardDecision(False, f"Silenced (id={silenced.id})", False, skip_code="silenced")
+        return ForwardDecision(
+            False, f"Silenced (id={silenced.id})", False, skip_code="silenced", silence_id=silenced.id
+        )
 
     matched_rules = select_forward_rules(
         rules,
