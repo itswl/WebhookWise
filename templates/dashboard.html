@@ -27,6 +27,9 @@
                 <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
                     <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
                 </button>
+                <button class="nav-tab" data-tab="decision-trace" type="button" data-i18n-aria-label="nav.aria.decisionTrace" aria-label="Switch to Decision Trace">
+                    <span>🧭</span> <span data-i18n="nav.tab.decisionTrace">Decision Trace</span>
+                </button>
                 <button class="nav-tab" data-tab="outbox" type="button" data-i18n-aria-label="nav.aria.outbox" aria-label="Switch to Forward Queue">
                     <span>📤</span> <span data-i18n="nav.tab.outbox">Forward Queue</span>
                 </button>
@@ -192,6 +195,34 @@
                     <div style="text-align: center; padding: 40px; color: #888;" data-i18n="deep.empty.hint">Click the "Deep Analysis" tab to load data...</div>
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- Decision Trace Tab -->
+        <div id="decisionTraceTab" class="tab-content" style="display: none;">
+            <div class="decision-trace-section" style="padding: 20px 0;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <div class="section-title" data-i18n="dt.title">Decision Trace</div>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="dt.subtitle">Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.</p>
+                    </div>
+                    <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
+                        <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
+                        <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
+                        <button class="btn" onclick="DecisionTraceModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    </div>
+                </div>
+                <div id="decisionTraceStats">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p data-i18n="common.loading">Loading...</p>
+                    </div>
+                </div>
+                <div id="decisionTraceList">
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="dt.empty.hint">Click the "Decision Trace" tab to load data...</div>
+                </div>
+                <div id="decisionTracePagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -553,7 +584,8 @@
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
+    <script src="/static/js/decision-trace.js?v=20260619-dtrace"></script>
     <script src="/static/js/outbox.js?v=20260617-noack"></script>
-    <script src="/static/js/dashboard.js?v=20260617-noack"></script>
+    <script src="/static/js/dashboard.js?v=20260619-dtrace"></script>
 </body>
 </html>
