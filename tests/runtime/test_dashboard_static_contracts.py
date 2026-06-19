@@ -4,6 +4,8 @@ import re
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
+import pytest
+
 from tests.helpers.paths import PROJECT_ROOT
 
 
@@ -72,6 +74,23 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
+
+
+@pytest.mark.asyncio
+async def test_dashboard_html_is_served_with_no_cache() -> None:
+    # The HTML is the cache-busting entry point (it carries the ?v= asset refs),
+    # so it must always revalidate; otherwise a heuristically-cached stale HTML
+    # keeps pointing at an old bundle and a redeploy never reaches the user.
+    import httpx
+
+    from api.app import app
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for path in ("/", "/dashboard"):
+            response = await client.get(path)
+            assert response.status_code == 200
+            assert response.headers.get("cache-control") == "no-cache"
 
 
 def test_deep_analysis_formats_json_like_reports_as_structured_content() -> None:
