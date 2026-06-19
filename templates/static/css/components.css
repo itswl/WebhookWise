@@ -182,6 +182,8 @@
 .badge-low { background: var(--success-bg); color: var(--success); border: 1px solid rgba(5,150,105,0.18); }
 .badge-duplicate { background: var(--primary-bg); color: var(--primary-hover); border: 1px solid rgba(99,102,241,0.20); }
 .badge-new { background: var(--bg-subtle); color: var(--text-secondary); border: 1px solid var(--border); }
+.badge-success { background: var(--success-bg); color: var(--success); border: 1px solid rgba(5,150,105,0.18); }
+.badge-outline { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Pagination
@@ -1323,5 +1325,56 @@
     flex-direction: column;
     align-items: flex-start !important;
     gap: 1rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Decision Trace
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dt-chip {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+}
+
+.dt-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.dt-chain {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dt-step-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.dt-step-row:last-child { border-bottom: none; }
+
+.dt-step-name {
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.dt-step-value {
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .dt-step-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
   }
 }

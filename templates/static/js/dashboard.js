@@ -151,6 +151,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
+        'decision-trace': 'decisionTraceTab',
         'outbox': 'outboxTab',
         'forward-rules': 'forwardRulesTab',
         'silences': 'silencesTab'
@@ -184,6 +185,14 @@ function switchMainTab(tabId) {
         case 'deep-analyses':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.load();
+            }
+            break;
+        case 'decision-trace':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof DecisionTraceModule !== 'undefined') {
+                DecisionTraceModule.load();
             }
             break;
         case 'outbox':
@@ -223,6 +232,11 @@ function refreshCurrentTab() {
         case 'deep-analyses':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.load();
+            }
+            break;
+        case 'decision-trace':
+            if (typeof DecisionTraceModule !== 'undefined') {
+                DecisionTraceModule.load();
             }
             break;
         case 'outbox':

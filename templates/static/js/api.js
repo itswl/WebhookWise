@@ -438,6 +438,36 @@ const API = {
         return await response.json();
     },
 
+    // ========== Decision Trace API ==========
+
+    /**
+     * Get decision-trace aggregate stats (forwarded vs skipped + skip reasons)
+     * @param {string} period - Statistics period (day/week/month)
+     * @returns {Promise<object>} Decision-trace stats
+     */
+    async getDecisionTraceStats(period = 'day') {
+        const response = await this.authenticatedFetch('/v1/decision-traces/stats?period=' + period);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Get the decision-trace list (newest first), each row carrying its full chain
+     * @param {object} params - Query parameters (cursor, page_size, outcome, skip_code, source)
+     * @returns {Promise<object>} Decision-trace list data
+     */
+    async getDecisionTraces(params = {}) {
+        const queryParams = new URLSearchParams();
+        if (params.cursor !== null && params.cursor !== undefined) queryParams.append('cursor', params.cursor);
+        if (params.page_size) queryParams.append('page_size', params.page_size);
+        if (params.outcome) queryParams.append('outcome', params.outcome);
+        if (params.skip_code) queryParams.append('skip_code', params.skip_code);
+        if (params.source) queryParams.append('source', params.source);
+        const response = await this.authenticatedFetch('/v1/decision-traces?' + queryParams.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Deep Analysis API ==========
 
     /**
