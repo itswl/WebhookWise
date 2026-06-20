@@ -172,6 +172,33 @@ class AIConfig(StaticSettings):
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
 
 
+class KBConfig(StaticSettings):
+    """RAG knowledge base: inject relevant internal docs into AI analysis.
+
+    Off by default. When KB_ENABLED and documents exist, each alert's analysis
+    retrieves the top-K most similar knowledge chunks and folds them into the
+    prompt as reference context. Embeddings come from a dedicated endpoint
+    (KB_EMBEDDING_*); when none is configured a deterministic local placeholder
+    embedding is used so the whole pipeline runs/tests end to end without an
+    external service (placeholder retrieval quality is low — configure a real
+    endpoint for semantic matching).
+    """
+
+    KB_ENABLED: bool = Field(default=False)
+    # Dedicated embeddings endpoint. Blank → falls back to the local placeholder
+    # embedding (NOT the main OPENAI_API_URL, which is usually OpenRouter and has
+    # no /embeddings route). Set these to switch to real semantic retrieval.
+    KB_EMBEDDING_API_URL: str = Field(default="")
+    KB_EMBEDDING_API_KEY: str = Field(default="")
+    KB_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
+    KB_VECTOR_DIM: int = Field(default=256)
+    KB_TOP_K: int = Field(default=3)
+    KB_MIN_SCORE: float = Field(default=0.3)
+    KB_CHUNK_MAX_CHARS: int = Field(default=800)
+    KB_MAX_CONTEXT_CHARS: int = Field(default=2000)
+    KB_EMBEDDING_TIMEOUT_SECONDS: float = Field(default=30.0)
+
+
 class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
 
@@ -293,6 +320,7 @@ class AppConfig(StaticSettings):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    kb: KBConfig = Field(default_factory=KBConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
@@ -308,6 +336,7 @@ class AppConfig(StaticSettings):
         "redis",
         "noise",
         "ai",
+        "kb",
         "notifications",
         "openclaw",
         "circuit_breaker",
