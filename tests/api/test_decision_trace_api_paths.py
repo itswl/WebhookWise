@@ -48,6 +48,42 @@ async def test_stats_endpoint_returns_aggregate_and_caches(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_quality_stats_endpoint_returns_proxy_signals(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api.v1 import decision_trace
+
+    quality = {
+        "period": "day",
+        "total": 5,
+        "ai_total": 3,
+        "route_breakdown": {"ai": 3, "rule": 1, "redis_reuse": 1},
+        "override_count": 1,
+        "override_rate": 33.3,
+        "degraded_total": 1,
+        "degraded_rate": 20.0,
+        "degraded_reasons": {"ai_error: boom": 1},
+        "ai_importance_breakdown": {"high": 1, "medium": 1, "low": 1},
+        "ai_importance_by_source": {"grafana": {"low": 1}},
+    }
+
+    async def fake_quality(_session: object, period: str) -> dict[str, Any]:
+        assert period == "week"
+        return quality
+
+    async def fake_get(_key: str) -> dict[str, Any] | None:
+        return None
+
+    async def fake_setex(_key: str, _ttl: int, _value: dict[str, Any]) -> None:
+        return None
+
+    monkeypatch.setattr(decision_trace, "get_decision_trace_quality_stats", fake_quality)
+    monkeypatch.setattr("core.redis_client.redis_get_json_dict", fake_get)
+    monkeypatch.setattr("core.redis_client.redis_setex_json", fake_setex)
+
+    result = await decision_trace.get_decision_trace_quality_stats_endpoint(period="week", session=object())  # type: ignore[arg-type]
+    assert result == {"success": True, "data": quality}
+
+
+@pytest.mark.asyncio
 async def test_list_endpoint_returns_pagination_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     from api.v1 import decision_trace
 

@@ -37,6 +37,18 @@ class DecisionTrace(Base):
     importance: Mapped[str | None] = mapped_column(String(20))
     is_periodic_reminder: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
 
+    # AI-judgment quality signals (Phase B). Flattened from the analysis step so
+    # the dashboard can aggregate "how is the AI judging" without unpacking JSONB:
+    #   route            - analysis route; only "ai" is a fresh LLM judgment
+    #                      (cache/reuse/rule/rule_routed/silenced_skip are not).
+    #   importance_override - a deterministic rule disagreed with the AI's
+    #                      importance and corrected it (the one place the system
+    #                      records "the AI judged too low").
+    #   degraded_reason  - why analysis fell back to rules (NULL = not degraded).
+    route: Mapped[str | None] = mapped_column(String(20), index=True)
+    importance_override: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    degraded_reason: Mapped[str | None] = mapped_column(String(200))
+
     # Names of the forward rules that matched (for the per-alert detail view).
     matched_rules: Mapped[list[str] | None] = mapped_column(JSONB)
     # Ordered decision chain: [{"step": ..., "result": ..., ...}, ...]
