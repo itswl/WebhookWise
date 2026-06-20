@@ -56,6 +56,24 @@ class ReplayBatchRequest(BaseModel):
     event_ids: list[int] = Field(min_length=1, max_length=500)
 
 
+class KBDocumentRequest(BaseModel):
+    """Request to ingest one knowledge-base document (chunked + embedded server-side)."""
+
+    title: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1)
+    source_ref: str | None = Field(default=None, max_length=500)
+    tags: dict[str, str] | None = None
+
+
+class KBDocumentResponse(BaseModel):
+    """Knowledge-base ingest response."""
+
+    success: bool
+    title: str
+    chunks: int
+    embedding_model: str
+
+
 class PromptGetResponse(BaseModel):
     """Get prompt template response"""
 
