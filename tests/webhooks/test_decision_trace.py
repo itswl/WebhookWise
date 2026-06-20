@@ -184,6 +184,76 @@ def test_build_row_skipped_outcome() -> None:
     assert trace.importance is None
 
 
+# ── AI judgment quality signals (Phase B) ────────────────────────────
+
+
+def test_steps_and_row_capture_importance_override() -> None:
+    analysis = {
+        "importance": "high",
+        "summary": "s",
+        "_route_type": "ai",
+        "_importance_override": "gpu_high",
+        "_importance_override_reason": "GPU saturated",
+    }
+    decision = ForwardDecision(True, None, False, matched_rules=[_rule("feishu")])
+    steps = build_trace_steps(
+        dedup=_dedup(), final_analysis=analysis, noise=_noise(), decision=decision  # type: ignore[arg-type]
+    )
+    analysis_step = _step_named(steps, "analysis")
+    assert analysis_step["importance_override"] is True
+    assert analysis_step["importance_override_reason"] == "GPU saturated"
+
+    trace = build_decision_trace(
+        webhook_event_id=1, source="volcengine", dedup=_dedup(),
+        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+    )
+    assert trace.route == "ai"
+    assert trace.importance_override is True
+    assert trace.degraded_reason is None
+
+
+def test_steps_and_row_capture_degradation_reason() -> None:
+    analysis = {
+        "importance": "medium",
+        "summary": "s",
+        "_route_type": "rule",
+        "_degraded": True,
+        "_degraded_reason": "ai_error: boom",
+    }
+    decision = ForwardDecision(False, "No matching forwarding rule", False, skip_code="no_match")
+    steps = build_trace_steps(
+        dedup=_dedup(), final_analysis=analysis, noise=_noise(), decision=decision  # type: ignore[arg-type]
+    )
+    analysis_step = _step_named(steps, "analysis")
+    assert analysis_step["degraded"] is True
+    assert analysis_step["degraded_reason"] == "ai_error: boom"
+
+    trace = build_decision_trace(
+        webhook_event_id=2, source="grafana", dedup=_dedup(),
+        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+    )
+    assert trace.route == "rule"
+    assert trace.importance_override is False
+    assert trace.degraded_reason == "ai_error: boom"
+
+
+def test_row_truncates_long_degraded_reason() -> None:
+    analysis = {
+        "importance": "low",
+        "summary": "s",
+        "_route_type": "rule",
+        "_degraded": True,
+        "_degraded_reason": "x" * 500,
+    }
+    decision = ForwardDecision(False, "x", False, skip_code="no_match")
+    trace = build_decision_trace(
+        webhook_event_id=3, source="s", dedup=_dedup(),
+        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+    )
+    assert trace.degraded_reason is not None
+    assert len(trace.degraded_reason) == 200
+
+
 # ── record_decision_trace (persist contract) ─────────────────────────
 
 

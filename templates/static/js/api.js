@@ -452,6 +452,17 @@ const API = {
     },
 
     /**
+     * Get decision-trace AI-judgment quality stats (override/degradation/importance)
+     * @param {string} period - Statistics period (day/week/month)
+     * @returns {Promise<object>} Quality stats
+     */
+    async getDecisionTraceQualityStats(period = 'day') {
+        const response = await this.authenticatedFetch('/v1/decision-traces/quality-stats?period=' + period);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Get the decision-trace list (newest first), each row carrying its full chain
      * @param {object} params - Query parameters (cursor, page_size, outcome, skip_code, source)
      * @returns {Promise<object>} Decision-trace list data
