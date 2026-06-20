@@ -26,9 +26,25 @@ from services.webhooks.decisioning import ForwardDecision, normalize_importance
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
+    analysis_degraded_reason,
     analysis_route,
     is_analysis_degraded,
 )
+
+# Literal key set by services.analysis.resource_risk when a deterministic rule
+# overrides (promotes) the AI's importance. Its presence is the signal that the
+# system disagreed with the AI's judgment.
+_IMPORTANCE_OVERRIDE_KEY = "_importance_override"
+
+
+def _has_importance_override(final_analysis: AnalysisResult) -> bool:
+    return bool(final_analysis.get(_IMPORTANCE_OVERRIDE_KEY))
+
+
+def _degraded_reason_column(final_analysis: AnalysisResult) -> str | None:
+    """Degradation reason trimmed to the column width (NULL when not degraded)."""
+    reason = analysis_degraded_reason(final_analysis)
+    return reason[:200] if reason else None
 
 logger = get_logger("webhooks.decision_trace")
 
@@ -59,6 +75,9 @@ def build_trace_steps(
             "route": analysis_route(final_analysis, default="ai"),
             "importance": normalize_importance(final_analysis.get("importance", "")),
             "degraded": is_analysis_degraded(final_analysis),
+            "degraded_reason": analysis_degraded_reason(final_analysis) or None,
+            "importance_override": _has_importance_override(final_analysis),
+            "importance_override_reason": final_analysis.get("_importance_override_reason") or None,
         },
         {
             "step": "noise",
@@ -102,6 +121,9 @@ def build_decision_trace(
         source=source or None,
         importance=normalize_importance(final_analysis.get("importance", "")) or None,
         is_periodic_reminder=decision.is_periodic_reminder,
+        route=analysis_route(final_analysis, default="ai"),
+        importance_override=_has_importance_override(final_analysis),
+        degraded_reason=_degraded_reason_column(final_analysis),
         matched_rules=[rule.name for rule in decision.matched_rules],
         steps=build_trace_steps(
             dedup=dedup, final_analysis=final_analysis, noise=noise, decision=decision

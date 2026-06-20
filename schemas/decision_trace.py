@@ -22,6 +22,26 @@ class DecisionTraceStatsResponse(APIResponse[DecisionTraceStatsData]):
     """Decision-trace aggregate statistics response."""
 
 
+class DecisionTraceQualityData(BaseModel):
+    """Proxy signals for AI-judgment quality (no human ground truth exists)."""
+
+    period: str
+    total: int
+    ai_total: int
+    route_breakdown: dict[str, int]
+    override_count: int
+    override_rate: float
+    degraded_total: int
+    degraded_rate: float
+    degraded_reasons: dict[str, int]
+    ai_importance_breakdown: dict[str, int]
+    ai_importance_by_source: dict[str, dict[str, int]]
+
+
+class DecisionTraceQualityResponse(APIResponse[DecisionTraceQualityData]):
+    """AI-judgment quality statistics response."""
+
+
 class DecisionTraceItem(BaseModel):
     """One decision trace: the flattened outcome plus the full ordered chain."""
 
@@ -33,6 +53,9 @@ class DecisionTraceItem(BaseModel):
     source: str | None = None
     importance: str | None = None
     is_periodic_reminder: bool = False
+    route: str | None = None
+    importance_override: bool = False
+    degraded_reason: str | None = None
     matched_rules: list[str] = []
     steps: list[dict[str, Any]] = []
 
