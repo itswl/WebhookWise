@@ -156,6 +156,50 @@ def _dump_prompt_yaml(identity_context: dict[str, Any], cleaned_data: dict[str, 
     return identity_yaml, data_yaml
 
 
+def _build_kb_query(source: str, identity_context: dict[str, Any], cleaned_data: dict[str, Any]) -> str:
+    """Compose the retrieval query from the most identifying alert fields.
+
+    Uses source + identity (service/resource/rule/metric...) so retrieval keys
+    on *what the alert is about*, not boilerplate. Falls back to a short slice of
+    the payload text when identity is sparse.
+    """
+    identity = identity_context.get("identity", {}) if isinstance(identity_context, dict) else {}
+    parts = [source]
+    if isinstance(identity, dict):
+        parts.extend(str(v) for v in identity.values() if v)
+    text = " ".join(p for p in parts if p).strip()
+    if len(text) < 16:  # identity too sparse — add a bit of payload context
+        text = f"{text} {str(cleaned_data)[:300]}".strip()
+    return text
+
+
+async def _retrieve_kb_context(
+    source: str, identity_context: dict[str, Any], cleaned_data: dict[str, Any]
+) -> str:
+    """Best-effort RAG context block for the prompt; '' when disabled/empty/failed.
+
+    Retrieval must never block or fail an alert analysis — any error degrades to
+    no context (the analysis simply runs without internal docs).
+    """
+    from core.app_context import get_config_manager
+
+    if not get_config_manager().kb.KB_ENABLED:
+        return ""
+    try:
+        from db.session import session_scope
+        from services.kb.retrieval import retrieve_context
+
+        query = _build_kb_query(source, identity_context, cleaned_data)
+        async with session_scope() as session:
+            context = await retrieve_context(session, query)
+        if not context:
+            return ""
+        return f"\n**相关内部知识（仅供参考，需结合实际数据判断）**:\n{context}\n"
+    except Exception as exc:  # noqa: BLE001 - KB context is best-effort, never a gate
+        logger.warning("[KB] context retrieval failed, analyzing without it: %s", exc)
+        return ""
+
+
 async def _analyze_with_openai_tracked(
     data: dict[str, Any],
     source: str,
@@ -170,10 +214,12 @@ async def _analyze_with_openai_tracked(
     # PyYAML's pure-Python emitter is CPU-bound and the payload can be large;
     # offload both dumps to a thread so the worker event loop is not stalled.
     identity_yaml, data_yaml = await asyncio.to_thread(_dump_prompt_yaml, identity_context, cleaned_data)
+    kb_context = await _retrieve_kb_context(source, identity_context, cleaned_data)
     user_prompt = (await load_user_prompt_template()).format(
         source=source,
         identity_json=identity_yaml,
         data_json=data_yaml,
+        kb_context=kb_context,
     )
     logger.info(
         "[AI] Starting LLM analysis source=%s model=%s sanitized_fields=%s identity_fields=%s prompt_bytes=%s prompt_source=%s",

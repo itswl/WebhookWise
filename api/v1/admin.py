@@ -27,6 +27,7 @@ from db.session import get_db_session
 from models import WebhookEvent
 from schemas.admin import (
     DeadLetterListResponse,
+    KBDocumentRequest,
     PromptGetResponse,
     PromptReloadResponse,
     ReplayAllResponse,
@@ -271,6 +272,38 @@ async def retry_outbox_endpoint(outbox_id: int) -> JSONResponse:
         return fail_response("outbox does not exist or its status is not retryable", 400)
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("[Admin] outbox re-enqueue failed id=%s error=%s", outbox_id, e, exc_info=True)
+        return internal_error_response()
+
+
+@admin_router.post(
+    "/admin/kb/documents",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def ingest_kb_document_endpoint(
+    request: KBDocumentRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Ingest one knowledge-base document: chunk + embed + upsert (idempotent)."""
+    from services.kb.store import ingest_document
+
+    try:
+        result = await ingest_document(
+            session,
+            title=request.title,
+            content=request.content,
+            source_ref=request.source_ref,
+            tags=request.tags,
+        )
+        await session.commit()
+        logger.info("[Admin] KB ingest title=%s chunks=%d model=%s", result.title, result.chunks, result.embedding_model)
+        return ok_response(
+            http_status=200,
+            message="document ingested",
+            data={"title": result.title, "chunks": result.chunks, "embedding_model": result.embedding_model},
+        )
+    except _ADMIN_RUNTIME_ERRORS as e:
+        logger.error("[Admin] KB ingest failed title=%s error=%s", request.title, e, exc_info=True)
         return internal_error_response()
 
 
