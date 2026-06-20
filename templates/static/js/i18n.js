@@ -645,7 +645,18 @@
             'dt.empty.hint': 'Click the "Decision Trace" tab to load data...',
             'dt.empty.noTraces': 'No decision traces yet.',
             'dt.empty.statsTitle': 'No data',
-            'dt.empty.statsText': 'No decision traces in the selected window.'
+            'dt.empty.statsText': 'No decision traces in the selected window.',
+            'dt.quality.title': 'AI Judgment Quality',
+            'dt.quality.note': 'Proxy signals only — WebhookWise has no human "was this right" label, so these surface how the AI is judging, not a true accuracy score.',
+            'dt.quality.aiJudgments': 'Fresh AI Judgments',
+            'dt.quality.aiJudgmentsTrend': 'route = ai (excludes cache / reuse / rule)',
+            'dt.quality.overrideRate': 'Importance Override Rate',
+            'dt.quality.overrideTrend': '{n} times a rule corrected the AI',
+            'dt.quality.degradedRate': 'Degradation Rate',
+            'dt.quality.degradedTrend': '{n} fell back to rules',
+            'dt.quality.importanceDist': 'AI Importance Distribution',
+            'dt.quality.degradedReasons': 'Degradation Reasons',
+            'dt.quality.bySource': 'AI Importance by Source'
         },
         zh: {
             // ── Navbar ──
@@ -1269,7 +1280,18 @@
             'dt.empty.hint': '点击"决策追踪"标签页加载数据…',
             'dt.empty.noTraces': '暂无决策追踪记录。',
             'dt.empty.statsTitle': '暂无数据',
-            'dt.empty.statsText': '所选时间段内没有决策追踪记录。'
+            'dt.empty.statsText': '所选时间段内没有决策追踪记录。',
+            'dt.quality.title': 'AI 判定质量',
+            'dt.quality.note': '仅为代理信号——WebhookWise 没有人工「判得对不对」的真值标注，所以这里反映的是 AI 怎么判的倾向，不是真·准确率。',
+            'dt.quality.aiJudgments': '真·AI 判定数',
+            'dt.quality.aiJudgmentsTrend': 'route = ai（不含缓存/复用/规则）',
+            'dt.quality.overrideRate': 'importance 覆写率',
+            'dt.quality.overrideTrend': '{n} 次被确定性规则纠正',
+            'dt.quality.degradedRate': '降级率',
+            'dt.quality.degradedTrend': '{n} 次退化为规则判定',
+            'dt.quality.importanceDist': 'AI importance 分布',
+            'dt.quality.degradedReasons': '降级原因',
+            'dt.quality.bySource': '按来源看 AI importance'
         }
     };
 

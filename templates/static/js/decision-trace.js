@@ -137,6 +137,111 @@ var DecisionTraceModule = (function () {
             });
     }
 
+    // ── AI judgment quality (proxy signals) ──────────────────────────
+
+    function distributionBar(breakdown, total, colorMap) {
+        // A single horizontal stacked bar of label→count, with a legend below.
+        var keys = Object.keys(breakdown || {});
+        if (!keys.length || !total) return '<div style="color: var(--text-muted); font-size: 0.85rem;">—</div>';
+        keys.sort(function (a, b) { return (breakdown[b] || 0) - (breakdown[a] || 0); });
+        var segs = keys.map(function (k) {
+            var pct = (breakdown[k] / total * 100);
+            var color = (colorMap && colorMap[k]) || '#94a3b8';
+            return '<div title="' + escapeHtml(k) + ': ' + breakdown[k] + '" style="width:' + pct + '%; background:' + color + ';"></div>';
+        }).join('');
+        var legend = keys.map(function (k) {
+            var color = (colorMap && colorMap[k]) || '#94a3b8';
+            var label = (colorMap && colorMap['_label_' + k]) || k;
+            return '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px; font-size:0.8rem; color:var(--text-secondary);">' +
+                '<span style="width:10px; height:10px; border-radius:2px; background:' + color + '; display:inline-block;"></span>' +
+                escapeHtml(label) + ' <strong>' + breakdown[k] + '</strong></span>';
+        }).join('');
+        return '<div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin-bottom:0.5rem;">' + segs + '</div>' +
+            '<div style="display:flex; flex-wrap:wrap;">' + legend + '</div>';
+    }
+
+    var IMPORTANCE_COLORS = {
+        'high': '#e11d48', '_label_high': 'high',
+        'medium': '#d97706', '_label_medium': 'medium',
+        'low': '#059669', '_label_low': 'low',
+        'unknown': '#94a3b8', '_label_unknown': 'unknown'
+    };
+
+    function renderQuality(data) {
+        var container = document.getElementById('decisionTraceQuality');
+        if (!container) return;
+
+        var aiTotal = data.ai_total || 0;
+        var overrideRate = data.override_rate || 0;
+        var degradedRate = data.degraded_rate || 0;
+
+        var html = '' +
+            '<div style="font-size: 1rem; font-weight: 600; color: var(--text-main); margin: 1rem 0 0.75rem;">' + t('dt.quality.title') + '</div>' +
+            '<div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">' +
+                '<p style="margin: 0 0 1rem; color: var(--text-muted); font-size: 0.8rem;">' + t('dt.quality.note') + '</p>' +
+                '<div class="stats-grid" style="margin-bottom: 1.25rem;">' +
+                    '<div class="stat-card"><div class="stat-label">🧠 ' + t('dt.quality.aiJudgments') + '</div>' +
+                        '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(aiTotal) + '</div>' +
+                        '<div class="stat-trend">' + t('dt.quality.aiJudgmentsTrend') + '</div></div>' +
+                    '<div class="stat-card" style="border-left: 3px solid var(--warning);"><div class="stat-label">⚖️ ' + t('dt.quality.overrideRate') + '</div>' +
+                        '<div class="stat-value" style="font-size: 1.75rem; color: var(--warning);">' + overrideRate.toFixed(1) + '%</div>' +
+                        '<div class="stat-trend">' + t('dt.quality.overrideTrend', { n: formatNumber(data.override_count || 0) }) + '</div></div>' +
+                    '<div class="stat-card" style="border-left: 3px solid var(--text-muted);"><div class="stat-label">📉 ' + t('dt.quality.degradedRate') + '</div>' +
+                        '<div class="stat-value" style="font-size: 1.75rem;">' + degradedRate.toFixed(1) + '%</div>' +
+                        '<div class="stat-trend">' + t('dt.quality.degradedTrend', { n: formatNumber(data.degraded_total || 0) }) + '</div></div>' +
+                '</div>';
+
+        // AI importance distribution (fresh ai-route judgments only).
+        html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 0.5rem 0;">' + t('dt.quality.importanceDist') + '</div>';
+        html += distributionBar(data.ai_importance_breakdown, aiTotal, IMPORTANCE_COLORS);
+
+        // Degradation reasons, if any.
+        var reasons = data.degraded_reasons || {};
+        if (Object.keys(reasons).length) {
+            html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.degradedReasons') + '</div>';
+            html += '<div style="display:flex; flex-wrap:wrap; gap:0.5rem;">';
+            Object.keys(reasons).sort(function (a, b) { return reasons[b] - reasons[a]; }).forEach(function (r) {
+                html += '<span class="badge badge-outline" style="font-size:0.75rem;">' + escapeHtml(r) + ' <strong>' + reasons[r] + '</strong></span>';
+            });
+            html += '</div>';
+        }
+
+        // Per-source importance distribution (only sources with ai judgments).
+        var bySource = data.ai_importance_by_source || {};
+        var sources = Object.keys(bySource);
+        if (sources.length) {
+            html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.bySource') + '</div>';
+            sources.sort();
+            sources.forEach(function (src) {
+                var dist = bySource[src];
+                var srcTotal = Object.keys(dist).reduce(function (s, k) { return s + dist[k]; }, 0);
+                html += '<div style="margin-bottom: 0.75rem;">' +
+                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">📡 ' + escapeHtml(src) + ' <span style="color:var(--text-muted);">(' + srcTotal + ')</span></div>' +
+                    distributionBar(dist, srcTotal, IMPORTANCE_COLORS) + '</div>';
+            });
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function loadQuality(period) {
+        return API.getDecisionTraceQualityStats(period || currentPeriod || 'day')
+            .then(function (res) {
+                if (res && res.success && res.data) {
+                    renderQuality(res.data);
+                } else {
+                    var c = document.getElementById('decisionTraceQuality');
+                    if (c) c.innerHTML = '';
+                }
+            })
+            .catch(function (err) {
+                console.error('Failed to load decision-trace quality stats:', err);
+                var c = document.getElementById('decisionTraceQuality');
+                if (c) c.innerHTML = '';
+            });
+    }
+
     // ── Trace list ───────────────────────────────────────────────────
 
     function outcomeBadge(trace) {
@@ -338,15 +443,18 @@ var DecisionTraceModule = (function () {
         fetchPage(nextCursor, true);
     }
 
-    // Full reload of both the aggregate strip and the list (tab open / refresh).
+    // Full reload of the aggregate strip, the AI-quality panel, and the list
+    // (tab open / refresh).
     function load() {
         loadStats(currentPeriod);
+        loadQuality(currentPeriod);
         loadList();
     }
 
     function setPeriod(period) {
         currentPeriod = period;
         loadStats(period);
+        loadQuality(period);
     }
 
     function filterBySkipCode(code) {

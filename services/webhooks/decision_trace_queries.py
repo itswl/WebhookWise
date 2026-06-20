@@ -72,6 +72,98 @@ async def get_decision_trace_stats(session: AsyncSession, period: str = "day") -
     }
 
 
+# Analysis routes that represent a fresh LLM judgment vs. a reuse/skip/degradation.
+# Accuracy-ish signals (importance distribution, override rate) are only meaningful
+# over fresh "ai" judgments; everything else reuses or bypasses the model.
+_AI_ROUTE = "ai"
+
+
+async def get_decision_trace_quality_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
+    """Aggregate proxy signals for AI-judgment quality over a time window.
+
+    WebhookWise has no human ground-truth label ("was this right?"), so this is
+    deliberately *proxy* metrics, not a true accuracy score:
+    - route_breakdown: how judgments were produced (ai vs cache/reuse/rule/...).
+    - override_rate: of fresh ``ai`` judgments, how often a deterministic rule
+      had to correct the AI's importance (the system disagreeing with the AI).
+    - degraded / degraded_reasons: how often analysis fell back to rules, and why.
+    - ai_importance_breakdown: importance distribution of fresh ``ai`` judgments
+      (overall and per source) — surfaces "what is the AI tending to call this".
+    """
+    start_time = utcnow() - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["day"])
+    window = DecisionTrace.created_at >= start_time
+
+    total = await count_with_timeout(session, select(func.count(DecisionTrace.id)).where(window)) or 0
+
+    route_rows = (
+        await session.execute(
+            select(DecisionTrace.route, func.count(DecisionTrace.id))
+            .where(window)
+            .group_by(DecisionTrace.route)
+        )
+    ).all()
+    route_breakdown = {(row[0] or "unknown"): row[1] for row in route_rows}
+    ai_total = route_breakdown.get(_AI_ROUTE, 0)
+
+    # Override rate is measured only over fresh AI judgments (a reuse/rule row
+    # carries a propagated or rule-derived importance, not a fresh AI call).
+    ai_overrides = (
+        await count_with_timeout(
+            session,
+            select(func.count(DecisionTrace.id)).where(
+                window, DecisionTrace.route == _AI_ROUTE, DecisionTrace.importance_override.is_(True)
+            ),
+        )
+        or 0
+    )
+
+    degraded_rows = (
+        await session.execute(
+            select(DecisionTrace.degraded_reason, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.degraded_reason.isnot(None))
+            .group_by(DecisionTrace.degraded_reason)
+            .order_by(func.count(DecisionTrace.id).desc())
+        )
+    ).all()
+    degraded_reasons = {row[0]: row[1] for row in degraded_rows}
+    degraded_total = sum(degraded_reasons.values())
+
+    # Importance distribution overall and per source, over fresh AI judgments only.
+    importance_rows = (
+        await session.execute(
+            select(DecisionTrace.importance, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.route == _AI_ROUTE, DecisionTrace.importance.isnot(None))
+            .group_by(DecisionTrace.importance)
+        )
+    ).all()
+    ai_importance_breakdown = {row[0]: row[1] for row in importance_rows}
+
+    by_source_rows = (
+        await session.execute(
+            select(DecisionTrace.source, DecisionTrace.importance, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.route == _AI_ROUTE, DecisionTrace.source.isnot(None))
+            .group_by(DecisionTrace.source, DecisionTrace.importance)
+        )
+    ).all()
+    ai_importance_by_source: dict[str, dict[str, int]] = {}
+    for source, importance, count in by_source_rows:
+        ai_importance_by_source.setdefault(source, {})[importance or "unknown"] = count
+
+    return {
+        "period": period,
+        "total": total,
+        "ai_total": ai_total,
+        "route_breakdown": route_breakdown,
+        "override_count": ai_overrides,
+        "override_rate": round(ai_overrides / ai_total * 100, 1) if ai_total else 0.0,
+        "degraded_total": degraded_total,
+        "degraded_rate": round(degraded_total / total * 100, 1) if total else 0.0,
+        "degraded_reasons": degraded_reasons,
+        "ai_importance_breakdown": ai_importance_breakdown,
+        "ai_importance_by_source": ai_importance_by_source,
+    }
+
+
 def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
     return {
         "id": trace.id,
@@ -82,6 +174,9 @@ def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
         "source": trace.source,
         "importance": trace.importance,
         "is_periodic_reminder": trace.is_periodic_reminder,
+        "route": trace.route,
+        "importance_override": trace.importance_override,
+        "degraded_reason": trace.degraded_reason,
         "matched_rules": trace.matched_rules or [],
         "steps": trace.steps or [],
     }
