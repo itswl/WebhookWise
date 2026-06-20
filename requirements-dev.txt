@@ -19,3 +19,6 @@ opentelemetry-instrumentation-sqlalchemy>=0.48b0
 opentelemetry-exporter-otlp-proto-grpc>=1.27.0
 pytest-cov>=6.0.0
 fakeredis>=2.35.0
+# Transitive (pip-audit -> cachecontrol -> msgpack); floored to clear
+# GHSA-6v7p-g79w-8964. Dev/CI-only; not in the production lock.
+msgpack>=1.2.1
