@@ -30,13 +30,18 @@ async def test_ai_usage_stats_periods_and_cache_math(
         def scalar(self) -> int:
             return 4
 
+    class TrendResult:
+        # (day, total, tokens, cost, ai_calls, rule_calls)
+        def all(self) -> list[tuple[object, int, int, float, int, int]]:
+            return [("2026-05-27", 5, 18, 0.12, 2, 1)]
+
     class Session:
         def __init__(self) -> None:
             self.calls = 0
 
         async def execute(self, _stmt: object) -> object:
             self.calls += 1
-            return [RouteResult(), StatsResult(), CacheResult()][self.calls - 1]
+            return [RouteResult(), StatsResult(), CacheResult(), TrendResult()][self.calls - 1]
 
     async def count_with_timeout(_session: object, _stmt: object) -> int:
         return 12
@@ -53,6 +58,9 @@ async def test_ai_usage_stats_periods_and_cache_math(
     assert stats["cost"]["saved_estimate"] == 0.6
     assert stats["cache_statistics"]["avg_hits_per_entry"] == 2.5
     assert stats["cache_statistics"]["cache_hit_rate"] == 83.33
+    assert stats["trend"] == [
+        {"time": "2026-05-27", "total_calls": 5, "ai_calls": 2, "rule_calls": 1, "tokens": 18, "cost": 0.12}
+    ]
 
 
 @pytest.mark.asyncio

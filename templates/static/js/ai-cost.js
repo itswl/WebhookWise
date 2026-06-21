@@ -237,9 +237,35 @@ const AICostModule = {
                     <div class="stat-trend">${t('aicost.card.hitRateTrend')}</div>
                 </div>
             </div>
+            ${this.renderTrend(data.trend)}
         `;
 
         container.innerHTML = html;
+    },
+
+    /**
+     * Render a per-day cost/calls trend as a lightweight CSS bar chart.
+     * @param {Array} trend - [{time, total_calls, ai_calls, cost, tokens}]
+     */
+    renderTrend(trend) {
+        if (!Array.isArray(trend) || trend.length === 0) return '';
+        const maxCost = Math.max(...trend.map(p => Number(p.cost) || 0), 0.000001);
+        const bars = trend.map(p => {
+            const cost = Number(p.cost) || 0;
+            const pct = Math.max(2, (cost / maxCost) * 100);
+            const title = `${p.time} · ${this.formatCurrency(cost)} · ${t('aicost.trend.callsTip', { n: formatNumber(p.total_calls || 0), ai: formatNumber(p.ai_calls || 0) })}`;
+            const label = String(p.time).slice(5); // MM-DD
+            return `<div class="aicost-trend-col" title="${title}">
+                        <div class="aicost-trend-bar-wrap"><div class="aicost-trend-bar" style="height: ${pct}%;"></div></div>
+                        <div class="aicost-trend-x">${label}</div>
+                    </div>`;
+        }).join('');
+        return `
+            <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin: 2.5rem 0 1.25rem;">${t('aicost.section.trend')}</div>
+            <div style="background: var(--bg-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
+                <div class="aicost-trend-chart">${bars}</div>
+                <div style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.8rem;">${t('aicost.trend.note')}</div>
+            </div>`;
     },
 
     /**

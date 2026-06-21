@@ -60,6 +60,7 @@
             'common.loadFailed': 'Failed to load',
             'common.yes': 'Yes',
             'common.no': 'No',
+            'common.lastRefreshed': 'Refreshed {time}',
 
             // ── Alerts tab ──
             'alerts.stats.title': 'Live Statistics',
@@ -323,6 +324,9 @@
             'aicost.section.coreBilling': 'Core Billing (USD)',
             'aicost.section.routeFunnel': 'Processing Route Funnel (Traffic Routing)',
             'aicost.section.efficiencyRadar': 'Cost-Efficiency Radar (Efficiency Radar)',
+            'aicost.section.trend': 'Daily Cost Trend',
+            'aicost.trend.callsTip': '{n} calls ({ai} AI)',
+            'aicost.trend.note': 'Cost per day (bar height); hover a bar for details. Days with no usage are omitted.',
             'aicost.card.totalSpent': 'Total Budget Spent (Estimated)',
             'aicost.card.tokensLabel': 'Tokens: {n}',
             'aicost.card.apiCallLabel': 'API Call: {n}',
@@ -719,6 +723,7 @@
             'common.loadFailed': '加载失败',
             'common.yes': '是',
             'common.no': '否',
+            'common.lastRefreshed': '刷新于 {time}',
 
             // ── Alerts tab ──
             'alerts.stats.title': '实时统计',
@@ -981,6 +986,9 @@
             'aicost.section.coreBilling': '核心账单（美元）',
             'aicost.section.routeFunnel': '处理路由漏斗（流量分流）',
             'aicost.section.efficiencyRadar': '成本效率雷达',
+            'aicost.section.trend': '每日成本趋势',
+            'aicost.trend.callsTip': '{n} 次调用（{ai} 次 AI）',
+            'aicost.trend.note': '柱高=当天成本；悬停看明细。无用量的日期不显示。',
             'aicost.card.totalSpent': '预算总消耗（预估）',
             'aicost.card.tokensLabel': 'Tokens：{n}',
             'aicost.card.apiCallLabel': 'API 调用：{n}',
