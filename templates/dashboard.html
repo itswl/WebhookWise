@@ -27,9 +27,6 @@
                 <button class="nav-tab" data-tab="decision-trace" type="button" data-i18n-aria-label="nav.aria.decisionTrace" aria-label="Switch to Decision Trace">
                     <span>🧭</span> <span data-i18n="nav.tab.decisionTrace">Decision Trace</span>
                 </button>
-                <button class="nav-tab" data-tab="outbox" type="button" data-i18n-aria-label="nav.aria.outbox" aria-label="Switch to Forward Queue">
-                    <span>📤</span> <span data-i18n="nav.tab.outbox">Forward Queue</span>
-                </button>
                 <button class="nav-tab" data-tab="forward-rules" type="button" data-i18n-aria-label="nav.aria.rules" aria-label="Switch to Forward Rules">
                     <span>⚙️</span> <span data-i18n="nav.tab.rules">Forward Rules</span>
                 </button>
@@ -219,31 +216,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Forward Queue Tab -->
-        <div id="outboxTab" class="tab-content" style="display: none;">
-            <div class="outbox-section" style="padding: 20px 0;">
-                <div class="section-header">
-                    <div class="section-title" data-i18n="outbox.title">Forward Queue</div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <select id="outboxStatusFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
-                            <option value="" data-i18n="outbox.status.all">All statuses</option>
-                            <option value="pending" data-i18n="outbox.status.pending">Pending</option>
-                            <option value="processing" data-i18n="outbox.status.processing">Delivering</option>
-                            <option value="retrying" data-i18n="outbox.status.retrying">Retrying</option>
-                            <option value="sent" data-i18n="outbox.status.sent">Delivered</option>
-                            <option value="exhausted" data-i18n="outbox.status.exhausted">Exhausted</option>
-                            <option value="expired" data-i18n="outbox.status.expired">Expired</option>
-                        </select>
-                        <button class="btn" onclick="OutboxModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
-                    </div>
-                </div>
-                <div id="outboxList">
-                    <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="outbox.empty.hint">Click the "Forward Queue" tab to load data...</div>
-                </div>
-                <div id="outboxPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -571,7 +543,7 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260621-deliverydetail"></script>
+    <script src="/static/js/i18n.js?v=20260621-retireoutbox"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260620-aiquality"></script>
@@ -581,7 +553,6 @@
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
     <script src="/static/js/decision-trace.js?v=20260621-deliverydetail"></script>
-    <script src="/static/js/outbox.js?v=20260617-noack"></script>
-    <script src="/static/js/dashboard.js?v=20260621-costmerge"></script>
+    <script src="/static/js/dashboard.js?v=20260621-retireoutbox"></script>
 </body>
 </html>
