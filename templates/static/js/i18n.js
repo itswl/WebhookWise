@@ -26,14 +26,12 @@
             // ── Navbar ──
             'nav.title': 'Webhook Monitor',
             'nav.tab.alerts': 'Alerts',
-            'nav.tab.aicost': 'AI Cost',
             'nav.tab.deep': 'Deep Analysis',
             'nav.tab.decisionTrace': 'Decision Trace',
             'nav.tab.outbox': 'Forward Queue',
             'nav.tab.rules': 'Forward Rules',
             'nav.tab.silences': 'Silences',
             'nav.aria.alerts': 'Switch to Alerts',
-            'nav.aria.aicost': 'Switch to AI Cost',
             'nav.aria.deep': 'Switch to Deep Analysis',
             'nav.aria.decisionTrace': 'Switch to Decision Trace',
             'nav.aria.outbox': 'Switch to Forward Queue',
@@ -608,6 +606,8 @@
 
             // ── decision-trace.js (dynamic) ──
             'dt.title': 'Decision Trace',
+            'dt.view.trace': 'Decision Trace',
+            'dt.view.cost': 'AI Cost',
             'dt.subtitle': 'Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.',
             'dt.period.day': 'Day',
             'dt.period.week': 'Week',
@@ -662,14 +662,12 @@
             // ── Navbar ──
             'nav.title': 'Webhook 监控',
             'nav.tab.alerts': '告警',
-            'nav.tab.aicost': 'AI 成本',
             'nav.tab.deep': '深度分析',
             'nav.tab.decisionTrace': '决策追踪',
             'nav.tab.outbox': '转发队列',
             'nav.tab.rules': '转发规则',
             'nav.tab.silences': '静默',
             'nav.aria.alerts': '切换到告警',
-            'nav.aria.aicost': '切换到 AI 成本',
             'nav.aria.deep': '切换到深度分析',
             'nav.aria.decisionTrace': '切换到决策追踪',
             'nav.aria.outbox': '切换到转发队列',
@@ -1243,6 +1241,8 @@
 
             // ── decision-trace.js (dynamic) ──
             'dt.title': '决策追踪',
+            'dt.view.trace': '决策追踪',
+            'dt.view.cost': 'AI 成本',
             'dt.subtitle': '每条告警为什么被转发或跳过。点原因可筛选，展开某行看完整判定链。',
             'dt.period.day': '今天',
             'dt.period.week': '近 7 天',
