@@ -10,6 +10,7 @@
  */
 var DecisionTraceModule = (function () {
     var currentPeriod = 'day';
+    var currentView = 'trace';  // 'trace' | 'cost' (AI cost merged in from its old tab)
     var currentSkipCode = '';
     var currentOutcome = '';
     var loadedTraces = [];
@@ -443,18 +444,43 @@ var DecisionTraceModule = (function () {
         fetchPage(nextCursor, true);
     }
 
-    // Full reload of the aggregate strip, the AI-quality panel, and the list
-    // (tab open / refresh).
+    function loadCost() {
+        // The AI cost view reuses the existing AICostModule renderer.
+        if (typeof AICostModule !== 'undefined') {
+            AICostModule.loadStats(currentPeriod);
+        }
+    }
+
+    // Load whichever view is active (tab open / refresh / period change).
+    function loadActiveView() {
+        if (currentView === 'cost') {
+            loadCost();
+        } else {
+            loadStats(currentPeriod);
+            loadQuality(currentPeriod);
+            loadList();
+        }
+    }
+
     function load() {
-        loadStats(currentPeriod);
-        loadQuality(currentPeriod);
-        loadList();
+        loadActiveView();
     }
 
     function setPeriod(period) {
         currentPeriod = period;
-        loadStats(period);
-        loadQuality(period);
+        loadActiveView();
+    }
+
+    function setView(view) {
+        currentView = view === 'cost' ? 'cost' : 'trace';
+        var traceEl = document.getElementById('dtViewTrace');
+        var costEl = document.getElementById('dtViewCost');
+        if (traceEl) traceEl.style.display = currentView === 'trace' ? 'block' : 'none';
+        if (costEl) costEl.style.display = currentView === 'cost' ? 'block' : 'none';
+        document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-dt-view') === currentView);
+        });
+        loadActiveView();
     }
 
     function filterBySkipCode(code) {
@@ -482,6 +508,13 @@ var DecisionTraceModule = (function () {
                 if (period) setPeriod(period);
             });
         });
+        document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                var button = e.target.closest('[data-dt-view]');
+                var view = button ? button.getAttribute('data-dt-view') : null;
+                if (view) setView(view);
+            });
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -492,6 +525,7 @@ var DecisionTraceModule = (function () {
         load: load,
         loadMore: loadMore,
         setPeriod: setPeriod,
+        setView: setView,
         toggleExpand: toggleExpand,
         filterBySkipCode: filterBySkipCode,
         filterByOutcome: filterByOutcome
