@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
+from core.sensitive_data import mask_webhook_url
 from db.session import count_with_timeout
 from models import DecisionTrace, ForwardOutbox
 from services.pagination import apply_cursor_window, trim_cursor_window
@@ -252,7 +253,8 @@ def _outbox_target_dict(row: ForwardOutbox) -> dict[str, Any]:
         "outbox_id": row.id,
         "target_type": row.target_type,
         "target_name": row.target_name or None,
-        "target_url": row.target_url or None,
+        # Masked: the raw URL embeds the bot-hook secret token; never ship it to the browser.
+        "target_url": mask_webhook_url(row.target_url) or None,
         "rule_name": row.rule_name or None,
         "event_type": row.event_type or None,
         "is_periodic_reminder": row.is_periodic_reminder,
