@@ -184,6 +184,7 @@
 .badge-new { background: var(--bg-subtle); color: var(--text-secondary); border: 1px solid var(--border); }
 .badge-success { background: var(--success-bg); color: var(--success); border: 1px solid rgba(5,150,105,0.18); }
 .badge-outline { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.badge-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(225,29,72,0.18); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Pagination
