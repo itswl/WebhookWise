@@ -19,6 +19,9 @@ var DecisionTraceModule = (function () {
     var isLoadingMore = false;
     var perPage = 50;
     var expandedIds = new Set();
+    // Show a manual re-enqueue button on retryable delivery targets in the
+    // expanded view (so the trace fully covers what the Forward Queue tab did).
+    var DT_ENABLE_RETRY = true;
 
     // Display metadata per skip_code: icon + i18n label key. "none" is the
     // forwarded case; the rest are the suppressor / no-rule outcomes.
@@ -325,30 +328,72 @@ var DecisionTraceModule = (function () {
         return '<div class="dt-chain">' + rows + '</div>';
     }
 
+    function deliveryStatusBadge(status) {
+        var map = {
+            'sent': { cls: 'badge-success', icon: '📨' },
+            'pending': { cls: 'badge-outline', icon: '⏳' },
+            'processing': { cls: 'badge-outline', icon: '📤' },
+            'retrying': { cls: 'badge-outline', icon: '🔁' },
+            'exhausted': { cls: 'badge-danger', icon: '❌' },
+            'expired': { cls: 'badge-danger', icon: '⌛' }
+        };
+        var m = map[status] || { cls: 'badge-outline', icon: '•' };
+        var label = t('outbox.status.' + status);
+        return '<span class="badge ' + m.cls + '" style="font-size: 0.7rem;">' + m.icon + ' ' + escapeHtml(label) + '</span>';
+    }
+
+    function kvRow(label, value) {
+        if (value === null || value === undefined || value === '') return '';
+        return '<div class="dt-step-row"><div class="dt-step-name">' + label + '</div>' +
+            '<div class="dt-step-value">' + value + '</div></div>';
+    }
+
+    // Full per-target delivery detail in the expanded view — mirrors the
+    // Forward Queue tab's depth (status, attempts, urls, errors, timestamps,
+    // and a manual re-enqueue button for retryable targets).
+    function renderDeliveryTarget(tgt) {
+        var rows = '';
+        rows += kvRow('📊 ' + t('dt.delivery.state'), deliveryStatusBadge(tgt.status));
+        rows += kvRow('🎯 ' + t('dt.delivery.target'),
+            escapeHtml(tgt.target_name || tgt.target_type || '—') +
+            (tgt.target_type ? ' <span style="color:var(--text-muted);">(' + escapeHtml(tgt.target_type) + ')</span>' : ''));
+        if (tgt.target_url) rows += kvRow('🔗 ' + t('dt.delivery.targetUrl'), '<code style="word-break:break-all;">' + escapeHtml(tgt.target_url) + '</code>');
+        if (tgt.rule_name) rows += kvRow('⚙️ ' + t('dt.delivery.rule'), escapeHtml(tgt.rule_name));
+        if (tgt.event_type) rows += kvRow('🏷️ ' + t('dt.delivery.eventType'),
+            escapeHtml(tgt.event_type) + (tgt.is_periodic_reminder ? ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('dt.periodicReminder') + '</span>' : ''));
+        rows += kvRow('🔢 ' + t('dt.delivery.attempts'), escapeHtml((tgt.attempts != null ? tgt.attempts : '—') + ' / ' + (tgt.max_attempts != null ? tgt.max_attempts : '—')));
+        if (tgt.sent_at) rows += kvRow('🕓 ' + t('dt.delivery.sentAt'), escapeHtml(new Date(tgt.sent_at).toLocaleString()));
+        if (tgt.next_attempt_at && tgt.status !== 'sent') rows += kvRow('⏭️ ' + t('dt.delivery.nextRetry'), escapeHtml(new Date(tgt.next_attempt_at).toLocaleString()));
+        if (tgt.last_error) rows += kvRow('⚠️ ' + t('dt.delivery.error'), '<span style="color: var(--danger);">' + escapeHtml(tgt.last_error) + '</span>');
+        if (tgt.retryable && DT_ENABLE_RETRY) {
+            rows += '<div class="dt-step-row"><div class="dt-step-name"></div><div class="dt-step-value">' +
+                '<button class="btn btn-sm" onclick="DecisionTraceModule.retryDelivery(' + tgt.outbox_id + ')">🔄 ' + t('dt.delivery.retry') + '</button></div></div>';
+        }
+        return '<div class="dt-chain" style="padding-top: 0;">' + rows + '</div>';
+    }
+
     function renderDelivery(trace) {
         var d = trace.delivery;
-        if (!d || !d.state) return '';
-        var stateLabel = d.state === 'sent' ? ('📨 ' + t('dt.delivery.sent'))
-            : d.state === 'pending' ? ('🔁 ' + t('dt.delivery.pending'))
-            : d.state === 'failed' ? ('❌ ' + t('dt.delivery.failed'))
-            : escapeHtml(d.state);
-        var rows = '<div class="dt-step-row"><div class="dt-step-name">📊 ' + t('dt.delivery.state') + '</div>' +
-            '<div class="dt-step-value">' + stateLabel + '</div></div>';
-        rows += '<div class="dt-step-row"><div class="dt-step-name">🎯 ' + t('dt.delivery.target') + '</div>' +
-            '<div class="dt-step-value">' + escapeHtml(d.target_name || '—') +
-            (d.target_count > 1 ? ' (' + d.target_count + ')' : '') + '</div></div>';
-        rows += '<div class="dt-step-row"><div class="dt-step-name">🔢 ' + t('dt.delivery.attempts') + '</div>' +
-            '<div class="dt-step-value">' + escapeHtml(d.attempts != null ? d.attempts : '—') + '</div></div>';
-        if (d.sent_at) {
-            rows += '<div class="dt-step-row"><div class="dt-step-name">🕓 ' + t('dt.delivery.sentAt') + '</div>' +
-                '<div class="dt-step-value">' + escapeHtml(new Date(d.sent_at).toLocaleString()) + '</div></div>';
-        }
-        if (d.last_error) {
-            rows += '<div class="dt-step-row"><div class="dt-step-name">⚠️ ' + t('dt.delivery.error') + '</div>' +
-                '<div class="dt-step-value" style="color: var(--danger);">' + escapeHtml(d.last_error) + '</div></div>';
-        }
-        return '<div style="font-size: 0.85rem; font-weight: 600; margin: 0.75rem 1.25rem 0.25rem;">' + t('dt.delivery.title') + '</div>' +
-            '<div class="dt-chain" style="padding-top: 0;">' + rows + '</div>';
+        if (!d) return '';
+        var targets = Array.isArray(d.targets) ? d.targets : [];
+        var header = '<div style="font-size: 0.85rem; font-weight: 600; margin: 0.75rem 1.25rem 0.25rem;">' +
+            t('dt.delivery.title') + (targets.length > 1 ? ' (' + targets.length + ')' : '') + '</div>';
+        if (!targets.length) return header + '<div style="color: var(--text-muted); padding: 0 1.25rem 0.75rem;">—</div>';
+        return header + targets.map(renderDeliveryTarget).join('<div style="height:1px;background:var(--border);margin:0 1.25rem;"></div>');
+    }
+
+    function retryDelivery(outboxId) {
+        if (!confirm(t('dt.delivery.retryConfirm', { n: outboxId }))) return;
+        API.retryOutbox(outboxId).then(function (r) {
+            if (r && r.success) {
+                if (typeof showToast === 'function') showToast(t('dt.delivery.retryOk'), 'success');
+                load();
+            } else if (typeof showToast === 'function') {
+                showToast((r && r.error) || t('dt.delivery.retryFail'), 'error');
+            }
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast(t('dt.delivery.retryFail') + ': ' + (e && e.message), 'error');
+        });
     }
 
     function renderDetails(trace) {
@@ -577,6 +622,7 @@ var DecisionTraceModule = (function () {
         setPeriod: setPeriod,
         setView: setView,
         toggleExpand: toggleExpand,
+        retryDelivery: retryDelivery,
         filterBySkipCode: filterBySkipCode,
         filterByOutcome: filterByOutcome
     };
