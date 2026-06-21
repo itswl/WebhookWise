@@ -15,12 +15,12 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from db.session import count_with_timeout
-from models import DecisionTrace
+from models import DecisionTrace, ForwardOutbox
 from services.pagination import apply_cursor_window, trim_cursor_window
 
 _PERIOD_DELTAS = {
@@ -182,6 +182,78 @@ def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
     }
 
 
+# Collapse an event's (possibly multiple, one-per-target) outbox rows into a
+# single delivery state for the trace row. Precedence reflects "what does the
+# operator most need to see": an outright failure outranks an in-flight retry,
+# which outranks a clean success.
+_DELIVERY_PENDING = {"pending", "processing", "retrying"}
+_DELIVERY_FAILED = {"exhausted", "expired"}
+
+
+def _delivery_state(statuses: list[str]) -> str:
+    if any(s in _DELIVERY_FAILED for s in statuses):
+        return "failed"
+    if any(s in _DELIVERY_PENDING for s in statuses):
+        return "pending"
+    if any(s == "sent" for s in statuses):
+        return "sent"
+    return "unknown"
+
+
+async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, Any]]) -> None:
+    """Annotate forwarded trace rows with their outbox delivery status, in place.
+
+    The decision trace only records the forward *decision* (queued); whether the
+    notification actually reached the target lives in ForwardOutbox. For the
+    forwarded rows on this page, batch-load their outbox rows (keyed by
+    webhook_event_id or original_event_id — periodic reminders forward against
+    the chain head) and attach a compact ``delivery`` summary. Rows with no
+    outbox match (e.g. pre-feature data) get no ``delivery`` key.
+    """
+    event_ids = [int(item["webhook_event_id"]) for item in items if item.get("outcome") == "forwarded"]
+    if not event_ids:
+        return
+    id_set = set(event_ids)
+
+    stmt = select(
+        ForwardOutbox.webhook_event_id,
+        ForwardOutbox.original_event_id,
+        ForwardOutbox.status,
+        ForwardOutbox.target_name,
+        ForwardOutbox.target_type,
+        ForwardOutbox.attempts,
+        ForwardOutbox.last_error,
+        ForwardOutbox.sent_at,
+    ).where(
+        or_(ForwardOutbox.webhook_event_id.in_(event_ids), ForwardOutbox.original_event_id.in_(event_ids))
+    )
+    rows = (await session.execute(stmt)).all()
+
+    by_event: dict[int, list[Any]] = {}
+    for row in rows:
+        for eid in (row.webhook_event_id, row.original_event_id):
+            if eid in id_set:
+                by_event.setdefault(int(eid), []).append(row)
+
+    for item in items:
+        if item.get("outcome") != "forwarded":
+            continue
+        targets = by_event.get(int(item["webhook_event_id"]))
+        if not targets:
+            continue
+        state = _delivery_state([str(t.status) for t in targets])
+        # Surface the most actionable target detail: a failed one if present.
+        focus = next((t for t in targets if str(t.status) in _DELIVERY_FAILED), None) or targets[0]
+        item["delivery"] = {
+            "state": state,
+            "target_count": len(targets),
+            "target_name": focus.target_name or focus.target_type or None,
+            "attempts": focus.attempts,
+            "last_error": focus.last_error if state == "failed" else None,
+            "sent_at": utc_isoformat(focus.sent_at) if focus.sent_at is not None else None,
+        }
+
+
 async def list_decision_traces(
     session: AsyncSession,
     *,
@@ -196,7 +268,8 @@ async def list_decision_traces(
 
     A trace row is small (no large blobs), so the ordered ``steps`` chain and
     ``matched_rules`` are projected inline — expanding a row in the UI needs no
-    follow-up request.
+    follow-up request. Forwarded rows are also annotated with their outbox
+    delivery status so the page answers "was it actually delivered" too.
     """
     query = select(DecisionTrace)
     if outcome:
@@ -211,6 +284,7 @@ async def list_decision_traces(
     result = await session.execute(query)
     page_window = trim_cursor_window(list(result.scalars().all()), page_size, lambda trace: trace.id)
     items = [_row_to_trace_dict(trace) for trace in page_window.rows]
+    await _attach_delivery_status(session, items)
     return items, page_window.has_more, page_window.next_cursor
 
 

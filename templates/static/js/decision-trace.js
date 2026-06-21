@@ -252,6 +252,24 @@ var DecisionTraceModule = (function () {
         return '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">⏭️ ' + t('dt.outcome.skipped') + '</span>';
     }
 
+    // Delivery (outbox) badge for a forwarded row — shows whether the
+    // notification actually reached its target. Absent when there's no outbox
+    // record (e.g. skipped rows, or pre-feature data).
+    function deliveryBadge(trace) {
+        var d = trace.delivery;
+        if (!d || !d.state) return '';
+        if (d.state === 'sent') {
+            return '<span class="badge badge-success" style="font-size: 0.7rem;">📨 ' + t('dt.delivery.sent') + '</span>';
+        }
+        if (d.state === 'pending') {
+            return '<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">🔁 ' + t('dt.delivery.pending') + '</span>';
+        }
+        if (d.state === 'failed') {
+            return '<span class="badge badge-danger" style="font-size: 0.7rem;">❌ ' + t('dt.delivery.failed') + '</span>';
+        }
+        return '';
+    }
+
     function renderStepValue(step) {
         // Render a compact, human-readable summary per step type. Unknown keys
         // fall back to a JSON dump so a future step kind still shows something.
@@ -307,6 +325,36 @@ var DecisionTraceModule = (function () {
         return '<div class="dt-chain">' + rows + '</div>';
     }
 
+    function renderDelivery(trace) {
+        var d = trace.delivery;
+        if (!d || !d.state) return '';
+        var stateLabel = d.state === 'sent' ? ('📨 ' + t('dt.delivery.sent'))
+            : d.state === 'pending' ? ('🔁 ' + t('dt.delivery.pending'))
+            : d.state === 'failed' ? ('❌ ' + t('dt.delivery.failed'))
+            : escapeHtml(d.state);
+        var rows = '<div class="dt-step-row"><div class="dt-step-name">📊 ' + t('dt.delivery.state') + '</div>' +
+            '<div class="dt-step-value">' + stateLabel + '</div></div>';
+        rows += '<div class="dt-step-row"><div class="dt-step-name">🎯 ' + t('dt.delivery.target') + '</div>' +
+            '<div class="dt-step-value">' + escapeHtml(d.target_name || '—') +
+            (d.target_count > 1 ? ' (' + d.target_count + ')' : '') + '</div></div>';
+        rows += '<div class="dt-step-row"><div class="dt-step-name">🔢 ' + t('dt.delivery.attempts') + '</div>' +
+            '<div class="dt-step-value">' + escapeHtml(d.attempts != null ? d.attempts : '—') + '</div></div>';
+        if (d.sent_at) {
+            rows += '<div class="dt-step-row"><div class="dt-step-name">🕓 ' + t('dt.delivery.sentAt') + '</div>' +
+                '<div class="dt-step-value">' + escapeHtml(new Date(d.sent_at).toLocaleString()) + '</div></div>';
+        }
+        if (d.last_error) {
+            rows += '<div class="dt-step-row"><div class="dt-step-name">⚠️ ' + t('dt.delivery.error') + '</div>' +
+                '<div class="dt-step-value" style="color: var(--danger);">' + escapeHtml(d.last_error) + '</div></div>';
+        }
+        return '<div style="font-size: 0.85rem; font-weight: 600; margin: 0.75rem 1.25rem 0.25rem;">' + t('dt.delivery.title') + '</div>' +
+            '<div class="dt-chain" style="padding-top: 0;">' + rows + '</div>';
+    }
+
+    function renderDetails(trace) {
+        return renderChain(trace.steps) + renderDelivery(trace);
+    }
+
     function buildSummaryHtml(trace) {
         var time = trace.created_at ? new Date(trace.created_at).toLocaleString() : '-';
         var parts = [];
@@ -317,6 +365,8 @@ var DecisionTraceModule = (function () {
         if (trace.is_periodic_reminder) {
             parts.push('<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">🔔 ' + t('dt.periodicReminder') + '</span>');
         }
+        var delivery = deliveryBadge(trace);
+        if (delivery) parts.push(delivery);
         var metaLine = [escapeHtml(trace.source || '—'), escapeHtml(trace.importance || '—')]
             .filter(Boolean).join(' · ');
 
@@ -354,7 +404,7 @@ var DecisionTraceModule = (function () {
         details.style.display = 'block';
         // The full chain ships inline with the list row, so render immediately.
         var trace = findLoadedTrace(id);
-        details.innerHTML = trace ? renderChain(trace.steps) : '';
+        details.innerHTML = trace ? renderDetails(trace) : '';
     }
 
     function renderTraces(traces) {
@@ -372,7 +422,7 @@ var DecisionTraceModule = (function () {
             html += '<div id="dt-record-' + trace.id + '" class="' + (isExpanded ? 'da-card da-card-expanded' : 'da-card') + '">';
             html += buildSummaryHtml(trace);
             html += '<div id="dt-details-' + trace.id + '" class="da-details" style="' + (isExpanded ? 'display: block;' : 'display: none;') + '">';
-            html += isExpanded ? renderChain(trace.steps) : '';
+            html += isExpanded ? renderDetails(trace) : '';
             html += '</div></div>';
         });
         container.innerHTML = html;

@@ -58,6 +58,9 @@ class DecisionTraceItem(BaseModel):
     degraded_reason: str | None = None
     matched_rules: list[str] = []
     steps: list[dict[str, Any]] = []
+    # Present only on forwarded rows with an outbox record: delivery outcome
+    # (sent / pending / failed) + the most actionable target detail.
+    delivery: dict[str, Any] | None = None
 
 
 class DecisionTraceListResponse(BaseModel):
