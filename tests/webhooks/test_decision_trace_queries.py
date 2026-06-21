@@ -267,3 +267,26 @@ async def test_delivery_does_not_absorb_dedup_chain_descendants(
     assert by_event[100]["delivery"]["target_count"] == 1
     assert by_event[100]["delivery"]["targets"][0]["outbox_id"] is not None
     assert by_event[101]["delivery"]["target_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_delivery_failed_filter(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(30, "forwarded", "none"),   # delivered OK
+                _trace(31, "forwarded", "none"),   # exhausted → failed
+                _trace(32, "skipped", "silenced"),  # skipped (no delivery)
+            ]
+        )
+        session.add_all(
+            [
+                _outbox(30, "sent", idempotency_key="k30"),
+                _outbox(31, "exhausted", last_error="boom", idempotency_key="k31"),
+            ]
+        )
+    async with session_factory() as session:
+        items, _, _ = await list_decision_traces(session, delivery="failed")
+    # Only the forwarded-and-failed row comes back.
+    assert [it["webhook_event_id"] for it in items] == [31]
+    assert items[0]["delivery"]["state"] == "failed"
