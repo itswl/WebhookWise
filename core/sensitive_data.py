@@ -46,6 +46,58 @@ def _is_sensitive_key(key: object) -> bool:
     return any(part in normalized for part in SENSITIVE_KEY_PARTS)
 
 
+def _mask_secret(value: str) -> str:
+    """Mask a secret, keeping the last 4 chars for recognizability (`****1234`)."""
+    if not value:
+        return value
+    return ("****" + value[-4:]) if len(value) > 4 else "****"
+
+
+def mask_webhook_url(url: str | None) -> str | None:
+    """Mask the secret token in an outbound webhook URL for display.
+
+    Keeps the scheme/host/path shape recognizable but redacts the credential:
+    - bot-hook style: ``.../hook/<token>`` / ``.../send/<token>`` / ``.../webhook/<token>``
+      (Feishu, WeCom, generic) → mask the segment right after the keyword
+      (NOT version segments like ``/bot/v2/``).
+    - query-token style: ``?access_token=...`` / ``?token=...`` / ``?key=...``
+      (DingTalk, others) → mask those query values.
+    The masked value keeps the last 4 chars so an operator can still tell two
+    targets apart without exposing the full secret. Best-effort: an unparseable
+    URL is hard-masked.
+    """
+    if not url:
+        return url
+    import re
+    from urllib.parse import parse_qsl, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "***"
+
+    # Mask the single path segment immediately after a secret-bearing keyword.
+    path = re.sub(
+        r"(/(?:hook|send|webhook)/)([^/?#]+)",
+        lambda m: m.group(1) + _mask_secret(m.group(2)),
+        parts.path,
+        flags=re.IGNORECASE,
+    )
+
+    # Query-string secrets. Rebuild manually (not urlencode) so the mask's '*'
+    # chars are not percent-encoded into noise.
+    if parts.query:
+        masked_pairs = [
+            f"{k}={_mask_secret(v) if (_is_sensitive_key(k) or k.lower() in ('access_token', 'key')) else v}"
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        ]
+        query = "&".join(masked_pairs)
+    else:
+        query = parts.query
+
+    return urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
+
+
 def redact_headers(headers: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return a copy of HTTP headers with credential-like fields redacted."""
     if not headers:

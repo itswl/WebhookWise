@@ -151,7 +151,6 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
-        'outbox': 'outboxTab',
         'forward-rules': 'forwardRulesTab',
         'silences': 'silencesTab'
     };
@@ -186,14 +185,6 @@ function switchMainTab(tabId) {
                 DecisionTraceModule.load();
             }
             break;
-        case 'outbox':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof OutboxModule !== 'undefined') {
-                OutboxModule.load();
-            }
-            break;
         case 'forward-rules':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
@@ -223,11 +214,6 @@ function refreshCurrentTab() {
         case 'decision-trace':
             if (typeof DecisionTraceModule !== 'undefined') {
                 DecisionTraceModule.load();
-            }
-            break;
-        case 'outbox':
-            if (typeof OutboxModule !== 'undefined') {
-                OutboxModule.load();
             }
             break;
         case 'forward-rules':

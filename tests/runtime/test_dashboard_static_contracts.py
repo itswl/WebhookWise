@@ -59,18 +59,19 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     tabs = set(re.findall(r'data-tab="([^"]+)"', html))
     panels = set(re.findall(r'id="([^"]+Tab)"', html))
 
-    # AI Cost is no longer a top-level tab — it was merged into the Decision Trace
-    # tab as an in-page view switch (data-dt-view="cost").
-    assert {"alerts", "deep-analyses", "decision-trace", "outbox", "forward-rules", "silences"} <= tabs
+    # AI Cost was merged into the Decision Trace tab (data-dt-view="cost"), and the
+    # Forward Queue (outbox) tab was retired — the Decision Trace delivery detail
+    # now covers it (per-target status + manual re-enqueue).
+    assert {"alerts", "deep-analyses", "decision-trace", "forward-rules", "silences"} <= tabs
     assert {
         "alertsTab",
         "deepAnalysesTab",
         "decisionTraceTab",
-        "outboxTab",
         "forwardRulesTab",
         "silencesTab",
     } <= panels
     assert "ai-cost" not in tabs and "aiCostTab" not in panels
+    assert "outbox" not in tabs and "outboxTab" not in panels
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
