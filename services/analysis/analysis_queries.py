@@ -1,9 +1,9 @@
 """Read-side queries for AI usage and deep-analysis records."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
@@ -68,6 +68,8 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
     avg_cost_per_ai_call = total_cost / ai_calls if ai_calls > 0 else 0.0
     saved_estimate = round(total_hits * avg_cost_per_ai_call, 6)
 
+    trend = await _ai_usage_trend(session, start_time)
+
     return {
         "total_calls": total,
         "route_breakdown": route_breakdown,
@@ -81,8 +83,44 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
             "cache_hit_rate": hit_rate,
             "saved_calls": total_hits,
         },
-        "trend": [],
+        "trend": trend,
     }
+
+
+async def _ai_usage_trend(session: AsyncSession, start_time: datetime) -> list[dict[str, Any]]:
+    """Per-day AI usage series since ``start_time`` (for the cost trend chart).
+
+    Groups AIUsageLog by calendar day: total calls, AI vs rule calls, tokens,
+    cost. ``func.date`` works on both PostgreSQL and the SQLite test shim. Days
+    with no usage are simply absent (the chart connects what exists).
+    """
+    day = func.date(AIUsageLog.timestamp)
+    rows = (
+        await session.execute(
+            select(
+                day.label("d"),
+                func.count(AIUsageLog.id),
+                func.coalesce(func.sum(AIUsageLog.tokens_in + AIUsageLog.tokens_out), 0),
+                func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0),
+                func.sum(case((AIUsageLog.route_type == "ai", 1), else_=0)),
+                func.sum(case((AIUsageLog.route_type == "rule", 1), else_=0)),
+            )
+            .filter(AIUsageLog.timestamp >= start_time)
+            .group_by(day)
+            .order_by(day)
+        )
+    ).all()
+    return [
+        {
+            "time": str(r[0]),
+            "total_calls": int(r[1] or 0),
+            "ai_calls": int(r[4] or 0),
+            "rule_calls": int(r[5] or 0),
+            "tokens": int(r[2] or 0),
+            "cost": float(r[3] or 0.0),
+        }
+        for r in rows
+    ]
 
 
 async def get_deep_analysis_list(
