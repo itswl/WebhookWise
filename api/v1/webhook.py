@@ -46,7 +46,11 @@ from schemas.webhook import (
 from services.operations.tasks import process_webhook_task
 from services.webhooks.ingress_backpressure import check_ingress_backpressure
 from services.webhooks.policies import IngressPolicy
-from services.webhooks.query_service import list_webhook_summaries
+from services.webhooks.query_service import (
+    count_webhook_summaries,
+    list_webhook_summaries,
+    window_to_time_from,
+)
 
 logger = get_logger("api.v1.webhook")
 
@@ -290,21 +294,33 @@ async def get_webhooks_endpoint(
     cursor: int | None = Query(None),
     importance: str = Query(""),
     source: str = Query(""),
+    window: str = Query("", pattern="^(today|7d|30d|all|)$"),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """Get the summary list of all webhook events."""
+    time_from = window_to_time_from(window)
     items, has_more, next_cursor = await list_webhook_summaries(
         session,
         cursor=cursor,
         importance=importance,
         source=source,
+        time_from=time_from,
         page=page,
         page_size=page_size,
     )
+    # Real matching total (only on the first page; cheap to skip on scroll).
+    total = None
+    if cursor is None and page == 1:
+        total = await count_webhook_summaries(session, importance=importance, source=source, time_from=time_from)
     return {
         "success": True,
         "data": items,
-        "pagination": {"next_cursor": next_cursor, "has_more": has_more, "page_size": page_size},
+        "pagination": {
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "page_size": page_size,
+            "total": total,
+        },
     }
 
 

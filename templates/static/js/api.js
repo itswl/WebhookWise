@@ -381,6 +381,7 @@ const API = {
         if (params.page) queryParams.append('page', params.page);
         if (params.importance) queryParams.append('importance', params.importance);
         if (params.source) queryParams.append('source', params.source);
+        if (params.window) queryParams.append('window', params.window);
 
         const response = await this.authenticatedFetch('/v1/webhooks?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -474,6 +475,7 @@ const API = {
         if (params.outcome) queryParams.append('outcome', params.outcome);
         if (params.skip_code) queryParams.append('skip_code', params.skip_code);
         if (params.source) queryParams.append('source', params.source);
+        if (params.delivery) queryParams.append('delivery', params.delivery);
         const response = await this.authenticatedFetch('/v1/decision-traces?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
