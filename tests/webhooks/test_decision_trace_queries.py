@@ -7,13 +7,26 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from models import DecisionTrace
+from models import DecisionTrace, ForwardOutbox
 from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
     list_decision_traces,
 )
+
+
+def _outbox(event_id: int, status: str, **extra: Any) -> ForwardOutbox:
+    return ForwardOutbox(
+        idempotency_key=extra.get("idempotency_key", f"k-{event_id}-{status}-{extra.get('target_name', 'x')}"),
+        webhook_event_id=event_id,
+        original_event_id=extra.get("original_event_id"),
+        target_type=extra.get("target_type", "feishu"),
+        target_name=extra.get("target_name", "ops-group"),
+        status=status,
+        attempts=extra.get("attempts", 1),
+        last_error=extra.get("last_error"),
+    )
 
 
 @pytest.fixture()
@@ -167,3 +180,56 @@ async def test_quality_stats_proxy_signals(session_factory: async_sessionmaker[A
     assert q["ai_importance_breakdown"] == {"high": 1, "medium": 1, "low": 1}
     # Per-source only counts ai-route rows.
     assert q["ai_importance_by_source"].get("grafana") == {"low": 1}
+
+
+@pytest.mark.asyncio
+async def test_list_attaches_delivery_status(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(10, "forwarded", "none"),   # delivered
+                _trace(11, "forwarded", "none"),   # failed
+                _trace(12, "forwarded", "none"),   # no outbox row (e.g. pre-feature)
+                _trace(13, "skipped", "silenced"),  # skipped → never gets a delivery badge
+            ]
+        )
+        session.add_all(
+            [
+                _outbox(10, "sent", target_name="ops-feishu"),
+                _outbox(11, "exhausted", target_name="ops-feishu", last_error="HTTP 500 from Feishu"),
+            ]
+        )
+
+    async with session_factory() as session:
+        items, _, _ = await list_decision_traces(session)
+
+    by_event = {it["webhook_event_id"]: it for it in items}
+    assert by_event[10]["delivery"]["state"] == "sent"
+    assert by_event[10]["delivery"]["target_name"] == "ops-feishu"
+    assert by_event[11]["delivery"]["state"] == "failed"
+    assert by_event[11]["delivery"]["last_error"] == "HTTP 500 from Feishu"
+    # No outbox row → no delivery key; skipped rows never get one.
+    assert "delivery" not in by_event[12]
+    assert "delivery" not in by_event[13]
+
+
+@pytest.mark.asyncio
+async def test_delivery_multi_target_precedence_failed_wins(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # An event forwarded to two targets: one sent, one exhausted → failed wins
+    # (the operator most needs to see the failure).
+    async with session_factory.begin() as session:
+        session.add(_trace(20, "forwarded", "none"))
+        session.add_all(
+            [
+                _outbox(20, "sent", target_name="t1", idempotency_key="k20a"),
+                _outbox(20, "exhausted", target_name="t2", last_error="boom", idempotency_key="k20b"),
+            ]
+        )
+    async with session_factory() as session:
+        items, _, _ = await list_decision_traces(session)
+    d = next(it for it in items if it["webhook_event_id"] == 20)["delivery"]
+    assert d["state"] == "failed"
+    assert d["target_count"] == 2
+    assert d["last_error"] == "boom"
