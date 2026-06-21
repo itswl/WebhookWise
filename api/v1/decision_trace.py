@@ -72,6 +72,7 @@ async def list_decision_traces_endpoint(
     outcome: str = Query("", pattern="^(forwarded|skipped|)$"),
     skip_code: str = Query("", max_length=40),
     source: str = Query("", max_length=100),
+    delivery: str = Query("", pattern="^(failed|)$"),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """List decision traces (newest first), each with its full chain inline."""
@@ -81,6 +82,7 @@ async def list_decision_traces_endpoint(
         outcome=outcome,
         skip_code=skip_code,
         source=source,
+        delivery=delivery,
         page=page,
         page_size=page_size,
     )

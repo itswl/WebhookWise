@@ -20,6 +20,11 @@ const AlertsModule = {
         const hasMore = pag ? !!pag.has_more : false;
         return { nextCursor, hasMore };
     },
+    // Time-window filter value (server-side). '' / 'all' = no bound.
+    _windowValue() {
+        const el = document.getElementById('timeWindowFilter');
+        return el ? el.value : '';
+    },
 
     /**
      * Initialize the alert module
@@ -38,6 +43,7 @@ const AlertsModule = {
         const importanceFilter = document.getElementById('importanceFilter');
         const sourceFilter = document.getElementById('sourceFilter');
         const duplicateFilter = document.getElementById('duplicateFilter');
+        const timeWindowFilter = document.getElementById('timeWindowFilter');
         const pageSizeSelect = document.getElementById('pageSize');
 
         if (searchInput) {
@@ -51,6 +57,10 @@ const AlertsModule = {
         }
         if (duplicateFilter) {
             duplicateFilter.addEventListener('change', () => this.filterAlerts());
+        }
+        if (timeWindowFilter) {
+            // Window is server-side → reload from the API rather than client-filter.
+            timeWindowFilter.addEventListener('change', () => this.loadAlerts());
         }
         if (pageSizeSelect) {
             pageSizeSelect.addEventListener('change', () => this.changePageSize());
@@ -144,7 +154,7 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: null });
+            const result = await API.getWebhooks({ page_size: 200, cursor: null, window: this._windowValue() });
 
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
@@ -154,7 +164,8 @@ const AlertsModule = {
             const meta = this._extractCursorMeta(result);
             this.nextCursor = meta.nextCursor;
             this.hasMore = meta.hasMore;
-            this.totalCount = null;
+            // Real server-side total for the active window (null when unknown).
+            this.totalCount = (result.pagination && result.pagination.total != null) ? result.pagination.total : null;
 
             console.log('✅ Data loaded:', this.alerts.length, 'items (total', this.totalCount, 'items)');
 
@@ -179,7 +190,7 @@ const AlertsModule = {
                 btn.textContent = t('common.loading');
             }
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor });
+            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor, window: this._windowValue() });
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
             }

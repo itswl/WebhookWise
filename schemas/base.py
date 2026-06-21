@@ -14,3 +14,6 @@ class CursorPaginationInfo(BaseModel):
     next_cursor: int | None = None
     has_more: bool = False
     page_size: int | None = None
+    # Total matching rows; populated on the first page only, None when unknown
+    # (e.g. a count timeout) or not computed.
+    total: int | None = None

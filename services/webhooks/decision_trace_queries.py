@@ -277,6 +277,7 @@ async def list_decision_traces(
     outcome: str = "",
     skip_code: str = "",
     source: str = "",
+    delivery: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
@@ -294,6 +295,19 @@ async def list_decision_traces(
         query = query.where(DecisionTrace.skip_code == skip_code)
     if source:
         query = query.where(DecisionTrace.source == source)
+    if delivery == "failed":
+        # "Delivery failed" = the alert was forwarded but at least one of its
+        # outbox targets is exhausted/expired. Filter at the SQL level (EXISTS)
+        # so cursor pagination stays correct, rather than post-filtering a page.
+        failed_outbox = (
+            select(ForwardOutbox.id)
+            .where(
+                ForwardOutbox.webhook_event_id == DecisionTrace.webhook_event_id,
+                ForwardOutbox.status.in_(tuple(_DELIVERY_FAILED)),
+            )
+            .exists()
+        )
+        query = query.where(DecisionTrace.outcome == "forwarded", failed_outbox)
     query = query.order_by(DecisionTrace.id.desc())
     query = apply_cursor_window(query, DecisionTrace.id, page=page, page_size=page_size, cursor=cursor)
 

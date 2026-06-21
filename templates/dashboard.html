@@ -116,6 +116,15 @@
                             <option value="duplicate" data-i18n="alerts.filter.duplicate">Duplicate</option>
                         </select>
                     </div>
+                    <div class="filter-item">
+                        <label class="filter-label" data-i18n="alerts.filter.timeWindow">Time Range</label>
+                        <select class="filter-input" id="timeWindowFilter">
+                            <option value="all" data-i18n="alerts.window.all">All time</option>
+                            <option value="today" data-i18n="alerts.window.today">Last 24h</option>
+                            <option value="7d" data-i18n="alerts.window.7d">Last 7 days</option>
+                            <option value="30d" data-i18n="alerts.window.30d">Last 30 days</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -200,6 +209,19 @@
                         </div>
                     </div>
                     <div id="decisionTraceQuality"></div>
+                    <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
+                        <select id="dtOutcomeFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                            <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
+                            <option value="forwarded" data-i18n="dt.outcome.forwarded">Forwarded</option>
+                            <option value="skipped" data-i18n="dt.outcome.skipped">Skipped</option>
+                        </select>
+                        <select id="dtSourceFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                            <option value="" data-i18n="dt.filter.allSources">All sources</option>
+                        </select>
+                        <label class="dt-failed-toggle" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;">
+                            <input type="checkbox" id="dtDeliveryFailedFilter"> <span data-i18n="dt.filter.deliveryFailed">❌ Delivery failed only</span>
+                        </label>
+                    </div>
                     <div id="decisionTraceList">
                         <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="dt.empty.hint">Click the "Decision Trace" tab to load data...</div>
                     </div>
@@ -543,16 +565,16 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260621-retireoutbox"></script>
+    <script src="/static/js/i18n.js?v=20260622-batcha"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
-    <script src="/static/js/api.js?v=20260620-aiquality"></script>
-    <script src="/static/js/alerts.js?v=20260617-noack"></script>
+    <script src="/static/js/api.js?v=20260622-batcha"></script>
+    <script src="/static/js/alerts.js?v=20260622-batcha"></script>
     <script src="/static/js/ai-cost.js?v=20260617-noack"></script>
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
-    <script src="/static/js/decision-trace.js?v=20260621-deliverydetail"></script>
+    <script src="/static/js/decision-trace.js?v=20260622-batcha"></script>
     <script src="/static/js/dashboard.js?v=20260621-retireoutbox"></script>
 </body>
 </html>
