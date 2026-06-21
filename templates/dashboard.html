@@ -7,7 +7,7 @@
 
     <!-- External stylesheets -->
     <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
-    <link rel="stylesheet" href="/static/css/components.css?v=20260616-navbar">
+    <link rel="stylesheet" href="/static/css/components.css?v=20260621-costmerge">
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -20,9 +20,6 @@
             <div class="nav-tabs">
                 <button class="nav-tab active" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
                     <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
-                </button>
-                <button class="nav-tab" data-tab="ai-cost" type="button" data-i18n-aria-label="nav.aria.aicost" aria-label="Switch to AI Cost">
-                    <span>💰</span> <span data-i18n="nav.tab.aicost">AI Cost</span>
                 </button>
                 <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
                     <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
@@ -153,24 +150,6 @@
             </div>
         </div>
 
-        <!-- AI Cost Tab -->
-        <div id="aiCostTab" class="tab-content" style="display: none;">
-            <div class="ai-cost-section">
-                <div class="section-title" data-i18n="aicost.title">AI Cost Monitoring</div>
-                <div class="ai-period-selector" style="margin-bottom: 20px;">
-                    <button class="btn" data-ai-period="day" data-i18n="aicost.period.day">Day</button>
-                    <button class="btn" data-ai-period="week" data-i18n="aicost.period.week">Week</button>
-                    <button class="btn" data-ai-period="month" data-i18n="aicost.period.month">Month</button>
-                </div>
-                <div id="aiCostStats">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p data-i18n="common.loading">Loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Deep Analysis Tab -->
         <div id="deepAnalysesTab" class="tab-content" style="display: none;">
             <div class="deep-analyses-section">
@@ -198,13 +177,13 @@
             </div>
         </div>
 
-        <!-- Decision Trace Tab -->
+        <!-- Decision Trace Tab (with an in-page Trace | AI Cost view switch) -->
         <div id="decisionTraceTab" class="tab-content" style="display: none;">
             <div class="decision-trace-section" style="padding: 20px 0;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div>
-                        <div class="section-title" data-i18n="dt.title">Decision Trace</div>
-                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="dt.subtitle">Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.</p>
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn dt-view-btn active" data-dt-view="trace" data-i18n="dt.view.trace">Decision Trace</button>
+                        <button class="btn dt-view-btn" data-dt-view="cost" data-i18n="dt.view.cost">AI Cost</button>
                     </div>
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
@@ -213,17 +192,33 @@
                         <button class="btn" onclick="DecisionTraceModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
-                <div id="decisionTraceStats">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p data-i18n="common.loading">Loading...</p>
+
+                <!-- View: Decision Trace -->
+                <div id="dtViewTrace">
+                    <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="dt.subtitle">Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.</p>
+                    <div id="decisionTraceStats">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p data-i18n="common.loading">Loading...</p>
+                        </div>
+                    </div>
+                    <div id="decisionTraceQuality"></div>
+                    <div id="decisionTraceList">
+                        <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="dt.empty.hint">Click the "Decision Trace" tab to load data...</div>
+                    </div>
+                    <div id="decisionTracePagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
+                </div>
+
+                <!-- View: AI Cost (merged in from the former AI Cost tab) -->
+                <div id="dtViewCost" style="display: none;">
+                    <div class="section-title" data-i18n="aicost.title">AI Cost Monitoring</div>
+                    <div id="aiCostStats">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p data-i18n="common.loading">Loading...</p>
+                        </div>
                     </div>
                 </div>
-                <div id="decisionTraceQuality"></div>
-                <div id="decisionTraceList">
-                    <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="dt.empty.hint">Click the "Decision Trace" tab to load data...</div>
-                </div>
-                <div id="decisionTracePagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
         </div>
 
@@ -576,7 +571,7 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260620-aiquality"></script>
+    <script src="/static/js/i18n.js?v=20260621-costmerge"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260620-aiquality"></script>
@@ -585,8 +580,8 @@
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
-    <script src="/static/js/decision-trace.js?v=20260620-aiquality"></script>
+    <script src="/static/js/decision-trace.js?v=20260621-costmerge"></script>
     <script src="/static/js/outbox.js?v=20260617-noack"></script>
-    <script src="/static/js/dashboard.js?v=20260619-dtrace"></script>
+    <script src="/static/js/dashboard.js?v=20260621-costmerge"></script>
 </body>
 </html>

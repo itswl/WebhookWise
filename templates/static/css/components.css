@@ -1343,6 +1343,13 @@
   border-color: var(--primary);
 }
 
+/* Decision Trace | AI Cost in-page view switch (segmented control). */
+.dt-view-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
 .dt-chain {
   padding: 1rem 1.25rem;
   display: flex;
