@@ -1,14 +1,23 @@
 """Webhook query service: list projections, pagination, and dead-letter views."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utc_isoformat
+from core.datetime_utils import utc_isoformat, utcnow
 from models import ForwardOutbox, WebhookEvent
 from services.pagination import apply_cursor_window, trim_cursor_window
+
+# Time-window presets for the alert list filter. "all" (or unknown) → no bound.
+_WINDOW_DELTAS = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+
+def window_to_time_from(window: str) -> datetime | None:
+    """Map a window preset (today / 7d / 30d / all) to a lower time bound."""
+    delta = _WINDOW_DELTAS.get(window)
+    return (utcnow() - delta) if delta else None
 
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
 _prev_ts_subq = (
@@ -97,20 +106,27 @@ async def _apply_outbox_forward_statuses(session: AsyncSession, items: list[dict
         item["forward_status"] = _merge_forward_status(item.get("forward_status"), status_by_event_id.get(event_id))
 
 
+def _apply_summary_filters(query: Any, *, importance: str, source: str, time_from: datetime | None) -> Any:
+    if importance:
+        query = query.where(WebhookEvent.importance == importance)
+    if source:
+        query = query.where(WebhookEvent.source == source)
+    if time_from is not None:
+        query = query.where(WebhookEvent.timestamp >= time_from)
+    return query
+
+
 async def list_webhook_summaries(
     session: AsyncSession,
     *,
     cursor: int | None = None,
     importance: str = "",
     source: str = "",
+    time_from: datetime | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
-    query = select(*_SUMMARY_COLUMNS)
-    if importance:
-        query = query.where(WebhookEvent.importance == importance)
-    if source:
-        query = query.where(WebhookEvent.source == source)
+    query = _apply_summary_filters(select(*_SUMMARY_COLUMNS), importance=importance, source=source, time_from=time_from)
     query = query.order_by(WebhookEvent.id.desc())
     query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
@@ -118,6 +134,26 @@ async def list_webhook_summaries(
     items = [_row_to_summary_dict(r) for r in page_window.rows]
     await _apply_outbox_forward_statuses(session, items)
     return items, page_window.has_more, page_window.next_cursor
+
+
+async def count_webhook_summaries(
+    session: AsyncSession,
+    *,
+    importance: str = "",
+    source: str = "",
+    time_from: datetime | None = None,
+) -> int | None:
+    """Total event count matching the same filters (for the list's real total).
+
+    Uses count_with_timeout so a slow count degrades to None ("unknown") rather
+    than stalling the page; the API surfaces None as an unknown total.
+    """
+    from db.session import count_with_timeout
+
+    stmt = _apply_summary_filters(
+        select(func.count()).select_from(WebhookEvent), importance=importance, source=source, time_from=time_from
+    )
+    return await count_with_timeout(session, stmt)
 
 
 def _dead_letter_base_query(

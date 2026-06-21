@@ -13,6 +13,9 @@ var DecisionTraceModule = (function () {
     var currentView = 'trace';  // 'trace' | 'cost' (AI cost merged in from its old tab)
     var currentSkipCode = '';
     var currentOutcome = '';
+    var currentSource = '';
+    var currentDelivery = '';  // '' | 'failed'
+    var knownSources = [];     // populated from quality stats to fill the source dropdown
     var loadedTraces = [];
     var nextCursor = null;
     var hasMoreTraces = false;
@@ -452,8 +455,26 @@ var DecisionTraceModule = (function () {
         details.innerHTML = trace ? renderDetails(trace) : '';
     }
 
+    function updateSourceDropdown(traces) {
+        // Keep the source filter options in sync with sources actually seen
+        // (union of what we've loaded), without clobbering the current selection.
+        var sel = document.getElementById('dtSourceFilter');
+        if (!sel) return;
+        (traces || []).forEach(function (tr) {
+            if (tr.source && knownSources.indexOf(tr.source) === -1) knownSources.push(tr.source);
+        });
+        knownSources.sort();
+        var current = sel.value;
+        var opts = '<option value="">' + t('dt.filter.allSources') + '</option>';
+        knownSources.forEach(function (s) {
+            opts += '<option value="' + escapeHtml(s) + '"' + (s === current ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+        });
+        sel.innerHTML = opts;
+    }
+
     function renderTraces(traces) {
         var container = document.getElementById('decisionTraceList');
+        updateSourceDropdown(traces);
         if (!container) return;
 
         if (!traces || traces.length === 0) {
@@ -493,7 +514,8 @@ var DecisionTraceModule = (function () {
             page_size: perPage,
             outcome: currentOutcome,
             skip_code: currentSkipCode,
-            source: ''
+            source: currentSource,
+            delivery: currentDelivery
         })
             .then(function (res) {
                 if (res && res.success) {
@@ -578,10 +600,24 @@ var DecisionTraceModule = (function () {
         loadActiveView();
     }
 
+    // A skip-code chip narrows to skipped+that code; it overrides the dropdown
+    // filters, so reset those controls to keep the UI honest.
+    function _resetListFilterControls(outcomeVal) {
+        var outcomeSel = document.getElementById('dtOutcomeFilter');
+        var sourceSel = document.getElementById('dtSourceFilter');
+        var failedChk = document.getElementById('dtDeliveryFailedFilter');
+        if (outcomeSel) outcomeSel.value = outcomeVal || '';
+        if (sourceSel) sourceSel.value = '';
+        if (failedChk) failedChk.checked = false;
+        currentSource = '';
+        currentDelivery = '';
+    }
+
     function filterBySkipCode(code) {
         // Toggle off if the active chip is clicked again.
         currentSkipCode = (currentSkipCode === code) ? '' : code;
         currentOutcome = currentSkipCode ? 'skipped' : '';
+        _resetListFilterControls(currentOutcome);
         expandedIds.clear();
         loadStats(currentPeriod);
         loadList();
@@ -590,6 +626,25 @@ var DecisionTraceModule = (function () {
     function filterByOutcome(outcome) {
         currentOutcome = outcome;
         currentSkipCode = '';
+        _resetListFilterControls(outcome);
+        expandedIds.clear();
+        loadStats(currentPeriod);
+        loadList();
+    }
+
+    // Read the list filter controls and reload the list. Selecting an outcome
+    // here clears any skip-code chip (they both drive `outcome`), and vice versa
+    // the chips reset these via loadList re-reading state.
+    function applyListFilters() {
+        var outcomeSel = document.getElementById('dtOutcomeFilter');
+        var sourceSel = document.getElementById('dtSourceFilter');
+        var failedChk = document.getElementById('dtDeliveryFailedFilter');
+        currentOutcome = outcomeSel ? outcomeSel.value : '';
+        currentSource = sourceSel ? sourceSel.value : '';
+        currentDelivery = (failedChk && failedChk.checked) ? 'failed' : '';
+        // A picked outcome supersedes a skip-code chip; "delivery failed" implies forwarded.
+        if (currentDelivery === 'failed') { currentOutcome = 'forwarded'; currentSkipCode = ''; }
+        else { currentSkipCode = ''; }
         expandedIds.clear();
         loadStats(currentPeriod);
         loadList();
@@ -609,6 +664,10 @@ var DecisionTraceModule = (function () {
                 var view = button ? button.getAttribute('data-dt-view') : null;
                 if (view) setView(view);
             });
+        });
+        ['dtOutcomeFilter', 'dtSourceFilter', 'dtDeliveryFailedFilter'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', applyListFilters);
         });
     }
 
