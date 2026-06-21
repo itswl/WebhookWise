@@ -568,6 +568,11 @@ var DecisionTraceModule = (function () {
         }
     }
 
+    function markRefreshed() {
+        var el = document.getElementById('dtLastRefreshed');
+        if (el) el.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
+    }
+
     // Load whichever view is active (tab open / refresh / period change).
     function loadActiveView() {
         if (currentView === 'cost') {
@@ -577,6 +582,7 @@ var DecisionTraceModule = (function () {
             loadQuality(currentPeriod);
             loadList();
         }
+        markRefreshed();
     }
 
     function load() {

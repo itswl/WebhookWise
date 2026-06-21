@@ -7,7 +7,7 @@
 
     <!-- External stylesheets -->
     <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
-    <link rel="stylesheet" href="/static/css/components.css?v=20260621-delivery">
+    <link rel="stylesheet" href="/static/css/components.css?v=20260622-batchb">
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -192,6 +192,7 @@
                         <button class="btn dt-view-btn" data-dt-view="cost" data-i18n="dt.view.cost">AI Cost</button>
                     </div>
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
+                        <span id="dtLastRefreshed" class="last-refreshed" style="font-size: 0.75rem; color: var(--text-muted);"></span>
                         <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
                         <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
                         <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
@@ -565,16 +566,16 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260622-batcha"></script>
+    <script src="/static/js/i18n.js?v=20260622-batchb"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260622-batcha"></script>
     <script src="/static/js/alerts.js?v=20260622-batcha"></script>
-    <script src="/static/js/ai-cost.js?v=20260617-noack"></script>
+    <script src="/static/js/ai-cost.js?v=20260622-batchb"></script>
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
-    <script src="/static/js/decision-trace.js?v=20260622-batcha"></script>
+    <script src="/static/js/decision-trace.js?v=20260622-batchb"></script>
     <script src="/static/js/dashboard.js?v=20260621-retireoutbox"></script>
 </body>
 </html>
