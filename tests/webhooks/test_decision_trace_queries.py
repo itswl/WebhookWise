@@ -242,3 +242,28 @@ async def test_delivery_multi_target_precedence_failed_wins(
     sent_tgt = next(tg for tg in d["targets"] if tg["status"] == "sent")
     assert sent_tgt["retryable"] is False
     assert "max_attempts" in sent_tgt and "outbox_id" in sent_tgt
+
+
+@pytest.mark.asyncio
+async def test_delivery_does_not_absorb_dedup_chain_descendants(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Regression: in a dedup chain, a later duplicate's forward carries the chain
+    # HEAD as its original_event_id. The head's delivery must show only ITS OWN
+    # outbox row, not also the duplicate's — else it falsely reads "delivered 2x".
+    async with session_factory.begin() as session:
+        session.add_all([_trace(100, "forwarded", "none"), _trace(101, "forwarded", "none")])
+        session.add_all(
+            [
+                _outbox(100, "sent", target_name="feishu", idempotency_key="own-100"),
+                # event 101 is a duplicate of 100; its forward points back to 100.
+                _outbox(101, "sent", target_name="feishu", original_event_id=100, idempotency_key="own-101"),
+            ]
+        )
+    async with session_factory() as session:
+        items, _, _ = await list_decision_traces(session)
+    by_event = {it["webhook_event_id"]: it for it in items}
+    # Each occurrence shows exactly its own single delivery — not the chain's.
+    assert by_event[100]["delivery"]["target_count"] == 1
+    assert by_event[100]["delivery"]["targets"][0]["outbox_id"] is not None
+    assert by_event[101]["delivery"]["target_count"] == 1

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
@@ -204,27 +204,26 @@ async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, A
     """Annotate forwarded trace rows with their outbox delivery status, in place.
 
     The decision trace only records the forward *decision* (queued); whether the
-    notification actually reached the target lives in ForwardOutbox. For the
-    forwarded rows on this page, batch-load their outbox rows (keyed by
-    webhook_event_id or original_event_id — periodic reminders forward against
-    the chain head) and attach a compact ``delivery`` summary. Rows with no
+    notification actually reached the target lives in ForwardOutbox. Each trace
+    row is ONE alert occurrence, and that occurrence's forward creates an outbox
+    row keyed by ``webhook_event_id`` == that occurrence's id — so we match on
+    that alone. We deliberately do NOT also match ``original_event_id``: in a
+    dedup chain every duplicate carries the chain head as its original, so
+    matching it would make the head's row absorb every later duplicate's
+    delivery and falsely show N "deliveries" for one occurrence. Rows with no
     outbox match (e.g. pre-feature data) get no ``delivery`` key.
     """
     event_ids = [int(item["webhook_event_id"]) for item in items if item.get("outcome") == "forwarded"]
     if not event_ids:
         return
-    id_set = set(event_ids)
 
-    stmt = select(ForwardOutbox).where(
-        or_(ForwardOutbox.webhook_event_id.in_(event_ids), ForwardOutbox.original_event_id.in_(event_ids))
-    )
+    stmt = select(ForwardOutbox).where(ForwardOutbox.webhook_event_id.in_(event_ids))
     rows = list((await session.execute(stmt)).scalars().all())
 
     by_event: dict[int, list[ForwardOutbox]] = {}
     for row in rows:
-        for eid in (row.webhook_event_id, row.original_event_id):
-            if eid in id_set:
-                by_event.setdefault(int(eid), []).append(row)
+        if row.webhook_event_id is not None:
+            by_event.setdefault(int(row.webhook_event_id), []).append(row)
 
     for item in items:
         if item.get("outcome") != "forwarded":
