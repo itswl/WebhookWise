@@ -45,9 +45,9 @@ async function initDashboard() {
         // Set a global reference for use by onclick callbacks
         window.alertsModule = AlertsModule;
     }
-    if (typeof AICostModule !== 'undefined') {
-        AICostModule.init();
-    }
+    // AICostModule is no longer eagerly initialized: the AI Cost view is now a
+    // sub-view of the Decision Trace tab and is loaded on demand by
+    // DecisionTraceModule.setView('cost'). Its renderer (loadStats) is reused.
     if (typeof ForwardRulesModule !== 'undefined') {
         ForwardRulesModule.init();
     }
@@ -149,7 +149,6 @@ function switchMainTab(tabId) {
     // Show/hide content areas
     const tabContents = {
         'alerts': 'alertsTab',
-        'ai-cost': 'aiCostTab',
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
         'outbox': 'outboxTab',
@@ -172,14 +171,6 @@ function switchMainTab(tabId) {
             // Stop deep-analysis auto-refresh when switching to the Alerts Tab
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
-            }
-            break;
-        case 'ai-cost':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof AICostModule !== 'undefined') {
-                AICostModule.loadStats(AICostModule.currentPeriod || 'day');
             }
             break;
         case 'deep-analyses':
@@ -224,11 +215,6 @@ function switchMainTab(tabId) {
 
 function refreshCurrentTab() {
     switch (currentTab) {
-        case 'ai-cost':
-            if (typeof AICostModule !== 'undefined') {
-                AICostModule.loadStats(AICostModule.currentPeriod || 'day');
-            }
-            break;
         case 'deep-analyses':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.load();
