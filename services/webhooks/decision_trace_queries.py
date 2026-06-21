@@ -215,21 +215,12 @@ async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, A
         return
     id_set = set(event_ids)
 
-    stmt = select(
-        ForwardOutbox.webhook_event_id,
-        ForwardOutbox.original_event_id,
-        ForwardOutbox.status,
-        ForwardOutbox.target_name,
-        ForwardOutbox.target_type,
-        ForwardOutbox.attempts,
-        ForwardOutbox.last_error,
-        ForwardOutbox.sent_at,
-    ).where(
+    stmt = select(ForwardOutbox).where(
         or_(ForwardOutbox.webhook_event_id.in_(event_ids), ForwardOutbox.original_event_id.in_(event_ids))
     )
-    rows = (await session.execute(stmt)).all()
+    rows = list((await session.execute(stmt)).scalars().all())
 
-    by_event: dict[int, list[Any]] = {}
+    by_event: dict[int, list[ForwardOutbox]] = {}
     for row in rows:
         for eid in (row.webhook_event_id, row.original_event_id):
             if eid in id_set:
@@ -241,17 +232,41 @@ async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, A
         targets = by_event.get(int(item["webhook_event_id"]))
         if not targets:
             continue
+        targets.sort(key=lambda t: t.id)
         state = _delivery_state([str(t.status) for t in targets])
-        # Surface the most actionable target detail: a failed one if present.
         focus = next((t for t in targets if str(t.status) in _DELIVERY_FAILED), None) or targets[0]
         item["delivery"] = {
             "state": state,
             "target_count": len(targets),
+            # Collapsed summary (badge + at-a-glance), kept for the row header.
             "target_name": focus.target_name or focus.target_type or None,
             "attempts": focus.attempts,
             "last_error": focus.last_error if state == "failed" else None,
             "sent_at": utc_isoformat(focus.sent_at) if focus.sent_at is not None else None,
+            # Full per-target detail for the expanded view (mirrors the outbox tab).
+            "targets": [_outbox_target_dict(t) for t in targets],
         }
+
+
+def _outbox_target_dict(row: ForwardOutbox) -> dict[str, Any]:
+    return {
+        "outbox_id": row.id,
+        "target_type": row.target_type,
+        "target_name": row.target_name or None,
+        "target_url": row.target_url or None,
+        "rule_name": row.rule_name or None,
+        "event_type": row.event_type or None,
+        "is_periodic_reminder": row.is_periodic_reminder,
+        "status": row.status,
+        "attempts": row.attempts,
+        "max_attempts": row.max_attempts,
+        "last_error": row.last_error,
+        "sent_at": utc_isoformat(row.sent_at) if row.sent_at is not None else None,
+        "next_attempt_at": utc_isoformat(row.next_attempt_at) if row.next_attempt_at is not None else None,
+        "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
+        # Whether this target can be manually re-enqueued (same rule as the outbox tab).
+        "retryable": row.status in ("exhausted", "expired", "retrying"),
+    }
 
 
 async def list_decision_traces(

@@ -233,3 +233,12 @@ async def test_delivery_multi_target_precedence_failed_wins(
     assert d["state"] == "failed"
     assert d["target_count"] == 2
     assert d["last_error"] == "boom"
+    # Full per-target detail is included for the expanded view.
+    assert len(d["targets"]) == 2
+    failed_tgt = next(tg for tg in d["targets"] if tg["status"] == "exhausted")
+    assert failed_tgt["target_name"] == "t2"
+    assert failed_tgt["last_error"] == "boom"
+    assert failed_tgt["retryable"] is True  # exhausted → can re-enqueue
+    sent_tgt = next(tg for tg in d["targets"] if tg["status"] == "sent")
+    assert sent_tgt["retryable"] is False
+    assert "max_attempts" in sent_tgt and "outbox_id" in sent_tgt
