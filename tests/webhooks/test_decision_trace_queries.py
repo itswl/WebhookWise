@@ -145,6 +145,19 @@ async def test_get_for_event_returns_latest_or_none(session_factory: async_sessi
         assert missing is None
 
 
+@pytest.mark.asyncio
+async def test_get_for_event_attaches_delivery(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    # The per-alert (by-event) view must carry delivery status too, like the list.
+    async with session_factory.begin() as session:
+        session.add(_trace(70, "forwarded", "none"))
+        session.add(_outbox(70, "sent", target_name="feishu"))
+    async with session_factory() as session:
+        found = await get_decision_trace_for_event(session, 70)
+    assert found is not None
+    assert found["delivery"]["state"] == "sent"
+    assert found["delivery"]["targets"][0]["target_name"] == "feishu"
+
+
 async def _seed_quality(factory: async_sessionmaker[AsyncSession]) -> None:
     async with factory.begin() as session:
         session.add_all(
