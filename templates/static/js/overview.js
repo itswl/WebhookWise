@@ -28,6 +28,17 @@ const OverviewModule = {
         });
     },
 
+    // Drill from a skip-reason chip into the Decision Trace sub-view, filtered to
+    // that skip_code. Overview and Decision Trace are sub-views of the same tab,
+    // so this is an in-tab switch (no navigation).
+    drillToSkip(skipCode) {
+        if (typeof DecisionTraceModule === 'undefined') return;
+        DecisionTraceModule.setView('trace');
+        if (typeof DecisionTraceModule.filterBySkipCode === 'function') {
+            DecisionTraceModule.filterBySkipCode(skipCode);
+        }
+    },
+
     escapeHtml(value) {
         if (value === null || value === undefined) return '';
         return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -90,7 +101,12 @@ const OverviewModule = {
             html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.skipReasons') + '</div>';
             html += '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">';
             skipKeys.sort((a, b) => skip[b] - skip[a]).forEach((k) => {
-                html += '<span class="badge badge-outline" style="font-size: 0.8rem;">' + this.escapeHtml(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
+                // Clickable: drill from the Overview summary into the Decision Trace
+                // sub-view, pre-filtered to this skip reason.
+                html += '<span class="badge badge-outline" role="button" tabindex="0" style="font-size: 0.8rem; cursor: pointer;"' +
+                    ' title="' + this.escapeHtml(t('overview.skipChip.drill')) + '"' +
+                    ' onclick="OverviewModule.drillToSkip(\'' + this.escapeHtml(k) + '\')">' +
+                    this.escapeHtml(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
             });
             html += '</div>';
         }

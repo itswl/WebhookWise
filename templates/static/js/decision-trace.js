@@ -10,7 +10,7 @@
  */
 var DecisionTraceModule = (function () {
     var currentPeriod = 'day';
-    var currentView = 'trace';  // 'trace' | 'cost' (AI cost merged in from its old tab)
+    var currentView = 'overview';  // 'overview' | 'trace' | 'cost' (all merged into the Overview landing tab)
     var currentSkipCode = '';
     var currentOutcome = '';
     var currentSource = '';
@@ -575,7 +575,14 @@ var DecisionTraceModule = (function () {
 
     // Load whichever view is active (tab open / refresh / period change).
     function loadActiveView() {
-        if (currentView === 'cost') {
+        updatePeriodButtons(currentPeriod);  // keep the shared Day/Week/Month highlight in sync for every sub-view
+        if (currentView === 'overview') {
+            // The Overview sub-view delegates to OverviewModule (its own renderer);
+            // it owns the #overviewContent element and tracks its own period.
+            if (typeof OverviewModule !== 'undefined') {
+                OverviewModule.load(currentPeriod);
+            }
+        } else if (currentView === 'cost') {
             loadCost();
         } else {
             loadStats(currentPeriod);
@@ -595,9 +602,11 @@ var DecisionTraceModule = (function () {
     }
 
     function setView(view) {
-        currentView = view === 'cost' ? 'cost' : 'trace';
+        currentView = (view === 'cost' || view === 'overview') ? view : 'trace';
+        var overviewEl = document.getElementById('dtViewOverview');
         var traceEl = document.getElementById('dtViewTrace');
         var costEl = document.getElementById('dtViewCost');
+        if (overviewEl) overviewEl.style.display = currentView === 'overview' ? 'block' : 'none';
         if (traceEl) traceEl.style.display = currentView === 'trace' ? 'block' : 'none';
         if (costEl) costEl.style.display = currentView === 'cost' ? 'block' : 'none';
         document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
