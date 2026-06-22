@@ -125,6 +125,21 @@ function renderSilenceCard(silence) {
         ? '<span class="badge badge-medium">🔕 ' + t('silences.card.active') + '</span>'
         : '<span class="badge badge-new">' + t('silences.card.inactive') + '</span>';
 
+    // ROI: how many alerts this silence has suppressed. A high count earns its
+    // keep; an active rule that has suppressed nothing is a "zombie" worth a look.
+    const suppressed = Number(silence.suppressed_count || 0);
+    const suppressedBadge = suppressed > 0
+        ? '<span class="badge badge-success" title="' + escapeHtml(t('silences.roi.tooltip')) + '">🛡️ ' +
+            t('silences.roi.suppressed', { count: suppressed }) + '</span>'
+        : (isActive
+            ? '<span class="badge badge-danger" title="' + escapeHtml(t('silences.roi.zombieTooltip')) + '">⚠️ ' +
+                t('silences.roi.zombie') + '</span>'
+            : '<span class="badge badge-outline">' + t('silences.roi.suppressed', { count: 0 }) + '</span>');
+    const lastSuppressed = silence.last_suppressed_at
+        ? '<div style="margin-top:0.5rem; color:#64748b; font-size:0.85rem;">' +
+            t('silences.roi.lastSuppressed', { time: formatSilenceTime(silence.last_suppressed_at) }) + '</div>'
+        : '';
+
     return `
         <div class="silence-card" style="
             background: #ffffff;
@@ -139,6 +154,7 @@ function renderSilenceCard(silence) {
             <div class="silence-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                     ${statusBadge}
+                    ${suppressedBadge}
                     <span style="font-weight: 600; font-size: 1.05rem; ${titleColor}">${escapeHtml(silence.comment || t('silences.card.noComment'))}</span>
                 </div>
                 <span style="
@@ -162,6 +178,7 @@ function renderSilenceCard(silence) {
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.environment')}:</strong> ${environmentText}</div>
                 ${silence.match_payload ? '<div><strong>' + t('silences.card.payload') + ':</strong> <code style="font-size:0.8rem;">' + escapeHtml(silence.match_payload) + '</code></div>' : ''}
                 ${silence.created_by ? '<div style="margin-top:0.5rem; color:#64748b; font-size:0.85rem;">' + t('silences.card.createdBy', { name: escapeHtml(silence.created_by) }) + '</div>' : ''}
+                ${lastSuppressed}
             </div>
 
             <div class="silence-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid #e2e8f0;">

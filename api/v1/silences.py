@@ -23,6 +23,7 @@ from services.silences.store import (
     list_silences,
     update_silence,
 )
+from services.webhooks.decision_trace_queries import get_silence_suppression_counts
 
 logger = get_logger("api.v1.silences")
 
@@ -42,7 +43,17 @@ async def list_silences_endpoint(
 ) -> JSONDict:
     now = utcnow()
     silences = await list_silences(session, active_only=active_only)
-    return {"success": True, "data": [silence_to_dict(s, now=now) for s in silences]}
+    # Annotate each silence with how many alerts it has suppressed (its ROI):
+    # a zero count on an active rule is a "zombie" silence worth reviewing.
+    suppression = await get_silence_suppression_counts(session, silence_ids=[s.id for s in silences])
+    data = []
+    for s in silences:
+        item = silence_to_dict(s, now=now)
+        stat = suppression.get(s.id)
+        item["suppressed_count"] = stat["count"] if stat else 0
+        item["last_suppressed_at"] = stat["last_suppressed_at"] if stat else None
+        data.append(item)
+    return {"success": True, "data": data}
 
 
 @silences_router.post(

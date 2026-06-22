@@ -239,6 +239,43 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
     }
 
 
+async def get_silence_suppression_counts(
+    session: AsyncSession, *, silence_ids: list[int] | None = None
+) -> dict[int, dict[str, Any]]:
+    """How many alerts each silence rule has suppressed (lifetime) + recency.
+
+    Powers the Silence ROI panel: aggregates silenced decision-trace rows by the
+    flattened ``silence_id`` column (set only when an alert was silenced, so the
+    partial index covers exactly these rows) into
+    ``{silence_id: {"count": int, "last_suppressed_at": iso|None}}``.
+
+    A high count means the rule is pulling its weight; a *zero* count on an
+    active rule is a "zombie" silence worth reviewing, and a stale
+    ``last_suppressed_at`` flags one that has gone quiet. ``silence_ids`` scopes
+    the GROUP BY to the rules currently shown (skips counts for since-deleted
+    silences, whose trace rows still carry the old id).
+    """
+    stmt = (
+        select(
+            DecisionTrace.silence_id,
+            func.count(DecisionTrace.id),
+            func.max(DecisionTrace.created_at),
+        )
+        .where(DecisionTrace.silence_id.isnot(None))
+        .group_by(DecisionTrace.silence_id)
+    )
+    if silence_ids:
+        stmt = stmt.where(DecisionTrace.silence_id.in_(silence_ids))
+    rows = (await session.execute(stmt)).all()
+    return {
+        int(row[0]): {
+            "count": row[1],
+            "last_suppressed_at": utc_isoformat(row[2]) if row[2] is not None else None,
+        }
+        for row in rows
+    }
+
+
 def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
     return {
         "id": trace.id,

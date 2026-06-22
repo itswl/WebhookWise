@@ -182,6 +182,28 @@ def test_build_row_skipped_outcome() -> None:
     # Empty source/importance flatten to NULL rather than empty string.
     assert trace.source is None
     assert trace.importance is None
+    # A non-silence skip carries no silence_id.
+    assert trace.silence_id is None
+
+
+def test_build_row_flattens_silence_id_only_when_silenced() -> None:
+    silenced = ForwardDecision(False, "Silenced (id=7)", False, skip_code="silenced", silence_id=7)
+    trace = build_decision_trace(
+        webhook_event_id=4, source="volcengine", dedup=_dedup(),
+        final_analysis=_analysis(route="silenced_skip"), noise=_noise(), decision=silenced,  # type: ignore[arg-type]
+    )
+    assert trace.skip_code == "silenced"
+    assert trace.silence_id == 7
+
+    # A forward decision that happens to carry a stray silence_id must NOT flatten
+    # it — the column is meaningful only for silenced rows (keeps the partial
+    # index and the per-rule GROUP BY clean).
+    forwarded = ForwardDecision(True, None, False, matched_rules=[_rule("feishu")], silence_id=9)
+    trace2 = build_decision_trace(
+        webhook_event_id=5, source="volcengine", dedup=_dedup(),
+        final_analysis=_analysis(), noise=_noise(), decision=forwarded,  # type: ignore[arg-type]
+    )
+    assert trace2.silence_id is None
 
 
 # ── AI judgment quality signals (Phase B) ────────────────────────────
