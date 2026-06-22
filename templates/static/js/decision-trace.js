@@ -606,54 +606,52 @@ var DecisionTraceModule = (function () {
         loadActiveView();
     }
 
-    // A skip-code chip narrows to skipped+that code; it overrides the dropdown
-    // filters, so reset those controls to keep the UI honest.
-    function _resetListFilterControls(outcomeVal) {
-        var outcomeSel = document.getElementById('dtOutcomeFilter');
-        var sourceSel = document.getElementById('dtSourceFilter');
-        var failedChk = document.getElementById('dtDeliveryFailedFilter');
-        if (outcomeSel) outcomeSel.value = outcomeVal || '';
-        if (sourceSel) sourceSel.value = '';
-        if (failedChk) failedChk.checked = false;
-        currentSource = '';
-        currentDelivery = '';
+    // The unified "result" dropdown (all / forwarded / skipped / delivery-failed)
+    // drives both currentOutcome and currentDelivery. Keep its value in sync with
+    // whatever set the filter (the dropdown itself, or a skip-code chip).
+    function _currentResultValue() {
+        if (currentDelivery === 'failed') return 'failed';
+        if (currentOutcome === 'forwarded' || currentOutcome === 'skipped') return currentOutcome;
+        return '';
+    }
+
+    function _syncResultSelect(value) {
+        var sel = document.getElementById('dtResultFilter');
+        if (sel) sel.value = value;
+    }
+
+    // Apply a result selection: '' (all) / 'forwarded' / 'skipped' / 'failed'.
+    function setResult(value) {
+        currentSkipCode = '';
+        if (value === 'failed') {
+            currentDelivery = 'failed';
+            currentOutcome = 'forwarded';  // failed delivery implies it was forwarded
+        } else {
+            currentDelivery = '';
+            currentOutcome = (value === 'forwarded' || value === 'skipped') ? value : '';
+        }
+        _syncResultSelect(value);
+        expandedIds.clear();
+        loadStats(currentPeriod);
+        loadList();
     }
 
     function filterBySkipCode(code) {
         // Toggle off if the active chip is clicked again.
         currentSkipCode = (currentSkipCode === code) ? '' : code;
         currentOutcome = currentSkipCode ? 'skipped' : '';
-        _resetListFilterControls(currentOutcome);
+        currentDelivery = '';
+        currentSource = '';
+        var sourceSel = document.getElementById('dtSourceFilter');
+        if (sourceSel) sourceSel.value = '';
+        _syncResultSelect(_currentResultValue());
         expandedIds.clear();
         loadStats(currentPeriod);
         loadList();
     }
 
     function filterByOutcome(outcome) {
-        currentOutcome = outcome;
-        currentSkipCode = '';
-        _resetListFilterControls(outcome);
-        expandedIds.clear();
-        loadStats(currentPeriod);
-        loadList();
-    }
-
-    // Read the list filter controls and reload the list. Selecting an outcome
-    // here clears any skip-code chip (they both drive `outcome`), and vice versa
-    // the chips reset these via loadList re-reading state.
-    function applyListFilters() {
-        var outcomeSel = document.getElementById('dtOutcomeFilter');
-        var sourceSel = document.getElementById('dtSourceFilter');
-        var failedChk = document.getElementById('dtDeliveryFailedFilter');
-        currentOutcome = outcomeSel ? outcomeSel.value : '';
-        currentSource = sourceSel ? sourceSel.value : '';
-        currentDelivery = (failedChk && failedChk.checked) ? 'failed' : '';
-        // A picked outcome supersedes a skip-code chip; "delivery failed" implies forwarded.
-        if (currentDelivery === 'failed') { currentOutcome = 'forwarded'; currentSkipCode = ''; }
-        else { currentSkipCode = ''; }
-        expandedIds.clear();
-        loadStats(currentPeriod);
-        loadList();
+        setResult(outcome === 'forwarded' || outcome === 'skipped' ? outcome : '');
     }
 
     function bindEvents() {
@@ -671,9 +669,13 @@ var DecisionTraceModule = (function () {
                 if (view) setView(view);
             });
         });
-        ['dtOutcomeFilter', 'dtSourceFilter', 'dtDeliveryFailedFilter'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.addEventListener('change', applyListFilters);
+        var resultSel = document.getElementById('dtResultFilter');
+        if (resultSel) resultSel.addEventListener('change', function () { setResult(resultSel.value || ''); });
+        var sourceSel = document.getElementById('dtSourceFilter');
+        if (sourceSel) sourceSel.addEventListener('change', function () {
+            currentSource = sourceSel.value;
+            expandedIds.clear();
+            loadList();
         });
     }
 
