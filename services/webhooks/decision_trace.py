@@ -124,6 +124,9 @@ def build_decision_trace(
         route=analysis_route(final_analysis, default="ai"),
         importance_override=_has_importance_override(final_analysis),
         degraded_reason=_degraded_reason_column(final_analysis),
+        # Set only when this alert was silenced, so the per-rule ROI aggregate
+        # (which silence suppressed how many) can GROUP BY an indexed column.
+        silence_id=decision.silence_id if decision.skip_code == "silenced" else None,
         matched_rules=[rule.name for rule in decision.matched_rules],
         steps=build_trace_steps(
             dedup=dedup, final_analysis=final_analysis, noise=noise, decision=decision
