@@ -86,6 +86,7 @@
             'overview.card.aiCost': 'AI Cost',
             'overview.card.aiCostTrend': '{n} fresh AI calls',
             'overview.section.skipReasons': 'Skip Reasons',
+            'overview.skipChip.drill': 'View these in Decision Trace',
             'overview.section.topSources': 'Top Sources',
             'alerts.stats.title': 'Live Statistics',
             'alerts.stats.loaded': 'Alerts Loaded',
@@ -676,6 +677,7 @@
 
             // ── decision-trace.js (dynamic) ──
             'dt.title': 'Decision Trace',
+            'dt.view.overview': 'Overview',
             'dt.view.trace': 'Decision Trace',
             'dt.view.cost': 'AI Cost',
             'dt.filter.allOutcomes': 'All outcomes',
@@ -814,6 +816,7 @@
             'overview.card.aiCost': 'AI 成本',
             'overview.card.aiCostTrend': '{n} 次新鲜 AI 调用',
             'overview.section.skipReasons': '跳过原因',
+            'overview.skipChip.drill': '在决策追踪中查看这些',
             'overview.section.topSources': 'Top 来源',
             'alerts.stats.title': '实时统计',
             'alerts.stats.loaded': '已加载告警',
@@ -1403,6 +1406,7 @@
 
             // ── decision-trace.js (dynamic) ──
             'dt.title': '决策追踪',
+            'dt.view.overview': '概览',
             'dt.view.trace': '决策追踪',
             'dt.view.cost': 'AI 成本',
             'dt.filter.allOutcomes': '全部结果',
