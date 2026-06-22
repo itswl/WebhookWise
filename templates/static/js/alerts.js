@@ -119,6 +119,10 @@ const AlertsModule = {
             if (tabName === 'deep-analysis' && webhookId) {
                 this.loadDeepAnalyses(webhookId);
             }
+            // If switching to the decision tab, load the trace + delivery
+            if (tabName === 'decision' && webhookId) {
+                this.loadDecisionTrace(webhookId);
+            }
             return;
         }
 
@@ -395,6 +399,8 @@ const AlertsModule = {
             }
             // Deep Analysis tab
             html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">' + t('alerts.tab.deep') + '</div>';
+            // Decision / Delivery tab (why forwarded/skipped + did it deliver)
+            html += '<div class="tab" data-tab="decision" data-id="' + webhook.id + '">' + t('alerts.tab.decision') + '</div>';
             html += '</div>';
 
             html += '<div class="tab-content active" data-tab-content="overview">';
@@ -435,6 +441,11 @@ const AlertsModule = {
             // Deep analysis content panel
             html += '<div class="tab-content" data-tab-content="deep-analysis">';
             html += '<div id="deep-analysis-container-' + webhook.id + '">' + t('alerts.deep.clickToLoad') + '</div>';
+            html += '</div>';
+
+            // Decision / delivery content panel (lazy-loaded on tab click)
+            html += '<div class="tab-content" data-tab-content="decision">';
+            html += '<div id="decision-container-' + webhook.id + '">' + t('alerts.decision.clickToLoad') + '</div>';
             html += '</div>';
 
             html += '</div></div>';
@@ -891,6 +902,33 @@ const AlertsModule = {
             }
         } catch (error) {
             alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
+        }
+    },
+
+    /**
+     * Load the decision trace (why forwarded/skipped) + delivery status for an
+     * alert, reusing the Decision Trace tab's renderer. Lazy-loaded on tab open.
+     */
+    async loadDecisionTrace(webhookId) {
+        const container = document.getElementById('decision-container-' + webhookId);
+        if (!container) return;
+        if (container.dataset.loaded === 'true') return;  // already shown; don't reflow
+        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
+
+        try {
+            const result = await API.getDecisionTraceByEvent(webhookId);
+            if (!result || !result.success || !result.data) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' + t('alerts.decision.none') + '</div>';
+                return;
+            }
+            if (typeof DecisionTraceModule !== 'undefined' && DecisionTraceModule.renderDetails) {
+                container.innerHTML = '<div class="da-card da-card-expanded" style="margin:0;">' + DecisionTraceModule.renderDetails(result.data) + '</div>';
+            } else {
+                container.innerHTML = '<div style="padding:1rem; color:#888;">' + t('alerts.decision.none') + '</div>';
+            }
+            container.dataset.loaded = 'true';
+        } catch (e) {
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }
     },
 

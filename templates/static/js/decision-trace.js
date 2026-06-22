@@ -691,6 +691,8 @@ var DecisionTraceModule = (function () {
         toggleExpand: toggleExpand,
         retryDelivery: retryDelivery,
         filterBySkipCode: filterBySkipCode,
-        filterByOutcome: filterByOutcome
+        filterByOutcome: filterByOutcome,
+        // Exposed so the Alerts tab can inline the same chain + delivery block.
+        renderDetails: renderDetails
     };
 })();

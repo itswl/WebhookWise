@@ -331,4 +331,10 @@ async def get_decision_trace_for_event(session: AsyncSession, webhook_event_id: 
         .limit(1)
     )
     trace = (await session.execute(stmt)).scalar_one_or_none()
-    return _row_to_trace_dict(trace) if trace is not None else None
+    if trace is None:
+        return None
+    item = _row_to_trace_dict(trace)
+    # Attach delivery status too, so the per-alert view answers "delivered?" like
+    # the list does (no-op for skipped rows / rows without an outbox record).
+    await _attach_delivery_status(session, [item])
+    return item
