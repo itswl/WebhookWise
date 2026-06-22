@@ -5,7 +5,7 @@
 
 // Global variables
 let autoRefreshInterval = null;
-let currentTab = 'overview';
+let currentTab = 'decision-trace';  // the Overview landing tab (hosts Overview|Decision Trace|AI Cost sub-views)
 const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
 
 /**
@@ -41,13 +41,19 @@ async function initDashboard() {
 
     // Initialize each module
     if (typeof OverviewModule !== 'undefined') {
+        // OverviewModule is now the default sub-view of the Decision Trace
+        // ("Overview") landing tab; DecisionTraceModule.load() loads it. No eager load here.
         OverviewModule.init();
-        OverviewModule.load();  // overview is the default landing tab
     }
     if (typeof AlertsModule !== 'undefined') {
         AlertsModule.init();
         // Set a global reference for use by onclick callbacks
         window.alertsModule = AlertsModule;
+    }
+    // The Overview landing tab (data-tab="decision-trace") loads its default
+    // (Overview) sub-view on startup.
+    if (typeof DecisionTraceModule !== 'undefined') {
+        DecisionTraceModule.load();
     }
     // AICostModule is no longer eagerly initialized: the AI Cost view is now a
     // sub-view of the Decision Trace tab and is loaded on demand by
@@ -60,6 +66,9 @@ async function initDashboard() {
     }
     if (typeof SandboxModule !== 'undefined') {
         SandboxModule.init();
+    }
+    if (typeof RoutingModule !== 'undefined') {
+        RoutingModule.init();
     }
 
     // Bind global events
@@ -155,13 +164,10 @@ function switchMainTab(tabId) {
 
     // Show/hide content areas
     const tabContents = {
-        'overview': 'overviewTab',
         'alerts': 'alertsTab',
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
-        'forward-rules': 'forwardRulesTab',
-        'silences': 'silencesTab',
-        'sandbox': 'sandboxTab'
+        'routing': 'routingTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -175,14 +181,6 @@ function switchMainTab(tabId) {
 
     // Trigger Tab-specific initialization
     switch (tabId) {
-        case 'overview':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof OverviewModule !== 'undefined') {
-                OverviewModule.load();
-            }
-            break;
         case 'alerts':
             // Stop deep-analysis auto-refresh when switching to the Alerts Tab
             if (typeof DeepAnalysesModule !== 'undefined') {
@@ -202,28 +200,12 @@ function switchMainTab(tabId) {
                 DecisionTraceModule.load();
             }
             break;
-        case 'forward-rules':
+        case 'routing':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
             }
-            if (typeof loadForwardRules === 'function') {
-                loadForwardRules();
-            }
-            break;
-        case 'silences':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof loadSilences === 'function') {
-                loadSilences();
-            }
-            break;
-        case 'sandbox':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof SandboxModule !== 'undefined') {
-                SandboxModule.load();
+            if (typeof RoutingModule !== 'undefined') {
+                RoutingModule.load();
             }
             break;
     }
@@ -231,11 +213,6 @@ function switchMainTab(tabId) {
 
 function refreshCurrentTab() {
     switch (currentTab) {
-        case 'overview':
-            if (typeof OverviewModule !== 'undefined') {
-                OverviewModule.load();
-            }
-            break;
         case 'deep-analyses':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.load();
@@ -246,14 +223,9 @@ function refreshCurrentTab() {
                 DecisionTraceModule.load();
             }
             break;
-        case 'forward-rules':
-            if (typeof loadForwardRules === 'function') {
-                loadForwardRules();
-            }
-            break;
-        case 'silences':
-            if (typeof loadSilences === 'function') {
-                loadSilences();
+        case 'routing':
+            if (typeof RoutingModule !== 'undefined') {
+                RoutingModule.refresh();
             }
             break;
         case 'alerts':
