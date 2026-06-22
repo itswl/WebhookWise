@@ -481,6 +481,19 @@ const API = {
         return await response.json();
     },
 
+    /**
+     * Get the decision trace for a single webhook event (chain + delivery).
+     * Returns {success:false} on 404 (no trace) rather than throwing — "no
+     * trace yet" is a normal state for a just-ingested alert.
+     * @param {number} webhookId
+     */
+    async getDecisionTraceByEvent(webhookId) {
+        const response = await this.authenticatedFetch('/v1/decision-traces/by-event/' + webhookId);
+        if (response.status === 404) return { success: false, data: null };
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Deep Analysis API ==========
 
     /**
