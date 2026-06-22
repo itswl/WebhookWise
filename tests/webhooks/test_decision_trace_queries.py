@@ -12,6 +12,7 @@ from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
+    get_overview_stats,
     list_decision_traces,
 )
 
@@ -303,3 +304,38 @@ async def test_list_delivery_failed_filter(session_factory: async_sessionmaker[A
     # Only the forwarded-and-failed row comes back.
     assert [it["webhook_event_id"] for it in items] == [31]
     assert items[0]["delivery"]["state"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_overview_stats_composes_volume_delivery_sources(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(80, "forwarded", "none", source="volcengine"),
+                _trace(81, "forwarded", "none", source="volcengine"),
+                _trace(82, "skipped", "silenced", source="aliyun"),
+            ]
+        )
+        session.add_all(
+            [
+                _outbox(80, "sent", idempotency_key="o80"),
+                _outbox(81, "exhausted", idempotency_key="o81"),
+            ]
+        )
+    async with session_factory() as session:
+        ov = await get_overview_stats(session, "day")
+
+    assert ov["total"] == 3
+    assert ov["forwarded"] == 2
+    assert ov["skipped"] == 1
+    assert ov["forward_rate"] == round(2 / 3 * 100, 1)
+    assert ov["skip_code_breakdown"] == {"silenced": 1}
+    # Top sources by volume.
+    top = {s["source"]: s["count"] for s in ov["top_sources"]}
+    assert top == {"volcengine": 2, "aliyun": 1}
+    # Delivery: 1 sent / 1 exhausted → 50% success.
+    assert ov["delivery"]["delivered"] == 1
+    assert ov["delivery"]["failed"] == 1
+    assert ov["delivery"]["success_rate"] == 50.0
