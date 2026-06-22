@@ -18,7 +18,10 @@
                 <span data-i18n="nav.title">Webhook Monitor</span>
             </div>
             <div class="nav-tabs">
-                <button class="nav-tab active" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
+                <button class="nav-tab active" data-tab="overview" type="button" data-i18n-aria-label="nav.aria.overview" aria-label="Switch to Overview">
+                    <span>📊</span> <span data-i18n="nav.tab.overview">Overview</span>
+                </button>
+                <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
                     <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
                 </button>
                 <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
@@ -54,8 +57,30 @@
 
     <!-- Main container -->
     <div class="container">
+        <!-- Overview Tab (default landing) -->
+        <div id="overviewTab" class="tab-content active">
+            <div class="overview-section" style="padding: 20px 0;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div class="section-title" data-i18n="overview.title">Overview</div>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="overview.subtitle">At-a-glance health: volume, forward rate, delivery, AI spend, top sources.</p>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span id="ovLastRefreshed" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+                        <button class="btn" data-ov-period="day" data-i18n="dt.period.day">Day</button>
+                        <button class="btn" data-ov-period="week" data-i18n="dt.period.week">Week</button>
+                        <button class="btn" data-ov-period="month" data-i18n="dt.period.month">Month</button>
+                        <button class="btn" onclick="OverviewModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    </div>
+                </div>
+                <div id="overviewContent">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Alerts Tab -->
-        <div id="alertsTab" class="tab-content active">
+        <div id="alertsTab" class="tab-content" style="display: none;">
             <!-- Stat cards -->
             <div class="stats-section">
                 <div class="section-title" data-i18n="alerts.stats.title">Live Statistics</div>
@@ -568,6 +593,7 @@
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260622-inlinedecision"></script>
+    <script src="/static/js/overview.js?v=20260622-overview"></script>
     <script src="/static/js/alerts.js?v=20260622-inlinedecision"></script>
     <script src="/static/js/ai-cost.js?v=20260622-batchb"></script>
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>

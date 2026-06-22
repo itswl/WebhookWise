@@ -13,11 +13,13 @@ from schemas.decision_trace import (
     DecisionTraceListResponse,
     DecisionTraceQualityResponse,
     DecisionTraceStatsResponse,
+    OverviewResponse,
 )
 from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
+    get_overview_stats,
     list_decision_traces,
 )
 
@@ -41,6 +43,24 @@ async def get_decision_trace_stats_endpoint(
         return {"success": True, "data": cached_dict}
 
     data = await get_decision_trace_stats(session, period)
+    with contextlib.suppress(*_STATS_CACHE_ERRORS):
+        await redis_setex_json(cache_key, 70, data)
+    return {"success": True, "data": data}
+
+
+@decision_trace_router.get("/overview", response_model=OverviewResponse)
+async def get_overview_endpoint(
+    period: str = Query("day", pattern="^(day|week|month|year)$"),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    from core.redis_client import redis_get_json_dict, redis_setex_json
+
+    cache_key = f"api:overview:{period}:{int(time.time() // 60)}"
+    cached_dict = await redis_get_json_dict(cache_key)
+    if cached_dict is not None:
+        return {"success": True, "data": cached_dict}
+
+    data = await get_overview_stats(session, period)
     with contextlib.suppress(*_STATS_CACHE_ERRORS):
         await redis_setex_json(cache_key, 70, data)
     return {"success": True, "data": data}

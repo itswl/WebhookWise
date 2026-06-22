@@ -42,6 +42,23 @@ class DecisionTraceQualityResponse(APIResponse[DecisionTraceQualityData]):
     """AI-judgment quality statistics response."""
 
 
+class OverviewData(BaseModel):
+    """One-screen operational summary for the Overview home page."""
+
+    period: str
+    total: int
+    forwarded: int
+    skipped: int
+    forward_rate: float
+    skip_code_breakdown: dict[str, int]
+    top_sources: list[dict[str, Any]]
+    delivery: dict[str, Any]
+
+
+class OverviewResponse(APIResponse[OverviewData]):
+    """Overview summary response."""
+
+
 class DecisionTraceItem(BaseModel):
     """One decision trace: the flattened outcome plus the full ordered chain."""
 
