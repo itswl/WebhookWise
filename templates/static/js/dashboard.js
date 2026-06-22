@@ -58,6 +58,9 @@ async function initDashboard() {
     if (typeof SilencesModule !== 'undefined') {
         SilencesModule.init();
     }
+    if (typeof SandboxModule !== 'undefined') {
+        SandboxModule.init();
+    }
 
     // Bind global events
     bindGlobalEvents();
@@ -157,7 +160,8 @@ function switchMainTab(tabId) {
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
         'forward-rules': 'forwardRulesTab',
-        'silences': 'silencesTab'
+        'silences': 'silencesTab',
+        'sandbox': 'sandboxTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -212,6 +216,14 @@ function switchMainTab(tabId) {
             }
             if (typeof loadSilences === 'function') {
                 loadSilences();
+            }
+            break;
+        case 'sandbox':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof SandboxModule !== 'undefined') {
+                SandboxModule.load();
             }
             break;
     }

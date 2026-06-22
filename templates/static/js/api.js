@@ -426,6 +426,22 @@ const API = {
         return await response.json();
     },
 
+    /**
+     * Dry-run a webhook payload through the pre-AI pipeline (the Sandbox).
+     * Returns what WW would extract and decide; no enqueue / AI / persistence.
+     * @param {string} source - source hint (e.g. "volcengine")
+     * @param {object} payload - the raw alert payload object
+     */
+    async testWebhookPayload(source, payload) {
+        const response = await this.authenticatedFetch('/v1/sandbox/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: source, payload: payload })
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== AI-related API ==========
 
     /**
