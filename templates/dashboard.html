@@ -211,17 +211,15 @@
                     </div>
                     <div id="decisionTraceQuality"></div>
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
-                        <select id="dtOutcomeFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                        <select id="dtResultFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
-                            <option value="forwarded" data-i18n="dt.outcome.forwarded">Forwarded</option>
-                            <option value="skipped" data-i18n="dt.outcome.skipped">Skipped</option>
+                            <option value="forwarded" data-i18n="dt.filter.optForwarded">✅ Forwarded</option>
+                            <option value="skipped" data-i18n="dt.filter.optSkipped">⏭️ Skipped</option>
+                            <option value="failed" data-i18n="dt.filter.optFailed">❌ Delivery failed</option>
                         </select>
                         <select id="dtSourceFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allSources">All sources</option>
                         </select>
-                        <label class="dt-failed-toggle" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;">
-                            <input type="checkbox" id="dtDeliveryFailedFilter"> <span data-i18n="dt.filter.deliveryFailed">❌ Delivery failed only</span>
-                        </label>
                     </div>
                     <div id="decisionTraceList">
                         <div style="text-align: center; padding: 40px; color: var(--text-muted);" data-i18n="dt.empty.hint">Click the "Decision Trace" tab to load data...</div>
@@ -566,7 +564,7 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260622-batchb"></script>
+    <script src="/static/js/i18n.js?v=20260622-resultdropdown"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260622-batcha"></script>
@@ -575,7 +573,7 @@
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260617-noack"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
-    <script src="/static/js/decision-trace.js?v=20260622-batchb"></script>
+    <script src="/static/js/decision-trace.js?v=20260622-resultdropdown"></script>
     <script src="/static/js/dashboard.js?v=20260621-retireoutbox"></script>
 </body>
 </html>
