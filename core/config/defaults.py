@@ -186,11 +186,17 @@ class KBConfig(StaticSettings):
 
     KB_ENABLED: bool = Field(default=False)
     # Dedicated embeddings endpoint. Blank → falls back to the local placeholder
-    # embedding (NOT the main OPENAI_API_URL, which is usually OpenRouter and has
-    # no /embeddings route). Set these to switch to real semantic retrieval.
+    # embedding. Configured separately from the main OPENAI_API_URL so the
+    # embedding model can differ from the chat model, but it may point at the same
+    # provider (e.g. OpenRouter exposes /embeddings like qwen/qwen3-embedding-8b,
+    # so the main key can be reused). Set these to switch to real semantic
+    # retrieval, and set KB_VECTOR_DIM to the model's native dimension.
     KB_EMBEDDING_API_URL: str = Field(default="")
     KB_EMBEDDING_API_KEY: str = Field(default="")
     KB_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
+    # Must match the configured embedding model's output dimension (placeholder
+    # uses this too). E.g. 256 placeholder / 1536 text-embedding-3-small / 4096
+    # qwen3-embedding-8b. Mismatched dims make retrieval's cosine raise.
     KB_VECTOR_DIM: int = Field(default=256)
     KB_TOP_K: int = Field(default=3)
     KB_MIN_SCORE: float = Field(default=0.3)
