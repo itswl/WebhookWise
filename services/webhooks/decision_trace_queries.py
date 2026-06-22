@@ -165,6 +165,80 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
     }
 
 
+async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
+    """One-screen operational summary for the Overview home page.
+
+    Composes (over the window): processed/forwarded/skipped + forward rate, the
+    skip-reason distribution, top sources by volume, and a delivery success rate
+    (sent vs failed outbox rows for forwarded events). All index-backed GROUP BYs
+    over decision_trace + forward_outboxes; reuses the same window presets.
+    """
+    start_time = utcnow() - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["day"])
+    window = DecisionTrace.created_at >= start_time
+
+    outcome_rows = (
+        await session.execute(
+            select(DecisionTrace.outcome, func.count(DecisionTrace.id)).where(window).group_by(DecisionTrace.outcome)
+        )
+    ).all()
+    outcome_breakdown = {row[0]: row[1] for row in outcome_rows}
+    total = sum(outcome_breakdown.values())
+    forwarded = outcome_breakdown.get("forwarded", 0)
+    skipped = outcome_breakdown.get("skipped", 0)
+
+    skip_rows = (
+        await session.execute(
+            select(DecisionTrace.skip_code, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.outcome == "skipped")
+            .group_by(DecisionTrace.skip_code)
+            .order_by(func.count(DecisionTrace.id).desc())
+        )
+    ).all()
+    skip_code_breakdown = {row[0]: row[1] for row in skip_rows}
+
+    source_rows = (
+        await session.execute(
+            select(DecisionTrace.source, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.source.isnot(None))
+            .group_by(DecisionTrace.source)
+            .order_by(func.count(DecisionTrace.id).desc())
+            .limit(8)
+        )
+    ).all()
+    top_sources = [{"source": row[0], "count": row[1]} for row in source_rows]
+
+    # Delivery success rate: over outbox rows for forwarded events in the window,
+    # how many reached the target (sent) vs failed (exhausted/expired). Joined on
+    # created_at >= window directly on the outbox row (its own timestamp).
+    delivery_rows = (
+        await session.execute(
+            select(ForwardOutbox.status, func.count(ForwardOutbox.id))
+            .where(ForwardOutbox.created_at >= start_time)
+            .group_by(ForwardOutbox.status)
+        )
+    ).all()
+    delivery_breakdown = {row[0]: row[1] for row in delivery_rows}
+    delivered = delivery_breakdown.get("sent", 0)
+    failed = sum(delivery_breakdown.get(s, 0) for s in _DELIVERY_FAILED)
+    delivery_total = sum(delivery_breakdown.values())
+
+    return {
+        "period": period,
+        "total": total,
+        "forwarded": forwarded,
+        "skipped": skipped,
+        "forward_rate": round(forwarded / total * 100, 1) if total else 0.0,
+        "skip_code_breakdown": skip_code_breakdown,
+        "top_sources": top_sources,
+        "delivery": {
+            "total": delivery_total,
+            "delivered": delivered,
+            "failed": failed,
+            "success_rate": round(delivered / delivery_total * 100, 1) if delivery_total else 0.0,
+        },
+    }
+
+
 def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
     return {
         "id": trace.id,
