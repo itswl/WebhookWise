@@ -606,22 +606,21 @@ var DecisionTraceModule = (function () {
         loadActiveView();
     }
 
-    // The unified "result" chips (all / forwarded / skipped / delivery-failed)
-    // drive both currentOutcome and currentDelivery. Keep their active state in
-    // sync with whatever set the filter (chip click, or a skip-code chip).
-    function _syncResultChips(value) {
-        document.querySelectorAll('[data-dt-result]').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-dt-result') === value);
-        });
-    }
-
+    // The unified "result" dropdown (all / forwarded / skipped / delivery-failed)
+    // drives both currentOutcome and currentDelivery. Keep its value in sync with
+    // whatever set the filter (the dropdown itself, or a skip-code chip).
     function _currentResultValue() {
         if (currentDelivery === 'failed') return 'failed';
         if (currentOutcome === 'forwarded' || currentOutcome === 'skipped') return currentOutcome;
         return '';
     }
 
-    // Apply a result chip: '' (all) / 'forwarded' / 'skipped' / 'failed'.
+    function _syncResultSelect(value) {
+        var sel = document.getElementById('dtResultFilter');
+        if (sel) sel.value = value;
+    }
+
+    // Apply a result selection: '' (all) / 'forwarded' / 'skipped' / 'failed'.
     function setResult(value) {
         currentSkipCode = '';
         if (value === 'failed') {
@@ -631,7 +630,7 @@ var DecisionTraceModule = (function () {
             currentDelivery = '';
             currentOutcome = (value === 'forwarded' || value === 'skipped') ? value : '';
         }
-        _syncResultChips(value);
+        _syncResultSelect(value);
         expandedIds.clear();
         loadStats(currentPeriod);
         loadList();
@@ -645,7 +644,7 @@ var DecisionTraceModule = (function () {
         currentSource = '';
         var sourceSel = document.getElementById('dtSourceFilter');
         if (sourceSel) sourceSel.value = '';
-        _syncResultChips(_currentResultValue());
+        _syncResultSelect(_currentResultValue());
         expandedIds.clear();
         loadStats(currentPeriod);
         loadList();
@@ -670,12 +669,8 @@ var DecisionTraceModule = (function () {
                 if (view) setView(view);
             });
         });
-        document.querySelectorAll('[data-dt-result]').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                var button = e.target.closest('[data-dt-result]');
-                if (button) setResult(button.getAttribute('data-dt-result') || '');
-            });
-        });
+        var resultSel = document.getElementById('dtResultFilter');
+        if (resultSel) resultSel.addEventListener('change', function () { setResult(resultSel.value || ''); });
         var sourceSel = document.getElementById('dtSourceFilter');
         if (sourceSel) sourceSel.addEventListener('change', function () {
             currentSource = sourceSel.value;
