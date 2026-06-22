@@ -439,6 +439,19 @@ const API = {
         return await response.json();
     },
 
+    // ========== Overview API ==========
+
+    /**
+     * Get the one-screen overview summary (today's volume / forward rate /
+     * skip distribution / delivery success / top sources).
+     * @param {string} period - day/week/month
+     */
+    async getOverview(period = 'day') {
+        const response = await this.authenticatedFetch('/v1/overview?period=' + period);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Decision Trace API ==========
 
     /**

@@ -25,6 +25,8 @@
         en: {
             // ── Navbar ──
             'nav.title': 'Webhook Monitor',
+            'nav.tab.overview': 'Overview',
+            'nav.aria.overview': 'Switch to Overview',
             'nav.tab.alerts': 'Alerts',
             'nav.tab.deep': 'Deep Analysis',
             'nav.tab.decisionTrace': 'Decision Trace',
@@ -63,6 +65,21 @@
             'common.lastRefreshed': 'Refreshed {time}',
 
             // ── Alerts tab ──
+            // ── Overview tab ──
+            'overview.title': 'Overview',
+            'overview.subtitle': 'At-a-glance health: volume, forward rate, delivery, AI spend, top sources.',
+            'overview.empty.title': 'No data',
+            'overview.empty.text': 'No activity in the selected window.',
+            'overview.card.processed': 'Alerts Processed',
+            'overview.card.processedTrend': 'In the selected window',
+            'overview.card.forwardRate': 'Forward Rate',
+            'overview.card.forwardRateTrend': '{fwd} forwarded · {skip} skipped',
+            'overview.card.deliveryRate': 'Delivery Success',
+            'overview.card.deliveryRateTrend': '{ok} delivered · {fail} failed',
+            'overview.card.aiCost': 'AI Cost',
+            'overview.card.aiCostTrend': '{n} fresh AI calls',
+            'overview.section.skipReasons': 'Skip Reasons',
+            'overview.section.topSources': 'Top Sources',
             'alerts.stats.title': 'Live Statistics',
             'alerts.stats.loaded': 'Alerts Loaded',
             'alerts.stats.lastUpdated': 'Last updated:',
@@ -693,6 +710,8 @@
         zh: {
             // ── Navbar ──
             'nav.title': 'Webhook 监控',
+            'nav.tab.overview': '概览',
+            'nav.aria.overview': '切换到概览',
             'nav.tab.alerts': '告警',
             'nav.tab.deep': '深度分析',
             'nav.tab.decisionTrace': '决策追踪',
@@ -731,6 +750,21 @@
             'common.lastRefreshed': '刷新于 {time}',
 
             // ── Alerts tab ──
+            // ── Overview tab ──
+            'overview.title': '概览',
+            'overview.subtitle': '一屏看健康度：告警量、转发率、投递、AI 花费、Top 来源。',
+            'overview.empty.title': '暂无数据',
+            'overview.empty.text': '所选时间段内没有活动。',
+            'overview.card.processed': '处理告警数',
+            'overview.card.processedTrend': '所选时间段内',
+            'overview.card.forwardRate': '转发率',
+            'overview.card.forwardRateTrend': '{fwd} 转发 · {skip} 跳过',
+            'overview.card.deliveryRate': '投递成功率',
+            'overview.card.deliveryRateTrend': '{ok} 已送达 · {fail} 失败',
+            'overview.card.aiCost': 'AI 成本',
+            'overview.card.aiCostTrend': '{n} 次新鲜 AI 调用',
+            'overview.section.skipReasons': '跳过原因',
+            'overview.section.topSources': 'Top 来源',
             'alerts.stats.title': '实时统计',
             'alerts.stats.loaded': '已加载告警',
             'alerts.stats.lastUpdated': '最后更新：',
