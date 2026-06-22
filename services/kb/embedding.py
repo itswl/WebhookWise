@@ -2,8 +2,11 @@
 
 Two backends behind one ``embed_texts`` interface:
 - Real: an OpenAI-compatible ``/embeddings`` endpoint (KB_EMBEDDING_API_URL/KEY/
-  MODEL). The main OPENAI_API_URL is intentionally NOT reused — it is usually
-  OpenRouter, which has no embeddings route.
+  MODEL). Configured separately from the main OPENAI_API_URL so the embedding
+  model/endpoint can differ from the chat model — though they may point at the
+  same provider (e.g. OpenRouter now exposes ``/embeddings`` such as
+  ``qwen/qwen3-embedding-8b``, so the main OpenRouter key can be reused). Set
+  KB_VECTOR_DIM to the model's native dimension (e.g. 4096 for qwen3-embedding-8b).
 - Placeholder: a deterministic, hash-derived unit vector used when no endpoint
   is configured, so the whole ingest→retrieve→inject pipeline runs and tests
   end to end without an external service. Placeholder vectors only match
