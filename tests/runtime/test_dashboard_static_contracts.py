@@ -59,21 +59,26 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     tabs = set(re.findall(r'data-tab="([^"]+)"', html))
     panels = set(re.findall(r'id="([^"]+Tab)"', html))
 
-    # AI Cost was merged into the Decision Trace tab (data-dt-view="cost"), and the
-    # Forward Queue (outbox) tab was retired — the Decision Trace delivery detail
-    # now covers it (per-target status + manual re-enqueue).
-    assert {"overview", "alerts", "deep-analyses", "decision-trace", "forward-rules", "silences", "sandbox"} <= tabs
+    # The navbar is down to 4 tabs. Forwarding analytics (Overview / Decision
+    # Trace / AI Cost) are sub-views of the landing tab (data-tab="decision-trace",
+    # labelled "Overview"); Forward Rules / Silences / Sandbox are sub-views of the
+    # Routing tab. So the standalone overview / ai-cost / outbox / forward-rules /
+    # silences / sandbox tabs no longer exist.
+    assert {"alerts", "deep-analyses", "decision-trace", "routing"} <= tabs
     assert {
-        "overviewTab",
         "alertsTab",
         "deepAnalysesTab",
         "decisionTraceTab",
-        "forwardRulesTab",
-        "silencesTab",
-        "sandboxTab",
+        "routingTab",
     } <= panels
-    assert "ai-cost" not in tabs and "aiCostTab" not in panels
-    assert "outbox" not in tabs and "outboxTab" not in panels
+    assert {"overview", "ai-cost", "outbox", "forward-rules", "silences", "sandbox"}.isdisjoint(tabs)
+    assert {"overviewTab", "aiCostTab", "outboxTab", "forwardRulesTab", "silencesTab", "sandboxTab"}.isdisjoint(panels)
+    # The landing tab's forwarding-analytics sub-views (Overview | Decision Trace | AI Cost).
+    dt_views = set(re.findall(r'data-dt-view="([^"]+)"', html))
+    assert {"overview", "trace", "cost"} <= dt_views
+    # The three Routing sub-views are present.
+    routing_views = set(re.findall(r'data-routing-view="([^"]+)"', html))
+    assert {"rules", "silences", "sandbox"} <= routing_views
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
