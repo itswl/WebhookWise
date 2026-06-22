@@ -62,7 +62,7 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     # AI Cost was merged into the Decision Trace tab (data-dt-view="cost"), and the
     # Forward Queue (outbox) tab was retired — the Decision Trace delivery detail
     # now covers it (per-target status + manual re-enqueue).
-    assert {"overview", "alerts", "deep-analyses", "decision-trace", "forward-rules", "silences"} <= tabs
+    assert {"overview", "alerts", "deep-analyses", "decision-trace", "forward-rules", "silences", "sandbox"} <= tabs
     assert {
         "overviewTab",
         "alertsTab",
@@ -70,6 +70,7 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
         "decisionTraceTab",
         "forwardRulesTab",
         "silencesTab",
+        "sandboxTab",
     } <= panels
     assert "ai-cost" not in tabs and "aiCostTab" not in panels
     assert "outbox" not in tabs and "outboxTab" not in panels

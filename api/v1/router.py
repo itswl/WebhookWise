@@ -8,6 +8,7 @@ from api.v1.decision_trace import decision_trace_router
 from api.v1.deep_analysis import deep_analysis_router
 from api.v1.forwarding import forwarding_router
 from api.v1.reanalysis import reanalysis_router
+from api.v1.sandbox import sandbox_router
 from api.v1.silences import silences_router
 from api.v1.webhook import webhook_router
 from core.auth import verify_api_key
@@ -26,5 +27,6 @@ v1_router.include_router(ai_usage_router, dependencies=_admin_api_deps)
 v1_router.include_router(decision_trace_router, dependencies=_admin_api_deps)
 v1_router.include_router(forwarding_router, dependencies=_admin_api_deps)
 v1_router.include_router(silences_router, dependencies=_admin_api_deps)
+v1_router.include_router(sandbox_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
 v1_router.include_router(webhook_router)
