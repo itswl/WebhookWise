@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, text
+from sqlalchemy import DateTime, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,7 +49,23 @@ class DecisionTrace(Base):
     importance_override: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     degraded_reason: Mapped[str | None] = mapped_column(String(200))
 
+    # The silence rule that suppressed this alert (NULL unless skip_code="silenced").
+    # Flattened from the silence step so the dashboard can aggregate per-rule
+    # "how many alerts has this silence suppressed" without unpacking JSONB.
+    # Indexed partially (only silenced rows carry one) via __table_args__ below.
+    silence_id: Mapped[int | None] = mapped_column(Integer)
+
     # Names of the forward rules that matched (for the per-alert detail view).
     matched_rules: Mapped[list[str] | None] = mapped_column(JSONB)
     # Ordered decision chain: [{"step": ..., "result": ..., ...}, ...]
     steps: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
+
+    __table_args__ = (
+        # Partial index for the per-silence ROI GROUP BY: only silenced rows
+        # carry a silence_id, so indexing the NULL majority would waste space.
+        Index(
+            "ix_decision_trace_silence_id",
+            "silence_id",
+            postgresql_where=text("silence_id IS NOT NULL"),
+        ),
+    )
