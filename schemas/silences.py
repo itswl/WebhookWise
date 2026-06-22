@@ -144,6 +144,11 @@ class SilenceSchema(BaseModel):
     expires_at: datetime | str | None = None
     lifted_at: datetime | str | None = None
     active: bool = True
+    # ROI signals: how many alerts this silence has suppressed (lifetime, from the
+    # decision trace) and when it last did. Annotated by the list endpoint; absent
+    # on create/update responses (no trace lookup there), hence the defaults.
+    suppressed_count: int = 0
+    last_suppressed_at: datetime | str | None = None
 
 
 class SilenceListResponse(APIResponse[list[SilenceSchema]]):

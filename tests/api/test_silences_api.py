@@ -65,6 +65,39 @@ async def test_create_list_lift_silence_flow(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_silences_annotates_suppression_counts(session: AsyncSession) -> None:
+    from api.v1 import silences as api
+    from models import DecisionTrace
+    from schemas.silences import SilenceCreateRequest
+
+    # Two silences: one that has suppressed alerts, one "zombie" that hasn't.
+    busy = await api.create_silence_endpoint(
+        SilenceCreateRequest(match_source="volcengine", comment="busy"), session=session
+    )
+    zombie = await api.create_silence_endpoint(
+        SilenceCreateRequest(match_source="aliyun", comment="zombie"), session=session
+    )
+    busy_id = busy["data"]["id"]
+
+    # Seed two silenced decision traces attributed to the busy rule.
+    session.add_all(
+        [
+            DecisionTrace(webhook_event_id=1, outcome="skipped", skip_code="silenced", silence_id=busy_id),
+            DecisionTrace(webhook_event_id=2, outcome="skipped", skip_code="silenced", silence_id=busy_id),
+        ]
+    )
+    await session.commit()
+
+    listed = await api.list_silences_endpoint(session=session)
+    by_id = {s["id"]: s for s in listed["data"]}
+    assert by_id[busy_id]["suppressed_count"] == 2
+    assert by_id[busy_id]["last_suppressed_at"] is not None
+    # The zombie rule reports zero, with no last-suppressed timestamp.
+    assert by_id[zombie["data"]["id"]]["suppressed_count"] == 0
+    assert by_id[zombie["data"]["id"]]["last_suppressed_at"] is None
+
+
+@pytest.mark.asyncio
 async def test_create_silence_normalizes_aware_expiry(session: AsyncSession) -> None:
     from api.v1 import silences as api
     from schemas.silences import SilenceCreateRequest

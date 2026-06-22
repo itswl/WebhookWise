@@ -13,6 +13,7 @@ from services.webhooks.decision_trace_queries import (
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
     get_overview_stats,
+    get_silence_suppression_counts,
     list_decision_traces,
 )
 
@@ -60,6 +61,7 @@ def _trace(event_id: int, outcome: str, skip_code: str, **extra: Any) -> Decisio
         route=extra.get("route", "ai"),
         importance_override=extra.get("importance_override", False),
         degraded_reason=extra.get("degraded_reason"),
+        silence_id=extra.get("silence_id"),
         matched_rules=extra.get("matched_rules", []),
         steps=extra.get("steps", [{"step": "forward", "outcome": outcome, "skip_code": skip_code}]),
     )
@@ -304,6 +306,52 @@ async def test_list_delivery_failed_filter(session_factory: async_sessionmaker[A
     # Only the forwarded-and-failed row comes back.
     assert [it["webhook_event_id"] for it in items] == [31]
     assert items[0]["delivery"]["state"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_silence_suppression_counts_group_by_rule(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Silence rule 5 suppressed two alerts, rule 6 one; a non-silenced skip and a
+    # forward carry no silence_id and must not be counted.
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(40, "skipped", "silenced", silence_id=5),
+                _trace(41, "skipped", "silenced", silence_id=5),
+                _trace(42, "skipped", "silenced", silence_id=6),
+                _trace(43, "skipped", "cooldown"),       # not a silence
+                _trace(44, "forwarded", "none"),          # not skipped
+            ]
+        )
+    async with session_factory() as session:
+        counts = await get_silence_suppression_counts(session)
+
+    assert counts[5]["count"] == 2
+    assert counts[6]["count"] == 1
+    assert counts[5]["last_suppressed_at"] is not None
+    # Only the two silence rules appear — nothing for the cooldown/forward rows.
+    assert set(counts.keys()) == {5, 6}
+
+
+@pytest.mark.asyncio
+async def test_silence_suppression_counts_scoped_to_requested_ids(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # When scoped to a subset, only those rules are aggregated (a since-deleted
+    # silence whose old id still lingers in traces is skipped).
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(50, "skipped", "silenced", silence_id=5),
+                _trace(51, "skipped", "silenced", silence_id=99),  # deleted rule
+            ]
+        )
+    async with session_factory() as session:
+        counts = await get_silence_suppression_counts(session, silence_ids=[5])
+
+    assert set(counts.keys()) == {5}
+    assert counts[5]["count"] == 1
 
 
 @pytest.mark.asyncio
