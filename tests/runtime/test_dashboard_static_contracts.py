@@ -61,19 +61,25 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
 
     # AI Cost was merged into the Decision Trace tab (data-dt-view="cost"), and the
     # Forward Queue (outbox) tab was retired — the Decision Trace delivery detail
-    # now covers it (per-target status + manual re-enqueue).
-    assert {"overview", "alerts", "deep-analyses", "decision-trace", "forward-rules", "silences", "sandbox"} <= tabs
+    # now covers it (per-target status + manual re-enqueue). Forward Rules,
+    # Silences, and Sandbox were merged into one "Routing" tab with sub-views
+    # (data-routing-view), so the three standalone tabs no longer exist.
+    assert {"overview", "alerts", "deep-analyses", "decision-trace", "routing"} <= tabs
     assert {
         "overviewTab",
         "alertsTab",
         "deepAnalysesTab",
         "decisionTraceTab",
-        "forwardRulesTab",
-        "silencesTab",
-        "sandboxTab",
+        "routingTab",
     } <= panels
     assert "ai-cost" not in tabs and "aiCostTab" not in panels
     assert "outbox" not in tabs and "outboxTab" not in panels
+    # The merged-away standalone tabs are gone (their content lives as sub-views).
+    assert {"forward-rules", "silences", "sandbox"}.isdisjoint(tabs)
+    assert {"forwardRulesTab", "silencesTab", "sandboxTab"}.isdisjoint(panels)
+    # The three Routing sub-views are present.
+    routing_views = set(re.findall(r'data-routing-view="([^"]+)"', html))
+    assert {"rules", "silences", "sandbox"} <= routing_views
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:

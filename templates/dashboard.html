@@ -30,14 +30,8 @@
                 <button class="nav-tab" data-tab="decision-trace" type="button" data-i18n-aria-label="nav.aria.decisionTrace" aria-label="Switch to Decision Trace">
                     <span>🧭</span> <span data-i18n="nav.tab.decisionTrace">Decision Trace</span>
                 </button>
-                <button class="nav-tab" data-tab="forward-rules" type="button" data-i18n-aria-label="nav.aria.rules" aria-label="Switch to Forward Rules">
-                    <span>⚙️</span> <span data-i18n="nav.tab.rules">Forward Rules</span>
-                </button>
-                <button class="nav-tab" data-tab="silences" type="button" data-i18n-aria-label="nav.aria.silences" aria-label="Switch to Silences">
-                    <span>🔕</span> <span data-i18n="nav.tab.silences">Silences</span>
-                </button>
-                <button class="nav-tab" data-tab="sandbox" type="button" data-i18n-aria-label="nav.aria.sandbox" aria-label="Switch to Sandbox">
-                    <span>🧪</span> <span data-i18n="nav.tab.sandbox">Sandbox</span>
+                <button class="nav-tab" data-tab="routing" type="button" data-i18n-aria-label="nav.aria.routing" aria-label="Switch to Routing">
+                    <span>⚙️</span> <span data-i18n="nav.tab.routing">Routing</span>
                 </button>
             </div>
             <div class="nav-actions">
@@ -268,69 +262,76 @@
             </div>
         </div>
 
-        <!-- Forward Rules Tab -->
-        <div id="forwardRulesTab" class="tab-content" style="display: none;">
-            <div class="forward-rules-section">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
-                    <button class="btn btn-primary" onclick="showRuleForm()">
-                        <span>➕</span> <span data-i18n="rules.add">Add Rule</span>
-                    </button>
-                </div>
-                <div id="forwardRulesList">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p data-i18n="common.loading">Loading...</p>
+        <!-- Routing Tab (Forward Rules | Silences | Sandbox sub-views) -->
+        <div id="routingTab" class="tab-content" style="display: none;">
+            <div class="routing-section" style="padding: 20px 0;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div class="routing-view-switch" style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn routing-view-btn active" data-routing-view="rules" data-i18n="routing.view.rules">Forward Rules</button>
+                        <button class="btn routing-view-btn" data-routing-view="silences" data-i18n="routing.view.silences">Silences</button>
+                        <button class="btn routing-view-btn" data-routing-view="sandbox" data-i18n="routing.view.sandbox">Sandbox</button>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Silences Tab -->
-        <div id="silencesTab" class="tab-content" style="display: none;">
-            <div class="silences-section">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <div>
-                        <div class="section-title" data-i18n="silences.title">Silences</div>
-                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
+                <!-- View: Forward Rules -->
+                <div id="routingViewRules" class="forward-rules-section">
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
+                        <button class="btn btn-primary" onclick="showRuleForm()">
+                            <span>➕</span> <span data-i18n="rules.add">Add Rule</span>
+                        </button>
                     </div>
-                    <button class="btn btn-primary" onclick="showSilenceForm()">
-                        <span>➕</span> <span data-i18n="silences.add">Add Silence</span>
-                    </button>
-                </div>
-                <div id="silencesList">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p data-i18n="common.loading">Loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sandbox Tab -->
-        <div id="sandboxTab" class="tab-content" style="display: none;">
-            <div class="sandbox-section">
-                <div class="section-header" style="margin-bottom: 20px;">
-                    <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
-                    <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
-                </div>
-                <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
-                    <div>
-                        <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
-                        <input type="text" id="sandboxSource" placeholder="volcengine, grafana, prometheus…" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.9rem; margin-bottom:1rem;" />
-                        <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
-                        <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.82rem; resize:vertical;"></textarea>
-                        <div style="display:flex; gap:0.6rem; margin-top:0.85rem;">
-                            <button class="btn btn-primary" onclick="runSandboxTest()"><span>🧪</span> <span data-i18n="sandbox.run">Test</span></button>
-                            <button class="btn" onclick="loadSandboxSample()" data-i18n="sandbox.sample">Load sample</button>
+                    <div id="forwardRulesList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p data-i18n="common.loading">Loading...</p>
                         </div>
                     </div>
-                    <div>
-                        <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.result">Result</label>
-                        <div id="sandboxResult">
-                            <div class="empty-state" style="text-align:center; padding:40px; color:var(--text-secondary);">
-                                <div style="font-size:40px; margin-bottom:12px;">🧪</div>
-                                <p data-i18n="sandbox.empty">Paste a payload and click Test to see how WebhookWise would handle it.</p>
+                </div>
+
+                <!-- View: Silences -->
+                <div id="routingViewSilences" class="silences-section" style="display: none;">
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <div class="section-title" data-i18n="silences.title">Silences</div>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="showSilenceForm()">
+                            <span>➕</span> <span data-i18n="silences.add">Add Silence</span>
+                        </button>
+                    </div>
+                    <div id="silencesList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p data-i18n="common.loading">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View: Sandbox -->
+                <div id="routingViewSandbox" class="sandbox-section" style="display: none;">
+                    <div class="section-header" style="margin-bottom: 20px;">
+                        <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
+                    </div>
+                    <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
+                            <input type="text" id="sandboxSource" placeholder="volcengine, grafana, prometheus…" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.9rem; margin-bottom:1rem;" />
+                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
+                            <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.82rem; resize:vertical;"></textarea>
+                            <div style="display:flex; gap:0.6rem; margin-top:0.85rem;">
+                                <button class="btn btn-primary" onclick="runSandboxTest()"><span>🧪</span> <span data-i18n="sandbox.run">Test</span></button>
+                                <button class="btn" onclick="loadSandboxSample()" data-i18n="sandbox.sample">Load sample</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.result">Result</label>
+                            <div id="sandboxResult">
+                                <div class="empty-state" style="text-align:center; padding:40px; color:var(--text-secondary);">
+                                    <div style="font-size:40px; margin-bottom:12px;">🧪</div>
+                                    <p data-i18n="sandbox.empty">Paste a payload and click Test to see how WebhookWise would handle it.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -623,7 +624,7 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260622-silenceroi"></script>
+    <script src="/static/js/i18n.js?v=20260622-routing"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
     <script src="/static/js/api.js?v=20260622-sandbox"></script>
@@ -633,8 +634,9 @@
     <script src="/static/js/forward-rules.js?v=20260617-noack"></script>
     <script src="/static/js/silences.js?v=20260622-silenceroi"></script>
     <script src="/static/js/sandbox.js?v=20260622-sandbox"></script>
+    <script src="/static/js/routing.js?v=20260622-routing"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
     <script src="/static/js/decision-trace.js?v=20260622-inlinedecision"></script>
-    <script src="/static/js/dashboard.js?v=20260622-sandbox"></script>
+    <script src="/static/js/dashboard.js?v=20260622-routing"></script>
 </body>
 </html>

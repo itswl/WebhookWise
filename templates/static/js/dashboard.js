@@ -61,6 +61,9 @@ async function initDashboard() {
     if (typeof SandboxModule !== 'undefined') {
         SandboxModule.init();
     }
+    if (typeof RoutingModule !== 'undefined') {
+        RoutingModule.init();
+    }
 
     // Bind global events
     bindGlobalEvents();
@@ -159,9 +162,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
-        'forward-rules': 'forwardRulesTab',
-        'silences': 'silencesTab',
-        'sandbox': 'sandboxTab'
+        'routing': 'routingTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -202,28 +203,12 @@ function switchMainTab(tabId) {
                 DecisionTraceModule.load();
             }
             break;
-        case 'forward-rules':
+        case 'routing':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
             }
-            if (typeof loadForwardRules === 'function') {
-                loadForwardRules();
-            }
-            break;
-        case 'silences':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof loadSilences === 'function') {
-                loadSilences();
-            }
-            break;
-        case 'sandbox':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof SandboxModule !== 'undefined') {
-                SandboxModule.load();
+            if (typeof RoutingModule !== 'undefined') {
+                RoutingModule.load();
             }
             break;
     }
@@ -246,14 +231,9 @@ function refreshCurrentTab() {
                 DecisionTraceModule.load();
             }
             break;
-        case 'forward-rules':
-            if (typeof loadForwardRules === 'function') {
-                loadForwardRules();
-            }
-            break;
-        case 'silences':
-            if (typeof loadSilences === 'function') {
-                loadSilences();
+        case 'routing':
+            if (typeof RoutingModule !== 'undefined') {
+                RoutingModule.refresh();
             }
             break;
         case 'alerts':
