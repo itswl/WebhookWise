@@ -224,20 +224,9 @@ async def count_dead_letters(
 ) -> int | None:
     from db.session import count_with_timeout
 
-    stmt = (
-        select(func.count())
-        .select_from(WebhookEvent)
-        .where(WebhookEvent.processing_status == "dead_letter")
-    )
-    if source:
-        stmt = stmt.where(WebhookEvent.source == source)
-    if search:
-        pattern = f"%{search}%"
-        stmt = stmt.where(or_(WebhookEvent.error_message.ilike(pattern), WebhookEvent.failure_reason.ilike(pattern)))
-    if time_from is not None:
-        stmt = stmt.where(WebhookEvent.timestamp >= time_from)
-    if time_to is not None:
-        stmt = stmt.where(WebhookEvent.timestamp <= time_to)
+    stmt = _dead_letter_base_query(
+        source=source, search=search, time_from=time_from, time_to=time_to
+    ).with_only_columns(func.count())
     return await count_with_timeout(session, stmt)
 
 

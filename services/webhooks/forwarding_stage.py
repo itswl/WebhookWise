@@ -124,7 +124,6 @@ async def finalize_analysis_transaction(
         is_dup_for_save = analysis_res.is_duplicate
         original_id_for_save = analysis_res.original_event_id
         prev_alert_id_for_save = None
-    skip_duplicate_lookup = True
 
     outbox_ids: list[int] = []
     persist_attrs = {
@@ -149,7 +148,7 @@ async def finalize_analysis_transaction(
                     dedup_key=ctx.dedup_key,
                     is_duplicate=is_dup_for_save,
                     original_event_id=original_id_for_save,
-                    skip_duplicate_lookup=skip_duplicate_lookup,
+                    skip_duplicate_lookup=True,
                     prev_alert_id=prev_alert_id_for_save,
                 ),
             )

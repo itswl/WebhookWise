@@ -540,11 +540,11 @@ def _monthly_report_cron() -> str:
     schedule=[{"cron": _daily_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )
 async def scheduled_daily_report() -> None:
-    from services.operations.periodic_report import generate_and_send_daily_report
+    from services.operations.periodic_report import generate_and_send_report
 
     # Internally a no-op unless DAILY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
-    await _run_scheduled("daily_report", 86400, generate_and_send_daily_report())
+    await _run_scheduled("daily_report", 86400, generate_and_send_report("daily"))
 
 
 @broker.task(
@@ -552,11 +552,11 @@ async def scheduled_daily_report() -> None:
     schedule=[{"cron": _weekly_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )
 async def scheduled_weekly_report() -> None:
-    from services.operations.periodic_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_report
 
     # Internally a no-op unless WEEKLY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
-    await _run_scheduled("weekly_report", 86400, generate_and_send_weekly_report())
+    await _run_scheduled("weekly_report", 86400, generate_and_send_report("weekly"))
 
 
 @broker.task(
@@ -564,8 +564,8 @@ async def scheduled_weekly_report() -> None:
     schedule=[{"cron": _monthly_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )
 async def scheduled_monthly_report() -> None:
-    from services.operations.periodic_report import generate_and_send_monthly_report
+    from services.operations.periodic_report import generate_and_send_report
 
     # Internally a no-op unless MONTHLY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
-    await _run_scheduled("monthly_report", 86400, generate_and_send_monthly_report())
+    await _run_scheduled("monthly_report", 86400, generate_and_send_report("monthly"))

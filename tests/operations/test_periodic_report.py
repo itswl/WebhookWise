@@ -103,21 +103,21 @@ async def test_collect_report_stats_excludes_events_outside_window(session: Asyn
 
 @pytest.mark.asyncio
 async def test_weekly_report_no_op_when_disabled(temp_config) -> None:
-    from services.operations.periodic_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_report
 
     temp_config.notifications.WEEKLY_REPORT_ENABLED = False
-    result = await generate_and_send_weekly_report()
+    result = await generate_and_send_report("weekly")
     assert result == {"skipped": "disabled"}
 
 
 @pytest.mark.asyncio
 async def test_weekly_report_skips_when_no_webhook(temp_config) -> None:
-    from services.operations.periodic_report import generate_and_send_weekly_report
+    from services.operations.periodic_report import generate_and_send_report
 
     temp_config.notifications.WEEKLY_REPORT_ENABLED = True
     temp_config.notifications.WEEKLY_REPORT_FEISHU_WEBHOOK = ""
     temp_config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK = ""
-    result = await generate_and_send_weekly_report()
+    result = await generate_and_send_report("weekly")
     assert result == {"skipped": "no_webhook"}
 
 

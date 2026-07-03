@@ -286,19 +286,18 @@ def _rule_matches(
     # to computing it here for direct callers that don't.
     if identity is None:
         identity = extract_forward_match_fields(parsed_data)
-    if not _csv_value_matches(getattr(rule, "match_project", ""), identity["project"]):
+    if not _csv_value_matches(rule.match_project, identity["project"]):
         return False
-    if not _csv_value_matches(getattr(rule, "match_region", ""), identity["region"]):
+    if not _csv_value_matches(rule.match_region, identity["region"]):
         return False
-    if not _csv_environment_matches(getattr(rule, "match_environment", ""), identity["environment"]):
+    if not _csv_environment_matches(rule.match_environment, identity["environment"]):
         return False
     if rule.match_duplicate and rule.match_duplicate != "all":
         if rule.match_duplicate == "new" and is_duplicate:
             return False
         if rule.match_duplicate == "duplicate" and not is_duplicate:
             return False
-    match_payload = getattr(rule, "match_payload", "") or ""
-    return not (match_payload and not _payload_matches(match_payload, parsed_data or {}))
+    return not (rule.match_payload and not _payload_matches(rule.match_payload, parsed_data or {}))
 
 
 def _find_in_payload(payload: Any, key: str) -> Any:

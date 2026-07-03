@@ -420,15 +420,3 @@ async def _claim_catchup(period_key: str, fire: datetime) -> bool:
         # TTL only needs to outlive concurrent startups; an hour is ample.
         return await redis_set_nx_ex(periodic_report_catchup_claim(period_key, fire.isoformat()), "1", 3600)
     return False
-
-
-async def generate_and_send_daily_report() -> dict[str, Any]:
-    return await generate_and_send_report("daily")
-
-
-async def generate_and_send_weekly_report() -> dict[str, Any]:
-    return await generate_and_send_report("weekly")
-
-
-async def generate_and_send_monthly_report() -> dict[str, Any]:
-    return await generate_and_send_report("monthly")

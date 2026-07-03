@@ -333,23 +333,6 @@ class AppConfig(StaticSettings):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
 
-    _SUB_NAMES: tuple[str, ...] = (
-        "server",
-        "tasks",
-        "mq",
-        "security",
-        "db",
-        "redis",
-        "noise",
-        "ai",
-        "kb",
-        "notifications",
-        "openclaw",
-        "circuit_breaker",
-        "retry",
-        "maintenance",
-    )
-
 
 
 @lru_cache

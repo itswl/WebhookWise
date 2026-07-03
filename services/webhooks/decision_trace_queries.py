@@ -41,9 +41,6 @@ async def get_decision_trace_stats(session: AsyncSession, period: str = "day") -
     """
     start_time = utcnow() - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["day"])
 
-    total_stmt = select(func.count(DecisionTrace.id)).where(DecisionTrace.created_at >= start_time)
-    total = await count_with_timeout(session, total_stmt) or 0
-
     outcome_stmt = (
         select(DecisionTrace.outcome, func.count(DecisionTrace.id))
         .where(DecisionTrace.created_at >= start_time)
@@ -51,6 +48,8 @@ async def get_decision_trace_stats(session: AsyncSession, period: str = "day") -
     )
     outcome_rows = (await session.execute(outcome_stmt)).all()
     outcome_breakdown = {row[0]: row[1] for row in outcome_rows}
+    # The window total is the sum of the outcome buckets — no separate COUNT query.
+    total = sum(outcome_breakdown.values())
 
     # Skip-reason distribution is over skipped traces only (forwarded traces carry
     # skip_code="none", which would otherwise dominate and mean nothing).
@@ -94,8 +93,6 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
     start_time = utcnow() - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["day"])
     window = DecisionTrace.created_at >= start_time
 
-    total = await count_with_timeout(session, select(func.count(DecisionTrace.id)).where(window)) or 0
-
     route_rows = (
         await session.execute(
             select(DecisionTrace.route, func.count(DecisionTrace.id))
@@ -104,6 +101,8 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
         )
     ).all()
     route_breakdown = {(row[0] or "unknown"): row[1] for row in route_rows}
+    # The window total is the sum of the route buckets — no separate COUNT query.
+    total = sum(route_breakdown.values())
     ai_total = route_breakdown.get(_AI_ROUTE, 0)
 
     # Override rate is measured only over fresh AI judgments (a reuse/rule row

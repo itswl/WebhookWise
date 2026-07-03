@@ -221,10 +221,6 @@ async def _fetch_poll_result(rec: JsonObject, *, policy: OpenClawPollPolicy) -> 
     )
 
 
-def extract_robust_json(text: str) -> str | None:
-    return extract_balanced_json_text(text, allow_arrays=False)
-
-
 def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
     """Best-effort structured parse of OpenClaw text.
 
@@ -242,7 +238,7 @@ def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
     if isinstance(parsed, dict):
         return parsed
 
-    json_text = extract_robust_json(text)
+    json_text = extract_balanced_json_text(text, allow_arrays=False)
     if json_text:
         try:
             loaded = json.loads(json_text)

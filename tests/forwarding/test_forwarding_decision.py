@@ -229,6 +229,10 @@ class _FakeRule:
         self.match_importance = importance
         self.match_source = source
         self.match_duplicate = duplicate
+        self.match_project = ""
+        self.match_region = ""
+        self.match_environment = ""
+        self.match_payload = ""
         self.target_type = "webhook"
         self.target_url = target_url
         self.stop_on_match = stop

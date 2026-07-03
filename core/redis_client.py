@@ -194,10 +194,6 @@ async def redis_setex_str(key: str, ttl_seconds: int, value: str) -> None:
     await record_redis_operation("setex", get_redis().setex(key, int(ttl_seconds), value))
 
 
-async def redis_setex_bytes(key: str, ttl_seconds: int, value: bytes) -> None:
-    await record_redis_operation("setex", get_redis().setex(key, int(ttl_seconds), value))
-
-
 async def redis_delete(key: str) -> int:
     raw = await record_redis_operation("delete", get_redis().delete(key))
     return coerce_int(raw)
@@ -266,7 +262,6 @@ __all__ = [
     "redis_ping",
     "redis_publish",
     "redis_set_nx_ex",
-    "redis_setex_bytes",
     "redis_setex_json",
     "redis_setex_str",
 ]
