@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Iterable
@@ -56,7 +57,7 @@ def _tokenize_text(*values: Any) -> set[str]:
         for token in re.findall(r"[\u4e00-\u9fff]{2,}", text):
             tokens.add(token)
 
-    if tokens:
+    if tokens and logger.isEnabledFor(logging.DEBUG):
         logger.debug("[Noise] Text tokenization result: count=%d, sample=%r", len(tokens), list(tokens)[:5])
     return tokens
 

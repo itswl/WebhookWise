@@ -104,7 +104,6 @@ async def test_redis_client_build_close_dispose_and_all_wrapper_coercions(
         assert await redis_client.redis_eval_str("return 7", 0) == "7"
         assert await redis_client.redis_get_str("string") == "value"
         await redis_client.redis_setex_str("k", 10, "v")
-        await redis_client.redis_setex_bytes("kb", 11, b"v")
         assert await redis_client.redis_delete("gone") == 2
         assert await redis_client.redis_publish("events", "hello") == 3
         # redis_incr_with_expire now runs a single Lua script (INCR + EXPIRE),

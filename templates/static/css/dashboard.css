@@ -575,11 +575,6 @@ body {
   padding: 20px 0;
 }
 
-.ai-period-selector {
-  display: flex;
-  gap: 8px;
-}
-
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -606,10 +601,6 @@ body {
   max-width: 400px;
 }
 
-.toast-success { background: var(--success); color: #fff; }
-.toast-error { background: var(--danger); color: #fff; }
-.toast-info { background: var(--primary); color: #fff; }
-
 .toast-exit {
   animation: toastOut 0.3s ease-in forwards;
 }
@@ -624,94 +615,9 @@ body {
   to { opacity: 0; transform: translateY(1rem); }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Skeleton Loading
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.skeleton {
-  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--border) 50%, var(--bg-subtle) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: var(--radius-md);
-}
-
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Flexible utility classes (used in JS rendering)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.flex-between {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.gap-1 { gap: 1rem; }
-.flex-wrap { flex-wrap: wrap; }
-.text-muted { color: var(--text-muted); }
-.text-sm { font-size: 0.85rem; }
-.text-xs { font-size: 0.75rem; }
-.mt-1 { margin-top: 1rem; }
-.mt-2 { margin-top: 1.5rem; }
-.mb-1 { margin-bottom: 1rem; }
-.p-1 { padding: 1rem; }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Keyboard Shortcut Help Overlay
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.kbd-help-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.kbd-help-card {
-  background: var(--bg-surface);
-  border-radius: var(--radius-xl);
-  padding: 2rem;
-  min-width: 360px;
-  max-width: 440px;
-  box-shadow: var(--shadow-lg);
-}
-
-.kbd-help-card h3 {
-  font-size: 1.1rem;
-  margin-bottom: 1.25rem;
-  color: var(--text-main);
-}
-
-.kbd-help-card table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.kbd-help-card td {
-  padding: 0.5rem 0;
-}
-
-.kbd-help-card td:last-child {
-  text-align: right;
-}
-
-.kbd {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -801,12 +707,6 @@ body {
 
   .section-header select { flex: 1; }
 
-  .ai-period-selector {
-    display: flex;
-    width: 100%;
-  }
-
-  .ai-period-selector .btn { flex: 1; }
 }
 
 @media (max-width: 420px) {

@@ -199,7 +199,6 @@ def _routing_skip_importances(ai_config: Any) -> frozenset[str]:
 
 
 async def _maybe_route_to_rules(
-    webhook_data: WebhookData,
     parsed: dict[str, Any],
     source: str,
     alert_hash: str,
@@ -212,7 +211,8 @@ async def _maybe_route_to_rules(
     skip = _routing_skip_importances(ai_config)
     if not skip:
         return None
-    res = apply_resource_importance_override(analyze_with_rules(parsed, source), parsed)
+    # analyze_with_rules already applies the resource-importance override.
+    res = analyze_with_rules(parsed, source)
     importance = str(res.get("importance", "")).lower()
     if importance not in skip:
         return None
@@ -251,7 +251,7 @@ async def analyze_webhook_with_ai(
     # Tiered routing (opt-in): if the cheap rule pass deems this a low-value alert,
     # skip the paid LLM and return the rule analysis. This is an intentional route,
     # NOT a degradation — so it is logged as "rule_routed" and not marked degraded.
-    routed = await _maybe_route_to_rules(webhook_data, parsed, source, alert_hash, ai_config)
+    routed = await _maybe_route_to_rules(parsed, source, alert_hash, ai_config)
     if routed is not None:
         return routed
 
