@@ -470,3 +470,152 @@ async def test_last_sent_fire_coerces_naive_marker_to_utc(monkeypatch) -> None:
         assert result.tzinfo is not None, f"marker {raw!r} should come back tz-aware"
         # The comparison that crashed in prod (`last_sent >= fire`) must not raise.
         assert isinstance(result >= datetime.now(tz=UTC), bool)
+
+
+# ── AI cost budget alert (task #24) ──────────────────────────────────────────
+
+
+def _budget_session_scope(seeded_session):
+    """A session_scope stand-in that yields a pre-seeded in-memory session."""
+
+    @contextlib.asynccontextmanager
+    async def _scope():
+        yield seeded_session
+
+    return _scope
+
+
+@pytest.mark.asyncio
+async def test_ai_cost_budget_disabled_when_budget_zero(temp_config) -> None:
+    from services.operations.periodic_report import check_ai_cost_budget
+
+    temp_config.notifications.AI_COST_MONTHLY_BUDGET_USD = 0.0
+    assert await check_ai_cost_budget() == {"skipped": "disabled"}
+
+
+@pytest.mark.asyncio
+async def test_ai_cost_budget_skips_when_no_webhook(temp_config) -> None:
+    from services.operations.periodic_report import check_ai_cost_budget
+
+    notif = temp_config.notifications
+    notif.AI_COST_MONTHLY_BUDGET_USD = 10.0
+    notif.AI_COST_BUDGET_FEISHU_WEBHOOK = ""
+    notif.DAILY_REPORT_FEISHU_WEBHOOK = ""
+    notif.WEEKLY_REPORT_FEISHU_WEBHOOK = ""
+    notif.DEEP_ANALYSIS_FEISHU_WEBHOOK = ""
+    assert await check_ai_cost_budget() == {"skipped": "no_webhook"}
+
+
+@pytest.mark.asyncio
+async def test_ai_cost_budget_under_threshold_does_not_alert(temp_config, monkeypatch, session) -> None:
+    import services.operations.periodic_report as wr
+
+    notif = temp_config.notifications
+    notif.AI_COST_MONTHLY_BUDGET_USD = 10.0
+    notif.AI_COST_BUDGET_ALERT_THRESHOLD = 0.8
+    notif.AI_COST_BUDGET_FEISHU_WEBHOOK = "https://example.com/hook"
+    # $5 spent this month < $8 threshold.
+    session.add(AIUsageLog(timestamp=utcnow(), model="m", cost_estimate=5.0))
+    await session.commit()
+
+    monkeypatch.setattr(wr, "session_scope", _budget_session_scope(session))
+    result = await wr.check_ai_cost_budget()
+    assert result["skipped"] == "under_threshold"
+    assert result["spent"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_ai_cost_budget_alerts_once_over_threshold(temp_config, monkeypatch, session) -> None:
+    import services.operations.periodic_report as wr
+
+    notif = temp_config.notifications
+    notif.AI_COST_MONTHLY_BUDGET_USD = 10.0
+    notif.AI_COST_BUDGET_ALERT_THRESHOLD = 0.8
+    notif.AI_COST_BUDGET_FEISHU_WEBHOOK = "https://example.com/hook"
+    # $9 spent >= $8 threshold → should alert.
+    session.add(AIUsageLog(timestamp=utcnow(), model="m", cost_estimate=9.0))
+    await session.commit()
+
+    sent: dict[str, object] = {}
+
+    async def fake_send(url, card):
+        sent["url"] = url
+        sent["title"] = card["card"]["header"]["title"]["content"]
+        return {"status": "success"}
+
+    # First month's claim succeeds; a second call in the same month is blocked.
+    claims: dict[str, bool] = {}
+
+    async def fake_nx(key, value, ttl):
+        if key in claims:
+            return False
+        claims[key] = True
+        return True
+
+    monkeypatch.setattr(wr, "session_scope", _budget_session_scope(session))
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+    monkeypatch.setattr("core.redis_client.redis_set_nx_ex", fake_nx)
+
+    first = await wr.check_ai_cost_budget()
+    assert first["alerted"] is True
+    assert first["tier"] == "warning"  # $9 of $10 = warning, not over-budget
+    assert first["spent"] == 9.0
+    assert sent["url"] == "https://example.com/hook"
+
+    # Second run same month, same tier: claim already held → no duplicate alert.
+    second = await wr.check_ai_cost_budget()
+    assert second["skipped"] == "already_alerted"
+    assert second["tier"] == "warning"
+
+
+@pytest.mark.asyncio
+async def test_ai_cost_budget_warning_then_critical_are_separate_alerts(temp_config, monkeypatch, session) -> None:
+    """Warning at 80% must not silence the later over-budget (critical) alert:
+    each tier has its own once-per-month claim."""
+    import services.operations.periodic_report as wr
+
+    notif = temp_config.notifications
+    notif.AI_COST_MONTHLY_BUDGET_USD = 10.0
+    notif.AI_COST_BUDGET_ALERT_THRESHOLD = 0.8
+    notif.AI_COST_BUDGET_FEISHU_WEBHOOK = "https://example.com/hook"
+
+    tiers_sent: list[str] = []
+
+    async def fake_send(url, card):
+        title = card["card"]["header"]["title"]["content"]
+        tiers_sent.append("critical" if "超预算" in title else "warning")
+        return {"status": "success"}
+
+    claims: set[str] = set()
+
+    async def fake_nx(key, value, ttl):
+        if key in claims:
+            return False
+        claims.add(key)
+        return True
+
+    monkeypatch.setattr(wr, "session_scope", _budget_session_scope(session))
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", fake_send)
+    monkeypatch.setattr("core.redis_client.redis_set_nx_ex", fake_nx)
+
+    # $9 of $10 → warning fires.
+    session.add(AIUsageLog(timestamp=utcnow(), model="m", cost_estimate=9.0))
+    await session.commit()
+    warn = await wr.check_ai_cost_budget()
+    assert warn["tier"] == "warning"
+
+    # Spend now crosses 100% ($9 + $3 = $12) → critical fires as a SEPARATE alert,
+    # even though the warning already went out this month.
+    session.add(AIUsageLog(timestamp=utcnow(), model="m", cost_estimate=3.0))
+    await session.commit()
+    crit = await wr.check_ai_cost_budget()
+    assert crit["tier"] == "critical"
+    assert crit["alerted"] is True
+
+    # A second over-budget run does not re-send critical.
+    again = await wr.check_ai_cost_budget()
+    assert again["skipped"] == "already_alerted"
+    assert again["tier"] == "critical"
+
+    assert tiers_sent == ["warning", "critical"]
+
