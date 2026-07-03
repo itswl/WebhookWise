@@ -233,6 +233,15 @@ class NotificationConfig(StaticSettings):
     MONTHLY_REPORT_WINDOW_DAYS: int = Field(default=30)
     MONTHLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
 
+    # AI cost budget alert: when the current calendar month's accumulated AI
+    # spend crosses AI_COST_MONTHLY_BUDGET_USD * AI_COST_BUDGET_ALERT_THRESHOLD,
+    # push one Feishu card (checked by the daily report task, at most once per
+    # month per crossing). 0 = disabled. Webhook falls back to the daily report
+    # webhook, then the deep-analysis webhook.
+    AI_COST_MONTHLY_BUDGET_USD: float = Field(default=0.0)
+    AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8)  # warn at 80% of budget
+    AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
+
 
 class OpenClawConfig(StaticSettings):
     """OpenClaw deep-analysis engine."""
