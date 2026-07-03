@@ -294,6 +294,7 @@ async def get_webhooks_endpoint(
     cursor: int | None = Query(None),
     importance: str = Query(""),
     source: str = Query(""),
+    processing_status: str = Query(""),
     window: str = Query("", pattern="^(today|7d|30d|all|)$"),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
@@ -304,6 +305,7 @@ async def get_webhooks_endpoint(
         cursor=cursor,
         importance=importance,
         source=source,
+        processing_status=processing_status,
         time_from=time_from,
         page=page,
         page_size=page_size,
