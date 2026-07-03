@@ -187,3 +187,8 @@ def periodic_report_last_sent(period_key: str) -> str:
 def periodic_report_catchup_claim(period_key: str, fire_iso: str) -> str:
     """Single-flight claim so only one worker sends a given catch-up occurrence."""
     return f"periodic-report:catchup-claim:{period_key}:{fire_iso}"
+
+
+def ai_cost_budget_alert_claim(month_key: str) -> str:
+    """Single-flight claim so the AI cost budget alert fires at most once per month."""
+    return f"ai-cost-budget:alerted:{month_key}"

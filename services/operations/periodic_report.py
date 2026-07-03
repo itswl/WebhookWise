@@ -365,6 +365,102 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     return stats
 
 
+def _month_start(now: datetime) -> datetime:
+    """First instant of the current calendar month (UTC), for month-to-date spend."""
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def check_ai_cost_budget() -> dict[str, Any]:
+    """Alert once per month if month-to-date AI spend crosses the budget threshold.
+
+    Reuses the already-collected ``AIUsageLog.cost_estimate`` (the same data the
+    AI Cost dashboard shows) — sums the current calendar month, and if it is at
+    or above ``AI_COST_MONTHLY_BUDGET_USD * AI_COST_BUDGET_ALERT_THRESHOLD``,
+    pushes one Feishu card via the report send-chain. A Redis NX claim keyed on
+    the month makes it fire at most once per month (the daily task calls this
+    daily, but we don't want a daily nag). Returns a marker dict for tests/logs.
+
+    Disabled (budget <= 0) or unconfigured webhook → returns a ``{"skipped": ...}``
+    marker and does nothing.
+    """
+    notif = get_config_manager().notifications
+    budget = float(notif.AI_COST_MONTHLY_BUDGET_USD or 0.0)
+    if budget <= 0:
+        return {"skipped": "disabled"}
+
+    webhook_url = (
+        notif.AI_COST_BUDGET_FEISHU_WEBHOOK
+        or notif.DAILY_REPORT_FEISHU_WEBHOOK
+        or notif.WEEKLY_REPORT_FEISHU_WEBHOOK
+        or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
+    )
+    if not webhook_url:
+        logger.warning("[AICostBudget] budget set but no webhook configured; skipping")
+        return {"skipped": "no_webhook"}
+
+    now = utcnow()
+    month_start = _month_start(now)
+    async with session_scope() as session:
+        spend = await session.scalar(
+            select(func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0)).where(
+                AIUsageLog.timestamp >= month_start
+            )
+        )
+    spent = float(spend or 0.0)
+    threshold = budget * float(notif.AI_COST_BUDGET_ALERT_THRESHOLD or 0.8)
+
+    if spent < threshold:
+        return {"skipped": "under_threshold", "spent": spent, "budget": budget}
+
+    # Fire at most once per month (per crossing). NX claim = single-flight across
+    # workers; if we can't claim it (already alerted this month), do nothing.
+    from contextlib import suppress
+
+    from redis.exceptions import RedisError
+
+    from core.redis_client import redis_set_nx_ex
+    from core.redis_health import ai_cost_budget_alert_claim
+
+    month_key = now.strftime("%Y-%m")
+    claimed = False
+    with suppress(RedisError, RuntimeError, TypeError, ValueError):
+        claimed = await redis_set_nx_ex(ai_cost_budget_alert_claim(month_key), now.isoformat(), 40 * 24 * 3600)
+    if not claimed:
+        return {"skipped": "already_alerted", "spent": spent, "budget": budget}
+
+    pct = round(spent / budget * 100, 1) if budget else 0.0
+    card = _build_ai_cost_budget_card(spent=spent, budget=budget, pct=pct, month_key=month_key)
+    result = await _send_report_with_retry(webhook_url, card, "ai_cost_budget")
+    logger.info(
+        "[AICostBudget] month=%s spent=$%.4f budget=$%.2f (%.1f%%) alert status=%s",
+        month_key,
+        spent,
+        budget,
+        pct,
+        result.get("status"),
+    )
+    return {"alerted": True, "spent": spent, "budget": budget, "pct": pct, "status": result.get("status")}
+
+
+def _build_ai_cost_budget_card(*, spent: float, budget: float, pct: float, month_key: str) -> dict[str, Any]:
+    over = spent >= budget
+    header = "🔴 WebhookWise AI 成本超预算" if over else "⚠️ WebhookWise AI 成本预算预警"
+    body = (
+        f"**{month_key} 月度 AI 成本{'已超支' if over else '接近预算'}**\n\n"
+        f"- 本月已花费：**${spent:.4f}**\n"
+        f"- 月度预算：${budget:.2f}\n"
+        f"- 占用比例：**{pct:.1f}%**\n\n"
+        f"{'已超出预算，请检查 AI 调用量或调整预算。' if over else '已达预警阈值，注意用量。'}"
+    )
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": header}},
+            "elements": [{"tag": "markdown", "content": body}],
+        },
+    }
+
+
 async def run_report_catchup() -> dict[str, str]:
     """Send any enabled cadence whose most recent scheduled fire was missed.
 
