@@ -39,8 +39,10 @@ def _config_type_for_annotation(annotation: object) -> ConfigValueType | None:
 def get_config_keys() -> dict[str, ConfigKeyMeta]:
     settings = get_settings()
     keys: dict[str, ConfigKeyMeta] = {}
-    for sub_name in settings._SUB_NAMES:
-        sub_config: BaseSettings = getattr(settings, sub_name)
+    for sub_name in type(settings).model_fields:
+        sub_config = getattr(settings, sub_name)
+        if not isinstance(sub_config, BaseSettings):
+            continue
         for key, field in type(sub_config).model_fields.items():
             value_type = _config_type_for_annotation(field.annotation)
             if value_type is None:

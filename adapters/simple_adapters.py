@@ -23,9 +23,10 @@ class AdapterRegistration:
     normalizer: Normalizer
 
 
-def normalize_level(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    high = {
+# Severity keyword sets and their compound-value matchers, built once at import
+# (normalize_level runs for every webhook, several times per adapter).
+_LEVEL_HIGH = frozenset(
+    {
         "critical",
         "error",
         "fatal",
@@ -40,15 +41,30 @@ def normalize_level(value: Any) -> str:
         "严重",
         "紧急",
     }
-    medium = {"warning", "warn", "p1", "medium", "moderate", "acknowledged", "警告"}
-    low = {"info", "ok", "resolved", "normal", "low", "notice", "恢复", "已恢复", "正常"}
+)
+_LEVEL_MEDIUM = frozenset({"warning", "warn", "p1", "medium", "moderate", "acknowledged", "警告"})
+_LEVEL_LOW = frozenset({"info", "ok", "resolved", "normal", "low", "notice", "恢复", "已恢复", "正常"})
 
-    if text in high:
-        return "critical"
-    if text in medium:
-        return "warning"
-    if text in low:
-        return "info"
+
+def _level_keyword_matcher(keywords: frozenset[str]) -> tuple[re.Pattern[str] | None, tuple[str, ...]]:
+    ascii_kws = [kw for kw in keywords if kw.isascii()]
+    cjk_kws = tuple(kw for kw in keywords if not kw.isascii())
+    pattern = re.compile(r"\b(?:" + "|".join(re.escape(kw) for kw in ascii_kws) + r")") if ascii_kws else None
+    return pattern, cjk_kws
+
+
+_LEVEL_MATCHERS = tuple(
+    (label, keywords, *_level_keyword_matcher(keywords))
+    for label, keywords in (("critical", _LEVEL_HIGH), ("warning", _LEVEL_MEDIUM), ("info", _LEVEL_LOW))
+)
+
+
+def normalize_level(value: Any) -> str:
+    text = str(value or "").strip().lower()
+
+    for label, keywords, _pattern, _cjk in _LEVEL_MATCHERS:
+        if text in keywords:
+            return label
 
     # Fallback for compound values like "critical-alert" or "service recovered
     # normally". Match each keyword at a LEADING word boundary rather than as a
@@ -57,23 +73,10 @@ def normalize_level(value: Any) -> str:
     # matches "ok" at a word start, so "stockout" no longer matches while
     # "normal" still matches "normally". CJK keywords keep plain-substring
     # matching since `\b` is unreliable between CJK word chars.
-    if _matches_level_keyword(text, high):
-        return "critical"
-    if _matches_level_keyword(text, medium):
-        return "warning"
-    if _matches_level_keyword(text, low):
-        return "info"
+    for label, _keywords, pattern, cjk_kws in _LEVEL_MATCHERS:
+        if (pattern and pattern.search(text)) or any(kw in text for kw in cjk_kws):
+            return label
     return "warning"
-
-
-def _matches_level_keyword(text: str, keywords: set[str]) -> bool:
-    for kw in keywords:
-        if kw.isascii():
-            if re.search(r"\b" + re.escape(kw), text):
-                return True
-        elif kw in text:
-            return True
-    return False
 
 
 def _pick_first[PickValue](*values: PickValue | None) -> PickValue | None:
