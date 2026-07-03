@@ -540,11 +540,14 @@ def _monthly_report_cron() -> str:
     schedule=[{"cron": _daily_report_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )
 async def scheduled_daily_report() -> None:
-    from services.operations.periodic_report import generate_and_send_report
+    from services.operations.periodic_report import check_ai_cost_budget, generate_and_send_report
 
     # Internally a no-op unless DAILY_REPORT_ENABLED; the leader lock prevents
     # duplicate sends if more than one scheduler is ever running.
     await _run_scheduled("daily_report", 86400, generate_and_send_report("daily"))
+    # Piggyback the AI cost budget check on the daily cadence: no-op unless a
+    # budget is set, and self-limits to one alert per month via a Redis NX claim.
+    await _run_scheduled("ai_cost_budget_check", 86400, check_ai_cost_budget())
 
 
 @broker.task(
