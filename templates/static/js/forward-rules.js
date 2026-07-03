@@ -96,6 +96,21 @@ function renderRuleCard(rule) {
     const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
 
+    // ROI: how many alerts this rule has matched. A high count = it's carrying
+    // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
+    const hits = Number(rule.hit_count || 0);
+    const hitBadge = hits > 0
+        ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.tooltip')) + '">🎯 ' +
+            t('rules.roi.hits', { count: hits }) + '</span>'
+        : (isEnabled
+            ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">⚠️ ' +
+                t('rules.roi.zombie') + '</span>'
+            : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
+    const lastMatched = rule.last_matched_at
+        ? '<div style="margin-top: 0.75rem; color: #64748b; font-size: 0.85rem;">' +
+            t('rules.roi.lastMatched', { time: (typeof formatTime === 'function' ? formatTime(rule.last_matched_at) : rule.last_matched_at) }) + '</div>'
+        : '';
+
     return `
         <div class="rule-card" style="
             background: #ffffff;
@@ -137,6 +152,7 @@ function renderRuleCard(rule) {
                     </label>
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
                     ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">' + t('rules.card.disabled') + '</span>' : ''}
+                    ${hitBadge}
                 </div>
                 <span style="
                     background: #f1f5f9;
@@ -176,6 +192,8 @@ function renderRuleCard(rule) {
                     ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                 </div>
             </div>
+
+            ${lastMatched}
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
