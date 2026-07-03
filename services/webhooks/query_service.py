@@ -106,11 +106,13 @@ async def _apply_outbox_forward_statuses(session: AsyncSession, items: list[dict
         item["forward_status"] = _merge_forward_status(item.get("forward_status"), status_by_event_id.get(event_id))
 
 
-def _apply_summary_filters(query: Any, *, importance: str, source: str, time_from: datetime | None) -> Any:
+def _apply_summary_filters(query: Any, *, importance: str, source: str, processing_status: str = "", time_from: datetime | None) -> Any:
     if importance:
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
+    if processing_status:
+        query = query.where(WebhookEvent.processing_status == processing_status)
     if time_from is not None:
         query = query.where(WebhookEvent.timestamp >= time_from)
     return query
@@ -122,11 +124,12 @@ async def list_webhook_summaries(
     cursor: int | None = None,
     importance: str = "",
     source: str = "",
+    processing_status: str = "",
     time_from: datetime | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
-    query = _apply_summary_filters(select(*_SUMMARY_COLUMNS), importance=importance, source=source, time_from=time_from)
+    query = _apply_summary_filters(select(*_SUMMARY_COLUMNS), importance=importance, source=source, processing_status=processing_status, time_from=time_from)
     query = query.order_by(WebhookEvent.id.desc())
     query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
@@ -141,6 +144,7 @@ async def count_webhook_summaries(
     *,
     importance: str = "",
     source: str = "",
+    processing_status: str = "",
     time_from: datetime | None = None,
 ) -> int | None:
     """Total event count matching the same filters (for the list's real total).
@@ -151,7 +155,7 @@ async def count_webhook_summaries(
     from db.session import count_with_timeout
 
     stmt = _apply_summary_filters(
-        select(func.count()).select_from(WebhookEvent), importance=importance, source=source, time_from=time_from
+        select(func.count()).select_from(WebhookEvent), importance=importance, source=source, processing_status=processing_status, time_from=time_from
     )
     return await count_with_timeout(session, stmt)
 

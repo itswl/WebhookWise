@@ -117,6 +117,17 @@
                         </select>
                     </div>
                     <div class="filter-item">
+                        <label class="filter-label" data-i18n="alerts.filter.processingStatus">Processing Status</label>
+                        <select class="filter-input" id="processingStatusFilter" onchange="filterAlerts()">
+                            <option value="" data-i18n="common.all">All</option>
+                            <option value="received" data-i18n="alerts.status.received">Received</option>
+                            <option value="analyzing" data-i18n="alerts.status.analyzing">Analyzing</option>
+                            <option value="completed" data-i18n="alerts.status.completed">Completed</option>
+                            <option value="failed" data-i18n="alerts.status.failed">Failed</option>
+                            <option value="dead_letter" data-i18n="alerts.status.deadLetter">Dead Letter</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
                         <label class="filter-label" data-i18n="alerts.filter.timeWindow">Time Range</label>
                         <select class="filter-input" id="timeWindowFilter">
                             <option value="all" data-i18n="alerts.window.all">All time</option>
