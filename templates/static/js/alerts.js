@@ -43,6 +43,7 @@ const AlertsModule = {
         const importanceFilter = document.getElementById('importanceFilter');
         const sourceFilter = document.getElementById('sourceFilter');
         const duplicateFilter = document.getElementById('duplicateFilter');
+        const processingStatusFilter = document.getElementById('processingStatusFilter');
         const timeWindowFilter = document.getElementById('timeWindowFilter');
         const pageSizeSelect = document.getElementById('pageSize');
 
@@ -54,6 +55,9 @@ const AlertsModule = {
         }
         if (sourceFilter) {
             sourceFilter.addEventListener('change', () => this.filterAlerts());
+        }
+        if (processingStatusFilter) {
+            processingStatusFilter.addEventListener('change', () => this.filterAlerts());
         }
         if (duplicateFilter) {
             duplicateFilter.addEventListener('change', () => this.filterAlerts());
@@ -88,6 +92,8 @@ const AlertsModule = {
                 this.deepAnalyzeAlert(id);
             } else if (action === 'forward') {
                 this.openForwardModal(id);
+            } else if (action === 'replay-dl') {
+                this.replayDeadLetter(id);
             }
             return;
         }
@@ -255,6 +261,7 @@ const AlertsModule = {
         const importanceFilter = document.getElementById('importanceFilter').value;
         const sourceFilter = document.getElementById('sourceFilter').value;
         const duplicateFilter = document.getElementById('duplicateFilter').value;
+        const processingStatusFilter = document.getElementById('processingStatusFilter') ? document.getElementById('processingStatusFilter').value : '';
 
         // Filter data
         this.filteredAlerts = this.alerts.filter(function(webhook) {
@@ -275,7 +282,9 @@ const AlertsModule = {
                 matchDuplicate = !!webhook.is_duplicate;
             }
 
-            return matchSearch && matchImportance && matchSource && matchDuplicate;
+            const matchProcessingStatus = !processingStatusFilter || webhook.processing_status === processingStatusFilter;
+
+            return matchSearch && matchImportance && matchSource && matchDuplicate && matchProcessingStatus;
         });
 
         console.log('Filter results:', this.filteredAlerts.length, 'items (of', this.alerts.length, 'items)');
@@ -385,6 +394,9 @@ const AlertsModule = {
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
             html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
+            if (webhook.processing_status === 'dead_letter') {
+                html += '<button class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.replayDeadLetter') + '</button>';
+            }
             html += '</div></div></div>';
 
             html += '<div class="alert-details">';
@@ -684,10 +696,12 @@ const AlertsModule = {
         const importanceFilter = document.getElementById('importanceFilter');
         const sourceFilter = document.getElementById('sourceFilter');
         const duplicateFilter = document.getElementById('duplicateFilter');
+        const processingStatusFilter = document.getElementById('processingStatusFilter');
         if (searchInput) searchInput.value = '';
         if (importanceFilter) importanceFilter.value = '';
         if (sourceFilter) sourceFilter.value = '';
         if (duplicateFilter) duplicateFilter.value = '';
+        if (processingStatusFilter) processingStatusFilter.value = '';
     },
 
     _revealAlertItem(id) {
@@ -825,6 +839,31 @@ const AlertsModule = {
             if (dataTab) {
                 dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
             }
+        }
+    },
+
+    /**
+     * Replay a dead letter
+     */
+    async replayDeadLetter(id) {
+        console.log('Starting replay of dead letter:', id);
+
+        if (!confirm(t('alerts.confirm.replayDeadLetter'))) {
+            return;
+        }
+
+        try {
+            const result = await API.replayDeadLetter(id);
+            console.log('Replay result:', result);
+            if (result.success) {
+                showToast(t('alerts.success.replayStarted'));
+                setTimeout(() => this.loadAlerts(), 1500);
+            } else {
+                throw new Error(result.error || t('common.loadFailed'));
+            }
+        } catch (error) {
+            console.error('Replay failed:', error);
+            showError(t('alerts.error.replayFailed') + ': ' + error.message);
         }
     },
 
