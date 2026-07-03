@@ -158,6 +158,11 @@ class ForwardRuleSchema(BaseModel):
     stop_on_match: bool
     created_at: datetime | str | None = None
     updated_at: datetime | str | None = None
+    # ROI signals: how many alerts this rule has matched (lifetime, from the
+    # decision trace) and when it last did. Annotated by the list endpoint;
+    # absent on create/update responses (no trace lookup there), hence defaults.
+    hit_count: int = 0
+    last_matched_at: datetime | str | None = None
 
 
 class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):

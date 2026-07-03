@@ -12,6 +12,7 @@ from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
+    get_forward_rule_hit_counts,
     get_overview_stats,
     get_silence_suppression_counts,
     list_decision_traces,
@@ -332,6 +333,53 @@ async def test_silence_suppression_counts_group_by_rule(
     assert counts[5]["last_suppressed_at"] is not None
     # Only the two silence rules appear — nothing for the cooldown/forward rows.
     assert set(counts.keys()) == {5, 6}
+
+
+@pytest.mark.asyncio
+async def test_forward_rule_hit_counts_group_by_rule_name(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # feishu matched 3 alerts, openclaw 1 (one forward matched BOTH rules, since
+    # stop_on_match=false lets several fire). Skipped rows carry no matched_rules
+    # and must not count.
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(60, "forwarded", "none", matched_rules=["feishu"]),
+                _trace(61, "forwarded", "none", matched_rules=["feishu", "openclaw"]),
+                _trace(62, "forwarded", "none", matched_rules=["feishu"]),
+                _trace(63, "skipped", "no_match", matched_rules=[]),        # nothing matched
+                _trace(64, "skipped", "silenced", silence_id=5),             # skipped, not forwarded
+            ]
+        )
+    async with session_factory() as session:
+        hits = await get_forward_rule_hit_counts(session)
+
+    assert hits["feishu"]["count"] == 3
+    assert hits["openclaw"]["count"] == 1
+    assert hits["feishu"]["last_matched_at"] is not None
+    # Only the two rules that actually matched appear.
+    assert set(hits.keys()) == {"feishu", "openclaw"}
+
+
+@pytest.mark.asyncio
+async def test_forward_rule_hit_counts_scoped_to_requested_names(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Scoped to the currently-shown rules: a since-renamed/deleted rule whose old
+    # name still lingers in traces is skipped.
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                _trace(70, "forwarded", "none", matched_rules=["feishu"]),
+                _trace(71, "forwarded", "none", matched_rules=["old-deleted-rule"]),
+            ]
+        )
+    async with session_factory() as session:
+        hits = await get_forward_rule_hit_counts(session, rule_names=["feishu"])
+
+    assert set(hits.keys()) == {"feishu"}
+    assert hits["feishu"]["count"] == 1
 
 
 @pytest.mark.asyncio

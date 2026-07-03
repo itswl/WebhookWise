@@ -2,6 +2,8 @@
 Forwarding API Routes.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,6 +28,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
+from services.webhooks.decision_trace_queries import get_forward_rule_hit_counts
 
 logger = get_logger("api.v1.forwarding")
 
@@ -53,7 +56,21 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
 )
 async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
-    return {"success": True, "data": [forward_rule_to_dict(rule, mask_target_url=True) for rule in rules]}
+    return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=True)}
+
+
+async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_target_url: bool) -> list[JSONDict]:
+    """Annotate each rule with its hit count (ROI): how many alerts it matched,
+    and when it last did. A zero count on an enabled rule is a zombie rule."""
+    hits = await get_forward_rule_hit_counts(session, rule_names=[r.name for r in rules])
+    data: list[JSONDict] = []
+    for rule in rules:
+        item = forward_rule_to_dict(rule, mask_target_url=mask_target_url)
+        stat = hits.get(rule.name)
+        item["hit_count"] = stat["count"] if stat else 0
+        item["last_matched_at"] = stat["last_matched_at"] if stat else None
+        data.append(item)
+    return data
 
 
 @forwarding_router.get(
@@ -63,7 +80,7 @@ async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_sess
 )
 async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
     rules = await get_forward_rules(session)
-    return {"success": True, "data": [forward_rule_to_dict(rule) for rule in rules]}
+    return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=False)}
 
 
 @forwarding_router.post(

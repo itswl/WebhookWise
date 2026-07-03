@@ -12,7 +12,7 @@ Two shapes back the dashboard's Decision Trace tab:
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -272,6 +272,54 @@ async def get_silence_suppression_counts(
             "last_suppressed_at": utc_isoformat(row[2]) if row[2] is not None else None,
         }
         for row in rows
+    }
+
+
+async def get_forward_rule_hit_counts(
+    session: AsyncSession, *, rule_names: list[str] | None = None
+) -> dict[str, dict[str, Any]]:
+    """How many alerts each forward rule has matched (lifetime) + recency.
+
+    The symmetric counterpart to ``get_silence_suppression_counts`` for the
+    Forward-rule ROI panel: answers "which rule is carrying the load, which is a
+    zombie". ``matched_rules`` is a JSONB array of rule *names* (a forwarded
+    alert can match several rules when ``stop_on_match`` is false), so this
+    aggregates over the forwarded traces that carry a non-empty array.
+
+    Returns ``{rule_name: {"count": int, "last_matched_at": iso|None}}``. A zero
+    count on an *enabled* rule is a zombie rule worth reviewing; a stale
+    ``last_matched_at`` flags one that has gone quiet.
+
+    Aggregation is done in Python rather than via ``jsonb_array_elements`` so it
+    behaves identically on Postgres (prod) and SQLite (tests) — no dialect
+    branch. Bounded by the forwarded-trace count (only forwarded rows carry a
+    non-empty ``matched_rules``); we select just the two needed columns.
+    """
+    stmt = select(DecisionTrace.matched_rules, DecisionTrace.created_at).where(
+        DecisionTrace.outcome == "forwarded",
+        DecisionTrace.matched_rules.isnot(None),
+    )
+    rows = (await session.execute(stmt)).all()
+
+    wanted = set(rule_names) if rule_names else None
+    counts: dict[str, int] = {}
+    last_at: dict[str, datetime] = {}
+    for matched, created_at in rows:
+        if not matched:
+            continue
+        for name in matched:
+            if wanted is not None and name not in wanted:
+                continue
+            counts[name] = counts.get(name, 0) + 1
+            if created_at is not None and (name not in last_at or created_at > last_at[name]):
+                last_at[name] = created_at
+
+    return {
+        name: {
+            "count": count,
+            "last_matched_at": utc_isoformat(last_at[name]) if name in last_at else None,
+        }
+        for name, count in counts.items()
     }
 
 
