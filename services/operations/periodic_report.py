@@ -370,18 +370,39 @@ def _month_start(now: datetime) -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+async def _claim_budget_tier(month_key: str, tier: str) -> bool:
+    """Single-flight claim for one budget tier this month. True if this process
+    won it. Redis error → False (skip): a missed budget alert self-heals on the
+    next daily run, whereas double-sending is the annoyance we guard against."""
+    from contextlib import suppress
+
+    from redis.exceptions import RedisError
+
+    from core.redis_client import redis_set_nx_ex
+    from core.redis_health import ai_cost_budget_alert_claim
+
+    with suppress(RedisError, RuntimeError, TypeError, ValueError):
+        return await redis_set_nx_ex(
+            ai_cost_budget_alert_claim(month_key, tier), utcnow().isoformat(), 40 * 24 * 3600
+        )
+    return False
+
+
 async def check_ai_cost_budget() -> dict[str, Any]:
-    """Alert once per month if month-to-date AI spend crosses the budget threshold.
+    """Alert on month-to-date AI spend, two tiers, once each per month.
 
     Reuses the already-collected ``AIUsageLog.cost_estimate`` (the same data the
-    AI Cost dashboard shows) — sums the current calendar month, and if it is at
-    or above ``AI_COST_MONTHLY_BUDGET_USD * AI_COST_BUDGET_ALERT_THRESHOLD``,
-    pushes one Feishu card via the report send-chain. A Redis NX claim keyed on
-    the month makes it fire at most once per month (the daily task calls this
-    daily, but we don't want a daily nag). Returns a marker dict for tests/logs.
+    AI Cost dashboard shows) — sums the current calendar month and compares to
+    ``AI_COST_MONTHLY_BUDGET_USD``:
+    - **critical**: spend >= 100% of budget (over-budget);
+    - **warning**: spend >= budget * ``AI_COST_BUDGET_ALERT_THRESHOLD`` (default 0.8).
 
-    Disabled (budget <= 0) or unconfigured webhook → returns a ``{"skipped": ...}``
-    marker and does nothing.
+    Each tier fires at most once per month via its own Redis NX claim, so a
+    warning at 80% and a later critical once spend actually exceeds the budget
+    are *separate* alerts — but neither nags daily (the daily task calls this
+    daily). Returns a marker dict for tests/logs.
+
+    Disabled (budget <= 0) or unconfigured webhook → ``{"skipped": ...}`` no-op.
     """
     notif = get_config_manager().notifications
     budget = float(notif.AI_COST_MONTHLY_BUDGET_USD or 0.0)
@@ -407,43 +428,39 @@ async def check_ai_cost_budget() -> dict[str, Any]:
             )
         )
     spent = float(spend or 0.0)
-    threshold = budget * float(notif.AI_COST_BUDGET_ALERT_THRESHOLD or 0.8)
+    warn_threshold = budget * float(notif.AI_COST_BUDGET_ALERT_THRESHOLD or 0.8)
 
-    if spent < threshold:
+    # The highest tier currently crossed (critical outranks warning).
+    if spent >= budget:
+        tier = "critical"
+    elif spent >= warn_threshold:
+        tier = "warning"
+    else:
         return {"skipped": "under_threshold", "spent": spent, "budget": budget}
 
-    # Fire at most once per month (per crossing). NX claim = single-flight across
-    # workers; if we can't claim it (already alerted this month), do nothing.
-    from contextlib import suppress
-
-    from redis.exceptions import RedisError
-
-    from core.redis_client import redis_set_nx_ex
-    from core.redis_health import ai_cost_budget_alert_claim
+    if not await _claim_budget_tier(now.strftime("%Y-%m"), tier):
+        return {"skipped": "already_alerted", "tier": tier, "spent": spent, "budget": budget}
 
     month_key = now.strftime("%Y-%m")
-    claimed = False
-    with suppress(RedisError, RuntimeError, TypeError, ValueError):
-        claimed = await redis_set_nx_ex(ai_cost_budget_alert_claim(month_key), now.isoformat(), 40 * 24 * 3600)
-    if not claimed:
-        return {"skipped": "already_alerted", "spent": spent, "budget": budget}
-
     pct = round(spent / budget * 100, 1) if budget else 0.0
-    card = _build_ai_cost_budget_card(spent=spent, budget=budget, pct=pct, month_key=month_key)
-    result = await _send_report_with_retry(webhook_url, card, "ai_cost_budget")
+    card = _build_ai_cost_budget_card(spent=spent, budget=budget, pct=pct, month_key=month_key, tier=tier)
+    result = await _send_report_with_retry(webhook_url, card, f"ai_cost_budget:{tier}")
     logger.info(
-        "[AICostBudget] month=%s spent=$%.4f budget=$%.2f (%.1f%%) alert status=%s",
+        "[AICostBudget] month=%s tier=%s spent=$%.4f budget=$%.2f (%.1f%%) alert status=%s",
         month_key,
+        tier,
         spent,
         budget,
         pct,
         result.get("status"),
     )
-    return {"alerted": True, "spent": spent, "budget": budget, "pct": pct, "status": result.get("status")}
+    return {"alerted": True, "tier": tier, "spent": spent, "budget": budget, "pct": pct, "status": result.get("status")}
 
 
-def _build_ai_cost_budget_card(*, spent: float, budget: float, pct: float, month_key: str) -> dict[str, Any]:
-    over = spent >= budget
+def _build_ai_cost_budget_card(
+    *, spent: float, budget: float, pct: float, month_key: str, tier: str
+) -> dict[str, Any]:
+    over = tier == "critical"
     header = "🔴 WebhookWise AI 成本超预算" if over else "⚠️ WebhookWise AI 成本预算预警"
     body = (
         f"**{month_key} 月度 AI 成本{'已超支' if over else '接近预算'}**\n\n"

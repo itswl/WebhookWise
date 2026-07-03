@@ -189,6 +189,11 @@ def periodic_report_catchup_claim(period_key: str, fire_iso: str) -> str:
     return f"periodic-report:catchup-claim:{period_key}:{fire_iso}"
 
 
-def ai_cost_budget_alert_claim(month_key: str) -> str:
-    """Single-flight claim so the AI cost budget alert fires at most once per month."""
-    return f"ai-cost-budget:alerted:{month_key}"
+def ai_cost_budget_alert_claim(month_key: str, tier: str) -> str:
+    """Single-flight claim so each AI cost budget tier fires at most once per month.
+
+    Two tiers per month: "warning" at the configured threshold, and "critical"
+    once spend actually exceeds 100% of budget — so blowing past the budget
+    after the warning still pings, without a daily nag for either.
+    """
+    return f"ai-cost-budget:alerted:{month_key}:{tier}"
