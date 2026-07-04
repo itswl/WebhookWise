@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -61,23 +61,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await start_rules_invalidation_listener()
     await start_silences_invalidation_listener()
-    logger.info("[App] Startup complete port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
 
-    try:
-        yield
-    finally:
-        logger.info("[App] Shutting down worker_id=%s", _WORKER_ID)
-        await stop_runtime_services(
-            config,
-            context=context,
-            broker=broker,
-            stop_broker=True,
-            reset_ai_client=True,
-            reset_ai_client_hook=reset_openai_client,
-        )
-        logger.info("[App] Shutdown complete worker_id=%s", _WORKER_ID)
-        shutdown_observability()
-        stop_log_listener()
+    async with AsyncExitStack() as lifecycle:
+        # The mounted MCP app is a sub-app; Starlette does not run a mounted
+        # app's lifespan, so its Streamable-HTTP session manager must be driven
+        # from here. Only when the read-only MCP server is enabled.
+        if config.security.MCP_ENABLED:
+            from api.mcp import mcp_server
+
+            await lifecycle.enter_async_context(mcp_server.session_manager.run())
+
+        logger.info("[App] Startup complete port=%s worker_id=%s", config.server.PORT, _WORKER_ID)
+        try:
+            yield
+        finally:
+            logger.info("[App] Shutting down worker_id=%s", _WORKER_ID)
+            await stop_runtime_services(
+                config,
+                context=context,
+                broker=broker,
+                stop_broker=True,
+                reset_ai_client=True,
+                reset_ai_client_hook=reset_openai_client,
+            )
+            logger.info("[App] Shutdown complete worker_id=%s", _WORKER_ID)
+            shutdown_observability()
+            stop_log_listener()
 
 
 app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan, debug=False)
@@ -108,3 +117,12 @@ logger.debug("worker_id=%s", _WORKER_ID)
 app.include_router(health_router)
 app.include_router(dashboard_router)
 app.include_router(v1_router)
+
+# Read-only MCP (Streamable HTTP) server at /mcp, guarded by the management API
+# key. Its session manager lifecycle is driven from the lifespan above. Opt-in
+# via SECURITY__MCP_ENABLED so the endpoint is not exposed unless configured.
+if _app_context(app).config.security.MCP_ENABLED:
+    from api.mcp import build_mcp_app  # noqa: E402
+
+    app.mount("/mcp", build_mcp_app())
+    logger.info("[App] Read-only MCP server mounted at /mcp")
