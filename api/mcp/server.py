@@ -12,13 +12,16 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import ASGIApp
 
 from api.mcp.auth import MCPAuthMiddleware
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from db.session import session_scope
-from schemas.analysis import deep_analysis_to_dict
+from models import DeepAnalysis, WebhookEvent
+from schemas.analysis import deep_analysis_to_dict, deep_analysis_to_summary_dict
 from schemas.silences import silence_to_dict
 from services.analysis.analysis_queries import get_ai_usage_stats, get_deep_analyses_for_webhook
 from services.kb.retrieval import retrieve as kb_retrieve
@@ -107,11 +110,52 @@ async def list_alert_decision_traces(
     return {"items": items, "has_more": has_more, "next_cursor": next_cursor}
 
 
+async def _attach_deep_analysis_markers(session: AsyncSession, items: list[dict[str, Any]]) -> None:
+    """Annotate each alert with a lightweight deep-analysis marker.
+
+    A single batched IN query (no N+1); we attach only a small marker
+    (availability + status + one-line preview + id), NOT the full ~49 KB
+    report — that stays behind get_ai_analysis so a list page stays small.
+    Newest analysis wins when an event has several.
+    """
+    event_ids = [int(item["id"]) for item in items if item.get("id")]
+    if not event_ids:
+        return
+    rows = (
+        await session.execute(
+            select(DeepAnalysis)
+            .where(DeepAnalysis.webhook_event_id.in_(event_ids))
+            .order_by(DeepAnalysis.id.desc())
+        )
+    ).scalars().all()
+
+    # First row per event id is the newest (ordered desc).
+    latest: dict[int, DeepAnalysis] = {}
+    for row in rows:
+        latest.setdefault(int(row.webhook_event_id), row)
+
+    for item in items:
+        record = latest.get(int(item["id"])) if item.get("id") else None
+        if record is None:
+            item["deep_analysis"] = {"available": False}
+            continue
+        summary = deep_analysis_to_summary_dict(record)
+        item["deep_analysis"] = {
+            "available": True,
+            "analysis_id": summary.get("id"),
+            "status": summary.get("status"),
+            "engine": summary.get("engine"),
+            "summary_preview": summary.get("summary_preview", ""),
+        }
+
+
 @mcp_server.tool(
     title="List recent alerts",
     description="List recent webhook alert summaries (newest first). Optional filters: importance, source, "
     "and window ('today' | '7d' | '30d' | 'all'). Each item includes id, source, importance, timestamp, "
-    "duplicate info, forward status, and the AI summary. page_size is capped at 200.",
+    "duplicate info, forward status, the lightweight AI summary, and a `deep_analysis` marker "
+    "({available, status, summary_preview, analysis_id}) — call get_ai_analysis for the full deep report. "
+    "page_size is capped at 200.",
 )
 async def list_recent_alerts(
     importance: str = "",
@@ -129,6 +173,7 @@ async def list_recent_alerts(
             page=max(page, 1),
             page_size=_clamp_page_size(page_size),
         )
+        await _attach_deep_analysis_markers(session, items)
     return {"items": items, "has_more": has_more, "next_cursor": next_cursor}
 
 
@@ -189,16 +234,39 @@ async def get_dead_letter_alert(event_id: int) -> dict[str, Any] | None:
 
 @mcp_server.tool(
     title="Get AI analysis for an alert",
-    description="Return WebhookWise's AI deep-analysis results for a webhook event id — the summary, root cause, "
-    "evidence and recommendations produced for that alert (may be several, newest first; empty if the event "
-    "was never deep-analysed). This is the analysis WebhookWise already did; reuse it instead of re-deriving.",
+    description="Return WebhookWise's AI analysis for a webhook event id. Prefers the full deep-analysis reports "
+    "(summary, root cause, evidence, recommendations); if the event was never deep-analysed, falls back to the "
+    "lightweight per-alert AI (importance + one-line summary). The `analysis_level` field is 'deep', "
+    "'lightweight', or 'none'. This is the analysis WebhookWise already did — reuse it instead of re-deriving.",
 )
 async def get_ai_analysis(webhook_event_id: int, limit: int = 10) -> dict[str, Any]:
     async with session_scope() as session:
         records = await get_deep_analyses_for_webhook(
             session, webhook_event_id, limit=min(max(limit, 1), 50)
         )
-        return {"items": [deep_analysis_to_dict(r) for r in records]}
+        if records:
+            return {"analysis_level": "deep", "items": [deep_analysis_to_dict(r) for r in records]}
+
+        # No deep analysis → fall back to the event's lightweight AI verdict so a
+        # single lookup is never empty for an event that exists.
+        event = await session.get(WebhookEvent, webhook_event_id)
+        if event is None:
+            return {"analysis_level": "none", "items": []}
+        light = dict(event.ai_analysis) if event.ai_analysis else {}
+        if not light:
+            return {"analysis_level": "none", "items": []}
+        return {
+            "analysis_level": "lightweight",
+            "items": [
+                {
+                    "webhook_event_id": webhook_event_id,
+                    "source": event.source,
+                    "importance": light.get("importance") or event.importance,
+                    "summary": light.get("summary"),
+                    "analysis": light,
+                }
+            ],
+        }
 
 
 @mcp_server.tool(

@@ -51,7 +51,8 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> None:
             [
                 WebhookEvent(id=1, source="grafana", importance="high", processing_status="completed"),
                 WebhookEvent(id=2, source="prometheus", importance="low", processing_status="dead_letter",
-                             failure_reason="boom", error_message="connect timeout"),
+                             failure_reason="boom", error_message="connect timeout",
+                             ai_analysis={"importance": "low", "summary": "light: brief blip"}),
                 ForwardRule(name="busy", target_type="feishu", target_url="https://x/hook/a", enabled=True),
                 DecisionTrace(webhook_event_id=1, outcome="forwarded", skip_code="none", matched_rules=["busy"]),
                 DecisionTrace(webhook_event_id=2, outcome="skipped", skip_code="silenced", matched_rules=None,
@@ -169,11 +170,34 @@ async def test_get_ai_analysis(
     from api.mcp import server
 
     await _seed(session_factory)
+    # Event 1 has a deep analysis → analysis_level "deep" with the full report.
     res = await server.get_ai_analysis(webhook_event_id=1)
+    assert res["analysis_level"] == "deep"
     assert len(res["items"]) == 1
     assert res["items"][0]["analysis_result"]["summary"] == "root cause: disk full"
-    # An event with no deep analysis returns an empty list, not an error.
-    assert await server.get_ai_analysis(webhook_event_id=2) == {"items": []}
+    # Event 2 has no deep analysis but has a lightweight ai_analysis → fall back.
+    light = await server.get_ai_analysis(webhook_event_id=2)
+    assert light["analysis_level"] == "lightweight"
+    assert light["items"][0]["summary"] == "light: brief blip"
+    # An unknown event → "none", empty items (not an error).
+    assert await server.get_ai_analysis(webhook_event_id=999) == {"analysis_level": "none", "items": []}
+
+
+@pytest.mark.asyncio
+async def test_list_recent_alerts_deep_analysis_marker(
+    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from api.mcp import server
+
+    await _seed(session_factory)
+    res = await server.list_recent_alerts()
+    by_id = {a["id"]: a for a in res["items"]}
+    # Event 1 has a deep analysis → marker available, no full report inlined.
+    assert by_id[1]["deep_analysis"]["available"] is True
+    assert by_id[1]["deep_analysis"]["status"] == "completed"
+    assert "analysis_result" not in by_id[1]["deep_analysis"]  # marker only, no ~49KB blob
+    # Event 2 has none → available False.
+    assert by_id[2]["deep_analysis"] == {"available": False}
 
 
 @pytest.mark.asyncio
