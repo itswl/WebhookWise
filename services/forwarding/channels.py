@@ -1,7 +1,7 @@
 """Forward-channel strategy registry.
 
-Replaces the hardcoded if/elif on target_type / feishu-URL spread across
-outbox_delivery, remote and outbox_state with a small registry of channel
+Replaces the hardcoded if/elif on target_type / feishu-URL that used to be
+spread across the outbox delivery/state code with a small registry of channel
 strategies. Adding a new forward target type means adding one ForwardChannel,
 not editing several dispatch sites.
 
