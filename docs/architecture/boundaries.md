@@ -37,6 +37,7 @@ only the reusable primitive in `core/`.
 Allowed examples:
 
 - `api/app.py`: FastAPI application construction and middleware registration.
+- `api/mcp/`: read-only MCP server (Streamable HTTP) mounted at `/mcp`; thin tool wrappers over the existing query layer, no business logic.
 - `core/web/`: web middleware and startup checks.
 - `core/config/`: static settings and read-only process configuration access.
 - `core/metrics.py` and `core/otel.py`: instrumentation setup.
