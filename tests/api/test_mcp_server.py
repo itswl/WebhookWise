@@ -44,7 +44,7 @@ def patch_session_scope(
 
 
 async def _seed(factory: async_sessionmaker[AsyncSession]) -> None:
-    from models import DecisionTrace, ForwardRule, WebhookEvent
+    from models import DecisionTrace, DeepAnalysis, ForwardRule, Silence, WebhookEvent
 
     async with factory() as s:
         s.add_all(
@@ -54,7 +54,11 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> None:
                              failure_reason="boom", error_message="connect timeout"),
                 ForwardRule(name="busy", target_type="feishu", target_url="https://x/hook/a", enabled=True),
                 DecisionTrace(webhook_event_id=1, outcome="forwarded", skip_code="none", matched_rules=["busy"]),
-                DecisionTrace(webhook_event_id=2, outcome="skipped", skip_code="silenced", matched_rules=None),
+                DecisionTrace(webhook_event_id=2, outcome="skipped", skip_code="silenced", matched_rules=None,
+                              silence_id=1),
+                DeepAnalysis(id=1, webhook_event_id=1, engine="local", status="completed",
+                             analysis_result={"summary": "root cause: disk full"}),
+                Silence(id=1, match_source="prometheus", comment="mute prom", created_by="test"),
             ]
         )
         await s.commit()
@@ -66,6 +70,7 @@ async def test_tools_are_registered() -> None:
 
     names = {t.name for t in await mcp_server.list_tools()}
     assert names == {
+        # v1
         "get_alert_decision_trace",
         "list_alert_decision_traces",
         "list_recent_alerts",
@@ -73,7 +78,25 @@ async def test_tools_are_registered() -> None:
         "get_forward_rule_roi",
         "list_dead_letter_alerts",
         "get_dead_letter_alert",
+        # read-only expansion
+        "get_ai_analysis",
+        "search_knowledge_base",
+        "list_active_silences",
+        "get_silence_roi",
+        "get_ai_cost_stats",
+        "get_decision_quality_stats",
+        "test_alert_payload",
     }
+
+
+@pytest.mark.asyncio
+async def test_resources_and_prompts_registered() -> None:
+    from api.mcp.server import mcp_server
+
+    resources = {str(r.uri) for r in await mcp_server.list_resources()}
+    assert "webhookwise://reference/decision-trace-fields" in resources
+    prompts = {p.name for p in await mcp_server.list_prompts()}
+    assert prompts == {"investigate_alert", "review_silence_roi"}
 
 
 @pytest.mark.asyncio
@@ -137,6 +160,63 @@ async def test_forward_rule_roi_and_dead_letters(
     assert detail is not None and detail["failure_reason"] == "boom"
     # A non-dead-letter event returns None.
     assert await server.get_dead_letter_alert(event_id=1) is None
+
+
+@pytest.mark.asyncio
+async def test_get_ai_analysis(
+    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from api.mcp import server
+
+    await _seed(session_factory)
+    res = await server.get_ai_analysis(webhook_event_id=1)
+    assert len(res["items"]) == 1
+    assert res["items"][0]["analysis_result"]["summary"] == "root cause: disk full"
+    # An event with no deep analysis returns an empty list, not an error.
+    assert await server.get_ai_analysis(webhook_event_id=2) == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_list_active_silences_and_roi(
+    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from api.mcp import server
+
+    await _seed(session_factory)
+    active = await server.list_active_silences()
+    assert len(active["items"]) == 1
+    item = active["items"][0]
+    assert item["match_source"] == "prometheus"
+    # The silence suppressed one alert (the silenced decision trace with silence_id=1).
+    assert item["suppressed_count"] == 1
+
+    roi = await server.get_silence_roi()
+    # Keys are stringified silence ids for JSON compatibility.
+    assert roi["1"]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_knowledge_base_disabled_returns_empty(
+    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from api.mcp import server
+
+    await _seed(session_factory)
+    # KB is disabled by default in tests → retrieve() short-circuits to [].
+    res = await server.search_knowledge_base(query="disk full")
+    assert res == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_test_alert_payload_dry_run(
+    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from api.mcp import server
+
+    await _seed(session_factory)
+    res = await server.test_alert_payload(source="grafana", payload={"title": "CPU high", "message": "hot"})
+    # The dry-run report always carries the source resolution + a fingerprint.
+    assert "source" in res and "alert_hash" in res
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
