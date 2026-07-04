@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import socket
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from core.worker_identity import default_worker_id
 
 
 class StaticSettings(BaseSettings):
@@ -22,7 +22,7 @@ class ServerConfig(StaticSettings):
     """Server / run mode / logging."""
 
     APP_ENV: str = Field(default="production")
-    WORKER_ID: str = Field(default_factory=lambda: f"{socket.gethostname()}-{os.getpid()}")
+    WORKER_ID: str = Field(default_factory=default_worker_id)
     PORT: int = Field(default=8000)
     DEBUG: bool = Field(default=False)
     RUN_MODE: str = Field(default="api")
