@@ -1,5 +1,3 @@
-import os
-import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -104,7 +102,7 @@ app.add_middleware(
 
 app.add_middleware(TraceContextMiddleware)
 
-_WORKER_ID = f"{socket.gethostname()}-{os.getpid()}"
+_WORKER_ID = _app_context(app).config.server.WORKER_ID
 logger.debug("worker_id=%s", _WORKER_ID)
 
 app.include_router(health_router)

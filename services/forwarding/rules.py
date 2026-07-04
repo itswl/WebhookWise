@@ -1,19 +1,15 @@
 """Forwarding rule CRUD."""
 
-import contextlib
-import time
 from collections.abc import Mapping
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
-from core.logger import get_logger
+from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
 from models import ForwardRule
 from services.webhooks.decisioning import ForwardRuleSnapshot
-
-logger = get_logger("forwarding.rules")
 
 _RULES_INVALIDATION_CHANNEL = "webhookwise:forward_rules:invalidate"
 
@@ -145,65 +141,34 @@ async def list_enabled_forward_rules(session: AsyncSession | None = None) -> lis
         return await _list(sess)
 
 
-_rules_cache: list[ForwardRuleSnapshot] | None = None
-_rules_cache_at: float = 0.0
-_RULES_CACHE_TTL: float = 30.0
+# Per-worker TTL cache of enabled rules + cross-worker Pub/Sub invalidation.
+# Shared helper (see core/pubsub_cache.py); the module-level wrappers below keep
+# the existing public names/signatures for call sites and test patches.
+_rules_cache: TtlPubSubCache[list[ForwardRuleSnapshot]] = TtlPubSubCache(
+    channel=_RULES_INVALIDATION_CHANNEL,
+    loader=list_enabled_forward_rules,
+    log_prefix="ForwardRules",
+)
 
 
 def invalidate_forward_rules_cache() -> None:
-    global _rules_cache, _rules_cache_at
-    _rules_cache = None
-    _rules_cache_at = 0.0
+    _rules_cache.invalidate()
 
 
 async def publish_rules_invalidation() -> None:
     """Broadcast cache invalidation to all workers via Redis Pub/Sub."""
-    try:
-        from core.redis_client import redis_publish
-
-        await redis_publish(_RULES_INVALIDATION_CHANNEL, "invalidate")
-    except Exception as e:
-        logger.warning("[ForwardRules] Failed to publish cache invalidation notification: %s", e)
+    await _rules_cache.publish_invalidation()
 
 
 async def get_cached_forward_rules(session: AsyncSession | None = None) -> list[ForwardRuleSnapshot]:
-    global _rules_cache, _rules_cache_at
-    now = time.monotonic()
-    if _rules_cache is not None and (now - _rules_cache_at) < _RULES_CACHE_TTL:
-        return _rules_cache
-    rules = await list_enabled_forward_rules(session=session)
-    _rules_cache = rules
-    _rules_cache_at = now
-    return rules
+    return await _rules_cache.get(session)
 
 
 async def start_rules_invalidation_listener() -> None:
     """Subscribe to Redis Pub/Sub for cross-worker cache invalidation.
 
-    Call this once per worker process at startup (e.g. in lifespan).
-    Runs as a background task that invalidates the local cache when
-    another worker publishes an update.
+    Call this once per worker process at startup (e.g. in lifespan). Runs as a
+    background task that invalidates the local cache when another worker
+    publishes an update.
     """
-    import asyncio
-
-    from redis.exceptions import RedisError
-
-    from core.redis_client import get_redis
-
-    async def _listen() -> None:
-        client = get_redis()
-        pubsub = client.pubsub()
-        try:
-            await pubsub.subscribe(_RULES_INVALIDATION_CHANNEL)
-            async for message in pubsub.listen():
-                if message.get("type") == "message":
-                    invalidate_forward_rules_cache()
-                    logger.debug("[ForwardRules] Received cross-process cache invalidation notification")
-        except (RedisError, OSError, RuntimeError) as e:
-            logger.warning("[ForwardRules] Pub/Sub listener interrupted: %s", e)
-        finally:
-            with contextlib.suppress(Exception):
-                await pubsub.unsubscribe(_RULES_INVALIDATION_CHANNEL)
-                await pubsub.close()
-
-    asyncio.create_task(_listen())
+    _rules_cache.start_listener()
