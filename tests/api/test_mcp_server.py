@@ -197,3 +197,64 @@ async def test_auth_rejects_bad_and_missing_token(monkeypatch: pytest.MonkeyPatc
 async def test_auth_rejects_when_no_api_key_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     # No API_KEY configured → deny even a matching-looking token (fail closed).
     assert await _run_mw(monkeypatch, api_key=None, headers=[(b"authorization", b"Bearer anything")]) == 401
+
+
+# ── Mount path (regression: mounting at /mcp must resolve, not /mcp/mcp) ──────
+
+
+@pytest.mark.asyncio
+async def test_mounted_at_mcp_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app is mounted at /mcp; the transport route must be the mount root.
+
+    If streamable_http_path is left at its "/mcp" default, the effective path
+    becomes /mcp/mcp and clients hitting /mcp get a 404. This guards that.
+    """
+    import httpx
+    from fastapi import FastAPI
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    from api.mcp import auth, build_mcp_app, mcp_server
+
+    monkeypatch.setattr(auth, "get_config_manager", lambda: _config_with_key("secret"))
+    # Allow the test client's Host so DNS-rebinding protection doesn't 421 first.
+    # Must be set before build_mcp_app() creates the session manager, which
+    # captures transport_security at construction time.
+    monkeypatch.setattr(
+        "api.mcp.server._configure_transport_security",
+        lambda: setattr(
+            mcp_server.settings,
+            "transport_security",
+            TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=["testserver"],
+                allowed_origins=["http://testserver"],
+            ),
+        ),
+    )
+
+    app = FastAPI()
+    app.mount("/mcp", build_mcp_app())
+
+    async with mcp_server.session_manager.run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            init_body = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}},
+            }
+            accept = "application/json, text/event-stream"
+            authed = await client.post(
+                "/mcp/",
+                headers={"Authorization": "Bearer secret", "Content-Type": "application/json", "Accept": accept},
+                json=init_body,
+            )
+            # The key assertion: not a 404 (route resolves under the mount).
+            assert authed.status_code == 200, authed.status_code
+            unauth = await client.post(
+                "/mcp/",
+                headers={"Content-Type": "application/json", "Accept": accept},
+                json=init_body,
+            )
+            assert unauth.status_code == 401
