@@ -80,6 +80,15 @@ class SecurityConfig(StaticSettings):
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
     ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)
     FORWARD_TARGET_ALLOWLIST: str = Field(default="")
+    MCP_ENABLED: bool = Field(default=False, description="Expose the read-only MCP server at /mcp. Off by default; requires API_KEY and MCP_ALLOWED_HOSTS to be set when serving behind a reverse proxy")
+    MCP_ALLOWED_HOSTS: str = Field(
+        default="",
+        description="Comma-separated Host header values allowed for the /mcp endpoint (DNS-rebinding protection). localhost/127.0.0.1 are always allowed; add the public host when behind a reverse proxy, e.g. 'dejavu.example.com,dejavu.example.com:443'. Empty = loopback only",
+    )
+    MCP_ALLOWED_ORIGINS: str = Field(
+        default="",
+        description="Comma-separated Origin header values allowed for the /mcp endpoint; empty = loopback origins only",
+    )
 
 
 class DBConfig(StaticSettings):

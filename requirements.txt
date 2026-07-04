@@ -36,6 +36,9 @@ opentelemetry-instrumentation-sqlalchemy>=0.48b0
 opentelemetry-exporter-otlp-proto-grpc>=1.27.0
 pyroscope-io>=1.0.8
 pyroscope-otel>=1.0.0
+# Read-only MCP server (Streamable HTTP) exposing WebhookWise queries to
+# MCP-compatible agents. Official Anthropic Python SDK.
+mcp>=1.28.1
 # Security floors for transitive deps (pulled via fastapi[standard]/openai etc.)
 # to keep pip-audit clean; bump as new CVE fixes are published.
 aiohttp>=3.14.1
