@@ -6,20 +6,16 @@ decision, so it is cached per worker (30s TTL) with cross-worker invalidation
 over Redis Pub/Sub — the exact pattern used by services/forwarding/rules.py.
 """
 
-import contextlib
-import time
 from collections.abc import Mapping
 
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
-from core.logger import get_logger
+from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
 from models import Silence
 from services.webhooks.decisioning import SilenceSnapshot
-
-logger = get_logger("silences.store")
 
 _SILENCES_INVALIDATION_CHANNEL = "webhookwise:silences:invalidate"
 
@@ -148,36 +144,27 @@ async def list_active_silences(session: AsyncSession | None = None) -> list[Sile
         return await _list(sess)
 
 
-_silences_cache: list[SilenceSnapshot] | None = None
-_silences_cache_at: float = 0.0
-_SILENCES_CACHE_TTL: float = 30.0
+# Per-worker TTL cache of active silences + cross-worker Pub/Sub invalidation.
+# Shared helper (see core/pubsub_cache.py); the module-level wrappers below keep
+# the existing public names/signatures for call sites and test patches.
+_silences_cache: TtlPubSubCache[list[SilenceSnapshot]] = TtlPubSubCache(
+    channel=_SILENCES_INVALIDATION_CHANNEL,
+    loader=list_active_silences,
+    log_prefix="Silences",
+)
 
 
 def invalidate_silences_cache() -> None:
-    global _silences_cache, _silences_cache_at
-    _silences_cache = None
-    _silences_cache_at = 0.0
+    _silences_cache.invalidate()
 
 
 async def publish_silences_invalidation() -> None:
     """Broadcast cache invalidation to all workers via Redis Pub/Sub."""
-    try:
-        from core.redis_client import redis_publish
-
-        await redis_publish(_SILENCES_INVALIDATION_CHANNEL, "invalidate")
-    except Exception as e:
-        logger.warning("[Silences] Failed to publish cache invalidation notification: %s", e)
+    await _silences_cache.publish_invalidation()
 
 
 async def get_cached_active_silences(session: AsyncSession | None = None) -> list[SilenceSnapshot]:
-    global _silences_cache, _silences_cache_at
-    now = time.monotonic()
-    if _silences_cache is not None and (now - _silences_cache_at) < _SILENCES_CACHE_TTL:
-        return _silences_cache
-    silences = await list_active_silences(session=session)
-    _silences_cache = silences
-    _silences_cache_at = now
-    return silences
+    return await _silences_cache.get(session)
 
 
 async def start_silences_invalidation_listener() -> None:
@@ -187,26 +174,4 @@ async def start_silences_invalidation_listener() -> None:
     background task that invalidates the local cache when another worker
     publishes an update.
     """
-    import asyncio
-
-    from redis.exceptions import RedisError
-
-    from core.redis_client import get_redis
-
-    async def _listen() -> None:
-        client = get_redis()
-        pubsub = client.pubsub()
-        try:
-            await pubsub.subscribe(_SILENCES_INVALIDATION_CHANNEL)
-            async for message in pubsub.listen():
-                if message.get("type") == "message":
-                    invalidate_silences_cache()
-                    logger.debug("[Silences] Received cross-process cache invalidation notification")
-        except (RedisError, OSError, RuntimeError) as e:
-            logger.warning("[Silences] Pub/Sub listener interrupted: %s", e)
-        finally:
-            with contextlib.suppress(Exception):
-                await pubsub.unsubscribe(_SILENCES_INVALIDATION_CHANNEL)
-                await pubsub.close()
-
-    asyncio.create_task(_listen())
+    _silences_cache.start_listener()
