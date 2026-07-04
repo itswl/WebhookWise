@@ -40,7 +40,11 @@ Tools exposed:
 - Alerts & decisions: `list_recent_alerts`, `get_alert_decision_trace`,
   `list_alert_decision_traces`, `get_alert_overview_stats`,
   `get_decision_quality_stats`.
-- AI: `get_ai_analysis` (deep-analysis results for an event), `get_ai_cost_stats`.
+- AI: `get_ai_analysis` (prefers the full deep-analysis report; falls back to the
+  lightweight per-alert AI when there is none, tagged with `analysis_level`),
+  `get_ai_cost_stats`. `list_recent_alerts` also inlines a lightweight
+  `deep_analysis` marker per row (availability + status + preview, not the full
+  report).
 - Routing & silences: `get_forward_rule_roi`, `list_active_silences`,
   `get_silence_roi`.
 - Dead letters: `list_dead_letter_alerts`, `get_dead_letter_alert`.
