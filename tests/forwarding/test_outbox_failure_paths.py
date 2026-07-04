@@ -226,7 +226,7 @@ class TestFinalizeOutboxFailure:
             enqueued.append(dict(kwargs))
             return {"status": "queued", "outbox_id": 1}
 
-        monkeypatch.setattr("services.forwarding.outbox_notifications.enqueue_forward_notification", fake_forward_notification)
+        monkeypatch.setattr("services.forwarding.outbox.enqueue_forward_notification", fake_forward_notification)
 
         outbox_id = await _insert_outbox(
             session_factory, attempts=2, max_attempts=3, next_attempt_at=utcnow() - timedelta(seconds=1)

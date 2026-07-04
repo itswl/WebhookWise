@@ -423,7 +423,7 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
 
     monkeypatch.setattr(outbox, "schedule_forward_outbox_many", schedule_many)
     monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_retry", schedule_retry)
-    monkeypatch.setattr("services.forwarding.outbox_notifications.enqueue_forward_notification", exhausted_notification)
+    monkeypatch.setattr("services.forwarding.outbox.enqueue_forward_notification", exhausted_notification)
     monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", schedule_poll)
 
     async with session_factory.begin() as session:
