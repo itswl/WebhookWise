@@ -33,7 +33,16 @@ from services.webhooks.query_service import (
 # Stateless HTTP + JSON responses: every request is authenticated and served
 # independently (no session affinity needed for read-only queries), which also
 # keeps the endpoint friendly behind a reverse proxy / load balancer.
-mcp_server = FastMCP(name="webhookwise", stateless_http=True, json_response=True)
+#
+# streamable_http_path="/" is important: the app is mounted at "/mcp" in
+# api/app.py, so the transport's own route must be the mount root ("/"),
+# otherwise the effective path becomes "/mcp/mcp" and clients hitting /mcp 404.
+mcp_server = FastMCP(
+    name="webhookwise",
+    stateless_http=True,
+    json_response=True,
+    streamable_http_path="/",
+)
 
 # Clamp page sizes so a recursing agent cannot request unbounded rows.
 _MAX_PAGE_SIZE = 200
