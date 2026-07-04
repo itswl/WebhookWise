@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import socket
 from typing import Any
 
 from core.observability.attributes import (
@@ -15,6 +14,7 @@ from core.observability.attributes import (
     SERVICE_VERSION,
 )
 from core.version import __version__
+from core.worker_identity import default_worker_id
 
 
 def get_service_name(default: str = "webhookwise") -> str:
@@ -42,7 +42,7 @@ def get_service_instance_id() -> str:
     return (
         os.getenv("OTEL_SERVICE_INSTANCE_ID", "").strip()
         or os.getenv("SERVICE_INSTANCE_ID", "").strip()
-        or f"{socket.gethostname()}-{os.getpid()}"
+        or default_worker_id()
     )
 
 
