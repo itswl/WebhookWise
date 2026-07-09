@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
@@ -47,7 +47,7 @@ async def get_rule_audit(session: AsyncSession, *, window_days: int = 30, min_ev
                 WebhookEvent.source,
                 _RULE_NAME_EXPR.label("rule_name"),
                 func.count(WebhookEvent.id).label("total"),
-                func.sum(WebhookEvent.is_duplicate.cast(int)).label("duplicates"),
+                func.sum(WebhookEvent.is_duplicate.cast(Integer)).label("duplicates"),
                 func.max(WebhookEvent.timestamp).label("last_seen"),
                 func.min(WebhookEvent.timestamp).label("first_seen"),
             )
