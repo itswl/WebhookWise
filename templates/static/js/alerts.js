@@ -540,19 +540,19 @@ const AlertsModule = {
      */
     renderAIAnalysis(analysis) {
         if (!analysis || Object.keys(analysis).length === 0) {
-            return '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.ai.noData') + '</div>';
+            return '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.ai.noData') + '</div>';
         }
 
         let html = `
-            <div class="ai-analysis" style="border-left: 4px solid #4f46e5; background: #ffffff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 1rem;">
-                <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: #4f46e5; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+            <div class="ai-analysis" style="border-left: 4px solid var(--primary); background: var(--bg-surface); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; box-shadow: var(--shadow-sm); margin-bottom: 1rem;">
+                <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
                     <span>🤖</span> ${t('alerts.ai.reportTitle')}
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
                         ${escapeHtml(String(analysis._degraded ? t('alerts.ai.localFallback') : (analysis._route_type || t('alerts.ai.smartRouting'))))}
                     </span>
                 </div>
 
-                <div style="font-size: 1.1rem; color: #0f172a; font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
+                <div style="font-size: 1.1rem; color: var(--text-main); font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
                     ${escapeHtml(String(analysis.summary || t('alerts.ai.noSummary')))}
                 </div>
 
@@ -562,15 +562,15 @@ const AlertsModule = {
         if (analysis.root_cause) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 ${t('alerts.ai.rootCause')}</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 ${t('alerts.ai.rootCause')}</h4>
+                    <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
                 </div>
             `;
         } else if (analysis.event_type) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ ${t('alerts.ai.eventType')}</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ ${t('alerts.ai.eventType')}</h4>
+                    <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
                 </div>
             `;
         }
@@ -579,8 +579,8 @@ const AlertsModule = {
             const impact = analysis.impact || analysis.impact_scope;
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 ${t('alerts.ai.impact')}</h4>
-                    <p style="font-size: 0.95rem; color: #1e293b; margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 ${t('alerts.ai.impact')}</h4>
+                    <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
                 </div>
             `;
         }
@@ -589,8 +589,8 @@ const AlertsModule = {
         if (actions && actions.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ ${t('alerts.ai.recommendations')}</h4>
-                    <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ ${t('alerts.ai.recommendations')}</h4>
+                    <ul style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
                 </div>
@@ -600,8 +600,8 @@ const AlertsModule = {
         if (analysis.risks && analysis.risks.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ ${t('alerts.ai.risks')}</h4>
-                    <ul style="font-size: 0.95rem; color: #1e293b; margin: 0; padding-left: 1.5rem; line-height: 1.6;">
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ ${t('alerts.ai.risks')}</h4>
+                    <ul style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
                 </div>
@@ -612,21 +612,21 @@ const AlertsModule = {
 
         // Metadata footer
         html += `
-            <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span>⚡ ${t('alerts.ai.importance')}: <strong style="color: #0f172a;">${escapeHtml(String(analysis.importance || t('alerts.ai.unknown')))}</strong></span>
+            <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-base); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                <span>⚡ ${t('alerts.ai.importance')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis.importance || t('alerts.ai.unknown')))}</strong></span>
         `;
 
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
             const relationMap = { root_cause: t('alerts.ai.relation.rootCause'), derived: t('alerts.ai.relation.derived'), standalone: t('alerts.ai.relation.standalone') };
             const relation = relationMap[nr.relation] || nr.relation || t('alerts.ai.unknown');
-            html += `<span>🛡️ ${t('alerts.ai.noiseReduction')}: <strong style="color: #0f172a;">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
+            html += `<span>🛡️ ${t('alerts.ai.noiseReduction')}: <strong style="color: var(--text-main);">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: <strong style="color: #4f46e5;">#${nr.root_cause_event_id}</strong></span>`;
+                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: <strong style="color: var(--primary);">#${nr.root_cause_event_id}</strong></span>`;
             }
         }
 
-        html += `<span>🔀 ${t('alerts.ai.routeChannel')}: <strong style="color: #0f172a;">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
+        html += `<span>🔀 ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
             html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: #10b981; font-weight: 600;">🎯 ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;

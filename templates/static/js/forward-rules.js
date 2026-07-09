@@ -113,13 +113,13 @@ function renderRuleCard(rule) {
 
     return `
         <div class="rule-card" style="
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
             ${cardBorder}
             border-radius: var(--radius-lg);
             padding: 1.25rem 1.5rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            box-shadow: var(--shadow-sm);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             ${cardOpacity}
         ">
@@ -132,7 +132,7 @@ function renderRuleCard(rule) {
                             position: absolute;
                             cursor: pointer;
                             top: 0; left: 0; right: 0; bottom: 0;
-                            background-color: ${isEnabled ? 'var(--primary)' : '#cbd5e1'};
+                            background-color: ${isEnabled ? 'var(--primary)' : 'var(--border)'};
                             transition: 0.3s;
                             border-radius: 24px;
                             box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
@@ -143,7 +143,7 @@ function renderRuleCard(rule) {
                                 height: 18px; width: 18px;
                                 left: ${isEnabled ? '23px' : '3px'};
                                 bottom: 3px;
-                                background-color: white;
+                                background-color: var(--bg-surface);
                                 transition: 0.3s;
                                 border-radius: 50%;
                                 box-shadow: 0 1px 2px rgba(0,0,0,0.2);
@@ -151,24 +151,24 @@ function renderRuleCard(rule) {
                         </span>
                     </label>
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
-                    ${!isEnabled ? '<span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; border: 1px solid #e2e8f0;">' + t('rules.card.disabled') + '</span>' : ''}
+                    ${!isEnabled ? '<span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.75rem; border: 1px solid var(--border);">' + t('rules.card.disabled') + '</span>' : ''}
                     ${hitBadge}
                 </div>
                 <span style="
-                    background: #f1f5f9;
+                    background: var(--bg-subtle);
                     padding: 4px 12px;
                     border-radius: 9999px;
                     font-size: 0.85rem;
                     font-weight: 600;
-                    color: #475569;
-                    border: 1px solid #cbd5e1;
+                    color: var(--text-secondary);
+                    border: 1px solid var(--border);
                 ">⬆️ ${t('rules.card.priority', { n: rule.priority || 0 })}</span>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                 <!-- Match conditions area -->
-                <div class="rule-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('rules.card.matchConditions')}</div>
+                <div class="rule-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('rules.card.matchConditions')}</div>
                     ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>' + t('rules.card.eventType') + ':</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(et) { var m = { webhook_forward: t('rules.evtType.webhook_forward'), manual_forward: t('rules.evtType.manual_forward'), ai_error: t('rules.evtType.ai_error'), ai_degraded: t('rules.evtType.ai_degraded'), deep_analysis: t('rules.evtType.deep_analysis'), outbox_exhausted: t('rules.evtType.outbox_exhausted'), rule_test: t('rules.evtType.rule_test') }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[et.trim()] || et.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.importance')}:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.alertStatus')}:</strong> ${duplicateText}</div>
@@ -180,29 +180,29 @@ function renderRuleCard(rule) {
                 </div>
 
                 <!-- Forward target area -->
-                <div class="rule-target" style="font-size: 0.95rem; color: #334155; background: #f0fdf4; padding: 1.25rem; border-radius: 8px; border: 1px dashed #86efac;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: #059669; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 ${t('rules.card.action')}</div>
+                <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--success-bg); padding: 1.25rem; border-radius: 8px; border: 1px dashed rgba(5,150,105,0.3);">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
                         <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
                     </div>
-                    <div style="word-break: break-all; color: #0f172a; font-family: 'Fira Code', monospace; font-size: 0.85rem; background: #ffffff; padding: 0.75rem; border-radius: 6px; border: 1px solid #d1fae5; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
+                    <div style="word-break: break-all; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; background: var(--bg-surface); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: #d97706; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                 </div>
             </div>
 
             ${lastMatched}
 
-            <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid #e2e8f0;">
-                <button class="btn" onclick="testRule(${rule.id})" style="color: #4338ca; border-color: #c7d2fe; background: #e0e7ff; font-weight: 600;">
+            <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
+                <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: var(--primary-bg); font-weight: 600;">
                     🧪 ${t('rules.action.test')}
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
                     ✏️ ${t('rules.action.edit')}
                 </button>
-                <button class="btn" onclick="deleteRule(${rule.id})" style="color: #dc2626; border-color: #fecaca; background: #fef2f2; font-weight: 600;">
+                <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.2); background: var(--danger-bg); font-weight: 600;">
                     🗑️ ${t('rules.action.delete')}
                 </button>
             </div>
