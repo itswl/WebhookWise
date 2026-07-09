@@ -718,6 +718,7 @@
             'incidents.action.reopenFailed': 'Failed to reopen incident',
             'incidents.searchPlaceholder': 'Search by title or source...',
             'incidents.search.empty': 'No incidents match the search term',
+            'incidents.action.silenceAll': 'Silence these sources',
             'silences.confirm.conflict': 'This silence may block {n} forward rule(s)',
             'silences.confirm.conflictDetail': 'If this silence blocks rules you need, consider narrowing the match criteria (e.g. add event_type or payload). Continue anyway?',
         },
@@ -1416,6 +1417,7 @@
             'incidents.action.reopenFailed': '重新打开事件失败',
             'incidents.searchPlaceholder': '按标题或来源搜索…',
             'incidents.search.empty': '没有匹配的事件',
+            'incidents.action.silenceAll': '静默这些来源',
             'silences.confirm.conflict': '此静默可能会屏蔽 {n} 条转发规则',
             'silences.confirm.conflictDetail': '如果此静默会屏蔽你需要的规则，建议缩小匹配条件（如添加 event_type 或 payload）。仍要继续吗？',
         }
