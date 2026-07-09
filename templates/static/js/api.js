@@ -771,6 +771,21 @@ const API = {
         return await response.json();
     },
 
+    /**
+     * Backtest a proposed silence rule
+     * @param {object} silenceData - Silence data including lookback_days
+     * @returns {Promise<object>} Backtest result
+     */
+    async backtestSilence(silenceData) {
+        const response = await this.authenticatedFetch('/v1/silences/backtest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(silenceData)
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Forwarding Queue API ==========
 
     /**

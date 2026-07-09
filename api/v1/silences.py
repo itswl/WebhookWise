@@ -9,12 +9,15 @@ from core.datetime_utils import naive_utc, utcnow
 from core.logger import get_logger
 from db.session import get_db_session
 from schemas.silences import (
+    SilenceBacktestRequest,
+    SilenceBacktestResponse,
     SilenceCreateRequest,
     SilenceDetailResponse,
     SilenceListResponse,
     SilenceUpdateRequest,
     silence_to_dict,
 )
+from services.silences.backtest import backtest_silence_rule
 from services.silences.store import (
     create_silence,
     delete_silence,
@@ -140,3 +143,34 @@ async def delete_silence_endpoint(
     await session.commit()
     logger.info("[SilenceAPI] Silence deleted silence_id=%s", silence_id)
     return {"success": True, "message": "Silence deleted"}
+
+
+@silences_router.post(
+    "/silences/backtest",
+    response_model=SilenceBacktestResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+async def backtest_silence_endpoint(
+    payload: SilenceBacktestRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    """Dry-run a proposed silence rule against historical database events."""
+    logger.info(
+        "[SilenceAPI] Proposed silence backtest lookback_days=%d source=%s project=%s",
+        payload.lookback_days,
+        payload.match_source,
+        payload.match_project,
+    )
+    result = await backtest_silence_rule(
+        session=session,
+        match_source=payload.match_source,
+        match_importance=payload.match_importance,
+        match_event_type=payload.match_event_type,
+        match_project=payload.match_project,
+        match_region=payload.match_region,
+        match_environment=payload.match_environment,
+        match_payload=payload.match_payload,
+        lookback_days=payload.lookback_days,
+    )
+    return {"success": True, "data": result}
+
