@@ -170,7 +170,39 @@ const IncidentsModule = (function () {
             }
         }
 
+        // Action: silence all sources in this incident
+        if (members.length) {
+            var sources = {};
+            members.forEach(function (m) {
+                var s = (m.source || '').trim();
+                if (s) sources[s] = true;
+            });
+            var uniqueSources = Object.keys(sources);
+            if (uniqueSources.length) {
+                html += '<div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid var(--border-light);">';
+                html += '<button class="btn btn-sm btn-warn" onclick="IncidentsModule.silenceIncidentSources(' + data.id + ')" style="font-size:0.75rem;">🔕 ' + t('incidents.action.silenceAll') + ' (' + uniqueSources.length + ')</button>';
+                html += '</div>';
+            }
+        }
+
         return html;
+    }
+
+    function silenceIncidentSources(id) {
+        var data = _detailCache[id];
+        if (!data) return;
+        var members = data.members || [];
+        var sources = {};
+        members.forEach(function (m) {
+            var s = (m.source || '').trim();
+            if (s) sources[s] = true;
+        });
+        var uniqueSources = Object.keys(sources);
+        // Open the silence form pre-filled with the first source. The operator
+        // can add more criteria before saving.
+        if (typeof showQuickSilenceForm === 'function' && uniqueSources.length) {
+            showQuickSilenceForm(uniqueSources[0], '', '', '', '');
+        }
     }
 
     function init() {
@@ -256,6 +288,7 @@ const IncidentsModule = (function () {
         render: render,
         search: search,
         closeIncident: closeIncident,
-        reopenIncident: reopenIncident
+        reopenIncident: reopenIncident,
+        silenceIncidentSources: silenceIncidentSources
     };
 })();

@@ -136,6 +136,10 @@ async def run_incident_grouping() -> dict[str, Any]:
 
         await session.flush()
 
+        # ── Notify for newly created incidents (fire-and-forget, after flush) ──
+        if created > 0:
+            _notify_new_incidents(active_incidents[-created:] if created <= len(active_incidents) else active_incidents)
+
         # ── 4. Close quiet incidents ───────────────────────────────────────
         closed = await _close_quiet_incidents(session, now)
 
@@ -293,3 +297,64 @@ async def _close_quiet_incidents(session: AsyncSession, now: Any) -> int:
                 logger.warning("[Incidents] Summary generation failed incident_id=%s error=%s", cid, e)
 
     return closed
+
+
+def _notify_new_incidents(incidents: list[Incident]) -> None:
+    """Fire-and-forget Feishu notification for newly created incidents.
+
+    Best-effort: notification failure must not block or roll back the grouping
+    tick. Only the first 3 new incidents per tick are notified to avoid spam.
+    """
+    import asyncio
+
+    for incident in incidents[:3]:
+        try:
+            asyncio.ensure_future(_send_incident_card(incident))
+        except RuntimeError:
+            # No running event loop (e.g. in tests).
+            break
+
+
+async def _send_incident_card(incident: Incident) -> None:
+    """Push a single incident Feishu card via the configured notification channel."""
+    from core.app_context import get_config_manager
+
+    cfg = get_config_manager().notifications
+    webhook = (
+        cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK
+        or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK
+        or ""
+    )
+    if not webhook:
+        return
+
+    try:
+        from services.notifications.feishu import send_to_feishu
+
+        card: dict[str, Any] = {
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "title": {"tag": "plain_text", "content": f"🚨 {incident.title[:80]}"}
+                },
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": (
+                            f"**Source:** {incident.source or 'unknown'}\n"
+                            f"**Alerts:** {incident.alert_count}\n"
+                            f"**Started:** {incident.started_at.isoformat() if incident.started_at else '?'}\n"
+                            f"**Importance:** {incident.top_importance or '?'}"
+                        ),
+                    }
+                ],
+            },
+        }
+        result = await send_to_feishu(webhook, card)
+        logger.info(
+            "[Incidents] Notification sent incident_id=%s status=%s",
+            incident.id,
+            result.get("status"),
+        )
+    except Exception as e:
+        logger.debug("[Incidents] Notification failed incident_id=%s error=%s", incident.id, e)

@@ -83,7 +83,9 @@ const OverviewModule = {
 
         // Top stat cards.
         let html = '<div class="stats-grid" style="margin-bottom: 1.5rem;">';
-        html += this._card('📥', t('overview.card.processed'), fmt(d.total), t('overview.card.processedTrend'), 'var(--primary)');
+        var prev = d.previous || {};
+        var totalDelta = (prev.total_delta_pct != null) ? (prev.total_delta_pct > 0 ? '↑' : '↓') + Math.abs(prev.total_delta_pct).toFixed(1) + '%' : '';
+        html += this._card('📥', t('overview.card.processed'), fmt(d.total) + (totalDelta ? ' <span style="font-size:0.7em;color:' + (prev.total_delta_pct > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + totalDelta + '</span>' : ''), t('overview.card.processedTrend'), 'var(--primary)');
         html += this._card('✅', t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
             t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)');
         html += this._card('📨', t('overview.card.deliveryRate'),
