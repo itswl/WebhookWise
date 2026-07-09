@@ -245,6 +245,23 @@ function showSilenceForm(silenceId) {
 }
 
 /**
+ * Open the silence form pre-filled with alert context (quick-silence).
+ * Duration defaults to 1 hour so the operator doesn't forget to lift it.
+ */
+function showQuickSilenceForm(source, project, region, environment, payload) {
+    // Reset and open the form, then fill in what we know about this alert.
+    showSilenceForm();
+    if (source) document.getElementById('silenceFormSource').value = source;
+    if (project) document.getElementById('silenceFormProject').value = project;
+    if (region) document.getElementById('silenceFormRegion').value = region;
+    if (environment) document.getElementById('silenceFormEnvironment').value = environment;
+    if (payload) document.getElementById('silenceFormPayload').value = payload;
+    // Default to 1 hour — long enough to investigate, short enough not to be
+    // forgotten and left permanently silencing alerts.
+    document.getElementById('silenceFormDuration').value = '1h';
+}
+
+/**
  * Close the silence form
  */
 function closeSilenceForm() {

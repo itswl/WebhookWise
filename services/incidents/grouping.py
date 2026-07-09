@@ -45,6 +45,16 @@ _MAX_MEMBERS_PER_INCIDENT = 200
 _MAX_INCIDENTS_PER_SCAN = 200
 
 
+def _event_rule_name(event: WebhookEvent) -> str:
+    """Best-effort rule name from parsed_data — the same extraction the periodic report uses."""
+    parsed = event.parsed_data or {}
+    if isinstance(parsed, dict):
+        return str(
+            parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or ""
+        ).strip()[:200]
+    return ""
+
+
 async def run_incident_grouping() -> dict[str, Any]:
     """One tick of the incident grouping scanner.
 
@@ -153,20 +163,43 @@ def _find_matching_incident(
 
     Matching criteria (all must be true):
     1. Same source.
-    2. The incident's latest member timestamp is within the incident window.
+    2. Same rule name (so GPU alerts don't mix with storage alerts).
+    3. The incident's latest member timestamp is within the incident window.
     """
+    event_source = str(event.source or "")
+    event_rule = _event_rule_name(event)
     for incident in incidents:
         if incident.status != "active":
             continue
-        # Same source is the strongest clustering signal.
-        if str(incident.source or "") != str(event.source or ""):
+        if str(incident.source or "") != event_source:
             continue
-        # Time proximity: the last event in this incident must be recent enough.
+        # Match by rule name: two volcengine alerts are only the same incident if
+        # they share the same upstream rule (e.g. "云服务器GPU卡告警").
+        if not _incident_rule_matches(event_rule, incident):
+            continue
         last_ts = _incident_last_timestamp(incident, event)
         if last_ts is not None and last_ts < window_cutoff:
             continue
         return incident
     return None
+
+
+def _incident_rule_matches(event_rule: str, incident: Incident) -> bool:
+    """True if *event_rule* belongs to this incident's rule-level scope.
+
+    A blank rule name from the event (adapter didn't extract one) is a wildcard
+    — it matches the first active incident of the same source rather than
+    multiplying single-alert incidents.
+    """
+    if not event_rule:
+        return True
+    # Rule name is embedded in the incident title: "<source> incident — <rule>"
+    title = str(incident.title or "")
+    separator = " — "
+    if separator in title:
+        incident_rule = title.split(separator, 1)[1]
+        return incident_rule == event_rule
+    return True
 
 
 def _incident_last_timestamp(incident: Incident, fallback_event: WebhookEvent) -> Any | None:
@@ -182,12 +215,7 @@ def _incident_last_timestamp(incident: Incident, fallback_event: WebhookEvent) -
 
 def _create_incident_from_event(event: WebhookEvent) -> Incident:
     """Create a new incident seeded from a single event."""
-    rule_name = ""
-    parsed = event.parsed_data or {}
-    if isinstance(parsed, dict):
-        rule_name = str(
-            parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or ""
-        )[:200]
+    rule_name = _event_rule_name(event)
     title = f"{event.source or 'unknown'} incident"
     if rule_name:
         title = f"{title} — {rule_name}"

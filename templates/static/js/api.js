@@ -495,6 +495,21 @@ const API = {
     },
 
     /**
+     * List incidents (cursor-paginated, filterable by status)
+     * @param {object} params - Query params (status, page_size, cursor)
+     * @returns {Promise<object>} Incident list
+     */
+    async getIncidents(params = {}) {
+        const queryParams = new URLSearchParams();
+        if (params.status) queryParams.append('status', params.status);
+        if (params.page_size) queryParams.append('page_size', params.page_size);
+        if (params.cursor != null) queryParams.append('cursor', params.cursor);
+        const response = await this.authenticatedFetch('/v1/incidents?' + queryParams.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Get the decision-trace list (newest first), each row carrying its full chain
      * @param {object} params - Query parameters (cursor, page_size, outcome, skip_code, source)
      * @returns {Promise<object>} Decision-trace list data
