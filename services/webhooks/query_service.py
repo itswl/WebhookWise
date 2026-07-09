@@ -106,7 +106,7 @@ async def _apply_outbox_forward_statuses(session: AsyncSession, items: list[dict
         item["forward_status"] = _merge_forward_status(item.get("forward_status"), status_by_event_id.get(event_id))
 
 
-def _apply_summary_filters(query: Any, *, importance: str, source: str, processing_status: str = "", time_from: datetime | None) -> Any:
+def _apply_summary_filters(query: Any, *, importance: str, source: str, processing_status: str = "", time_from: datetime | None, search: str = "") -> Any:
     if importance:
         query = query.where(WebhookEvent.importance == importance)
     if source:
@@ -115,7 +115,32 @@ def _apply_summary_filters(query: Any, *, importance: str, source: str, processi
         query = query.where(WebhookEvent.processing_status == processing_status)
     if time_from is not None:
         query = query.where(WebhookEvent.timestamp >= time_from)
+    if search:
+        query = query.where(_search_predicate(search))
     return query
+
+
+def _search_predicate(search: str) -> Any:
+    """Server-side alert search: rule/alert name, AI summary, source, request_id.
+
+    ILIKE keeps it portable between PostgreSQL (prod) and the SQLite JSON shim
+    (tests). The JSONB ->> projections match how the list already reads these
+    fields, so the search sees exactly what the operator sees in the list. The
+    escaped pattern treats the user's input as literal text (% and _ included).
+    """
+    pattern = f"%{_escape_like(search)}%"
+    return or_(
+        WebhookEvent.parsed_data["RuleName"].astext.ilike(pattern),
+        WebhookEvent.parsed_data["AlertName"].astext.ilike(pattern),
+        WebhookEvent.parsed_data["alert_name"].astext.ilike(pattern),
+        WebhookEvent.ai_analysis["summary"].astext.ilike(pattern),
+        WebhookEvent.source.ilike(pattern),
+        WebhookEvent.request_id.ilike(pattern),
+    )
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def list_webhook_summaries(
@@ -126,10 +151,18 @@ async def list_webhook_summaries(
     source: str = "",
     processing_status: str = "",
     time_from: datetime | None = None,
+    search: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
-    query = _apply_summary_filters(select(*_SUMMARY_COLUMNS), importance=importance, source=source, processing_status=processing_status, time_from=time_from)
+    query = _apply_summary_filters(
+        select(*_SUMMARY_COLUMNS),
+        importance=importance,
+        source=source,
+        processing_status=processing_status,
+        time_from=time_from,
+        search=search,
+    )
     query = query.order_by(WebhookEvent.id.desc())
     query = apply_cursor_window(query, WebhookEvent.id, page=page, page_size=page_size, cursor=cursor)
     result = await session.execute(query)
@@ -146,6 +179,7 @@ async def count_webhook_summaries(
     source: str = "",
     processing_status: str = "",
     time_from: datetime | None = None,
+    search: str = "",
 ) -> int | None:
     """Total event count matching the same filters (for the list's real total).
 
@@ -155,7 +189,12 @@ async def count_webhook_summaries(
     from db.session import count_with_timeout
 
     stmt = _apply_summary_filters(
-        select(func.count()).select_from(WebhookEvent), importance=importance, source=source, processing_status=processing_status, time_from=time_from
+        select(func.count()).select_from(WebhookEvent),
+        importance=importance,
+        source=source,
+        processing_status=processing_status,
+        time_from=time_from,
+        search=search,
     )
     return await count_with_timeout(session, stmt)
 
