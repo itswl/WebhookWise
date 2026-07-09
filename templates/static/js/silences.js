@@ -136,19 +136,19 @@ function renderSilenceCard(silence) {
                 t('silences.roi.zombie') + '</span>'
             : '<span class="badge badge-outline">' + t('silences.roi.suppressed', { count: 0 }) + '</span>');
     const lastSuppressed = silence.last_suppressed_at
-        ? '<div style="margin-top:0.5rem; color:#64748b; font-size:0.85rem;">' +
+        ? '<div style="margin-top:0.5rem; color:var(--text-muted); font-size:0.85rem;">' +
             t('silences.roi.lastSuppressed', { time: formatSilenceTime(silence.last_suppressed_at) }) + '</div>'
         : '';
 
     return `
         <div class="silence-card" style="
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
             ${cardBorder}
             border-radius: var(--radius-lg);
             padding: 1.25rem 1.5rem;
             margin-bottom: 0.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            box-shadow: var(--shadow-sm);
             ${cardOpacity}
         ">
             <div class="silence-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
@@ -158,18 +158,18 @@ function renderSilenceCard(silence) {
                     <span style="font-weight: 600; font-size: 1.05rem; ${titleColor}">${escapeHtml(silence.comment || t('silences.card.noComment'))}</span>
                 </div>
                 <span style="
-                    background: #fffbeb;
+                    background: var(--warning-bg);
                     padding: 4px 12px;
                     border-radius: 9999px;
                     font-size: 0.85rem;
                     font-weight: 600;
-                    color: #b45309;
-                    border: 1px solid #fde68a;
+                    color: var(--warning);
+                    border: 1px solid rgba(217,119,6,0.18);
                 ">⏳ ${escapeHtml(formatSilenceExpiry(silence))}</span>
             </div>
 
-            <div class="silence-conditions" style="font-size: 0.95rem; color: #334155; background: #f8fafc; padding: 1.25rem; border-radius: 8px; border: 1px dashed #cbd5e1; margin-bottom: 1.25rem;">
-                <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('silences.card.matchConditions')}</div>
+            <div class="silence-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 1.25rem;">
+                <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('silences.card.matchConditions')}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.source')}:</strong> ${sourceText}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.importance')}:</strong> ${importanceText}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.eventType')}:</strong> ${eventTypeText}</div>
@@ -177,14 +177,14 @@ function renderSilenceCard(silence) {
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.region')}:</strong> ${regionText}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.environment')}:</strong> ${environmentText}</div>
                 ${silence.match_payload ? '<div><strong>' + t('silences.card.payload') + ':</strong> <code style="font-size:0.8rem;">' + escapeHtml(silence.match_payload) + '</code></div>' : ''}
-                ${silence.created_by ? '<div style="margin-top:0.5rem; color:#64748b; font-size:0.85rem;">' + t('silences.card.createdBy', { name: escapeHtml(silence.created_by) }) + '</div>' : ''}
+                ${silence.created_by ? '<div style="margin-top:0.5rem; color:var(--text-muted); font-size:0.85rem;">' + t('silences.card.createdBy', { name: escapeHtml(silence.created_by) }) + '</div>' : ''}
                 ${lastSuppressed}
             </div>
 
-            <div class="silence-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
-                ${isActive ? '<button class="btn" onclick="liftSilence(' + silence.id + ')" style="color: #b45309; border-color: #fde68a; background: #fffbeb; font-weight: 600;">🔔 ' + t('silences.action.lift') + '</button>' : ''}
+            <div class="silence-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
+                ${isActive ? '<button class="btn" onclick="liftSilence(' + silence.id + ')" style="color: var(--warning); border-color: rgba(217,119,6,0.25); background: var(--warning-bg); font-weight: 600;">🔔 ' + t('silences.action.lift') + '</button>' : ''}
                 <button class="btn" onclick="showSilenceForm(${silence.id})" style="font-weight: 600;">✏️ ${t('silences.action.edit')}</button>
-                <button class="btn" onclick="deleteSilence(${silence.id})" style="color: #dc2626; border-color: #fecaca; background: #fef2f2; font-weight: 600;">🗑️ ${t('silences.action.delete')}</button>
+                <button class="btn" onclick="deleteSilence(${silence.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">🗑️ ${t('silences.action.delete')}</button>
             </div>
         </div>
     `;

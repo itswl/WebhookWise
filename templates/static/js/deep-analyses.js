@@ -394,7 +394,7 @@ var DeepAnalysesModule = (function() {
 
         if (record.user_question) {
             detailsHtml += `
-                <div style="background: #f8fafc; padding: 1rem 1.25rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary); margin-bottom: 1.5rem;">
+                <div style="background: var(--bg-base); padding: 1rem 1.25rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary); margin-bottom: 1.5rem;">
                     <strong style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">👤 ${escapeHtml(t('deep.userQuestion'))}</strong>
                     <div style="color: var(--text-main); font-size: 0.95rem;">${escapeHtml(record.user_question)}</div>
                 </div>
@@ -406,7 +406,7 @@ var DeepAnalysesModule = (function() {
                 <div style="text-align: center; padding: 3rem 1rem;">
                     <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto 1rem auto; border-left-color: var(--primary);"></div>
                     <div style="color: var(--text-main); font-weight: 500; font-size: 1.1rem; margin-bottom: 0.5rem;">${escapeHtml(t('deep.runningAnalysis', { engine: engineLabel }))}</div>
-                    ${record.openclaw_run_id ? `<div style="color: var(--text-muted); font-family: monospace; font-size: 0.85rem; background: #f1f5f9; display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${escapeHtml(t('deep.runId'))}: ${escapeHtml(record.openclaw_run_id)}</div>` : ''}
+                    ${record.openclaw_run_id ? `<div style="color: var(--text-muted); font-family: monospace; font-size: 0.85rem; background: var(--bg-subtle); display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${escapeHtml(t('deep.runId'))}: ${escapeHtml(record.openclaw_run_id)}</div>` : ''}
                 </div>
             `;
         } else if (record.status === 'failed') {
@@ -425,7 +425,7 @@ var DeepAnalysesModule = (function() {
         detailsHtml += `<div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; gap: 1rem; flex-wrap: wrap;">`;
 
         if (record.status === 'completed') {
-            detailsHtml += `<button class="btn" style="background: #f1f5f9; border-color: #cbd5e1;" onclick="DeepAnalysesModule.forwardResult(${record.id})">📨 ${escapeHtml(t('deep.btn.pushResult'))}</button>`;
+            detailsHtml += `<button class="btn" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-main);" onclick="DeepAnalysesModule.forwardResult(${record.id})">📨 ${escapeHtml(t('deep.btn.pushResult'))}</button>`;
         }
         if (record.status === 'failed' || record.status === 'pending') {
             detailsHtml += `<button class="btn btn-primary" onclick="DeepAnalysesModule.retryAnalysis(${record.id})">🔄 ${escapeHtml(t('deep.btn.refetchResult'))}</button>`;
