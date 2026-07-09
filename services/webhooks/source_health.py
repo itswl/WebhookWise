@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
@@ -25,7 +25,7 @@ async def get_source_health(session: AsyncSession, *, window_days: int = 7) -> l
             select(
                 WebhookEvent.source,
                 func.count(WebhookEvent.id).label("total"),
-                func.sum(WebhookEvent.is_duplicate.cast(int)).label("duplicates"),
+                func.sum(WebhookEvent.is_duplicate.cast(Integer)).label("duplicates"),
                 func.max(WebhookEvent.timestamp).label("last_seen"),
             )
             .where(WebhookEvent.timestamp >= start)
