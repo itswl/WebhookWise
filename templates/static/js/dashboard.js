@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initDashboard() {
     console.log('🚀 Initializing Dashboard...');
 
+    // Initialize theme settings
+    initTheme();
+
     // Apply static translations to the markup and re-render the active tab on
     // language change so dynamically-rendered content also switches language.
     if (typeof I18N !== 'undefined') {
@@ -414,6 +417,45 @@ function goToPage(page) {
             AlertsModule.goToPage(totalPages);
         } else {
             AlertsModule.goToPage(page);
+        }
+    }
+}
+
+// ========== Dark Mode / Theme Toggle Logic ==========
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('ww-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        document.documentElement.classList.add('theme-dark');
+        const icon = document.getElementById('themeToggleIcon');
+        if (icon) icon.textContent = '☀️';
+    } else {
+        document.documentElement.classList.remove('theme-dark');
+        const icon = document.getElementById('themeToggleIcon');
+        if (icon) icon.textContent = '🌙';
+    }
+}
+
+function toggleTheme() {
+    const isDark = document.documentElement.classList.contains('theme-dark');
+    const icon = document.getElementById('themeToggleIcon');
+    if (isDark) {
+        document.documentElement.classList.remove('theme-dark');
+        localStorage.setItem('ww-theme', 'light');
+        if (icon) icon.textContent = '🌙';
+    } else {
+        document.documentElement.classList.add('theme-dark');
+        localStorage.setItem('ww-theme', 'dark');
+        if (icon) icon.textContent = '☀️';
+    }
+    
+    // Also re-render chart if Overview tab is active
+    if (typeof OverviewModule !== 'undefined' && currentTab === 'decision-trace') {
+        const ctx = document.getElementById('overviewTrendChart');
+        if (ctx && window.ovTrendChartInstance) {
+            // Re-fetch overview data or just trigger chart refresh
+            OverviewModule.load(OverviewModule.currentPeriod);
         }
     }
 }
