@@ -84,6 +84,13 @@ const IncidentsModule = (function () {
             }
             html += '</div>';
             html += '</div>';
+            // Action buttons: close / reopen (stop propagation so they don't toggle the card)
+            if (row.status === 'active' || row.status === 'quiet') {
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.closeIncident(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+            }
+            if (row.status === 'closed') {
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
+            }
             html += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
             html += '</div>';
 
@@ -170,10 +177,32 @@ const IncidentsModule = (function () {
         // No auto-load on init; content is lazy-loaded when the Incidents tab is opened.
     }
 
+    async function closeIncident(id) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/close', { method: 'POST' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            load();  // Refresh the list
+        } catch (e) {
+            alert(t('incidents.action.closeFailed') + ': ' + (e && e.message || e));
+        }
+    }
+
+    async function reopenIncident(id) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/reopen', { method: 'POST' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            load();  // Refresh the list
+        } catch (e) {
+            alert(t('incidents.action.reopenFailed') + ': ' + (e && e.message || e));
+        }
+    }
+
     return {
         init: init,
         load: load,
         toggle: toggle,
-        render: render
+        render: render,
+        closeIncident: closeIncident,
+        reopenIncident: reopenIncident
     };
 })();
