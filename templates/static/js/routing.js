@@ -14,7 +14,8 @@ const RoutingModule = (function () {
     const VIEWS = {
         rules: 'routingViewRules',
         silences: 'routingViewSilences',
-        sandbox: 'routingViewSandbox'
+        sandbox: 'routingViewSandbox',
+        audit: 'routingViewAudit'
     };
 
     function loadView(view) {
@@ -25,6 +26,8 @@ const RoutingModule = (function () {
         } else if (view === 'sandbox') {
             // Sandbox form is static; SandboxModule.load() is a no-op but kept for symmetry.
             if (typeof SandboxModule !== 'undefined') SandboxModule.load();
+        } else if (view === 'audit') {
+            if (typeof RuleAuditModule !== 'undefined') RuleAuditModule.load();
         }
     }
 

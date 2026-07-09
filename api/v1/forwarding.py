@@ -261,3 +261,29 @@ async def list_outbox_endpoint(
     except _FORWARDING_RUNTIME_ERRORS as e:
         logger.error("Failed to query outbox list: %s", e, exc_info=True)
         return internal_error_response()
+
+
+@forwarding_router.get(
+    "/forward-rules/audit",
+    response_model=None,
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_rule_audit_endpoint(
+    window_days: int = Query(30, ge=1, le=180),
+    min_events: int = Query(3, ge=1, le=100),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict | JSONResponse:
+    """Aggregate alert-rule health: zombie / pure-noise / flapping rules.
+
+    Groups webhook_events by (source, rule_name) over *window_days* and
+    cross-references decision_trace forward counts. Each row carries a
+    ``flags`` list — see :mod:`services.webhooks.rule_audit` for definitions.
+    """
+    from services.webhooks.rule_audit import get_rule_audit
+
+    try:
+        rows = await get_rule_audit(session, window_days=window_days, min_events=min_events)
+        return {"success": True, "data": rows}
+    except _FORWARDING_RUNTIME_ERRORS as e:
+        logger.error("Failed to query rule audit: %s", e, exc_info=True)
+        return internal_error_response()

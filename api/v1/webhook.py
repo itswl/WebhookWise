@@ -296,6 +296,7 @@ async def get_webhooks_endpoint(
     source: str = Query(""),
     processing_status: str = Query(""),
     window: str = Query("", pattern="^(today|7d|30d|all|)$"),
+    search: str = Query("", max_length=200),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """Get the summary list of all webhook events."""
@@ -307,13 +308,21 @@ async def get_webhooks_endpoint(
         source=source,
         processing_status=processing_status,
         time_from=time_from,
+        search=search,
         page=page,
         page_size=page_size,
     )
     # Real matching total (only on the first page; cheap to skip on scroll).
     total = None
     if cursor is None and page == 1:
-        total = await count_webhook_summaries(session, importance=importance, source=source, time_from=time_from)
+        total = await count_webhook_summaries(
+            session,
+            importance=importance,
+            source=source,
+            processing_status=processing_status,
+            time_from=time_from,
+            search=search,
+        )
     return {
         "success": True,
         "data": items,
@@ -358,3 +367,23 @@ async def get_webhook_detail_endpoint(
         return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
 
     return {"success": True, "data": redact_event_dict(webhook_event_to_full_dict(event))}
+
+
+@webhook_router.get(
+    "/webhooks/{webhook_id}/timeline",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+    response_model=None,
+)
+async def get_webhook_timeline_endpoint(
+    webhook_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict:
+    """Return a chronological timeline of alerts related to *webhook_id*.
+
+    The timeline walks the noise-reduction related-alert graph and the dedup
+    chain in both directions, sorted by timestamp ascending. The anchor event
+    (the one the user clicked) is pinned separately so the UI can highlight it.
+    """
+    from services.webhooks.timeline import build_alert_timeline
+
+    timeline = await build_alert_timeline(session, webhook_id)
+    return {"success": True, "data": timeline}
