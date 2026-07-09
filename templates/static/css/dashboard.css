@@ -68,6 +68,34 @@
   --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
 
+/* ── Refined Dark theme variables ────────────────────────────────────────── */
+.theme-dark {
+  /* Brand override */
+  --primary: #818cf8;
+  --primary-hover: #6366f1;
+  --primary-light: #1e1b4b;
+  --primary-bg: rgba(99, 102, 241, 0.18);
+  --accent: #a78bfa;
+  --accent-bg: rgba(139, 92, 246, 0.18);
+  --accent-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
+
+  /* Neutrals override */
+  --text-main: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --border: #1e293b;
+  --border-light: #0f172a;
+  --bg-base: #020617;
+  --bg-surface: #0b1329;
+  --bg-subtle: #1e293b;
+  --bg-elevated: #0f172a;
+
+  /* Shadows override */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.7), 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+}
+
 /* Tighten Inter's rendering for a crisper, more premium feel. */
 html { -webkit-text-size-adjust: 100%; }
 body { text-rendering: optimizeLegibility; -moz-osx-font-smoothing: grayscale; }
@@ -113,6 +141,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.theme-dark body {
+  background:
+    radial-gradient(900px 620px at 10% -8%, rgba(129, 140, 248, 0.08), transparent 60%),
+    radial-gradient(900px 600px at 100% -4%, rgba(167, 139, 250, 0.07), transparent 55%),
+    linear-gradient(180deg, #020617 0%, var(--bg-base) 100%);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Navbar
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -127,6 +162,10 @@ body {
   top: 0;
   z-index: 100;
   box-shadow: 0 1px 0 rgba(16, 24, 40, 0.03), 0 8px 24px -18px rgba(16, 24, 40, 0.35);
+}
+
+.theme-dark .navbar {
+  background: rgba(11, 19, 41, 0.85);
 }
 
 .navbar-content {

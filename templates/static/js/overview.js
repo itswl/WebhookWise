@@ -65,6 +65,7 @@ const OverviewModule = {
                 const incidents = (incRes && incRes.success && incRes.data) ? incRes.data : [];
                 var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
                 container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData);
+                this.initOverviewChart(sparkData);
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -155,15 +156,19 @@ const OverviewModule = {
         // 7-day sparkline trend
         if (sparkData && sparkData.length > 1) {
             html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">📈 ' + t('overview.section.trend') + '</div>';
-            html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1rem;">';
-            var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
-            var bars = sparkData.map(function (d) {
-                var h = Math.max(2, Math.round((d.count / maxVal) * 40));
-                return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
-                    '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
-                    '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
-            }).join('');
-            html += '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
+            html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem;">';
+            if (typeof Chart !== 'undefined') {
+                html += '<div style="height: 160px; position: relative;"><canvas id="overviewTrendChart"></canvas></div>';
+            } else {
+                var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
+                var bars = sparkData.map(function (d) {
+                    var h = Math.max(2, Math.round((d.count / maxVal) * 40));
+                    return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
+                        '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
+                        '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
+                }).join('');
+                html += '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
+            }
             html += '</div>';
         }
         return html;
@@ -174,6 +179,59 @@ const OverviewModule = {
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
             '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
+    },
+
+    initOverviewChart(sparkData) {
+        const ctx = document.getElementById('overviewTrendChart');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        if (window.ovTrendChartInstance) {
+            window.ovTrendChartInstance.destroy();
+        }
+
+        const labels = sparkData.map(d => (d.day || '').slice(5));
+        const data = sparkData.map(d => d.count);
+
+        const isDark = document.documentElement.classList.contains('theme-dark');
+        const primaryColor = isDark ? '#818cf8' : '#6366f1';
+        const gridColor = isDark ? '#1e293b' : '#eef1f6';
+        const textColor = isDark ? '#94a3b8' : '#475569';
+
+        window.ovTrendChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: t('overview.section.trend') || 'Throughput',
+                    data: data,
+                    borderColor: primaryColor,
+                    backgroundColor: isDark ? 'rgba(129, 140, 248, 0.15)' : 'rgba(99, 102, 241, 0.08)',
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.35,
+                    pointBackgroundColor: primaryColor,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: textColor, font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: gridColor },
+                        ticks: { color: textColor, font: { size: 10 }, stepSize: Math.max(1, Math.round(Math.max(...data) / 4)) }
+                    }
+                }
+            }
+        });
     },
 
     async _fetchSparkline(days) {

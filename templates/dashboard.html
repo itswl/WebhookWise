@@ -8,6 +8,9 @@
     <!-- External stylesheets -->
     <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
     <link rel="stylesheet" href="/static/css/components.css?v=20260622-batchb">
+
+    <!-- Chart.js for beautiful analytics trend lines -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -52,6 +55,9 @@
                     <span id="authBtnText" class="sr-only" data-i18n="nav.credentials">Credentials</span>
                 </button>
                 <button class="btn btn-icon btn-lang" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-title="nav.langToggleAria" title="Switch language to Chinese" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
+                <button class="btn btn-icon" id="themeToggleBtn" type="button" onclick="toggleTheme()" title="Toggle Theme" aria-label="Toggle Theme">
+                    <span id="themeToggleIcon">🌙</span>
+                </button>
             </div>
         </div>
     </nav>
