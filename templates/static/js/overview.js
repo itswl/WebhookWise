@@ -52,15 +52,17 @@ const OverviewModule = {
         if (!container) return;
         const mark = document.getElementById('ovLastRefreshed');
         try {
-            // Overview + AI usage for the same window, in parallel.
-            const [ovRes, aiRes] = await Promise.all([
+            // Overview + AI usage + recent incidents, in parallel.
+            const [ovRes, aiRes, incRes] = await Promise.all([
                 API.getOverview(this.currentPeriod),
                 API.getAIUsage(this.currentPeriod).catch(() => null),
+                API.getIncidents({ status: 'active', page_size: 5 }).catch(() => null),
             ]);
             if (!ovRes || !ovRes.success || !ovRes.data) {
                 container.innerHTML = this.emptyHtml();
             } else {
-                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null);
+                const incidents = (incRes && incRes.success && incRes.data) ? incRes.data : [];
+                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents);
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -73,7 +75,7 @@ const OverviewModule = {
         return '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
     },
 
-    renderHtml(d, ai) {
+    renderHtml(d, ai, incidents) {
         const fmt = (typeof formatNumber === 'function') ? formatNumber : (n) => String(n);
         const delivery = d.delivery || {};
         const cost = ai ? (ai.cost && ai.cost.total) || 0 : null;
@@ -125,6 +127,25 @@ const OverviewModule = {
                     '<div style="height:8px; background:var(--bg-subtle, #f1f5f9); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
+            html += '</div>';
+        }
+
+        // Recent active incidents — quick glance at what's happening right now.
+        if (incidents && incidents.length) {
+            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">🚨 ' + t('overview.section.incidents') + '</div>';
+            html += '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
+            var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
+            for (var i = 0; i < Math.min(incidents.length, 5); i++) {
+                var inc = incidents[i];
+                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.querySelector(\'[data-tab=incidents]\').click()">';
+                html += '<span style="font-size:1.2rem;">🔥</span>';
+                html += '<div style="flex:1; min-width:0;">';
+                html += '<div style="font-weight:500; font-size:0.9rem;">' + this.escapeHtml(inc.title) + '</div>';
+                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + this.escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
+                html += '</div>';
+                html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + (inc.started_at ? inc.started_at.slice(0, 16).replace('T', ' ') : '') + '</span>';
+                html += '</div>';
+            }
             html += '</div>';
         }
         return html;
