@@ -222,3 +222,99 @@ function renderLoadMorePagination(container, options) {
         });
     }
 }
+
+// ========== Global Elegant Toast Notification Override ==========
+
+window.alert = function(message) {
+    showToast(message);
+};
+
+function showToast(message, type = 'info') {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.style.cssText = `
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            z-index: 10000;
+            pointer-events: none;
+        `;
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    
+    let icon = 'ℹ️';
+    let bgColor = 'var(--bg-elevated, #1e293b)';
+    let borderColor = 'var(--border, #475569)';
+    let textColor = 'var(--text-main, #f8fafc)';
+
+    const msgLower = String(message).toLowerCase();
+    if (msgLower.includes('✅') || msgLower.includes('success') || msgLower.includes('成功')) {
+        icon = '✅';
+        type = 'success';
+        bgColor = 'rgba(16, 185, 129, 0.15)';
+        borderColor = 'rgba(16, 185, 129, 0.4)';
+        textColor = 'var(--success, #10b981)';
+    } else if (msgLower.includes('❌') || msgLower.includes('failed') || msgLower.includes('error') || msgLower.includes('失败') || msgLower.includes('crashed')) {
+        icon = '❌';
+        type = 'error';
+        bgColor = 'rgba(239, 68, 68, 0.15)';
+        borderColor = 'rgba(239, 68, 68, 0.4)';
+        textColor = 'var(--danger, #ef4444)';
+    } else if (msgLower.includes('⚠️') || msgLower.includes('warning') || msgLower.includes('警告') || msgLower.includes('conflict')) {
+        icon = '⚠️';
+        type = 'warning';
+        bgColor = 'rgba(245, 158, 11, 0.15)';
+        borderColor = 'rgba(245, 158, 11, 0.4)';
+        textColor = 'var(--warning, #f59e0b)';
+    } else if (msgLower.includes('🚀') || msgLower.includes('🔄') || msgLower.includes('fresh') || msgLower.includes('started')) {
+        icon = '🚀';
+        type = 'info';
+        bgColor = 'rgba(99, 102, 241, 0.15)';
+        borderColor = 'rgba(99, 102, 241, 0.4)';
+        textColor = 'var(--primary, #6366f1)';
+    }
+
+    // Clean prefix emojis
+    let cleanMessage = String(message);
+    if (cleanMessage.startsWith('✅') || cleanMessage.startsWith('❌') || cleanMessage.startsWith('⚠️') || cleanMessage.startsWith('🚀') || cleanMessage.startsWith('🔄') || cleanMessage.startsWith('🗑️') || cleanMessage.startsWith('✏️')) {
+        cleanMessage = cleanMessage.substring(2).trim();
+    }
+
+    toast.style.cssText = `
+        background: ${bgColor};
+        color: ${textColor};
+        border: 1px solid ${borderColor};
+        padding: 0.85rem 1.35rem;
+        border-radius: var(--radius-lg, 10px);
+        box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1));
+        font-size: 0.9rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        pointer-events: auto;
+        animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        max-width: 420px;
+        box-sizing: border-box;
+    `;
+
+    toast.innerHTML = `<span>${icon}</span><span style="line-height:1.45; white-space: pre-wrap;">${cleanMessage}</span>`;
+    container.appendChild(toast);
+
+    // Auto remove toast
+    setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s ease-in forwards';
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, 4500);
+}
