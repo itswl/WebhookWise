@@ -103,6 +103,8 @@ const AlertsModule = {
                 this.openForwardModal(id);
             } else if (action === 'replay-dl') {
                 this.replayDeadLetter(id);
+            } else if (action === 'quick-silence') {
+                this.quickSilence(id);
             }
             return;
         }
@@ -408,6 +410,7 @@ const AlertsModule = {
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
             html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
+            html += '<button class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.quickSilenceTitle') + '">🔕 ' + t('alerts.action.quickSilence') + '</button>';
             if (webhook.processing_status === 'dead_letter') {
                 html += '<button class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.replayDeadLetter') + '</button>';
             }
@@ -889,6 +892,28 @@ const AlertsModule = {
     },
 
     /**
+     * Quick-silence: open the silence form pre-filled with this alert's context,
+     * with the duration set to 2 hours.
+     */
+    quickSilence(id) {
+        var alert = this.alerts.find(function (w) { return w.id == id; });
+        if (!alert) return;
+        // Extract match fields from parsed_data — same extraction the decisioning
+        // engine uses (extract_forward_match_fields). We approximate by reading
+        // the parsed_data fields the silence form maps to.
+        var pd = alert.parsed_data || {};
+        if (typeof showQuickSilenceForm === 'function') {
+            showQuickSilenceForm(
+                alert.source || '',
+                pd.Project || pd.project || '',
+                pd.Region || pd.region || '',
+                pd.environment || pd.env || '',
+                pd.RuleName || pd.rule_name || ''
+            );
+        }
+    },
+
+    /**
      * Reanalyze an alert
      */
     async reanalyzeAlert(id) {
@@ -1023,17 +1048,46 @@ const AlertsModule = {
     _renderTimeline(data) {
         const anchorId = data.anchor ? data.anchor.id : null;
         const impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
+        // Build an index of event IDs for fast relationship lookups.
+        var idIndex = {};
+        data.events.forEach(function (ev) { idIndex[ev.id] = ev; });
+
+        // Determine which events are causal parents of others.
+        var causedBy = {};  // causedBy[childId] = parentId
+        data.events.forEach(function (ev) {
+            if (ev.duplicate_of && idIndex[ev.duplicate_of]) causedBy[ev.id] = ev.duplicate_of;
+            if (ev.prev_alert_id && idIndex[ev.prev_alert_id] && !causedBy[ev.id]) causedBy[ev.id] = ev.prev_alert_id;
+            if (ev.noise_root_cause_id && idIndex[ev.noise_root_cause_id] && !causedBy[ev.id]) causedBy[ev.id] = ev.noise_root_cause_id;
+        });
+
         var html = '<div style="padding: 0.5rem 0;">';
         for (var i = 0; i < data.events.length; i++) {
             var ev = data.events[i];
             var isAnchor = ev.id === anchorId;
-            var borderColor = isAnchor ? 'var(--primary, #6366f1)' : 'var(--border, #334155)';
+            var isCaused = causedBy[ev.id] !== undefined;
+            var borderColor = isAnchor ? 'var(--primary, #6366f1)' : (isCaused ? 'var(--warning, #f59e0b)' : 'var(--border, #334155)');
             var bg = isAnchor ? 'var(--primary-bg, rgba(99,102,241,0.08))' : 'transparent';
+
+            // Causal connector: if this event was caused by a previous one in the
+            // timeline, show a small arrow link.
+            var causalParent = causedBy[ev.id];
+            var connectorHtml = '';
+            if (causalParent) {
+                var parentEv = idIndex[causalParent];
+                connectorHtml = '<div style="font-size:0.65rem; color:var(--warning); margin-bottom:0.15rem; padding-left:0.25rem;">';
+                connectorHtml += '↳ ' + t('alerts.timeline.causedBy', { id: causalParent });
+                if (parentEv && parentEv.summary) {
+                    connectorHtml += ' — <span style="opacity:0.7;">' + escapeHtml(parentEv.summary.slice(0, 60)) + '</span>';
+                }
+                connectorHtml += '</div>';
+            }
+
             html += '<div style="display:flex; align-items:flex-start; gap:0.75rem; padding:0.625rem 0.5rem; margin-bottom:0.25rem; border-left:3px solid ' + borderColor + '; background:' + bg + '; border-radius:0 4px 4px 0;">';
             // Time
             html += '<div style="font-size:0.75rem; color:var(--text-muted); min-width:4.5rem; text-align:right; padding-top:0.15rem;">' + escapeHtml(ev.timestamp ? ev.timestamp.slice(11, 19) : '') + '</div>';
             // Content
             html += '<div style="flex:1; min-width:0;">';
+            if (connectorHtml) html += connectorHtml;
             html += '<div style="font-size:0.8rem; font-weight:600; margin-bottom:0.15rem;">';
             if (isAnchor) html += '📍 ';
             html += '<a href="javascript:void(0)" onclick="AlertsModule._scrollToAlert(' + ev.id + ')" style="color:var(--text-main); text-decoration:none;">#' + ev.id + '</a>';
@@ -1041,6 +1095,7 @@ const AlertsModule = {
             html += ' <span>' + (impEmoji[ev.importance] || '⚪') + ' ' + escapeHtml(ev.importance) + '</span>';
             if (ev.is_duplicate) html += ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('alerts.status.duplicate') + '</span>';
             if (ev.forward_status === 'sent') html += ' <span class="badge badge-success" style="font-size:0.6rem;">📤</span>';
+            if (isCaused) html += ' <span style="font-size:0.6rem; color:var(--warning);" title="' + t('alerts.timeline.derivedTitle') + '">↳ derived</span>';
             html += '</div>';
             if (ev.summary) {
                 html += '<div style="font-size:0.82rem; color:var(--text-muted); line-height:1.4; white-space:pre-wrap;">' + escapeHtml(ev.summary) + '</div>';

@@ -121,8 +121,14 @@ async def _walk_dedup_chain(session: AsyncSession, seen: set[int]) -> None:
 def _event_timeline_row(event: WebhookEvent) -> dict[str, Any]:
     """A compact event row for the timeline view (mirrors the summary projection)."""
     summary = ""
-    if isinstance(event.ai_analysis, dict):
-        summary = str(event.ai_analysis.get("summary", "") or "")[:200]
+    analysis = event.ai_analysis or {}
+    if isinstance(analysis, dict):
+        summary = str(analysis.get("summary", "") or "")[:200]
+    # Extract noise-reduction context (root_cause_event_id, related_alert_ids) so
+    # the frontend can draw causal arrows between related events.
+    noise = analysis.get("noise_reduction", {}) if isinstance(analysis, dict) else {}
+    root_cause_id = noise.get("root_cause_event_id") if isinstance(noise, dict) else None
+    related_ids = noise.get("related_alert_ids", []) if isinstance(noise, dict) else []
     return {
         "id": event.id,
         "source": event.source or "unknown",
@@ -132,6 +138,12 @@ def _event_timeline_row(event: WebhookEvent) -> dict[str, Any]:
         "is_duplicate": bool(event.is_duplicate),
         "duplicate_of": event.duplicate_of,
         "prev_alert_id": event.prev_alert_id,
+        "noise_root_cause_id": root_cause_id if isinstance(root_cause_id, int) else None,
+        "noise_related_ids": (
+            [int(rid) for rid in related_ids if isinstance(rid, int)]
+            if isinstance(related_ids, (list, tuple))
+            else []
+        ),
         "processing_status": event.processing_status,
         "forward_status": event.forward_status,
     }
