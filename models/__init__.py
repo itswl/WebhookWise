@@ -7,6 +7,7 @@ from __future__ import annotations
 from models.analysis import AIUsageLog, DeepAnalysis
 from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
+from models.incident import Incident
 from models.kb_document import KBDocument
 from models.silence import Silence
 from models.suppressed_record import SuppressedRecord
@@ -24,4 +25,5 @@ __all__ = [
     "Silence",
     "DecisionTrace",
     "KBDocument",
+    "Incident",
 ]
