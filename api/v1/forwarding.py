@@ -54,7 +54,7 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
     response_model=ForwardRuleListResponse,
     dependencies=[Depends(verify_api_key)],
 )
-async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
+async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict | JSONResponse:
     rules = await get_forward_rules(session)
     return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=True)}
 
@@ -78,7 +78,7 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
     response_model=ForwardRuleListResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict:
+async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict | JSONResponse:
     rules = await get_forward_rules(session)
     return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=False)}
 
@@ -286,4 +286,24 @@ async def get_rule_audit_endpoint(
         return {"success": True, "data": rows}
     except _FORWARDING_RUNTIME_ERRORS as e:
         logger.error("Failed to query rule audit: %s", e, exc_info=True)
+        return internal_error_response()
+
+
+@forwarding_router.get(
+    "/source-health",
+    response_model=None,
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_source_health_endpoint(
+    window_days: int = Query(7, ge=1, le=90),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict | JSONResponse:
+    """Per-source health: volume, dedup rate, forward rate, recency."""
+    from services.webhooks.source_health import get_source_health
+
+    try:
+        rows = await get_source_health(session, window_days=window_days)
+        return {"success": True, "data": rows}
+    except _FORWARDING_RUNTIME_ERRORS as e:
+        logger.error("Failed to query source health: %s", e, exc_info=True)
         return internal_error_response()

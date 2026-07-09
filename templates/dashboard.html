@@ -27,8 +27,9 @@
                 <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
                     <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
                 </button>
-                <button class="nav-tab" data-tab="incidents" type="button" data-i18n-aria-label="nav.aria.incidents" aria-label="Switch to Incidents">
+                <button class="nav-tab" data-tab="incidents" type="button" data-i18n-aria-label="nav.aria.incidents" aria-label="Switch to Incidents" style="position:relative;">
                     <span>🚨</span> <span data-i18n="nav.tab.incidents">Incidents</span>
+                    <span id="incidentsBadge" style="display:none; position:absolute; top:-4px; right:-8px; background:var(--danger,#ef4444); color:#fff; border-radius:10px; padding:0 5px; font-size:0.6rem; font-weight:700; min-width:16px; text-align:center; line-height:16px;"></span>
                 </button>
                 <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
                     <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
@@ -179,6 +180,7 @@
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." oninput="IncidentsModule.search()" style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;" data-i18n-placeholder="incidents.searchPlaceholder">
                         <select id="incidentStatusFilter" onchange="IncidentsModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
                             <option value="">All</option>
                             <option value="active">🔥 Active</option>

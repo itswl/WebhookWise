@@ -105,6 +105,8 @@ const AlertsModule = {
                 this.replayDeadLetter(id);
             } else if (action === 'quick-silence') {
                 this.quickSilence(id);
+            } else if (action === 'replay-dry') {
+                this.replayDryRun(id);
             }
             return;
         }
@@ -411,6 +413,7 @@ const AlertsModule = {
             html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
             html += '<button class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.quickSilenceTitle') + '">🔕 ' + t('alerts.action.quickSilence') + '</button>';
+            html += '<button class="btn btn-sm" data-action="replay-dry" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.replayDryTitle') + '">🔁 ' + t('alerts.action.replayDry') + '</button>';
             if (webhook.processing_status === 'dead_letter') {
                 html += '<button class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.replayDeadLetter') + '</button>';
             }
@@ -910,6 +913,27 @@ const AlertsModule = {
                 pd.environment || pd.env || '',
                 pd.RuleName || pd.rule_name || ''
             );
+        }
+    },
+
+    /**
+     * What-if dry-run: replay current rules/silences against this alert.
+     */
+    async replayDryRun(id) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/webhooks/' + id + '/replay-dry-run', { method: 'POST' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var result = await resp.json();
+            var d = result.data || {};
+            var lines = [
+                d.should_forward ? '✅ Would FORWARD' : '⏭️ Would SKIP',
+                d.skip_reason ? 'Reason: ' + d.skip_reason : '',
+                'Rules matched: ' + (d.matched_rule_count || 0) + ' of ' + (d.rules_evaluated || 0),
+                d.matched_rules && d.matched_rules.length ? 'Matching: ' + d.matched_rules.join(', ') : ''
+            ].filter(Boolean);
+            alert(lines.join('\n'));
+        } catch (e) {
+            alert(t('common.requestFailed') + ': ' + (e && e.message || e));
         }
     },
 
