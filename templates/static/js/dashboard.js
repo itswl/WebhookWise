@@ -165,6 +165,7 @@ function switchMainTab(tabId) {
     // Show/hide content areas
     const tabContents = {
         'alerts': 'alertsTab',
+        'incidents': 'incidentsTab',
         'deep-analyses': 'deepAnalysesTab',
         'decision-trace': 'decisionTraceTab',
         'routing': 'routingTab'
@@ -185,6 +186,11 @@ function switchMainTab(tabId) {
             // Stop deep-analysis auto-refresh when switching to the Alerts Tab
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
+            }
+            break;
+        case 'incidents':
+            if (typeof IncidentsModule !== 'undefined') {
+                IncidentsModule.load();
             }
             break;
         case 'deep-analyses':

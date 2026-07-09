@@ -64,9 +64,10 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     # labelled "Overview"); Forward Rules / Silences / Sandbox are sub-views of the
     # Routing tab. So the standalone overview / ai-cost / outbox / forward-rules /
     # silences / sandbox tabs no longer exist.
-    assert {"alerts", "deep-analyses", "decision-trace", "routing"} <= tabs
+    assert {"alerts", "incidents", "deep-analyses", "decision-trace", "routing"} <= tabs
     assert {
         "alertsTab",
+        "incidentsTab",
         "deepAnalysesTab",
         "decisionTraceTab",
         "routingTab",
