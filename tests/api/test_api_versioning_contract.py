@@ -35,6 +35,8 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/incidents/{incident_id}",
         "/v1/incidents/{incident_id}/summary",
         "/v1/incidents/{incident_id}/summarize",
+        "/v1/incidents/{incident_id}/close",
+        "/v1/incidents/{incident_id}/reopen",
         "/v1/outbox",
         "/v1/admin/dead-letters",
         "/v1/admin/dead-letters/{event_id}",
