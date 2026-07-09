@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -29,8 +30,8 @@ def upgrade() -> None:
         sa.Column("ended_at", sa.DateTime(), nullable=True),
         sa.Column("alert_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("top_importance", sa.String(length=20), nullable=True),
-        sa.Column("member_ids", sa.JSONB(), nullable=True),
-        sa.Column("summary_analysis", sa.JSONB(), nullable=True),
+        sa.Column("member_ids", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("summary_analysis", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
