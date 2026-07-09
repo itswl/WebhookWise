@@ -53,7 +53,7 @@ async def __record_audit(
                     actor="dashboard",
                 )
             )
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 

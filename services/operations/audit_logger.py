@@ -33,9 +33,7 @@ async def record_audit(
                     actor=actor,
                 )
             )
-    except Exception:
-        # Best-effort: losing an audit log row is acceptable; failing the
-        # triggering operation (e.g. a silence create) is not.
+    except Exception:  # nosec B110 — best-effort; losing an audit row is acceptable
         pass
 
 
