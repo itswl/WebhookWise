@@ -508,6 +508,18 @@ async def scheduled_forward_outbox_scan() -> None:
 
 
 @broker.task(
+    task_name="scheduled_incident_grouping",
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "incident_grouping_interval"}],
+)
+async def scheduled_incident_grouping() -> None:
+    from services.incidents.grouping import run_incident_grouping
+
+    # Summary generation for newly-closed incidents is triggered inside the
+    # grouping tick itself — no separate summarization scan is needed.
+    await _run_scheduled("incident_grouping", _background_scan_interval_seconds(), run_incident_grouping())
+
+
+@broker.task(
     task_name="scheduled_data_maintenance",
     schedule=[{"cron": _maintenance_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )

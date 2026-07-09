@@ -27,6 +27,9 @@
                 <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
                     <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
                 </button>
+                <button class="nav-tab" data-tab="incidents" type="button" data-i18n-aria-label="nav.aria.incidents" aria-label="Switch to Incidents">
+                    <span>🚨</span> <span data-i18n="nav.tab.incidents">Incidents</span>
+                </button>
                 <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
                     <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
                 </button>
@@ -164,6 +167,30 @@
                     <option value="20" selected data-i18n="alerts.page.perPage20">20 / page</option>
                     <option value="50" data-i18n="alerts.page.perPage50">50 / page</option>
                 </select>
+            </div>
+        </div>
+
+        <!-- Incidents Tab -->
+        <div id="incidentsTab" class="tab-content" style="display: none;">
+            <div class="incidents-section" style="padding: 20px 0;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <div class="section-title" data-i18n="incidents.title">Incidents</div>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="incidentStatusFilter" onchange="IncidentsModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
+                            <option value="">All</option>
+                            <option value="active">🔥 Active</option>
+                            <option value="quiet">🔇 Quiet</option>
+                            <option value="closed">✅ Closed</option>
+                        </select>
+                        <button class="btn" onclick="IncidentsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    </div>
+                </div>
+                <div id="incidentsList">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
             </div>
         </div>
 
@@ -657,6 +684,7 @@
     <script src="/static/js/forward-rules.js?v=20260703-ruleroi"></script>
     <script src="/static/js/silences.js?v=20260622-silenceroi"></script>
     <script src="/static/js/sandbox.js?v=20260622-sandbox"></script>
+    <script src="/static/js/incidents.js?v=20260703-incidents"></script>
     <script src="/static/js/rule-audit.js?v=20260703-audit"></script>
     <script src="/static/js/routing.js?v=20260622-routing"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>

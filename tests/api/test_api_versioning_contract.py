@@ -31,6 +31,10 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/forward-rules/{rule_id}",
         "/v1/forward-rules/{rule_id}/test",
         "/v1/forward-rules/audit",
+        "/v1/incidents",
+        "/v1/incidents/{incident_id}",
+        "/v1/incidents/{incident_id}/summary",
+        "/v1/incidents/{incident_id}/summarize",
         "/v1/outbox",
         "/v1/admin/dead-letters",
         "/v1/admin/dead-letters/{event_id}",
@@ -119,6 +123,7 @@ def test_business_api_modules_live_under_v1_package() -> None:
         "ai_usage.py",
         "deep_analysis.py",
         "forwarding.py",
+        "incidents.py",
         "reanalysis.py",
         "webhook.py",
     }

@@ -689,6 +689,19 @@
             'audit.summary.total': 'Rules',
             'audit.empty.title': 'All rules look healthy',
             'audit.empty.text': 'No zombie, pure-noise, or flapping rules detected in the selected window.',
+
+            // ── Incidents tab ──
+            'nav.tab.incidents': 'Incidents',
+            'nav.aria.incidents': 'Switch to Incidents',
+            'incidents.title': 'Incidents',
+            'incidents.subtitle': 'Related alerts auto-grouped into operational incidents.',
+            'incidents.empty.title': 'No incidents',
+            'incidents.empty.text': 'No incidents match the current filter.',
+            'incidents.llmSummary': 'AI Summary',
+            'incidents.rootCause': 'Root cause',
+            'incidents.confidence': 'Confidence',
+            'incidents.summaryPending': 'Summary is being generated...',
+            'incidents.timeline': 'Alert Timeline',
         },
         zh: {
             // ── Navbar ──
@@ -1355,6 +1368,19 @@
             'audit.summary.total': '规则数',
             'audit.empty.title': '所有规则均健康',
             'audit.empty.text': '所选时间窗口内未发现僵尸、纯噪音或抖动规则。',
+
+            // ── Incidents tab ──
+            'nav.tab.incidents': '事件',
+            'nav.aria.incidents': '切换到事件',
+            'incidents.title': '事件',
+            'incidents.subtitle': '将相关告警自动归组为运维事件。',
+            'incidents.empty.title': '暂无事件',
+            'incidents.empty.text': '当前筛选条件下没有匹配的事件。',
+            'incidents.llmSummary': 'AI 摘要',
+            'incidents.rootCause': '根因',
+            'incidents.confidence': '置信度',
+            'incidents.summaryPending': '摘要生成中…',
+            'incidents.timeline': '告警时间线',
         }
     };
 
