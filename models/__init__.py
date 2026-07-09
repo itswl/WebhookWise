@@ -5,6 +5,7 @@ Database model definitions
 from __future__ import annotations
 
 from models.analysis import AIUsageLog, DeepAnalysis
+from models.audit_log import AuditLog
 from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
 from models.incident import Incident
@@ -26,4 +27,5 @@ __all__ = [
     "DecisionTrace",
     "KBDocument",
     "Incident",
+    "AuditLog",
 ]
