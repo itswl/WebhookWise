@@ -22,7 +22,7 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
-from models import AIUsageLog, WebhookEvent
+from models import AIUsageLog, Incident, WebhookEvent
 from services.webhooks.types import ForwardResult
 
 logger = get_logger("periodic_report")
@@ -155,6 +155,22 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
 
     noise_pct = round(100.0 * duplicate_events / total_events, 1) if total_events else 0.0
     cache_pct = round(100.0 * cache_hits / ai_calls, 1) if ai_calls else 0.0
+
+    # Incident stats for the same window.
+    incident_total = int(await session.scalar(
+        select(func.count(Incident.id)).where(Incident.started_at >= start)
+    ) or 0)
+    incident_active = int(await session.scalar(
+        select(func.count(Incident.id)).where(
+            Incident.started_at >= start, Incident.status == "active"
+        )
+    ) or 0)
+    incident_quiet = int(await session.scalar(
+        select(func.count(Incident.id)).where(
+            Incident.started_at >= start, Incident.status == "quiet"
+        )
+    ) or 0)
+
     return {
         "window_days": window_days,
         "total_events": total_events,
@@ -166,6 +182,9 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "ai_cost_usd": round(ai_cost, 4),
         "ai_calls": ai_calls,
         "cache_hit_pct": cache_pct,
+        "incident_total": incident_total,
+        "incident_active": incident_active,
+        "incident_quiet": incident_quiet,
     }
 
 
@@ -191,6 +210,10 @@ def _build_summary(stats: dict[str, Any]) -> str:
     lines.append(
         f"AI: {stats['ai_calls']} calls, cache hit rate {stats['cache_hit_pct']}%, cost ${stats['ai_cost_usd']}."
     )
+    if stats.get("incident_total"):
+        lines.append(
+            f"Incidents: {stats['incident_total']} total ({stats['incident_active']} active / {stats['incident_quiet']} quiet)."
+        )
     return "\n".join(lines)
 
 

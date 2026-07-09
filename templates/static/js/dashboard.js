@@ -279,6 +279,30 @@ function toggleAutoRefresh() {
     updateAutoRefreshLabel();
 }
 
+var _incidentsBadgeTimer = null;
+function updateIncidentsBadge() {
+    var badge = document.getElementById('incidentsBadge');
+    if (!badge) return;
+    // Only update badge if API is authenticated
+    if (typeof API === 'undefined' || !API.getReadToken()) return;
+    API.getIncidents({ status: 'active', page_size: 1 }).then(function (res) {
+        if (res && res.success && res.pagination && res.pagination.total != null) {
+            var count = res.pagination.total;
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : String(count);
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }).catch(function () { /* badge is best-effort */ });
+}
+if (!_incidentsBadgeTimer) {
+    // Poll every 2 minutes — cheap enough (one lightweight count query).
+    _incidentsBadgeTimer = setInterval(updateIncidentsBadge, 120000);
+    setTimeout(updateIncidentsBadge, 5000); // First update after API token loads
+}
+
 function openAuthModal() {
     const apiKeyInput = document.getElementById('authApiKey');
     const adminWriteKeyInput = document.getElementById('authAdminWriteKey');

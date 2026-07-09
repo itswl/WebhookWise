@@ -258,6 +258,8 @@
             'alerts.action.forward': 'Forward',
             'alerts.action.quickSilence': 'Silence 1h',
             'alerts.action.quickSilenceTitle': 'Open silence form pre-filled with this alert context',
+            'alerts.action.replayDry': 'Replay',
+            'alerts.action.replayDryTitle': 'Re-run current rules against this alert (dry run, no side effects)',
             'alerts.action.replayDeadLetter': 'Replay DL',
             'alerts.tab.overview': 'Overview',
             'alerts.tab.rawData': 'Raw Data',
@@ -714,6 +716,10 @@
             'incidents.action.closeFailed': 'Failed to close incident',
             'incidents.action.reopenTitle': 'Re-open this incident',
             'incidents.action.reopenFailed': 'Failed to reopen incident',
+            'incidents.searchPlaceholder': 'Search by title or source...',
+            'incidents.search.empty': 'No incidents match the search term',
+            'silences.confirm.conflict': 'This silence may block {n} forward rule(s)',
+            'silences.confirm.conflictDetail': 'If this silence blocks rules you need, consider narrowing the match criteria (e.g. add event_type or payload). Continue anyway?',
         },
         zh: {
             // ── Navbar ──
@@ -950,6 +956,8 @@
             'alerts.action.forward': '转发',
             'alerts.action.quickSilence': '静默 1h',
             'alerts.action.quickSilenceTitle': '用此告警上下文预填静默表单',
+            'alerts.action.replayDry': '重放',
+            'alerts.action.replayDryTitle': '用当前规则重判此告警（试运行，无副作用）',
             'alerts.action.replayDeadLetter': '重放死信',
             'alerts.tab.overview': '概览',
             'alerts.tab.rawData': '原始数据',
@@ -1406,6 +1414,10 @@
             'incidents.action.closeFailed': '关闭事件失败',
             'incidents.action.reopenTitle': '重新打开此事件',
             'incidents.action.reopenFailed': '重新打开事件失败',
+            'incidents.searchPlaceholder': '按标题或来源搜索…',
+            'incidents.search.empty': '没有匹配的事件',
+            'silences.confirm.conflict': '此静默可能会屏蔽 {n} 条转发规则',
+            'silences.confirm.conflictDetail': '如果此静默会屏蔽你需要的规则，建议缩小匹配条件（如添加 event_type 或 payload）。仍要继续吗？',
         }
     };
 

@@ -197,11 +197,64 @@ const IncidentsModule = (function () {
         }
     }
 
+    function search() {
+        var term = (document.getElementById('incidentSearchInput') || {}).value || '';
+        term = term.trim().toLowerCase();
+        var container = document.getElementById('incidentsList');
+        if (!container || !_rows.length) return;
+
+        if (!term) { render(); return; }
+
+        var filtered = _rows.filter(function (r) {
+            return (r.title || '').toLowerCase().indexOf(term) >= 0 ||
+                   (r.source || '').toLowerCase().indexOf(term) >= 0;
+        });
+
+        var html = '';
+        for (var i = 0; i < filtered.length; i++) {
+            // Reuse the same card rendering pattern from render()
+            html += _cardHtml(filtered[i]);
+        }
+        if (!filtered.length) {
+            html = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">' + t('incidents.search.empty') + '</div></div>';
+        }
+        container.innerHTML = html;
+    }
+
+    function _cardHtml(row) {
+        var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: '❓' };
+        var h = '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" onclick="IncidentsModule.toggle(' + row.id + ')">';
+        h += '<div style="display:flex; align-items:center; gap:0.75rem;">';
+        h += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
+        h += '<div style="flex:1; min-width:0;">';
+        h += '<div style="display:flex; align-items:center; gap:0.5rem;">';
+        h += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
+        h += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
+        h += '</div>';
+        h += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
+        h += '<span>' + escapeHtml(row.source || '') + '</span> · ';
+        h += '<span>' + row.alert_count + ' alerts</span> · ';
+        h += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
+        h += '</div></div>';
+        if (row.status === 'active' || row.status === 'quiet') {
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.closeIncident(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+        }
+        if (row.status === 'closed') {
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
+        }
+        h += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
+        h += '</div>';
+        h += '<div class="incident-detail" id="incident-detail-' + row.id + '" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
+        h += '</div>';
+        return h;
+    }
+
     return {
         init: init,
         load: load,
         toggle: toggle,
         render: render,
+        search: search,
         closeIncident: closeIncident,
         reopenIncident: reopenIncident
     };
