@@ -667,8 +667,10 @@
                     <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="silence.durationHint">"Keep current" leaves an existing silence's expiry unchanged when editing.</small>
                 </div>
                 <div id="silenceFormExpiresRow" style="display:none;"></div>
+                <div id="silenceFormBacktestResult" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 1rem; display: none; max-height: 250px; overflow-y: auto;"></div>
             </div>
             <div class="modal-footer">
+                <button class="btn" id="silenceBacktestBtn" onclick="backtestSilenceRule()" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);">🧪 Test Rule</button>
                 <button class="btn" onclick="closeSilenceForm()" data-i18n="common.cancel">Cancel</button>
                 <button class="btn btn-primary" onclick="saveSilence()" data-i18n="common.save">Save</button>
             </div>

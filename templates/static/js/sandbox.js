@@ -70,76 +70,161 @@ function renderSandboxResult(d) {
     const rb = d.rule_based_analysis || {};
     const fields = d.match_fields || {};
 
-    // Forward verdict banner.
     const willForward = !!fwd.should_forward;
     const verdictColor = willForward ? 'var(--success)' : (fwd.skip_code === 'silenced' ? 'var(--warning)' : 'var(--text-secondary)');
     const verdictIcon = willForward ? '✅' : (fwd.skip_code === 'silenced' ? '🔕' : '⏭️');
     const verdictText = willForward ? t('sandbox.verdict.forward') : t('sandbox.verdict.skip', { code: fwd.skip_code || '' });
 
     let html = '';
-    html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-left:4px solid ' + verdictColor + '; border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1rem;">' +
-        '<div style="font-size:1.05rem; font-weight:600; color:' + verdictColor + ';">' + verdictIcon + ' ' + escapeHtml(verdictText) + '</div>' +
-        (fwd.skip_reason ? '<div style="font-size:0.85rem; color:var(--text-secondary); margin-top:0.25rem;">' + escapeHtml(fwd.skip_reason) + '</div>' : '') +
+
+    // Summary banner
+    html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-left:4px solid ' + verdictColor + '; border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem;">' +
+        '<div style="font-size:1.1rem; font-weight:700; color:' + verdictColor + '; display:flex; align-items:center; gap:8px;">' +
+        '<span>' + verdictIcon + '</span> <span>' + escapeHtml(verdictText) + '</span>' +
+        '</div>' +
+        (fwd.skip_reason ? '<div style="font-size:0.85rem; color:var(--text-secondary); margin-top:0.4rem; line-height:1.4;">' + escapeHtml(fwd.skip_reason) + '</div>' : '') +
         '</div>';
 
-    // Source / adapter.
+    // Timeline wrapper
+    html += '<div class="pipeline-flow" style="display: flex; flex-direction: column; gap: 1.25rem; position: relative; padding-left: 1.5rem; border-left: 2px dashed var(--border);">';
+
+    // Step 1: Ingress
+    html += renderPipelineStep(
+        1,
+        '✓',
+        'var(--success)',
+        '1. Ingress 接收',
+        'Raw webhook payload is ingested and validated.',
+        '<div><strong>Input source:</strong> <span class="badge badge-outline">' + escapeHtml(src.input || '—') + '</span></div>'
+    );
+
+    // Step 2: Normalization
     const adapterBadge = src.matched
         ? '<span class="badge badge-success">' + escapeHtml(src.adapter) + '</span>'
         : '<span class="badge badge-outline" title="' + escapeHtml(t('sandbox.passthroughHint')) + '">passthrough</span>';
-    html += sandboxSection(t('sandbox.section.source'),
-        sandboxRow(t('sandbox.field.input'), escapeHtml(src.input || '—')) +
-        sandboxRow(t('sandbox.field.resolved'), escapeHtml(src.resolved || '—')) +
-        sandboxRow(t('sandbox.field.adapter'), adapterBadge));
+    html += renderPipelineStep(
+        2,
+        '✓',
+        'var(--success)',
+        '2. Normalization 归一化',
+        'Adapter parses external format into WW standard shape.',
+        '<div style="display:flex; flex-direction:column; gap:4px;">' +
+        '<div><strong>Resolved source:</strong> <code>' + escapeHtml(src.resolved || '—') + '</code></div>' +
+        '<div><strong>Adapter matched:</strong> ' + adapterBadge + '</div>' +
+        '</div>'
+    );
 
-    // Matched rules.
-    let rulesHtml;
-    if ((fwd.matched_rules || []).length) {
+    // Step 3: Deduplication
+    html += renderPipelineStep(
+        3,
+        'ℹ️',
+        'var(--primary)',
+        '3. Deduplication 去重指纹',
+        'Generates deterministic hash signatures for rate-limiting.',
+        '<div style="display:flex; flex-direction:column; gap:4px; font-family:monospace; font-size:0.75rem;">' +
+        '<div>alert_hash: <span style="color:var(--text-secondary);">' + escapeHtml(d.alert_hash || '') + '</span></div>' +
+        '<div>dedup_key : <span style="color:var(--text-secondary);">' + escapeHtml(d.dedup_key || '') + '</span></div>' +
+        '</div>' +
+        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">ℹ️ ' + escapeHtml(d.dedup_note || '') + '</div>'
+    );
+
+    // Step 4: Silence
+    const isSilenced = fwd.skip_code === 'silenced';
+    const silenceColor = isSilenced ? 'var(--warning)' : 'var(--success)';
+    const silenceIcon = isSilenced ? '🔕' : '✓';
+    const silenceDesc = isSilenced ? t('sandbox.silencedBy', { id: fwd.silenced_by.silence_id }) : 'No active silence rules matched.';
+    html += renderPipelineStep(
+        4,
+        silenceIcon,
+        silenceColor,
+        '4. Silence 静默过滤',
+        'Checks if the alert is manually muted.',
+        '<div style="color:' + silenceColor + '; font-weight:600;">' + escapeHtml(silenceDesc) + '</div>'
+    );
+
+    // Step 5: AI & Fallback Analysis
+    html += renderPipelineStep(
+        5,
+        'ℹ️',
+        'var(--primary)',
+        '5. AI & Fallback Analysis 智能分析',
+        'Enriches with KB and runs rule-based simulation.',
+        '<div style="display:flex; flex-direction:column; gap:6px;">' +
+        '<div><strong>Importance:</strong> <span class="badge badge-' + impClass(rb.importance) + '">' + escapeHtml(rb.importance || 'unknown') + '</span></div>' +
+        '<div><strong>Event Type:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rb.event_type || '—') + '</code></div>' +
+        (rb.summary ? '<div><strong>Summary:</strong> <span style="color:var(--text-main); font-weight:500;">' + escapeHtml(rb.summary) + '</span></div>' : '') +
+        '</div>' +
+        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">ℹ️ ' + escapeHtml(rb.note || '') + '</div>'
+    );
+
+    // Step 6: Noise Reduction
+    html += renderPipelineStep(
+        6,
+        'ℹ️',
+        'var(--primary)',
+        '6. Noise Reduction 降噪评分',
+        'Extracts structural geo metadata for routing.',
+        '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">' +
+        '<div><strong>Project:</strong> <code>' + escapeHtml(fields.project || '—') + '</code></div>' +
+        '<div><strong>Region:</strong> <code>' + escapeHtml(fields.region || '—') + '</code></div>' +
+        '<div><strong>Environment:</strong> <code>' + escapeHtml(fields.environment || '—') + '</code></div>' +
+        '</div>'
+    );
+
+    // Step 7: Forwarding Outbox
+    let rulesHtml = '';
+    if ((fwd.matched_rules || []).length > 0) {
         rulesHtml = fwd.matched_rules.map(function (r) {
-            return '<div style="display:flex; justify-content:space-between; padding:0.35rem 0; border-bottom:1px dashed var(--border);">' +
-                '<span>⚙️ ' + escapeHtml(r.name) + (r.stop_on_match ? ' <span class="badge badge-outline" style="font-size:0.7rem;">stop</span>' : '') + '</span>' +
-                '<span style="color:var(--text-muted);">' + escapeHtml(r.target_type || '') + (r.target_name ? ' · ' + escapeHtml(r.target_name) : '') + '</span></div>';
+            return '<div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px dashed var(--border);">' +
+                '<span style="font-weight:600;">⚙️ ' + escapeHtml(r.name) + (r.stop_on_match ? ' <span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px;">stop</span>' : '') + '</span>' +
+                '<span style="color:var(--text-muted); font-size:0.8rem;">' + escapeHtml(r.target_type) + (r.target_name ? ' · ' + escapeHtml(r.target_name) : '') + '</span>' +
+                '</div>';
         }).join('');
-    } else if (fwd.skip_code === 'silenced' && fwd.silenced_by) {
-        rulesHtml = '<div style="color:var(--text-secondary);">' + escapeHtml(t('sandbox.silencedBy', { id: fwd.silenced_by.silence_id })) + '</div>';
     } else {
-        rulesHtml = '<div style="color:var(--text-secondary);">' + escapeHtml(t('sandbox.noRules')) + '</div>';
+        rulesHtml = '<div style="color:var(--text-secondary); font-style:italic;">' + escapeHtml(t('sandbox.noRules')) + '</div>';
     }
-    html += sandboxSection(t('sandbox.section.rules'), rulesHtml);
 
-    // Rule-based analysis (clearly labelled as non-AI).
-    html += sandboxSection(t('sandbox.section.analysis'),
-        sandboxRow(t('sandbox.field.importance'), '<span class="badge badge-' + impClass(rb.importance) + '">' + escapeHtml(rb.importance || 'unknown') + '</span>') +
-        sandboxRow(t('sandbox.field.eventType'), escapeHtml(rb.event_type || '—')) +
-        '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.5rem; font-style:italic;">ℹ️ ' + escapeHtml(rb.note || '') + '</div>');
+    const step7Color = willForward ? 'var(--success)' : 'var(--text-muted)';
+    const step7Icon = willForward ? '✓' : '⏭️';
+    html += renderPipelineStep(
+        7,
+        step7Icon,
+        step7Color,
+        '7. Forward Outbox 规则转发',
+        'Matches forwarding rules and schedules deliveries.',
+        '<div style="display:flex; flex-direction:column; gap:6px;">' +
+        '<div><strong>Matched rules:</strong></div>' +
+        '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:4px; padding:8px 12px;">' + rulesHtml + '</div>' +
+        '</div>'
+    );
 
-    // Identity / fingerprints.
-    html += sandboxSection(t('sandbox.section.identity'),
-        sandboxRow(t('sandbox.field.project'), escapeHtml(fields.project || '—')) +
-        sandboxRow(t('sandbox.field.region'), escapeHtml(fields.region || '—')) +
-        sandboxRow(t('sandbox.field.environment'), escapeHtml(fields.environment || '—')) +
-        sandboxRow('alert_hash', '<code style="font-size:0.75rem;">' + escapeHtml((d.alert_hash || '').slice(0, 16)) + '…</code>') +
-        sandboxRow('dedup_key', '<code style="font-size:0.75rem;">' + escapeHtml((d.dedup_key || '').slice(0, 16)) + '…</code>'));
+    html += '</div>'; // close pipeline-flow wrapper
 
     // Extracted identity detail (collapsible raw view).
     const idJson = JSON.stringify(d.identity || {}, null, 2);
-    html += '<details style="margin-top:0.75rem;"><summary style="cursor:pointer; font-size:0.85rem; color:var(--text-secondary);">' +
+    html += '<details style="margin-top:1.5rem; border-top: 1px dashed var(--border); padding-top: 1rem;"><summary style="cursor:pointer; font-size:0.85rem; color:var(--text-secondary); font-weight:600;">' +
         escapeHtml(t('sandbox.section.extracted')) + '</summary>' +
-        '<pre style="background:var(--bg-subtle,#f1f5f9); padding:0.75rem; border-radius:6px; overflow:auto; font-size:0.75rem; margin-top:0.5rem;">' +
+        '<pre style="background:var(--bg-subtle,#f1f5f9); padding:0.75rem; border-radius:6px; overflow:auto; font-size:0.75rem; margin-top:0.5rem; max-height:200px; border:1px solid var(--border);">' +
         escapeHtml(idJson) + '</pre></details>';
 
-    html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.75rem;">ℹ️ ' + escapeHtml(d.dedup_note || '') + '</div>';
     return html;
 }
 
-function sandboxSection(title, inner) {
-    return '<div style="margin-bottom:1rem;">' +
-        '<div style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); font-weight:600; letter-spacing:0.04em; margin-bottom:0.4rem;">' + escapeHtml(title) + '</div>' +
-        '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem;">' + inner + '</div></div>';
-}
-
-function sandboxRow(label, valueHtml) {
-    return '<div style="display:flex; justify-content:space-between; gap:1rem; padding:0.2rem 0;">' +
-        '<span style="color:var(--text-secondary);">' + escapeHtml(label) + '</span><span style="text-align:right;">' + valueHtml + '</span></div>';
+function renderPipelineStep(num, icon, color, title, desc, bodyHtml) {
+    return '<div class="pipeline-step" style="position: relative; margin-bottom: 0.5rem;">' +
+        '<!-- Circle indicator -->' +
+        '<div class="step-indicator" style="position: absolute; left: -2.15rem; top: 0; width: 1.35rem; height: 1.35rem; border-radius: 50%; background: ' + color + '; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; box-shadow: 0 0 0 4px var(--bg-surface);">' +
+        icon +
+        '</div>' +
+        '<!-- Step contents -->' +
+        '<div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem 1rem;">' +
+        '<div style="font-weight: 700; font-size: 0.9rem; color: var(--text-main); margin-bottom: 2px;">' + escapeHtml(title) + '</div>' +
+        '<div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px;">' + escapeHtml(desc) + '</div>' +
+        '<div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 6px;">' +
+        bodyHtml +
+        '</div>' +
+        '</div>' +
+        '</div>';
 }
 
 function impClass(importance) {
