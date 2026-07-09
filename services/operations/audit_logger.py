@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from db.session import session_scope
 from models import AuditLog
@@ -40,7 +41,8 @@ async def record_audit(
 
 def _fire_audit(*args: object, **kwargs: object) -> None:
     """Schedule a background audit log write without awaiting it."""
-    try:
+    with contextlib.suppress(RuntimeError):
+        # May raise RuntimeError if no event loop is running (e.g. in tests).
         asyncio.ensure_future(record_audit(
             str(args[0]), args[1] if len(args) > 1 else None,  # type: ignore[arg-type]
             str(args[2]) if len(args) > 2 else None,
@@ -48,5 +50,3 @@ def _fire_audit(*args: object, **kwargs: object) -> None:
             str(args[4]) if len(args) > 4 else "",
             actor=str(kwargs.get("actor", "dashboard")),
         ))
-    except RuntimeError:
-        pass  # No event loop (tests)

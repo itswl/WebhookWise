@@ -77,8 +77,7 @@ async def get_handoff_summary(session: AsyncSession, *, hours: int = 8) -> dict[
     if not active_incidents:
         lines.append("  ✅ None")
     lines.append(f"\n### Recently Quieted ({len(quiet_rows)})")
-    for row in quiet_rows:
-        lines.append(f"  🔇 {row[1][:80]} — {row[2]} alerts")
+    lines.extend(f"  🔇 {row[1][:80]} — {row[2]} alerts" for row in quiet_rows)
     if not quiet_rows:
         lines.append("  — None")
 
