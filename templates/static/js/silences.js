@@ -212,6 +212,12 @@ function showSilenceForm(silenceId) {
     document.getElementById('silenceFormPayload').value = '';
     document.getElementById('silenceFormDuration').value = '0';
 
+    const backtestResult = document.getElementById('silenceFormBacktestResult');
+    if (backtestResult) {
+        backtestResult.style.display = 'none';
+        backtestResult.innerHTML = '';
+    }
+
     const expiresRow = document.getElementById('silenceFormExpiresRow');
     if (expiresRow) expiresRow.style.display = 'none';
 
@@ -397,6 +403,115 @@ async function deleteSilence(id) {
     } catch (error) {
         console.error('❌ Failed to delete silence:', error);
         alert('❌ ' + t('silences.alert.deleteFailed') + ': ' + error.message);
+    }
+}
+
+/**
+ * Backtest the proposed silence rule match criteria against historical events.
+ */
+async function backtestSilenceRule() {
+    const container = document.getElementById('silenceFormBacktestResult');
+    if (!container) return;
+
+    const importances = [];
+    if (document.getElementById('silenceFormImportanceHigh').checked) importances.push('high');
+    if (document.getElementById('silenceFormImportanceMedium').checked) importances.push('medium');
+    if (document.getElementById('silenceFormImportanceLow').checked) importances.push('low');
+
+    const silenceData = {
+        match_source: document.getElementById('silenceFormSource').value.trim(),
+        match_importance: importances.join(','),
+        match_event_type: document.getElementById('silenceFormEventType').value.trim(),
+        match_project: document.getElementById('silenceFormProject').value.trim(),
+        match_region: document.getElementById('silenceFormRegion').value.trim(),
+        match_environment: document.getElementById('silenceFormEnvironment').value.trim(),
+        match_payload: document.getElementById('silenceFormPayload').value.trim(),
+        lookback_days: 30
+    };
+
+    // Require at least one match criterion
+    const hasCriterion = silenceData.match_source || silenceData.match_importance ||
+        silenceData.match_event_type || silenceData.match_project ||
+        silenceData.match_region || silenceData.match_environment || silenceData.match_payload;
+    if (!hasCriterion) {
+        alert(t('silences.alert.criterionRequired'));
+        return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div class="loading" style="padding: 15px 0;">
+            <div class="spinner" style="width: 20px; height: 20px;"></div>
+            <p style="font-size: 0.85rem; margin-top: 5px;">${t('common.loading')}</p>
+        </div>
+    `;
+
+    try {
+        console.log('🧪 Running silence backtest...', silenceData);
+        const result = await API.backtestSilence(silenceData);
+        if (!result.success || !result.data) {
+            container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">⚠️ Error: ${escapeHtml(result.error || 'Unknown error')}</div>`;
+            return;
+        }
+
+        const d = result.data;
+        const matchedRate = d.total_scanned > 0 ? ((d.total_matched / d.total_scanned) * 100).toFixed(1) : '0.0';
+
+        let impBadges = '';
+        Object.keys(d.importance_counts || {}).forEach(function(k) {
+            const val = d.importance_counts[k];
+            if (val > 0) {
+                impBadges += `<span class="badge badge-${impClass(k)}" style="margin-right: 5px; font-size: 0.75rem;">${escapeHtml(k)}: ${val}</span>`;
+            }
+        });
+
+        let sampleHtml = '';
+        if ((d.sample_matched_events || []).length > 0) {
+            sampleHtml += `
+                <div style="margin-top: 0.75rem;">
+                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">🎯 Recent Matched Samples (${d.sample_matched_events.length}):</div>
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+            `;
+            d.sample_matched_events.forEach(function(ev) {
+                const isDupBadge = ev.is_duplicate ? `<span class="badge badge-outline" style="font-size: 0.65rem; padding: 1px 4px;">dup</span>` : '';
+                sampleHtml += `
+                    <div style="font-size: 0.8rem; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                        <span style="flex-shrink: 0; color: var(--text-muted);">${formatSilenceTime(ev.timestamp).split(' ')[1] || formatSilenceTime(ev.timestamp)}</span>
+                        <span class="badge badge-outline" style="font-size: 0.7rem; flex-shrink: 0;">${escapeHtml(ev.source)}</span>
+                        <span class="badge badge-${impClass(ev.importance)}" style="font-size: 0.7rem; flex-shrink: 0;">${escapeHtml(ev.importance)}</span>
+                        ${isDupBadge}
+                        <span style="flex-grow: 1; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: var(--text-main); font-weight: 500;" title="${escapeHtml(ev.summary)}">${escapeHtml(ev.summary || '—')}</span>
+                    </div>
+                `;
+            });
+            sampleHtml += '</div></div>';
+        } else {
+            sampleHtml = `<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-style: italic;">No historical alerts would have been silenced. This rule is 100% safe.</div>`;
+        }
+
+        container.innerHTML = `
+            <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-weight: 600; font-size: 0.9rem; color: var(--primary);">🧪 Backtest Result (Past 30 Days)</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Scanned: <strong>${d.total_scanned}</strong> events</span>
+                </div>
+                <div style="display: flex; gap: 1.5rem; align-items: center; background: var(--bg-subtle, #f8fafc); border-radius: 4px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="text-align: center; border-right: 1px solid var(--border); padding-right: 1.5rem;">
+                        <div style="font-size: 1.5rem; font-weight: 700; color: ${d.total_matched > 0 ? 'var(--warning)' : 'var(--success)'};">${d.total_matched}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Would Mute</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1rem; font-weight: 600;">${matchedRate}% <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">noise reduction rate</span></div>
+                        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">${impBadges || '<span style="font-size:0.75rem; color:var(--text-muted);">No categories</span>'}</div>
+                    </div>
+                </div>
+                ${sampleHtml}
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('❌ Silence backtest failed:', error);
+        container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">⚠️ Failure: ${escapeHtml(error.message || String(error))}</div>`;
     }
 }
 

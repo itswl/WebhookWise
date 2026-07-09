@@ -130,6 +130,26 @@ const IncidentsModule = (function () {
         }
     }
 
+    function formatRelativeOffset(offsetSecs) {
+        if (offsetSecs <= 0) return '+0s';
+        if (offsetSecs < 60) return '+' + Math.round(offsetSecs) + 's';
+        var mins = Math.floor(offsetSecs / 60);
+        var secs = Math.round(offsetSecs % 60);
+        if (mins < 60) {
+            return '+' + mins + 'm' + (secs > 0 ? ' ' + secs + 's' : '');
+        }
+        var hours = Math.floor(mins / 60);
+        mins = mins % 60;
+        return '+' + hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
+    }
+
+    function impClass(importance) {
+        if (importance === 'high') return 'danger';
+        if (importance === 'medium') return 'medium';
+        if (importance === 'low') return 'success';
+        return 'outline';
+    }
+
     function renderDetail(data) {
         var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
         var members = data.members || [];
@@ -138,36 +158,83 @@ const IncidentsModule = (function () {
         // Summary analysis section
         var summary = data.summary_analysis || {};
         if (summary.summary) {
-            html += '<div style="background:var(--bg-base); border-radius:6px; padding:0.75rem 1rem; margin-bottom:0.75rem; border-left:3px solid var(--primary);">';
+            html += '<div style="background:var(--bg-base); border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; border-left:3px solid var(--primary);">';
             html += '<div style="font-weight:600; margin-bottom:0.25rem; font-size:0.85rem;">🧠 ' + t('incidents.llmSummary') + '</div>';
-            html += '<div style="font-size:0.85rem; color:var(--text-main);">' + escapeHtml(String(summary.summary || '')) + '</div>';
+            html += '<div style="font-size:0.85rem; color:var(--text-main); line-height:1.4;">' + escapeHtml(String(summary.summary || '')) + '</div>';
             if (summary.root_cause) {
-                html += '<div style="margin-top:0.4rem; font-size:0.82rem;"><span style="color:var(--text-muted);">' + t('incidents.rootCause') + ':</span> ' + escapeHtml(String(summary.root_cause)) + '</div>';
+                html += '<div style="margin-top:0.4rem; font-size:0.82rem;"><span style="color:var(--text-muted);">' + t('incidents.rootCause') + ':</span> <strong>' + escapeHtml(String(summary.root_cause)) + '</strong></div>';
             }
             if (summary.confidence) {
                 html += '<div style="margin-top:0.4rem; font-size:0.78rem; color:var(--text-muted);">' + t('incidents.confidence') + ': ' + Number(summary.confidence).toFixed(2) + '</div>';
             }
             html += '</div>';
         } else if (data.status === 'quiet') {
-            html += '<div style="padding:0.5rem; margin-bottom:0.75rem; font-size:0.82rem; color:var(--text-muted);">💬 ' + t('incidents.summaryPending') + '</div>';
+            html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--text-muted);">💬 ' + t('incidents.summaryPending') + '</div>';
         }
 
         // Member alert timeline
         if (members.length) {
-            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.5rem; text-transform:uppercase; letter-spacing:0.04em;">📅 ' + t('incidents.timeline') + ' (' + members.length + ')</div>';
+            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">📅 ' + t('incidents.timeline') + ' (' + members.length + ')</div>';
+            
+            // Timeline tree list
+            html += '<div class="incident-tree" style="display:flex; flex-direction:column; gap:0.75rem; position:relative; padding-left:1.5rem; border-left:2px solid var(--border); margin-left:0.75rem;">';
+            
+            var firstMember = members[0];
+            
             for (var i = 0; i < members.length; i++) {
                 var m = members[i];
-                html += '<div style="display:flex; align-items:flex-start; gap:0.5rem; padding:0.35rem 0; border-left:2px solid var(--border); padding-left:0.75rem; margin-left:0.25rem;">';
-                html += '<div style="font-size:0.7rem; color:var(--text-muted); min-width:3.5rem; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(m.timestamp ? m.timestamp.slice(11, 19) : '') + '</div>';
-                html += '<div style="flex:1; min-width:0;">';
-                html += '<span style="font-size:0.78rem; font-weight:500;">#' + m.id + '</span> ';
-                html += '<span>' + (impEmoji[m.importance] || '') + ' ' + escapeHtml(m.importance || '') + '</span> ';
-                html += '<span style="font-size:0.72rem; color:var(--text-muted);">' + escapeHtml(m.source || '') + '</span>';
-                if (m.summary) {
-                    html += '<div style="font-size:0.75rem; color:var(--text-muted); line-height:1.3; margin-top:0.1rem;">' + escapeHtml(m.summary.slice(0, 160)) + '</div>';
+                var isRootAlert = (i === 0);
+                
+                // Calculate relative offset
+                var offsetSecs = 0;
+                if (m.timestamp && firstMember.timestamp) {
+                    offsetSecs = (new Date(m.timestamp) - new Date(firstMember.timestamp)) / 1000;
                 }
-                html += '</div></div>';
+                var offsetStr = isRootAlert ? 'Root 首发' : formatRelativeOffset(offsetSecs);
+                
+                // Icon and color
+                var dotColor = isRootAlert ? 'var(--primary, #6366f1)' : (m.importance === 'high' ? 'var(--danger, #ef4444)' : (m.importance === 'medium' ? 'var(--warning, #f59e0b)' : 'var(--success, #10b981)'));
+                var dotIcon = isRootAlert ? '👑' : (m.importance === 'high' ? '🔴' : (m.importance === 'medium' ? '🟠' : '🟢'));
+                var borderStyle = isRootAlert ? 'border: 2px solid var(--primary); box-shadow: 0 0 8px var(--primary);' : 'border: 1px solid var(--border);';
+                
+                html += '<div class="tree-node" style="position:relative;">';
+                
+                // Indicator dot
+                html += '<div class="tree-indicator" style="position:absolute; left:-2.05rem; top:4px; width:1.1rem; height:1.1rem; border-radius:50%; background:' + dotColor + '; display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:white; font-weight:bold; box-shadow:0 0 0 3px var(--bg-surface); ' + borderStyle + '">';
+                html += isRootAlert ? '★' : '';
+                html += '</div>';
+                
+                // Card contents
+                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">🏆 Root Cause 首发</span>' : '';
+                var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">duplicate</span>' : '';
+                
+                html += '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">' +
+                    '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
+                    rootBadge +
+                    '<span style="font-size:0.8rem; font-weight:600; color:var(--text-main);">#' + m.id + '</span>' +
+                    '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || 'unknown') + '</span>' +
+                    dupBadge +
+                    '<span style="font-size:0.72rem; color:var(--text-muted); font-weight:500;">' + escapeHtml(m.source || '') + '</span>' +
+                    '</div>' +
+                    '<div style="font-size:0.72rem; font-weight:600; color:var(--text-muted); background:var(--bg-base); padding:2px 6px; border-radius:4px; border:1px solid var(--border);">' +
+                    escapeHtml(offsetStr) +
+                    '</div>' +
+                    '</div>';
+                
+                if (m.summary) {
+                    html += '<div style="font-size:0.78rem; color:var(--text-main); line-height:1.4; font-weight:500;">' + escapeHtml(m.summary) + '</div>';
+                }
+                
+                html += '<div style="font-size:0.7rem; color:var(--text-muted); display:flex; justify-content:space-between;">' +
+                    '<span>' + escapeHtml(m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 19) : '') + '</span>' +
+                    '<span>Status: ' + escapeHtml(m.forward_status || 'ingested') + '</span>' +
+                    '</div>';
+                
+                html += '</div></div>'; // close tree-node and card contents
             }
+            
+            html += '</div>'; // close incident-tree timeline
         }
 
         // Action: silence all sources in this incident

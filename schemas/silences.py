@@ -173,3 +173,31 @@ def silence_to_dict(silence: Any, *, now: datetime) -> dict[str, Any]:
         if isinstance(data.get(field), datetime):
             data[field] = utc_isoformat(data[field])
     return data
+
+
+class SilenceBacktestRequest(_SilenceRequestBase):
+    """Request body for backtesting a silence rule."""
+
+    lookback_days: int = Field(default=30, ge=1, le=90)
+
+
+class SilenceBacktestMatchedEvent(BaseModel):
+    id: int
+    timestamp: str
+    source: str
+    importance: str
+    is_duplicate: bool
+    summary: str
+
+
+class SilenceBacktestData(BaseModel):
+    total_scanned: int
+    total_matched: int
+    importance_counts: dict[str, int]
+    source_counts: dict[str, int]
+    sample_matched_events: list[SilenceBacktestMatchedEvent]
+
+
+class SilenceBacktestResponse(APIResponse[SilenceBacktestData]):
+    """Silence rule backtest response."""
+

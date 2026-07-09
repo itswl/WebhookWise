@@ -154,3 +154,46 @@ async def test_update_silence_make_permanent(session: AsyncSession) -> None:
     )
     assert updated["data"]["expires_at"] is None
     assert updated["data"]["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_silence_backtest(session: AsyncSession) -> None:
+    from api.v1 import silences as api
+    from core.datetime_utils import utcnow
+    from models import WebhookEvent
+    from schemas.silences import SilenceBacktestRequest
+
+    # Seed some events
+    session.add_all(
+        [
+            WebhookEvent(
+                source="prometheus",
+                importance="high",
+                parsed_data={"alertname": "HostHighCpu", "summary": "CPU utilization high"},
+                timestamp=utcnow(),
+                is_duplicate=False,
+            ),
+            WebhookEvent(
+                source="volcengine",
+                importance="medium",
+                parsed_data={"RuleName": "DBMemoryHigh", "summary": "DB memory utilization high"},
+                timestamp=utcnow(),
+                is_duplicate=False,
+            ),
+        ]
+    )
+    await session.commit()
+
+    # Backtest with matching source
+    res = await api.backtest_silence_endpoint(
+        SilenceBacktestRequest(match_source="prometheus", lookback_days=1),
+        session=session,
+    )
+    assert res["success"] is True
+    assert res["data"]["total_scanned"] == 2
+    assert res["data"]["total_matched"] == 1
+    assert res["data"]["importance_counts"]["high"] == 1
+    assert res["data"]["source_counts"]["prometheus"] == 1
+    assert len(res["data"]["sample_matched_events"]) == 1
+    assert res["data"]["sample_matched_events"][0]["summary"] == "CPU utilization high"
+
