@@ -23,6 +23,10 @@ logger = get_logger("incidents.summary")
 _INCIDENT_SUMMARY_PROMPT = """You are an SRE analyzing an operational incident. Below are the alerts
 that fired during this incident, ordered chronologically.
 
+If you recognize a known failure pattern (e.g. MySQL connection pool exhaustion,
+Kafka consumer lag, GPU OOM, disk full), reference the relevant runbook or
+troubleshooting step in the recommendations.
+
 Produce a JSON object with these fields:
 - "summary": a 2-3 sentence plain-English overview of what happened.
 - "root_cause": the most likely root cause based on the alert pattern.

@@ -23,6 +23,40 @@ incidents_router = APIRouter()
 _INCIDENT_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
 
 
+def _log_audit(
+    resource_type: str, resource_id: int | None, resource_name: str | None, action: str, summary: str
+) -> None:
+    """Fire-and-forget audit log entry."""
+    try:
+        import asyncio
+
+        asyncio.ensure_future(__record_audit(resource_type, resource_id, resource_name, action, summary))
+    except RuntimeError:
+        pass
+
+
+async def __record_audit(
+    resource_type: str, resource_id: int | None, resource_name: str | None, action: str, summary: str
+) -> None:
+    from db.session import session_scope
+    from models import AuditLog
+
+    try:
+        async with session_scope() as session:
+            session.add(
+                AuditLog(
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    resource_name=resource_name,
+                    action=action,
+                    summary=summary[:500],
+                    actor="dashboard",
+                )
+            )
+    except Exception:
+        pass
+
+
 @incidents_router.get(
     "/incidents",
     dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
@@ -129,6 +163,7 @@ async def close_incident_endpoint(
             return fail_response(f"Incident {incident_id} not found", 404)
         incident.status = "closed"
         await session.commit()
+        _log_audit("incident", incident_id, incident.title, "closed", f"Incident closed: {incident.title}")
         logger.info("[Incidents] Marked incident id=%s as closed", incident_id)
         return ok_response(http_status=200, message="incident closed", data={"id": incident_id, "status": "closed"})
     except _INCIDENT_ERRORS as e:
@@ -153,6 +188,7 @@ async def reopen_incident_endpoint(
             return fail_response(f"Incident {incident_id} not found", 404)
         incident.status = "active"
         await session.commit()
+        _log_audit("incident", incident_id, incident.title, "reopened", f"Incident reopened: {incident.title}")
         logger.info("[Incidents] Re-opened incident id=%s", incident_id)
         return ok_response(http_status=200, message="incident re-opened", data={"id": incident_id, "status": "active"})
     except _INCIDENT_ERRORS as e:
