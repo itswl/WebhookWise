@@ -311,6 +311,22 @@ async function saveSilence() {
         return;
     }
 
+    // Check for rule conflicts: if this silence specifies a source that is the
+    // ONLY match_source for certain forward rules, those rules will be effectively
+    // blocked — warn the operator before saving.
+    if (!silenceId && silenceData.match_source && typeof forwardRules !== 'undefined' && forwardRules.length) {
+        var blockedRules = forwardRules.filter(function (r) {
+            return r.enabled && (r.match_source || '').trim() === silenceData.match_source;
+        });
+        if (blockedRules.length > 0) {
+            var names = blockedRules.map(function (r) { return r.name; }).join(', ');
+            if (!confirm(
+                t('silences.confirm.conflict', { n: blockedRules.length }) + '\n\n' + names +
+                '\n\n' + t('silences.confirm.conflictDetail')
+            )) { return; }
+        }
+    }
+
     const expiry = computeSilenceExpiry(document.getElementById('silenceFormDuration').value);
     if (expiry !== undefined) {
         silenceData.expires_at = expiry; // null = permanent, or ISO string

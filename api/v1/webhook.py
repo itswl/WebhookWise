@@ -298,7 +298,7 @@ async def get_webhooks_endpoint(
     window: str = Query("", pattern="^(today|7d|30d|all|)$"),
     search: str = Query("", max_length=200),
     session: AsyncSession = Depends(get_db_session),
-) -> JSONDict:
+) -> JSONDict | JSONResponse:
     """Get the summary list of all webhook events."""
     time_from = window_to_time_from(window)
     items, has_more, next_cursor = await list_webhook_summaries(
@@ -376,7 +376,7 @@ async def get_webhook_detail_endpoint(
 )
 async def get_webhook_timeline_endpoint(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
-) -> JSONDict:
+) -> JSONDict | JSONResponse:
     """Return a chronological timeline of alerts related to *webhook_id*.
 
     The timeline walks the noise-reduction related-alert graph and the dedup
@@ -387,3 +387,63 @@ async def get_webhook_timeline_endpoint(
 
     timeline = await build_alert_timeline(session, webhook_id)
     return {"success": True, "data": timeline}
+
+
+@webhook_router.post(
+    "/webhooks/{webhook_id}/replay-dry-run",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+    response_model=None,
+)
+async def replay_dry_run_endpoint(
+    webhook_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
+    """Re-run current forward rules and silences against a historical alert.
+
+    Returns the decision (forward/skip) and matching rules without persisting
+    anything — useful for answering "would this alert be forwarded today?".
+    """
+    from services.forwarding.rules import get_cached_forward_rules
+    from services.silences.store import get_cached_active_silences
+    from services.webhooks.decisioning import (
+        ForwardRuleSnapshot,
+        SilenceSnapshot,
+        decide_forwarding,
+        forwarding_policy_from_config,
+    )
+
+    event = await session.get(WebhookEvent, webhook_id)
+    if not event:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Webhook not found"})
+
+    rules: list[ForwardRuleSnapshot] = []
+    silences: list[SilenceSnapshot] = []
+    try:
+        rules = await get_cached_forward_rules(session=session)
+        silences = await get_cached_active_silences(session=session)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("[ReplayDryRun] Failed to load rules/silences: %s", e)
+
+    decision = decide_forwarding(
+        event_type="webhook_forward",
+        importance=event.importance or "medium",
+        is_duplicate=False,
+        source=event.source or "",
+        rules=rules,
+        policy=forwarding_policy_from_config(),
+        parsed_data=dict(event.parsed_data or {}),
+        silences=silences,
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "webhook_id": webhook_id,
+            "should_forward": decision.should_forward,
+            "skip_reason": decision.skip_reason,
+            "skip_code": decision.skip_code,
+            "matched_rules": [r.name for r in decision.matched_rules],
+            "matched_rule_count": len(decision.matched_rules),
+            "rules_evaluated": len(rules),
+            "silences_evaluated": len(silences),
+        },
+    }
