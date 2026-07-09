@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
+from api.v1.activity import activity_router
 from api.v1.admin import admin_router
 from api.v1.ai_usage import ai_usage_router
 from api.v1.decision_trace import decision_trace_router
@@ -30,5 +31,6 @@ v1_router.include_router(forwarding_router, dependencies=_admin_api_deps)
 v1_router.include_router(silences_router, dependencies=_admin_api_deps)
 v1_router.include_router(sandbox_router, dependencies=_admin_api_deps)
 v1_router.include_router(incidents_router, dependencies=_admin_api_deps)
+v1_router.include_router(activity_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
 v1_router.include_router(webhook_router)

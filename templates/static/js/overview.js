@@ -52,17 +52,19 @@ const OverviewModule = {
         if (!container) return;
         const mark = document.getElementById('ovLastRefreshed');
         try {
-            // Overview + AI usage + recent incidents, in parallel.
-            const [ovRes, aiRes, incRes] = await Promise.all([
+            // Overview + AI usage + recent incidents + sparkline, in parallel.
+            const [ovRes, aiRes, incRes, sparkRes] = await Promise.all([
                 API.getOverview(this.currentPeriod),
                 API.getAIUsage(this.currentPeriod).catch(() => null),
                 API.getIncidents({ status: 'active', page_size: 5 }).catch(() => null),
+                this._fetchSparkline(7).catch(() => null),
             ]);
             if (!ovRes || !ovRes.success || !ovRes.data) {
                 container.innerHTML = this.emptyHtml();
             } else {
                 const incidents = (incRes && incRes.success && incRes.data) ? incRes.data : [];
-                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents);
+                var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
+                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData);
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -75,7 +77,7 @@ const OverviewModule = {
         return '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
     },
 
-    renderHtml(d, ai, incidents) {
+    renderHtml(d, ai, incidents, sparkData) {
         const fmt = (typeof formatNumber === 'function') ? formatNumber : (n) => String(n);
         const delivery = d.delivery || {};
         const cost = ai ? (ai.cost && ai.cost.total) || 0 : null;
@@ -150,6 +152,20 @@ const OverviewModule = {
             }
             html += '</div>';
         }
+        // 7-day sparkline trend
+        if (sparkData && sparkData.length > 1) {
+            html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">📈 ' + t('overview.section.trend') + '</div>';
+            html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1rem;">';
+            var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
+            var bars = sparkData.map(function (d) {
+                var h = Math.max(2, Math.round((d.count / maxVal) * 40));
+                return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
+                    '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
+                    '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
+            }).join('');
+            html += '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
+            html += '</div>';
+        }
         return html;
     },
 
@@ -158,6 +174,14 @@ const OverviewModule = {
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
             '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
+    },
+
+    async _fetchSparkline(days) {
+        try {
+            const resp = await API.authenticatedFetch('/v1/sparkline?days=' + days);
+            if (!resp.ok) return null;
+            return await resp.json();
+        } catch (e) { return null; }
     },
 
     _routeCount(ai, key) {
