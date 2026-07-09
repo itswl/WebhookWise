@@ -13,6 +13,8 @@ const AlertsModule = {
     hasMore: false,
     _loadingMore: false,
     currentForwardId: null,
+    _searchTerm: '',
+    _searchDebounce: null,
     currentTabByAlert: {},
     _extractCursorMeta(result) {
         const pag = result ? (result.cursor || result.pagination) : null;
@@ -48,7 +50,14 @@ const AlertsModule = {
         const pageSizeSelect = document.getElementById('pageSize');
 
         if (searchInput) {
-            searchInput.addEventListener('input', () => this.filterAlerts());
+            searchInput.addEventListener('input', () => {
+                // Server-side full-text search debounced at 300 ms.
+                clearTimeout(this._searchDebounce);
+                this._searchDebounce = setTimeout(() => {
+                    this._searchTerm = searchInput.value.trim();
+                    this.loadAlerts();
+                }, 300);
+            });
         }
         if (importanceFilter) {
             importanceFilter.addEventListener('change', () => this.filterAlerts());
@@ -129,6 +138,10 @@ const AlertsModule = {
             if (tabName === 'decision' && webhookId) {
                 this.loadDecisionTrace(webhookId);
             }
+            // If switching to the timeline tab, load the incident timeline
+            if (tabName === 'timeline' && webhookId) {
+                this.loadTimeline(webhookId);
+            }
             return;
         }
 
@@ -164,7 +177,9 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: null, window: this._windowValue() });
+            const params = { page_size: 200, cursor: null, window: this._windowValue() };
+            if (this._searchTerm) params.search = this._searchTerm;
+            const result = await API.getWebhooks(params);
 
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
@@ -200,7 +215,9 @@ const AlertsModule = {
                 btn.textContent = t('common.loading');
             }
 
-            const result = await API.getWebhooks({ page_size: 200, cursor: this.nextCursor, window: this._windowValue() });
+            const loadMoreParams = { page_size: 200, cursor: this.nextCursor, window: this._windowValue() };
+            if (this._searchTerm) loadMoreParams.search = this._searchTerm;
+            const result = await API.getWebhooks(loadMoreParams);
             if (!result.success || !result.data) {
                 throw new Error(t('alerts.error.invalidData'));
             }
@@ -257,16 +274,13 @@ const AlertsModule = {
      * Filter alerts
      */
     filterAlerts(resetPage = true) {
-        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
         const importanceFilter = document.getElementById('importanceFilter').value;
         const sourceFilter = document.getElementById('sourceFilter').value;
         const duplicateFilter = document.getElementById('duplicateFilter').value;
         const processingStatusFilter = document.getElementById('processingStatusFilter') ? document.getElementById('processingStatusFilter').value : '';
 
-        // Filter data
+        // Filter data (search is server-side; these filters are instant on loaded data).
         this.filteredAlerts = this.alerts.filter(function(webhook) {
-            const matchSearch = !searchTerm || JSON.stringify(webhook).toLowerCase().indexOf(searchTerm) > -1;
-
             let matchImportance = true;
             if (importanceFilter) {
                 const webhookImportance = webhook.importance || 'low';
@@ -284,7 +298,7 @@ const AlertsModule = {
 
             const matchProcessingStatus = !processingStatusFilter || webhook.processing_status === processingStatusFilter;
 
-            return matchSearch && matchImportance && matchSource && matchDuplicate && matchProcessingStatus;
+            return matchImportance && matchSource && matchDuplicate && matchProcessingStatus;
         });
 
         console.log('Filter results:', this.filteredAlerts.length, 'items (of', this.alerts.length, 'items)');
@@ -413,6 +427,8 @@ const AlertsModule = {
             html += '<div class="tab" data-tab="deep-analysis" data-id="' + webhook.id + '">' + t('alerts.tab.deep') + '</div>';
             // Decision / Delivery tab (why forwarded/skipped + did it deliver)
             html += '<div class="tab" data-tab="decision" data-id="' + webhook.id + '">' + t('alerts.tab.decision') + '</div>';
+            // Incident Timeline tab
+            html += '<div class="tab" data-tab="timeline" data-id="' + webhook.id + '">📅 ' + t('alerts.tab.timeline') + '</div>';
             html += '</div>';
 
             html += '<div class="tab-content active" data-tab-content="overview">';
@@ -458,6 +474,11 @@ const AlertsModule = {
             // Decision / delivery content panel (lazy-loaded on tab click)
             html += '<div class="tab-content" data-tab-content="decision">';
             html += '<div id="decision-container-' + webhook.id + '">' + t('alerts.decision.clickToLoad') + '</div>';
+            html += '</div>';
+
+            // Incident timeline panel (lazy-loaded on tab click)
+            html += '<div class="tab-content" data-tab-content="timeline">';
+            html += '<div id="timeline-container-' + webhook.id + '">📅 ' + t('alerts.timeline.clickToLoad') + '</div>';
             html += '</div>';
 
             html += '</div></div>';
@@ -969,6 +990,83 @@ const AlertsModule = {
         } catch (e) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }
+    },
+
+    /**
+     * Load the incident timeline for a webhook event.
+     */
+    async loadTimeline(webhookId) {
+        const container = document.getElementById('timeline-container-' + webhookId);
+        if (!container) return;
+        if (container.dataset.loaded === 'true') return;
+        container.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
+
+        try {
+            const result = await this._fetchTimeline(webhookId);
+            if (!result || !result.data || !result.data.events || !result.data.events.length) {
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">📅 ' + t('alerts.timeline.empty') + '</div>';
+                return;
+            }
+            container.innerHTML = this._renderTimeline(result.data);
+            container.dataset.loaded = 'true';
+        } catch (e) {
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
+        }
+    },
+
+    async _fetchTimeline(eventId) {
+        const response = await API.authenticatedFetch('/v1/webhooks/' + eventId + '/timeline');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    _renderTimeline(data) {
+        const anchorId = data.anchor ? data.anchor.id : null;
+        const impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
+        var html = '<div style="padding: 0.5rem 0;">';
+        for (var i = 0; i < data.events.length; i++) {
+            var ev = data.events[i];
+            var isAnchor = ev.id === anchorId;
+            var borderColor = isAnchor ? 'var(--primary, #6366f1)' : 'var(--border, #334155)';
+            var bg = isAnchor ? 'var(--primary-bg, rgba(99,102,241,0.08))' : 'transparent';
+            html += '<div style="display:flex; align-items:flex-start; gap:0.75rem; padding:0.625rem 0.5rem; margin-bottom:0.25rem; border-left:3px solid ' + borderColor + '; background:' + bg + '; border-radius:0 4px 4px 0;">';
+            // Time
+            html += '<div style="font-size:0.75rem; color:var(--text-muted); min-width:4.5rem; text-align:right; padding-top:0.15rem;">' + escapeHtml(ev.timestamp ? ev.timestamp.slice(11, 19) : '') + '</div>';
+            // Content
+            html += '<div style="flex:1; min-width:0;">';
+            html += '<div style="font-size:0.8rem; font-weight:600; margin-bottom:0.15rem;">';
+            if (isAnchor) html += '📍 ';
+            html += '<a href="javascript:void(0)" onclick="AlertsModule._scrollToAlert(' + ev.id + ')" style="color:var(--text-main); text-decoration:none;">#' + ev.id + '</a>';
+            html += ' <span style="color:var(--text-muted); font-weight:400;">' + escapeHtml(ev.source) + '</span>';
+            html += ' <span>' + (impEmoji[ev.importance] || '⚪') + ' ' + escapeHtml(ev.importance) + '</span>';
+            if (ev.is_duplicate) html += ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('alerts.status.duplicate') + '</span>';
+            if (ev.forward_status === 'sent') html += ' <span class="badge badge-success" style="font-size:0.6rem;">📤</span>';
+            html += '</div>';
+            if (ev.summary) {
+                html += '<div style="font-size:0.82rem; color:var(--text-muted); line-height:1.4; white-space:pre-wrap;">' + escapeHtml(ev.summary) + '</div>';
+            }
+            html += '</div></div>';
+        }
+        html += '</div>';
+        if (data.events.length >= 50) {
+            html += '<div style="text-align:center; padding:0.5rem; font-size:0.78rem; color:var(--text-muted);">' + t('alerts.timeline.truncated', { n: 50 }) + '</div>';
+        }
+        return html;
+    },
+
+    /** Scroll to and expand the alert item with the given id. */
+    _scrollToAlert(eventId) {
+        var item = document.querySelector('.alert-item[data-id="' + eventId + '"]');
+        if (!item) return;
+        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!item.classList.contains('expanded')) {
+            item.classList.add('expanded');
+            // Trigger data load if needed
+            var header = item.querySelector('.alert-header');
+            if (header) header.click();
+        }
+        item.style.boxShadow = '0 0 0 3px var(--primary, #6366f1)';
+        setTimeout(function () { item.style.boxShadow = ''; }, 2000);
     },
 
     /**
