@@ -105,3 +105,56 @@ async def trigger_incident_summary_endpoint(
     except _INCIDENT_ERRORS as e:
         logger.error("Failed to summarize incident id=%s: %s", incident_id, e, exc_info=True)
         return internal_error_response()
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/close",
+    response_model=None,
+    dependencies=[Depends(verify_api_key)],
+)
+async def close_incident_endpoint(
+    incident_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse:
+    """Mark an incident as closed (operator resolution).
+
+    A closed incident no longer appears in the active list but is preserved
+    for historical review. Re-opening is a separate call so closure is always
+    an explicit operator action, not an automated side effect.
+    """
+    from models import Incident
+
+    try:
+        incident = await session.get(Incident, incident_id)
+        if incident is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        incident.status = "closed"
+        await session.commit()
+        logger.info("[Incidents] Marked incident id=%s as closed", incident_id)
+        return ok_response(http_status=200, message="incident closed", data={"id": incident_id, "status": "closed"})
+    except _INCIDENT_ERRORS as e:
+        logger.error("Failed to close incident id=%s: %s", incident_id, e, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/reopen",
+    response_model=None,
+    dependencies=[Depends(verify_api_key)],
+)
+async def reopen_incident_endpoint(
+    incident_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse:
+    """Re-open a previously closed or quieted incident."""
+    from models import Incident
+
+    try:
+        incident = await session.get(Incident, incident_id)
+        if incident is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        incident.status = "active"
+        await session.commit()
+        logger.info("[Incidents] Re-opened incident id=%s", incident_id)
+        return ok_response(http_status=200, message="incident re-opened", data={"id": incident_id, "status": "active"})
+    except _INCIDENT_ERRORS as e:
+        logger.error("Failed to reopen incident id=%s: %s", incident_id, e, exc_info=True)
+        return internal_error_response()

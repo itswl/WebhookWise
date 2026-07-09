@@ -710,6 +710,10 @@
             'incidents.confidence': 'Confidence',
             'incidents.summaryPending': 'Summary is being generated...',
             'incidents.timeline': 'Alert Timeline',
+            'incidents.action.closeTitle': 'Mark incident as resolved',
+            'incidents.action.closeFailed': 'Failed to close incident',
+            'incidents.action.reopenTitle': 'Re-open this incident',
+            'incidents.action.reopenFailed': 'Failed to reopen incident',
         },
         zh: {
             // ── Navbar ──
@@ -1398,6 +1402,10 @@
             'incidents.confidence': '置信度',
             'incidents.summaryPending': '摘要生成中…',
             'incidents.timeline': '告警时间线',
+            'incidents.action.closeTitle': '标记事件为已解决',
+            'incidents.action.closeFailed': '关闭事件失败',
+            'incidents.action.reopenTitle': '重新打开此事件',
+            'incidents.action.reopenFailed': '重新打开事件失败',
         }
     };
 
