@@ -35,7 +35,11 @@ _INCIDENT_WINDOW_MINUTES = 15
 _INCIDENT_QUIET_MINUTES = 10
 
 # How far back to scan for unassigned events (minutes).
-_SCAN_LOOKBACK_MINUTES = 60
+# Scan the last 72 h so the first run can backfill existing alerts even when
+# the system has been quiet for a day or two (e.g. after a deploy or slow
+# weekend). Subsequent ticks cover only the trailing window since the last
+# assigned event, so this generous window is self-limiting.
+_SCAN_LOOKBACK_MINUTES = 4320  # 72 h
 
 _MAX_MEMBERS_PER_INCIDENT = 200
 _MAX_INCIDENTS_PER_SCAN = 50
