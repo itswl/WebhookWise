@@ -196,6 +196,7 @@ async def test_timeline_with_anchor(session_factory: async_sessionmaker[AsyncSes
 
 def test_event_rule_name():
     from unittest.mock import MagicMock
+
     from services.incidents.grouping import _event_rule_name
 
     e = MagicMock()
@@ -216,7 +217,6 @@ def test_incident_rule_matches_helper():
 
 @pytest.mark.asyncio
 async def test_create_incident_from_event(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    from datetime import timedelta
 
     from core.datetime_utils import utcnow
     from models import WebhookEvent
@@ -273,7 +273,6 @@ async def test_close_quiet_incidents(session_factory: async_sessionmaker[AsyncSe
 
 @pytest.mark.asyncio
 async def test_grouping_run(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    from datetime import timedelta
     from unittest.mock import patch
 
     from core.datetime_utils import utcnow
