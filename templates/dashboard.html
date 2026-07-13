@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/static/css/components.css?v=20260622-batchb">
 
     <!-- Chart.js for beautiful analytics trend lines -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -425,11 +425,11 @@
                     <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
-                    Credentials are encrypted with the browser's Web Crypto API and stored in this machine's localStorage; the encryption key is kept in IndexedDB and never written to the server config.
+                    Credentials are kept only in this page's memory and are cleared when the page reloads or closes. They are never persisted in browser storage or written to server config.
                 </p>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="clearAuthKeys()" data-i18n="auth.clear">Clear local credentials</button>
+                <button class="btn" onclick="clearAuthKeys()" data-i18n="auth.clear">Clear credentials</button>
                 <button class="btn" onclick="closeAuthModal()" data-i18n="common.cancel">Cancel</button>
                 <button class="btn btn-primary" onclick="saveAuthKeys()" data-i18n="common.save">Save</button>
             </div>

@@ -392,6 +392,10 @@ async def test_forward_rule_create_and_update_endpoints_use_validated_models(
     class FakeSession:
         def __init__(self) -> None:
             self.commits = 0
+            self.added: list[object] = []
+
+        def add(self, record: object) -> None:
+            self.added.append(record)
 
         async def commit(self) -> None:
             self.commits += 1

@@ -34,7 +34,9 @@ async def test_list_forward_rules_annotates_hit_counts(session: AsyncSession) ->
 
     # Two rules: one that has matched alerts, one enabled "zombie" that hasn't.
     busy = ForwardRule(name="busy-rule", target_type="feishu", target_url="https://example.com/hook/x", enabled=True)
-    zombie = ForwardRule(name="zombie-rule", target_type="feishu", target_url="https://example.com/hook/y", enabled=True)
+    zombie = ForwardRule(
+        name="zombie-rule", target_type="feishu", target_url="https://example.com/hook/y", enabled=True
+    )
     session.add_all([busy, zombie])
     # Two forwarded traces that matched busy-rule.
     session.add_all(

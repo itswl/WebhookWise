@@ -38,17 +38,25 @@ async def check_duplicate_event(
     *,
     session: Any,
     time_window_hours: int = 24,
+    time_window_seconds: int | None = None,
+    exclude_event_id: int | None = None,
 ) -> DuplicateCheckResult:
     """Check duplicate state for one alert hash within a time window."""
     now = utcnow()
-    threshold = now - timedelta(hours=time_window_hours)
+    threshold = (
+        now - timedelta(seconds=max(1, time_window_seconds))
+        if time_window_seconds is not None
+        else now - timedelta(hours=time_window_hours)
+    )
 
     recent_stmt = (
         select(WebhookEvent)
         .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.timestamp >= threshold)
-        .order_by(WebhookEvent.timestamp.desc())
+        .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
         .limit(1)
     )
+    if exclude_event_id is not None:
+        recent_stmt = recent_stmt.where(WebhookEvent.id != exclude_event_id)
     recent_res = await session.execute(recent_stmt)
     any_event = recent_res.scalar_one_or_none()
 
@@ -60,7 +68,7 @@ async def check_duplicate_event(
     history_stmt = (
         select(WebhookEvent)
         .filter(WebhookEvent.alert_hash == alert_hash, WebhookEvent.is_duplicate.is_(False))
-        .order_by(WebhookEvent.timestamp.desc())
+        .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
         .limit(1)
     )
     history_res = await session.execute(history_stmt)
@@ -69,6 +77,60 @@ async def check_duplicate_event(
     if history:
         return DuplicateCheckResult(False, history)
     return DuplicateCheckResult(False, None)
+
+
+async def check_duplicate_event_by_dedup_key(
+    dedup_key: str,
+    *,
+    session: AsyncSession,
+    window_seconds: int,
+    exclude_event_id: int | None = None,
+    rechain_previous_id: int | None = None,
+) -> DuplicateCheckResult:
+    """Authoritative transaction-time check for one logical alert identity.
+
+    ``rechain_previous_id`` allows exactly one worker to start a new chain: the
+    old original is ignored, while a newer original created by a racing worker
+    is treated as the winner.
+    """
+    threshold = utcnow() - timedelta(seconds=max(1, window_seconds))
+
+    if rechain_previous_id is not None:
+        stmt = (
+            select(WebhookEvent)
+            .where(
+                WebhookEvent.dedup_key == dedup_key,
+                WebhookEvent.is_duplicate.is_(False),
+                WebhookEvent.timestamp >= threshold,
+            )
+            .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+            .limit(1)
+        )
+        latest_original = (await session.execute(stmt)).scalar_one_or_none()
+        if latest_original is None:
+            return DuplicateCheckResult(False, None)
+        # A valid rechain predecessor is older than the dedup window and is
+        # therefore absent from this query. Any recent original—including the
+        # claimed predecessor—wins and prevents a premature second chain.
+        return DuplicateCheckResult(True, latest_original)
+
+    stmt = (
+        select(WebhookEvent)
+        .where(
+            WebhookEvent.dedup_key == dedup_key,
+            WebhookEvent.timestamp >= threshold,
+        )
+        .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+        .limit(1)
+    )
+    if exclude_event_id is not None:
+        stmt = stmt.where(WebhookEvent.id != exclude_event_id)
+    latest = (await session.execute(stmt)).scalar_one_or_none()
+    if latest is None:
+        return DuplicateCheckResult(False, None)
+    original_id = latest.duplicate_of if latest.is_duplicate else latest.id
+    original = await session.get(WebhookEvent, original_id) if original_id else None
+    return DuplicateCheckResult(True, original or latest)
 
 
 async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None, str]:

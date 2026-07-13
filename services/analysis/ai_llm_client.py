@@ -6,11 +6,12 @@ import asyncio
 import logging
 import time
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 import httpx
 import yaml
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from core.http_client import get_http_client
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
 _openai_client_lock = asyncio.Lock()
 _openai_client: AsyncOpenAI | None = None
 _instructor_client: instructor.Instructor | None = None
+_StructuredResultT = TypeVar("_StructuredResultT", bound=BaseModel)
 
 
 class _CompletionUsage(Protocol):
@@ -120,7 +122,9 @@ async def initialize_openai_client(
                     http_client=http_client or get_http_client(),
                     timeout=httpx.Timeout(policy.http_timeout_seconds, connect=policy.http_connect_timeout_seconds),
                 )
-            _instructor_client = instructor.from_openai(_openai_client, mode=_resolve_instructor_mode(policy.instructor_mode))
+            _instructor_client = instructor.from_openai(
+                _openai_client, mode=_resolve_instructor_mode(policy.instructor_mode)
+            )
             logger.info("[AI] OpenAI client initialization complete model=%s", policy.model)
 
 
@@ -149,6 +153,74 @@ async def _create_with_completion(
     )
 
 
+async def create_structured_completion(
+    *,
+    response_model: type[_StructuredResultT],
+    user_prompt: str,
+    source: str,
+    system_prompt: str | None = None,
+    policy: AIProviderPolicy | None = None,
+) -> tuple[_StructuredResultT, int, int]:
+    """Run a typed completion through the shared client, breaker and metrics."""
+    policy = policy or AIProviderPolicy.from_config()
+    if not policy.available:
+        raise RuntimeError("AI provider is not configured")
+    client = await _get_instructor_client_async()
+    metric_source = sanitize_source(source)
+    started = time.time()
+
+    async def invoke() -> tuple[_StructuredResultT, _Completion]:
+        typed = cast(Any, client)
+        return cast(
+            tuple[_StructuredResultT, _Completion],
+            await typed.chat.completions.create_with_completion(
+                model=policy.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "system", "content": system_prompt or policy.system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=policy.temperature,
+                max_retries=2,
+            ),
+        )
+
+    from services.analysis.circuit_breakers import llm_cb
+
+    with otel_span(
+        "ai.structured_request",
+        {
+            WEBHOOK_SOURCE: source,
+            AI_MODEL: policy.model,
+            AI_PROVIDER: "openai",
+            AI_ENGINE: "openai",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.request.model": policy.model,
+            "ai.response_model": response_model.__name__,
+        },
+    ) as span:
+        try:
+            result, completion = await llm_cb.call_async(invoke)
+        except Exception as exc:
+            AI_REQUESTS_TOTAL.labels(metric_source, "openai", "error").inc()
+            set_span_error(span, exc)
+            raise
+
+        tokens_in = completion.usage.prompt_tokens if completion.usage else 0
+        tokens_out = completion.usage.completion_tokens if completion.usage else 0
+        cost = policy.cost_for_tokens(tokens_in, tokens_out)
+        AI_REQUESTS_TOTAL.labels(metric_source, "openai", "success").inc()
+        AI_TOKENS_TOTAL.labels(policy.model, "input").inc(tokens_in)
+        AI_TOKENS_TOTAL.labels(policy.model, "output").inc(tokens_out)
+        AI_COST_USD_TOTAL.labels(model=policy.model).inc(cost)
+        AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="openai").observe(time.time() - started)
+        if span is not None:
+            span.set_attribute("gen_ai.usage.input_tokens", tokens_in)
+            span.set_attribute("gen_ai.usage.output_tokens", tokens_out)
+            span.set_attribute("ai.cost.usd", cost)
+        return result, tokens_in, tokens_out
+
+
 def _dump_prompt_yaml(identity_context: dict[str, Any], cleaned_data: dict[str, Any]) -> tuple[str, str]:
     """Serialize the two prompt sections to YAML (run in a worker thread)."""
     identity_yaml = yaml.dump(identity_context, allow_unicode=True, default_flow_style=False, sort_keys=False)
@@ -173,9 +245,7 @@ def _build_kb_query(source: str, identity_context: dict[str, Any], cleaned_data:
     return text
 
 
-async def _retrieve_kb_context(
-    source: str, identity_context: dict[str, Any], cleaned_data: dict[str, Any]
-) -> str:
+async def _retrieve_kb_context(source: str, identity_context: dict[str, Any], cleaned_data: dict[str, Any]) -> str:
     """Best-effort RAG context block for the prompt; '' when disabled/empty/failed.
 
     Retrieval must never block or fail an alert analysis — any error degrades to
@@ -283,9 +353,7 @@ async def _analyze_with_openai_tracked(
     stop=stop_after_attempt(3),
     wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
     reraise=True,
-    retry=retry_if_exception(
-        is_ai_provider_retryable_error
-    ),
+    retry=retry_if_exception(is_ai_provider_retryable_error),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 async def _call_ai_with_retry(

@@ -3,21 +3,12 @@
  * Unifies all backend API calls, providing consistent error handling and response parsing
  */
 
-const READ_TOKEN_KEY = 'webhook_api_key';
-const WRITE_TOKEN_KEY = 'webhook_admin_write_key';
-const AUTH_CRYPTO_DB = 'webhookwise_auth_crypto';
-const AUTH_CRYPTO_STORE = 'keys';
-const AUTH_CRYPTO_KEY_ID = 'dashboard-token-key';
-const AUTH_TOKEN_RECORD_VERSION = 1;
-
 const API = {
     _tokenCache: {
         read: '',
         write: ''
     },
-    _authStorageReady: null,
-    _cryptoKeyPromise: null,
-
+    _legacyStorageCleared: false,
     /**
      * Get the read-only API Token
      */
@@ -34,212 +25,47 @@ const API = {
     },
 
     async setReadToken(token) {
-        if (token) {
-            await this.setEncryptedToken(READ_TOKEN_KEY, 'read', token);
-        }
+        this._tokenCache.read = String(token || '');
     },
 
     async setWriteToken(token) {
-        if (token) {
-            await this.setEncryptedToken(WRITE_TOKEN_KEY, 'write', token);
-        }
+        this._tokenCache.write = String(token || '');
     },
 
     async clearTokens() {
-        localStorage.removeItem(READ_TOKEN_KEY);
-        localStorage.removeItem(WRITE_TOKEN_KEY);
         this._tokenCache.read = '';
         this._tokenCache.write = '';
-        this._authStorageReady = null;
-        this._cryptoKeyPromise = null;
-        try {
-            await this.deleteStoredCryptoKey();
-        } catch (error) {
-            console.warn('Failed to clear the local credential encryption key', error);
-        }
+        this.clearLegacyPersistedTokens();
     },
 
     getTokenStatus() {
         return {
-            read: Boolean(this.getReadToken() || this.hasEncryptedToken(READ_TOKEN_KEY)),
-            write: Boolean(this.getWriteToken() || this.hasEncryptedToken(WRITE_TOKEN_KEY))
+            read: Boolean(this.getReadToken()),
+            write: Boolean(this.getWriteToken())
         };
     },
 
     async initAuthStorage() {
-        if (!this._authStorageReady) {
-            this._authStorageReady = (async () => {
-                this._tokenCache.read = await this.loadEncryptedToken(READ_TOKEN_KEY);
-                this._tokenCache.write = await this.loadEncryptedToken(WRITE_TOKEN_KEY);
-            })();
-        }
-        return this._authStorageReady;
+        // Credentials intentionally live only in page memory. Persisting both
+        // ciphertext and its decrypting key under one origin does not protect
+        // against same-origin script compromise.
+        this.clearLegacyPersistedTokens();
     },
 
-    hasEncryptedToken(storageKey) {
-        return this.isEncryptedTokenRecord(localStorage.getItem(storageKey));
-    },
-
-    async loadEncryptedToken(storageKey) {
-        const storedValue = localStorage.getItem(storageKey);
-        if (!storedValue) return '';
-
-        if (!this.isEncryptedTokenRecord(storedValue)) {
-            localStorage.removeItem(storageKey);
-            return '';
-        }
-
+    clearLegacyPersistedTokens() {
+        if (this._legacyStorageCleared) return;
+        this._legacyStorageCleared = true;
         try {
-            const record = JSON.parse(storedValue);
-            return await this.decryptToken(record);
-        } catch (error) {
-            console.warn('Failed to read the local encrypted credentials; the invalid credentials have been cleared', error);
-            localStorage.removeItem(storageKey);
-            return '';
-        }
-    },
-
-    async setEncryptedToken(storageKey, cacheName, token) {
-        const record = await this.encryptToken(token);
-        localStorage.setItem(storageKey, JSON.stringify(record));
-        this._tokenCache[cacheName] = token;
-    },
-
-    isEncryptedTokenRecord(value) {
-        if (!value) return false;
-        try {
-            const record = JSON.parse(value);
-            return record?.v === AUTH_TOKEN_RECORD_VERSION
-                && record?.alg === 'AES-GCM'
-                && typeof record?.iv === 'string'
-                && typeof record?.data === 'string';
+            window.localStorage?.removeItem('webhook_api_key');
+            window.localStorage?.removeItem('webhook_admin_write_key');
         } catch (_error) {
-            return false;
+            // Storage can be unavailable under strict privacy settings.
         }
-    },
-
-    async encryptToken(token) {
-        const key = await this.getOrCreateCryptoKey();
-        const iv = window.crypto.getRandomValues(new Uint8Array(12));
-        const encodedToken = new TextEncoder().encode(token);
-        const encrypted = await window.crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv },
-            key,
-            encodedToken
-        );
-
-        return {
-            v: AUTH_TOKEN_RECORD_VERSION,
-            alg: 'AES-GCM',
-            iv: this.arrayBufferToBase64(iv),
-            data: this.arrayBufferToBase64(encrypted)
-        };
-    },
-
-    async decryptToken(record) {
-        const key = await this.getOrCreateCryptoKey();
-        const iv = new Uint8Array(this.base64ToArrayBuffer(record.iv));
-        const encrypted = this.base64ToArrayBuffer(record.data);
-        const decrypted = await window.crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv },
-            key,
-            encrypted
-        );
-        return new TextDecoder().decode(decrypted);
-    },
-
-    async getOrCreateCryptoKey() {
-        this.assertCryptoStorageAvailable();
-        if (!this._cryptoKeyPromise) {
-            this._cryptoKeyPromise = (async () => {
-                const storedKey = await this.readStoredCryptoKey();
-                if (storedKey) return storedKey;
-
-                const newKey = await window.crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 },
-                    false,
-                    ['encrypt', 'decrypt']
-                );
-                await this.writeStoredCryptoKey(newKey);
-                return newKey;
-            })();
+        try {
+            window.indexedDB?.deleteDatabase('webhookwise_auth_crypto');
+        } catch (_error) {
+            // Best-effort cleanup of the obsolete local encryption key.
         }
-        return this._cryptoKeyPromise;
-    },
-
-    assertCryptoStorageAvailable() {
-        if (!window.crypto?.subtle || !window.indexedDB) {
-            throw new Error('The current browser does not support Web Crypto / IndexedDB; credentials cannot be saved encrypted');
-        }
-    },
-
-    async readStoredCryptoKey() {
-        return await this.withCryptoStore('readonly', (store) => store.get(AUTH_CRYPTO_KEY_ID));
-    },
-
-    async writeStoredCryptoKey(key) {
-        await this.withCryptoStore('readwrite', (store) => store.put(key, AUTH_CRYPTO_KEY_ID));
-    },
-
-    async deleteStoredCryptoKey() {
-        if (!window.indexedDB) return;
-        await this.withCryptoStore('readwrite', (store) => store.delete(AUTH_CRYPTO_KEY_ID));
-    },
-
-    async withCryptoStore(mode, action) {
-        const db = await this.openCryptoDb();
-        return await new Promise((resolve, reject) => {
-            const transaction = db.transaction(AUTH_CRYPTO_STORE, mode);
-            const store = transaction.objectStore(AUTH_CRYPTO_STORE);
-            const request = action(store);
-            let result;
-
-            request.onsuccess = () => {
-                result = request.result;
-            };
-            request.onerror = () => reject(request.error);
-            transaction.oncomplete = () => {
-                db.close();
-                resolve(result);
-            };
-            transaction.onerror = () => {
-                db.close();
-                reject(transaction.error);
-            };
-        });
-    },
-
-    async openCryptoDb() {
-        return await new Promise((resolve, reject) => {
-            const request = window.indexedDB.open(AUTH_CRYPTO_DB, 1);
-
-            request.onupgradeneeded = () => {
-                const db = request.result;
-                if (!db.objectStoreNames.contains(AUTH_CRYPTO_STORE)) {
-                    db.createObjectStore(AUTH_CRYPTO_STORE);
-                }
-            };
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    },
-
-    arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        bytes.forEach((byte) => {
-            binary += String.fromCharCode(byte);
-        });
-        return window.btoa(binary);
-    },
-
-    base64ToArrayBuffer(value) {
-        const binary = window.atob(value);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) {
-            bytes[i] = binary.charCodeAt(i);
-        }
-        return bytes.buffer;
     },
 
     getAuthMode(options = {}) {
@@ -317,7 +143,7 @@ const API = {
                                     updateAuthButtonState();
                                 }
                             } catch (error) {
-                                console.error('Failed to save the encrypted credentials', error);
+                                console.error('Failed to load credentials into page memory', error);
                                 resolve(null);
                                 this._authPromises[authMode] = null;
                                 return;

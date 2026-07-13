@@ -70,12 +70,23 @@ async def test_top_rules_breaks_down_noisiest_source_by_rule(session: AsyncSessi
     now = utcnow()
     # volcengine is noisiest (5), dominated by one rule (4x GPU vs 1x storage).
     for _ in range(4):
-        session.add(WebhookEvent(source="volcengine", timestamp=now, duplicate_count=1,
-                                 parsed_data={"RuleName": "GPU卡告警", "Type": "Metric"}))
-    session.add(WebhookEvent(source="volcengine", timestamp=now, duplicate_count=1,
-                             parsed_data={"RuleName": "对象存储告警", "Type": "Metric"}))
-    session.add(WebhookEvent(source="grafana", timestamp=now, duplicate_count=1,
-                             parsed_data={"RuleName": "x"}))
+        session.add(
+            WebhookEvent(
+                source="volcengine",
+                timestamp=now,
+                duplicate_count=1,
+                parsed_data={"RuleName": "GPU卡告警", "Type": "Metric"},
+            )
+        )
+    session.add(
+        WebhookEvent(
+            source="volcengine",
+            timestamp=now,
+            duplicate_count=1,
+            parsed_data={"RuleName": "对象存储告警", "Type": "Metric"},
+        )
+    )
+    session.add(WebhookEvent(source="grafana", timestamp=now, duplicate_count=1, parsed_data={"RuleName": "x"}))
     await session.commit()
 
     stats = await collect_report_stats(session, window_days=7)
@@ -147,7 +158,9 @@ def test_build_summary_is_deterministic_and_human_readable() -> None:
         ("monthly", "MONTHLY_REPORT_ENABLED", "MONTHLY_REPORT_WINDOW_DAYS", "MONTHLY_REPORT_FEISHU_WEBHOOK", "Monthly"),
     ],
 )
-def test_report_periods_registry_matches_config(period_key, enabled_attr, window_attr, webhook_attr, title_word) -> None:
+def test_report_periods_registry_matches_config(
+    period_key, enabled_attr, window_attr, webhook_attr, title_word
+) -> None:
     from services.operations.periodic_report import REPORT_PERIODS
 
     period = REPORT_PERIODS[period_key]
@@ -244,9 +257,16 @@ async def test_report_webhook_falls_back_to_weekly_then_deep_analysis(temp_confi
 
     async def fake_collect(_session, window_days):
         return {
-            "window_days": window_days, "total_events": 0, "duplicate_events": 0,
-            "noise_pct": 0.0, "importance_breakdown": {}, "top_sources": [],
-            "top_rules": [], "ai_cost_usd": 0.0, "ai_calls": 0, "cache_hit_pct": 0.0,
+            "window_days": window_days,
+            "total_events": 0,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 0,
+            "cache_hit_pct": 0.0,
         }
 
     async def fake_send(url, card):
@@ -311,9 +331,16 @@ async def test_catchup_sends_when_missed_and_skips_when_already_sent(temp_config
 
     async def fake_collect(_session, window_days):
         return {
-            "window_days": window_days, "total_events": 0, "duplicate_events": 0,
-            "noise_pct": 0.0, "importance_breakdown": {}, "top_sources": [],
-            "top_rules": [], "ai_cost_usd": 0.0, "ai_calls": 0, "cache_hit_pct": 0.0,
+            "window_days": window_days,
+            "total_events": 0,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 0,
+            "cache_hit_pct": 0.0,
         }
 
     async def fake_send(url, card):
@@ -401,9 +428,16 @@ async def test_report_send_retries_transient_then_succeeds(temp_config, monkeypa
 
     async def fake_collect(_session, window_days):
         return {
-            "window_days": window_days, "total_events": 0, "duplicate_events": 0, "noise_pct": 0.0,
-            "importance_breakdown": {}, "top_sources": [], "top_rules": [], "ai_cost_usd": 0.0,
-            "ai_calls": 0, "cache_hit_pct": 0.0,
+            "window_days": window_days,
+            "total_events": 0,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 0,
+            "cache_hit_pct": 0.0,
         }
 
     async def no_sleep(_seconds):
@@ -438,9 +472,16 @@ async def test_report_send_does_not_retry_invalid_target(temp_config, monkeypatc
 
     async def fake_collect(_session, window_days):
         return {
-            "window_days": window_days, "total_events": 0, "duplicate_events": 0, "noise_pct": 0.0,
-            "importance_breakdown": {}, "top_sources": [], "top_rules": [], "ai_cost_usd": 0.0,
-            "ai_calls": 0, "cache_hit_pct": 0.0,
+            "window_days": window_days,
+            "total_events": 0,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 0,
+            "cache_hit_pct": 0.0,
         }
 
     monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
@@ -461,6 +502,7 @@ async def test_last_sent_fire_coerces_naive_marker_to_utc(monkeypatch) -> None:
     # A naive isoformat (written by older code) and an aware one must BOTH come
     # back tz-aware and compare against an aware datetime without raising.
     for raw in ("2026-06-18T01:00:00", "2026-06-18T01:00:00+00:00"):
+
         async def _get(_key, _raw=raw):
             return _raw
 
@@ -618,4 +660,3 @@ async def test_ai_cost_budget_warning_then_critical_are_separate_alerts(temp_con
     assert again["tier"] == "critical"
 
     assert tiers_sent == ["warning", "critical"]
-

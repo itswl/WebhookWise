@@ -23,7 +23,7 @@ async def log_ai_usage(
     try:
         policy = policy or AIProviderPolicy.from_config()
         cost = 0.0
-        if route_type == "ai" and tokens_in > 0:
+        if tokens_in > 0:
             cost = policy.cost_for_tokens(tokens_in, tokens_out)
         async with session_scope() as session:
             session.add(

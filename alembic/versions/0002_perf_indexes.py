@@ -24,9 +24,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_forward_outboxes_original_event_id", "forward_outboxes", ["original_event_id"], unique=False
-    )
+    op.create_index("ix_forward_outboxes_original_event_id", "forward_outboxes", ["original_event_id"], unique=False)
     op.create_index("ix_webhook_events_duplicate_of", "webhook_events", ["duplicate_of"], unique=False)
 
     # Rebuild the dead-letter partial index: was ("id",), now ("source", "id")

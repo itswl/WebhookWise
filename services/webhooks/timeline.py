@@ -48,11 +48,7 @@ async def build_alert_timeline(session: AsyncSession, event_id: int) -> dict[str
     if not id_list:
         return {"anchor": _event_timeline_row(anchor), "events": []}
 
-    rows = list(
-        (await session.execute(select(WebhookEvent).where(WebhookEvent.id.in_(id_list))))
-        .scalars()
-        .all()
-    )
+    rows = list((await session.execute(select(WebhookEvent).where(WebhookEvent.id.in_(id_list)))).scalars().all())
 
     # Sort chronologically ascending (earliest first).
     rows.sort(key=lambda r: r.timestamp)
@@ -94,9 +90,7 @@ async def _walk_dedup_chain(session: AsyncSession, seen: set[int]) -> None:
     # Backward: fetch prev_alert_id for events in the set.
     back_rows = (
         await session.execute(
-            select(WebhookEvent.id, WebhookEvent.prev_alert_id).where(
-                WebhookEvent.id.in_(list(current_ids))
-            )
+            select(WebhookEvent.id, WebhookEvent.prev_alert_id).where(WebhookEvent.id.in_(list(current_ids)))
         )
     ).all()
     for row in back_rows:
@@ -140,9 +134,7 @@ def _event_timeline_row(event: WebhookEvent) -> dict[str, Any]:
         "prev_alert_id": event.prev_alert_id,
         "noise_root_cause_id": root_cause_id if isinstance(root_cause_id, int) else None,
         "noise_related_ids": (
-            [int(rid) for rid in related_ids if isinstance(rid, int)]
-            if isinstance(related_ids, (list, tuple))
-            else []
+            [int(rid) for rid in related_ids if isinstance(rid, int)] if isinstance(related_ids, (list, tuple)) else []
         ),
         "processing_status": event.processing_status,
         "forward_status": event.forward_status,

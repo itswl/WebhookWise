@@ -191,7 +191,10 @@ async def poll_openclaw_final(
             except ValueError:
                 last_error = "Invalid JSON response"
                 logger.warning(
-                    "HTTP /final returned invalid JSON (attempt %s/%s elapsed=%sms)", attempt + 1, retry_count, elapsed_ms
+                    "HTTP /final returned invalid JSON (attempt %s/%s elapsed=%sms)",
+                    attempt + 1,
+                    retry_count,
+                    elapsed_ms,
                 )
                 continue
             if not isinstance(raw, dict):

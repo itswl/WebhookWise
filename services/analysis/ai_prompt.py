@@ -14,6 +14,7 @@ _prompt_sources: dict[str, str] = {}
 
 USER_PROMPT_KIND = "user"
 DEEP_ANALYSIS_PROMPT_KIND = "deep_analysis"
+INCIDENT_SUMMARY_PROMPT_KIND = "incident_summary"
 
 
 def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:
@@ -63,7 +64,9 @@ async def _load_prompt_template(kind: str, policy: PromptPolicy) -> str:
                     _prompt_templates[kind] = template
                     return template
                 except OSError as e:
-                    logger.warning("Failed to load prompt template from file kind=%s path=%s error=%s", kind, file_path, e)
+                    logger.warning(
+                        "Failed to load prompt template from file kind=%s path=%s error=%s", kind, file_path, e
+                    )
 
         _prompt_sources[kind] = policy.builtin_source
         _prompt_templates[kind] = policy.builtin_prompt
@@ -78,6 +81,13 @@ async def load_deep_analysis_prompt_template(policy: PromptPolicy | None = None)
     return await _load_prompt_template(DEEP_ANALYSIS_PROMPT_KIND, policy or PromptPolicy.deep_analysis())
 
 
+async def load_incident_summary_prompt_template(policy: PromptPolicy | None = None) -> str:
+    return await _load_prompt_template(
+        INCIDENT_SUMMARY_PROMPT_KIND,
+        policy or PromptPolicy.incident_summary(),
+    )
+
+
 async def reload_user_prompt_template(policy: PromptPolicy | None = None) -> str:
     async with _prompt_template_lock:
         _prompt_templates.pop(USER_PROMPT_KIND, None)
@@ -90,3 +100,10 @@ async def reload_deep_analysis_prompt_template(policy: PromptPolicy | None = Non
         _prompt_templates.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
         _prompt_sources.pop(DEEP_ANALYSIS_PROMPT_KIND, None)
     return await load_deep_analysis_prompt_template(policy=policy)
+
+
+async def reload_incident_summary_prompt_template(policy: PromptPolicy | None = None) -> str:
+    async with _prompt_template_lock:
+        _prompt_templates.pop(INCIDENT_SUMMARY_PROMPT_KIND, None)
+        _prompt_sources.pop(INCIDENT_SUMMARY_PROMPT_KIND, None)
+    return await load_incident_summary_prompt_template(policy=policy)

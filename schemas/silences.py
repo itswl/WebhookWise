@@ -200,4 +200,3 @@ class SilenceBacktestData(BaseModel):
 
 class SilenceBacktestResponse(APIResponse[SilenceBacktestData]):
     """Silence rule backtest response."""
-

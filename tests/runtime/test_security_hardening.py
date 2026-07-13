@@ -558,22 +558,23 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     api_js = (PROJECT_ROOT / "templates/static/js/api.js").read_text()
     dashboard_html = (PROJECT_ROOT / "templates/dashboard.html").read_text()
 
-    assert "const READ_TOKEN_KEY = 'webhook_api_key';" in api_js
-    assert "const WRITE_TOKEN_KEY = 'webhook_admin_write_key';" in api_js
     assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
     assert "this.getWriteToken()" in api_js
     assert "Admin write permission required" in api_js
     assert "API key is insufficient for this endpoint" in api_js
-    assert "window.indexedDB" in api_js
-    assert "localStorage.setItem(storageKey, JSON.stringify(record))" in api_js
+    assert "this._tokenCache.read = String(token || '')" in api_js
+    assert "this._tokenCache.write = String(token || '')" in api_js
+    assert "localStorage.setItem" not in api_js
+    assert "localStorage.getItem" not in api_js
+    assert "window.indexedDB?.deleteDatabase('webhookwise_auth_crypto')" in api_js
 
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
-    assert "encrypted with the browser's Web Crypto API and stored in this machine's localStorage" in dashboard_html
+    assert "kept only in this page's memory" in dashboard_html
 
 
-def test_dashboard_token_storage_encrypts_and_decrypts_with_webcrypto() -> None:
+def test_dashboard_tokens_remain_in_memory_only() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for dashboard crypto behavior test")
@@ -583,60 +584,34 @@ def test_dashboard_token_storage_encrypts_and_decrypts_with_webcrypto() -> None:
 const fs = require('fs');
 const vm = require('vm');
 const source = fs.readFileSync({pyjson.dumps(str(api_js))}, 'utf8');
-const storage = new Map();
-const calls = [];
-
 const context = {{
   console: {{ warn() {{}}, error() {{}}, log() {{}} }},
-  TextEncoder,
-  TextDecoder,
-  Uint8Array,
-  ArrayBuffer,
   URLSearchParams
 }};
 context.window = context;
+const removed = [];
 context.localStorage = {{
-  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
-  setItem(key, value) {{ storage.set(key, value); }},
-  removeItem(key) {{ storage.delete(key); }}
+  getItem() {{ throw new Error('credential storage must not be read'); }},
+  setItem() {{ throw new Error('credential storage must not be written'); }},
+  removeItem(key) {{ removed.push(key); }}
 }};
-context.window.btoa = (binary) => Buffer.from(binary, 'binary').toString('base64');
-context.window.atob = (value) => Buffer.from(value, 'base64').toString('binary');
-context.window.indexedDB = {{}};
-context.window.crypto = {{
-  getRandomValues(array) {{
-    for (let i = 0; i < array.length; i += 1) array[i] = i + 1;
-    return array;
-  }},
-  subtle: {{
-    async encrypt(algorithm, _key, data) {{
-      if (algorithm.name !== 'AES-GCM') throw new Error('unexpected encrypt algorithm: ' + algorithm.name);
-      if (!(algorithm.iv instanceof Uint8Array) || algorithm.iv.length !== 12) throw new Error('bad encrypt iv');
-      calls.push(['encrypt', algorithm.name, algorithm.iv.length]);
-      return data;
-    }},
-    async decrypt(algorithm, _key, data) {{
-      if (algorithm.name !== 'AES-GCM') throw new Error('unexpected decrypt algorithm: ' + algorithm.name);
-      if (!(algorithm.iv instanceof Uint8Array) || algorithm.iv.length !== 12) throw new Error('bad decrypt iv');
-      calls.push(['decrypt', algorithm.name, algorithm.iv.length]);
-      return data;
-    }}
-  }}
-}};
+context.indexedDB = {{ deleteDatabase(name) {{ removed.push(name); }} }};
 
 vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.js' }});
 
 (async () => {{
   const api = context.__API;
-  api._cryptoKeyPromise = Promise.resolve({{ stub: true }});
-  await api.setEncryptedToken('unit-token-key', 'read', 'secret-token');
-  const stored = JSON.parse(context.localStorage.getItem('unit-token-key'));
-  const restored = await api.loadEncryptedToken('unit-token-key');
-  if (stored.alg !== 'AES-GCM') throw new Error('record algorithm was not persisted');
-  if (restored !== 'secret-token') throw new Error('decrypted token mismatch');
+  await api.setReadToken('secret-token');
+  await api.setWriteToken('write-token');
   if (api.getReadToken() !== 'secret-token') throw new Error('read token cache mismatch');
-  if (calls.length !== 2) throw new Error('expected encrypt and decrypt calls');
-  console.log(JSON.stringify({{ restored, calls }}));
+  if (api.getWriteToken() !== 'write-token') throw new Error('write token cache mismatch');
+  await api.clearTokens();
+  if (api.getReadToken() || api.getWriteToken()) throw new Error('tokens were not cleared');
+  if (!removed.includes('webhook_api_key') || !removed.includes('webhook_admin_write_key')) {{
+    throw new Error('legacy persisted tokens were not removed');
+  }}
+  if (!removed.includes('webhookwise_auth_crypto')) throw new Error('legacy encryption key was not removed');
+  console.log('ok');
 }})().catch((error) => {{
   console.error(error.stack || error.message);
   process.exit(1);
@@ -820,9 +795,7 @@ async def test_admin_rate_limit_allows_then_rejects(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
-async def test_admin_rate_limit_fails_open_on_redis_trouble(
-    monkeypatch: pytest.MonkeyPatch, temp_config: Any
-) -> None:
+async def test_admin_rate_limit_fails_open_on_redis_trouble(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
     from fastapi import Response
 
     from core import webhook_security

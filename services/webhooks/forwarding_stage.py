@@ -16,13 +16,13 @@ from models import WebhookEvent
 from services.dedup import DedupResult
 from services.forwarding.outbox import resolve_and_forward
 from services.forwarding.rules import get_cached_forward_rules
+from services.forwarding.types import ForwardRuleSnapshot
 from services.silences.store import get_cached_active_silences
 from services.webhooks.command_service import SaveWebhookInput, SaveWebhookResult, save_webhook_data_in_session
 from services.webhooks.decision_trace import record_decision_trace
 from services.webhooks.decisioning import (
     ForwardDecision,
     ForwardingPolicy,
-    ForwardRuleSnapshot,
     SilenceSnapshot,
     decide_forwarding,
     forwarding_policy_from_config,

@@ -84,7 +84,10 @@ def test_steps_forwarded_chain_is_ordered_and_complete() -> None:
 def test_steps_no_match_skip() -> None:
     decision = ForwardDecision(False, "No matching forwarding rule", False, skip_code="no_match")
     steps = build_trace_steps(
-        dedup=_dedup(), final_analysis=_analysis(), noise=_noise(), decision=decision  # type: ignore[arg-type]
+        dedup=_dedup(),
+        final_analysis=_analysis(),
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     fwd = _step_named(steps, "forward")
     assert fwd["outcome"] == "skipped"
@@ -94,11 +97,12 @@ def test_steps_no_match_skip() -> None:
 
 
 def test_steps_silenced_includes_silence_step_with_id() -> None:
-    decision = ForwardDecision(
-        False, "Silenced (id=7)", False, skip_code="silenced", silence_id=7
-    )
+    decision = ForwardDecision(False, "Silenced (id=7)", False, skip_code="silenced", silence_id=7)
     steps = build_trace_steps(
-        dedup=_dedup(), final_analysis=_analysis(route="silenced_skip"), noise=_noise(), decision=decision  # type: ignore[arg-type]
+        dedup=_dedup(),
+        final_analysis=_analysis(route="silenced_skip"),
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     silence = _step_named(steps, "silence")
     assert silence["matched"] is True
@@ -107,7 +111,9 @@ def test_steps_silenced_includes_silence_step_with_id() -> None:
 
 
 def test_steps_noise_suppressed_reflected_in_noise_step() -> None:
-    decision = ForwardDecision(False, "Smart noise reduction suppressed forwarding: x", False, skip_code="noise_suppressed")
+    decision = ForwardDecision(
+        False, "Smart noise reduction suppressed forwarding: x", False, skip_code="noise_suppressed"
+    )
     steps = build_trace_steps(
         dedup=_dedup(),
         final_analysis=_analysis(),  # type: ignore[arg-type]
@@ -189,8 +195,12 @@ def test_build_row_skipped_outcome() -> None:
 def test_build_row_flattens_silence_id_only_when_silenced() -> None:
     silenced = ForwardDecision(False, "Silenced (id=7)", False, skip_code="silenced", silence_id=7)
     trace = build_decision_trace(
-        webhook_event_id=4, source="volcengine", dedup=_dedup(),
-        final_analysis=_analysis(route="silenced_skip"), noise=_noise(), decision=silenced,  # type: ignore[arg-type]
+        webhook_event_id=4,
+        source="volcengine",
+        dedup=_dedup(),
+        final_analysis=_analysis(route="silenced_skip"),
+        noise=_noise(),
+        decision=silenced,  # type: ignore[arg-type]
     )
     assert trace.skip_code == "silenced"
     assert trace.silence_id == 7
@@ -200,8 +210,12 @@ def test_build_row_flattens_silence_id_only_when_silenced() -> None:
     # index and the per-rule GROUP BY clean).
     forwarded = ForwardDecision(True, None, False, matched_rules=[_rule("feishu")], silence_id=9)
     trace2 = build_decision_trace(
-        webhook_event_id=5, source="volcengine", dedup=_dedup(),
-        final_analysis=_analysis(), noise=_noise(), decision=forwarded,  # type: ignore[arg-type]
+        webhook_event_id=5,
+        source="volcengine",
+        dedup=_dedup(),
+        final_analysis=_analysis(),
+        noise=_noise(),
+        decision=forwarded,  # type: ignore[arg-type]
     )
     assert trace2.silence_id is None
 
@@ -219,15 +233,22 @@ def test_steps_and_row_capture_importance_override() -> None:
     }
     decision = ForwardDecision(True, None, False, matched_rules=[_rule("feishu")])
     steps = build_trace_steps(
-        dedup=_dedup(), final_analysis=analysis, noise=_noise(), decision=decision  # type: ignore[arg-type]
+        dedup=_dedup(),
+        final_analysis=analysis,
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     analysis_step = _step_named(steps, "analysis")
     assert analysis_step["importance_override"] is True
     assert analysis_step["importance_override_reason"] == "GPU saturated"
 
     trace = build_decision_trace(
-        webhook_event_id=1, source="volcengine", dedup=_dedup(),
-        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+        webhook_event_id=1,
+        source="volcengine",
+        dedup=_dedup(),
+        final_analysis=analysis,
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     assert trace.route == "ai"
     assert trace.importance_override is True
@@ -244,15 +265,22 @@ def test_steps_and_row_capture_degradation_reason() -> None:
     }
     decision = ForwardDecision(False, "No matching forwarding rule", False, skip_code="no_match")
     steps = build_trace_steps(
-        dedup=_dedup(), final_analysis=analysis, noise=_noise(), decision=decision  # type: ignore[arg-type]
+        dedup=_dedup(),
+        final_analysis=analysis,
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     analysis_step = _step_named(steps, "analysis")
     assert analysis_step["degraded"] is True
     assert analysis_step["degraded_reason"] == "ai_error: boom"
 
     trace = build_decision_trace(
-        webhook_event_id=2, source="grafana", dedup=_dedup(),
-        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+        webhook_event_id=2,
+        source="grafana",
+        dedup=_dedup(),
+        final_analysis=analysis,
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     assert trace.route == "rule"
     assert trace.importance_override is False
@@ -269,8 +297,12 @@ def test_row_truncates_long_degraded_reason() -> None:
     }
     decision = ForwardDecision(False, "x", False, skip_code="no_match")
     trace = build_decision_trace(
-        webhook_event_id=3, source="s", dedup=_dedup(),
-        final_analysis=analysis, noise=_noise(), decision=decision,  # type: ignore[arg-type]
+        webhook_event_id=3,
+        source="s",
+        dedup=_dedup(),
+        final_analysis=analysis,
+        noise=_noise(),
+        decision=decision,  # type: ignore[arg-type]
     )
     assert trace.degraded_reason is not None
     assert len(trace.degraded_reason) == 200

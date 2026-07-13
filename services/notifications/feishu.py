@@ -23,9 +23,7 @@ __all__ = [
 ]
 
 
-async def send_to_feishu(
-    url: str, payload: dict[str, object], *, idempotency_key: str | None = None
-) -> ForwardResult:
+async def send_to_feishu(url: str, payload: dict[str, object], *, idempotency_key: str | None = None) -> ForwardResult:
     return await _send_to_feishu(
         url,
         payload,

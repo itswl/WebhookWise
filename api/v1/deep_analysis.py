@@ -45,7 +45,9 @@ async def deep_analyze_webhook(
     webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
 ) -> JSONResponse | JSONDict:
     payload = payload or {}
-    logger.info("[DeepAnalysis] Manual analysis request webhook_id=%s engine=%s", webhook_id, payload.get("engine", "auto"))
+    logger.info(
+        "[DeepAnalysis] Manual analysis request webhook_id=%s engine=%s", webhook_id, payload.get("engine", "auto")
+    )
     event = await session.get(WebhookEvent, webhook_id)
     if not event:
         logger.warning("[DeepAnalysis] Manual analysis failed, event does not exist webhook_id=%s", webhook_id)
@@ -54,7 +56,9 @@ async def deep_analyze_webhook(
     ctx = await _build_deep_analysis_context(event)
     requested_engine = str(payload.get("engine", "auto")).strip().lower()
     if not _is_supported_deep_analysis_engine(requested_engine):
-        logger.warning("[DeepAnalysis] Unsupported analysis engine webhook_id=%s engine=%s", webhook_id, requested_engine)
+        logger.warning(
+            "[DeepAnalysis] Unsupported analysis engine webhook_id=%s engine=%s", webhook_id, requested_engine
+        )
         return JSONResponse(status_code=400, content={"success": False, "error": "Unsupported engine"})
     if not OpenClawTriggerPolicy.from_config().enabled:
         logger.warning("[DeepAnalysis] OpenClaw not enabled webhook_id=%s", webhook_id)
@@ -65,7 +69,9 @@ async def deep_analyze_webhook(
             ctx, event.headers or {}, str(payload.get("user_question", ""))
         )
     except deep_analysis_workflow.DeepAnalysisExecutionError as e:
-        logger.error("[DeepAnalysis] Manual analysis trigger failed webhook_id=%s error=%s", webhook_id, e, exc_info=True)
+        logger.error(
+            "[DeepAnalysis] Manual analysis trigger failed webhook_id=%s error=%s", webhook_id, e, exc_info=True
+        )
         return internal_error_response()
 
     record = DeepAnalysis(

@@ -105,6 +105,7 @@ def _default_pipeline_dependencies() -> pipeline_runtime.WebhookPipelineDependen
         forwarding_policy=forwarding_policy_from_config(),
     )
 
+
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 

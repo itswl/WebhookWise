@@ -166,23 +166,6 @@ function showError(message) {
 }
 
 /**
- * Show a Toast notification
- * @param {string} message - Notification message
- * @param {string} type - Type: 'success' | 'error' | 'info'
- */
-function showToast(message, type) {
-    type = type || 'info';
-    var toast = document.createElement('div');
-    toast.className = 'toast toast-' + type;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(function() {
-        toast.classList.add('toast-exit');
-        setTimeout(function() { toast.remove(); }, 300);
-    }, 3000);
-}
-
-/**
  * Render a "Load more" pagination control consistent with the alert management view.
  */
 function renderLoadMorePagination(container, options) {
@@ -307,7 +290,13 @@ function showToast(message, type = 'info') {
         box-sizing: border-box;
     `;
 
-    toast.innerHTML = `<span>${icon}</span><span style="line-height:1.45; white-space: pre-wrap;">${cleanMessage}</span>`;
+    const iconElement = document.createElement('span');
+    iconElement.textContent = icon;
+    const messageElement = document.createElement('span');
+    messageElement.style.lineHeight = '1.45';
+    messageElement.style.whiteSpace = 'pre-wrap';
+    messageElement.textContent = cleanMessage;
+    toast.append(iconElement, messageElement);
     container.appendChild(toast);
 
     // Auto remove toast

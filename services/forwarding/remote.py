@@ -32,9 +32,7 @@ def _feishu_business_error(response: httpx.Response) -> str:
     return f"feishu business error code={code}: {message}"
 
 
-async def send_forward_rule_test(
-    *, rule_name: str, target_url: str, target_type: str | None
-) -> ForwardResult:
+async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type: str | None) -> ForwardResult:
     """Deliver a synthetic test message for a forward rule, bypassing the outbox.
 
     Owns the channel decision (feishu vs generic webhook) and payload building so
@@ -116,18 +114,24 @@ async def post_json_to_remote(
         if target_type_label == "feishu":
             business_error = _feishu_business_error(response)
             if business_error:
-                logger.warning("[Forward] Feishu business response failed target=%s error=%s", mask_url(url), business_error)
+                logger.warning(
+                    "[Forward] Feishu business response failed target=%s error=%s", mask_url(url), business_error
+                )
                 status = "failed"
                 return {
                     "status": "failed",
                     "status_code": response.status_code,
                     "message": business_error,
                 }
-        logger.info("[Forward] raw-json forward completed target=%s status_code=%s", mask_url(url), response.status_code)
+        logger.info(
+            "[Forward] raw-json forward completed target=%s status_code=%s", mask_url(url), response.status_code
+        )
         status = "success"
         return {"status": "success", "status_code": response.status_code}
     except UnsafeTargetUrlError as e:
-        logger.warning("[Forward] Target URL security validation failed before sending target=%s error=%s", mask_url(url), e)
+        logger.warning(
+            "[Forward] Target URL security validation failed before sending target=%s error=%s", mask_url(url), e
+        )
         status = "invalid_target"
         return {"status": "invalid_target", "message": str(e)}
     except CircuitBreakerOpenException:
@@ -135,7 +139,9 @@ async def post_json_to_remote(
         status = "circuit_broken"
         return {"status": "circuit_broken", "message": "circuit breaker is open"}
     except (httpx.RequestError, OSError, TimeoutError, ValueError) as e:
-        logger.error("[Forward] raw-json forward failed target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e)
+        logger.error(
+            "[Forward] raw-json forward failed target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e
+        )
         status = "failed"
         return {"status": "failed", "message": str(e)}
     finally:
